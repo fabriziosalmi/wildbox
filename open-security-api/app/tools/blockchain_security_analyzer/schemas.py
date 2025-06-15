@@ -51,11 +51,4 @@ class BlockchainSecurityAnalyzerOutput(BaseModel):
     execution_time: float
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "Blockchain Security Analyzer",
-    "description": "Comprehensive smart contract security analysis tool for detecting vulnerabilities, gas optimization opportunities, and security best practices violations",
-    "category": "cryptography",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["blockchain", "smart-contracts", "solidity", "ethereum", "defi", "security"]
-}
+

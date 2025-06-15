@@ -65,13 +65,3 @@ class APISecurityTesterOutput(BaseModel):
     risk_rating: str  # Low, Medium, High, Critical
     recommendations: List[str]
     execution_time: float
-
-# Tool metadata
-TOOL_INFO = {
-    "name": "API Security Tester",
-    "description": "Comprehensive API security testing tool that identifies vulnerabilities, misconfigurations, and compliance issues against OWASP API Security Top 10",
-    "category": "api_security",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["api", "security", "testing", "owasp", "vulnerabilities", "penetration-testing"]
-}

@@ -57,11 +57,4 @@ class PKICertificateManagerOutput(BaseModel):
     compliance_status: Dict[str, bool]
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "PKI Certificate Manager",
-    "description": "Comprehensive PKI certificate analysis, validation, and management tool",
-    "category": "cryptography",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["pki", "certificates", "ssl", "tls", "x509", "validation"]
-}
+

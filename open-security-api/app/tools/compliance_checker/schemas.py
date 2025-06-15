@@ -98,11 +98,4 @@ class ComplianceCheckerOutput(BaseModel):
     assessment_summary: Dict[str, Any]
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "Compliance Checker",
-    "description": "Comprehensive compliance assessment tool for multiple security and privacy frameworks including GDPR, PCI-DSS, HIPAA, SOC2, and more",
-    "category": "compliance",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["compliance", "gdpr", "pci-dss", "hipaa", "soc2", "iso27001", "privacy", "audit"]
-}
+

@@ -39,9 +39,18 @@ from schemas import (
     PermissionAnalysis,
     NetworkSecurityAnalysis,
     ExtractedAsset,
-    AppMetadata,
-    TOOL_INFO
+    AppMetadata
 )
+
+# Tool metadata
+TOOL_INFO = {
+    "name": "Mobile Security Analyzer",
+    "description": "Comprehensive mobile app security analysis for Android APK and iOS IPA files with OWASP Mobile Top 10 compliance checking",
+    "category": "mobile_security",
+    "version": "1.0.0", 
+    "author": "Wildbox Security",
+    "tags": ["mobile", "android", "ios", "apk", "ipa", "owasp", "privacy", "permissions"]
+}
 
 async def execute_tool(data: MobileSecurityAnalyzerInput) -> MobileSecurityAnalyzerOutput:
     """

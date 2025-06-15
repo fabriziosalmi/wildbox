@@ -94,11 +94,4 @@ class DatabaseSecurityAnalyzerOutput(BaseModel):
     scan_summary: Dict[str, Any]
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "Database Security Analyzer",
-    "description": "Comprehensive database security assessment tool for multiple database types including configuration, user privileges, encryption, and compliance analysis",
-    "category": "database_security",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["database", "mysql", "postgresql", "mongodb", "security", "compliance", "encryption"]
-}
+

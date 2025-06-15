@@ -10,9 +10,18 @@ from schemas import (
     CloudSecurityAnalyzerOutput,
     CloudMisconfiguration,
     ComplianceCheck,
-    ResourceInventory,
-    TOOL_INFO
+    ResourceInventory
 )
+
+# Tool metadata
+TOOL_INFO = {
+    "name": "Cloud Security Analyzer",
+    "description": "Comprehensive cloud security assessment tool for AWS, Azure, and GCP with compliance checking and cost optimization",
+    "category": "cloud_security",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "tags": ["cloud", "aws", "azure", "gcp", "compliance", "security", "cost-optimization"]
+}
 
 async def execute_tool(data: CloudSecurityAnalyzerInput) -> CloudSecurityAnalyzerOutput:
     """

@@ -85,12 +85,4 @@ class DigitalFootprintAnalyzerOutput(BaseModel):
     recommendations: List[str]
     execution_time: float
 
-# Tool metadata
-TOOL_INFO = {
-    "name": "Digital Footprint Analyzer",
-    "description": "Comprehensive OSINT tool for analyzing digital footprints across social media, data breaches, domains, and public records while respecting privacy",
-    "category": "osint",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["osint", "social-media", "footprint", "privacy", "reconnaissance", "breach-check"]
-}
+

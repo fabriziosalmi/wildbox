@@ -70,11 +70,4 @@ class IoTSecurityScannerOutput(BaseModel):
     recommendations: List[str]
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "IoT Security Scanner",
-    "description": "Comprehensive IoT device security scanner for identifying vulnerabilities, weak configurations, and security issues in connected devices",
-    "category": "iot_security",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["iot", "devices", "firmware", "protocols", "embedded", "security"]
-}
+

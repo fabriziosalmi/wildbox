@@ -23,7 +23,17 @@ except ImportError:
         parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
         return ET.fromstring(text, parser)
 
-from schemas import SAMLAnalyzerInput, SAMLAnalyzerOutput, SAMLFinding, TOOL_INFO
+from schemas import SAMLAnalyzerInput, SAMLAnalyzerOutput, SAMLFinding
+
+# Tool metadata
+TOOL_INFO = {
+    "name": "SAML Analyzer",
+    "description": "Analyze SAML responses for security vulnerabilities, signature validation, and attribute extraction",
+    "category": "authentication",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "tags": ["saml", "sso", "authentication", "security", "xml"]
+}
 
 async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
     """

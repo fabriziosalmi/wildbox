@@ -42,14 +42,3 @@ class APISecurityAnalyzerOutput(BaseModel):
     overall_security_score: float  # 0-100
     recommendations: List[str]
     execution_time: float
-
-# Tool metadata
-TOOL_INFO = {
-    "name": "API Security Analyzer",
-    "description": "Comprehensive API security analysis tool that identifies vulnerabilities, misconfigurations, and security best practice violations in REST, GraphQL, and SOAP APIs",
-    "category": "api_security",
-    "author": "Wildbox Security",
-    "version": "1.0.0",
-    "input_schema": APISecurityAnalyzerInput,
-    "output_schema": APISecurityAnalyzerOutput
-}

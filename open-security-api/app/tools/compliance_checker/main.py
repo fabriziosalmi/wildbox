@@ -533,6 +533,15 @@ class ComplianceChecker:
         )
 
 # Tool metadata for registration
+TOOL_INFO = {
+    "name": "Compliance Checker",
+    "description": "Comprehensive compliance assessment tool for multiple security and privacy frameworks including GDPR, PCI-DSS, HIPAA, SOC2, and more",
+    "category": "compliance",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "tags": ["compliance", "gdpr", "pci-dss", "hipaa", "soc2", "iso27001", "privacy", "audit"]
+}
+
 TOOL_METADATA = {
     "name": "Compliance Checker",
     "description": "Comprehensive compliance assessment tool for multiple security and privacy frameworks including GDPR, PCI-DSS, HIPAA, SOC2, and more",
@@ -541,3 +550,9 @@ TOOL_METADATA = {
     "output_schema": ComplianceCheckerOutput,
     "tool_class": ComplianceChecker
 }
+
+# Main entry point function
+async def execute_tool(data: ComplianceCheckerInput) -> ComplianceCheckerOutput:
+    """Main entry point for compliance checker tool"""
+    checker = ComplianceChecker()
+    return await checker.execute(data)

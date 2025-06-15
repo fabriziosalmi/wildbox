@@ -18,9 +18,18 @@ from schemas import (
     APISecurityTesterOutput,
     APIVulnerability,
     APIEndpoint,
-    SecurityTest,
-    TOOL_INFO
+    SecurityTest
 )
+
+# Tool metadata
+TOOL_INFO = {
+    "name": "API Security Tester",
+    "description": "Comprehensive API security testing tool that identifies vulnerabilities, misconfigurations, and compliance issues against OWASP API Security Top 10",
+    "category": "api_security",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "tags": ["api", "security", "testing", "owasp", "vulnerabilities", "penetration-testing"]
+}
 
 async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
     """

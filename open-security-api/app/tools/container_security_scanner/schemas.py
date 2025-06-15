@@ -75,11 +75,4 @@ class ContainerSecurityScannerOutput(BaseModel):
     scan_summary: Dict[str, Any]
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "Container Security Scanner",
-    "description": "Comprehensive security scanner for Docker containers and images including vulnerability detection, secret scanning, and compliance checking",
-    "category": "container_security",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["docker", "containers", "vulnerabilities", "secrets", "compliance", "devops"]
-}
+

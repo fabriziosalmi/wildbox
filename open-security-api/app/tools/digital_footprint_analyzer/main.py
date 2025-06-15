@@ -17,8 +17,7 @@ from schemas import (
     DataBreachResult,
     DomainInfo,
     PhoneInfo,
-    OSINTFinding,
-    TOOL_INFO
+    OSINTFinding
 )
 
 async def execute_tool(data: DigitalFootprintAnalyzerInput) -> DigitalFootprintAnalyzerOutput:
@@ -477,4 +476,13 @@ def generate_recommendations(
     return recommendations
 
 # Export tool info for registration
+TOOL_INFO = {
+    "name": "Digital Footprint Analyzer",
+    "description": "Comprehensive OSINT tool for analyzing digital footprints across social media, data breaches, domains, and public records while respecting privacy",
+    "category": "osint",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "tags": ["osint", "social-media", "footprint", "privacy", "reconnaissance", "breach-check"]
+}
+
 tool_info = TOOL_INFO

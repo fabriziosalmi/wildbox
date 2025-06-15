@@ -31,11 +31,4 @@ class SAMLAnalyzerOutput(BaseModel):
     execution_time: float
 
 # Tool metadata
-TOOL_INFO = {
-    "name": "SAML Analyzer",
-    "description": "Analyze SAML responses for security vulnerabilities, signature validation, and attribute extraction",
-    "category": "authentication",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "tags": ["saml", "sso", "authentication", "security", "xml"]
-}
+

@@ -15,6 +15,18 @@ try:
 except ImportError:
     from schemas import Base64ToolInput, Base64ToolOutput
 
+# Tool metadata
+TOOL_INFO = {
+    "name": "Base64 Encoder/Decoder",
+    "description": "Versatile Base64 encoding and decoding tool with support for standard and URL-safe variants, custom padding options, chunk formatting, and content type detection",
+    "category": "encoding",
+    "author": "Wildbox Security",
+    "version": "1.0.0",
+    "input_schema": Base64ToolInput,
+    "output_schema": Base64ToolOutput,
+    "tags": ["base64", "encoding", "decoding", "url-safe", "data-conversion", "text-processing"]
+}
+
 
 class Base64Tool:
     """Base64 encoder/decoder with advanced features"""

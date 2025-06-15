@@ -104,13 +104,4 @@ class CAAnalyzerOutput(BaseModel):
     error: Optional[str] = Field(default=None, description="Error message if analysis failed")
 
 
-TOOL_INFO = {
-    "name": "Certificate Authority Analyzer",
-    "description": "Comprehensive SSL/TLS certificate and Certificate Authority analysis tool that examines certificate chains, validates trust paths, checks revocation status, and analyzes security configurations",
-    "category": "cryptography",
-    "author": "Wildbox Security",
-    "version": "1.0.0",
-    "input_schema": CAAnalyzerInput,
-    "output_schema": CAAnalyzerOutput,
-    "tags": ["ssl", "tls", "certificates", "ca", "pki", "x509", "ocsp", "crl", "certificate-transparency"]
-}
+

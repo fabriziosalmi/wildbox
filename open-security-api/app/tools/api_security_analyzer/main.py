@@ -8,7 +8,18 @@ from urllib.parse import urljoin, urlparse
 import ssl
 import re
 
-from schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue, TOOL_INFO
+from schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue
+
+# Tool metadata
+TOOL_INFO = {
+    "name": "API Security Analyzer",
+    "description": "Comprehensive API security analysis tool that identifies vulnerabilities, misconfigurations, and security best practice violations in REST, GraphQL, and SOAP APIs",
+    "category": "api_security",
+    "author": "Wildbox Security",
+    "version": "1.0.0",
+    "input_schema": APISecurityAnalyzerInput,
+    "output_schema": APISecurityAnalyzerOutput
+}
 
 async def execute_tool(data: APISecurityAnalyzerInput) -> APISecurityAnalyzerOutput:
     """

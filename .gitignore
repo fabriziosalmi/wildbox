@@ -1,3 +1,6 @@
 open-security-api/app/__pycache__/
+open-security-api/app/api/__pycache__/
+open-security-api/app/tools/__pycache__/
+open-security-api/app/web/__pycache__/
 open-security-api/*.pyc
 open-security-api/.env
