@@ -9,6 +9,36 @@
             margin: 0 auto;
             padding: 2rem;
             line-height: 1.6;
+            color: var(--gray-800);
+        }
+        
+        .guide-content h1,
+        .guide-content h2,
+        .guide-content h3,
+        .guide-content h4,
+        .guide-content h5,
+        .guide-content h6 {
+            color: var(--gray-900);
+        }
+        
+        .guide-content p,
+        .guide-content li,
+        .guide-content div,
+        .guide-content span {
+            color: var(--gray-800);
+        }
+        
+        .guide-content strong {
+            color: var(--gray-900);
+            font-weight: 600;
+        }
+        
+        .guide-content code {
+            background: var(--bg-tertiary);
+            color: var(--gray-900);
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-size: 0.9em;
         }
         
         @media (max-width: 768px) {
@@ -75,12 +105,13 @@
         }
         
         .file-structure {
-            background: #f8f9fa;
-            border: 1px solid #e9ecef;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--glass-border);
             border-radius: 8px;
             padding: 1rem;
             font-family: monospace;
             margin: 1rem 0;
+            color: var(--gray-800);
         }
         
         .step-list {
@@ -93,10 +124,11 @@
             counter-increment: step-counter;
             margin: 1rem 0;
             padding: 1rem;
-            background: #f8f9fa;
+            background: var(--bg-tertiary);
             border-left: 4px solid var(--primary-color);
             border-radius: 0 8px 8px 0;
             position: relative;
+            color: var(--gray-800);
         }
         
         .step-list li::before {
@@ -121,11 +153,12 @@
         }
         
         .warning {
-            background: #fff3cd;
-            border: 1px solid #ffeaa7;
+            background: rgba(255, 193, 7, 0.15);
+            border: 1px solid rgba(255, 193, 7, 0.3);
             border-radius: 8px;
             padding: 1rem;
             margin: 1rem 0;
+            color: var(--gray-800);
         }
         
         .warning::before {
@@ -134,11 +167,12 @@
         }
         
         .info {
-            background: #d1ecf1;
-            border: 1px solid #bee5eb;
+            background: rgba(6, 182, 212, 0.15);
+            border: 1px solid rgba(6, 182, 212, 0.3);
             border-radius: 8px;
             padding: 1rem;
             margin: 1rem 0;
+            color: var(--gray-800);
         }
         
         .info::before {
@@ -166,7 +200,7 @@
         }
         
         .toc a {
-            color: var(--text-color);
+            color: var(--gray-800);
             text-decoration: none;
             padding: 0.25rem 0.5rem;
             border-radius: 4px;
@@ -187,58 +221,114 @@
             <h3>📋 Table of Contents</h3>
             <ul>
                 <li><a href="#overview">Platform Overview</a></li>
-                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#architecture">Architecture & Tool Discovery</a></li>
                 <li><a href="#authentication">API Authentication</a></li>
+                <li><a href="#getting-started">Quick Start Guide</a></li>
                 <li><a href="#building-tools">Building Security Tools</a></li>
                 <li><a href="#file-structure">File Structure Requirements</a></li>
                 <li><a href="#schemas">Schema Definitions</a></li>
                 <li><a href="#implementation">Tool Implementation</a></li>
-                <li><a href="#integration">Integration Process</a></li>
-                <li><a href="#testing">Testing Your Tool</a></li>
-                <li><a href="#best-practices">Best Practices</a></li>
-                <li><a href="#examples">Example Tools</a></li>
+                <li><a href="#advanced-patterns">Advanced Patterns</a></li>
+                <li><a href="#error-handling">Error Handling & Logging</a></li>
+                <li><a href="#testing">Testing & Debugging</a></li>
+                <li><a href="#deployment">Deployment & Configuration</a></li>
+                <li><a href="#best-practices">Best Practices & Security</a></li>
+                <li><a href="#examples">Real-World Examples</a></li>
+                <li><a href="#troubleshooting">Troubleshooting Guide</a></li>
             </ul>
         </div>
 
         <div class="guide-section" id="overview">
             <h2>🔍 Platform Overview</h2>
-            <p>The Wildbox Security API is a modular, extensible platform for security testing and analysis tools. It provides:</p>
+            <p>The Wildbox Security API is a modular, extensible platform for security testing and analysis tools. It provides a comprehensive ecosystem for security professionals and developers to create, deploy, and execute security tools through a unified interface.</p>
+            
+            <h3>🎯 Key Features</h3>
             <ul>
-                <li><strong>Dynamic Tool Discovery:</strong> Automatically detects and loads security tools</li>
-                <li><strong>REST API Integration:</strong> Each tool gets its own API endpoint</li>
-                <li><strong>Web Interface:</strong> User-friendly dashboard for tool interaction</li>
-                <li><strong>Async Execution:</strong> Non-blocking tool execution with proper error handling</li>
-                <li><strong>Schema Validation:</strong> Pydantic-based input/output validation</li>
-                <li><strong>Security Features:</strong> API key authentication and rate limiting</li>
+                <li><strong>Dynamic Tool Discovery:</strong> Automatically detects and loads security tools without code changes</li>
+                <li><strong>REST API Integration:</strong> Each tool gets its own API endpoint with automatic documentation</li>
+                <li><strong>Interactive Web Interface:</strong> User-friendly dashboard for tool interaction and result visualization</li>
+                <li><strong>Async Execution Engine:</strong> Non-blocking tool execution with proper concurrency management</li>
+                <li><strong>Schema Validation:</strong> Pydantic-based input/output validation with automatic API docs</li>
+                <li><strong>Enterprise Security:</strong> API key authentication, rate limiting, and audit logging</li>
+                <li><strong>Extensible Architecture:</strong> Plugin-based system supporting 50+ security tools</li>
+                <li><strong>Production Ready:</strong> Comprehensive logging, error handling, and monitoring capabilities</li>
             </ul>
+            
+            <h3>🛠️ Available Tool Categories</h3>
+            <div class="file-structure">
+Network Security     │ Port scanning, network enumeration, vulnerability detection
+Web Security        │ XSS scanning, SQL injection testing, header analysis
+Cryptography        │ Hash generation, encryption analysis, certificate validation
+OSINT & Recon       │ Domain enumeration, social media analysis, email harvesting
+Cloud Security      │ AWS/Azure/GCP configuration analysis, compliance checking
+Malware Analysis    │ Static analysis, hash checking, signature detection
+Authentication      │ JWT analysis, password strength testing, SAML validation
+Compliance          │ GDPR, PCI-DSS, HIPAA, SOC2 compliance checking
+            </div>
+            
+            <h3>📊 Platform Statistics</h3>
+            <p>The platform currently includes over <strong>50 security tools</strong> across <strong>15 categories</strong>, with dynamic loading supporting unlimited tool expansion.</p>
         </div>
 
         <div class="guide-section" id="architecture">
-            <h2>🏗️ Architecture</h2>
-            <p>The platform follows a modular architecture where each security tool is a self-contained module:</p>
+            <h2>🏗️ Architecture & Tool Discovery</h2>
+            <p>The platform follows a modular, plugin-based architecture where each security tool is a self-contained module with automatic discovery and registration.</p>
             
+            <h3>📁 Directory Structure</h3>
             <div class="file-structure">
 app/
-├── tools/                    # All security tools
-│   ├── your_tool_name/      # Your tool directory
+├── tools/                    # 🛠️ All security tools (50+ tools)
+│   ├── port_scanner/        # Example: Network scanning tool
 │   │   ├── __init__.py      # Module exports
-│   │   ├── schemas.py       # Pydantic schemas
-│   │   └── main.py          # Tool implementation
-│   └── ...
-├── api/                     # REST API layer
-├── web/                     # Web interface
-├── main.py                  # Application entry point
-└── ...
+│   │   ├── schemas.py       # Pydantic input/output models
+│   │   └── main.py          # Tool implementation + TOOL_INFO
+│   ├── xss_scanner/         # Example: Web security tool
+│   ├── hash_generator/      # Example: Cryptography tool
+│   ├── subdomain_scanner/   # Example: Reconnaissance tool
+│   └── ... (50+ more tools)
+├── api/                     # 🔌 REST API layer
+│   └── router.py           # Dynamic endpoint generation
+├── web/                     # 🌐 Web interface
+│   ├── router.py           # Dashboard routes
+│   ├── templates/          # HTML templates
+│   └── static/             # CSS, JS, assets
+├── main.py                  # 🚀 Application entry + tool discovery
+├── config.py               # ⚙️ Configuration management
+├── execution_manager.py    # 🎯 Async tool execution
+├── security.py             # 🔒 Authentication & authorization
+└── logging_config.py       # 📝 Structured logging
             </div>
 
-            <h3>Tool Discovery Process</h3>
+            <h3>🔄 Tool Discovery Process</h3>
             <ol class="step-list">
-                <li><strong>Scan:</strong> Platform scans the <code>app/tools/</code> directory</li>
-                <li><strong>Load:</strong> Imports each tool's schemas and main module</li>
-                <li><strong>Validate:</strong> Checks for required functions and metadata</li>
-                <li><strong>Register:</strong> Creates API endpoints and web interface entries</li>
-                <li><strong>Expose:</strong> Makes tools available via REST API and web UI</li>
+                <li><strong>Directory Scan:</strong> Platform scans <code>app/tools/</code> for subdirectories</li>
+                <li><strong>Module Loading:</strong> Dynamically imports <code>schemas.py</code> and <code>main.py</code> for each tool</li>
+                <li><strong>Validation:</strong> Checks for required <code>execute_tool()</code> function and <code>TOOL_INFO</code> metadata</li>
+                <li><strong>API Registration:</strong> Creates REST endpoint at <code>/api/tools/{tool_name}</code></li>
+                <li><strong>Web Integration:</strong> Adds tool card to dashboard with auto-generated form</li>
+                <li><strong>Documentation:</strong> Generates OpenAPI documentation from Pydantic schemas</li>
             </ol>
+
+            <h3>🔧 Dynamic Loading Features</h3>
+            <ul>
+                <li><strong>Hot Reload:</strong> Tools reload automatically during development</li>
+                <li><strong>Error Isolation:</strong> One broken tool doesn't affect others</li>
+                <li><strong>Zero Configuration:</strong> No route registration or configuration files needed</li>
+                <li><strong>Metadata Enrichment:</strong> Automatic fallbacks for missing tool information</li>
+                <li><strong>Schema Validation:</strong> Input/output validation with detailed error messages</li>
+            </ul>
+
+            <h3>⚡ Execution Architecture</h3>
+            <div class="code-block"><pre># Tool execution flow:
+1. Request → Authentication → Rate Limiting
+2. Schema Validation → Input Sanitization
+3. Async Tool Execution → Timeout Management
+4. Result Processing → Response Formatting
+5. Logging → Audit Trail → Cache Storage</pre></div>
+
+            <div class="info">
+                <strong>Performance:</strong> The platform can execute multiple tools concurrently with configurable limits (default: 10 concurrent executions, 300s timeout).
+            </div>
         </div>
 
         <div class="guide-section" id="authentication">
@@ -333,7 +423,7 @@ executeTool('whois_lookup', { domain: 'example.com' })
     }
   });</pre></div>
 
-            <div class="info">
+            <div class="warning">
                 <strong>Security Note:</strong> Never hardcode API keys in production code. Use environment variables or secure configuration management.
             </div>
 
@@ -350,6 +440,123 @@ HTTP 403 Forbidden
 {
   "detail": "Invalid API key"
 }</pre></div>
+        </div>
+
+        <div class="guide-section" id="getting-started">
+            <h2>🚀 Quick Start Guide</h2>
+            <p>Get started building your first security tool in under 5 minutes!</p>
+
+            <h3>Step 1: Environment Setup</h3>
+            <div class="code-block"><pre># Clone the repository
+git clone https://github.com/your-repo/wildbox-security-api
+cd wildbox-security-api
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env file with your API key
+
+# Start the development server
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000</pre></div>
+
+            <h3>Step 2: Create Your First Tool</h3>
+            <div class="code-block"><pre># Create tool directory
+mkdir app/tools/my_first_tool
+
+# Use our quick generator script
+python scripts/generate_tool.py my_first_tool "My First Security Tool"
+
+# Or create manually following the template below</pre></div>
+
+            <h3>Step 3: Minimal Tool Template</h3>
+            <p>Create these three files in <code>app/tools/my_first_tool/</code>:</p>
+
+            <h4>📄 __init__.py</h4>
+            <div class="code-block"><pre>from .main import execute_tool, TOOL_INFO
+from .schemas import MyFirstToolInput, MyFirstToolOutput
+
+__all__ = ["execute_tool", "TOOL_INFO", "MyFirstToolInput", "MyFirstToolOutput"]</pre></div>
+
+            <h4>📄 schemas.py</h4>
+            <div class="code-block"><pre>from pydantic import BaseModel, Field
+from typing import List, Dict, Any
+from datetime import datetime
+
+class MyFirstToolInput(BaseModel):
+    """Input schema for my first security tool."""
+    target: str = Field(..., description="Target to analyze", example="example.com")
+    scan_type: str = Field(default="basic", description="Type of scan to perform")
+
+class MyFirstToolOutput(BaseModel):
+    """Output schema for my first security tool."""
+    target: str = Field(..., description="Analyzed target")
+    scan_type: str = Field(..., description="Type of scan performed")
+    results: List[Dict[str, Any]] = Field(..., description="Analysis results")
+    timestamp: datetime = Field(..., description="Analysis timestamp")
+    success: bool = Field(..., description="Whether analysis succeeded")
+    message: str = Field(..., description="Status message")</pre></div>
+
+            <h4>📄 main.py</h4>
+            <div class="code-block"><pre>import logging
+from datetime import datetime
+from schemas import MyFirstToolInput, MyFirstToolOutput
+
+logger = logging.getLogger(__name__)
+
+TOOL_INFO = {
+    "name": "My First Tool",
+    "description": "A basic security analysis tool for learning purposes",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "category": "Learning",
+    "tags": ["basic", "tutorial", "example"]
+}
+
+async def execute_tool(request: MyFirstToolInput) -> MyFirstToolOutput:
+    """Execute the security analysis."""
+    try:
+        logger.info(f"Starting analysis of {request.target}")
+        
+        # Your analysis logic here
+        analysis_results = [
+            {"check": "Basic connectivity", "status": "passed", "details": "Target is reachable"},
+            {"check": "Port 80 scan", "status": "open", "details": "HTTP service detected"},
+            {"check": "Security headers", "status": "warning", "details": "Missing HSTS header"}
+        ]
+        
+        return MyFirstToolOutput(
+            target=request.target,
+            scan_type=request.scan_type,
+            results=analysis_results,
+            timestamp=datetime.now(),
+            success=True,
+            message=f"Analysis of {request.target} completed successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Tool execution failed: {str(e)}")
+        return MyFirstToolOutput(
+            target=request.target,
+            scan_type=request.scan_type,
+            results=[],
+            timestamp=datetime.now(),
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )</pre></div>
+
+            <h3>Step 4: Test Your Tool</h3>
+            <ol class="step-list">
+                <li><strong>Restart Server:</strong> The platform will auto-discover your tool</li>
+                <li><strong>Check Dashboard:</strong> Visit <code>http://localhost:8000</code> to see your tool card</li>
+                <li><strong>Test API:</strong> Try the endpoint at <code>/api/tools/my_first_tool</code></li>
+                <li><strong>View Docs:</strong> Check auto-generated docs at <code>/docs</code></li>
+            </ol>
+
+            <div class="info">
+                <strong>Success!</strong> You've just created your first security tool. The platform automatically registers it and makes it available through both the web interface and REST API.
+            </div>
         </div>
 
         <div class="guide-section" id="building-tools">
@@ -440,51 +647,171 @@ async def execute_tool(request: YourToolRequest) -> YourToolResponse:
 
         <div class="guide-section" id="schemas">
             <h2>📋 Schema Definitions</h2>
-            <p>Schemas define the input and output structure for your tool. The platform supports two naming conventions:</p>
+            <p>Schemas define the input and output structure for your tool using Pydantic models. They provide automatic validation, serialization, and API documentation generation.</p>
 
-            <h3>Option 1: Request/Response Pattern</h3>
-            <div class="code-block"><pre>class YourToolRequest(BaseModel):
+            <h3>🎯 Naming Conventions</h3>
+            <p>The platform supports two naming patterns (choose one consistently):</p>
+
+            <div class="code-block"><pre># Pattern 1: Input/Output (Recommended)
+class YourToolInput(BaseModel):
+    # Input fields
+
+class YourToolOutput(BaseModel):
+    # Output fields
+
+# Pattern 2: Request/Response  
+class YourToolRequest(BaseModel):
     # Input fields
 
 class YourToolResponse(BaseModel):
     # Output fields</pre></div>
 
-            <h3>Option 2: Input/Output Pattern</h3>
-            <div class="code-block"><pre>class YourToolInput(BaseModel):
-    # Input fields
-
-class YourToolOutput(BaseModel):
-    # Output fields</pre></div>
-
-            <h3>Field Types and Validation</h3>
-            <div class="code-block"><pre>from pydantic import BaseModel, Field, HttpUrl, EmailStr
-from typing import List, Optional, Dict, Any
+            <h3>🔧 Advanced Field Types & Validation</h3>
+            <div class="code-block"><pre>from pydantic import BaseModel, Field, HttpUrl, EmailStr, validator, root_validator
+from typing import List, Optional, Dict, Any, Union, Literal
 from datetime import datetime
+from enum import Enum
 
-class ExampleRequest(BaseModel):
-    # Required string field
-    target: str = Field(..., description="Target URL or IP address")
+class ScanType(str, Enum):
+    """Enumerated scan types."""
+    BASIC = "basic"
+    DEEP = "deep"
+    STEALTH = "stealth"
+
+class SecurityToolInput(BaseModel):
+    """Comprehensive input schema example."""
     
-    # Optional field with default
-    timeout: int = Field(default=30, description="Request timeout in seconds")
+    # Required fields with validation
+    target: str = Field(
+        ..., 
+        description="Target URL, IP, or domain",
+        example="example.com",
+        min_length=1,
+        max_length=255
+    )
     
     # URL validation
     url: HttpUrl = Field(..., description="Valid HTTP/HTTPS URL")
     
-    # Email validation (requires email-validator package)
+    # Email validation (requires: pip install email-validator)
     email: EmailStr = Field(..., description="Valid email address")
     
-    # List of options
-    scan_types: List[str] = Field(default=["basic"], description="Types of scans to perform")
+    # Enum choices
+    scan_type: ScanType = Field(default=ScanType.BASIC, description="Type of scan")
     
-    # Boolean flag
+    # Literal choices (simpler than enum)
+    protocol: Literal["http", "https", "ftp"] = Field(default="https")
+    
+    # Numeric constraints
+    timeout: int = Field(default=30, ge=1, le=300, description="Timeout in seconds")
+    max_depth: int = Field(default=3, ge=1, le=10, description="Maximum scan depth")
+    
+    # List with constraints
+    ports: List[int] = Field(
+        default=[80, 443], 
+        description="Ports to scan",
+        min_items=1,
+        max_items=1000
+    )
+    
+    # Optional nested objects
+    config: Optional[Dict[str, Any]] = Field(default={}, description="Additional config")
+    headers: Optional[Dict[str, str]] = Field(default={}, description="Custom headers")
+    
+    # Boolean flags
     verbose: bool = Field(default=False, description="Enable verbose output")
+    verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
     
-    # Nested object
-    config: Optional[Dict[str, Any]] = Field(default={}, description="Additional configuration")</pre></div>
+    # Union types for flexible input
+    target_list: Union[str, List[str]] = Field(..., description="Single target or list")
+    
+    @validator('target')
+    def validate_target(cls, v):
+        """Custom validation for target field."""
+        if not v or v.isspace():
+            raise ValueError('Target cannot be empty')
+        # Add custom validation logic
+        return v.strip().lower()
+    
+    @validator('ports')
+    def validate_ports(cls, v):
+        """Validate port numbers."""
+        for port in v:
+            if not 1 <= port <= 65535:
+                raise ValueError(f'Invalid port number: {port}')
+        return v
+    
+    @root_validator
+    def validate_combinations(cls, values):
+        """Validate field combinations."""
+        if values.get('scan_type') == ScanType.STEALTH and values.get('timeout', 0) < 10:
+            raise ValueError('Stealth scans require timeout >= 10 seconds')
+        return values
 
-            <div class="info">
-                <strong>Best Practice:</strong> Always include clear descriptions for all fields to improve API documentation.
+class SecurityFinding(BaseModel):
+    """Individual security finding."""
+    severity: Literal["info", "low", "medium", "high", "critical"]
+    title: str = Field(..., description="Finding title")
+    description: str = Field(..., description="Detailed description")
+    location: Optional[str] = Field(None, description="Where the issue was found")
+    recommendation: Optional[str] = Field(None, description="How to fix")
+    cve_id: Optional[str] = Field(None, description="Related CVE identifier")
+    confidence: float = Field(..., ge=0, le=1, description="Confidence score (0-1)")
+
+class SecurityToolOutput(BaseModel):
+    """Comprehensive output schema example."""
+    
+    # Input echo
+    target: str = Field(..., description="Analyzed target")
+    scan_type: str = Field(..., description="Type of scan performed")
+    
+    # Results
+    findings: List[SecurityFinding] = Field(..., description="Security findings")
+    summary: Dict[str, Any] = Field(..., description="Scan summary statistics")
+    
+    # Metadata
+    timestamp: datetime = Field(..., description="Analysis timestamp")
+    execution_time: float = Field(..., description="Execution time in seconds")
+    tool_version: str = Field(..., description="Tool version used")
+    
+    # Status
+    success: bool = Field(..., description="Whether scan completed successfully")
+    status: Literal["completed", "partial", "failed"] = Field(..., description="Detailed status")
+    message: str = Field(..., description="Status message")
+    
+    # Additional data
+    raw_output: Optional[str] = Field(None, description="Raw tool output")
+    warnings: List[str] = Field(default=[], description="Non-fatal warnings")
+    debug_info: Optional[Dict[str, Any]] = Field(None, description="Debug information")</pre></div>
+
+            <h3>🎨 Schema Best Practices</h3>
+            <ul>
+                <li><strong>Descriptive Fields:</strong> Always include clear descriptions for API documentation</li>
+                <li><strong>Examples:</strong> Provide example values to help users understand expected input</li>
+                <li><strong>Validation:</strong> Use Pydantic validators for complex business logic</li>
+                <li><strong>Constraints:</strong> Set appropriate min/max values for numeric fields</li>
+                <li><strong>Optional Fields:</strong> Make fields optional when they have sensible defaults</li>
+                <li><strong>Enums:</strong> Use enums for limited choice fields to improve UX</li>
+            </ul>
+
+            <h3>🔄 Schema Evolution</h3>
+            <div class="code-block"><pre># Version 1.0 - Initial schema
+class MyToolInput(BaseModel):
+    target: str
+
+# Version 1.1 - Adding optional field (backward compatible)
+class MyToolInput(BaseModel):
+    target: str
+    timeout: int = Field(default=30)  # ✅ Safe - has default
+
+# Version 2.0 - Breaking change (requires version bump)
+class MyToolInput(BaseModel):
+    target: str
+    timeout: int = Field(...)  # ❌ Breaking - now required
+    new_required_field: str    # ❌ Breaking - new required field</pre></div>
+
+            <div class="warning">
+                <strong>Backward Compatibility:</strong> When updating schemas, always add new fields as optional with defaults to maintain API compatibility.
             </div>
         </div>
 
@@ -583,6 +910,247 @@ async def perform_security_analysis(request):
             </div>
         </div>
 
+        <div class="guide-section" id="advanced-patterns">
+            <h2>🚀 Advanced Patterns</h2>
+            <p>Advanced implementation patterns for sophisticated security tools.</p>
+
+            <h3>🔄 Async Operations & Concurrency</h3>
+            <div class="code-block"><pre>import asyncio
+import aiohttp
+from asyncio import Semaphore, gather
+
+async def execute_tool(request: AdvancedToolInput) -> AdvancedToolOutput:
+    """Advanced async implementation with concurrency control."""
+    
+    # Limit concurrent operations
+    semaphore = Semaphore(request.max_concurrent or 5)
+    
+    async def process_target(target: str):
+        async with semaphore:
+            return await analyze_target(target)
+    
+    # Process multiple targets concurrently
+    tasks = [process_target(target) for target in request.targets]
+    results = await gather(*tasks, return_exceptions=True)
+    
+    # Handle mixed results and exceptions
+    successful_results = []
+    errors = []
+    
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            errors.append(f"Target {request.targets[i]}: {str(result)}")
+        else:
+            successful_results.append(result)
+    
+    return AdvancedToolOutput(
+        results=successful_results,
+        errors=errors,
+        success=len(errors) == 0
+    )</pre></div>
+
+            <h3>🌐 HTTP Client Best Practices</h3>
+            <div class="code-block"><pre>import aiohttp
+import ssl
+from typing import Optional
+
+class SecureHTTPClient:
+    """Secure HTTP client with proper configuration."""
+    
+    def __init__(self, verify_ssl: bool = True, user_agent: str = None):
+        self.verify_ssl = verify_ssl
+        self.user_agent = user_agent or "WildboxSecurityAPI/1.0"
+        
+        # Configure SSL context
+        ssl_context = ssl.create_default_context()
+        if not verify_ssl:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        
+        # Configure connector with security settings
+        self.connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            limit=100,
+            limit_per_host=10,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+        )
+    
+    async def get(self, url: str, headers: Optional[Dict] = None, timeout: int = 30):
+        """Secure GET request with proper error handling."""
+        
+        default_headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        
+        if headers:
+            default_headers.update(headers)
+        
+        timeout_config = aiohttp.ClientTimeout(total=timeout)
+        
+        async with aiohttp.ClientSession(
+            connector=self.connector,
+            timeout=timeout_config,
+            headers=default_headers
+        ) as session:
+            try:
+                async with session.get(url) as response:
+                    content = await response.text()
+                    return {
+                        "url": str(response.url),
+                        "status": response.status,
+                        "headers": dict(response.headers),
+                        "content": content
+                    }
+            except asyncio.TimeoutError:
+                raise Exception(f"Request to {url} timed out after {timeout}s")
+            except aiohttp.ClientError as e:
+                raise Exception(f"HTTP client error: {str(e)}")</pre></div>
+
+            <h3>💾 Caching & Performance</h3>
+            <div class="code-block"><pre>import hashlib
+import json
+from functools import wraps
+
+# Simple in-memory cache (use Redis in production)
+CACHE = {}
+CACHE_TTL = 3600  # 1 hour
+
+def cache_result(ttl: int = CACHE_TTL):
+    """Decorator to cache function results."""
+    
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Create cache key
+            cache_key = hashlib.md5(
+                f"{func.__name__}:{json.dumps(args, sort_keys=True)}".encode()
+            ).hexdigest()
+            
+            # Check cache
+            if cache_key in CACHE:
+                cached_result, timestamp = CACHE[cache_key]
+                if time.time() - timestamp < ttl:
+                    return cached_result
+            
+            # Execute and cache
+            result = await func(*args, **kwargs)
+            CACHE[cache_key] = (result, time.time())
+            return result
+        return wrapper
+    return decorator
+
+# Usage example
+@cache_result(ttl=1800)  # Cache for 30 minutes
+async def expensive_dns_lookup(domain: str):
+    """Expensive operation that benefits from caching."""
+    return await perform_dns_analysis(domain)</pre></div>
+        </div>
+
+        <div class="guide-section" id="error-handling">
+            <h2>🛡️ Error Handling & Logging</h2>
+            <p>Comprehensive error handling and logging strategies for robust security tools.</p>
+
+            <h3>📝 Structured Logging</h3>
+            <div class="code-block"><pre>import logging
+from datetime import datetime
+from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
+
+class ToolLogger:
+    """Enhanced logging for security tools."""
+    
+    def __init__(self, tool_name: str):
+        self.tool_name = tool_name
+        self.logger = logging.getLogger(f"tools.{tool_name}")
+    
+    def log_execution_start(self, request_data: Dict[str, Any]):
+        """Log tool execution start."""
+        self.logger.info(
+            f"Tool execution started for {request_data.get('target', 'unknown')}",
+            extra={
+                "tool_name": self.tool_name,
+                "target": request_data.get("target"),
+                "timestamp": datetime.utcnow().isoformat(),
+                "event_type": "execution_start"
+            }
+        )
+    
+    def log_security_finding(self, severity: str, finding: Dict[str, Any]):
+        """Log security findings."""
+        self.logger.warning(
+            f"Security finding: {finding.get('title', 'Unknown')}",
+            extra={
+                "tool_name": self.tool_name,
+                "severity": severity,
+                "finding": finding,
+                "event_type": "security_finding"
+            }
+        )</pre></div>
+
+            <h3>🔧 Robust Error Handling</h3>
+            <div class="code-block"><pre>async def execute_tool(request: SecureToolInput) -> SecureToolOutput:
+    """Tool with comprehensive error handling."""
+    
+    start_time = datetime.now()
+    tool_logger = ToolLogger(TOOL_INFO["name"])
+    
+    try:
+        # Log execution start
+        tool_logger.log_execution_start(request.dict())
+        
+        # Input validation
+        if not request.target:
+            raise ValueError("Target cannot be empty")
+        
+        # Core execution with timeout
+        results = await asyncio.wait_for(
+            perform_security_analysis(request),
+            timeout=request.timeout or 300
+        )
+        
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        return SecureToolOutput(
+            target=request.target,
+            results=results,
+            execution_time=execution_time,
+            timestamp=datetime.now(),
+            success=True,
+            message="Analysis completed successfully"
+        )
+        
+    except asyncio.TimeoutError:
+        execution_time = (datetime.now() - start_time).total_seconds()
+        error_msg = f"Tool execution timed out after {request.timeout}s"
+        logger.error(error_msg)
+        
+        return SecureToolOutput(
+            target=request.target,
+            results=[],
+            execution_time=execution_time,
+            timestamp=datetime.now(),
+            success=False,
+            message=error_msg
+        )
+        
+    except Exception as e:
+        execution_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"Tool execution failed: {str(e)}")
+        
+        return SecureToolOutput(
+            target=request.target,
+            results=[],
+            execution_time=execution_time,
+            timestamp=datetime.now(),
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )</pre></div>
+        </div>
+
         <div class="guide-section" id="integration">
             <h2>🔗 Integration Process</h2>
             <p>Once you've created your tool files, the platform will automatically discover and integrate it:</p>
@@ -643,6 +1211,286 @@ async def perform_security_analysis(request):
 ❌ "Failed to load tool your_tool_name: error_message"</pre></div>
         </div>
 
+        <div class="guide-section" id="deployment">
+            <h2>🚀 Deployment & Configuration</h2>
+            <p>Production deployment strategies and configuration management for the Wildbox Security API platform.</p>
+
+            <h3>⚙️ Environment Configuration</h3>
+            <div class="code-block"><pre># .env file for production
+API_KEY="your-super-secure-api-key-here-32chars-min"
+SECRET_KEY="your-secret-key-for-sessions"
+ENVIRONMENT="production"
+DEBUG=false
+
+# Server settings
+HOST="0.0.0.0"
+PORT=8000
+LOG_LEVEL="INFO"
+LOG_FORMAT="json"
+
+# Security settings
+CORS_ORIGINS="https://yourdomain.com,https://api.yourdomain.com"
+CORS_ALLOW_CREDENTIALS=true
+ENABLE_RATE_LIMITING=true
+RATE_LIMIT_REQUESTS=100
+RATE_LIMIT_WINDOW=60
+
+# Tool execution settings
+TOOL_TIMEOUT=300
+MAX_CONCURRENT_TOOLS=10
+TOOL_RESULT_TTL=3600
+
+# Caching (optional)
+REDIS_URL="redis://localhost:6379/0"
+ENABLE_CACHING=true
+
+# Monitoring
+ENABLE_AUDIT_LOGGING=true</pre></div>
+
+            <h3>🐳 Docker Deployment</h3>
+            <div class="code-block"><pre># Dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY app/ ./app/
+COPY .env ./
+
+# Create non-root user
+RUN useradd -m -u 1000 wildbox && chown -R wildbox:wildbox /app
+USER wildbox
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Start application
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]</pre></div>
+
+            <h4>Docker Compose Setup</h4>
+            <div class="code-block"><pre># docker-compose.yml
+version: '3.8'
+
+services:
+  wildbox-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - API_KEY=${API_KEY}
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - ENABLE_CACHING=true
+    depends_on:
+      - redis
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - wildbox-api
+    restart: unless-stopped
+
+volumes:
+  redis_data:</pre></div>
+
+            <h3>⚡ Production Server Setup</h3>
+            <div class="code-block"><pre># Using Gunicorn with Uvicorn workers
+pip install gunicorn
+
+# Start with optimized settings
+gunicorn app.main:app \
+    -w 4 \
+    -k uvicorn.workers.UvicornWorker \
+    --bind 0.0.0.0:8000 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --timeout 300 \
+    --keep-alive 2 \
+    --access-logfile /var/log/wildbox/access.log \
+    --error-logfile /var/log/wildbox/error.log \
+    --log-level info</pre></div>
+
+            <h3>🔒 Security Hardening</h3>
+            <div class="code-block"><pre># Nginx configuration for security
+server {
+    listen 80;
+    server_name yourdomain.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name yourdomain.com;
+
+    # SSL Configuration
+    ssl_certificate /etc/nginx/ssl/cert.pem;
+    ssl_certificate_key /etc/nginx/ssl/key.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512;
+    ssl_prefer_server_ciphers off;
+
+    # Security Headers
+    add_header X-Content-Type-Options nosniff;
+    add_header X-Frame-Options DENY;
+    add_header X-XSS-Protection "1; mode=block";
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin";
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req zone=api burst=20 nodelay;
+
+    # Proxy to application
+    location / {
+        proxy_pass http://wildbox-api:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_timeout 300s;
+        proxy_read_timeout 300s;
+    }
+}</pre></div>
+
+            <h3>📊 Monitoring & Observability</h3>
+            <div class="code-block"><pre># Prometheus metrics endpoint (add to main.py)
+from prometheus_fastapi_instrumentator import Instrumentator
+
+# Add to app initialization
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app)
+
+# Custom metrics
+from prometheus_client import Counter, Histogram, Gauge
+
+# Tool execution metrics
+tool_executions = Counter('tool_executions_total', 'Total tool executions', ['tool_name', 'status'])
+tool_duration = Histogram('tool_execution_duration_seconds', 'Tool execution duration', ['tool_name'])
+active_tools = Gauge('active_tool_executions', 'Currently running tools')
+
+# Usage in execute_tool function
+@tool_duration.labels(tool_name=TOOL_INFO["name"]).time()
+async def execute_tool(request):
+    active_tools.inc()
+    try:
+        # Tool execution logic
+        result = await perform_analysis(request)
+        tool_executions.labels(tool_name=TOOL_INFO["name"], status="success").inc()
+        return result
+    except Exception as e:
+        tool_executions.labels(tool_name=TOOL_INFO["name"], status="error").inc()
+        raise
+    finally:
+        active_tools.dec()</pre></div>
+
+            <h3>📝 Centralized Logging</h3>
+            <div class="code-block"><pre># ELK Stack configuration
+# logstash.conf
+input {
+  file {
+    path => "/var/log/wildbox/*.log"
+    type => "wildbox-api"
+    codec => "json"
+  }
+}
+
+filter {
+  if [type] == "wildbox-api" {
+    mutate {
+      add_field => { "service" => "wildbox-security-api" }
+    }
+    
+    if [event_type] == "security_finding" {
+      mutate {
+        add_tag => [ "security", "alert" ]
+      }
+    }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts => ["elasticsearch:9200"]
+    index => "wildbox-api-%{+YYYY.MM.dd}"
+  }
+}</pre></div>
+
+            <h3>🔄 Continuous Deployment</h3>
+            <div class="code-block"><pre># GitHub Actions workflow
+name: Deploy Wildbox Security API
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        pip install pytest
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v
+    
+    - name: Build Docker image
+      run: |
+        docker build -t wildbox-api:${{ "{{" }} github.sha {{ "}}" }} .
+        docker tag wildbox-api:${{ "{{" }} github.sha {{ "}}" }} wildbox-api:latest
+    
+    - name: Deploy to production
+      run: |
+        # Deploy using your preferred method
+        # kubectl apply, docker-compose, etc.
+        echo "Deploying to production..."</pre></div>
+        </div>
+
         <div class="guide-section" id="best-practices">
             <h2>✨ Best Practices</h2>
 
@@ -680,75 +1528,638 @@ async def perform_security_analysis(request):
         </div>
 
         <div class="guide-section" id="examples">
-            <h2>📚 Example Tools</h2>
-            <p>Study these existing tools to understand the patterns:</p>
+            <h2>📚 Real-World Examples</h2>
+            <p>Study these production-ready tools from the Wildbox Security API platform to understand implementation patterns and best practices.</p>
 
-            <h3>Simple Tool: Base64 Encoder/Decoder</h3>
-            <div class="code-block"><pre># Location: app/tools/base64_tool/
+            <h3>🌐 Network Security: Port Scanner</h3>
+            <p>A robust port scanning tool with async operations and service detection.</p>
+            
+            <h4>📄 schemas.py</h4>
+            <div class="code-block"><pre>from pydantic import BaseModel, Field
+from typing import List, Optional
 
-# schemas.py
-class Base64ToolRequest(BaseModel):
-    text: str = Field(..., description="Text to encode or decode")
-    operation: str = Field(..., description="Operation: encode or decode")
+class PortScannerInput(BaseModel):
+    target: str = Field(..., description="Target domain or IP address to scan", example="example.com")
+    ports: Optional[List[int]] = Field(None, description="List of ports to scan. If not provided, scans common ports.")
+    timeout: int = Field(default=3, description="Timeout in seconds for each port scan.", ge=1, le=60)
 
-class Base64ToolResponse(BaseModel):
-    input_text: str
-    operation: str
-    result: str
-    success: bool
-    message: str
+class PortScanResult(BaseModel):
+    port: int = Field(..., description="Port number")
+    state: str = Field(..., description="Port state (open/closed)")
+    service: Optional[str] = Field(None, description="Service running on the port, if detected.")
 
-# main.py
-async def execute_tool(request: Base64ToolRequest) -> Base64ToolResponse:
-    # Simple synchronous operation
-    if request.operation == "encode":
-        result = base64.b64encode(request.text.encode()).decode()
-    else:
-        result = base64.b64decode(request.text).decode()
-    
-    return Base64ToolResponse(...)</pre></div>
+class PortScannerOutput(BaseModel):
+    target: str = Field(..., description="Scanned target")
+    results: List[PortScanResult] = Field(..., description="List of port scan results.")</pre></div>
 
-            <h3>Network Tool: Port Scanner</h3>
-            <div class="code-block"><pre># Location: app/tools/port_scanner/
+            <h4>📄 main.py (Key Functions)</h4>
+            <div class="code-block"><pre>import asyncio
+import socket
+from datetime import datetime
 
-# schemas.py with complex validation
-class PortScannerRequest(BaseModel):
-    target: str = Field(..., description="Target IP or hostname")
-    ports: str = Field(default="1-1000", description="Port range or list")
-    timeout: int = Field(default=3, gt=0, le=30)
+TOOL_INFO = {
+    "name": "Network Port Scanner",
+    "description": "Scans TCP ports on target hosts to identify open services",
+    "version": "1.0.0",
+    "author": "Wildbox Security",
+    "category": "Network Security",
+    "tags": ["network", "ports", "reconnaissance", "tcp"]
+}
 
-# main.py with async operations
-async def scan_port(ip: str, port: int, timeout: int) -> bool:
+# Common ports for scanning
+COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995, 3389, 8080, 8443]
+
+# Service detection mapping
+SERVICE_MAP = {
+    21: "ftp", 22: "ssh", 23: "telnet", 25: "smtp", 53: "dns",
+    80: "http", 110: "pop3", 143: "imap", 443: "https", 445: "microsoft-ds",
+    993: "imaps", 995: "pop3s", 3389: "rdp", 8080: "http-proxy", 8443: "https-alt"
+}
+
+async def scan_port_async(target: str, port: int, timeout: int) -> PortScanResult:
+    """Asynchronously scan a single port."""
     try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, port), 
-            timeout=timeout
-        )
+        # Resolve hostname to IP
+        ip = socket.gethostbyname(target)
+        
+        # Attempt TCP connection
+        future = asyncio.open_connection(ip, port)
+        reader, writer = await asyncio.wait_for(future, timeout=timeout)
+        
+        # Connection successful - port is open
         writer.close()
-        return True
-    except:
-        return False</pre></div>
+        await writer.wait_closed()
+        
+        return PortScanResult(
+            port=port,
+            state="open",
+            service=SERVICE_MAP.get(port)
+        )
+        
+    except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
+        # Port is closed or filtered
+        return PortScanResult(
+            port=port,
+            state="closed",
+            service=None
+        )
 
-            <h3>Web Tool: XSS Scanner</h3>
-            <div class="code-block"><pre># Location: app/tools/xss_scanner/
+async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
+    """Execute port scanning with concurrency control."""
+    
+    # Determine ports to scan
+    ports_to_scan = input_data.ports if input_data.ports else COMMON_PORTS
+    
+    # Create scanning tasks
+    tasks = [
+        scan_port_async(input_data.target, port, input_data.timeout)
+        for port in ports_to_scan
+    ]
+    
+    # Execute scans concurrently
+    results = await asyncio.gather(*tasks)
+    
+    # Filter to only open ports for cleaner output
+    open_ports = [result for result in results if result.state == "open"]
+    
+    return PortScannerOutput(
+        target=input_data.target,
+        results=open_ports
+    )</pre></div>
 
-# Complex analysis with external HTTP requests
-async def execute_tool(request: XSScannerRequest) -> XSSScannerResponse:
+            <h3>🔍 Reconnaissance: Subdomain Scanner</h3>
+            <p>An advanced subdomain discovery tool with DNS validation and performance tracking.</p>
+            
+            <h4>📄 schemas.py</h4>
+            <div class="code-block"><pre>from pydantic import BaseModel, Field
+from typing import List
+from datetime import datetime
+
+class SubdomainScannerInput(BaseModel):
+    domain: str = Field(..., description="Target domain to scan for subdomains", example="example.com")
+    wordlist_size: str = Field(default="medium", description="Wordlist size: small, medium, large")
+    timeout: int = Field(default=5, description="Timeout in seconds for DNS queries", ge=1, le=30)
+
+class SubdomainResult(BaseModel):
+    subdomain: str = Field(..., description="Discovered subdomain")
+    ip_addresses: List[str] = Field(..., description="IP addresses for the subdomain")
+    status: str = Field(..., description="Status of the subdomain (active/inactive)")
+
+class SubdomainScannerOutput(BaseModel):
+    domain: str = Field(..., description="Target domain")
+    timestamp: datetime = Field(..., description="Scan timestamp")
+    duration: float = Field(..., description="Scan duration in seconds")
+    total_found: int = Field(..., description="Total subdomains found")
+    subdomains: List[SubdomainResult] = Field(..., description="List of discovered subdomains")</pre></div>
+
+            <h4>📄 Key Implementation Patterns</h4>
+            <div class="code-block"><pre># Multiple wordlists for different scan intensities
+WORDLISTS = {
+    "small": ["www", "mail", "ftp", "admin", "api", "blog", "dev", "test"],
+    "medium": [...],  # 100+ subdomains
+    "large": [...]    # 1000+ subdomains
+}
+
+async def dns_lookup(subdomain: str, timeout: int) -> Optional[SubdomainResult]:
+    """Perform DNS lookup with proper error handling."""
+    try:
+        # Use aiodns for async DNS resolution
+        loop = asyncio.get_event_loop()
+        resolver = aiodns.DNSResolver(loop=loop, timeout=timeout)
+        
+        result = await resolver.gethostbyname(subdomain, socket.AF_INET)
+        
+        return SubdomainResult(
+            subdomain=subdomain,
+            ip_addresses=[result.addresses[0]] if result.addresses else [],
+            status="active"
+        )
+        
+    except Exception:
+        return None
+
+async def execute_tool(input_data: SubdomainScannerInput) -> SubdomainScannerOutput:
+    """Execute subdomain scanning with performance tracking."""
+    start_time = datetime.now()
+    
+    # Select wordlist based on size preference
+    wordlist = WORDLISTS.get(input_data.wordlist_size, WORDLISTS["medium"])
+    
+    # Generate subdomain candidates
+    subdomains = [f"{word}.{input_data.domain}" for word in wordlist]
+    
+    # Create lookup tasks
+    tasks = [dns_lookup(sub, input_data.timeout) for sub in subdomains]
+    
+    # Execute with progress tracking
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Filter successful results
+    found_subdomains = [r for r in results if r is not None and not isinstance(r, Exception)]
+    
+    duration = (datetime.now() - start_time).total_seconds()
+    
+    return SubdomainScannerOutput(
+        domain=input_data.domain,
+        timestamp=datetime.now(),
+        duration=duration,
+        total_found=len(found_subdomains),
+        subdomains=found_subdomains
+    )</pre></div>
+
+            <h3>🔐 Cryptography: Hash Generator</h3>
+            <p>A comprehensive hash generation tool with multiple algorithms and security analysis.</p>
+            
+            <div class="code-block"><pre>import hashlib
+import secrets
+from typing import List, Dict, Any
+
+class HashGeneratorInput(BaseModel):
+    text: str = Field(..., description="Text to hash")
+    algorithms: List[str] = Field(default=["sha256"], description="Hash algorithms to use")
+    salt: Optional[str] = Field(None, description="Salt for hash generation")
+    iterations: int = Field(default=1, description="Number of iterations for key stretching")
+
+class HashResult(BaseModel):
+    algorithm: str
+    hash_value: str
+    salt_used: Optional[str]
+    security_strength: str  # weak, moderate, strong
+
+class HashGeneratorOutput(BaseModel):
+    input_text: str
+    results: List[HashResult]
+    recommendations: List[str]
+
+TOOL_INFO = {
+    "name": "Cryptographic Hash Generator",
+    "description": "Generate secure hashes with multiple algorithms and security analysis",
+    "category": "Cryptography",
+    "version": "1.0.0"
+}
+
+# Algorithm security ratings
+ALGORITHM_STRENGTH = {
+    "md5": "weak",
+    "sha1": "weak", 
+    "sha256": "strong",
+    "sha512": "strong",
+    "blake2b": "strong"
+}
+
+async def execute_tool(input_data: HashGeneratorInput) -> HashGeneratorOutput:
+    """Generate hashes with security analysis."""
+    
+    results = []
+    recommendations = []
+    
+    # Generate salt if not provided
+    salt = input_data.salt or secrets.token_hex(16)
+    
+    for algorithm in input_data.algorithms:
+        if algorithm not in hashlib.algorithms_available:
+            continue
+            
+        # Create hash with iterations
+        hash_input = f"{salt}{input_data.text}".encode()
+        hash_obj = hashlib.new(algorithm)
+        
+        for _ in range(input_data.iterations):
+            hash_obj.update(hash_input)
+            hash_input = hash_obj.digest()
+        
+        hash_value = hash_obj.hexdigest()
+        strength = ALGORITHM_STRENGTH.get(algorithm, "unknown")
+        
+        results.append(HashResult(
+            algorithm=algorithm,
+            hash_value=hash_value,
+            salt_used=salt,
+            security_strength=strength
+        ))
+        
+        # Generate security recommendations
+        if strength == "weak":
+            recommendations.append(f"⚠️  {algorithm.upper()} is cryptographically weak - consider SHA-256 or better")
+        
+        if input_data.iterations < 1000:
+            recommendations.append("Consider using more iterations (>1000) for password hashing")
+    
+    return HashGeneratorOutput(
+        input_text=input_data.text,
+        results=results,
+        recommendations=recommendations
+    )</pre></div>
+
+            <h3>🌐 Web Security: XSS Scanner</h3>
+            <p>A sophisticated Cross-Site Scripting vulnerability scanner with payload testing.</p>
+            
+            <div class="code-block"><pre>import aiohttp
+from urllib.parse import urlencode, parse_qs, urlparse
+
+class XSSScannerInput(BaseModel):
+    url: str = Field(..., description="Target URL to test for XSS")
+    payload_set: str = Field(default="basic", description="Payload set: basic, advanced, comprehensive")
+    test_parameters: bool = Field(default=True, description="Test URL parameters")
+    test_forms: bool = Field(default=True, description="Test form inputs")
+
+class XSSVulnerability(BaseModel):
+    parameter: str
+    payload: str
+    vulnerability_type: str  # reflected, stored, dom
+    severity: str           # low, medium, high
+    evidence: str
+
+class XSSScannerOutput(BaseModel):
+    url: str
+    vulnerabilities: List[XSSVulnerability]
+    total_payloads_tested: int
+    scan_duration: float
+
+# XSS payload sets
+PAYLOADS = {
+    "basic": [
+        "&lt;script&gt;alert('XSS')&lt;/script&gt;",
+        "javascript:alert('XSS')",
+        "&lt;img src=x onerror=alert('XSS')&gt;"
+    ],
+    "advanced": [
+        # Includes filter bypass techniques
+        "&lt;svg onload=alert('XSS')&gt;",
+        "';alert('XSS');//",
+        "&lt;iframe src=javascript:alert('XSS')&gt;&lt;/iframe&gt;"
+    ]
+}
+
+async def test_reflected_xss(session: aiohttp.ClientSession, url: str, param: str, payload: str) -> Optional[XSSVulnerability]:
+    """Test for reflected XSS vulnerability."""
+    
+    try:
+        # Parse URL and inject payload
+        parsed = urlparse(url)
+        query_params = parse_qs(parsed.query)
+        query_params[param] = [payload]
+        
+        test_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}?{urlencode(query_params, doseq=True)}"
+        
+        async with session.get(test_url) as response:
+            content = await response.text()
+            
+            # Check if payload is reflected unescaped
+            if payload in content and response.headers.get('content-type', '').startswith('text/html'):
+                return XSSVulnerability(
+                    parameter=param,
+                    payload=payload,
+                    vulnerability_type="reflected",
+                    severity="high",
+                    evidence=f"Payload reflected in response at parameter '{param}'"
+                )
+                
+    except Exception as e:
+        logger.warning(f"XSS test failed: {str(e)}")
+    
+    return None
+
+async def execute_tool(input_data: XSSScannerInput) -> XSSScannerOutput:
+    """Execute comprehensive XSS scanning."""
+    start_time = time.time()
+    vulnerabilities = []
+    payloads = PAYLOADS.get(input_data.payload_set, PAYLOADS["basic"])
+    
     async with aiohttp.ClientSession() as session:
-        vulnerabilities = []
         
-        for payload in XSS_PAYLOADS:
-            test_url = f"{request.url}?test={payload}"
-            async with session.get(test_url) as response:
-                content = await response.text()
-                if payload in content:
-                    vulnerabilities.append({
-                        "payload": payload,
-                        "location": "query_parameter",
-                        "severity": "high"
-                    })
+        if input_data.test_parameters:
+            # Test URL parameters
+            parsed = urlparse(input_data.url)
+            params = parse_qs(parsed.query)
+            
+            for param_name in params.keys():
+                for payload in payloads:
+                    vuln = await test_reflected_xss(session, input_data.url, param_name, payload)
+                    if vuln:
+                        vulnerabilities.append(vuln)
         
-        return XSSScannerResponse(...)</pre></div>
+        if input_data.test_forms:
+            # Test form inputs (implementation would include form parsing)
+            pass
+    
+    duration = time.time() - start_time
+    
+    return XSSScannerOutput(
+        url=input_data.url,
+        vulnerabilities=vulnerabilities,
+        total_payloads_tested=len(payloads),
+        scan_duration=duration
+    )</pre></div>
+
+            <h3>📊 Key Patterns Demonstrated</h3>
+            <ul>
+                <li><strong>Async Operations:</strong> All tools use async/await for non-blocking execution</li>
+                <li><strong>Error Handling:</strong> Graceful handling of network errors and timeouts</li>
+                <li><strong>Input Validation:</strong> Comprehensive validation with Pydantic constraints</li>
+                <li><strong>Concurrency Control:</strong> Using asyncio.gather() and semaphores</li>
+                <li><strong>Security Best Practices:</strong> Proper timeout handling and resource cleanup</li>
+                <li><strong>Detailed Output:</strong> Rich result structures with metadata</li>
+                <li><strong>Performance Tracking:</strong> Execution time and result counting</li>
+                <li><strong>Configurability:</strong> Flexible options for different use cases</li>
+            </ul>
+
+            <div class="info">
+                <strong>Study Tip:</strong> These examples are based on the actual production tools in the Wildbox Security API. Browse the <code>app/tools/</code> directory to see the complete implementations and learn from real-world security tool development.
+            </div>
+        </div>
+
+        <div class="guide-section" id="troubleshooting">
+            <h2>🔧 Troubleshooting Guide</h2>
+            <p>Common issues and solutions when developing security tools for the Wildbox platform.</p>
+
+            <h3>🚨 Tool Discovery Issues</h3>
+            
+            <h4>❌ Tool Not Appearing in Dashboard</h4>
+            <div class="code-block"><pre># Check server logs for errors:
+❌ "Tool my_tool missing required files (main.py or schemas.py)"
+❌ "Failed to load tool my_tool: ModuleNotFoundError: No module named 'schemas'"
+❌ "Tool my_tool missing execute_tool function"
+
+# Solutions:
+✅ Ensure all three files exist: __init__.py, schemas.py, main.py
+✅ Check import statement in main.py: "from schemas import ..."
+✅ Verify execute_tool function exists and is async
+✅ Restart the development server after creating new tools</pre></div>
+
+            <h4>❌ Import Errors</h4>
+            <div class="code-block"><pre># Common import issues:
+
+# Problem: ModuleNotFoundError for schemas
+from schemas import MyToolInput, MyToolOutput  # ✅ Correct
+from .schemas import MyToolInput, MyToolOutput  # ❌ Wrong in main.py
+
+# Problem: Missing __init__.py exports
+# __init__.py should contain:
+from .main import execute_tool, TOOL_INFO
+from .schemas import MyToolInput, MyToolOutput
+__all__ = ["execute_tool", "TOOL_INFO", "MyToolInput", "MyToolOutput"]</pre></div>
+
+            <h3>⚡ Runtime Execution Errors</h3>
+            
+            <h4>❌ Timeout Errors</h4>
+            <div class="code-block"><pre># Problem: Tool execution times out
+asyncio.TimeoutError: Tool execution timed out after 300s
+
+# Solutions:
+✅ Increase timeout in input schema:
+   timeout: int = Field(default=600, description="Timeout in seconds")
+
+✅ Use asyncio.wait_for for long operations:
+   result = await asyncio.wait_for(long_operation(), timeout=request.timeout)
+
+✅ Implement progress updates for long-running tools
+✅ Break large operations into smaller chunks</pre></div>
+
+            <h4>❌ Memory Issues</h4>
+            <div class="code-block"><pre># Problem: Out of memory during execution
+MemoryError: Unable to allocate memory
+
+# Solutions:
+✅ Process data in chunks instead of loading everything:
+   async def process_large_dataset(data):
+       chunk_size = 1000
+       for i in range(0, len(data), chunk_size):
+           chunk = data[i:i + chunk_size]
+           await process_chunk(chunk)
+
+✅ Use generators for large result sets:
+   async def yield_results():
+       for item in large_dataset:
+           yield process_item(item)
+
+✅ Clean up resources explicitly:
+   async with aiohttp.ClientSession() as session:
+       # Use session
+       pass  # Automatically closed</pre></div>
+
+            <h3>🌐 Network & HTTP Issues</h3>
+            
+            <h4>❌ SSL/TLS Errors</h4>
+            <div class="code-block"><pre># Problem: SSL certificate verification failures
+aiohttp.ClientConnectorSSLError: Cannot connect to host example.com:443 ssl:True
+
+# Solutions:
+✅ Add SSL verification options to input schema:
+   verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
+
+✅ Configure SSL context properly:
+   ssl_context = ssl.create_default_context()
+   if not verify_ssl:
+       ssl_context.check_hostname = False
+       ssl_context.verify_mode = ssl.CERT_NONE
+   
+   connector = aiohttp.TCPConnector(ssl=ssl_context)
+
+✅ Handle SSL errors gracefully:
+   try:
+       async with session.get(url) as response:
+           return await response.text()
+   except aiohttp.ClientConnectorSSLError:
+       return {"error": "SSL verification failed", "suggestion": "Try with verify_ssl=false"}</pre></div>
+
+            <h4>❌ Rate Limiting</h4>
+            <div class="code-block"><pre># Problem: External APIs rate limiting requests
+HTTP 429 Too Many Requests
+
+# Solutions:
+✅ Implement exponential backoff:
+   async def make_request_with_retry(url, max_retries=3):
+       for attempt in range(max_retries):
+           try:
+               async with session.get(url) as response:
+                   if response.status == 429:
+                       wait_time = 2 ** attempt
+                       await asyncio.sleep(wait_time)
+                       continue
+                   return await response.text()
+           except Exception as e:
+               if attempt == max_retries - 1:
+                   raise
+               await asyncio.sleep(2 ** attempt)
+
+✅ Add delays between requests:
+   delay: float = Field(default=1.0, description="Delay between requests in seconds")
+   
+   for target in targets:
+       result = await process_target(target)
+       await asyncio.sleep(request.delay)</pre></div>
+
+            <h3>📋 Schema Validation Errors</h3>
+            
+            <h4>❌ Pydantic Validation Failures</h4>
+            <div class="code-block"><pre># Problem: Field validation errors
+pydantic.ValidationError: 1 validation error for MyToolInput
+
+# Common fixes:
+✅ Check field types match actual data:
+   ports: List[int] = Field(...)  # Not List[str]
+
+✅ Add proper constraints:
+   timeout: int = Field(default=30, ge=1, le=3600)  # Greater/less than
+
+✅ Make optional fields truly optional:
+   config: Optional[Dict[str, Any]] = Field(default={})  # Not None
+
+✅ Use validators for complex validation:
+   @validator('email')
+   def validate_email(cls, v):
+       if '@' not in v:
+           raise ValueError('Invalid email format')
+       return v</pre></div>
+
+            <h3>🔧 Development Environment Issues</h3>
+            
+            <h4>❌ Dependencies Not Found</h4>
+            <div class="code-block"><pre># Problem: Missing dependencies
+ModuleNotFoundError: No module named 'aiohttp'
+
+# Solutions:
+✅ Add dependencies to requirements.txt:
+   aiohttp>=3.8.0
+   asyncio-dns>=1.2.0
+   cryptography>=3.4.0
+
+✅ Install in virtual environment:
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+
+✅ Use try/except for optional dependencies:
+   try:
+       import some_optional_lib
+       HAS_OPTIONAL_LIB = True
+   except ImportError:
+       HAS_OPTIONAL_LIB = False</pre></div>
+
+            <h4>❌ API Key Issues</h4>
+            <div class="code-block"><pre># Problem: Authentication failures
+HTTP 401 Unauthorized: Missing API key
+
+# Solutions:
+✅ Check .env file exists and is loaded:
+   API_KEY="wildbox-security-api-key-2025"
+
+✅ Verify correct header format:
+   # Correct:
+   "Authorization": "Bearer your-api-key"
+   "X-API-Key": "your-api-key"
+   
+   # Wrong:
+   "Authorization": "your-api-key"  # Missing "Bearer"
+
+✅ Test with curl:
+   curl -H "X-API-Key: wildbox-security-api-key-2025" \
+        http://localhost:8000/api/tools/</pre></div>
+
+            <h3>📊 Performance Issues</h3>
+            
+            <h4>❌ Slow Tool Execution</h4>
+            <div class="code-block"><pre># Problem: Tools taking too long to execute
+
+# Optimization strategies:
+✅ Use connection pooling:
+   connector = aiohttp.TCPConnector(limit=100, limit_per_host=10)
+   
+✅ Implement concurrency limits:
+   semaphore = asyncio.Semaphore(10)  # Max 10 concurrent operations
+   
+✅ Cache expensive operations:
+   @lru_cache(maxsize=1000)
+   def expensive_calculation(input_data):
+       return complex_computation(input_data)
+   
+✅ Profile your code:
+   import cProfile
+   cProfile.run('your_function()', 'profile.prof')</pre></div>
+
+            <h3>🐛 Debugging Tips</h3>
+            
+            <div class="code-block"><pre># Enable debug logging
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+# Add debug prints
+logger.debug(f"Processing target: {target}")
+logger.debug(f"Request parameters: {request.dict()}")
+
+# Test individual functions
+if __name__ == "__main__":
+    # Test your tool directly
+    import asyncio
+    
+    async def test():
+        input_data = MyToolInput(target="example.com")
+        result = await execute_tool(input_data)
+        print(result)
+    
+    asyncio.run(test())
+
+# Use Python debugger
+import pdb; pdb.set_trace()  # Breakpoint
+
+# Check tool registration
+curl http://localhost:8000/api/tools/ | jq '.available_tools'</pre></div>
+
+            <h3>🆘 Getting Help</h3>
+            
+            <ul>
+                <li><strong>Check Server Logs:</strong> Look for detailed error messages in the console output</li>
+                <li><strong>Test Incrementally:</strong> Start with a minimal tool and add features gradually</li>
+                <li><strong>Use the API Docs:</strong> Visit <code>/docs</code> to see if your tool appears and test it</li>
+                <li><strong>Validate Schemas:</strong> Use Pydantic's validation independently to test your schemas</li>
+                <li><strong>Study Working Examples:</strong> Compare your implementation with existing tools in <code>app/tools/</code></li>
+                <li><strong>Check Network Connectivity:</strong> Ensure your development environment can reach external targets</li>
+            </ul>
+
+            <div class="warning">
+                <strong>Remember:</strong> Always restart the development server after making changes to tool files to ensure they're properly reloaded.
+            </div>
         </div>
 
         <div class="guide-section">
@@ -826,75 +2237,248 @@ EOF
         </div>
 
         <div class="guide-section">
-            <h2>📋 Quick Reference</h2>
+            <h2>📋 Complete Quick Reference</h2>
             
-            <h3>Common Import Patterns</h3>
-            <div class="code-block"><pre># Basic imports for most tools
+            <h3>🚀 Tool Creation Checklist</h3>
+            <div class="step-list">
+                <li><strong>Create Directory:</strong> <code>mkdir app/tools/my_tool_name</code></li>
+                <li><strong>Create __init__.py:</strong> Export execute_tool, TOOL_INFO, and schemas</li>
+                <li><strong>Define Schemas:</strong> Input/Output models with proper validation</li>
+                <li><strong>Implement main.py:</strong> execute_tool function + TOOL_INFO metadata</li>
+                <li><strong>Test Locally:</strong> Restart server and verify tool appears</li>
+                <li><strong>Validate API:</strong> Test via /docs endpoint</li>
+                <li><strong>Add Documentation:</strong> Clear descriptions and examples</li>
+            </div>
+            
+            <h3>📝 Essential Code Templates</h3>
+            
+            <h4>Basic Tool Structure</h4>
+            <div class="code-block"><pre># __init__.py
+from .main import execute_tool, TOOL_INFO
+from .schemas import MyToolInput, MyToolOutput
+__all__ = ["execute_tool", "TOOL_INFO", "MyToolInput", "MyToolOutput"]
+
+# schemas.py
+from pydantic import BaseModel, Field
+from typing import List, Optional
+from datetime import datetime
+
+class MyToolInput(BaseModel):
+    target: str = Field(..., description="Target to analyze", example="example.com")
+    options: List[str] = Field(default=[], description="Analysis options")
+
+class MyToolOutput(BaseModel):
+    target: str
+    results: List[dict]
+    timestamp: datetime
+    success: bool
+    message: str
+
+# main.py
+import logging
+from datetime import datetime
+from schemas import MyToolInput, MyToolOutput
+
+logger = logging.getLogger(__name__)
+
+TOOL_INFO = {
+    "name": "My Security Tool",
+    "description": "Brief description of what this tool does",
+    "version": "1.0.0", 
+    "author": "Your Name",
+    "category": "Security Category",
+    "tags": ["tag1", "tag2"]
+}
+
+async def execute_tool(request: MyToolInput) -> MyToolOutput:
+    try:
+        # Your implementation here
+        results = await perform_analysis(request.target)
+        
+        return MyToolOutput(
+            target=request.target,
+            results=results,
+            timestamp=datetime.now(),
+            success=True,
+            message="Analysis completed successfully"
+        )
+    except Exception as e:
+        logger.error(f"Tool execution failed: {str(e)}")
+        return MyToolOutput(
+            target=request.target,
+            results=[],
+            timestamp=datetime.now(), 
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )</pre></div>
+
+            <h3>🔧 Common Import Patterns</h3>
+            <div class="code-block"><pre># Core imports for most tools
 import asyncio
 import logging
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Union
 
-# For HTTP requests
+# For HTTP requests (recommended)
 import aiohttp
+import ssl
 
-# For schemas (always use this exact import)
-from schemas import YourToolRequest, YourToolResponse
+# For DNS operations  
+import socket
+try:
+    import aiodns
+except ImportError:
+    aiodns = None
 
-# For validation
-from pydantic import BaseModel, Field, HttpUrl, EmailStr</pre></div>
+# For cryptography
+import hashlib
+import secrets
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
 
-            <h3>Essential TOOL_INFO Categories</h3>
-            <div class="code-block"><pre># Popular categories to choose from:
-"Web Security"       # XSS, SQL injection, CSRF tools
-"Network Security"   # Port scanning, network analysis
-"OSINT"             # Information gathering, social media
-"Cryptography"      # Hashing, encoding, password tools
-"Reconnaissance"    # Domain enumeration, certificate scanning
-"Vulnerability"     # Vulnerability scanners and analyzers
-"Forensics"         # File analysis, metadata extraction
-"General"           # Utilities and multi-purpose tools</pre></div>
+# For URL/string processing
+from urllib.parse import urlparse, urljoin, quote, parse_qs
+import re
 
-            <h3>Response Status Patterns</h3>
-            <div class="code-block"><pre># Success response
-return YourToolResponse(
-    target=request.target,
-    results=analysis_results,
-    execution_time=execution_time,
-    timestamp=datetime.now().isoformat(),
-    success=True,
-    message="Analysis completed successfully"
-)
+# Always use this exact import in main.py
+from schemas import YourToolInput, YourToolOutput
 
-# Error response
-return YourToolResponse(
-    target=request.target,
-    results=[],
-    execution_time=execution_time,
-    timestamp=datetime.now().isoformat(),
-    success=False,
-    message=f"Analysis failed: {str(error)}"
-)</pre></div>
+# For validation and models
+from pydantic import BaseModel, Field, validator, HttpUrl, EmailStr
+from enum import Enum
+from typing import Literal</pre></div>
 
-            <h3>Async HTTP Request Template</h3>
-            <div class="code-block"><pre>async def make_http_request(url: str, timeout: int = 10):
-    """Template for making HTTP requests."""
-    try:
-        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
-            async with session.get(url) as response:
-                content = await response.text()
-                return {
-                    "status_code": response.status,
-                    "headers": dict(response.headers),
-                    "content": content
-                }
-    except asyncio.TimeoutError:
-        raise Exception(f"Request to {url} timed out after {timeout}s")
-    except Exception as e:
-        raise Exception(f"HTTP request failed: {str(e)}")</pre></div>
+            <h3>📊 Popular Tool Categories & Examples</h3>
+            <div class="code-block"><pre># Network Security
+"Network Security"       → port_scanner, network_scanner, vulnerability_scanner
+"Web Security"          → xss_scanner, sql_injection_scanner, header_analyzer  
+"Reconnaissance"        → subdomain_scanner, dns_enumerator, whois_lookup
+"OSINT"                → email_harvester, social_media_osint, digital_footprint
+"Cryptography"         → hash_generator, crypto_strength_analyzer, ssl_analyzer
+"Authentication"       → jwt_analyzer, password_strength_analyzer, saml_analyzer
+"Cloud Security"       → cloud_security_analyzer, container_security_scanner
+"Compliance"           → compliance_checker, security_compliance_checker
+"Malware Analysis"     → static_malware_analyzer, malware_hash_checker
+"Data Analysis"        → metadata_extractor, base64_tool, url_analyzer</pre></div>
+
+            <h3>⚡ Performance Optimization Patterns</h3>
+            <div class="code-block"><pre># Async HTTP with proper configuration
+async def create_http_session(verify_ssl=True, timeout=30):
+    connector = aiohttp.TCPConnector(
+        limit=100,           # Total connection limit
+        limit_per_host=10,   # Per-host connection limit
+        ttl_dns_cache=300,   # DNS cache TTL
+        use_dns_cache=True,
+        ssl=ssl.create_default_context() if verify_ssl else False
+    )
+    
+    timeout_config = aiohttp.ClientTimeout(total=timeout)
+    
+    return aiohttp.ClientSession(
+        connector=connector,
+        timeout=timeout_config,
+        headers={"User-Agent": "WildboxSecurityAPI/1.0"}
+    )
+
+# Concurrency control
+async def process_with_limit(items, max_concurrent=5):
+    semaphore = asyncio.Semaphore(max_concurrent)
+    
+    async def process_item(item):
+        async with semaphore:
+            return await expensive_operation(item)
+    
+    tasks = [process_item(item) for item in items]
+    return await asyncio.gather(*tasks, return_exceptions=True)
+
+# Error handling with retries
+async def robust_operation(operation, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return await operation()
+        except (asyncio.TimeoutError, aiohttp.ClientError) as e:
+            if attempt == max_retries - 1:
+                raise
+            wait_time = 2 ** attempt  # Exponential backoff
+            await asyncio.sleep(wait_time)</pre></div>
+
+            <h3>🛡️ Security Best Practices</h3>
+            <div class="code-block"><pre># Input sanitization
+def sanitize_domain(domain: str) -> str:
+    domain = re.sub(r'^https?://', '', domain)  # Remove protocol
+    domain = domain.split('/')[0]               # Remove path
+    domain = domain.lower().strip()             # Normalize
+    
+    if not re.match(r'^[a-zA-Z0-9.-]+$', domain):
+        raise ValueError("Invalid domain format")
+    
+    return domain
+
+# Safe URL construction  
+from urllib.parse import quote
+safe_url = f"https://{quote(user_input)}"
+
+# Timeout everything
+async with asyncio.timeout(request.timeout):  # Python 3.11+
+    result = await long_operation()
+
+# Or for older Python versions:
+result = await asyncio.wait_for(long_operation(), timeout=request.timeout)
+
+# Validate file sizes and types
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+ALLOWED_EXTENSIONS = {'.txt', '.json', '.xml', '.html'}
+
+def validate_file_upload(file_data: bytes, filename: str):
+    if len(file_data) > MAX_FILE_SIZE:
+        raise ValueError("File too large")
+    
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise ValueError("File type not allowed")</pre></div>
+
+            <h3>🔍 Testing & Debugging Commands</h3>
+            <div class="code-block"><pre># Test API endpoint directly
+curl -X POST "http://localhost:8000/api/tools/my_tool" \
+     -H "X-API-Key: wildbox-security-api-key-2025" \
+     -H "Content-Type: application/json" \
+     -d '{"target": "example.com"}'
+
+# Check available tools
+curl -H "X-API-Key: wildbox-security-api-key-2025" \
+     "http://localhost:8000/api/tools/" | jq
+
+# View tool-specific schema
+curl "http://localhost:8000/openapi.json" | jq '.paths."/api/tools/my_tool"'
+
+# Check server logs for errors
+tail -f server.log | grep "my_tool"
+
+# Test tool independently
+python -c "
+import asyncio
+from app.tools.my_tool.main import execute_tool
+from app.tools.my_tool.schemas import MyToolInput
+
+async def test():
+    result = await execute_tool(MyToolInput(target='example.com'))
+    print(result.json(indent=2))
+
+asyncio.run(test())
+"</pre></div>
+
+            <h3>📈 Production Deployment Checklist</h3>
+            <div class="step-list">
+                <li><strong>Security:</strong> Strong API keys, HTTPS, proper CORS settings</li>
+                <li><strong>Performance:</strong> Connection limits, timeouts, rate limiting</li>
+                <li><strong>Monitoring:</strong> Structured logging, metrics, health checks</li>
+                <li><strong>Reliability:</strong> Error handling, retries, circuit breakers</li>
+                <li><strong>Scalability:</strong> Load balancing, caching, resource limits</li>
+                <li><strong>Maintenance:</strong> Automated deployments, backup strategies</li>
+            </div>
 
             <div class="warning">
-                <strong>Remember:</strong> Always use <code>async/await</code> for I/O operations, handle timeouts appropriately, and provide meaningful error messages to users.
+                <strong>Quick Start:</strong> For the fastest development experience, copy an existing tool that's similar to what you want to build, then modify it step by step.
             </div>
         </div>
     </div>

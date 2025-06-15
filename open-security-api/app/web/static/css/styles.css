@@ -190,7 +190,6 @@ a:hover {
 }
 
 .navbar-brand:hover {
-    transform: translateY(-1px);
     color: var(--primary-color) !important;
 }
 
@@ -234,7 +233,6 @@ a:hover {
 .nav-link:hover {
     color: var(--primary-color) !important;
     background-color: var(--primary-ultra-light);
-    transform: translateY(-1px);
 }
 
 .nav-link.active {
@@ -271,7 +269,6 @@ a:hover {
 }
 
 .card:hover {
-    transform: translateY(-4px);
     box-shadow: var(--shadow-xl);
     border-color: var(--primary-color);
 }
@@ -738,7 +735,7 @@ div.card.tool-card .card-header i {
     }
     
     .tool-card:hover {
-        transform: translateY(-4px) scale(1.01);
+        box-shadow: var(--shadow-xl);
     }
 }
 
@@ -822,7 +819,6 @@ div.card.tool-card .card-header i {
 .main-content-container .form-select:focus {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
-    transform: translateY(-1px);
 }
 
 .main-content-container .form-label {
@@ -871,7 +867,6 @@ div.card.tool-card .card-header i {
 }
 
 .main-content-container .btn-primary:hover {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
     background: linear-gradient(135deg, 
         var(--primary-dark) 0%, 
@@ -889,7 +884,6 @@ div.card.tool-card .card-header i {
 
 .main-content-container .btn-outline-secondary:hover,
 .main-content-container .btn-outline-info:hover {
-    transform: translateY(-1px);
     box-shadow: var(--shadow-sm);
 }
 
@@ -964,7 +958,6 @@ div.card.tool-card .card-header i {
 }
 
 .sidebar-cards-container .card:hover {
-    transform: translateY(-2px);
     box-shadow: var(--shadow-lg);
 }
 
