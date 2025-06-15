@@ -109,9 +109,9 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         attr = getattr(schemas_module, attr_name)
         if (hasattr(attr, '__bases__') and 
             any(base.__name__ == 'BaseModel' for base in attr.__bases__)):
-            if 'Input' in attr.__name__:
+            if 'Input' in attr.__name__ or 'Request' in attr.__name__:
                 input_schema_class = attr
-            elif 'Output' in attr.__name__:
+            elif 'Output' in attr.__name__ or 'Response' in attr.__name__:
                 output_schema_class = attr
     
     if not input_schema_class or not output_schema_class:
@@ -124,10 +124,12 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         logger.error(f"No execute_tool function found for tool: {tool_name}")
         return
     
-    # Create the endpoint function with proper typing
+    # Create the endpoint function using Body for explicit JSON parsing
+    from fastapi import Body
+    
     async def tool_endpoint(
         request: Request,
-        input_data: dict,
+        input_data: dict = Body(...),
         api_key: str = Depends(verify_api_key)
     ):
         """Dynamically created endpoint for the security tool."""
@@ -136,6 +138,7 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         try:
             validated_input = input_schema_class(**input_data)
         except Exception as e:
+            logger.error(f"Input validation failed for {tool_name}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Input validation failed: {str(e)}"

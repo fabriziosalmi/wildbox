@@ -1,0 +1,1 @@
+"""JWT analyzer tool package."""

@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Developer Guide - Wildbox Security API</title>
+    <link rel="stylesheet" href="/static/css/styles.css">
+    <style>
+        .guide-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .guide-content {
+                padding: 1rem;
+            }
+        }
+        
+        .guide-section {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease;
+        }
+        
+        .guide-section:hover {
+            transform: translateY(-2px);
+        }
+        
+        @media (max-width: 768px) {
+            .guide-section {
+                padding: 1.5rem;
+            }
+        }
+        
+        .guide-section h2 {
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .guide-section h3 {
+            color: var(--accent-color);
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+        }
+        
+        .code-block {
+            background: #1e1e1e;
+            color: #f8f8f2;
+            padding: 1.5rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+            font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        
+        .file-structure {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: monospace;
+            margin: 1rem 0;
+        }
+        
+        .step-list {
+            counter-reset: step-counter;
+            list-style: none;
+            padding: 0;
+        }
+        
+        .step-list li {
+            counter-increment: step-counter;
+            margin: 1rem 0;
+            padding: 1rem;
+            background: #f8f9fa;
+            border-left: 4px solid var(--primary-color);
+            border-radius: 0 8px 8px 0;
+            position: relative;
+        }
+        
+        .step-list li::before {
+            content: counter(step-counter);
+            background: var(--primary-color);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            left: -15px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-weight: bold;
+        }
+        
+        .step-list li strong {
+            color: var(--primary-color);
+        }
+        
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .warning::before {
+            content: "⚠️ ";
+            font-size: 1.2rem;
+        }
+        
+        .info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .info::before {
+            content: "ℹ️ ";
+            font-size: 1.2rem;
+        }
+        
+        .toc {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        
+        .toc h3 {
+            margin-top: 0;
+            color: var(--primary-color);
+        }
+        
+        .toc ul {
+            list-style: none;
+            padding-left: 0;
+        }
+        
+        .toc li {
+            margin: 0.5rem 0;
+        }
+        
+        .toc a {
+            color: var(--text-color);
+            text-decoration: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+        
+        .toc a:hover {
+            background-color: var(--primary-color);
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <span class="brand-icon">🛡️</span>
+                <span class="brand-text">Wildbox Security API</span>
+            </div>
+            <div class="nav-links">
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/guide" class="nav-link active">Developer Guide</a>
+                <a href="/settings" class="nav-link">Settings</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="guide-content">
+        <h1>🛠️ Developer Guide</h1>
+        <p class="subtitle">Complete guide to building and integrating security tools with the Wildbox Security API platform</p>
+
+        <div class="toc">
+            <h3>📋 Table of Contents</h3>
+            <ul>
+                <li><a href="#overview">Platform Overview</a></li>
+                <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#building-tools">Building Security Tools</a></li>
+                <li><a href="#file-structure">File Structure Requirements</a></li>
+                <li><a href="#schemas">Schema Definitions</a></li>
+                <li><a href="#implementation">Tool Implementation</a></li>
+                <li><a href="#integration">Integration Process</a></li>
+                <li><a href="#testing">Testing Your Tool</a></li>
+                <li><a href="#best-practices">Best Practices</a></li>
+                <li><a href="#examples">Example Tools</a></li>
+            </ul>
+        </div>
+
+        <div class="guide-section" id="overview">
+            <h2>🔍 Platform Overview</h2>
+            <p>The Wildbox Security API is a modular, extensible platform for security testing and analysis tools. It provides:</p>
+            <ul>
+                <li><strong>Dynamic Tool Discovery:</strong> Automatically detects and loads security tools</li>
+                <li><strong>REST API Integration:</strong> Each tool gets its own API endpoint</li>
+                <li><strong>Web Interface:</strong> User-friendly dashboard for tool interaction</li>
+                <li><strong>Async Execution:</strong> Non-blocking tool execution with proper error handling</li>
+                <li><strong>Schema Validation:</strong> Pydantic-based input/output validation</li>
+                <li><strong>Security Features:</strong> API key authentication and rate limiting</li>
+            </ul>
+        </div>
+
+        <div class="guide-section" id="architecture">
+            <h2>🏗️ Architecture</h2>
+            <p>The platform follows a modular architecture where each security tool is a self-contained module:</p>
+            
+            <div class="file-structure">
+app/
+├── tools/                    # All security tools
+│   ├── your_tool_name/      # Your tool directory
+│   │   ├── __init__.py      # Module exports
+│   │   ├── schemas.py       # Pydantic schemas
+│   │   └── main.py          # Tool implementation
+│   └── ...
+├── api/                     # REST API layer
+├── web/                     # Web interface
+├── main.py                  # Application entry point
+└── ...
+            </div>
+
+            <h3>Tool Discovery Process</h3>
+            <ol class="step-list">
+                <li><strong>Scan:</strong> Platform scans the <code>app/tools/</code> directory</li>
+                <li><strong>Load:</strong> Imports each tool's schemas and main module</li>
+                <li><strong>Validate:</strong> Checks for required functions and metadata</li>
+                <li><strong>Register:</strong> Creates API endpoints and web interface entries</li>
+                <li><strong>Expose:</strong> Makes tools available via REST API and web UI</li>
+            </ol>
+        </div>
+
+        <div class="guide-section" id="building-tools">
+            <h2>🔧 Building Security Tools</h2>
+            <p>Creating a new security tool involves three main steps:</p>
+
+            <ol class="step-list">
+                <li><strong>Create Directory:</strong> Make a new folder in <code>app/tools/</code></li>
+                <li><strong>Define Schemas:</strong> Create Pydantic models for input/output</li>
+                <li><strong>Implement Logic:</strong> Write the tool's core functionality</li>
+            </ol>
+
+            <div class="warning">
+                <strong>Naming Convention:</strong> Use snake_case for tool directory names (e.g., <code>port_scanner</code>, <code>sql_injection_scanner</code>)
+            </div>
+        </div>
+
+        <div class="guide-section" id="file-structure">
+            <h2>📁 File Structure Requirements</h2>
+            <p>Each tool must have exactly three files:</p>
+
+            <h3>1. __init__.py</h3>
+            <p>Exports the tool's public interface:</p>
+            <div class="code-block">
+from .main import execute_tool, TOOL_INFO
+from .schemas import YourToolRequest, YourToolResponse
+
+__all__ = ["execute_tool", "TOOL_INFO", "YourToolRequest", "YourToolResponse"]
+            </div>
+
+            <h3>2. schemas.py</h3>
+            <p>Defines input and output data models:</p>
+            <div class="code-block">
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+class YourToolRequest(BaseModel):
+    """Input schema for your security tool."""
+    target: str = Field(..., description="Target to analyze")
+    options: Optional[List[str]] = Field(default=[], description="Analysis options")
+
+class YourToolResponse(BaseModel):
+    """Output schema for your security tool."""
+    target: str
+    results: List[dict]
+    success: bool
+    message: str
+            </div>
+
+            <h3>3. main.py</h3>
+            <p>Contains the tool's implementation and metadata:</p>
+            <div class="code-block">
+import logging
+from datetime import datetime
+from schemas import YourToolRequest, YourToolResponse
+
+logger = logging.getLogger(__name__)
+
+TOOL_INFO = {
+    "name": "Your Tool Name",
+    "description": "Brief description of what your tool does",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "category": "Category (e.g., Web Security, Network, OSINT)",
+    "tags": ["tag1", "tag2", "tag3"]
+}
+
+async def execute_tool(request: YourToolRequest) -> YourToolResponse:
+    """Main tool execution function."""
+    try:
+        # Your tool logic here
+        results = perform_analysis(request.target, request.options)
+        
+        return YourToolResponse(
+            target=request.target,
+            results=results,
+            success=True,
+            message="Analysis completed successfully"
+        )
+    except Exception as e:
+        logger.error(f"Tool execution failed: {str(e)}")
+        return YourToolResponse(
+            target=request.target,
+            results=[],
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )
+            </div>
+        </div>
+
+        <div class="guide-section" id="schemas">
+            <h2>📋 Schema Definitions</h2>
+            <p>Schemas define the input and output structure for your tool. The platform supports two naming conventions:</p>
+
+            <h3>Option 1: Request/Response Pattern</h3>
+            <div class="code-block">
+class YourToolRequest(BaseModel):
+    # Input fields
+
+class YourToolResponse(BaseModel):
+    # Output fields
+            </div>
+
+            <h3>Option 2: Input/Output Pattern</h3>
+            <div class="code-block">
+class YourToolInput(BaseModel):
+    # Input fields
+
+class YourToolOutput(BaseModel):
+    # Output fields
+            </div>
+
+            <h3>Field Types and Validation</h3>
+            <div class="code-block">
+from pydantic import BaseModel, Field, HttpUrl, EmailStr
+from typing import List, Optional, Dict, Any
+from datetime import datetime
+
+class ExampleRequest(BaseModel):
+    # Required string field
+    target: str = Field(..., description="Target URL or IP address")
+    
+    # Optional field with default
+    timeout: int = Field(default=30, description="Request timeout in seconds")
+    
+    # URL validation
+    url: HttpUrl = Field(..., description="Valid HTTP/HTTPS URL")
+    
+    # Email validation (requires email-validator package)
+    email: EmailStr = Field(..., description="Valid email address")
+    
+    # List of options
+    scan_types: List[str] = Field(default=["basic"], description="Types of scans to perform")
+    
+    # Boolean flag
+    verbose: bool = Field(default=False, description="Enable verbose output")
+    
+    # Nested object
+    config: Optional[Dict[str, Any]] = Field(default={}, description="Additional configuration")
+            </div>
+
+            <div class="info">
+                <strong>Best Practice:</strong> Always include clear descriptions for all fields to improve API documentation.
+            </div>
+        </div>
+
+        <div class="guide-section" id="implementation">
+            <h2>⚙️ Tool Implementation</h2>
+
+            <h3>Required Components</h3>
+            <ul>
+                <li><strong>TOOL_INFO:</strong> Metadata dictionary describing your tool</li>
+                <li><strong>execute_tool:</strong> Async function that performs the main logic</li>
+                <li><strong>Proper Error Handling:</strong> Graceful handling of failures</li>
+                <li><strong>Logging:</strong> Structured logging for debugging</li>
+            </ul>
+
+            <h3>TOOL_INFO Metadata</h3>
+            <div class="code-block">
+TOOL_INFO = {
+    "name": "Human-readable tool name",
+    "description": "What does this tool do? (1-2 sentences)",
+    "version": "1.0.0",  # Semantic versioning
+    "author": "Your Name or Team",
+    "category": "Tool category for organization",
+    "tags": ["relevant", "keywords", "for", "searching"]
+}
+            </div>
+
+            <h3>Execute Function Pattern</h3>
+            <div class="code-block">
+async def execute_tool(request: YourToolRequest) -> YourToolResponse:
+    """
+    Main execution function for your security tool.
+    
+    Args:
+        request: Validated input data
+        
+    Returns:
+        Response object with results and status
+    """
+    start_time = datetime.now()
+    
+    try:
+        logger.info(f"Starting {TOOL_INFO['name']} for target: {request.target}")
+        
+        # Validate input (additional validation beyond schema)
+        if not request.target:
+            raise ValueError("Target cannot be empty")
+        
+        # Perform the main tool logic
+        results = await perform_security_analysis(request)
+        
+        # Calculate execution time
+        execution_time = (datetime.now() - start_time).total_seconds()
+        
+        return YourToolResponse(
+            target=request.target,
+            results=results,
+            execution_time=execution_time,
+            timestamp=datetime.now().isoformat(),
+            success=True,
+            message=f"Analysis completed in {execution_time:.2f}s"
+        )
+        
+    except Exception as e:
+        execution_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"Tool execution failed: {str(e)}")
+        
+        return YourToolResponse(
+            target=request.target,
+            results=[],
+            execution_time=execution_time,
+            timestamp=datetime.now().isoformat(),
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )
+            </div>
+
+            <h3>Async Best Practices</h3>
+            <div class="code-block">
+import asyncio
+import aiohttp
+
+async def perform_security_analysis(request):
+    """Example of async implementation."""
+    
+    # Use asyncio.sleep() instead of time.sleep()
+    await asyncio.sleep(0.1)
+    
+    # Use aiohttp for HTTP requests
+    async with aiohttp.ClientSession() as session:
+        async with session.get(request.target) as response:
+            data = await response.text()
+    
+    # Use asyncio.gather() for concurrent operations
+    tasks = [analyze_component(comp) for comp in components]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    return results
+            </div>
+        </div>
+
+        <div class="guide-section" id="integration">
+            <h2>🔗 Integration Process</h2>
+            <p>Once you've created your tool files, the platform will automatically discover and integrate it:</p>
+
+            <ol class="step-list">
+                <li><strong>Restart Server:</strong> The platform scans for tools on startup</li>
+                <li><strong>Automatic Registration:</strong> Your tool gets registered automatically</li>
+                <li><strong>API Endpoint:</strong> Available at <code>/api/tools/your_tool_name</code></li>
+                <li><strong>Web Interface:</strong> Appears as a card on the dashboard</li>
+                <li><strong>Documentation:</strong> Auto-generated API docs at <code>/docs</code></li>
+            </ol>
+
+            <div class="info">
+                <strong>Hot Reload:</strong> During development, the server will automatically reload when you make changes to your tool files.
+            </div>
+
+            <h3>No Route Updates Required</h3>
+            <p>The platform uses dynamic route generation - you don't need to modify any routing files. Just create your tool directory with the required files, and it will be automatically available.</p>
+        </div>
+
+        <div class="guide-section" id="testing">
+            <h2>🧪 Testing Your Tool</h2>
+
+            <h3>1. Via Web Interface</h3>
+            <ul>
+                <li>Navigate to the dashboard at <code>http://localhost:8000</code></li>
+                <li>Find your tool card</li>
+                <li>Click to open the tool interface</li>
+                <li>Fill in the required parameters</li>
+                <li>Execute and review results</li>
+            </ul>
+
+            <h3>2. Via API Documentation</h3>
+            <ul>
+                <li>Go to <code>http://localhost:8000/docs</code></li>
+                <li>Find your tool's endpoint</li>
+                <li>Use the "Try it out" feature</li>
+                <li>Test with different input parameters</li>
+            </ul>
+
+            <h3>3. Via curl Command</h3>
+            <div class="code-block">
+curl -X POST "http://localhost:8000/api/tools/your_tool_name" \
+     -H "Authorization: Bearer your-api-key" \
+     -H "Content-Type: application/json" \
+     -d '{
+       "target": "example.com",
+       "options": ["basic", "detailed"]
+     }'
+            </div>
+
+            <h3>4. Checking Logs</h3>
+            <p>Monitor the server logs for any errors or warnings:</p>
+            <div class="code-block">
+# Look for these log messages:
+✅ "Successfully loaded tool: your_tool_name"
+❌ "Failed to load tool your_tool_name: error_message"
+            </div>
+        </div>
+
+        <div class="guide-section" id="best-practices">
+            <h2>✨ Best Practices</h2>
+
+            <h3>Security Considerations</h3>
+            <ul>
+                <li><strong>Input Validation:</strong> Always validate and sanitize inputs</li>
+                <li><strong>Rate Limiting:</strong> Implement delays for external API calls</li>
+                <li><strong>Safe Defaults:</strong> Use conservative default values</li>
+                <li><strong>Error Messages:</strong> Don't expose sensitive information in errors</li>
+            </ul>
+
+            <h3>Performance Guidelines</h3>
+            <ul>
+                <li><strong>Async Operations:</strong> Use async/await for I/O operations</li>
+                <li><strong>Timeout Handling:</strong> Set reasonable timeouts for external calls</li>
+                <li><strong>Resource Limits:</strong> Limit memory and CPU usage</li>
+                <li><strong>Caching:</strong> Cache results when appropriate</li>
+            </ul>
+
+            <h3>Code Quality</h3>
+            <ul>
+                <li><strong>Type Hints:</strong> Use Python type hints throughout</li>
+                <li><strong>Documentation:</strong> Add docstrings to all functions</li>
+                <li><strong>Error Handling:</strong> Handle specific exceptions appropriately</li>
+                <li><strong>Logging:</strong> Use structured logging with appropriate levels</li>
+            </ul>
+
+            <h3>Tool Design</h3>
+            <ul>
+                <li><strong>Single Responsibility:</strong> Each tool should have a clear, focused purpose</li>
+                <li><strong>Configurable:</strong> Make tools configurable through input parameters</li>
+                <li><strong>Informative Output:</strong> Provide detailed, actionable results</li>
+                <li><strong>Progress Indication:</strong> For long-running tools, consider progress updates</li>
+            </ul>
+        </div>
+
+        <div class="guide-section" id="examples">
+            <h2>📚 Example Tools</h2>
+            <p>Study these existing tools to understand the patterns:</p>
+
+            <h3>Simple Tool: Base64 Encoder/Decoder</h3>
+            <div class="code-block">
+# Location: app/tools/base64_tool/
+
+# schemas.py
+class Base64ToolRequest(BaseModel):
+    text: str = Field(..., description="Text to encode or decode")
+    operation: str = Field(..., description="Operation: encode or decode")
+
+class Base64ToolResponse(BaseModel):
+    input_text: str
+    operation: str
+    result: str
+    success: bool
+    message: str
+
+# main.py
+async def execute_tool(request: Base64ToolRequest) -> Base64ToolResponse:
+    # Simple synchronous operation
+    if request.operation == "encode":
+        result = base64.b64encode(request.text.encode()).decode()
+    else:
+        result = base64.b64decode(request.text).decode()
+    
+    return Base64ToolResponse(...)
+            </div>
+
+            <h3>Network Tool: Port Scanner</h3>
+            <div class="code-block">
+# Location: app/tools/port_scanner/
+
+# schemas.py with complex validation
+class PortScannerRequest(BaseModel):
+    target: str = Field(..., description="Target IP or hostname")
+    ports: str = Field(default="1-1000", description="Port range or list")
+    timeout: int = Field(default=3, gt=0, le=30)
+
+# main.py with async operations
+async def scan_port(ip: str, port: int, timeout: int) -> bool:
+    try:
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), 
+            timeout=timeout
+        )
+        writer.close()
+        return True
+    except:
+        return False
+            </div>
+
+            <h3>Web Tool: XSS Scanner</h3>
+            <div class="code-block">
+# Location: app/tools/xss_scanner/
+
+# Complex analysis with external HTTP requests
+async def execute_tool(request: XSScannerRequest) -> XSSScannerResponse:
+    async with aiohttp.ClientSession() as session:
+        vulnerabilities = []
+        
+        for payload in XSS_PAYLOADS:
+            test_url = f"{request.url}?test={payload}"
+            async with session.get(test_url) as response:
+                content = await response.text()
+                if payload in content:
+                    vulnerabilities.append({
+                        "payload": payload,
+                        "location": "query_parameter",
+                        "severity": "high"
+                    })
+        
+        return XSSScannerResponse(...)
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h2>🚀 Quick Start Template</h2>
+            <p>Use this template to quickly create a new tool:</p>
+
+            <div class="code-block">
+# 1. Create directory
+mkdir app/tools/my_new_tool
+
+# 2. Create __init__.py
+cat > app/tools/my_new_tool/__init__.py << 'EOF'
+from .main import execute_tool, TOOL_INFO
+from .schemas import MyNewToolRequest, MyNewToolResponse
+
+__all__ = ["execute_tool", "TOOL_INFO", "MyNewToolRequest", "MyNewToolResponse"]
+EOF
+
+# 3. Create schemas.py
+cat > app/tools/my_new_tool/schemas.py << 'EOF'
+from pydantic import BaseModel, Field
+
+class MyNewToolRequest(BaseModel):
+    target: str = Field(..., description="Target to analyze")
+
+class MyNewToolResponse(BaseModel):
+    target: str
+    results: list
+    success: bool
+    message: str
+EOF
+
+# 4. Create main.py
+cat > app/tools/my_new_tool/main.py << 'EOF'
+import logging
+from datetime import datetime
+from schemas import MyNewToolRequest, MyNewToolResponse
+
+logger = logging.getLogger(__name__)
+
+TOOL_INFO = {
+    "name": "My New Tool",
+    "description": "Brief description of what this tool does",
+    "version": "1.0.0",
+    "author": "Your Name",
+    "category": "General",
+    "tags": ["security", "analysis"]
+}
+
+async def execute_tool(request: MyNewToolRequest) -> MyNewToolResponse:
+    try:
+        # Your tool logic here
+        results = [{"analysis": "completed"}]
+        
+        return MyNewToolResponse(
+            target=request.target,
+            results=results,
+            success=True,
+            message="Analysis completed successfully"
+        )
+    except Exception as e:
+        logger.error(f"Tool execution failed: {str(e)}")
+        return MyNewToolResponse(
+            target=request.target,
+            results=[],
+            success=False,
+            message=f"Analysis failed: {str(e)}"
+        )
+EOF
+
+# 5. Restart the server to see your new tool!
+            </div>
+
+            <div class="info">
+                <strong>Next Steps:</strong> After creating your tool, restart the server and check the dashboard. Your tool should appear as a new card and be available via the API at <code>/api/tools/my_new_tool</code>.
+            </div>
+        </div>
+
+        <div class="guide-section">
+            <h2>📋 Quick Reference</h2>
+            
+            <h3>Common Import Patterns</h3>
+            <div class="code-block">
+# Basic imports for most tools
+import asyncio
+import logging
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+
+# For HTTP requests
+import aiohttp
+
+# For schemas (always use this exact import)
+from schemas import YourToolRequest, YourToolResponse
+
+# For validation
+from pydantic import BaseModel, Field, HttpUrl, EmailStr
+            </div>
+
+            <h3>Essential TOOL_INFO Categories</h3>
+            <div class="code-block">
+# Popular categories to choose from:
+"Web Security"       # XSS, SQL injection, CSRF tools
+"Network Security"   # Port scanning, network analysis
+"OSINT"             # Information gathering, social media
+"Cryptography"      # Hashing, encoding, password tools
+"Reconnaissance"    # Domain enumeration, certificate scanning
+"Vulnerability"     # Vulnerability scanners and analyzers
+"Forensics"         # File analysis, metadata extraction
+"General"           # Utilities and multi-purpose tools
+            </div>
+
+            <h3>Response Status Patterns</h3>
+            <div class="code-block">
+# Success response
+return YourToolResponse(
+    target=request.target,
+    results=analysis_results,
+    execution_time=execution_time,
+    timestamp=datetime.now().isoformat(),
+    success=True,
+    message="Analysis completed successfully"
+)
+
+# Error response
+return YourToolResponse(
+    target=request.target,
+    results=[],
+    execution_time=execution_time,
+    timestamp=datetime.now().isoformat(),
+    success=False,
+    message=f"Analysis failed: {str(error)}"
+)
+            </div>
+
+            <h3>Async HTTP Request Template</h3>
+            <div class="code-block">
+async def make_http_request(url: str, timeout: int = 10):
+    """Template for making HTTP requests."""
+    try:
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
+            async with session.get(url) as response:
+                content = await response.text()
+                return {
+                    "status_code": response.status,
+                    "headers": dict(response.headers),
+                    "content": content
+                }
+    except asyncio.TimeoutError:
+        raise Exception(f"Request to {url} timed out after {timeout}s")
+    except Exception as e:
+        raise Exception(f"HTTP request failed: {str(e)}")
+            </div>
+
+            <div class="warning">
+                <strong>Remember:</strong> Always use <code>async/await</code> for I/O operations, handle timeouts appropriately, and provide meaningful error messages to users.
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/script.js"></script>
+</body>
+</html>

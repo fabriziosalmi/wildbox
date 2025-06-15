@@ -1,0 +1,1 @@
+"""XSS scanner tool package."""

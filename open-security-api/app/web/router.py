@@ -118,3 +118,42 @@ async def documentation(request: Request):
         "request": request,
         "title": "API Documentation - Wildbox Security API"
     })
+
+
+@router.get("/settings", response_class=HTMLResponse)
+async def settings_page(request: Request):
+    """
+    Settings page for API key configuration and preferences.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        HTML response with settings form
+    """
+    logger.info("Serving settings page")
+    
+    return templates.TemplateResponse("settings.html", {
+        "request": request,
+        "title": "Settings - Wildbox Security API",
+        "api_key": settings.get_api_key()
+    })
+
+
+@router.get("/guide", response_class=HTMLResponse)
+async def guide_page(request: Request):
+    """
+    Developer guide page explaining how to build and integrate tools.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        HTML response with the developer guide
+    """
+    logger.info("Serving developer guide page")
+    
+    return templates.TemplateResponse("guide.html", {
+        "request": request,
+        "title": "Developer Guide - Wildbox Security API"
+    })

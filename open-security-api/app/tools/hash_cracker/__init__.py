@@ -1,0 +1,1 @@
+"""Hash cracker tool package."""

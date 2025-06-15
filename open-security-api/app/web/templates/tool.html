@@ -301,6 +301,9 @@ const TOOL_CONFIG = {
 document.addEventListener('DOMContentLoaded', function() {
     generateModernForm();
     setupEnhancedFormSubmission();
+    
+    // Initialize tool page with API key check
+    PageInit.tool();
 });
 
 function generateModernForm() {

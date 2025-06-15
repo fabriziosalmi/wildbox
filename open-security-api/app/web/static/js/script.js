@@ -7,8 +7,21 @@ const API_CONFIG = {
     baseUrl: '',
     timeout: 30000,
     getApiKey: function() {
-        // Get API key from a secure source (e.g., server-side rendered variable)
-        return window.API_KEY || sessionStorage.getItem('api_key') || '';
+        // Priority: session storage, then server-side rendered variable
+        return sessionStorage.getItem('api_key') || window.API_KEY || '';
+    },
+    setApiKey: function(key) {
+        if (key) {
+            sessionStorage.setItem('api_key', key);
+            window.API_KEY = key;
+        } else {
+            sessionStorage.removeItem('api_key');
+            window.API_KEY = '';
+        }
+    },
+    hasValidApiKey: function() {
+        const key = this.getApiKey();
+        return key && key.length > 0;
     }
 };
 
@@ -142,7 +155,9 @@ const API = {
         const apiKey = API_CONFIG.getApiKey();
         
         if (!apiKey) {
-            throw new Error('API key not available. Please contact administrator.');
+            const error = new Error('API key not configured. Please go to Settings to configure your API key.');
+            error.isAuthError = true;
+            throw error;
         }
         
         const defaultOptions = {
@@ -165,13 +180,29 @@ const API = {
             const response = await fetch(url, finalOptions);
             
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || `HTTP ${response.status}`);
+                if (response.status === 401 || response.status === 403) {
+                    const error = new Error('Invalid API key. Please check your API key in Settings.');
+                    error.isAuthError = true;
+                    throw error;
+                }
+                
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.detail || `HTTP ${response.status}: ${response.statusText}`);
             }
 
             return await response.json();
         } catch (error) {
             console.error('API request failed:', error);
+            
+            // Show user-friendly message for auth errors
+            if (error.isAuthError) {
+                Utils.showToast(error.message, 'error');
+                // Optionally redirect to settings
+                if (confirm(error.message + '\n\nWould you like to go to Settings now?')) {
+                    window.location.href = '/settings';
+                }
+            }
+            
             throw error;
         }
     },
@@ -464,6 +495,93 @@ const ResultsRenderer = {
     }
 };
 
+// API Key Management utilities
+const ApiKeyManager = {
+    /**
+     * Check if API key is configured and valid
+     */
+    isConfigured: function() {
+        return API_CONFIG.hasValidApiKey();
+    },
+
+    /**
+     * Validate API key by making a test request
+     */
+    validate: async function(apiKey = null) {
+        const keyToTest = apiKey || API_CONFIG.getApiKey();
+        
+        if (!keyToTest) {
+            return { valid: false, error: 'No API key provided' };
+        }
+
+        try {
+            const response = await fetch('/api/tools', {
+                headers: {
+                    'Authorization': `Bearer ${keyToTest}`
+                }
+            });
+
+            if (response.ok) {
+                return { valid: true };
+            } else {
+                return { valid: false, error: 'Invalid API key' };
+            }
+        } catch (error) {
+            return { valid: false, error: 'Connection failed: ' + error.message };
+        }
+    },
+
+    /**
+     * Show API key warning if not configured
+     */
+    showWarningIfNeeded: function() {
+        if (!this.isConfigured()) {
+            Utils.showToast(
+                'API key not configured. Go to Settings to configure your API key.',
+                'warning'
+            );
+            return true;
+        }
+        return false;
+    },
+
+    /**
+     * Prompt user to configure API key
+     */
+    promptConfiguration: function() {
+        if (confirm('API key is required to use this feature.\n\nWould you like to configure it now?')) {
+            window.location.href = '/settings';
+        }
+    }
+};
+
+// Page-specific initialization
+const PageInit = {
+    /**
+     * Initialize the dashboard page
+     */
+    dashboard: function() {
+        // Check API key status on dashboard
+        ApiKeyManager.showWarningIfNeeded();
+    },
+
+    /**
+     * Initialize tool pages
+     */
+    tool: function() {
+        // Ensure API key is configured before allowing tool execution
+        if (!ApiKeyManager.isConfigured()) {
+            const executeBtn = document.getElementById('executeBtn');
+            if (executeBtn) {
+                executeBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    ApiKeyManager.promptConfiguration();
+                });
+            }
+        }
+    }
+};
+
 // Initialize tooltips and other Bootstrap components
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize Bootstrap tooltips
@@ -495,3 +613,19 @@ window.Utils = Utils;
 window.API = API;
 window.FormHandler = FormHandler;
 window.ResultsRenderer = ResultsRenderer;
+window.ApiKeyManager = ApiKeyManager;
+window.PageInit = PageInit;
+window.ApiKeyManager = ApiKeyManager;
+window.PageInit = PageInit;
+
+// Initialize page-specific features
+document.addEventListener('DOMContentLoaded', function() {
+    const bodyId = document.body.id;
+    
+    if (bodyId) {
+        const initFunction = PageInit[bodyId];
+        if (typeof initFunction === 'function') {
+            initFunction();
+        }
+    }
+});

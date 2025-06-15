@@ -22,6 +22,10 @@
                     <span class="status-dot success"></span>
                     {{ tools|length }} Active Tools
                 </div>
+                <div class="badge fs-6 hover-lift" id="apiKeyStatus">
+                    <i class="fas fa-key me-1"></i>
+                    <span id="apiKeyStatusText">Checking API Key...</span>
+                </div>
                 <div class="badge bg-info fs-6 hover-lift">
                     <i class="fas fa-clock me-1"></i>
                     Real-time Analysis
@@ -29,6 +33,33 @@
                 <div class="badge bg-primary fs-6 hover-lift">
                     <i class="fas fa-api me-1"></i>
                     REST API Ready
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Start Info -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 bg-gradient" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
+            <div class="card-body p-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h5 class="card-title mb-2">
+                            <i class="fas fa-rocket text-primary me-2"></i>
+                            New to Wildbox Security API?
+                        </h5>
+                        <p class="card-text mb-0 text-muted">
+                            Learn how to build custom security tools, integrate with the API, and extend the platform with our comprehensive developer guide.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                        <a href="/guide" class="btn btn-primary btn-lg hover-lift">
+                            <i class="fas fa-book-open me-2"></i>
+                            Developer Guide
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -53,10 +84,46 @@
                         <i class="fas fa-filter me-1"></i>Filter
                     </button>
                     <ul class="dropdown-menu">
-                        <li><a class="dropdown-item" href="#" onclick="filterTools('all')">All Categories</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="filterTools('network')">Network Tools</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="filterTools('vulnerability')">Vulnerability Scanners</a></li>
-                        <li><a class="dropdown-item" href="#" onclick="filterTools('reconnaissance')">Reconnaissance</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('all')">
+                            <i class="fas fa-list me-2"></i>All Categories
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('api security')">
+                            <i class="fas fa-shield-alt me-2"></i>API Security
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('cryptography')">
+                            <i class="fas fa-lock me-2"></i>Cryptography
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('data_analysis')">
+                            <i class="fas fa-chart-bar me-2"></i>Data Analysis
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('network scanning')">
+                            <i class="fas fa-network-wired me-2"></i>Network Scanning
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('network_reconnaissance')">
+                            <i class="fas fa-search me-2"></i>Network Reconnaissance
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('network_security')">
+                            <i class="fas fa-shield-halved me-2"></i>Network Security
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('osint')">
+                            <i class="fas fa-eye me-2"></i>OSINT
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('reconnaissance')">
+                            <i class="fas fa-binoculars me-2"></i>Reconnaissance
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('security_analysis')">
+                            <i class="fas fa-microscope me-2"></i>Security Analysis
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('vulnerability assessment')">
+                            <i class="fas fa-bug me-2"></i>Vulnerability Assessment
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('web_reconnaissance')">
+                            <i class="fas fa-globe me-2"></i>Web Reconnaissance
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('web_security')">
+                            <i class="fas fa-globe-americas me-2"></i>Web Security
+                        </a></li>
                     </ul>
                 </div>
             </div>
@@ -108,12 +175,9 @@
                     <i class="fas fa-rocket me-2"></i>Launch Tool
                 </a>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-outline-secondary btn-sm flex-fill" onclick="viewToolInfo('{{ tool.name }}')">
-                        <i class="fas fa-info-circle me-1"></i>Info
-                    </button>
-                    <button class="btn btn-outline-primary btn-sm flex-fill" onclick="quickTest('{{ tool.name }}')">
-                        <i class="fas fa-flask me-1"></i>Test
-                    </button>
+                    <a href="/docs#/{{ tool.name }}" class="btn btn-outline-primary btn-sm flex-fill" target="_blank">
+                        <i class="fas fa-code me-1"></i>API
+                    </a>
                 </div>
             </div>
         </div>
@@ -306,7 +370,41 @@ document.addEventListener('DOMContentLoaded', function() {
         card.style.animationDelay = `${index * 0.1}s`;
         card.classList.add('animate-in');
     });
+    
+    // Initialize dashboard
+    PageInit.dashboard();
+    
+    // Check API key status and update badge
+    checkApiKeyStatusForDashboard();
 });
+
+async function checkApiKeyStatusForDashboard() {
+    const statusBadge = document.getElementById('apiKeyStatus');
+    const statusText = document.getElementById('apiKeyStatusText');
+    
+    if (!ApiKeyManager.isConfigured()) {
+        statusBadge.className = 'badge bg-warning fs-6 hover-lift';
+        statusText.textContent = 'API Key Required';
+        statusBadge.style.cursor = 'pointer';
+        statusBadge.addEventListener('click', () => {
+            window.location.href = '/settings';
+        });
+        return;
+    }
+    
+    const validation = await ApiKeyManager.validate();
+    if (validation.valid) {
+        statusBadge.className = 'badge bg-success fs-6 hover-lift';
+        statusText.textContent = 'API Key Valid';
+    } else {
+        statusBadge.className = 'badge bg-danger fs-6 hover-lift';
+        statusText.textContent = 'API Key Invalid';
+        statusBadge.style.cursor = 'pointer';
+        statusBadge.addEventListener('click', () => {
+            window.location.href = '/settings';
+        });
+    }
+}
 </script>
 
 {% endblock %}

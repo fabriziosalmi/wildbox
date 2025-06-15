@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - {{ title }}{% endblock %}
+
+{% block content %}
+<!-- Settings Header -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <a href="/" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i>Back to Dashboard
+            </a>
+            <div>
+                <h1 class="h2 mb-1">
+                    <i class="fas fa-cog me-2 text-primary"></i>
+                    Settings
+                </h1>
+                <p class="text-muted mb-0">Configure your API access and preferences</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Settings Cards -->
+<div class="row g-4">
+    <!-- API Configuration -->
+    <div class="col-lg-8 col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0 d-flex align-items-center">
+                    <i class="fas fa-key me-2"></i>
+                    API Configuration
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info d-flex align-items-start gap-3">
+                    <i class="fas fa-info-circle fs-5"></i>
+                    <div>
+                        <strong>API Key Required:</strong>
+                        <p class="mb-0">To use the web interface tools, you need to provide a valid API key. This key will be stored securely in your browser's session storage.</p>
+                    </div>
+                </div>
+
+                <form id="apiKeyForm" class="needs-validation" novalidate>
+                    <div class="mb-4">
+                        <label for="apiKey" class="form-label fw-semibold">
+                            <i class="fas fa-key me-1"></i>API Key
+                        </label>
+                        <div class="input-group">
+                            <input 
+                                type="password" 
+                                class="form-control form-control-lg" 
+                                id="apiKey" 
+                                placeholder="Enter your API key"
+                                required
+                            >
+                            <button class="btn btn-outline-secondary" type="button" id="toggleApiKey">
+                                <i class="fas fa-eye" id="toggleIcon"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            <i class="fas fa-shield-alt me-1"></i>
+                            Your API key is stored locally and never sent to external servers.
+                        </div>
+                        <div class="invalid-feedback">
+                            Please provide a valid API key.
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-2 align-items-center">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-save me-2"></i>Save API Key
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="clearApiKey">
+                            <i class="fas fa-trash me-2"></i>Clear Key
+                        </button>
+                        <button type="button" class="btn btn-outline-info" id="testApiKey">
+                            <i class="fas fa-check-circle me-2"></i>Test Connection
+                        </button>
+                    </div>
+                </form>
+
+                <!-- API Key Status -->
+                <div class="mt-4 p-3 rounded" id="apiKeyStatus">
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status" id="statusSpinner" style="display: none;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <span id="statusText" class="fw-semibold">Checking API key status...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Settings -->
+    <div class="col-lg-4 col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h6 class="mb-0 d-flex align-items-center">
+                    <i class="fas fa-sliders-h me-2"></i>
+                    Quick Settings
+                </h6>
+            </div>
+            <div class="card-body">
+                <!-- Theme Toggle -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <label class="form-label mb-1">Dark Mode</label>
+                        <div class="form-text small">Toggle dark/light theme</div>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="darkModeToggle">
+                    </div>
+                </div>
+
+                <!-- Auto-save Results -->
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <div>
+                        <label class="form-label mb-1">Auto-save Results</label>
+                        <div class="form-text small">Automatically save tool results</div>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="autoSaveToggle" checked>
+                    </div>
+                </div>
+
+                <!-- Show Advanced Options -->
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <label class="form-label mb-1">Advanced Options</label>
+                        <div class="form-text small">Show advanced tool options</div>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="advancedToggle">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Information -->
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h6 class="mb-0 d-flex align-items-center">
+                    <i class="fas fa-info-circle me-2"></i>
+                    API Information
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 text-center">
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <div class="h6 mb-1 text-primary" id="availableTools">-</div>
+                            <div class="small text-muted">Tools Available</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <div class="h6 mb-1 text-success" id="apiStatus">Unknown</div>
+                            <div class="small text-muted">API Status</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-3">
+                
+                <div class="small">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>Base URL:</span>
+                        <span class="text-muted" id="baseUrl">-</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Version:</span>
+                        <span class="text-muted">v1</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help Section -->
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="card border-0 bg-light">
+            <div class="card-body">
+                <h6 class="mb-3">
+                    <i class="fas fa-question-circle me-2"></i>
+                    Need Help?
+                </h6>
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="fas fa-book text-primary mt-1"></i>
+                            <div>
+                                <strong>Documentation</strong>
+                                <p class="small text-muted mb-0">Check the <a href="/docs" target="_blank">API documentation</a> for detailed usage instructions.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="fas fa-key text-primary mt-1"></i>
+                            <div>
+                                <strong>API Key</strong>
+                                <p class="small text-muted mb-0">Contact your administrator if you don't have an API key.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="d-flex align-items-start gap-2">
+                            <i class="fas fa-shield-alt text-primary mt-1"></i>
+                            <div>
+                                <strong>Security</strong>
+                                <p class="small text-muted mb-0">All communications are encrypted and your API key is stored securely.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize settings page
+    initializeSettings();
+    
+    // Load current API key status
+    checkApiKeyStatus();
+    
+    // Load system information
+    loadSystemInfo();
+});
+
+function initializeSettings() {
+    const apiKeyInput = document.getElementById('apiKey');
+    const toggleBtn = document.getElementById('toggleApiKey');
+    const toggleIcon = document.getElementById('toggleIcon');
+    const form = document.getElementById('apiKeyForm');
+    const clearBtn = document.getElementById('clearApiKey');
+    const testBtn = document.getElementById('testApiKey');
+    
+    // Load current API key
+    const currentKey = sessionStorage.getItem('api_key') || window.API_KEY || '';
+    if (currentKey) {
+        apiKeyInput.value = currentKey;
+    }
+    
+    // Toggle password visibility
+    toggleBtn.addEventListener('click', function() {
+        const type = apiKeyInput.type === 'password' ? 'text' : 'password';
+        apiKeyInput.type = type;
+        toggleIcon.className = type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+    });
+    
+    // Form submission
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        saveApiKey();
+    });
+    
+    // Clear API key
+    clearBtn.addEventListener('click', function() {
+        if (confirm('Are you sure you want to clear the API key?')) {
+            clearApiKey();
+        }
+    });
+    
+    // Test API key
+    testBtn.addEventListener('click', function() {
+        testApiConnection();
+    });
+    
+    // Load preferences
+    loadPreferences();
+    
+    // Setup preference toggles
+    setupPreferenceToggles();
+}
+
+function saveApiKey() {
+    const apiKeyInput = document.getElementById('apiKey');
+    const apiKey = apiKeyInput.value.trim();
+    
+    if (!apiKey) {
+        Utils.showToast('Please enter an API key', 'error');
+        return;
+    }
+    
+    // Store in session storage
+    sessionStorage.setItem('api_key', apiKey);
+    
+    // Update global API config
+    window.API_KEY = apiKey;
+    
+    Utils.showToast('API key saved successfully', 'success');
+    
+    // Check the new key
+    checkApiKeyStatus();
+}
+
+function clearApiKey() {
+    document.getElementById('apiKey').value = '';
+    sessionStorage.removeItem('api_key');
+    window.API_KEY = '';
+    
+    updateApiKeyStatus('No API key configured', 'warning');
+    Utils.showToast('API key cleared', 'info');
+}
+
+async function testApiConnection() {
+    const apiKey = document.getElementById('apiKey').value.trim() || sessionStorage.getItem('api_key');
+    
+    if (!apiKey) {
+        Utils.showToast('Please enter an API key first', 'error');
+        return;
+    }
+    
+    const testBtn = document.getElementById('testApiKey');
+    const originalText = testBtn.innerHTML;
+    testBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Testing...';
+    testBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/tools', {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            }
+        });
+        
+        if (response.ok) {
+            Utils.showToast('API connection successful!', 'success');
+            updateApiKeyStatus('Valid API key', 'success');
+        } else {
+            Utils.showToast('API key is invalid', 'error');
+            updateApiKeyStatus('Invalid API key', 'danger');
+        }
+    } catch (error) {
+        Utils.showToast('Connection failed: ' + error.message, 'error');
+        updateApiKeyStatus('Connection error', 'danger');
+    } finally {
+        testBtn.innerHTML = originalText;
+        testBtn.disabled = false;
+    }
+}
+
+async function checkApiKeyStatus() {
+    const statusSpinner = document.getElementById('statusSpinner');
+    statusSpinner.style.display = 'inline-block';
+    
+    const apiKey = sessionStorage.getItem('api_key') || window.API_KEY;
+    
+    if (!apiKey) {
+        updateApiKeyStatus('No API key configured', 'warning');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/tools', {
+            headers: {
+                'Authorization': `Bearer ${apiKey}`
+            }
+        });
+        
+        if (response.ok) {
+            updateApiKeyStatus('Valid API key - Ready to use', 'success');
+        } else {
+            updateApiKeyStatus('Invalid API key', 'danger');
+        }
+    } catch (error) {
+        updateApiKeyStatus('Connection error', 'warning');
+    } finally {
+        statusSpinner.style.display = 'none';
+    }
+}
+
+function updateApiKeyStatus(message, type) {
+    const statusElement = document.getElementById('apiKeyStatus');
+    const statusText = document.getElementById('statusText');
+    
+    statusElement.className = `mt-4 p-3 rounded alert alert-${type}`;
+    statusText.textContent = message;
+    
+    // Update API status in info panel
+    const apiStatus = document.getElementById('apiStatus');
+    apiStatus.textContent = type === 'success' ? 'Connected' : 'Error';
+    apiStatus.className = `h6 mb-1 text-${type === 'success' ? 'success' : 'danger'}`;
+}
+
+async function loadSystemInfo() {
+    try {
+        // Update base URL
+        document.getElementById('baseUrl').textContent = window.location.origin;
+        
+        // Try to load tools info
+        const apiKey = sessionStorage.getItem('api_key') || window.API_KEY;
+        if (apiKey) {
+            const response = await fetch('/api/tools', {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById('availableTools').textContent = data.tools ? data.tools.length : '-';
+            }
+        }
+    } catch (error) {
+        console.error('Failed to load system info:', error);
+    }
+}
+
+function loadPreferences() {
+    // Load dark mode preference
+    const darkMode = localStorage.getItem('darkMode') === 'true';
+    document.getElementById('darkModeToggle').checked = darkMode;
+    
+    // Load auto-save preference
+    const autoSave = localStorage.getItem('autoSave') !== 'false';
+    document.getElementById('autoSaveToggle').checked = autoSave;
+    
+    // Load advanced options preference
+    const advanced = localStorage.getItem('showAdvanced') === 'true';
+    document.getElementById('advancedToggle').checked = advanced;
+}
+
+function setupPreferenceToggles() {
+    // Dark mode toggle
+    document.getElementById('darkModeToggle').addEventListener('change', function() {
+        localStorage.setItem('darkMode', this.checked);
+        // You can implement actual dark mode toggle here
+        Utils.showToast(this.checked ? 'Dark mode enabled' : 'Light mode enabled', 'info');
+    });
+    
+    // Auto-save toggle
+    document.getElementById('autoSaveToggle').addEventListener('change', function() {
+        localStorage.setItem('autoSave', this.checked);
+        Utils.showToast(this.checked ? 'Auto-save enabled' : 'Auto-save disabled', 'info');
+    });
+    
+    // Advanced options toggle
+    document.getElementById('advancedToggle').addEventListener('change', function() {
+        localStorage.setItem('showAdvanced', this.checked);
+        Utils.showToast(this.checked ? 'Advanced options enabled' : 'Advanced options disabled', 'info');
+    });
+}
+</script>
+{% endblock %}
