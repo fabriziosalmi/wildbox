@@ -173,7 +173,7 @@
                                 <i class="fas fa-layer-group text-warning"></i>
                                 <div>
                                     <div class="small text-muted">Category</div>
-                                    <div class="fw-medium">{{ tool_info.category or "General" }}</div>
+                                    <div class="fw-medium" data-category-raw="{{ tool_info.category or 'general' }}">{{ tool_info.category or "General" }}</div>
                                 </div>
                             </div>
                         </div>
@@ -304,6 +304,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize tool page with API key check
     PageInit.tool();
+    
+    // Update category labels with proper formatting
+    updateCategoryLabels();
 });
 
 function generateModernForm() {
@@ -765,6 +768,17 @@ function shareResults() {
     } else {
         copyToClipboard(window.location.href);
     }
+}
+
+function updateCategoryLabels() {
+    // Update all category labels with proper formatting
+    const categoryElements = document.querySelectorAll('[data-category-raw]');
+    categoryElements.forEach(element => {
+        const rawCategory = element.getAttribute('data-category-raw');
+        if (rawCategory && window.getCategoryLabel) {
+            element.textContent = window.getCategoryLabel(rawCategory);
+        }
+    });
 }
 
 // Placeholder functions for future features

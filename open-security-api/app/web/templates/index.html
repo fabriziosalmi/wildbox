@@ -131,49 +131,78 @@
     {% for tool in tools %}
     <div class="tool-card h-100 hover-lift" data-category="{{ tool.category|lower }}">
         <div class="card-header">
-            <div class="d-flex align-items-center justify-content-between">
-                <h5 class="mb-0 d-flex align-items-center gap-2">
-                    <i class="fas fa-{{ 'network-wired' if tool.category == 'network' else 'bug' if tool.category == 'vulnerability' else 'search' if tool.category == 'reconnaissance' else 'tools' }}"></i>
-                    {{ tool.display_name }}
-                </h5>
-                <span class="badge bg-success text-uppercase small">v{{ tool.version }}</span>
+            <div class="d-flex align-items-start justify-content-between mb-3">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="tool-icon">
+                        <i class="fas fa-{{ 'network-wired' if tool.category == 'network' else 'bug' if tool.category == 'vulnerability' else 'search' if tool.category == 'reconnaissance' else 'shield-alt' if 'security' in tool.category else 'globe' if 'web' in tool.category else 'key' if 'crypto' in tool.category else 'eye' if 'osint' in tool.category else 'tools' }}"></i>
+                    </div>
+                    <div>
+                        <h5 class="mb-1 fw-bold">{{ tool.display_name }}</h5>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge category-badge small" data-category-raw="{{ tool.category }}">{{ tool.category|title }}</span>
+                            <span class="badge bg-success small">v{{ tool.version }}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="tool-status">
+                    <span class="status-dot success" title="Ready"></span>
+                </div>
             </div>
         </div>
+        
         <div class="card-body d-flex flex-column">
-            <p class="card-text flex-grow-1">{{ tool.description }}</p>
+            <!-- Description -->
+            <p class="card-text text-muted mb-4">{{ tool.description }}</p>
             
-            <!-- Tool Metadata -->
-            <div class="row g-2 mb-4 text-muted small">
-                <div class="col-6">
-                    <div class="d-flex align-items-center gap-1">
-                        <i class="fas fa-tag text-primary"></i>
-                        <span>{{ tool.category|title }}</span>
+            <!-- Enhanced Tool Metadata -->
+            <div class="tool-metadata mb-4">
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="metadata-item">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="fas fa-user text-primary"></i>
+                                    <span class="text-muted small">Author</span>
+                                </div>
+                                <span class="fw-medium">{{ tool.author }}</span>
+                            </div>
+                        </div>
                     </div>
-                </div>
-                <div class="col-6">
-                    <div class="d-flex align-items-center gap-1">
-                        <i class="fas fa-user text-primary"></i>
-                        <span>{{ tool.author }}</span>
-                    </div>
-                </div>
-                <div class="col-12">
-                    <div class="d-flex align-items-center gap-1">
-                        <i class="fas fa-clock text-primary"></i>
-                        <span>Ready for execution</span>
-                        <span class="status-dot success ms-auto"></span>
+                    <div class="col-12">
+                        <div class="metadata-item">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center gap-2">
+                                    <i class="fas fa-clock text-success"></i>
+                                    <span class="text-muted small">Status</span>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="text-success fw-medium">Ready</span>
+                                    <span class="status-dot success"></span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
             
             <!-- Action Buttons -->
-            <div class="d-grid gap-2">
-                <a href="{{ tool.url }}" class="btn btn-primary">
-                    <i class="fas fa-rocket me-2"></i>Launch Tool
-                </a>
-                <div class="d-flex gap-2">
-                    <a href="/docs#/{{ tool.name }}" class="btn btn-outline-primary btn-sm flex-fill" target="_blank">
-                        <i class="fas fa-code me-1"></i>API
+            <div class="mt-auto">
+                <div class="d-grid gap-2">
+                    <a href="{{ tool.url }}" class="btn btn-primary btn-lg">
+                        <i class="fas fa-rocket me-2"></i>Launch Tool
                     </a>
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <a href="/docs#/{{ tool.name }}" class="btn btn-outline-primary btn-sm w-100" target="_blank">
+                                <i class="fas fa-code me-1"></i>API Docs
+                            </a>
+                        </div>
+                        <div class="col-6">
+                            <button class="btn btn-outline-secondary btn-sm w-100" onclick="showToolInfo('{{ tool.name }}')">
+                                <i class="fas fa-info-circle me-1"></i>Details
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -372,6 +401,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Check API key status and update badge
     checkApiKeyStatusForDashboard();
+    
+    // Update category labels with proper formatting
+    updateCategoryLabels();
 });
 
 async function checkApiKeyStatusForDashboard() {
@@ -400,6 +432,17 @@ async function checkApiKeyStatusForDashboard() {
             window.location.href = '/settings';
         });
     }
+}
+
+function updateCategoryLabels() {
+    // Update all category badges with proper labels
+    const categoryBadges = document.querySelectorAll('.category-badge[data-category-raw]');
+    categoryBadges.forEach(badge => {
+        const rawCategory = badge.getAttribute('data-category-raw');
+        if (rawCategory && window.getCategoryLabel) {
+            badge.textContent = window.getCategoryLabel(rawCategory);
+        }
+    });
 }
 </script>
 

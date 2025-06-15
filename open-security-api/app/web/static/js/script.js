@@ -629,3 +629,147 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 });
+
+// Tool information modal functionality
+function showToolInfo(toolName) {
+    API.getToolInfo(toolName)
+        .then(toolInfo => {
+            const modalHtml = `
+                <div class="modal fade" id="toolInfoModal" tabindex="-1" aria-labelledby="toolInfoModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-lg">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="toolInfoModalLabel">
+                                    <i class="fas fa-info-circle me-2"></i>${toolInfo.display_name || toolInfo.name}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6><i class="fas fa-tag me-2"></i>Basic Information</h6>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Name:</strong> ${toolInfo.name}</li>
+                                            <li><strong>Version:</strong> ${toolInfo.version}</li>
+                                            <li><strong>Author:</strong> ${toolInfo.author}</li>
+                                            <li><strong>Category:</strong> ${toolInfo.category}</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6><i class="fas fa-cog me-2"></i>Technical Details</h6>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Endpoint:</strong> <code>${toolInfo.endpoint}</code></li>
+                                            <li><strong>Status:</strong> <span class="badge bg-success">Active</span></li>
+                                        </ul>
+                                    </div>
+                                </div>
+                                <hr>
+                                <h6><i class="fas fa-file-alt me-2"></i>Description</h6>
+                                <p>${toolInfo.description}</p>
+                                ${toolInfo.tags && toolInfo.tags.length > 0 ? `
+                                <h6><i class="fas fa-tags me-2"></i>Tags</h6>
+                                <div class="mb-3">
+                                    ${toolInfo.tags.map(tag => `<span class="badge bg-secondary me-1">${tag}</span>`).join('')}
+                                </div>
+                                ` : ''}
+                            </div>
+                            <div class="modal-footer">
+                                <a href="${toolInfo.endpoint.replace('/api', '')}" class="btn btn-primary">
+                                    <i class="fas fa-rocket me-2"></i>Launch Tool
+                                </a>
+                                <a href="/docs#/${toolInfo.name}" class="btn btn-outline-primary" target="_blank">
+                                    <i class="fas fa-code me-2"></i>View API Docs
+                                </a>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Remove existing modal if any
+            const existingModal = document.getElementById('toolInfoModal');
+            if (existingModal) {
+                existingModal.remove();
+            }
+            
+            // Add modal to body
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('toolInfoModal'));
+            modal.show();
+            
+            // Clean up modal after hiding
+            document.getElementById('toolInfoModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        })
+        .catch(error => {
+            Utils.showToast(`Failed to load tool information: ${error.message}`, 'error');
+        });
+}
+
+// Filter tools functionality
+function filterTools(category) {
+    const toolCards = document.querySelectorAll('.tool-card');
+    
+    toolCards.forEach(card => {
+        if (category === 'all' || card.dataset.category.includes(category.toLowerCase())) {
+            card.style.display = 'block';
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    
+    Utils.showToast(
+        category === 'all' ? 'Showing all tools' : `Filtered by: ${category}`,
+        'info'
+    );
+}
+
+// Refresh tools functionality
+function refreshTools() {
+    Utils.showToast('Refreshing tools...', 'info');
+    setTimeout(() => {
+        window.location.reload();
+    }, 1000);
+}
+
+// Category mapping function for proper display labels
+function getCategoryLabel(category) {
+    const categoryMap = {
+        'api_security': 'API Security',
+        'api security': 'API Security',
+        'cryptography': 'Cryptography',
+        'data_analysis': 'Data Analysis',
+        'network_scanning': 'Network Scanning',
+        'network scanning': 'Network Scanning',
+        'network_reconnaissance': 'Network Reconnaissance',
+        'network reconnaissance': 'Network Reconnaissance',
+        'network_security': 'Network Security',
+        'network security': 'Network Security',
+        'osint': 'OSINT',
+        'reconnaissance': 'Reconnaissance',
+        'security_analysis': 'Security Analysis',
+        'security analysis': 'Security Analysis',
+        'vulnerability_assessment': 'Vulnerability Assessment',
+        'vulnerability assessment': 'Vulnerability Assessment',
+        'web_reconnaissance': 'Web Reconnaissance',
+        'web reconnaissance': 'Web Reconnaissance',
+        'web_security': 'Web Security',
+        'web security': 'Web Security',
+        'general': 'General',
+        'network': 'Network',
+        'vulnerability': 'Vulnerability',
+        'web': 'Web Security',
+        'forensics': 'Forensics'
+    };
+    
+    // Return mapped label or format the category nicely if not found
+    return categoryMap[category.toLowerCase()] || 
+           category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// Make it available globally
+window.getCategoryLabel = getCategoryLabel;
