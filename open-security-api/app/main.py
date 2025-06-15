@@ -300,6 +300,19 @@ def create_app() -> FastAPI:
     global startup_time
     startup_time = time.time()
     
+    # Health check endpoint
+    @app.get("/health")
+    async def health_check():
+        """Health check endpoint for Docker and monitoring."""
+        uptime = time.time() - startup_time
+        return {
+            "status": "healthy",
+            "uptime_seconds": round(uptime, 2),
+            "version": "1.0.0",
+            "tools_loaded": len(discovered_tools),
+            "timestamp": time.time()
+        }
+    
     # Root redirect
     @app.get("/api")
     async def api_root():

@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  # Development version with hot reload
+  wildbox-api-dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: wildbox-security-api-dev
+    ports:
+      - "8000:8000"
+    environment:
+      - API_KEY=${API_KEY:-dev-api-key-change-this}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - .:/app  # Mount entire directory for development
+      - /app/__pycache__  # Exclude pycache
+    restart: unless-stopped
+    networks:
+      - wildbox-network
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Redis for development
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-dev-data:/data
+    restart: unless-stopped
+    networks:
+      - wildbox-network
+    command: redis-server --appendonly yes
+
+volumes:
+  redis-dev-data:
+    driver: local
+
+networks:
+  wildbox-network:
+    driver: bridge

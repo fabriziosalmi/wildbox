@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # Main application
+  wildbox-api:
+    build: .
+    container_name: wildbox-security-api
+    ports:
+      - "8000:8000"
+    environment:
+      - API_KEY=${API_KEY:-your-secure-api-key-here-change-this}
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - ./logs:/app/logs
+      - ./app:/app/app:ro  # Mount app directory as read-only
+    restart: unless-stopped
+    networks:
+      - wildbox-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for caching and rate limiting
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - wildbox-network
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: wildbox-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # For SSL certificates
+    depends_on:
+      - wildbox-api
+    restart: unless-stopped
+    networks:
+      - wildbox-network
+    profiles:
+      - production  # Only start with --profile production
+
+volumes:
+  redis-data:
+    driver: local
+
+networks:
+  wildbox-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
