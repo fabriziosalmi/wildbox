@@ -1,11 +1,9 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Developer Guide - Wildbox Security API</title>
-    <link rel="stylesheet" href="/static/css/styles.css">
-    <style>
+{% extends "base.html" %}
+
+{% block title %}Developer Guide - Wildbox Security API{% endblock %}
+
+{% block content %}
+<style>
         .guide-content {
             max-width: 1200px;
             margin: 0 auto;
@@ -60,7 +58,20 @@
             margin: 1rem 0;
             font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
             font-size: 0.9rem;
-            line-height: 1.4;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            background: none;
+            border: none;
+            font-size: inherit;
+            line-height: inherit;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
         
         .file-structure {
@@ -136,8 +147,6 @@
         }
         
         .toc {
-            background: #f8f9fa;
-            border-radius: 8px;
             padding: 1.5rem;
             margin-bottom: 2rem;
         }
@@ -168,24 +177,9 @@
             background-color: var(--primary-color);
             color: white;
         }
-    </style>
-</head>
-<body>
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <span class="brand-icon">🛡️</span>
-                <span class="brand-text">Wildbox Security API</span>
-            </div>
-            <div class="nav-links">
-                <a href="/" class="nav-link">Dashboard</a>
-                <a href="/guide" class="nav-link active">Developer Guide</a>
-                <a href="/settings" class="nav-link">Settings</a>
-            </div>
-        </div>
-    </nav>
+</style>
 
-    <div class="guide-content">
+<div class="guide-content">
         <h1>🛠️ Developer Guide</h1>
         <p class="subtitle">Complete guide to building and integrating security tools with the Wildbox Security API platform</p>
 
@@ -194,6 +188,7 @@
             <ul>
                 <li><a href="#overview">Platform Overview</a></li>
                 <li><a href="#architecture">Architecture</a></li>
+                <li><a href="#authentication">API Authentication</a></li>
                 <li><a href="#building-tools">Building Security Tools</a></li>
                 <li><a href="#file-structure">File Structure Requirements</a></li>
                 <li><a href="#schemas">Schema Definitions</a></li>
@@ -246,6 +241,117 @@ app/
             </ol>
         </div>
 
+        <div class="guide-section" id="authentication">
+            <h2>🔐 API Authentication</h2>
+            <p>The Wildbox Security API uses API key authentication to secure all endpoints. You must include a valid API key in all requests.</p>
+
+            <h3>API Key Configuration</h3>
+            <p>The current API key is configured in the <code>.env</code> file:</p>
+            <div class="code-block"><pre>API_KEY="wildbox-security-api-key-2025"</pre></div>
+
+            <h3>Authentication Methods</h3>
+            <p>You can authenticate requests using either of these methods:</p>
+
+            <h4>Method 1: Authorization Header (Recommended)</h4>
+            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/port_scanner" \
+     -H "Authorization: Bearer wildbox-security-api-key-2025" \
+     -H "Content-Type: application/json" \
+     -d '{"target": "example.com", "ports": "80,443"}'</pre></div>
+
+            <h4>Method 2: X-API-Key Header</h4>
+            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/port_scanner" \
+     -H "X-API-Key: wildbox-security-api-key-2025" \
+     -H "Content-Type: application/json" \
+     -d '{"target": "example.com", "ports": "80,443"}'</pre></div>
+
+            <h3>Python Client Example</h3>
+            <div class="code-block"><pre>import requests
+import json
+
+# Configure API settings
+API_BASE_URL = "http://localhost:8000"
+API_KEY = "wildbox-security-api-key-2025"
+
+# Set up headers
+headers = {
+    "Authorization": f"Bearer {API_KEY}",
+    "Content-Type": "application/json"
+}
+
+# Example: Execute a tool
+def execute_tool(tool_name: str, payload: dict):
+    url = f"{API_BASE_URL}/api/tools/{tool_name}"
+    
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"API request failed: {e}")
+        return None
+
+# Usage example
+result = execute_tool("subdomain_scanner", {
+    "domain": "example.com",
+    "timeout": 30
+})
+
+if result:
+    print(json.dumps(result, indent=2))</pre></div>
+
+            <h3>JavaScript/Node.js Client Example</h3>
+            <div class="code-block"><pre>const axios = require('axios');
+
+const API_BASE_URL = 'http://localhost:8000';
+const API_KEY = 'wildbox-security-api-key-2025';
+
+// Configure axios instance
+const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Authorization': `Bearer ${API_KEY}`,
+    'Content-Type': 'application/json'
+  }
+});
+
+// Execute a tool
+async function executeTool(toolName, payload) {
+  try {
+    const response = await apiClient.post(`/api/tools/${toolName}`, payload);
+    return response.data;
+  } catch (error) {
+    console.error('API request failed:', error.response?.data || error.message);
+    return null;
+  }
+}
+
+// Usage example
+executeTool('whois_lookup', { domain: 'example.com' })
+  .then(result => {
+    if (result) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+  });</pre></div>
+
+            <div class="info">
+                <strong>Security Note:</strong> Never hardcode API keys in production code. Use environment variables or secure configuration management.
+            </div>
+
+            <h3>Error Responses</h3>
+            <p>Authentication failures return specific HTTP status codes:</p>
+            <div class="code-block"><pre># Missing API key
+HTTP 401 Unauthorized
+{
+  "detail": "Missing API key"
+}
+
+# Invalid API key
+HTTP 403 Forbidden
+{
+  "detail": "Invalid API key"
+}</pre></div>
+        </div>
+
         <div class="guide-section" id="building-tools">
             <h2>🔧 Building Security Tools</h2>
             <p>Creating a new security tool involves three main steps:</p>
@@ -295,8 +401,7 @@ class YourToolResponse(BaseModel):
 
             <h3>3. main.py</h3>
             <p>Contains the tool's implementation and metadata:</p>
-            <div class="code-block">
-import logging
+            <div class="code-block"><pre>import logging
 from datetime import datetime
 from schemas import YourToolRequest, YourToolResponse
 
@@ -330,8 +435,7 @@ async def execute_tool(request: YourToolRequest) -> YourToolResponse:
             results=[],
             success=False,
             message=f"Analysis failed: {str(e)}"
-        )
-            </div>
+        )</pre></div>
         </div>
 
         <div class="guide-section" id="schemas">
@@ -339,26 +443,21 @@ async def execute_tool(request: YourToolRequest) -> YourToolResponse:
             <p>Schemas define the input and output structure for your tool. The platform supports two naming conventions:</p>
 
             <h3>Option 1: Request/Response Pattern</h3>
-            <div class="code-block">
-class YourToolRequest(BaseModel):
+            <div class="code-block"><pre>class YourToolRequest(BaseModel):
     # Input fields
 
 class YourToolResponse(BaseModel):
-    # Output fields
-            </div>
+    # Output fields</pre></div>
 
             <h3>Option 2: Input/Output Pattern</h3>
-            <div class="code-block">
-class YourToolInput(BaseModel):
+            <div class="code-block"><pre>class YourToolInput(BaseModel):
     # Input fields
 
 class YourToolOutput(BaseModel):
-    # Output fields
-            </div>
+    # Output fields</pre></div>
 
             <h3>Field Types and Validation</h3>
-            <div class="code-block">
-from pydantic import BaseModel, Field, HttpUrl, EmailStr
+            <div class="code-block"><pre>from pydantic import BaseModel, Field, HttpUrl, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -382,8 +481,7 @@ class ExampleRequest(BaseModel):
     verbose: bool = Field(default=False, description="Enable verbose output")
     
     # Nested object
-    config: Optional[Dict[str, Any]] = Field(default={}, description="Additional configuration")
-            </div>
+    config: Optional[Dict[str, Any]] = Field(default={}, description="Additional configuration")</pre></div>
 
             <div class="info">
                 <strong>Best Practice:</strong> Always include clear descriptions for all fields to improve API documentation.
@@ -402,16 +500,14 @@ class ExampleRequest(BaseModel):
             </ul>
 
             <h3>TOOL_INFO Metadata</h3>
-            <div class="code-block">
-TOOL_INFO = {
+            <div class="code-block"><pre>TOOL_INFO = {
     "name": "Human-readable tool name",
     "description": "What does this tool do? (1-2 sentences)",
     "version": "1.0.0",  # Semantic versioning
     "author": "Your Name or Team",
     "category": "Tool category for organization",
     "tags": ["relevant", "keywords", "for", "searching"]
-}
-            </div>
+}</pre></div>
 
             <h3>Execute Function Pattern</h3>
             <div class="code-block">
@@ -528,23 +624,23 @@ async def perform_security_analysis(request):
             </ul>
 
             <h3>3. Via curl Command</h3>
-            <div class="code-block">
-curl -X POST "http://localhost:8000/api/tools/your_tool_name" \
-     -H "Authorization: Bearer your-api-key" \
+            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/your_tool_name" \
+     -H "X-API-Key: wildbox-security-api-key-2025" \
      -H "Content-Type: application/json" \
      -d '{
        "target": "example.com",
        "options": ["basic", "detailed"]
-     }'
+     }'</pre></div>
+
+            <div class="info">
+                <strong>Note:</strong> You can also use the Authorization header: <code>-H "Authorization: Bearer wildbox-security-api-key-2025"</code>
             </div>
 
             <h3>4. Checking Logs</h3>
             <p>Monitor the server logs for any errors or warnings:</p>
-            <div class="code-block">
-# Look for these log messages:
+            <div class="code-block"><pre># Look for these log messages:
 ✅ "Successfully loaded tool: your_tool_name"
-❌ "Failed to load tool your_tool_name: error_message"
-            </div>
+❌ "Failed to load tool your_tool_name: error_message"</pre></div>
         </div>
 
         <div class="guide-section" id="best-practices">
@@ -588,8 +684,7 @@ curl -X POST "http://localhost:8000/api/tools/your_tool_name" \
             <p>Study these existing tools to understand the patterns:</p>
 
             <h3>Simple Tool: Base64 Encoder/Decoder</h3>
-            <div class="code-block">
-# Location: app/tools/base64_tool/
+            <div class="code-block"><pre># Location: app/tools/base64_tool/
 
 # schemas.py
 class Base64ToolRequest(BaseModel):
@@ -611,12 +706,10 @@ async def execute_tool(request: Base64ToolRequest) -> Base64ToolResponse:
     else:
         result = base64.b64decode(request.text).decode()
     
-    return Base64ToolResponse(...)
-            </div>
+    return Base64ToolResponse(...)</pre></div>
 
             <h3>Network Tool: Port Scanner</h3>
-            <div class="code-block">
-# Location: app/tools/port_scanner/
+            <div class="code-block"><pre># Location: app/tools/port_scanner/
 
 # schemas.py with complex validation
 class PortScannerRequest(BaseModel):
@@ -634,12 +727,10 @@ async def scan_port(ip: str, port: int, timeout: int) -> bool:
         writer.close()
         return True
     except:
-        return False
-            </div>
+        return False</pre></div>
 
             <h3>Web Tool: XSS Scanner</h3>
-            <div class="code-block">
-# Location: app/tools/xss_scanner/
+            <div class="code-block"><pre># Location: app/tools/xss_scanner/
 
 # Complex analysis with external HTTP requests
 async def execute_tool(request: XSScannerRequest) -> XSSScannerResponse:
@@ -657,16 +748,14 @@ async def execute_tool(request: XSScannerRequest) -> XSSScannerResponse:
                         "severity": "high"
                     })
         
-        return XSSScannerResponse(...)
-            </div>
+        return XSSScannerResponse(...)</pre></div>
         </div>
 
         <div class="guide-section">
             <h2>🚀 Quick Start Template</h2>
             <p>Use this template to quickly create a new tool:</p>
 
-            <div class="code-block">
-# 1. Create directory
+            <div class="code-block"><pre># 1. Create directory
 mkdir app/tools/my_new_tool
 
 # 2. Create __init__.py
@@ -729,8 +818,7 @@ async def execute_tool(request: MyNewToolRequest) -> MyNewToolResponse:
         )
 EOF
 
-# 5. Restart the server to see your new tool!
-            </div>
+# 5. Restart the server to see your new tool!</pre></div>
 
             <div class="info">
                 <strong>Next Steps:</strong> After creating your tool, restart the server and check the dashboard. Your tool should appear as a new card and be available via the API at <code>/api/tools/my_new_tool</code>.
@@ -741,8 +829,7 @@ EOF
             <h2>📋 Quick Reference</h2>
             
             <h3>Common Import Patterns</h3>
-            <div class="code-block">
-# Basic imports for most tools
+            <div class="code-block"><pre># Basic imports for most tools
 import asyncio
 import logging
 from datetime import datetime
@@ -755,12 +842,10 @@ import aiohttp
 from schemas import YourToolRequest, YourToolResponse
 
 # For validation
-from pydantic import BaseModel, Field, HttpUrl, EmailStr
-            </div>
+from pydantic import BaseModel, Field, HttpUrl, EmailStr</pre></div>
 
             <h3>Essential TOOL_INFO Categories</h3>
-            <div class="code-block">
-# Popular categories to choose from:
+            <div class="code-block"><pre># Popular categories to choose from:
 "Web Security"       # XSS, SQL injection, CSRF tools
 "Network Security"   # Port scanning, network analysis
 "OSINT"             # Information gathering, social media
@@ -768,12 +853,10 @@ from pydantic import BaseModel, Field, HttpUrl, EmailStr
 "Reconnaissance"    # Domain enumeration, certificate scanning
 "Vulnerability"     # Vulnerability scanners and analyzers
 "Forensics"         # File analysis, metadata extraction
-"General"           # Utilities and multi-purpose tools
-            </div>
+"General"           # Utilities and multi-purpose tools</pre></div>
 
             <h3>Response Status Patterns</h3>
-            <div class="code-block">
-# Success response
+            <div class="code-block"><pre># Success response
 return YourToolResponse(
     target=request.target,
     results=analysis_results,
@@ -791,12 +874,10 @@ return YourToolResponse(
     timestamp=datetime.now().isoformat(),
     success=False,
     message=f"Analysis failed: {str(error)}"
-)
-            </div>
+)</pre></div>
 
             <h3>Async HTTP Request Template</h3>
-            <div class="code-block">
-async def make_http_request(url: str, timeout: int = 10):
+            <div class="code-block"><pre>async def make_http_request(url: str, timeout: int = 10):
     """Template for making HTTP requests."""
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)) as session:
@@ -810,15 +891,12 @@ async def make_http_request(url: str, timeout: int = 10):
     except asyncio.TimeoutError:
         raise Exception(f"Request to {url} timed out after {timeout}s")
     except Exception as e:
-        raise Exception(f"HTTP request failed: {str(e)}")
-            </div>
+        raise Exception(f"HTTP request failed: {str(e)}")</pre></div>
 
             <div class="warning">
                 <strong>Remember:</strong> Always use <code>async/await</code> for I/O operations, handle timeouts appropriately, and provide meaningful error messages to users.
             </div>
         </div>
     </div>
-
-    <script src="/static/js/script.js"></script>
-</body>
-</html>
+</div>
+{% endblock %}
