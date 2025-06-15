@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="text-center py-5">
+            <div class="d-inline-flex align-items-center justify-content-center w-auto p-4 mb-4 rounded-circle" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); width: 80px; height: 80px;">
+                <i class="fas fa-shield-alt fa-2x text-white"></i>
+            </div>
+            <h1 class="display-4 fw-bold mb-3">
+                <span class="gradient-text">Security Tools</span> Dashboard
+            </h1>
+            <p class="lead text-muted mb-4 mx-auto" style="max-width: 600px;">
+                Comprehensive security analysis platform with modern tools for vulnerability assessment, 
+                network scanning, and threat detection.
+            </p>
+            <div class="d-flex justify-content-center align-items-center gap-4 flex-wrap">
+                <div class="badge bg-success fs-6 hover-lift">
+                    <span class="status-dot success"></span>
+                    {{ tools|length }} Active Tools
+                </div>
+                <div class="badge bg-info fs-6 hover-lift">
+                    <i class="fas fa-clock me-1"></i>
+                    Real-time Analysis
+                </div>
+                <div class="badge bg-primary fs-6 hover-lift">
+                    <i class="fas fa-api me-1"></i>
+                    REST API Ready
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if tools %}
+<!-- Tools Grid -->
+<div class="row mb-5">
+    <div class="col-12 mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <h2 class="h4 mb-0">
+                <i class="fas fa-tools me-2 text-primary"></i>
+                Available Security Tools
+            </h2>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" onclick="refreshTools()">
+                    <i class="fas fa-sync-alt me-1"></i>Refresh
+                </button>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown">
+                        <i class="fas fa-filter me-1"></i>Filter
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('all')">All Categories</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('network')">Network Tools</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('vulnerability')">Vulnerability Scanners</a></li>
+                        <li><a class="dropdown-item" href="#" onclick="filterTools('reconnaissance')">Reconnaissance</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="grid-auto-fit" id="toolsGrid">
+    {% for tool in tools %}
+    <div class="tool-card h-100 hover-lift" data-category="{{ tool.category|lower }}">
+        <div class="card-header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h5 class="mb-0 d-flex align-items-center gap-2">
+                    <i class="fas fa-{{ 'network-wired' if tool.category == 'network' else 'bug' if tool.category == 'vulnerability' else 'search' if tool.category == 'reconnaissance' else 'tools' }}"></i>
+                    {{ tool.display_name }}
+                </h5>
+                <span class="badge bg-success text-uppercase small">v{{ tool.version }}</span>
+            </div>
+        </div>
+        <div class="card-body d-flex flex-column">
+            <p class="card-text flex-grow-1">{{ tool.description }}</p>
+            
+            <!-- Tool Metadata -->
+            <div class="row g-2 mb-4 text-muted small">
+                <div class="col-6">
+                    <div class="d-flex align-items-center gap-1">
+                        <i class="fas fa-tag text-primary"></i>
+                        <span>{{ tool.category|title }}</span>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="d-flex align-items-center gap-1">
+                        <i class="fas fa-user text-primary"></i>
+                        <span>{{ tool.author }}</span>
+                    </div>
+                </div>
+                <div class="col-12">
+                    <div class="d-flex align-items-center gap-1">
+                        <i class="fas fa-clock text-primary"></i>
+                        <span>Ready for execution</span>
+                        <span class="status-dot success ms-auto"></span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="d-grid gap-2">
+                <a href="{{ tool.url }}" class="btn btn-primary">
+                    <i class="fas fa-rocket me-2"></i>Launch Tool
+                </a>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-secondary btn-sm flex-fill" onclick="viewToolInfo('{{ tool.name }}')">
+                        <i class="fas fa-info-circle me-1"></i>Info
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm flex-fill" onclick="quickTest('{{ tool.name }}')">
+                        <i class="fas fa-flask me-1"></i>Test
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+</div>
+{% else %}
+<!-- Empty State -->
+<div class="row">
+    <div class="col-12">
+        <div class="text-center py-5">
+            <div class="mb-4">
+                <i class="fas fa-tools fa-4x text-muted opacity-50"></i>
+            </div>
+            <h3 class="text-muted mb-3">No Security Tools Available</h3>
+            <p class="text-muted mb-4 mx-auto" style="max-width: 500px;">
+                No security tools have been discovered in the tools directory. 
+                Get started by adding your first security tool to unlock the power of this platform.
+            </p>
+            <div class="d-flex justify-content-center gap-3 flex-wrap">
+                <button class="btn btn-primary" onclick="refreshTools()">
+                    <i class="fas fa-sync-alt me-2"></i>Refresh Tools
+                </button>
+                <a href="/docs" class="btn btn-outline-primary" target="_blank">
+                    <i class="fas fa-book me-2"></i>View Documentation
+                </a>
+            </div>
+            <div class="mt-4 p-4 bg-light rounded-3 mx-auto" style="max-width: 600px;">
+                <h6 class="text-muted mb-2">
+                    <i class="fas fa-lightbulb me-1"></i>Quick Start Guide
+                </h6>
+                <p class="small text-muted mb-0">
+                    To add a new tool, create a folder in <code>app/tools/</code> with 
+                    <code>main.py</code> and <code>schemas.py</code> files following our API specification.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Enhanced API Information -->
+<div class="row mt-5">
+    <div class="col-12 mb-4">
+        <h2 class="h4 d-flex align-items-center gap-2">
+            <i class="fas fa-api text-primary"></i>
+            API Reference
+        </h2>
+        <p class="text-muted">Complete API documentation and integration guides</p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-md-4">
+        <div class="card h-100 hover-lift">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-link fa-2x text-primary"></i>
+                </div>
+                <h6 class="card-title">REST Endpoints</h6>
+                <div class="small text-muted mb-3">
+                    <div class="mb-1"><code class="small">GET /api/tools</code></div>
+                    <div class="mb-1"><code class="small">POST /api/tools/{name}</code></div>
+                    <div class="mb-1"><code class="small">GET /api/tools/{name}/info</code></div>
+                </div>
+                <a href="/docs" class="btn btn-outline-primary btn-sm" target="_blank">
+                    <i class="fas fa-external-link-alt me-1"></i>View Swagger
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100 hover-lift">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-shield-alt fa-2x text-success"></i>
+                </div>
+                <h6 class="card-title">Authentication</h6>
+                <div class="small text-muted mb-3">
+                    <div class="mb-1">Bearer Token Authentication</div>
+                    <div class="mb-1">API Key Header Support</div>
+                    <div class="mb-1">Secure by Default</div>
+                </div>
+                <button class="btn btn-outline-success btn-sm" onclick="showAuthInfo()">
+                    <i class="fas fa-key me-1"></i>Auth Guide
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-4">
+        <div class="card h-100 hover-lift">
+            <div class="card-body text-center">
+                <div class="mb-3">
+                    <i class="fas fa-book fa-2x text-info"></i>
+                </div>
+                <h6 class="card-title">Documentation</h6>
+                <div class="small text-muted mb-3">
+                    <div class="mb-1">Interactive API Explorer</div>
+                    <div class="mb-1">Code Examples</div>
+                    <div class="mb-1">Schema Definitions</div>
+                </div>
+                <div class="d-flex gap-1 justify-content-center">
+                    <a href="/docs" class="btn btn-outline-info btn-sm" target="_blank">
+                        <i class="fas fa-flask me-1"></i>Swagger
+                    </a>
+                    <a href="/redoc" class="btn btn-outline-info btn-sm" target="_blank">
+                        <i class="fas fa-file-alt me-1"></i>ReDoc
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="row mt-5">
+    <div class="col-12">
+        <div class="card glass">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h5 class="mb-2">
+                            <i class="fas fa-rocket me-2 text-primary"></i>
+                            Ready to Get Started?
+                        </h5>
+                        <p class="text-muted mb-0">
+                            Explore our comprehensive security toolkit and start securing your infrastructure today.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                        <div class="d-flex gap-2 justify-content-md-end">
+                            <button class="btn btn-primary" onclick="scrollToTools()">
+                                <i class="fas fa-tools me-1"></i>Browse Tools
+                            </button>
+                            <a href="/docs" class="btn btn-outline-primary" target="_blank">
+                                <i class="fas fa-external-link-alt me-1"></i>API Docs
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Modern JavaScript for enhanced UX
+function refreshTools() {
+    location.reload();
+}
+
+function filterTools(category) {
+    const tools = document.querySelectorAll('[data-category]');
+    tools.forEach(tool => {
+        if (category === 'all' || tool.dataset.category === category) {
+            tool.style.display = 'block';
+            tool.classList.add('fade-in');
+        } else {
+            tool.style.display = 'none';
+        }
+    });
+}
+
+function viewToolInfo(toolName) {
+    // Navigate to tool info page
+    window.open(`/tools/${toolName}/info`, '_blank');
+}
+
+function quickTest(toolName) {
+    // Quick test functionality
+    window.open(`/tools/${toolName}`, '_blank');
+}
+
+function showAuthInfo() {
+    alert('Authentication: Use Bearer token in Authorization header or X-API-Key header for API access.');
+}
+
+function scrollToTools() {
+    document.getElementById('toolsGrid')?.scrollIntoView({ behavior: 'smooth' });
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', function() {
+    // Add stagger animation to tool cards
+    const cards = document.querySelectorAll('.tool-card');
+    cards.forEach((card, index) => {
+        card.style.animationDelay = `${index * 0.1}s`;
+        card.classList.add('animate-in');
+    });
+});
+</script>
+
+{% endblock %}

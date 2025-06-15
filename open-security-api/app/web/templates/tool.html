@@ -1,0 +1,773 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<!-- Enhanced Breadcrumb -->
+<div class="row mb-4">
+    <div class="col-12">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item">
+                    <a href="/" class="text-decoration-none">
+                        <i class="fas fa-home me-1"></i>Dashboard
+                    </a>
+                </li>
+                <li class="breadcrumb-item active">
+                    <i class="fas fa-tools me-1"></i>{{ tool_info.display_name or tool_name }}
+                </li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<!-- Tool Header -->
+<div class="row mb-5">
+    <div class="col-12">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+            <div class="d-flex align-items-center gap-3">
+                <div class="p-3 rounded-3 bg-primary bg-opacity-10">
+                    <i class="fas fa-{{ 'network-wired' if tool_info.category == 'network' else 'bug' if tool_info.category == 'vulnerability' else 'search' if tool_info.category == 'reconnaissance' else 'tools' }} fa-2x text-primary"></i>
+                </div>
+                <div>
+                    <h1 class="mb-1">{{ tool_info.display_name or tool_name }}</h1>
+                    <p class="text-muted mb-0">{{ tool_info.description or "Professional security analysis tool" }}</p>
+                </div>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <span class="badge bg-success fs-6">
+                    <span class="status-dot success"></span>Ready
+                </span>
+                <span class="badge bg-info fs-6">v{{ tool_info.version or "1.0" }}</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Main Tool Interface -->
+    <div class="col-xl-8 col-lg-7 col-md-12">
+        <div class="main-content-container">
+            <div class="card tool-card">
+                <div class="card-header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-cog"></i>
+                            Tool Configuration
+                        </h5>
+                        <button class="btn btn-outline-light btn-sm" onclick="resetForm()" id="resetBtn">
+                            <i class="fas fa-undo me-1"></i>Reset
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form id="toolForm" class="needs-validation" novalidate>
+                        <div id="formFields" class="row g-3">
+                            <!-- Form fields will be dynamically generated here -->
+                        </div>
+                        
+                        <div class="row mt-4">
+                            <div class="col-12">
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="submit" class="btn btn-primary btn-lg flex-fill flex-md-grow-0" id="executeBtn">
+                                        <i class="fas fa-rocket me-2"></i>Execute Analysis
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" onclick="validateForm()">
+                                        <i class="fas fa-check-circle me-1"></i>Validate
+                                    </button>
+                                    <button type="button" class="btn btn-outline-info" onclick="showPreview()">
+                                        <i class="fas fa-eye me-1"></i>Preview
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Enhanced Results Section -->
+            <div class="card mt-4 fade-in" id="resultsCard" style="display: none;">
+                <div class="card-header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h5 class="mb-0 d-flex align-items-center gap-2">
+                            <i class="fas fa-chart-bar"></i>Analysis Results
+                        </h5>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-light btn-sm" onclick="exportResults()">
+                                <i class="fas fa-download me-1"></i>Export
+                            </button>
+                            <button class="btn btn-outline-light btn-sm" onclick="shareResults()">
+                                <i class="fas fa-share me-1"></i>Share
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="resultsContent" class="results-container">
+                        <!-- Results will be displayed here -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Real-time Status Panel -->
+            <div class="card mt-4" id="statusPanel" style="display: none;">
+                <div class="card-header">
+                    <h6 class="mb-0 d-flex align-items-center gap-2">
+                        <i class="fas fa-heartbeat"></i>
+                        <span>Execution Status</span>
+                        <div class="spinner-border spinner-border-sm ms-auto" role="status" id="statusSpinner" style="display: none;">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="statusContent">
+                        <!-- Status updates will be shown here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Enhanced Sidebar -->
+    <div class="col-xl-4 col-lg-5 col-md-12">
+        <div class="sidebar-cards-container">
+            <!-- Tool Information Card -->
+            <div class="card hover-lift mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0 d-flex align-items-center gap-2">
+                        <i class="fas fa-info-circle"></i>Tool Information
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-sm-6 col-lg-12">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fas fa-tag text-primary"></i>
+                                <div>
+                                    <div class="small text-muted">Name</div>
+                                    <div class="fw-medium">{{ tool_name }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-12">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fas fa-code-branch text-success"></i>
+                                <div>
+                                    <div class="small text-muted">Version</div>
+                                    <div class="fw-medium">{{ tool_info.version or "1.0.0" }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-12">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fas fa-user text-info"></i>
+                                <div>
+                                    <div class="small text-muted">Author</div>
+                                    <div class="fw-medium">{{ tool_info.author or "Unknown" }}</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-sm-6 col-lg-12">
+                            <div class="d-flex align-items-center gap-2">
+                                <i class="fas fa-layer-group text-warning"></i>
+                                <div>
+                                    <div class="small text-muted">Category</div>
+                                    <div class="fw-medium">{{ tool_info.category or "General" }}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <hr class="my-3">
+                    
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="status-dot success"></span>
+                            <span class="small text-muted">Tool Status</span>
+                        </div>
+                        <span class="badge bg-success">Active</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Enhanced API Usage Card -->
+            <div class="card hover-lift mb-4">
+                <div class="card-header">
+                    <h6 class="mb-0 d-flex align-items-center gap-2">
+                        <i class="fas fa-code"></i>API Usage
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-muted">ENDPOINT</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">POST</span>
+                            <input type="text" class="form-control" value="/api/tools/{{ tool_name }}" readonly>
+                            <button class="btn btn-outline-secondary" onclick="copyToClipboard('/api/tools/{{ tool_name }}')">
+                                <i class="fas fa-copy"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-muted">AUTHENTICATION</label>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Bearer</span>
+                            <input type="text" class="form-control" placeholder="YOUR_API_TOKEN" readonly>
+                            <button class="btn btn-outline-secondary" onclick="showAuthHelp()">
+                                <i class="fas fa-question-circle"></i>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold text-muted">CONTENT TYPE</label>
+                        <input type="text" class="form-control form-control-sm" value="application/json" readonly>
+                    </div>
+                    
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-primary btn-sm" onclick="generateCurlCommand()">
+                            <i class="fas fa-terminal me-1"></i>Generate cURL
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="openApiDocs()">
+                            <i class="fas fa-book me-1"></i>API Docs
+                        </button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Quick Actions -->
+            <div class="card hover-lift">
+                <div class="card-header">
+                    <h6 class="mb-0 d-flex align-items-center gap-2">
+                        <i class="fas fa-bolt"></i>Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-success btn-sm" onclick="loadPresetConfig()">
+                            <i class="fas fa-magic me-1"></i>Load Preset
+                        </button>
+                        <button class="btn btn-outline-warning btn-sm" onclick="saveConfig()">
+                            <i class="fas fa-save me-1"></i>Save Config
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="viewHistory()">
+                            <i class="fas fa-history me-1"></i>View History
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="resetToDefaults()">
+                            <i class="fas fa-undo me-1"></i>Reset Defaults
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Loading Modal -->
+<div class="modal fade" id="loadingModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-body text-center p-5">
+                <div class="mb-4">
+                    <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+                <h5 class="mb-2">Executing Security Analysis</h5>
+                <p class="text-muted mb-0">Please wait while we process your request...</p>
+                <div class="progress mt-3" style="height: 6px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 100%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Enhanced Tool Configuration - Template variables will be replaced at render time
+const TOOL_CONFIG = {
+    name: {{ tool_name | tojson | safe }},
+    inputSchema: {{ input_schema | tojson | safe }},
+    apiEndpoint: {{ ('/api/tools/' + tool_name) | tojson | safe }},
+    version: {{ (tool_info.version if tool_info and tool_info.version else '1.0.0') | tojson | safe }},
+    category: {{ (tool_info.category if tool_info and tool_info.category else 'general') | tojson | safe }}
+};
+
+// Modern Tool Interface
+document.addEventListener('DOMContentLoaded', function() {
+    generateModernForm();
+    setupEnhancedFormSubmission();
+});
+
+function generateModernForm() {
+    const formFields = document.getElementById('formFields');
+    const schema = TOOL_CONFIG.inputSchema;
+    
+    if (!schema || !schema.properties) {
+        formFields.innerHTML = `
+            <div class="col-12">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    This tool doesn't require any input parameters.
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    for (const [fieldName, fieldSchema] of Object.entries(schema.properties)) {
+        html += generateModernFieldHTML(fieldName, fieldSchema, schema.required || []);
+    }
+    
+    formFields.innerHTML = html;
+    setupFormEnhancements();
+}
+
+function generateModernFieldHTML(fieldName, fieldSchema, requiredFields) {
+    const isRequired = requiredFields.includes(fieldName);
+    const fieldType = fieldSchema.type || 'string';
+    const fieldDescription = fieldSchema.description || '';
+    const fieldExample = fieldSchema.example || '';
+    const defaultValue = fieldSchema.default || '';
+    const label = fieldName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    
+    const colClass = fieldType === 'boolean' ? 'col-12' : 'col-md-6';
+    let inputHTML = '';
+    let inputId = `field_${fieldName}`;
+    
+    if (fieldType === 'integer' || fieldType === 'number') {
+        const min = fieldSchema.minimum !== undefined ? `min="${fieldSchema.minimum}"` : '';
+        const max = fieldSchema.maximum !== undefined ? `max="${fieldSchema.maximum}"` : '';
+        inputHTML = `
+            <input type="number" 
+                   class="form-control" 
+                   id="${inputId}" 
+                   name="${fieldName}"
+                   placeholder="${fieldExample || 'Enter ' + label.toLowerCase()}"
+                   value="${defaultValue}"
+                   ${min} ${max}
+                   ${isRequired ? 'required' : ''}/>
+        `;
+    } else if (fieldSchema.enum) {
+        inputHTML = `
+            <select class="form-select" id="${inputId}" name="${fieldName}" ${isRequired ? 'required' : ''}>
+                ${!isRequired ? '<option value="">-- Select an option --</option>' : ''}
+                ${fieldSchema.enum.map(option => 
+                    `<option value="${option}" ${option === defaultValue ? 'selected' : ''}>${option}</option>`
+                ).join('')}
+            </select>
+        `;
+    } else if (fieldType === 'boolean') {
+        inputHTML = `
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="${inputId}" name="${fieldName}" ${defaultValue ? 'checked' : ''}>
+                <label class="form-check-label" for="${inputId}">
+                    ${label}
+                </label>
+            </div>
+        `;
+    } else {
+        inputHTML = `
+            <input type="text" 
+                   class="form-control" 
+                   id="${inputId}" 
+                   name="${fieldName}"
+                   placeholder="${fieldExample || 'Enter ' + label.toLowerCase()}"
+                   value="${defaultValue}"
+                   ${isRequired ? 'required' : ''}/>
+        `;
+    }
+    
+    return `
+        <div class="${colClass}">
+            <div class="form-group">
+                ${fieldType !== 'boolean' ? `
+                    <label for="${inputId}" class="form-label">
+                        ${label}
+                        ${isRequired ? '<span class="text-danger ms-1">*</span>' : ''}
+                    </label>
+                ` : ''}
+                ${inputHTML}
+                ${fieldDescription ? `<div class="form-text">${fieldDescription}</div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+function setupFormEnhancements() {
+    const inputs = document.querySelectorAll('.form-control, .form-select');
+    inputs.forEach(input => {
+        input.addEventListener('focus', () => {
+            input.parentElement.classList.add('focused');
+        });
+        
+        input.addEventListener('blur', () => {
+            input.parentElement.classList.remove('focused');
+            validateField(input);
+        });
+    });
+}
+
+function validateField(field) {
+    const isValid = field.checkValidity();
+    field.classList.toggle('is-valid', isValid && field.value);
+    field.classList.toggle('is-invalid', !isValid);
+}
+
+function setupEnhancedFormSubmission() {
+    const form = document.getElementById('toolForm');
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        if (!form.checkValidity()) {
+            e.stopPropagation();
+            form.classList.add('was-validated');
+            return;
+        }
+        
+        await executeAnalysis();
+    });
+}
+
+async function executeAnalysis() {
+    const form = document.getElementById('toolForm');
+    const formData = new FormData(form);
+    const inputData = extractFormData(formData);
+    
+    showLoadingState();
+    updateStatus('Initializing security analysis...', 'info');
+    
+    try {
+        const response = await fetch(TOOL_CONFIG.apiEndpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${window.API_KEY}`
+            },
+            body: JSON.stringify(inputData)
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            hideLoadingState();
+            showResults(result);
+            updateStatus('Analysis completed successfully', 'success');
+        } else {
+            const error = await response.json();
+            hideLoadingState();
+            showError(error);
+            updateStatus('Analysis failed', 'danger');
+        }
+    } catch (error) {
+        hideLoadingState();
+        showError({detail: error.message});
+        updateStatus('Connection error occurred', 'danger');
+    }
+}
+
+function extractFormData(formData) {
+    const data = {};
+    const schema = TOOL_CONFIG.inputSchema;
+    
+    for (const [key, value] of formData.entries()) {
+        const fieldSchema = schema.properties[key];
+        if (fieldSchema) {
+            if (fieldSchema.type === 'integer') {
+                data[key] = parseInt(value, 10);
+            } else if (fieldSchema.type === 'number') {
+                data[key] = parseFloat(value);
+            } else if (fieldSchema.type === 'boolean') {
+                data[key] = formData.has(key);
+            } else {
+                data[key] = value;
+            }
+        }
+    }
+    
+    return data;
+}
+
+function showLoadingState() {
+    const executeBtn = document.getElementById('executeBtn');
+    executeBtn.disabled = true;
+    executeBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyzing...';
+    
+    const loadingModal = new bootstrap.Modal(document.getElementById('loadingModal'));
+    loadingModal.show();
+}
+
+function hideLoadingState() {
+    const executeBtn = document.getElementById('executeBtn');
+    executeBtn.disabled = false;
+    executeBtn.innerHTML = '<i class="fas fa-rocket me-2"></i>Execute Analysis';
+    
+    const modalElement = document.getElementById('loadingModal');
+    const modal = bootstrap.Modal.getInstance(modalElement);
+    if (modal) modal.hide();
+}
+
+function updateStatus(message, type) {
+    const statusContent = document.getElementById('statusContent');
+    statusContent.innerHTML = `
+        <div class="alert alert-${type} mb-0">
+            <div class="d-flex align-items-center gap-2">
+                <i class="fas fa-${type === 'info' ? 'info-circle' : type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i>
+                <span>${message}</span>
+                <small class="ms-auto text-muted">${new Date().toLocaleTimeString()}</small>
+            </div>
+        </div>
+    `;
+}
+
+function showResults(result) {
+    const resultsContent = document.getElementById('resultsContent');
+    
+    let html = `
+        <div class="row g-3 mb-4">
+            <div class="col-md-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-1">Execution Status</h6>
+                        <div class="h4 mb-0">
+                            <span class="badge bg-${result.status === 'success' ? 'success' : 'danger'} fs-6">
+                                <i class="fas fa-${result.status === 'success' ? 'check' : 'times'} me-1"></i>
+                                ${result.status || 'Unknown'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-1">Execution Time</h6>
+                        <div class="h4 mb-0">${result.duration ? result.duration.toFixed(2) + 's' : 'N/A'}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    if (result.target) {
+        html += `<div class="alert alert-info"><strong>Target:</strong> ${result.target}</div>`;
+    }
+    
+    if (result.open_ports && result.open_ports.length > 0) {
+        html += renderOpenPorts(result.open_ports);
+    }
+    
+    if (result.vulnerabilities && result.vulnerabilities.length > 0) {
+        html += renderVulnerabilities(result.vulnerabilities);
+    }
+    
+    if (result.recommendations && result.recommendations.length > 0) {
+        html += renderRecommendations(result.recommendations);
+    }
+    
+    resultsContent.innerHTML = html;
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderOpenPorts(openPorts) {
+    return `
+        <div class="mt-4">
+            <h6 class="d-flex align-items-center gap-2 mb-3">
+                <i class="fas fa-network-wired text-primary"></i>
+                Open Ports (${openPorts.length})
+            </h6>
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr><th>Port</th><th>State</th><th>Service</th><th>Version</th></tr>
+                    </thead>
+                    <tbody>
+                        ${openPorts.map(port => `
+                            <tr>
+                                <td><span class="badge bg-primary">${port.port}</span></td>
+                                <td><span class="badge bg-success">${port.state}</span></td>
+                                <td>${port.service || '<em class="text-muted">unknown</em>'}</td>
+                                <td>${port.version || '<em class="text-muted">N/A</em>'}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    `;
+}
+
+function renderVulnerabilities(vulnerabilities) {
+    return `
+        <div class="mt-4">
+            <h6 class="d-flex align-items-center gap-2 mb-3">
+                <i class="fas fa-exclamation-triangle text-warning"></i>
+                Vulnerabilities (${vulnerabilities.length})
+            </h6>
+            <div class="list-group">
+                ${vulnerabilities.map(vuln => `
+                    <div class="list-group-item list-group-item-warning">
+                        <i class="fas fa-bug me-2"></i>${vuln}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function renderRecommendations(recommendations) {
+    return `
+        <div class="mt-4">
+            <h6 class="d-flex align-items-center gap-2 mb-3">
+                <i class="fas fa-lightbulb text-info"></i>
+                Recommendations (${recommendations.length})
+            </h6>
+            <div class="list-group">
+                ${recommendations.map(rec => `
+                    <div class="list-group-item list-group-item-info">
+                        <i class="fas fa-arrow-right me-2"></i>${rec}
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+}
+
+function showError(error) {
+    const resultsContent = document.getElementById('resultsContent');
+    resultsContent.innerHTML = `
+        <div class="alert alert-danger">
+            <h6 class="d-flex align-items-center gap-2 mb-2">
+                <i class="fas fa-exclamation-circle"></i>
+                Execution Failed
+            </h6>
+            <p class="mb-0">${error.detail || 'An unknown error occurred during analysis.'}</p>
+        </div>
+    `;
+    document.getElementById('resultsCard').style.display = 'block';
+    document.getElementById('resultsCard').scrollIntoView({ behavior: 'smooth' });
+}
+
+// Enhanced utility functions
+function resetForm() {
+    const form = document.getElementById('toolForm');
+    form.reset();
+    form.classList.remove('was-validated');
+    form.querySelectorAll('.is-valid, .is-invalid').forEach(el => {
+        el.classList.remove('is-valid', 'is-invalid');
+    });
+    document.getElementById('resultsCard').style.display = 'none';
+}
+
+function validateForm() {
+    const form = document.getElementById('toolForm');
+    const isValid = form.checkValidity();
+    form.classList.add('was-validated');
+    showToast(isValid ? 'Form validation passed!' : 'Please fix validation errors.', isValid ? 'success' : 'warning');
+}
+
+function showPreview() {
+    const form = document.getElementById('toolForm');
+    const formData = new FormData(form);
+    const data = extractFormData(formData);
+    
+    const preview = document.createElement('div');
+    preview.innerHTML = `
+        <div class="modal fade" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Configuration Preview</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <pre><code>${JSON.stringify(data, null, 2)}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(preview);
+    const modal = new bootstrap.Modal(preview.querySelector('.modal'));
+    modal.show();
+}
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast align-items-center text-white bg-${type === 'error' ? 'danger' : type} border-0`;
+    toast.innerHTML = `
+        <div class="d-flex">
+            <div class="toast-body">${message}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        </div>
+    `;
+    
+    document.getElementById('toastContainer').appendChild(toast);
+    const bsToast = new bootstrap.Toast(toast);
+    bsToast.show();
+    
+    toast.addEventListener('hidden.bs.toast', () => toast.remove());
+}
+
+// Quick action functions
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        showToast('Copied to clipboard!', 'success');
+    });
+}
+
+function showAuthHelp() {
+    showToast('Use your API token in the Authorization header: "Bearer YOUR_TOKEN"', 'info');
+}
+
+function generateCurlCommand() {
+    const curlCommand = `curl -X POST "${window.location.origin}${TOOL_CONFIG.apiEndpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{"target": "example.com"}'`;
+    
+    copyToClipboard(curlCommand);
+    showToast('cURL command copied!', 'success');
+}
+
+function openApiDocs() {
+    window.open('/docs', '_blank');
+}
+
+function exportResults() {
+    const content = document.getElementById('resultsContent').textContent;
+    if (content.trim()) {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${TOOL_CONFIG.name}_results.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('Results exported!', 'success');
+    }
+}
+
+function shareResults() {
+    if (navigator.share) {
+        navigator.share({
+            title: `${TOOL_CONFIG.name} Analysis Results`,
+            url: window.location.href
+        });
+    } else {
+        copyToClipboard(window.location.href);
+    }
+}
+
+// Placeholder functions for future features
+function loadPresetConfig() { showToast('Coming soon!', 'info'); }
+function saveConfig() { showToast('Configuration saved!', 'success'); }
+function viewHistory() { showToast('Coming soon!', 'info'); }
+function resetToDefaults() { resetForm(); }
+</script>
+{% endblock %}
