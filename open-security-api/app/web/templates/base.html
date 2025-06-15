@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark-theme" data-bs-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -164,6 +164,14 @@
     </script>
     
     <script src="/static/js/script.js"></script>
+    
+    <!-- Initialize theme -->
+    <script>
+        // Initialize theme as early as possible to prevent flash
+        if (typeof ThemeManager !== 'undefined') {
+            ThemeManager.init();
+        }
+    </script>
     
     {% block scripts %}{% endblock %}
 </body>

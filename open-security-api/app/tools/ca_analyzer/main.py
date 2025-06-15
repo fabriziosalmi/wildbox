@@ -470,18 +470,6 @@ async def execute_tool(input_data: CAAnalyzerInput) -> CAAnalyzerOutput:
             error=str(e)
         )
 
-
-# Tool metadata
-TOOL_INFO = {
-    "name": "ca_analyzer",
-    "display_name": "Certificate Authority Analyzer",
-    "description": "Comprehensive SSL/TLS certificate and CA analysis with security assessment",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "category": "cryptography"
-}
-
-
 # For testing
 if __name__ == "__main__":
     import asyncio

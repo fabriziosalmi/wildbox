@@ -103,17 +103,6 @@
                 </h6>
             </div>
             <div class="card-body">
-                <!-- Theme Toggle -->
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <div>
-                        <label class="form-label mb-1">Dark Mode</label>
-                        <div class="form-text small">Toggle dark/light theme</div>
-                    </div>
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="darkModeToggle">
-                    </div>
-                </div>
-
                 <!-- Auto-save Results -->
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <div>
@@ -416,27 +405,22 @@ async function loadSystemInfo() {
 }
 
 function loadPreferences() {
-    // Load dark mode preference
-    const darkMode = localStorage.getItem('darkMode') === 'true';
-    document.getElementById('darkModeToggle').checked = darkMode;
-    
     // Load auto-save preference
     const autoSave = localStorage.getItem('autoSave') !== 'false';
-    document.getElementById('autoSaveToggle').checked = autoSave;
+    const autoSaveToggle = document.getElementById('autoSaveToggle');
+    if (autoSaveToggle) {
+        autoSaveToggle.checked = autoSave;
+    }
     
     // Load advanced options preference
     const advanced = localStorage.getItem('showAdvanced') === 'true';
-    document.getElementById('advancedToggle').checked = advanced;
+    const advancedToggle = document.getElementById('advancedToggle');
+    if (advancedToggle) {
+        advancedToggle.checked = advanced;
+    }
 }
 
 function setupPreferenceToggles() {
-    // Dark mode toggle
-    document.getElementById('darkModeToggle').addEventListener('change', function() {
-        localStorage.setItem('darkMode', this.checked);
-        // You can implement actual dark mode toggle here
-        Utils.showToast(this.checked ? 'Dark mode enabled' : 'Light mode enabled', 'info');
-    });
-    
     // Auto-save toggle
     document.getElementById('autoSaveToggle').addEventListener('change', function() {
         localStorage.setItem('autoSave', this.checked);

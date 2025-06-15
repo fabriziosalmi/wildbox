@@ -2,6 +2,35 @@
  * Wildbox Security API - JavaScript utilities and interactions
  */
 
+// Dark Theme Initialization (Only)
+const ThemeManager = {
+    /**
+     * Initialize dark theme
+     */
+    init: function() {
+        console.log('ThemeManager: Initializing dark theme...');
+        this.applyDarkTheme();
+        console.log('ThemeManager: Dark theme initialization complete');
+    },
+
+    /**
+     * Apply dark theme to the document
+     */
+    applyDarkTheme: function() {
+        console.log('ThemeManager: Applying dark theme');
+        const html = document.documentElement;
+        
+        // Apply dark theme classes
+        html.classList.add('dark-theme');
+        html.setAttribute('data-bs-theme', 'dark');
+        
+        // Remove any light theme references
+        localStorage.setItem('darkMode', 'true');
+        
+        console.log('ThemeManager: Dark theme applied');
+    }
+};
+
 // Global configuration
 const API_CONFIG = {
     baseUrl: '',
@@ -606,6 +635,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    // Initialize theme manager
+    ThemeManager.init();
 });
 
 // Export to global scope for use in templates
@@ -810,14 +842,26 @@ const ToolSearch = {
      * Initialize search functionality
      */
     init: function() {
+        console.log('ToolSearch: Initializing...');
+        
         this.searchInput = document.getElementById('toolSearchInput');
         this.searchResults = document.getElementById('searchResults');
         this.clearBtn = document.getElementById('clearSearchBtn');
         
-        if (!this.searchInput || !this.searchResults) return;
+        console.log('ToolSearch: Elements found:', {
+            searchInput: !!this.searchInput,
+            searchResults: !!this.searchResults,
+            clearBtn: !!this.clearBtn
+        });
+        
+        if (!this.searchInput || !this.searchResults) {
+            console.error('ToolSearch: Required elements not found');
+            return;
+        }
         
         this.loadToolsData();
         this.bindEvents();
+        console.log('ToolSearch: Initialization complete');
     },
     
     /**
@@ -1057,7 +1101,7 @@ const ToolSearch = {
                                 <div class="fw-bold text-primary mb-1">${highlightedName}</div>
                                 <div class="text-muted small mb-2">${highlightedDesc}</div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-light text-dark">${tool.category}</span>
+                                    <span class="badge bg-secondary text-light">${tool.category}</span>
                                     <span class="text-muted small">
                                         <i class="fas fa-rocket me-1"></i>Launch
                                     </span>
@@ -1073,7 +1117,8 @@ const ToolSearch = {
             
             if (results.length > maxResults) {
                 html += `
-                    <div class="p-3 text-center text-muted border-top bg-light">
+                    <div class="p-3 text-center text-muted border-top"
+                         style="background: var(--bg-tertiary);">
                         <small>Showing ${maxResults} of ${results.length} results</small>
                     </div>
                 `;
@@ -1242,5 +1287,3 @@ function quickSearch(category) {
         ToolSearch.showClearButton();
     }
 }
-
-// ...existing code...

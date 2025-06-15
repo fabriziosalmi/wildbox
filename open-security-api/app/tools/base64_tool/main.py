@@ -314,17 +314,6 @@ async def execute_tool(params: Base64ToolInput) -> Base64ToolOutput:
         )
 
 
-# Tool metadata
-TOOL_INFO = {
-    "name": "base64_tool",
-    "display_name": "Base64 Encoder/Decoder",
-    "description": "Comprehensive Base64 encoding and decoding with content type detection",
-    "version": "1.0.0",
-    "author": "Wildbox Security",
-    "category": "data_analysis"
-}
-
-
 # For testing
 if __name__ == "__main__":
     import asyncio
