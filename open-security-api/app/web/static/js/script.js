@@ -595,6 +595,15 @@ const PageInit = {
     },
 
     /**
+     * Initialize the index page
+     */
+    index: function() {
+        // Initialize tool search functionality
+        ToolSearch.init();
+        console.log('PageInit: Index page initialized with search functionality');
+    },
+
+    /**
      * Initialize tool pages
      */
     tool: function() {
@@ -638,6 +647,33 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initialize theme manager
     ThemeManager.init();
+    
+    // Initialize tool search if search input exists (with retry)
+    let initAttempts = 0;
+    const maxAttempts = 3;
+    
+    function tryInitSearch() {
+        initAttempts++;
+        const searchInput = document.getElementById('toolSearchInput');
+        const toolCards = document.querySelectorAll('.tool-card');
+        
+        console.log(`Search init attempt ${initAttempts}:`, {
+            searchInput: !!searchInput,
+            toolCardsCount: toolCards.length
+        });
+        
+        if (searchInput && toolCards.length > 0) {
+            window.ToolSearch.init();
+            console.log('Global: Tool search initialized successfully');
+        } else if (initAttempts < maxAttempts) {
+            // Retry after a short delay
+            setTimeout(tryInitSearch, 500);
+        } else {
+            console.warn('Global: Could not initialize tool search after', maxAttempts, 'attempts');
+        }
+    }
+    
+    tryInitSearch();
 });
 
 // Export to global scope for use in templates
@@ -830,7 +866,7 @@ function getCategoryLabel(category) {
 window.getCategoryLabel = getCategoryLabel;
 
 // Tool Search and Autocomplete functionality
-const ToolSearch = {
+var ToolSearch = {
     // Cache for tools data
     toolsData: [],
     searchInput: null,
@@ -844,24 +880,33 @@ const ToolSearch = {
     init: function() {
         console.log('ToolSearch: Initializing...');
         
-        this.searchInput = document.getElementById('toolSearchInput');
-        this.searchResults = document.getElementById('searchResults');
-        this.clearBtn = document.getElementById('clearSearchBtn');
-        
-        console.log('ToolSearch: Elements found:', {
-            searchInput: !!this.searchInput,
-            searchResults: !!this.searchResults,
-            clearBtn: !!this.clearBtn
-        });
-        
-        if (!this.searchInput || !this.searchResults) {
-            console.error('ToolSearch: Required elements not found');
-            return;
+        try {
+            this.searchInput = document.getElementById('toolSearchInput');
+            this.searchResults = document.getElementById('searchResults');
+            this.clearBtn = document.getElementById('clearSearchBtn');
+            
+            console.log('ToolSearch: Elements found:', {
+                searchInput: !!this.searchInput,
+                searchResults: !!this.searchResults,
+                clearBtn: !!this.clearBtn
+            });
+            
+            if (!this.searchInput) {
+                console.warn('ToolSearch: Search input element not found');
+                return;
+            }
+            
+            if (!this.searchResults) {
+                console.warn('ToolSearch: Search results element not found');
+                return;
+            }
+            
+            this.loadToolsData();
+            this.bindEvents();
+            console.log('ToolSearch: Initialization complete - found', this.toolsData.length, 'tools');
+        } catch (error) {
+            console.error('ToolSearch: Initialization failed:', error);
         }
-        
-        this.loadToolsData();
-        this.bindEvents();
-        console.log('ToolSearch: Initialization complete');
     },
     
     /**
@@ -871,24 +916,39 @@ const ToolSearch = {
         const toolCards = document.querySelectorAll('.tool-card');
         this.toolsData = [];
         
-        toolCards.forEach(card => {
-            const nameElement = card.querySelector('h5');
-            const descElement = card.querySelector('.card-text');
-            const categoryElement = card.querySelector('.category-badge');
-            const linkElement = card.querySelector('.btn-primary[href]');
-            
-            if (nameElement && descElement && linkElement) {
-                const toolData = {
-                    name: nameElement.textContent.trim(),
-                    description: descElement.textContent.trim(),
-                    category: categoryElement ? categoryElement.textContent.trim() : 'General',
-                    url: linkElement.getAttribute('href'),
-                    element: card,
-                    keywords: this.generateKeywords(nameElement.textContent, descElement.textContent, categoryElement?.textContent)
-                };
-                this.toolsData.push(toolData);
+        console.log('ToolSearch: Found', toolCards.length, 'tool cards');
+        
+        toolCards.forEach((card, index) => {
+            try {
+                const nameElement = card.querySelector('h5');
+                const descElement = card.querySelector('.card-text');
+                const categoryElement = card.querySelector('.category-badge');
+                const linkElement = card.querySelector('.btn-primary[href]');
+                
+                if (nameElement && descElement && linkElement) {
+                    const toolData = {
+                        name: nameElement.textContent.trim(),
+                        description: descElement.textContent.trim(),
+                        category: categoryElement ? categoryElement.textContent.trim() : 'General',
+                        url: linkElement.getAttribute('href'),
+                        element: card,
+                        keywords: this.generateKeywords(nameElement.textContent, descElement.textContent, categoryElement?.textContent)
+                    };
+                    this.toolsData.push(toolData);
+                    console.log('ToolSearch: Loaded tool', index + 1, ':', toolData.name);
+                } else {
+                    console.warn('ToolSearch: Missing elements in tool card', index, {
+                        nameElement: !!nameElement,
+                        descElement: !!descElement,
+                        linkElement: !!linkElement
+                    });
+                }
+            } catch (error) {
+                console.error('ToolSearch: Error loading tool card', index, ':', error);
             }
         });
+        
+        console.log('ToolSearch: Loaded', this.toolsData.length, 'tools successfully');
     },
     
     /**
@@ -958,9 +1018,13 @@ const ToolSearch = {
      * Bind search events
      */
     bindEvents: function() {
+        console.log('ToolSearch: Binding events...');
+        
         // Input event for real-time search
         this.searchInput.addEventListener('input', (e) => {
             const query = e.target.value.trim();
+            console.log('ToolSearch: Search query:', query);
+            
             if (query.length > 0) {
                 this.performSearch(query);
                 this.showClearButton();
@@ -1283,7 +1347,88 @@ function quickSearch(category) {
     if (searchInput) {
         searchInput.value = category;
         searchInput.focus();
-        ToolSearch.performSearch(category);
-        ToolSearch.showClearButton();
+        window.ToolSearch.performSearch(category);
+        window.ToolSearch.showClearButton();
     }
 }
+
+// Debug function to test search functionality
+window.debugSearch = function() {
+    console.log('=== Search Debug Information ===');
+    console.log('ToolSearch object:', window.ToolSearch);
+    console.log('Search input element:', document.getElementById('toolSearchInput'));
+    console.log('Search results element:', document.getElementById('searchResults'));
+    console.log('Clear button element:', document.getElementById('clearSearchBtn'));
+    console.log('Tools data:', window.ToolSearch.toolsData);
+    console.log('Number of tool cards found:', document.querySelectorAll('.tool-card').length);
+    
+    // Test a simple search
+    if (window.ToolSearch.toolsData && window.ToolSearch.toolsData.length > 0) {
+        console.log('Testing search for "scanner"...');
+        const results = window.ToolSearch.searchTools('scanner');
+        console.log('Search results for "scanner":', results);
+    }
+    
+    return {
+        initialized: !!(window.ToolSearch && window.ToolSearch.searchInput),
+        toolsLoaded: window.ToolSearch ? window.ToolSearch.toolsData.length : 0,
+        elementsFound: {
+            searchInput: !!document.getElementById('toolSearchInput'),
+            searchResults: !!document.getElementById('searchResults'),
+            clearBtn: !!document.getElementById('clearSearchBtn')
+        }
+    };
+};
+
+// Auto-run debug on page load for testing
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(() => {
+        console.log('Auto-running search debug...');
+        window.debugSearch();
+    }, 1000);
+});
+
+// Auto-test search functionality after page loads
+window.addEventListener('load', function() {
+    setTimeout(function() {
+        if (window.ToolSearch && window.ToolSearch.toolsData && window.ToolSearch.toolsData.length > 0) {
+            console.log('✅ Search functionality is ready with', window.ToolSearch.toolsData.length, 'tools');
+            
+            // Test search functionality
+            const testQuery = 'scanner';
+            const results = window.ToolSearch.searchTools(testQuery);
+            console.log(`🔍 Test search for "${testQuery}" found:`, results.length, 'results');
+            
+            if (results.length > 0) {
+                console.log('First result:', results[0].name);
+            }
+            
+            // Test if event handlers are working
+            const searchInput = document.getElementById('toolSearchInput');
+            if (searchInput) {
+                console.log('✅ Search input element found and ready');
+                
+                // Programmatically trigger a search to test
+                searchInput.value = testQuery;
+                searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                
+                setTimeout(() => {
+                    const searchResults = document.getElementById('searchResults');
+                    if (searchResults && searchResults.style.display !== 'none') {
+                        console.log('✅ Search results are displaying correctly');
+                    } else {
+                        console.log('❌ Search results are not showing');
+                    }
+                    
+                    // Clean up test
+                    searchInput.value = '';
+                    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+                }, 100);
+            } else {
+                console.log('❌ Search input element not found');
+            }
+        } else {
+            console.log('❌ Search functionality not ready or no tools found');
+        }
+    }, 2000); // Wait 2 seconds for everything to load
+});

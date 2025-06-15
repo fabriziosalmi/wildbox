@@ -26,7 +26,7 @@ TOOL_INFO = {
     "name": "web_vuln_scanner",
     "display_name": "Web Vulnerability Scanner",
     "description": "Real web application security scanner that detects vulnerabilities and security misconfigurations",
-    "version": "2.1.0",
+    "version": "1.0.0",
     "author": "Wildbox Security",
     "category": "web_security"
 }

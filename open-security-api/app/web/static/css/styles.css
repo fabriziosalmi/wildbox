@@ -1361,95 +1361,68 @@ h1, h2, h3, h4, h5, h6 {
     color: var(--gray-900) !important;
 }
 
-/* Search Results */
-#searchResults {
-    background: var(--bg-secondary);
-    border-color: var(--gray-200);
-    color: var(--gray-100);
+/* Search Results Enhancements */
+.hover-bg:hover {
+    background-color: var(--bg-tertiary) !important;
+    cursor: pointer;
 }
 
 .search-result-item {
-    color: var(--gray-100);
-    border-bottom-color: var(--gray-200);
+    color: var(--gray-100) !important;
+    border-bottom-color: var(--gray-200) !important;
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+    padding: 12px 16px !important;
+    min-height: 60px !important;
+    display: block !important;
+    border-bottom: 1px solid var(--gray-200) !important;
 }
 
-.search-result-item:hover {
-    background: var(--bg-tertiary);
-}
-
+.search-result-item:hover,
 .search-result-active {
     background: var(--bg-tertiary) !important;
 }
 
-/* Badges */
-.badge {
-    color: white !important;
+.search-result-item mark {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 2px 4px;
+    border-radius: 4px;
 }
 
-.badge.bg-light {
-    background: var(--bg-tertiary) !important;
+/* Input group enhancements */
+.input-group .form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(99, 102, 241, 0.25);
+}
+
+/* Search results dropdown positioning */
+#searchResults {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--gray-200) !important;
+    border-top: none !important;
     color: var(--gray-100) !important;
+    max-height: 400px !important;
+    min-height: auto !important;
+    height: auto !important;
+    overflow-y: auto !important;
+    border-radius: 0 0 var(--border-radius) var(--border-radius) !important;
+    width: 100% !important;
 }
 
-/* Footer */
-footer {
-    background: var(--bg-secondary);
-    color: var(--gray-300);
+#searchResults::-webkit-scrollbar {
+    width: 8px;
 }
 
-footer h5,
-footer p {
-    color: var(--gray-200) !important;
-}
-
-footer .text-muted {
-    color: var(--gray-400) !important;
-}
-
-/* Links */
-a {
-    color: var(--primary-color) !important;
-}
-
-a:hover {
-    color: var(--primary-light) !important;
-}
-
-/* Breadcrumbs */
-.breadcrumb-item,
-.breadcrumb-item a {
-    color: var(--gray-300);
-}
-
-.breadcrumb-item.active {
-    color: var(--gray-100);
-}
-
-/* Code */
-code {
+#searchResults::-webkit-scrollbar-track {
     background: var(--bg-tertiary);
-    color: var(--primary-color);
-    border-color: var(--gray-200);
 }
 
-/* Category Badges */
-.category-badge {
-    background: linear-gradient(135deg, 
-        rgba(30, 41, 59, 0.95) 0%, 
-        rgba(51, 65, 85, 0.95) 100%) !important;
-    color: rgba(203, 213, 225, 0.9) !important;
-    border: 1px solid rgba(148, 163, 184, 0.3) !important;
+#searchResults::-webkit-scrollbar-thumb {
+    background: var(--gray-500);
+    border-radius: 4px;
 }
 
-.category-badge:hover {
-    background: linear-gradient(135deg, 
-        rgba(51, 65, 85, 1) 0%, 
-        rgba(71, 85, 105, 1) 100%) !important;
-    color: white !important;
-    border-color: rgba(148, 163, 184, 0.5) !important;
-}
-
-/* Status Indicators */
-.status-indicator {
-    color: var(--gray-300) !important;
+#searchResults::-webkit-scrollbar-thumb:hover {
+    background: var(--gray-400);
 }
