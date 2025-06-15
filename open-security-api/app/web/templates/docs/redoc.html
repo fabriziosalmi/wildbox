@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" href="/static/favicon.ico" />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="redoc-container"></div>
+    <script src="/static/vendor/redoc/redoc.standalone.js"></script>
+    <script>
+        Redoc.init('{{ openapi_url }}', {
+            scrollYOffset: 0,
+        }, document.getElementById('redoc-container'));
+    </script>
+</body>
+</html>

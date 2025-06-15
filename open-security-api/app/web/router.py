@@ -102,21 +102,42 @@ async def tool_page(request: Request, tool_name: str):
 
 
 @router.get("/docs", response_class=HTMLResponse)
-async def documentation(request: Request):
+async def custom_swagger_ui_html(request: Request):
     """
-    Documentation page with API usage examples.
+    Custom Swagger UI documentation using local assets.
     
     Args:
         request: FastAPI request object
         
     Returns:
-        HTML response with documentation
+        HTML response with Swagger UI using local assets
     """
-    logger.info("Serving documentation page")
+    logger.info("Serving custom Swagger UI docs")
     
-    return templates.TemplateResponse("docs.html", {
+    return templates.TemplateResponse("docs/swagger.html", {
         "request": request,
-        "title": "API Documentation - Wildbox Security API"
+        "title": "API Documentation - Wildbox Security API",
+        "openapi_url": "/openapi.json"
+    })
+
+
+@router.get("/redoc", response_class=HTMLResponse) 
+async def custom_redoc_html(request: Request):
+    """
+    Custom Redoc documentation using local assets.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        HTML response with Redoc using local assets
+    """
+    logger.info("Serving custom Redoc docs")
+    
+    return templates.TemplateResponse("docs/redoc.html", {
+        "request": request,
+        "title": "API Documentation - Wildbox Security API",
+        "openapi_url": "/openapi.json"
     })
 
 

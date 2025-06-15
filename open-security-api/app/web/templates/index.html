@@ -7,15 +7,11 @@
 <div class="row mb-5">
     <div class="col-12">
         <div class="text-center py-5">
-            <div class="d-inline-flex align-items-center justify-content-center w-auto p-4 mb-4 rounded-circle" style="background: linear-gradient(135deg, var(--primary-color), var(--accent-color)); width: 80px; height: 80px;">
-                <i class="fas fa-shield-alt fa-2x text-white"></i>
-            </div>
             <h1 class="display-4 fw-bold mb-3">
                 <span class="gradient-text">Security Tools</span> Dashboard
             </h1>
             <p class="lead text-muted mb-4 mx-auto" style="max-width: 600px;">
-                Comprehensive security analysis platform with modern tools for vulnerability assessment, 
-                network scanning, and threat detection.
+                Comprehensive security analysis platform.
             </p>
             <div class="d-flex justify-content-center align-items-center gap-4 flex-wrap">
                 <div class="badge bg-dark fs-6 hover-lift">
@@ -38,7 +34,7 @@
 <!-- Quick Tool Search -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card border-0 shadow-sm bg-white">
+        <div class="card border-0 shadow-sm bg-white search-container-card">
             <div class="card-body p-4">
                 <div class="text-center mb-4">
                     <p class="text-muted mb-0">Start typing to search and launch tools instantly</p>
@@ -62,38 +58,11 @@
                     </div>
                     
                     <!-- Search Results Dropdown -->
-                    <div id="searchResults" class="position-absolute w-100 border rounded-bottom shadow-lg" style="top: 100%; z-index: 1000; display: none;">
+                    <div id="searchResults" class="position-absolute w-100 border rounded-bottom shadow-lg" style="top: 100%; z-index: 99999; display: none;">
                         <!-- Results will be populated by JavaScript -->
                     </div>
                 </div>
 
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Quick Start Info -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card border-0 bg-gradient" style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);">
-            <div class="card-body p-4">
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <h5 class="card-title mb-2">
-                            <i class="fas fa-rocket text-primary me-2"></i>
-                            New to Wildbox Security API?
-                        </h5>
-                        <p class="card-text mb-0 text-muted">
-                            Learn how to build custom security tools, integrate with the API, and extend the platform with our comprehensive developer guide.
-                        </p>
-                    </div>
-                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                        <a href="/guide" class="btn btn-primary btn-lg hover-lift">
-                            <i class="fas fa-book-open me-2"></i>
-                            Developer Guide
-                        </a>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -226,7 +195,7 @@
                     </a>
                     <div class="row g-2">
                         <div class="col-6">
-                            <a href="/docs#/Security%20Tools/tool_endpoint_api_tools_{{ tool.name }}_post" class="btn btn-outline-primary btn-sm w-100" target="_blank">
+                            <a href="/docs" class="btn btn-outline-primary btn-sm w-100" target="_blank">
                                 <i class="fas fa-code me-1"></i>API Docs
                             </a>
                         </div>

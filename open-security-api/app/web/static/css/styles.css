@@ -355,7 +355,6 @@ a:hover {
 }
 
 .tool-card:hover {
-    transform: translateY(-6px) scale(1.02);
     box-shadow: var(--shadow-2xl);
     border-color: var(--primary-color);
 }
@@ -423,7 +422,6 @@ div.card.tool-card .card-header i {
 }
 
 .tool-card:hover {
-    transform: translateY(-8px) scale(1.02);
     box-shadow: var(--shadow-2xl);
     border-color: var(--primary-color);
     background: linear-gradient(135deg, var(--bg-primary) 0%, var(--gray-25) 100%);
@@ -581,10 +579,10 @@ div.card.tool-card .card-header i {
 /* Category Badge Specific Styling */
 .tool-card .card-header .category-badge {
     background: linear-gradient(135deg, 
-        rgba(255, 255, 255, 0.9) 0%, 
-        rgba(255, 255, 255, 0.8) 100%);
-    color: var(--gray-800) !important;
-    border: 1px solid rgba(255, 255, 255, 0.3);
+        var(--gray-700) 0%, 
+        var(--gray-600) 100%);
+    color: var(--gray-50) !important;
+    border: 1px solid var(--gray-500);
     font-weight: var(--font-weight-bold);
     text-shadow: none;
     backdrop-filter: blur(20px);
@@ -593,10 +591,10 @@ div.card.tool-card .card-header i {
 /* Ensure category badge is visible on dark backgrounds */
 .tool-card .card-header .category-badge:hover {
     background: linear-gradient(135deg, 
-        rgba(255, 255, 255, 1) 0%, 
-        rgba(248, 250, 252, 1) 100%);
-    color: var(--gray-900) !important;
-    transform: scale(1.05);
+        var(--gray-800) 0%, 
+        var(--gray-700) 100%);
+    color: var(--gray-25) !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     transition: var(--transition);
 }
 
@@ -638,7 +636,7 @@ div.card.tool-card .card-header i {
     background: linear-gradient(135deg, 
         rgba(255, 255, 255, 0.3) 0%, 
         rgba(255, 255, 255, 0.15) 100%);
-    transform: scale(1.05) rotate(2deg);
+    box-shadow: 0 8px 24px rgba(99, 102, 241, 0.3);
     transition: var(--transition);
 }
 
@@ -647,7 +645,7 @@ div.card.tool-card .card-header i {
         var(--gray-100) 0%, 
         var(--gray-50) 100%);
     border-color: var(--gray-300);
-    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     box-shadow: var(--shadow-sm);
     transition: var(--transition);
 }
@@ -1408,21 +1406,67 @@ h1, h2, h3, h4, h5, h6 {
     overflow-y: auto !important;
     border-radius: 0 0 var(--border-radius) var(--border-radius) !important;
     width: 100% !important;
+    z-index: 99999 !important; /* Maximum z-index to ensure it appears above all content */
+    position: absolute !important;
+    box-shadow: var(--shadow-2xl) !important; /* Enhanced shadow for better visibility */
 }
 
-#searchResults::-webkit-scrollbar {
-    width: 8px;
+/* Prevent cards from going above search dropdown when hovered */
+body:has(#searchResults[style*="display: block"]) .card:hover,
+body:has(#searchResults[style*="display: block"]) .tool-card:hover {
+    z-index: 1000 !important; /* Lower than search dropdown */
+    position: relative;
 }
 
-#searchResults::-webkit-scrollbar-track {
-    background: var(--bg-tertiary);
+/* Fix for search dropdown clipping - allow overflow on search container and parent card */
+.card:has(#toolSearchInput) {
+    overflow: visible !important;
 }
 
-#searchResults::-webkit-scrollbar-thumb {
-    background: var(--gray-500);
-    border-radius: 4px;
+.card-body:has(#toolSearchInput) {
+    overflow: visible !important;
 }
 
-#searchResults::-webkit-scrollbar-thumb:hover {
-    background: var(--gray-400);
+/* Alternative fallback for browsers that don't support :has() */
+.search-container-card {
+    overflow: visible !important;
+}
+
+.search-container-card .card-body {
+    overflow: visible !important;
+}
+
+/* Ensure all containers allow search dropdown to overflow */
+.container:has(#searchResults) {
+    overflow: visible !important;
+}
+
+.row:has(#searchResults) {
+    overflow: visible !important;
+}
+
+.col-12:has(#searchResults) {
+    overflow: visible !important;
+}
+
+/* Global override for search dropdown visibility */
+body:has(#searchResults[style*="display: block"]) .card,
+body:has(#searchResults[style*="display: block"]) .container,
+body:has(#searchResults[style*="display: block"]) .row {
+    overflow: visible !important;
+}
+
+/* Ensure search dropdown is always on top by creating a new stacking context */
+.search-container-card {
+    position: relative;
+    z-index: 100000 !important; /* Higher than any other element */
+}
+
+/* Reset z-index and transforms for all cards when search dropdown is visible */
+body:has(#searchResults[style*="display: block"]) .card:not(.search-container-card),
+body:has(#searchResults[style*="display: block"]) .tool-card,
+body:has(#searchResults[style*="display: block"]) .card:not(.search-container-card):hover,
+body:has(#searchResults[style*="display: block"]) .tool-card:hover {
+    z-index: 1 !important;
+    transform: none !important; /* Prevent hover transforms when dropdown is visible */
 }

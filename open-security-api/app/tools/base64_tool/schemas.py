@@ -52,3 +52,15 @@ class Base64ToolOutput(BaseModel):
         description="Detected content type of decoded data"
     )
     error: Optional[str] = Field(default=None, description="Error message if operation failed")
+
+
+TOOL_INFO = {
+    "name": "Base64 Encoder/Decoder",
+    "description": "Versatile Base64 encoding and decoding tool with support for standard and URL-safe variants, custom padding options, chunk formatting, and content type detection",
+    "category": "encoding",
+    "author": "Wildbox Security",
+    "version": "1.0.0",
+    "input_schema": Base64ToolInput,
+    "output_schema": Base64ToolOutput,
+    "tags": ["base64", "encoding", "decoding", "url-safe", "data-conversion", "text-processing"]
+}

@@ -1141,7 +1141,7 @@ var ToolSearch = {
     displayResults: function(results, query) {
         if (results.length === 0) {
             this.searchResults.innerHTML = `
-                <div class="p-3 text-center text-muted">
+                <div class="search-result-item text-center text-muted">
                     <i class="fas fa-search me-2"></i>
                     No tools found for "${query}"
                     <div class="mt-2 small">
@@ -1159,7 +1159,7 @@ var ToolSearch = {
                 const highlightedDesc = this.truncateAndHighlight(tool.description, query, 80);
                 
                 html += `
-                    <div class="search-result-item p-3 border-bottom hover-bg" data-url="${tool.url}" data-index="${i}">
+                    <div class="search-result-item hover-bg" data-url="${tool.url}" data-index="${i}">
                         <div class="d-flex align-items-start justify-content-between">
                             <div class="flex-grow-1">
                                 <div class="fw-bold text-primary mb-1">${highlightedName}</div>
