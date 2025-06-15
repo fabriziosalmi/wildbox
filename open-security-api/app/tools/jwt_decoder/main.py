@@ -383,7 +383,7 @@ TOOL_INFO = {
     "display_name": "JWT Decoder & Analyzer",
     "description": "Decode and analyze JSON Web Tokens with comprehensive security assessment",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "authentication"
 }
 

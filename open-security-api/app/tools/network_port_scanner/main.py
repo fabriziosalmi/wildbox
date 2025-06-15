@@ -15,8 +15,8 @@ TOOL_INFO = {
     "name": "Network Port Scanner",
     "description": "Advanced network port scanner with service detection and security analysis",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
-    "category": "Network Scanning",
+    "author": "Wildbox Security",
+    "category": "network_scanning",
     "tags": ["port-scan", "network", "services", "reconnaissance"]
 }
 

@@ -696,7 +696,7 @@ TOOL_INFO = {
     "display_name": "Email Security Analyzer",
     "description": "Comprehensive email security analysis including SPF, DKIM, DMARC, and phishing detection",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "email_security"
 }
 

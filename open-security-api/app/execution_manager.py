@@ -41,6 +41,9 @@ class ToolExecutionManager:
         self.default_timeout = default_timeout or settings.tool_timeout
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
         self._active_executions: Dict[str, asyncio.Task] = {}
+        # Add execution history tracking
+        self._execution_history: list = []
+        self._tool_statistics: Dict[str, Dict[str, Any]] = {}
         
     async def execute_tool(
         self,
@@ -79,6 +82,9 @@ class ToolExecutionManager:
         
         async with self._semaphore:
             start_time = time.time()
+            end_time = None
+            duration = 0
+            status = ExecutionStatus.FAILED  # Default status
             
             try:
                 # Create the execution task
@@ -89,6 +95,7 @@ class ToolExecutionManager:
                 result = await asyncio.wait_for(task, timeout=timeout)
                 end_time = time.time()
                 duration = end_time - start_time
+                status = ExecutionStatus.COMPLETED
                 
                 logger.info(
                     f"Tool execution completed: {tool_name}",
@@ -100,8 +107,8 @@ class ToolExecutionManager:
                     }
                 )
                 
-                return ExecutionResult(
-                    status=ExecutionStatus.COMPLETED,
+                execution_result = ExecutionResult(
+                    status=status,
                     result=result,
                     duration=duration,
                     start_time=start_time,
@@ -111,6 +118,7 @@ class ToolExecutionManager:
             except asyncio.TimeoutError:
                 end_time = time.time()
                 duration = end_time - start_time
+                status = ExecutionStatus.TIMEOUT
                 
                 logger.warning(
                     f"Tool execution timeout: {tool_name}",
@@ -130,8 +138,8 @@ class ToolExecutionManager:
                 except asyncio.CancelledError:
                     pass
                 
-                return ExecutionResult(
-                    status=ExecutionStatus.TIMEOUT,
+                execution_result = ExecutionResult(
+                    status=status,
                     error=f"Tool execution timed out after {timeout} seconds",
                     duration=duration,
                     start_time=start_time,
@@ -141,6 +149,7 @@ class ToolExecutionManager:
             except asyncio.CancelledError:
                 end_time = time.time()
                 duration = end_time - start_time
+                status = ExecutionStatus.CANCELLED
                 
                 logger.warning(
                     f"Tool execution cancelled: {tool_name}",
@@ -152,8 +161,8 @@ class ToolExecutionManager:
                     }
                 )
                 
-                return ExecutionResult(
-                    status=ExecutionStatus.CANCELLED,
+                execution_result = ExecutionResult(
+                    status=status,
                     error="Tool execution was cancelled",
                     duration=duration,
                     start_time=start_time,
@@ -163,6 +172,7 @@ class ToolExecutionManager:
             except Exception as e:
                 end_time = time.time()
                 duration = end_time - start_time
+                status = ExecutionStatus.FAILED
                 
                 logger.error(
                     f"Tool execution failed: {tool_name}",
@@ -175,8 +185,8 @@ class ToolExecutionManager:
                     }
                 )
                 
-                return ExecutionResult(
-                    status=ExecutionStatus.FAILED,
+                execution_result = ExecutionResult(
+                    status=status,
                     error=str(e),
                     duration=duration,
                     start_time=start_time,
@@ -186,6 +196,40 @@ class ToolExecutionManager:
             finally:
                 # Clean up
                 self._active_executions.pop(execution_id, None)
+                
+                # Add to execution history
+                self._execution_history.append({
+                    "execution_id": execution_id,
+                    "tool_name": tool_name,
+                    "status": status.value,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "duration": duration
+                })
+                
+                # Update tool statistics
+                if tool_name not in self._tool_statistics:
+                    self._tool_statistics[tool_name] = {
+                        "total_executions": 0,
+                        "total_time": 0.0,
+                        "success_count": 0,
+                        "failure_count": 0,
+                        "timeout_count": 0,
+                        "cancelled_count": 0
+                    }
+                tool_stats = self._tool_statistics[tool_name]
+                tool_stats["total_executions"] += 1
+                tool_stats["total_time"] += duration
+                if status == ExecutionStatus.COMPLETED:
+                    tool_stats["success_count"] += 1
+                elif status == ExecutionStatus.FAILED:
+                    tool_stats["failure_count"] += 1
+                elif status == ExecutionStatus.TIMEOUT:
+                    tool_stats["timeout_count"] += 1
+                elif status == ExecutionStatus.CANCELLED:
+                    tool_stats["cancelled_count"] += 1
+            
+            return execution_result
     
     def get_active_executions(self) -> Dict[str, Dict[str, Any]]:
         """Get information about currently active executions."""
@@ -218,6 +262,14 @@ class ToolExecutionManager:
         
         logger.info(f"Cancelled {cancelled_count} active executions")
         return cancelled_count
+    
+    def get_execution_history(self) -> list:
+        """Get the execution history."""
+        return self._execution_history
+    
+    def get_tool_statistics(self) -> Dict[str, Dict[str, Any]]:
+        """Get statistics for each tool."""
+        return self._tool_statistics
 
 
 # Global execution manager instance

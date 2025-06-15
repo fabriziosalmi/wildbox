@@ -116,6 +116,6 @@ TOOL_INFO = {
     "display_name": "TCP Port Scanner",
     "description": "Fast and reliable TCP port scanner for discovering open ports on target hosts",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "network_reconnaissance"
 }

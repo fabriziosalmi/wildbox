@@ -305,6 +305,6 @@ TOOL_INFO = {
     "display_name": "Cookie Security Scanner",
     "description": "Analyzes HTTP cookies for security misconfigurations and vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }

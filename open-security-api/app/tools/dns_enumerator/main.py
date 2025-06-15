@@ -27,7 +27,7 @@ TOOL_INFO = {
     "display_name": "DNS Enumeration Tool",
     "description": "Advanced DNS reconnaissance tool for domain enumeration, subdomain discovery, and DNS security analysis",
     "version": "1.5.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "reconnaissance"
 }
 

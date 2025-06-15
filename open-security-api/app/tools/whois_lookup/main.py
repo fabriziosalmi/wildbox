@@ -294,6 +294,6 @@ TOOL_INFO = {
     "display_name": "WHOIS Lookup",
     "description": "Retrieves domain registration and ownership information",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "osint"
 }

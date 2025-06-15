@@ -247,6 +247,6 @@ TOOL_INFO = {
     "display_name": "Email Harvester",
     "description": "Discovers email addresses associated with a target domain",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "osint"
 }

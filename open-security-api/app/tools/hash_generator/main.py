@@ -290,7 +290,7 @@ TOOL_INFO = {
     "display_name": "Hash Generator",
     "description": "Generate and analyze various cryptographic hashes with security recommendations",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "cryptography"
 }
 

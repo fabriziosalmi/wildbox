@@ -133,6 +133,26 @@ async def lifespan(app: FastAPI):
     logger.info(f"Max concurrent tools: {settings.max_concurrent_tools}")
     logger.info(f"Default tool timeout: {settings.tool_timeout}s")
     
+    # Validate API key is set and secure
+    try:
+        api_key = settings.get_api_key()
+        if not api_key:
+            logger.error("CRITICAL: No API key configured! Set API_KEY in .env file.")
+            raise ValueError("API key is required")
+        
+        # Warn about potentially weak keys
+        if len(api_key) < 32:
+            logger.warning("API key is shorter than recommended 32 characters")
+        
+        if settings.is_production() and any(pattern in api_key.lower() for pattern in ['test', 'demo', 'default']):
+            logger.error("CRITICAL: Weak API key detected in production environment!")
+            raise ValueError("Insecure API key in production")
+            
+    except Exception as e:
+        logger.error(f"API key validation failed: {e}")
+        if settings.is_production():
+            raise e
+    
     yield
     
     # Shutdown

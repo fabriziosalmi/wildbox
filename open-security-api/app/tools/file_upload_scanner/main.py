@@ -278,6 +278,6 @@ TOOL_INFO = {
     "display_name": "File Upload Scanner",
     "description": "Tests file upload functionality for security vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }

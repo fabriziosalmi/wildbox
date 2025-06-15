@@ -615,8 +615,9 @@ window.FormHandler = FormHandler;
 window.ResultsRenderer = ResultsRenderer;
 window.ApiKeyManager = ApiKeyManager;
 window.PageInit = PageInit;
-window.ApiKeyManager = ApiKeyManager;
-window.PageInit = PageInit;
+window.ToolSearch = ToolSearch;
+window.quickSearch = quickSearch;
+window.getCategoryLabel = getCategoryLabel;
 
 // Initialize page-specific features
 document.addEventListener('DOMContentLoaded', function() {
@@ -738,32 +739,54 @@ function refreshTools() {
 
 // Category mapping function for proper display labels
 function getCategoryLabel(category) {
-    const categoryMap = {
+        const categoryMap = {
         'api_security': 'API Security',
         'api security': 'API Security',
+        'authentication': 'Authentication',
+        'automation': 'Automation',
+        'cloud_security': 'Cloud Security',
+        'cloud security': 'Cloud Security',
+        'compliance': 'Compliance',
+        'container_security': 'Container Security',
+        'container security': 'Container Security',
+        'crypto_analysis': 'Cryptography',
+        'crypto analysis': 'Cryptography',
         'cryptography': 'Cryptography',
         'data_analysis': 'Data Analysis',
-        'network_scanning': 'Network Scanning',
-        'network scanning': 'Network Scanning',
+        'data analysis': 'Data Analysis',
+        'database_security': 'Database Security',
+        'database security': 'Database Security',
+        'email_security': 'Email Security',
+        'email security': 'Email Security',
+        'general': 'General',
+        'incident_response': 'Incident Response',
+        'incident response': 'Incident Response',
+        'iot_security': 'IoT Security',
+        'iot security': 'IoT Security',
+        'malware_analysis': 'Malware Analysis',
+        'malware analysis': 'Malware Analysis',
+        'mobile_security': 'Mobile Security',
+        'mobile security': 'Mobile Security',
         'network_reconnaissance': 'Network Reconnaissance',
         'network reconnaissance': 'Network Reconnaissance',
+        'network_scanning': 'Network Scanning',
+        'network scanning': 'Network Scanning',
         'network_security': 'Network Security',
         'network security': 'Network Security',
+        'network_vulnerability': 'Network Vulnerability',
+        'network vulnerability': 'Network Vulnerability',
         'osint': 'OSINT',
         'reconnaissance': 'Reconnaissance',
         'security_analysis': 'Security Analysis',
         'security analysis': 'Security Analysis',
+        'threat_intelligence': 'Threat Intelligence',
+        'threat intelligence': 'Threat Intelligence',
         'vulnerability_assessment': 'Vulnerability Assessment',
         'vulnerability assessment': 'Vulnerability Assessment',
         'web_reconnaissance': 'Web Reconnaissance',
         'web reconnaissance': 'Web Reconnaissance',
         'web_security': 'Web Security',
         'web security': 'Web Security',
-        'general': 'General',
-        'network': 'Network',
-        'vulnerability': 'Vulnerability',
-        'web': 'Web Security',
-        'forensics': 'Forensics'
     };
     
     // Return mapped label or format the category nicely if not found
@@ -773,3 +796,451 @@ function getCategoryLabel(category) {
 
 // Make it available globally
 window.getCategoryLabel = getCategoryLabel;
+
+// Tool Search and Autocomplete functionality
+const ToolSearch = {
+    // Cache for tools data
+    toolsData: [],
+    searchInput: null,
+    searchResults: null,
+    clearBtn: null,
+    currentFocus: -1,
+    
+    /**
+     * Initialize search functionality
+     */
+    init: function() {
+        this.searchInput = document.getElementById('toolSearchInput');
+        this.searchResults = document.getElementById('searchResults');
+        this.clearBtn = document.getElementById('clearSearchBtn');
+        
+        if (!this.searchInput || !this.searchResults) return;
+        
+        this.loadToolsData();
+        this.bindEvents();
+    },
+    
+    /**
+     * Load tools data from the DOM
+     */
+    loadToolsData: function() {
+        const toolCards = document.querySelectorAll('.tool-card');
+        this.toolsData = [];
+        
+        toolCards.forEach(card => {
+            const nameElement = card.querySelector('h5');
+            const descElement = card.querySelector('.card-text');
+            const categoryElement = card.querySelector('.category-badge');
+            const linkElement = card.querySelector('.btn-primary[href]');
+            
+            if (nameElement && descElement && linkElement) {
+                const toolData = {
+                    name: nameElement.textContent.trim(),
+                    description: descElement.textContent.trim(),
+                    category: categoryElement ? categoryElement.textContent.trim() : 'General',
+                    url: linkElement.getAttribute('href'),
+                    element: card,
+                    keywords: this.generateKeywords(nameElement.textContent, descElement.textContent, categoryElement?.textContent)
+                };
+                this.toolsData.push(toolData);
+            }
+        });
+    },
+    
+    /**
+     * Generate searchable keywords from tool data
+     */
+    generateKeywords: function(name, description, category) {
+        const keywords = [];
+        
+        // Add name variations
+        keywords.push(name.toLowerCase());
+        keywords.push(...name.toLowerCase().split(/[\s_-]+/));
+        
+        // Add description words
+        keywords.push(...description.toLowerCase().split(/\s+/).filter(word => word.length > 2));
+        
+        // Add category
+        if (category) {
+            keywords.push(category.toLowerCase());
+            keywords.push(...category.toLowerCase().split(/[\s_-]+/));
+        }
+        
+        // Add common synonyms
+        const synonyms = this.getSynonyms(name.toLowerCase());
+        keywords.push(...synonyms);
+        
+        return [...new Set(keywords)]; // Remove duplicates
+    },
+    
+    /**
+     * Get synonyms for common security terms
+     */
+    getSynonyms: function(name) {
+        const synonymMap = {
+            'scanner': ['scan', 'scanning', 'check', 'analyze'],
+            'analyzer': ['analysis', 'analyze', 'examination', 'inspect'],
+            'network': ['net', 'networking', 'connection'],
+            'vulnerability': ['vuln', 'bug', 'weakness', 'flaw'],
+            'security': ['sec', 'protection', 'defense'],
+            'osint': ['intelligence', 'recon', 'reconnaissance'],
+            'web': ['website', 'http', 'https', 'www'],
+            'ssl': ['tls', 'certificate', 'cert'],
+            'dns': ['domain', 'nameserver'],
+            'port': ['service', 'socket'],
+            'sql': ['database', 'db', 'injection'],
+            'xss': ['cross-site', 'scripting'],
+            'jwt': ['token', 'json'],
+            'hash': ['hashing', 'crypto', 'checksum'],
+            'password': ['pass', 'credential', 'auth'],
+            'email': ['mail', 'smtp', 'message'],
+            'mobile': ['android', 'ios', 'app'],
+            'api': ['endpoint', 'rest', 'service'],
+            'cloud': ['aws', 'azure', 'gcp'],
+            'container': ['docker', 'kubernetes'],
+            'malware': ['virus', 'trojan', 'threat']
+        };
+        
+        const synonyms = [];
+        for (const [key, values] of Object.entries(synonymMap)) {
+            if (name.includes(key)) {
+                synonyms.push(...values);
+            }
+        }
+        return synonyms;
+    },
+    
+    /**
+     * Bind search events
+     */
+    bindEvents: function() {
+        // Input event for real-time search
+        this.searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            if (query.length > 0) {
+                this.performSearch(query);
+                this.showClearButton();
+            } else {
+                this.hideResults();
+                this.hideClearButton();
+                this.showAllTools();
+            }
+        });
+        
+        // Keyboard navigation
+        this.searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                this.navigateResults(1);
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                this.navigateResults(-1);
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                this.selectCurrentResult();
+            } else if (e.key === 'Escape') {
+                this.hideResults();
+                this.searchInput.blur();
+            }
+        });
+        
+        // Clear button
+        if (this.clearBtn) {
+            this.clearBtn.addEventListener('click', () => {
+                this.clearSearch();
+            });
+        }
+        
+        // Hide results when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!this.searchInput.contains(e.target) && !this.searchResults.contains(e.target)) {
+                this.hideResults();
+            }
+        });
+        
+        // Show results when focusing input if there's a query
+        this.searchInput.addEventListener('focus', () => {
+            if (this.searchInput.value.trim().length > 0) {
+                this.performSearch(this.searchInput.value.trim());
+            }
+        });
+    },
+    
+    /**
+     * Perform search and show results
+     */
+    performSearch: function(query) {
+        const results = this.searchTools(query);
+        this.displayResults(results, query);
+        this.filterToolsOnPage(results);
+    },
+    
+    /**
+     * Search tools by query
+     */
+    searchTools: function(query) {
+        const searchTerms = query.toLowerCase().split(/\s+/);
+        const results = [];
+        
+        this.toolsData.forEach(tool => {
+            let score = 0;
+            let matchedTerms = 0;
+            
+            searchTerms.forEach(term => {
+                // Exact name match (highest score)
+                if (tool.name.toLowerCase().includes(term)) {
+                    score += 10;
+                    matchedTerms++;
+                }
+                
+                // Category match
+                if (tool.category.toLowerCase().includes(term)) {
+                    score += 8;
+                    matchedTerms++;
+                }
+                
+                // Description match
+                if (tool.description.toLowerCase().includes(term)) {
+                    score += 5;
+                    matchedTerms++;
+                }
+                
+                // Keyword match
+                if (tool.keywords.some(keyword => keyword.includes(term))) {
+                    score += 3;
+                    matchedTerms++;
+                }
+                
+                // Partial name match
+                if (tool.name.toLowerCase().startsWith(term)) {
+                    score += 7;
+                }
+            });
+            
+            // Only include if all search terms matched something
+            if (matchedTerms >= searchTerms.length) {
+                results.push({ ...tool, score });
+            }
+        });
+        
+        // Sort by score (descending)
+        return results.sort((a, b) => b.score - a.score);
+    },
+    
+    /**
+     * Display search results
+     */
+    displayResults: function(results, query) {
+        if (results.length === 0) {
+            this.searchResults.innerHTML = `
+                <div class="p-3 text-center text-muted">
+                    <i class="fas fa-search me-2"></i>
+                    No tools found for "${query}"
+                    <div class="mt-2 small">
+                        Try searching for categories like "scanner", "analyzer", or "network"
+                    </div>
+                </div>
+            `;
+        } else {
+            const maxResults = Math.min(results.length, 8);
+            let html = '';
+            
+            for (let i = 0; i < maxResults; i++) {
+                const tool = results[i];
+                const highlightedName = this.highlightMatches(tool.name, query);
+                const highlightedDesc = this.truncateAndHighlight(tool.description, query, 80);
+                
+                html += `
+                    <div class="search-result-item p-3 border-bottom hover-bg" data-url="${tool.url}" data-index="${i}">
+                        <div class="d-flex align-items-start justify-content-between">
+                            <div class="flex-grow-1">
+                                <div class="fw-bold text-primary mb-1">${highlightedName}</div>
+                                <div class="text-muted small mb-2">${highlightedDesc}</div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge bg-light text-dark">${tool.category}</span>
+                                    <span class="text-muted small">
+                                        <i class="fas fa-rocket me-1"></i>Launch
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="text-muted">
+                                <i class="fas fa-arrow-right"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (results.length > maxResults) {
+                html += `
+                    <div class="p-3 text-center text-muted border-top bg-light">
+                        <small>Showing ${maxResults} of ${results.length} results</small>
+                    </div>
+                `;
+            }
+            
+            this.searchResults.innerHTML = html;
+            
+            // Add click handlers
+            this.searchResults.querySelectorAll('.search-result-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    window.location.href = item.dataset.url;
+                });
+            });
+        }
+        
+        this.showResults();
+        this.currentFocus = -1;
+    },
+    
+    /**
+     * Highlight matching text
+     */
+    highlightMatches: function(text, query) {
+        const terms = query.toLowerCase().split(/\s+/);
+        let highlightedText = text;
+        
+        terms.forEach(term => {
+            const regex = new RegExp(`(${this.escapeRegex(term)})`, 'gi');
+            highlightedText = highlightedText.replace(regex, '<mark>$1</mark>');
+        });
+        
+        return highlightedText;
+    },
+    
+    /**
+     * Truncate and highlight description
+     */
+    truncateAndHighlight: function(text, query, maxLength) {
+        let truncated = text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+        return this.highlightMatches(truncated, query);
+    },
+    
+    /**
+     * Escape regex special characters
+     */
+    escapeRegex: function(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    },
+    
+    /**
+     * Filter tools on the page
+     */
+    filterToolsOnPage: function(results) {
+        const toolCards = document.querySelectorAll('.tool-card');
+        const resultUrls = new Set(results.map(r => r.url));
+        
+        toolCards.forEach(card => {
+            const toolLink = card.querySelector('.btn-primary[href]');
+            if (toolLink && resultUrls.has(toolLink.getAttribute('href'))) {
+                card.style.display = 'block';
+                card.classList.add('search-match');
+            } else {
+                card.style.display = 'none';
+                card.classList.remove('search-match');
+            }
+        });
+    },
+    
+    /**
+     * Show all tools (reset filter)
+     */
+    showAllTools: function() {
+        const toolCards = document.querySelectorAll('.tool-card');
+        toolCards.forEach(card => {
+            card.style.display = 'block';
+            card.classList.remove('search-match');
+        });
+    },
+    
+    /**
+     * Navigate search results with keyboard
+     */
+    navigateResults: function(direction) {
+        const items = this.searchResults.querySelectorAll('.search-result-item');
+        if (items.length === 0) return;
+        
+        // Remove current focus
+        if (this.currentFocus >= 0 && items[this.currentFocus]) {
+            items[this.currentFocus].classList.remove('search-result-active');
+        }
+        
+        // Update focus
+        this.currentFocus += direction;
+        if (this.currentFocus >= items.length) this.currentFocus = 0;
+        if (this.currentFocus < 0) this.currentFocus = items.length - 1;
+        
+        // Add new focus
+        items[this.currentFocus].classList.add('search-result-active');
+        items[this.currentFocus].scrollIntoView({ block: 'nearest' });
+    },
+    
+    /**
+     * Select current focused result
+     */
+    selectCurrentResult: function() {
+        const items = this.searchResults.querySelectorAll('.search-result-item');
+        if (this.currentFocus >= 0 && items[this.currentFocus]) {
+            window.location.href = items[this.currentFocus].dataset.url;
+        }
+    },
+    
+    /**
+     * Show search results dropdown
+     */
+    showResults: function() {
+        this.searchResults.style.display = 'block';
+    },
+    
+    /**
+     * Hide search results dropdown
+     */
+    hideResults: function() {
+        this.searchResults.style.display = 'none';
+        this.currentFocus = -1;
+    },
+    
+    /**
+     * Show clear button
+     */
+    showClearButton: function() {
+        if (this.clearBtn) {
+            this.clearBtn.style.display = 'block';
+        }
+    },
+    
+    /**
+     * Hide clear button
+     */
+    hideClearButton: function() {
+        if (this.clearBtn) {
+            this.clearBtn.style.display = 'none';
+        }
+    },
+    
+    /**
+     * Clear search
+     */
+    clearSearch: function() {
+        this.searchInput.value = '';
+        this.hideResults();
+        this.hideClearButton();
+        this.showAllTools();
+        this.searchInput.focus();
+    }
+};
+
+/**
+ * Quick search function for category buttons
+ */
+function quickSearch(category) {
+    const searchInput = document.getElementById('toolSearchInput');
+    if (searchInput) {
+        searchInput.value = category;
+        searchInput.focus();
+        ToolSearch.performSearch(category);
+        ToolSearch.showClearButton();
+    }
+}
+
+// ...existing code...

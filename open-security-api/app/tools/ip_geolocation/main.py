@@ -321,7 +321,7 @@ TOOL_INFO = {
     "display_name": "IP Geolocation Lookup",
     "description": "Comprehensive IP address geolocation with threat intelligence and WHOIS data",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "network_reconnaissance"
 }
 

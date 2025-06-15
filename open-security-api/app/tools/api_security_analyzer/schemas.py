@@ -47,7 +47,7 @@ class APISecurityAnalyzerOutput(BaseModel):
 TOOL_INFO = {
     "name": "API Security Analyzer",
     "description": "Comprehensive API security analysis tool that identifies vulnerabilities, misconfigurations, and security best practice violations in REST, GraphQL, and SOAP APIs",
-    "category": "API Security",
+    "category": "api_security",
     "author": "Wildbox Security",
     "version": "1.0.0",
     "input_schema": APISecurityAnalyzerInput,

@@ -496,7 +496,7 @@ TOOL_INFO = {
     "display_name": "URL Security Scanner",
     "description": "Comprehensive URL security analysis including threat detection and reputation checking",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }
 

@@ -15,8 +15,8 @@ TOOL_INFO = {
     "name": "Certificate Transparency Log Scanner",
     "description": "Scan Certificate Transparency logs for domain certificates and security analysis",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
-    "category": "Reconnaissance",
+    "author": "Wildbox Security",
+    "category": "reconnaissance",
     "tags": ["certificates", "ct-logs", "ssl", "tls", "surveillance"]
 }
 

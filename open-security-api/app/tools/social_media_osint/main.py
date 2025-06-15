@@ -14,8 +14,8 @@ TOOL_INFO = {
     "name": "Social Media OSINT Tool",
     "description": "Advanced social media intelligence gathering and analysis tool",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
-    "category": "OSINT",
+    "author": "Wildbox Security",
+    "category": "osint",
     "tags": ["social-media", "osint", "intelligence", "reconnaissance"]
 }
 

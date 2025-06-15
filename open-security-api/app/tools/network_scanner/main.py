@@ -214,6 +214,6 @@ TOOL_INFO = {
     "display_name": "Network Scanner",
     "description": "Discovers hosts and services on a network using ping and TCP scans",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "network_reconnaissance"
 }

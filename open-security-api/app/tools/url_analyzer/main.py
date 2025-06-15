@@ -316,7 +316,7 @@ TOOL_INFO = {
     "display_name": "URL Shortener Analyzer",
     "description": "Analyzes shortened URLs to reveal redirect chains and detect security threats",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }
 

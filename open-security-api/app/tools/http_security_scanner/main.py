@@ -22,7 +22,7 @@ TOOL_INFO = {
     "display_name": "HTTP Security Headers Scanner",
     "description": "Scans web applications for missing or misconfigured security headers that could lead to vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }
 

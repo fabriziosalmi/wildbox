@@ -477,8 +477,8 @@ TOOL_INFO = {
     "display_name": "Certificate Authority Analyzer",
     "description": "Comprehensive SSL/TLS certificate and CA analysis with security assessment",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
-    "category": "crypto_analysis"
+    "author": "Wildbox Security",
+    "category": "cryptography"
 }
 
 

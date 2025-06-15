@@ -320,7 +320,7 @@ TOOL_INFO = {
     "display_name": "Base64 Encoder/Decoder",
     "description": "Comprehensive Base64 encoding and decoding with content type detection",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "data_analysis"
 }
 

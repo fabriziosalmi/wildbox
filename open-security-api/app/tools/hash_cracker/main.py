@@ -195,6 +195,6 @@ TOOL_INFO = {
     "display_name": "Hash Cracker",
     "description": "Cracks common hash types using dictionary attacks",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "cryptography"
 }

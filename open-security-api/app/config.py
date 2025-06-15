@@ -75,8 +75,24 @@ class Settings(BaseSettings):
         else:
             key_value = str(v)
         
-        if len(key_value) < 20:
-            raise ValueError('API key must be at least 20 characters long')
+        if len(key_value) < 32:
+            raise ValueError('API key must be at least 32 characters long for security')
+        
+        # Check for common weak patterns
+        weak_patterns = [
+            'password', 'secret', 'key', 'admin', 'test', 'demo', 
+            '123', 'abc', 'default', 'wildbox', 'api-key'
+        ]
+        key_lower = key_value.lower()
+        for pattern in weak_patterns:
+            if pattern in key_lower:
+                raise ValueError(f'API key contains weak pattern "{pattern}". Use a randomly generated key.')
+        
+        # Check for sufficient entropy (basic check)
+        unique_chars = len(set(key_value))
+        if unique_chars < 16:
+            raise ValueError('API key has insufficient entropy. Use a randomly generated key.')
+        
         return v
     
     @validator('cors_origins')

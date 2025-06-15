@@ -23,7 +23,7 @@ TOOL_INFO = {
     "display_name": "HTTP Header Security Analyzer",
     "description": "Analyzes HTTP response headers for security misconfigurations and vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }
 

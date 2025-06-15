@@ -138,6 +138,6 @@ TOOL_INFO = {
     "display_name": "Directory Brute Forcer",
     "description": "Discovers hidden directories and files on web servers",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_reconnaissance"
 }

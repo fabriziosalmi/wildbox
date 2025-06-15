@@ -551,7 +551,7 @@ TOOL_INFO = {
     "display_name": "DNS Security Checker",
     "description": "Comprehensive DNS security analysis including DNSSEC, SPF, DMARC, DKIM, and more",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "network_security"
 }
 

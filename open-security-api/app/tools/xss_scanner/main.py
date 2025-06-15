@@ -232,6 +232,6 @@ TOOL_INFO = {
     "display_name": "XSS Scanner",
     "description": "Tests web applications for Cross-Site Scripting (XSS) vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }

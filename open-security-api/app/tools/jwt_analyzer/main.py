@@ -303,6 +303,6 @@ TOOL_INFO = {
     "display_name": "JWT Token Analyzer",
     "description": "Analyzes JWT tokens for security vulnerabilities and attempts secret cracking",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "cryptography"
 }

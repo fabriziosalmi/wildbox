@@ -80,6 +80,6 @@ TOOL_INFO = {
     "display_name": "Subdomain Scanner",
     "description": "Discovers subdomains for a target domain using DNS enumeration",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "network_reconnaissance"
 }

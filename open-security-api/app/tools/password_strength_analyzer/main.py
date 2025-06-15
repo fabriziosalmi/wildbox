@@ -464,7 +464,7 @@ TOOL_INFO = {
     "display_name": "Password Strength Analyzer",
     "description": "Comprehensive password strength analysis with security recommendations",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "authentication"
 }
 

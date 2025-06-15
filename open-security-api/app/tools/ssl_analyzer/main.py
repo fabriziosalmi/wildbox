@@ -229,6 +229,6 @@ TOOL_INFO = {
     "display_name": "SSL/TLS Analyzer",
     "description": "Analyzes SSL/TLS configuration, certificates, and security vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "security_analysis"
 }

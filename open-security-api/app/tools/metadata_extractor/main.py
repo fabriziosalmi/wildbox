@@ -450,7 +450,7 @@ TOOL_INFO = {
     "display_name": "Metadata Extractor",
     "description": "Extracts and analyzes metadata from files for security and privacy assessment",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "data_analysis"
 }
 

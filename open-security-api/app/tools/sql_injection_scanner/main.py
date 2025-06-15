@@ -203,6 +203,6 @@ TOOL_INFO = {
     "display_name": "SQL Injection Scanner",
     "description": "Tests web applications for SQL injection vulnerabilities",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "web_security"
 }

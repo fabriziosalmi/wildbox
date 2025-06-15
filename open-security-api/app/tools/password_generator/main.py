@@ -23,7 +23,7 @@ TOOL_INFO = {
     "display_name": "Secure Password Generator",
     "description": "Generates secure passwords with customizable options and strength analysis",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
+    "author": "Wildbox Security",
     "category": "cryptography"
 }
 

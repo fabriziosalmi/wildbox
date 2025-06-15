@@ -35,6 +35,43 @@
     </div>
 </div>
 
+<!-- Quick Tool Search -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm bg-white">
+            <div class="card-body p-4">
+                <div class="text-center mb-4">
+                    <p class="text-muted mb-0">Start typing to search and launch tools instantly</p>
+                </div>
+                
+                <div class="position-relative">
+                    <div class="input-group input-group-lg">
+                        <span class="input-group-text bg-light border-end-0">
+                            <i class="fas fa-search text-muted"></i>
+                        </span>
+                        <input 
+                            type="text" 
+                            class="form-control border-start-0 ps-0" 
+                            id="toolSearchInput"
+                            placeholder="Search tools by name, category, or description..."
+                            autocomplete="off"
+                        >
+                        <button class="btn btn-outline-secondary" type="button" id="clearSearchBtn" style="display: none;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    
+                    <!-- Search Results Dropdown -->
+                    <div id="searchResults" class="position-absolute w-100 bg-white border rounded-bottom shadow-lg" style="top: 100%; z-index: 1000; display: none; max-height: 400px; overflow-y: auto;">
+                        <!-- Results will be populated by JavaScript -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Quick Start Info -->
 <div class="row mb-4">
     <div class="col-12">
@@ -140,7 +177,6 @@
                         <h5 class="mb-1 fw-bold">{{ tool.display_name }}</h5>
                         <div class="d-flex align-items-center gap-2">
                             <span class="badge category-badge small" data-category-raw="{{ tool.category }}">{{ tool.category|title }}</span>
-                            <span class="badge bg-success small">v{{ tool.version }}</span>
                         </div>
                     </div>
                 </div>
@@ -172,13 +208,10 @@
                         <div class="metadata-item">
                             <div class="d-flex align-items-center justify-content-between">
                                 <div class="d-flex align-items-center gap-2">
-                                    <i class="fas fa-clock text-success"></i>
-                                    <span class="text-muted small">Status</span>
+                                    <i class="fas fa-tag text-info"></i>
+                                    <span class="text-muted small">Version</span>
                                 </div>
-                                <div class="d-flex align-items-center gap-2">
-                                    <span class="text-success fw-medium">Ready</span>
-                                    <span class="status-dot success"></span>
-                                </div>
+                                <span class="fw-medium">{{ tool.version or '1.0.0' }}</span>
                             </div>
                         </div>
                     </div>
@@ -193,7 +226,7 @@
                     </a>
                     <div class="row g-2">
                         <div class="col-6">
-                            <a href="/docs#/{{ tool.name }}" class="btn btn-outline-primary btn-sm w-100" target="_blank">
+                            <a href="/docs#/Security%20Tools/tool_endpoint_api_tools_{{ tool.name }}_post" class="btn btn-outline-primary btn-sm w-100" target="_blank">
                                 <i class="fas fa-code me-1"></i>API Docs
                             </a>
                         </div>
@@ -398,6 +431,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize dashboard
     PageInit.dashboard();
+    
+    // Initialize search functionality
+    ToolSearch.init();
     
     // Check API key status and update badge
     checkApiKeyStatusForDashboard();

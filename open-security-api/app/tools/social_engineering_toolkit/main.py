@@ -13,8 +13,8 @@ TOOL_INFO = {
     "name": "Social Engineering Toolkit",
     "description": "Advanced OSINT and social engineering detection tool",
     "version": "1.0.0",
-    "author": "Wildbox Security Team",
-    "category": "OSINT",
+    "author": "Wildbox Security",
+    "category": "osint",
     "tags": ["social-engineering", "osint", "reconnaissance", "privacy"]
 }
 

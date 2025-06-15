@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Search Test</title>
+</head>
+<body>
+    <script>
+        // Simple test to verify the search functionality
+        setTimeout(() => {
+            fetch('http://localhost:8000')
+                .then(response => response.text())
+                .then(html => {
+                    // Check if the search elements are present
+                    const hasSearchInput = html.includes('id="toolSearchInput"');
+                    const hasSearchResults = html.includes('id="searchResults"');
+                    const hasQuickSearch = html.includes('onclick="quickSearch(');
+                    
+                    console.log('Search Input Present:', hasSearchInput);
+                    console.log('Search Results Container Present:', hasSearchResults);
+                    console.log('Quick Search Buttons Present:', hasQuickSearch);
+                    
+                    if (hasSearchInput && hasSearchResults && hasQuickSearch) {
+                        console.log('✅ Search functionality is properly implemented!');
+                    } else {
+                        console.log('❌ Some search elements are missing');
+                    }
+                })
+                .catch(err => console.error('Test failed:', err));
+        }, 1000);
+    </script>
+</body>
+</html>
