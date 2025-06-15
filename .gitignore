@@ -4,3 +4,14 @@ open-security-api/app/tools/__pycache__/
 open-security-api/app/web/__pycache__/
 open-security-api/*.pyc
 open-security-api/.env
+open-security-api/app/tools/compliance_checker/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/container_security_scanner/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/database_security_analyzer/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/iot_security_scanner/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/mobile_security_analyzer/__pycache__/main.cpython-312.pyc
+open-security-api/app/tools/mobile_security_analyzer/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/pki_certificate_manager/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/saml_analyzer/__pycache__/main.cpython-312.pyc
+open-security-api/app/tools/saml_analyzer/__pycache__/schemas.cpython-312.pyc
+open-security-api/app/tools/static_malware_analyzer/__pycache__/main.cpython-312.pyc
+open-security-api/app/tools/static_malware_analyzer/__pycache__/schemas.cpython-312.pyc
