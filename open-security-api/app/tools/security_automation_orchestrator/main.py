@@ -31,10 +31,13 @@ class SecurityAutomationOrchestrator:
     category = "automation"
     
     def __init__(self):
+        # Updated list of available tools with proper module names
         self.available_tools = [
-            "vulnerability_scanner", "port_scanner", "ssl_analyzer", "dns_enumerator",
+            "network_port_scanner", "ssl_analyzer", "dns_enumerator", "dns_security_checker",
             "threat_hunting_platform", "incident_response_automation", "compliance_checker",
-            "network_scanner", "web_vuln_scanner", "email_harvester"
+            "network_scanner", "api_security_tester", "email_harvester", "password_generator",
+            "hash_generator", "jwt_analyzer", "base64_tool", "metadata_extractor",
+            "directory_bruteforcer", "cookie_scanner", "header_analyzer"
         ]
         
         self.workflow_templates = {

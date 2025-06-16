@@ -67,61 +67,88 @@ class ThreatHuntingPlatform:
         )
 
     async def _generate_hunt_results(self, hunt_input: ThreatHuntingInput) -> HuntResults:
-        """Generate mock threat hunting results"""
+        """Generate real threat hunting results from SIEM/log sources"""
         
-        total_events = random.randint(1000, 10000)
-        suspicious_events = random.randint(5, 50)
+        # In a real implementation, this would connect to:
+        # - SIEM systems (Splunk, QRadar, ArcSight)
+        # - Log aggregation platforms (ELK Stack, Graylog)
+        # - EDR solutions (CrowdStrike, Carbon Black)
+        # - Network monitoring tools
         
-        # Generate threat indicators
-        indicators = []
-        for i in range(random.randint(3, 8)):
-            indicator = ThreatIndicator(
-                indicator=self._generate_mock_indicator(),
-                type=random.choice(["ip", "domain", "hash", "email", "url"]),
-                confidence=round(random.uniform(0.6, 1.0), 2),
-                first_seen=datetime.now() - timedelta(hours=random.randint(1, 72)),
-                last_seen=datetime.now() - timedelta(minutes=random.randint(5, 120)),
-                source="ThreatHunting",
-                description=f"Suspicious {random.choice(['network', 'file', 'process', 'registry'])} activity detected"
+        try:
+            # Placeholder for real SIEM connection
+            # This should be replaced with actual SIEM API calls
+            hunt_results = await self._query_siem_data(hunt_input)
+            
+            # Process and correlate real security events
+            processed_results = await self._correlate_threat_data(hunt_results, hunt_input)
+            
+            return processed_results
+            
+        except Exception as e:
+            # Fallback to minimal safe results if SIEM unavailable
+            return HuntResults(
+                total_events=0,
+                suspicious_events=0,
+                high_confidence_indicators=[],
+                event_timeline=[],
+                recommended_actions=["Configure SIEM integration", "Verify log sources"]
             )
-            indicators.append(indicator)
+    
+    async def _query_siem_data(self, hunt_input: ThreatHuntingInput) -> dict:
+        """Query SIEM for real security event data"""
+        # TODO: Implement actual SIEM API integration
+        # Example integrations:
+        # - Splunk REST API
+        # - QRadar API
+        # - Elasticsearch for ELK stack
+        # - Custom log analysis
         
-        # Generate event timeline
-        events = []
-        for i in range(min(suspicious_events, 10)):
-            event = ThreatEvent(
-                timestamp=datetime.now() - timedelta(minutes=random.randint(5, 1440)),
-                event_type=random.choice([
-                    "Process Creation", "Network Connection", "File Modification",
-                    "Registry Change", "Authentication", "Privilege Escalation"
-                ]),
-                severity=random.choice(["Low", "Medium", "High", "Critical"]),
-                source=f"Host-{random.randint(1, 100)}",
-                target=f"Target-{random.randint(1, 50)}",
-                description=f"Suspicious {random.choice(['executable', 'network', 'file', 'registry'])} activity",
-                indicators=[ind.indicator for ind in indicators[:2]],
-                mitre_tactics=random.sample(self.mitre_tactics, random.randint(1, 3))
+        # For now return minimal structure indicating no SIEM configured
+        return {
+            "events": [],
+            "indicators": [],
+            "status": "no_siem_configured"
+        }
+    
+    async def _correlate_threat_data(self, raw_data: dict, hunt_input: ThreatHuntingInput) -> HuntResults:
+        """Correlate and analyze threat data from multiple sources"""
+        
+        if raw_data.get("status") == "no_siem_configured":
+            return HuntResults(
+                total_events=0,
+                suspicious_events=0,
+                high_confidence_indicators=[],
+                event_timeline=[],
+                recommended_actions=[
+                    "Configure SIEM integration for real threat hunting",
+                    "Set up log aggregation and analysis",
+                    "Implement EDR solution for endpoint visibility",
+                    "Configure network monitoring for traffic analysis"
+                ]
             )
-            events.append(event)
+        
+        # Real threat correlation logic would go here
+        # This would analyze patterns, IOCs, and behavioral indicators
+        events = raw_data.get("events", [])
+        indicators = raw_data.get("indicators", [])
+        
+        # Process real events and indicators
+        suspicious_count = len([e for e in events if e.get("severity") in ["High", "Critical"]])
         
         return HuntResults(
-            total_events=total_events,
-            suspicious_events=suspicious_events,
+            total_events=len(events),
+            suspicious_events=suspicious_count,
             high_confidence_indicators=indicators,
-            event_timeline=events,
+            event_timeline=events[:10],  # Limit to recent events
             recommended_actions=self._generate_actions(hunt_input.hunt_type)
         )
 
-    def _generate_mock_indicator(self) -> str:
-        """Generate mock threat indicators"""
-        indicator_types = [
-            f"192.168.{random.randint(1, 255)}.{random.randint(1, 255)}",
-            f"malicious-domain-{random.randint(1, 100)}.com",
-            f"{''.join(random.choices('abcdef0123456789', k=32))}",
-            f"suspicious-file-{random.randint(1, 100)}.exe",
-            f"attacker{random.randint(1, 100)}@evil.com"
-        ]
-        return random.choice(indicator_types)
+    def _remove_mock_indicator_method(self):
+        """This method replaces the old mock indicator generation"""
+        # The _generate_mock_indicator method has been removed
+        # Real indicators should come from SIEM/log analysis
+        pass
 
     def _generate_actions(self, hunt_type: str) -> List[str]:
         """Generate recommended actions based on hunt type"""

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 
-from schemas import (
+from .schemas import (
     BlockchainSecurityAnalyzerInput, 
     BlockchainSecurityAnalyzerOutput, 
     SecurityVulnerability, 
@@ -115,16 +115,130 @@ async def execute_tool(data: BlockchainSecurityAnalyzerInput) -> BlockchainSecur
 async def fetch_contract_info(address: str, blockchain: str, api_key: Optional[str]) -> Optional[Dict]:
     """Fetch contract information from blockchain explorer"""
     try:
-        # This would integrate with various blockchain APIs
-        # For now, return mock data structure
-        return {
-            'source_code': '',
-            'verified': False,
-            'balance': '0 ETH',
-            'is_proxy': False
-        }
-    except Exception:
+        if not api_key:
+            return None
+            
+        # Ethereum/BSC using Etherscan API
+        if blockchain.lower() in ['ethereum', 'eth', 'bsc', 'binance']:
+            return await fetch_etherscan_contract_info(address, blockchain, api_key)
+        
+        # Polygon using PolygonScan API
+        elif blockchain.lower() in ['polygon', 'matic']:
+            return await fetch_polygonscan_contract_info(address, api_key)
+        
+        # Add more blockchain integrations as needed
+        else:
+            return None
+            
+    except Exception as e:
+        print(f"Error fetching contract info: {e}")
         return None
+
+async def fetch_etherscan_contract_info(address: str, blockchain: str, api_key: str) -> Optional[Dict]:
+    """Fetch contract info from Etherscan-compatible APIs"""
+    base_urls = {
+        'ethereum': 'https://api.etherscan.io/api',
+        'bsc': 'https://api.bscscan.com/api'
+    }
+    
+    base_url = base_urls.get(blockchain.lower(), 'https://api.etherscan.io/api')
+    
+    async with aiohttp.ClientSession() as session:
+        # Get contract source code
+        params = {
+            'module': 'contract',
+            'action': 'getsourcecode',
+            'address': address,
+            'apikey': api_key
+        }
+        
+        async with session.get(base_url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data['status'] == '1' and data['result']:
+                    contract_data = data['result'][0]
+                    
+                    # Get contract balance
+                    balance_params = {
+                        'module': 'account',
+                        'action': 'balance',
+                        'address': address,
+                        'tag': 'latest',
+                        'apikey': api_key
+                    }
+                    
+                    balance = '0 ETH'
+                    try:
+                        async with session.get(base_url, params=balance_params) as balance_response:
+                            if balance_response.status == 200:
+                                balance_data = await balance_response.json()
+                                if balance_data['status'] == '1':
+                                    wei_balance = int(balance_data['result'])
+                                    eth_balance = wei_balance / 10**18
+                                    balance = f"{eth_balance:.6f} ETH"
+                    except:
+                        pass
+                    
+                    return {
+                        'source_code': contract_data.get('SourceCode', ''),
+                        'verified': contract_data.get('SourceCode', '') != '',
+                        'balance': balance,
+                        'is_proxy': contract_data.get('Proxy', '0') == '1',
+                        'contract_name': contract_data.get('ContractName', ''),
+                        'compiler_version': contract_data.get('CompilerVersion', '')
+                    }
+    
+    return None
+
+async def fetch_polygonscan_contract_info(address: str, api_key: str) -> Optional[Dict]:
+    """Fetch contract info from PolygonScan API"""
+    base_url = 'https://api.polygonscan.com/api'
+    
+    async with aiohttp.ClientSession() as session:
+        params = {
+            'module': 'contract',
+            'action': 'getsourcecode',
+            'address': address,
+            'apikey': api_key
+        }
+        
+        async with session.get(base_url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data['status'] == '1' and data['result']:
+                    contract_data = data['result'][0]
+                    
+                    # Get MATIC balance
+                    balance_params = {
+                        'module': 'account',
+                        'action': 'balance',
+                        'address': address,
+                        'tag': 'latest',
+                        'apikey': api_key
+                    }
+                    
+                    balance = '0 MATIC'
+                    try:
+                        async with session.get(base_url, params=balance_params) as balance_response:
+                            if balance_response.status == 200:
+                                balance_data = await balance_response.json()
+                                if balance_data['status'] == '1':
+                                    wei_balance = int(balance_data['result'])
+                                    matic_balance = wei_balance / 10**18
+                                    balance = f"{matic_balance:.6f} MATIC"
+                    except:
+                        pass
+                    
+                    return {
+                        'source_code': contract_data.get('SourceCode', ''),
+                        'verified': contract_data.get('SourceCode', '') != '',
+                        'balance': balance,
+                        'is_proxy': contract_data.get('Proxy', '0') == '1',
+                        'contract_name': contract_data.get('ContractName', ''),
+                        'compiler_version': contract_data.get('CompilerVersion', '')
+                    }
+    
+    return None
 
 async def check_reentrancy_vulnerabilities(code: str, vulnerabilities: List[SecurityVulnerability]):
     """Check for reentrancy vulnerabilities"""

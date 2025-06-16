@@ -5,7 +5,7 @@ import urllib.parse
 import base64
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from schemas import (
+from .schemas import (
     WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
     WAFBypassTechnique
 )

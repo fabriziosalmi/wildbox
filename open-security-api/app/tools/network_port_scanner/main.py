@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import random
 
-from schemas import PortScannerRequest, PortScannerResponse, PortInfo
+from .schemas import PortScannerRequest, PortScannerResponse, PortInfo
 
 logger = logging.getLogger(__name__)
 
@@ -90,12 +90,13 @@ async def resolve_hostname(target: str) -> str:
         if re.match(r'^\d+\.\d+\.\d+\.\d+$', target):
             return target  # Already an IP address
         
-        # Simulate DNS resolution
-        await asyncio.sleep(0.1)
+        # Real DNS resolution
+        import socket
+        loop = asyncio.get_event_loop()
         
-        # For demo purposes, return a simulated IP
-        # In real implementation, use socket.gethostbyname() or asyncio equivalent
-        return f"192.168.1.{random.randint(1, 254)}"
+        # Use asyncio to run blocking socket operation in thread pool
+        ip = await loop.run_in_executor(None, socket.gethostbyname, target)
+        return ip
         
     except Exception as e:
         logger.error(f"Failed to resolve hostname {target}: {str(e)}")
@@ -103,96 +104,213 @@ async def resolve_hostname(target: str) -> str:
 
 
 async def scan_tcp_port(ip: str, port: int, timeout: int = 3) -> str:
-    """Scan a single TCP port."""
+    """Scan a single TCP port using real network connection."""
     try:
-        # Simulate port scanning with realistic timing
-        await asyncio.sleep(random.uniform(0.01, 0.05))
+        # Real TCP connection attempt
+        future = asyncio.open_connection(ip, port)
+        reader, writer = await asyncio.wait_for(future, timeout=timeout)
         
-        # Simulate port states based on common ports
-        if port in COMMON_SERVICES:
-            # Common services are more likely to be open
-            if random.random() < 0.3:
-                return "open"
-            elif random.random() < 0.7:
-                return "closed"
-            else:
-                return "filtered"
+        # Connection successful - port is open
+        writer.close()
+        await writer.wait_closed()
+        return "open"
+        
+    except asyncio.TimeoutError:
+        return "filtered"  # Timeout usually means filtered
+    except ConnectionRefusedError:
+        return "closed"  # Connection refused means closed
+    except OSError as e:
+        # Handle various network errors
+        if "Network is unreachable" in str(e):
+            return "filtered"
+        elif "No route to host" in str(e):
+            return "filtered"
         else:
-            # Uncommon ports are mostly closed
-            if random.random() < 0.05:
-                return "open"
-            elif random.random() < 0.8:
-                return "closed"
-            else:
-                return "filtered"
-                
+            return "filtered"
     except Exception:
         return "filtered"
 
 
 async def scan_udp_port(ip: str, port: int, timeout: int = 3) -> str:
-    """Scan a single UDP port."""
+    """Scan a single UDP port using real network probes."""
     try:
-        # UDP scanning is more complex and slower
-        await asyncio.sleep(random.uniform(0.1, 0.2))
+        import socket
         
-        # UDP ports are harder to determine, often filtered
-        if port in [53, 123, 161, 162, 500]:  # Common UDP services
-            if random.random() < 0.2:
-                return "open"
+        # Create UDP socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(timeout)
+        
+        try:
+            # Send UDP probe
+            sock.sendto(b'', (ip, port))
+            
+            # Try to receive response
+            try:
+                data, addr = sock.recvfrom(1024)
+                sock.close()
+                return "open"  # Got response
+            except socket.timeout:
+                sock.close()
+                return "open|filtered"  # No response, could be open or filtered
+                
+        except socket.error as e:
+            sock.close()
+            if "Connection refused" in str(e):
+                return "closed"  # ICMP port unreachable
             else:
                 return "open|filtered"
-        else:
-            if random.random() < 0.9:
-                return "open|filtered"
-            else:
-                return "closed"
+                
+    except Exception:
+        return "open|filtered"
                 
     except Exception:
         return "open|filtered"
 
 
 async def detect_service(ip: str, port: int, protocol: str = "tcp") -> Tuple[Optional[str], Optional[str], Optional[str]]:
-    """Detect service running on a port."""
-    await asyncio.sleep(0.1)  # Simulate service detection delay
+    """Detect service running on a port using real banner grabbing."""
     
     service_name = None
     version = None
     banner = None
     
-    # Check if it's a known service
+    # First check if it's a known service by port
     if port in COMMON_SERVICES:
-        service_name, description = COMMON_SERVICES[port]
-        
-        # Generate realistic service versions and banners
-        if service_name == "ssh":
-            version = random.choice(["OpenSSH 8.0", "OpenSSH 7.4", "OpenSSH 9.0"])
-            banner = f"SSH-2.0-{version}"
-        elif service_name == "http":
-            version = random.choice(["Apache/2.4.41", "nginx/1.18.0", "Microsoft-IIS/10.0"])
-            banner = f"Server: {version}"
-        elif service_name == "https":
-            version = random.choice(["Apache/2.4.41", "nginx/1.18.0", "Microsoft-IIS/10.0"])
-            banner = f"Server: {version}"
-        elif service_name == "ftp":
-            version = random.choice(["vsftpd 3.0.3", "ProFTPD 1.3.6", "FileZilla Server"])
-            banner = f"220 {version} ready"
-        elif service_name == "smtp":
-            version = random.choice(["Postfix", "sendmail 8.15.2", "Microsoft ESMTP MAIL Service"])
-            banner = f"220 mail.example.com ESMTP {version}"
-        elif service_name == "mysql":
-            version = random.choice(["5.7.34", "8.0.25", "10.3.29-MariaDB"])
-            banner = f"MySQL {version}"
-        elif service_name == "postgresql":
-            version = random.choice(["12.7", "13.3", "14.0"])
-            banner = f"PostgreSQL {version}"
-    else:
-        # Unknown service, try to identify
-        if random.random() < 0.3:  # 30% chance of identifying unknown service
-            service_name = "unknown"
-            banner = "Unknown service banner"
+        service_name, _ = COMMON_SERVICES[port]
+    
+    # Try to grab banner for TCP services
+    if protocol == "tcp":
+        try:
+            banner = await grab_banner(ip, port)
+            if banner:
+                # Parse banner to extract service and version
+                parsed = parse_banner(banner, port)
+                if parsed['service']:
+                    service_name = parsed['service']
+                if parsed['version']:
+                    version = parsed['version']
+        except Exception as e:
+            logger.debug(f"Banner grab failed for {ip}:{port}: {e}")
     
     return service_name, version, banner
+
+
+async def grab_banner(ip: str, port: int, timeout: int = 5) -> Optional[str]:
+    """Grab service banner from a TCP port."""
+    try:
+        # Connect to the service
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port), 
+            timeout=timeout
+        )
+        
+        # Try to read initial banner (some services send it immediately)
+        try:
+            banner = await asyncio.wait_for(reader.read(1024), timeout=2)
+            if banner:
+                writer.close()
+                await writer.wait_closed()
+                return banner.decode('utf-8', errors='ignore').strip()
+        except asyncio.TimeoutError:
+            pass
+        
+        # For HTTP services, send a basic request
+        if port in [80, 8080, 8000, 8888]:
+            writer.write(b"GET / HTTP/1.1\r\nHost: " + ip.encode() + b"\r\n\r\n")
+            await writer.drain()
+            
+            response = await asyncio.wait_for(reader.read(1024), timeout=2)
+            writer.close()
+            await writer.wait_closed()
+            
+            if response:
+                return response.decode('utf-8', errors='ignore').strip()
+        
+        # For HTTPS services, we can't easily grab banners without SSL
+        elif port in [443, 8443]:
+            writer.close()
+            await writer.wait_closed()
+            return "HTTPS service detected"
+        
+        # For other services, try sending a newline and reading response
+        else:
+            writer.write(b"\r\n")
+            await writer.drain()
+            
+            response = await asyncio.wait_for(reader.read(1024), timeout=2)
+            writer.close()
+            await writer.wait_closed()
+            
+            if response:
+                return response.decode('utf-8', errors='ignore').strip()
+    
+    except Exception as e:
+        logger.debug(f"Banner grab error for {ip}:{port}: {e}")
+    
+    return None
+
+
+def parse_banner(banner: str, port: int) -> Dict[str, Optional[str]]:
+    """Parse service banner to extract service type and version."""
+    
+    result = {'service': None, 'version': None}
+    
+    if not banner:
+        return result
+    
+    banner_lower = banner.lower()
+    
+    # SSH detection
+    if 'ssh-' in banner_lower:
+        result['service'] = 'ssh'
+        if 'openssh' in banner_lower:
+            # Extract OpenSSH version
+            match = re.search(r'openssh[_\s]+(\d+\.\d+[\w\.-]*)', banner_lower)
+            if match:
+                result['version'] = f"OpenSSH {match.group(1)}"
+    
+    # HTTP server detection
+    elif 'server:' in banner_lower or 'http/' in banner_lower:
+        result['service'] = 'http'
+        # Extract server version
+        if 'apache' in banner_lower:
+            match = re.search(r'apache[/\s]+(\d+\.\d+[\.\d]*)', banner_lower)
+            if match:
+                result['version'] = f"Apache/{match.group(1)}"
+        elif 'nginx' in banner_lower:
+            match = re.search(r'nginx[/\s]+(\d+\.\d+[\.\d]*)', banner_lower)
+            if match:
+                result['version'] = f"nginx/{match.group(1)}"
+        elif 'microsoft-iis' in banner_lower:
+            match = re.search(r'microsoft-iis[/\s]+(\d+\.\d+)', banner_lower)
+            if match:
+                result['version'] = f"Microsoft-IIS/{match.group(1)}"
+    
+    # FTP detection
+    elif '220' in banner and ('ftp' in banner_lower or 'ready' in banner_lower):
+        result['service'] = 'ftp'
+        if 'vsftpd' in banner_lower:
+            match = re.search(r'vsftpd\s+(\d+\.\d+[\.\d]*)', banner_lower)
+            if match:
+                result['version'] = f"vsftpd {match.group(1)}"
+        elif 'proftpd' in banner_lower:
+            match = re.search(r'proftpd\s+(\d+\.\d+[\.\d]*)', banner_lower)
+            if match:
+                result['version'] = f"ProFTPD {match.group(1)}"
+    
+    # SMTP detection
+    elif '220' in banner and 'esmtp' in banner_lower:
+        result['service'] = 'smtp'
+        if 'postfix' in banner_lower:
+            result['version'] = "Postfix"
+        elif 'sendmail' in banner_lower:
+            match = re.search(r'sendmail\s+(\d+\.\d+[\.\d]*)', banner_lower)
+            if match:
+                result['version'] = f"sendmail {match.group(1)}"
+    
+    # Additional service detections can be added here
+    
+    return result
 
 
 async def perform_os_fingerprinting(ip: str, open_ports: List[PortInfo]) -> Optional[Dict[str, Any]]:
