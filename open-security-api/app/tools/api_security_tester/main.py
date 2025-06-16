@@ -299,12 +299,40 @@ async def run_security_test_category(
         tests.extend(result["tests"])
         vulnerabilities.extend(result["vulnerabilities"])
     
+    elif category == "lack_of_resources_rate_limiting":
+        result = await test_rate_limiting(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
+    
+    elif category == "broken_function_level_authorization":
+        result = await test_function_level_authorization(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
+    
+    elif category == "mass_assignment":
+        result = await test_mass_assignment(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
+    
+    elif category == "security_misconfiguration":
+        result = await test_security_misconfiguration(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
+    
     elif category == "injection":
         result = await test_injection_vulnerabilities(base_url, endpoints, headers, include_fuzzing, delay)
         tests.extend(result["tests"])
         vulnerabilities.extend(result["vulnerabilities"])
     
-    # Add more categories...
+    elif category == "improper_assets_management":
+        result = await test_improper_assets_management(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
+    
+    elif category == "insufficient_logging_monitoring":
+        result = await test_insufficient_logging(base_url, endpoints, headers, delay)
+        tests.extend(result["tests"])
+        vulnerabilities.extend(result["vulnerabilities"])
     
     return {"tests": tests, "vulnerabilities": vulnerabilities}
 
@@ -494,181 +522,275 @@ async def test_excessive_data_exposure(base_url: str, endpoints: List[APIEndpoin
     tests.append(test)
     return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-async def test_injection_vulnerabilities(base_url: str, endpoints: List[APIEndpoint], headers: Dict, include_fuzzing: bool, delay: float) -> Dict[str, List]:
-    """Test for injection vulnerabilities"""
+async def test_rate_limiting(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for rate limiting mechanisms"""
     tests = []
     vulnerabilities = []
     
     test = SecurityTest(
-        test_name="Injection Vulnerabilities",
-        category="Injection",
-        description="Testing for SQL injection, NoSQL injection, and command injection",
+        test_name="Rate Limiting Test",
+        category="OWASP API4",
+        description="Testing for proper rate limiting mechanisms",
         executed=True,
         passed=True,
         findings=[],
         recommendations=[]
     )
     
-    injection_payloads = [
-        "' OR '1'='1",
-        "'; DROP TABLE users; --",
-        "1' UNION SELECT * FROM users--",
-        "admin'/*",
-        "'; SELECT * FROM information_schema.tables--",
-        "1; ls -la",
-        "|whoami",
-        "$(id)",
-        "`cat /etc/passwd`"
-    ]
-    
     for endpoint in endpoints:
-        if endpoint.parameters:
-            for param in endpoint.parameters:
-                for payload in injection_payloads:
-                    try:
-                        if endpoint.method == "GET":
-                            url = f"{urljoin(base_url, endpoint.path)}?{param}={payload}"
-                        else:
-                            url = urljoin(base_url, endpoint.path)
-                        
-                        async with aiohttp.ClientSession() as session:
-                            if endpoint.method == "GET":
-                                async with session.get(url, headers=headers, timeout=10) as response:
-                                    response_text = await response.text()
-                            else:
-                                data = {param: payload}
-                                async with session.post(url, json=data, headers=headers, timeout=10) as response:
-                                    response_text = await response.text()
-                            
-                            # Check for injection indicators
-                            error_indicators = [
-                                'sql syntax', 'mysql_fetch', 'ora-', 'postgresql',
-                                'sqlite', 'mongodb', 'command not found', 'permission denied'
-                            ]
-                            
-                            for indicator in error_indicators:
-                                if indicator in response_text.lower():
-                                    vulnerabilities.append(APIVulnerability(
-                                        severity="High",
-                                        category="Injection",
-                                        title="Injection Vulnerability Detected",
-                                        description=f"Injection payload triggered error: {indicator}",
-                                        endpoint=endpoint.path,
-                                        method=endpoint.method,
-                                        request_details={"parameter": param, "payload": payload},
-                                        response_details={"error_indicator": indicator},
-                                        cwe_id="CWE-89",
-                                        remediation="Use parameterized queries and input validation"
-                                    ))
-                                    test.passed = False
-                                    test.findings.append(f"Injection detected in parameter: {param}")
-                    
-                    except Exception:
-                        continue
-                    
-                    await asyncio.sleep(delay)
+        try:
+            url = urljoin(base_url, endpoint.path)
+            request_count = 0
+            rate_limited = False
+            
+            # Send rapid requests to test rate limiting
+            for i in range(10):
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers, timeout=5) as response:
+                        request_count += 1
+                        if response.status == 429:  # Rate limited
+                            rate_limited = True
+                            break
+            
+            if not rate_limited and request_count >= 10:
+                vulnerabilities.append(APIVulnerability(
+                    severity="Medium",
+                    category="Rate Limiting",
+                    title="Missing Rate Limiting",
+                    description="No rate limiting detected on endpoint",
+                    endpoint=endpoint.path,
+                    method=endpoint.method,
+                    request_details={"requests_sent": request_count},
+                    response_details={"rate_limited": False},
+                    owasp_category="API4:2023 Unrestricted Resource Consumption",
+                    remediation="Implement rate limiting to prevent abuse"
+                ))
+                test.passed = False
+                test.findings.append(f"No rate limiting on {endpoint.path}")
+        
+        except Exception:
+            continue
     
     tests.append(test)
     return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-def analyze_owasp_api_top10_compliance(vulnerabilities: List[APIVulnerability], tests: List[SecurityTest]) -> Dict[str, str]:
-    """Analyze compliance with OWASP API Security Top 10"""
-    compliance = {
-        "API1_Broken_Object_Level_Authorization": "PASS",
-        "API2_Broken_Authentication": "PASS",
-        "API3_Broken_Object_Property_Level_Authorization": "PASS",
-        "API4_Unrestricted_Resource_Consumption": "PASS",
-        "API5_Broken_Function_Level_Authorization": "PASS",
-        "API6_Unrestricted_Access_to_Sensitive_Business_Flows": "PASS",
-        "API7_Server_Side_Request_Forgery": "PASS",
-        "API8_Security_Misconfiguration": "PASS",
-        "API9_Improper_Inventory_Management": "PASS",
-        "API10_Unsafe_Consumption_of_APIs": "PASS"
-    }
+async def test_function_level_authorization(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for function level authorization issues"""
+    tests = []
+    vulnerabilities = []
     
-    # Mark as FAIL if vulnerabilities found in each category
-    for vuln in vulnerabilities:
-        if "API1" in vuln.owasp_category or "authorization" in vuln.category.lower():
-            compliance["API1_Broken_Object_Level_Authorization"] = "FAIL"
-        if "API2" in vuln.owasp_category or "authentication" in vuln.category.lower():
-            compliance["API2_Broken_Authentication"] = "FAIL"
-        if "API3" in vuln.owasp_category or "data exposure" in vuln.category.lower():
-            compliance["API3_Broken_Object_Property_Level_Authorization"] = "FAIL"
-        if "injection" in vuln.category.lower():
-            compliance["API7_Server_Side_Request_Forgery"] = "FAIL"
+    test = SecurityTest(
+        test_name="Function Level Authorization",
+        category="OWASP API5",
+        description="Testing for proper function-level access controls",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
     
-    return compliance
+    # Test without authentication headers
+    headers_no_auth = {k: v for k, v in headers.items() if 'authorization' not in k.lower() and 'x-api-key' not in k.lower()}
+    
+    for endpoint in endpoints:
+        if endpoint.requires_auth:
+            try:
+                url = urljoin(base_url, endpoint.path)
+                
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url, headers=headers_no_auth, timeout=10) as response:
+                        if response.status == 200:
+                            vulnerabilities.append(APIVulnerability(
+                                severity="High",
+                                category="Authorization",
+                                title="Missing Function Level Authorization",
+                                description="Protected function accessible without authentication",
+                                endpoint=endpoint.path,
+                                method=endpoint.method,
+                                request_details={"no_auth": True},
+                                response_details={"status": response.status},
+                                owasp_category="API5:2023 Broken Function Level Authorization",
+                                remediation="Implement proper function-level authorization checks"
+                            ))
+                            test.passed = False
+                            test.findings.append(f"Unauthorized access to {endpoint.path}")
+            
+            except Exception:
+                continue
+            
+            await asyncio.sleep(delay)
+    
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-def calculate_security_score(vulnerabilities: List[APIVulnerability], tests: List[SecurityTest]) -> float:
-    """Calculate overall security score"""
-    if not tests:
-        return 0.0
+async def test_mass_assignment(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for mass assignment vulnerabilities"""
+    tests = []
+    vulnerabilities = []
     
-    base_score = 100.0
+    test = SecurityTest(
+        test_name="Mass Assignment",
+        category="OWASP API6",
+        description="Testing for mass assignment vulnerabilities",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
     
-    # Deduct points based on vulnerabilities
-    for vuln in vulnerabilities:
-        if vuln.severity == "Critical":
-            base_score -= 25
-        elif vuln.severity == "High":
-            base_score -= 15
-        elif vuln.severity == "Medium":
-            base_score -= 8
-        elif vuln.severity == "Low":
-            base_score -= 3
+    dangerous_fields = ['admin', 'role', 'is_admin', 'permissions', 'password', 'email_verified']
     
-    # Bonus for passed tests
-    passed_tests = len([t for t in tests if t.passed])
-    total_tests = len(tests)
+    for endpoint in endpoints:
+        if endpoint.method in ['POST', 'PUT', 'PATCH']:
+            try:
+                url = urljoin(base_url, endpoint.path)
+                
+                for field in dangerous_fields:
+                    test_data = {field: 'true', 'test_field': 'value'}
+                    
+                    async with aiohttp.ClientSession() as session:
+                        async with session.request(endpoint.method, url, json=test_data, headers=headers, timeout=10) as response:
+                            if response.status in [200, 201]:
+                                vulnerabilities.append(APIVulnerability(
+                                    severity="High",
+                                    category="Mass Assignment",
+                                    title="Potential Mass Assignment",
+                                    description=f"Dangerous field '{field}' accepted in request",
+                                    endpoint=endpoint.path,
+                                    method=endpoint.method,
+                                    request_details={"dangerous_field": field},
+                                    response_details={"status": response.status},
+                                    owasp_category="API6:2023 Unrestricted Access to Sensitive Business Flows",
+                                    remediation="Implement field whitelisting and input validation"
+                                ))
+                                test.passed = False
+                                test.findings.append(f"Mass assignment risk with field: {field}")
+                
+                await asyncio.sleep(delay)
+            
+            except Exception:
+                continue
     
-    if total_tests > 0:
-        test_bonus = (passed_tests / total_tests) * 20
-        base_score += test_bonus
-    
-    return max(0.0, min(100.0, base_score))
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-def determine_risk_rating(vulnerabilities: List[APIVulnerability]) -> str:
-    """Determine overall risk rating"""
-    critical_count = len([v for v in vulnerabilities if v.severity == "Critical"])
-    high_count = len([v for v in vulnerabilities if v.severity == "High"])
+async def test_security_misconfiguration(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for security misconfigurations"""
+    tests = []
+    vulnerabilities = []
     
-    if critical_count > 0:
-        return "Critical"
-    elif high_count > 2:
-        return "High"
-    elif high_count > 0:
-        return "Medium"
-    else:
-        return "Low"
+    test = SecurityTest(
+        test_name="Security Misconfiguration",
+        category="OWASP API8",
+        description="Testing for security misconfigurations",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
+    
+    # Test for debug endpoints
+    debug_paths = ['/debug', '/test', '/dev', '/swagger', '/api-docs', '/.env']
+    
+    for debug_path in debug_paths:
+        try:
+            url = urljoin(base_url, debug_path)
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        vulnerabilities.append(APIVulnerability(
+                            severity="Medium",
+                            category="Misconfiguration",
+                            title="Debug Endpoint Exposed",
+                            description=f"Debug endpoint accessible: {debug_path}",
+                            endpoint=debug_path,
+                            method="GET",
+                            request_details={"debug_path": debug_path},
+                            response_details={"status": response.status},
+                            owasp_category="API8:2023 Security Misconfiguration",
+                            remediation="Remove or secure debug endpoints in production"
+                        ))
+                        test.passed = False
+                        test.findings.append(f"Debug endpoint exposed: {debug_path}")
+        
+        except Exception:
+            continue
+        
+        await asyncio.sleep(delay)
+    
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-def generate_recommendations(
-    vulnerabilities: List[APIVulnerability],
-    tests: List[SecurityTest],
-    owasp_compliance: Dict[str, str]
-) -> List[str]:
-    """Generate security recommendations"""
-    recommendations = []
+async def test_improper_assets_management(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for improper assets management"""
+    tests = []
+    vulnerabilities = []
     
-    if vulnerabilities:
-        recommendations.append("Address all identified vulnerabilities before production deployment")
+    test = SecurityTest(
+        test_name="Improper Assets Management",
+        category="OWASP API9",
+        description="Testing for improper API inventory management",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
     
-    failed_owasp = [k for k, v in owasp_compliance.items() if v == "FAIL"]
-    if failed_owasp:
-        recommendations.append(f"Focus on OWASP API Security Top 10 compliance: {', '.join(failed_owasp)}")
+    # Check for old API versions
+    version_patterns = ['/v1/', '/v2/', '/api/v1', '/api/v2']
+    found_versions = set()
     
-    recommendations.extend([
-        "Implement comprehensive input validation and sanitization",
-        "Use parameterized queries to prevent injection attacks",
-        "Implement proper authentication and authorization mechanisms",
-        "Apply the principle of least privilege for API access",
-        "Implement rate limiting and resource consumption controls",
-        "Use HTTPS for all API communications",
-        "Implement comprehensive logging and monitoring",
-        "Regular security testing and code reviews",
-        "Keep API documentation up to date and secure"
-    ])
+    for endpoint in endpoints:
+        for pattern in version_patterns:
+            if pattern in endpoint.path:
+                found_versions.add(pattern)
     
-    return recommendations
+    if len(found_versions) > 1:
+        vulnerabilities.append(APIVulnerability(
+            severity="Low",
+            category="Assets Management",
+            title="Multiple API Versions Detected",
+            description="Multiple API versions found, ensure old versions are properly secured",
+            endpoint="Multiple",
+            method="N/A",
+            request_details={"versions": list(found_versions)},
+            response_details={},
+            owasp_category="API9:2023 Improper Inventory Management",
+            remediation="Maintain proper API version inventory and deprecate old versions"
+        ))
+        test.passed = False
+        test.findings.append(f"Multiple API versions: {found_versions}")
+    
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
 
-# Export tool info for registration
-tool_info = TOOL_INFO
+async def test_insufficient_logging(base_url: str, endpoints: List[APIEndpoint], headers: Dict, delay: float) -> Dict[str, List]:
+    """Test for insufficient logging and monitoring"""
+    tests = []
+    vulnerabilities = []
+    
+    test = SecurityTest(
+        test_name="Insufficient Logging",
+        category="OWASP API10",
+        description="Testing for proper logging and monitoring",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
+    
+    # This is largely a configuration assessment - simplified version
+    # In real implementation, this would check log configurations, monitoring endpoints, etc.
+    
+    test.findings.append("Logging assessment requires manual review of log configuration")
+    test.recommendations = [
+        "Implement comprehensive API logging",
+        "Monitor for suspicious activities and failed authentication attempts",
+        "Set up alerting for security events",
+        "Maintain audit trails for sensitive operations"
+    ]
+    
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
+```

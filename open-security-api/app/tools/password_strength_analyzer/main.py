@@ -85,38 +85,61 @@ class PasswordStrengthAnalyzer:
         pass
     
     def calculate_entropy(self, password: str) -> float:
-        """Calculate password entropy in bits"""
-        charset_size = 0
-        
-        # Count character set size
-        if re.search(r'[a-z]', password):
-            charset_size += 26
-        if re.search(r'[A-Z]', password):
-            charset_size += 26
-        if re.search(r'\d', password):
-            charset_size += 10
-        if re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]', password):
-            charset_size += 32
-        if re.search(r'[\s]', password):
-            charset_size += 1
-        
-        # Additional characters
-        unique_chars = set(password)
-        additional_chars = len(unique_chars) - sum([
-            len([c for c in unique_chars if c.islower()]),
-            len([c for c in unique_chars if c.isupper()]),
-            len([c for c in unique_chars if c.isdigit()]),
-            len([c for c in unique_chars if c in '!@#$%^&*()_+-=[]{};\':"\\|,.<>/?']),
-            len([c for c in unique_chars if c.isspace()])
-        ])
-        
-        if additional_chars > 0:
-            charset_size += additional_chars
-        
-        if charset_size == 0:
+        """Calculate password entropy in bits using proper charset analysis"""
+        if not password:
             return 0.0
         
-        return len(password) * math.log2(charset_size)
+        # Determine actual character set size based on characters present
+        charset_size = 0
+        
+        # Check for lowercase letters
+        if re.search(r'[a-z]', password):
+            charset_size += 26
+        
+        # Check for uppercase letters
+        if re.search(r'[A-Z]', password):
+            charset_size += 26
+        
+        # Check for digits
+        if re.search(r'\d', password):
+            charset_size += 10
+        
+        # Check for common special characters
+        if re.search(r'[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?`~]', password):
+            charset_size += 33  # Common special characters
+        
+        # Check for spaces
+        if re.search(r'\s', password):
+            charset_size += 1
+        
+        # Check for any other characters (extended ASCII, Unicode, etc.)
+        unique_chars = set(password)
+        standard_chars = set(string.ascii_letters + string.digits + '!@#$%^&*()_+-=[]{};\':"\\|,.<>/?`~ ')
+        additional_chars = unique_chars - standard_chars
+        
+        if additional_chars:
+            charset_size += len(additional_chars)
+        
+        # Minimum charset size is 1 to avoid log(0)
+        charset_size = max(charset_size, 1)
+        
+        # Calculate entropy: log2(charset_size^password_length) = length * log2(charset_size)
+        entropy = len(password) * math.log2(charset_size)
+        
+        # Apply penalty for repeated characters (reduces effective entropy)
+        char_frequency = {}
+        for char in password:
+            char_frequency[char] = char_frequency.get(char, 0) + 1
+        
+        # Calculate reduction factor based on character repetition
+        total_chars = len(password)
+        unique_chars_count = len(char_frequency)
+        repetition_penalty = unique_chars_count / total_chars
+        
+        # Apply penalty (but don't reduce entropy below 50% of theoretical max)
+        entropy = entropy * max(0.5, repetition_penalty)
+        
+        return entropy
     
     def estimate_crack_times(self, password: str, entropy: float) -> Dict[str, str]:
         """Estimate crack times for different attack scenarios"""
