@@ -1,33 +1,11 @@
 """XSS Scanner Tool - Tests for Cross-Site Scripting vulnerabilities."""
 
 import time
-import asyncio
-import aiohttp
+import requests
 import re
-import sys
-import os
 from datetime import datetime
 from typing import List, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
-
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-
-try:
-    from app.utils.tool_utils import RateLimiter
-    from app.config.tool_config import ToolConfig
-except ImportError:
-    # Fallback for when running as standalone
-    class RateLimiter:
-        def __init__(self, max_requests=10, time_window=60):
-            pass
-        async def acquire(self):
-            pass
-    
-    class ToolConfig:
-        DEFAULT_RATE_LIMIT = 10
-        DEFAULT_RATE_WINDOW = 60
-
 try:
     from .schemas import XSSScannerInput, XSSScannerOutput, XSSResult
 except ImportError:
@@ -150,13 +128,10 @@ def test_xss_payload(url: str, method: str, param_name: str, payload: str, xss_t
             new_query = urlencode(params, doseq=True)
             test_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}?{new_query}"
             
-            # Using synchronous requests for compatibility
-            import requests
             response = requests.get(test_url, headers=headers, timeout=timeout)
         else:
             # POST request
             data = {param_name: payload}
-            import requests
             response = requests.post(url, data=data, headers=headers, timeout=timeout)
         
         response_time = time.time() - start_time
@@ -191,10 +166,6 @@ def execute_tool(input_data: XSSScannerInput) -> XSSScannerOutput:
     timestamp = datetime.now()
     results = []
     
-    # Initialize rate limiter
-    rate_limiter = RateLimiter(max_requests=10, time_window=60)
-    request_count = 0
-    
     # Default headers
     headers = input_data.headers or {}
     if "User-Agent" not in headers:
@@ -218,10 +189,6 @@ def execute_tool(input_data: XSSScannerInput) -> XSSScannerOutput:
     # Test each parameter with each payload
     for param_name, param_value in parameters.items():
         for payload, xss_type in payloads:
-            # Apply rate limiting
-            if request_count > 0 and request_count % 10 == 0:
-                time.sleep(6)  # Simple rate limiting: 6 second delay every 10 requests
-            
             result = test_xss_payload(
                 input_data.target_url,
                 input_data.method,
@@ -232,7 +199,6 @@ def execute_tool(input_data: XSSScannerInput) -> XSSScannerOutput:
                 input_data.timeout
             )
             results.append(result)
-            request_count += 1
     
     # Count vulnerabilities
     vulnerabilities_found = sum(1 for result in results if result.vulnerable)

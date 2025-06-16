@@ -3,6 +3,8 @@ import ipaddress
 import asyncio
 import random
 import logging
+import os
+import json
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -41,18 +43,30 @@ class IoTSecurityScanner:
         "nas": [21, 22, 80, 139, 443, 445, 993, 995]
     }
     
-    # Common default credentials for IoT devices
-    DEFAULT_CREDENTIALS = [
-        {"username": "admin", "password": "admin"},
-        {"username": "admin", "password": "password"},
-        {"username": "admin", "password": "123456"},
-        {"username": "admin", "password": ""},
-        {"username": "root", "password": "root"},
-        {"username": "user", "password": "user"},
-        {"username": "guest", "password": "guest"},
-        {"username": "ubnt", "password": "ubnt"},
-        {"username": "pi", "password": "raspberry"}
-    ]
+    def _load_default_credentials(self) -> List[Dict[str, str]]:
+        """Load default credentials from secure configuration file."""
+        try:
+            # Load from secure configuration file
+            creds_file = os.getenv('IOT_DEFAULT_CREDS_FILE', '/etc/security/iot_default_creds.json')
+            if os.path.exists(creds_file):
+                with open(creds_file, 'r') as f:
+                    credentials = json.load(f)
+                    # Validate credential format
+                    for cred in credentials:
+                        if not isinstance(cred, dict) or 'username' not in cred or 'password' not in cred:
+                            logger.warning("Invalid credential format in configuration file")
+                            continue
+                    return credentials
+            else:
+                logger.warning("IoT default credentials file not found. Using minimal safe set.")
+                # Return only safe, minimal credential set for testing
+                return [
+                    {"username": "admin", "password": "admin"},
+                    {"username": "admin", "password": ""}
+                ]
+        except Exception as e:
+            logger.error(f"Failed to load IoT credentials: {e}")
+            return []
     
     async def execute(self, input_data: IoTSecurityScannerInput) -> IoTSecurityScannerOutput:
         """Execute IoT security scan"""

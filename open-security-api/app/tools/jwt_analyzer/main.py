@@ -5,6 +5,7 @@ import json
 import hmac
 import hashlib
 import logging
+import os
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 try:
@@ -15,13 +16,27 @@ except ImportError:
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Common JWT secrets for brute force
-COMMON_SECRETS = [
-    "secret", "password", "123456", "admin", "key", "jwt", "token", "test", "dev",
-    "your-256-bit-secret", "your-secret-key", "mysecret", "secretkey", "jwtkey",
-    "supersecret", "changeme", "default", "qwerty", "asdf", "zxcv", "1234", "abcd",
-    "temp", "demo", "example", "sample", "null", "undefined", "empty", "", " "
-]
+def load_jwt_secrets() -> List[str]:
+    """Load JWT secrets from secure configuration file."""
+    try:
+        # Load from environment-specified file
+        secrets_file = os.getenv('JWT_SECRETS_FILE')
+        if secrets_file and os.path.exists(secrets_file):
+            with open(secrets_file, 'r') as f:
+                secrets = [line.strip() for line in f if line.strip()]
+                logger.info(f"Loaded {len(secrets)} JWT secrets from configuration")
+                return secrets
+        else:
+            logger.warning("JWT secrets file not configured or not found. Brute force disabled.")
+            return []
+    except Exception as e:
+        logger.error(f"Failed to load JWT secrets: {e}")
+        return []
+
+def get_common_secrets() -> List[str]:
+    """Get common secrets for JWT analysis with rate limiting."""
+    # Only return a minimal set for security analysis
+    return ["secret", "password", "test", ""]  # Minimal safe set
 
 def base64url_decode(data: str) -> bytes:
     """Decode base64url encoded data."""

@@ -1,4 +1,5 @@
 import base64
+import logging
 import time
 import zipfile
 import xml.etree.ElementTree as ET
@@ -9,6 +10,9 @@ from typing import Dict, List, Any, Optional
 import aiohttp
 import asyncio
 from io import BytesIO
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Configure secure XML parser to prevent XXE attacks
 try:
@@ -185,7 +189,8 @@ async def download_app_file(url: str) -> Optional[bytes]:
             async with session.get(url, timeout=60) as response:
                 if response.status == 200:
                     return await response.read()
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error downloading APK from {url}: {e}")
         pass
     return None
 
@@ -210,7 +215,8 @@ def extract_app_metadata(app_data: bytes, platform: str) -> Optional[AppMetadata
             return extract_android_metadata(app_data)
         elif platform.lower() == "ios":
             return extract_ios_metadata(app_data)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error extracting app metadata: {e}")
         pass
     return None
 
@@ -237,7 +243,8 @@ def extract_android_metadata(apk_data: bytes) -> Optional[AppMetadata]:
                     "android.permission.READ_CONTACTS"
                 ]
             )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error extracting Android metadata: {e}")
         return None
 
 def extract_ios_metadata(ipa_data: bytes) -> Optional[AppMetadata]:
@@ -263,7 +270,8 @@ def extract_ios_metadata(ipa_data: bytes) -> Optional[AppMetadata]:
                     file_size=len(ipa_data),
                     permissions=["NSLocationWhenInUseUsageDescription", "NSCameraUsageDescription"]
                 )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error extracting iOS metadata: {e}")
         return None
 
 def analyze_permissions(app_metadata: Optional[AppMetadata], platform: str) -> List[PermissionAnalysis]:
@@ -348,8 +356,10 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
                 try:
                     network_config = apk.read('res/xml/network_security_config.xml')
                     custom_ca_allowed = b'trust-anchors' not in network_config
-                except:
-                    pass
+                except (KeyError, zipfile.BadZipFile) as e:
+                    logger.debug(f"Network security config not found or invalid: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error reading network security config: {e}")
                 
                 # Search for cleartext URLs in all files
                 for file_path in apk.namelist():
@@ -360,7 +370,8 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
                             cleartext_endpoints.extend(http_urls)
                             if http_urls:
                                 uses_cleartext = True
-                        except:
+                        except (UnicodeDecodeError, Exception) as e:
+                            logger.error(f"Error reading file {file_path} for cleartext analysis: {e}")
                             continue
         
         return NetworkSecurityAnalysis(
@@ -369,7 +380,8 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
             custom_ca_allowed=custom_ca_allowed,
             cleartext_endpoints=list(set(cleartext_endpoints))[:10]  # Limit to 10 examples
         )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error analyzing network security: {e}")
         return None
 
 def analyze_data_storage_security(app_data: bytes, platform: str) -> List[SecurityVulnerability]:
@@ -409,9 +421,11 @@ def analyze_data_storage_security(app_data: bytes, platform: str) -> List[Securi
                                     owasp_mobile_category="M2: Insecure Data Storage",
                                     remediation="Use internal storage or encrypt data before writing to external storage"
                                 ))
-                        except:
+                        except (UnicodeDecodeError, Exception) as e:
+                            logger.error(f"Error analyzing file {file_path} for storage vulnerabilities: {e}")
                             continue
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error analyzing storage vulnerabilities: {e}")
         pass
     
     return vulnerabilities
@@ -463,9 +477,11 @@ def analyze_code_quality(app_data: bytes, platform: str) -> List[SecurityVulnera
                                     file_location=file_path,
                                     remediation="Remove debug logging from production builds"
                                 ))
-                        except:
+                        except (UnicodeDecodeError, Exception) as e:
+                            logger.error(f"Error analyzing file {file_path} for code quality issues: {e}")
                             continue
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error analyzing code quality vulnerabilities: {e}")
         pass
     
     return vulnerabilities
@@ -546,9 +562,11 @@ def extract_assets(app_data: bytes, platform: str) -> List[ExtractedAsset]:
                                         risk_level="High",
                                         description="Potential API key found hardcoded"
                                     ))
-                        except:
+                        except (UnicodeDecodeError, Exception) as e:
+                            logger.error(f"Error extracting assets from file {file_path}: {e}")
                             continue
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error extracting assets: {e}")
         pass
     
     return assets[:20]  # Limit to first 20 assets

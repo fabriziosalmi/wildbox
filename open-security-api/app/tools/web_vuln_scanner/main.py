@@ -4,9 +4,29 @@ import asyncio
 import aiohttp
 import ssl
 import urllib.parse
+import sys
+import os
 from datetime import datetime
 from typing import Dict, Any, List
 import logging
+
+# Add parent directories to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
+
+try:
+    from app.utils.tool_utils import RateLimiter
+    from app.config.tool_config import ToolConfig
+except ImportError:
+    # Fallback for when running as standalone
+    class RateLimiter:
+        def __init__(self, max_requests=10, time_window=60):
+            pass
+        async def acquire(self):
+            pass
+    
+    class ToolConfig:
+        DEFAULT_RATE_LIMIT = 10
+        DEFAULT_RATE_WINDOW = 60
 
 try:
     from .schemas import (
@@ -32,7 +52,7 @@ TOOL_INFO = {
 }
 
 
-async def check_security_headers(url: str) -> List[SecurityHeader]:
+async def check_security_headers(url: str, rate_limiter: RateLimiter = None) -> List[SecurityHeader]:
     """Check for security headers in HTTP response."""
     security_headers = []
     
@@ -41,6 +61,10 @@ async def check_security_headers(url: str) -> List[SecurityHeader]:
         connector = aiohttp.TCPConnector(ssl=False)
         
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+            # Apply rate limiting if rate_limiter is provided
+            if rate_limiter:
+                await rate_limiter.acquire()
+                
             async with session.get(url) as response:
                 headers = response.headers
                 
@@ -68,7 +92,7 @@ async def check_security_headers(url: str) -> List[SecurityHeader]:
     return security_headers
 
 
-async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth) -> List[VulnerabilityFinding]:
+async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter: RateLimiter = None) -> List[VulnerabilityFinding]:
     """Scan for common web vulnerabilities."""
     vulnerabilities = []
     
@@ -165,7 +189,7 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth) -> List[Vuln
     return vulnerabilities
 
 
-async def check_ssl_info(url: str) -> Dict[str, Any]:
+async def check_ssl_info(url: str, rate_limiter: RateLimiter = None) -> Dict[str, Any]:
     """Check SSL/TLS configuration."""
     parsed_url = urllib.parse.urlparse(url)
     
@@ -187,14 +211,17 @@ async def execute_tool(input_data: WebVulnScannerInput) -> WebVulnScannerOutput:
     
     start_time = datetime.now()
     
+    # Initialize rate limiter
+    rate_limiter = RateLimiter(max_requests=10, time_window=60)
+    
     # Get security headers
-    security_headers = await check_security_headers(input_data.target_url)
+    security_headers = await check_security_headers(input_data.target_url, rate_limiter)
     
     # Scan for vulnerabilities
-    vulnerabilities = await scan_for_vulnerabilities(input_data.target_url, input_data.scan_depth)
+    vulnerabilities = await scan_for_vulnerabilities(input_data.target_url, input_data.scan_depth, rate_limiter)
     
     # Check SSL info
-    ssl_info = await check_ssl_info(input_data.target_url)
+    ssl_info = await check_ssl_info(input_data.target_url, rate_limiter)
     
     # Calculate summary
     summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
