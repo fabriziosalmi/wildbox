@@ -51,7 +51,8 @@ class ToolExecutionManager:
         input_data,
         tool_name: str,
         timeout: Optional[int] = None,
-        execution_id: Optional[str] = None
+        execution_id: Optional[str] = None,
+        user_id: Optional[str] = None  # Add user_id parameter
     ) -> ExecutionResult:
         """
         Execute a tool with timeout and concurrency control.
@@ -62,6 +63,7 @@ class ToolExecutionManager:
             tool_name: Name of the tool
             timeout: Execution timeout in seconds
             execution_id: Unique execution ID
+            user_id: User ID for security controls (optional)
             
         Returns:
             ExecutionResult with status and results
@@ -70,13 +72,22 @@ class ToolExecutionManager:
         timeout = timeout or self.default_timeout
         execution_id = execution_id or f"{tool_name}_{int(time.time() * 1000)}"
         
+        # Apply security wrapper if available
+        try:
+            from app.security_integration import security_integration
+            if security_integration.security_enabled:
+                tool_func = security_integration.secure_tool_execution(tool_name)(tool_func)
+        except ImportError:
+            logger.debug("Security integration not available, proceeding without security controls")
+        
         logger.info(
             f"Starting tool execution: {tool_name}",
             extra={
                 "tool_name": tool_name,
                 "execution_id": execution_id,
                 "timeout": timeout,
-                "active_executions": len(self._active_executions)
+                "active_executions": len(self._active_executions),
+                "user_id": user_id if user_id else "anonymous"
             }
         )
         

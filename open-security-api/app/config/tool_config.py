@@ -47,10 +47,22 @@ class ToolConfig:
     
     @classmethod
     def get_api_key(cls, service: str) -> Optional[str]:
-        """Get API key for a service from environment variables"""
-        # Use secure credential manager
-        from app.security.credential_manager import credential_manager
-        return credential_manager.get_api_key(service)
+        """Get API key for a service with security integration."""
+        try:
+            from app.security_integration import security_integration
+            return security_integration.get_api_key(service)
+        except ImportError:
+            # Fallback to direct environment access
+            env_var_map = {
+                'virustotal': 'VIRUSTOTAL_API_KEY',
+                'shodan': 'SHODAN_API_KEY',
+                'censys': 'CENSYS_API_KEY',
+                'hibp': 'HIBP_API_KEY',
+                'urlvoid': 'URLVOID_API_KEY',
+                'abuseipdb': 'ABUSEIPDB_API_KEY'
+            }
+            env_var = env_var_map.get(service.lower())
+            return os.getenv(env_var) if env_var else None
         key_name = f'{service.upper()}_API_KEY'
         return os.getenv(key_name)
     

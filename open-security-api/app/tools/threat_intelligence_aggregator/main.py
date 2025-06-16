@@ -1,6 +1,7 @@
 import asyncio
 import re
-import hashlib
+import aiohttp
+import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
@@ -27,6 +28,29 @@ class ThreatIntelligenceAggregator:
     """Threat Intelligence Aggregator for comprehensive threat analysis"""
     
     def __init__(self):
+        # Load API keys from environment variables for security
+        self.api_keys = {
+            'virustotal': os.getenv('VIRUSTOTAL_API_KEY'),
+            'alienvault': os.getenv('ALIENVAULT_API_KEY'),
+            'shodan': os.getenv('SHODAN_API_KEY')
+        }
+        
+        # Real threat intelligence endpoints
+        self.api_endpoints = {
+            'virustotal': 'https://www.virustotal.com/vtapi/v2/',
+            'alienvault': 'https://otx.alienvault.com/api/v1/',
+            'threatcrowd': 'https://www.threatcrowd.org/searchApi/v2/',
+            'malwarebazaar': 'https://mb-api.abuse.ch/api/v1/'
+        }
+        
+        # Rate limiting configuration
+        self.rate_limits = {
+            'virustotal': {'requests_per_minute': 4},  # Free tier limit
+            'alienvault': {'requests_per_minute': 1000},
+            'threatcrowd': {'requests_per_minute': 10},
+            'malwarebazaar': {'requests_per_minute': 1000}
+        }
+        
         self.malware_families_db = {
             "trojan": ["emotet", "trickbot", "qakbot", "dridex", "azorult"],
             "ransomware": ["lockbit", "conti", "ryuk", "maze", "sodinokibi"],
@@ -38,11 +62,6 @@ class ThreatIntelligenceAggregator:
             "malware", "phishing", "c2", "exploit_kit", "ransomware",
             "trojan", "botnet", "apt", "suspicious", "malicious"
         ]
-        
-        self.country_codes = {
-            "US": "United States", "CN": "China", "RU": "Russia",
-            "KP": "North Korea", "IR": "Iran", "DE": "Germany"
-        }
     
     def _validate_indicator(self, indicator: str, indicator_type: str) -> bool:
         """Validate indicator format"""
@@ -60,105 +79,161 @@ class ThreatIntelligenceAggregator:
             
         return bool(re.match(pattern, indicator))
     
-    def _simulate_virustotal_data(self, indicator: str, indicator_type: str) -> ThreatIntelligenceSource:
-        """Simulate VirusTotal API response"""
-        threat_score = hash(indicator) % 100
-        confidence = 85 + (hash(indicator + "vt") % 15)
+    async def _query_virustotal(self, indicator: str, indicator_type: str) -> Optional[ThreatIntelligenceSource]:
+        """Query VirusTotal API for threat intelligence"""
+        if not self.api_keys.get('virustotal'):
+            return None
+            
+        try:
+            async with aiohttp.ClientSession() as session:
+                if indicator_type == "ip":
+                    url = f"{self.api_endpoints['virustotal']}ip-address/report"
+                    params = {'apikey': self.api_keys['virustotal'], 'ip': indicator}
+                elif indicator_type == "domain":
+                    url = f"{self.api_endpoints['virustotal']}domain/report"
+                    params = {'apikey': self.api_keys['virustotal'], 'domain': indicator}
+                elif indicator_type == "hash":
+                    url = f"{self.api_endpoints['virustotal']}file/report"
+                    params = {'apikey': self.api_keys['virustotal'], 'resource': indicator}
+                else:
+                    return None
+                
+                async with session.get(url, params=params, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_virustotal_response(data, indicator)
+                    else:
+                        return None
+                        
+        except Exception as e:
+            print(f"VirusTotal API error: {e}")
+            return None
+    
+    def _parse_virustotal_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:
+        """Parse VirusTotal API response"""
+        if data.get('response_code') != 1:
+            return ThreatIntelligenceSource(
+                name="VirusTotal",
+                confidence=50,
+                source_url="https://virustotal.com"
+            )
         
+        positives = data.get('positives', 0)
+        total = data.get('total', 1)
+        reputation_score = max(0, 100 - (positives / total * 100)) if total > 0 else 100
+        
+        # Extract malware families from scan results
         malware_families = []
         threat_types = []
         
-        if threat_score > 70:
-            malware_families = ["emotet", "trickbot"]
-            threat_types = ["trojan", "malware"]
-        elif threat_score > 40:
-            malware_families = ["mirai"]
-            threat_types = ["botnet"]
+        if positives > 0:
+            threat_types.append("malware")
+            scans = data.get('scans', {})
+            for engine, result in scans.items():
+                if result.get('detected'):
+                    detection = result.get('result', '').lower()
+                    for family in self.malware_families_db.get('trojan', []):
+                        if family in detection:
+                            malware_families.append(family)
         
         return ThreatIntelligenceSource(
             name="VirusTotal",
-            reputation_score=100 - threat_score if threat_score > 30 else None,
-            last_seen=datetime.now().strftime("%Y-%m-%d") if threat_score > 20 else None,
-            first_seen=(datetime.now() - timedelta(days=hash(indicator) % 365)).strftime("%Y-%m-%d"),
-            malware_families=malware_families,
-            threat_types=threat_types,
-            confidence=confidence,
-            source_url="https://virustotal.com"
+            reputation_score=int(reputation_score),
+            last_seen=data.get('scan_date'),
+            malware_families=list(set(malware_families)),
+            threat_types=list(set(threat_types)),
+            confidence=85 if positives > 0 else 70,
+            source_url=f"https://virustotal.com/#/search/{indicator}"
         )
+
+    async def _query_alienvault(self, indicator: str, indicator_type: str) -> Optional[ThreatIntelligenceSource]:
+        """Query AlienVault OTX API for threat intelligence"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                headers = {'X-OTX-API-KEY': self.api_keys.get('alienvault', '')}
+                
+                if indicator_type == "ip":
+                    url = f"{self.api_endpoints['alienvault']}indicators/IPv4/{indicator}/general"
+                elif indicator_type == "domain":
+                    url = f"{self.api_endpoints['alienvault']}indicators/domain/{indicator}/general"
+                elif indicator_type == "hash":
+                    url = f"{self.api_endpoints['alienvault']}indicators/file/{indicator}/general"
+                else:
+                    return None
+                
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_alienvault_response(data, indicator)
+                        
+        except Exception as e:
+            print(f"AlienVault API error: {e}")
+            return None
     
-    def _simulate_alienvault_data(self, indicator: str, indicator_type: str) -> ThreatIntelligenceSource:
-        """Simulate AlienVault OTX API response"""
-        threat_score = hash(indicator + "otx") % 100
-        confidence = 70 + (hash(indicator + "otx") % 25)
+    def _parse_alienvault_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:
+        """Parse AlienVault OTX API response"""
+        reputation = data.get('reputation', 0)
+        pulse_count = data.get('pulse_info', {}).get('count', 0)
         
         malware_families = []
         threat_types = []
         
-        if threat_score > 60:
-            malware_families = ["apt28", "lazarus"]
-            threat_types = ["apt", "c2"]
-        elif threat_score > 30:
-            threat_types = ["suspicious"]
+        if pulse_count > 0:
+            threat_types.append("suspicious")
+            # In real implementation, would parse pulse data for families
+        
+        confidence = min(90, 60 + pulse_count * 5)
+        reputation_score = max(0, 100 - reputation * 10) if reputation else 80
         
         return ThreatIntelligenceSource(
             name="AlienVault OTX",
-            reputation_score=100 - threat_score if threat_score > 25 else None,
-            last_seen=datetime.now().strftime("%Y-%m-%d") if threat_score > 15 else None,
-            first_seen=(datetime.now() - timedelta(days=hash(indicator + "otx") % 200)).strftime("%Y-%m-%d"),
+            reputation_score=int(reputation_score),
             malware_families=malware_families,
             threat_types=threat_types,
             confidence=confidence,
-            source_url="https://otx.alienvault.com"
+            source_url=f"https://otx.alienvault.com/indicator/search/{indicator}"
         )
+
+    async def _query_threatcrowd(self, indicator: str, indicator_type: str) -> Optional[ThreatIntelligenceSource]:
+        """Query ThreatCrowd API for threat intelligence"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                if indicator_type == "ip":
+                    url = f"{self.api_endpoints['threatcrowd']}ip/report"
+                    params = {'ip': indicator}
+                elif indicator_type == "domain":
+                    url = f"{self.api_endpoints['threatcrowd']}domain/report"
+                    params = {'domain': indicator}
+                else:
+                    return None
+                
+                async with session.get(url, params=params, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_threatcrowd_response(data, indicator)
+                        
+        except Exception as e:
+            print(f"ThreatCrowd API error: {e}")
+            return None
     
-    def _simulate_threatcrowd_data(self, indicator: str, indicator_type: str) -> ThreatIntelligenceSource:
-        """Simulate ThreatCrowd API response"""
-        threat_score = hash(indicator + "tc") % 100
-        confidence = 60 + (hash(indicator + "tc") % 30)
+    def _parse_threatcrowd_response(self, data: dict, indicator: str) -> ThreatIntelligenceSource:
+        """Parse ThreatCrowd API response"""
+        response_code = data.get('response_code', '0')
+        votes = data.get('votes', 0)
         
-        malware_families = []
         threat_types = []
+        if response_code == '1' and votes < 0:
+            threat_types.append("suspicious")
         
-        if threat_score > 75:
-            malware_families = ["lockbit", "conti"]
-            threat_types = ["ransomware"]
-        elif threat_score > 45:
-            threat_types = ["phishing"]
+        confidence = 65 if response_code == '1' else 40
+        reputation_score = max(0, 100 + votes * 10) if votes < 0 else 80
         
         return ThreatIntelligenceSource(
             name="ThreatCrowd",
-            reputation_score=100 - threat_score if threat_score > 35 else None,
-            last_seen=datetime.now().strftime("%Y-%m-%d") if threat_score > 25 else None,
-            first_seen=(datetime.now() - timedelta(days=hash(indicator + "tc") % 300)).strftime("%Y-%m-%d"),
-            malware_families=malware_families,
+            reputation_score=int(reputation_score),
             threat_types=threat_types,
             confidence=confidence,
-            source_url="https://threatcrowd.org"
-        )
-    
-    def _simulate_malwarebazaar_data(self, indicator: str, indicator_type: str) -> ThreatIntelligenceSource:
-        """Simulate MalwareBazaar API response"""
-        threat_score = hash(indicator + "mb") % 100
-        confidence = 80 + (hash(indicator + "mb") % 20)
-        
-        malware_families = []
-        threat_types = []
-        
-        if indicator_type == "hash" and threat_score > 50:
-            malware_families = ["azorult", "dridex"]
-            threat_types = ["trojan", "malware"]
-        elif threat_score > 40:
-            threat_types = ["exploit_kit"]
-        
-        return ThreatIntelligenceSource(
-            name="MalwareBazaar",
-            reputation_score=100 - threat_score if threat_score > 40 else None,
-            last_seen=datetime.now().strftime("%Y-%m-%d") if threat_score > 30 else None,
-            first_seen=(datetime.now() - timedelta(days=hash(indicator + "mb") % 180)).strftime("%Y-%m-%d"),
-            malware_families=malware_families,
-            threat_types=threat_types,
-            confidence=confidence,
-            source_url="https://bazaar.abuse.ch"
+            source_url=f"https://threatcrowd.org/search.html#{indicator}"
         )
     
     def _calculate_overall_threat_score(self, sources: List[ThreatIntelligenceSource]) -> int:
@@ -294,31 +369,49 @@ async def execute_tool(request: ThreatIntelligenceRequest) -> ThreatIntelligence
     if not aggregator._validate_indicator(request.indicator, request.indicator_type):
         raise ValueError(f"Invalid {request.indicator_type} format: {request.indicator}")
     
-    # Simulate API calls to different sources
+    # Query real APIs instead of simulating
     sources_data = []
     
     if "virustotal" in request.sources:
-        vt_data = aggregator._simulate_virustotal_data(request.indicator, request.indicator_type)
-        if vt_data.confidence >= request.confidence_threshold:
+        vt_data = await aggregator._query_virustotal(request.indicator, request.indicator_type)
+        if vt_data and vt_data.confidence >= request.confidence_threshold:
             sources_data.append(vt_data)
     
     if "alienvault" in request.sources:
-        otx_data = aggregator._simulate_alienvault_data(request.indicator, request.indicator_type)
-        if otx_data.confidence >= request.confidence_threshold:
+        otx_data = await aggregator._query_alienvault(request.indicator, request.indicator_type)
+        if otx_data and otx_data.confidence >= request.confidence_threshold:
             sources_data.append(otx_data)
     
     if "threatcrowd" in request.sources:
-        tc_data = aggregator._simulate_threatcrowd_data(request.indicator, request.indicator_type)
-        if tc_data.confidence >= request.confidence_threshold:
+        tc_data = await aggregator._query_threatcrowd(request.indicator, request.indicator_type)
+        if tc_data and tc_data.confidence >= request.confidence_threshold:
             sources_data.append(tc_data)
     
-    if "malwarebazaar" in request.sources:
-        mb_data = aggregator._simulate_malwarebazaar_data(request.indicator, request.indicator_type)
-        if mb_data.confidence >= request.confidence_threshold:
-            sources_data.append(mb_data)
+    # Note: MalwareBazaar would need separate implementation for hash-only queries
     
-    # Add small delay to simulate real API calls
-    await asyncio.sleep(0.1)
+    # Return empty response if no sources provide data
+    if not sources_data:
+        return ThreatIntelligenceResponse(
+            indicator=request.indicator,
+            indicator_type=request.indicator_type,
+            overall_threat_score=0,
+            confidence_level="No Data",
+            threat_classification="Unknown",
+            sources_data=[],
+            malware_families=[],
+            threat_types=[],
+            countries=[],
+            asn_info={},
+            first_seen=None,
+            last_seen=None,
+            activity_timeline=[],
+            risk_factors=["No threat intelligence data available"],
+            mitigations=["Consider alternative threat intelligence sources"],
+            related_indicators=[],
+            campaign_attribution=[],
+            timestamp=datetime.now().isoformat(),
+            processing_time_ms=int((time.time() - start_time) * 1000)
+        )
     
     # Aggregate data
     all_malware_families = list(set([

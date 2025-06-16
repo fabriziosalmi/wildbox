@@ -1,6 +1,9 @@
 from typing import Dict, Any, List
 import asyncio
 import random
+import importlib
+import sys
+import os
 from datetime import datetime, timedelta
 
 try:
@@ -179,17 +182,17 @@ class SecurityAutomationOrchestrator:
         step.status = "running"
         
         try:
-            # Simulate tool execution
+            # REAL tool execution - import and call actual tool modules
             if step.tool_name in self.available_tools:
-                await asyncio.sleep(random.uniform(0.5, 2.0))  # Simulate execution time
+                # Dynamically import and execute the actual tool
+                tool_result = await self._execute_real_tool(step.tool_name, step.parameters)
                 
-                # Simulate success/failure
-                if random.random() > 0.1:  # 90% success rate
+                if tool_result.get("success", False):
                     step.status = "completed"
-                    step.output = self._generate_mock_output(step.tool_name)
+                    step.output = tool_result
                 else:
                     step.status = "failed"
-                    step.error_message = f"Tool {step.tool_name} execution failed"
+                    step.error_message = tool_result.get("error", "Tool execution failed")
             else:
                 step.status = "failed"
                 step.error_message = f"Tool {step.tool_name} not available"
@@ -213,43 +216,106 @@ class SecurityAutomationOrchestrator:
         
         return True
 
-    def _generate_mock_output(self, tool_name: str) -> Dict[str, Any]:
-        """Generate mock output for tools"""
+    async def _execute_real_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute real tool with proper validation and error handling"""
+        import importlib
+        import sys
+        import os
         
-        outputs = {
-            "vulnerability_scanner": {
-                "vulnerabilities_found": random.randint(0, 10),
-                "critical_vulns": random.randint(0, 2),
-                "scan_duration": f"{random.randint(5, 30)} minutes"
-            },
-            "port_scanner": {
-                "open_ports": random.sample(range(1, 65535), random.randint(5, 15)),
-                "services_detected": random.randint(3, 8),
-                "scan_duration": f"{random.randint(1, 10)} minutes"
-            },
-            "ssl_analyzer": {
-                "certificate_valid": random.choice([True, False]),
-                "ssl_grade": random.choice(["A+", "A", "B", "C", "F"]),
-                "issues_found": random.randint(0, 5)
-            }
-        }
+        try:
+            # Validate tool name against whitelist
+            if tool_name not in self.available_tools:
+                return {"success": False, "error": f"Tool {tool_name} not authorized"}
+            
+            # Validate parameters for security
+            if not self._validate_tool_parameters(tool_name, parameters):
+                return {"success": False, "error": "Invalid or unsafe parameters"}
+            
+            # Dynamic import of the tool module
+            tool_module_path = f"app.tools.{tool_name}.main"
+            
+            if tool_module_path not in sys.modules:
+                tool_module = importlib.import_module(tool_module_path)
+            else:
+                tool_module = sys.modules[tool_module_path]
+            
+            # Execute the tool's main function
+            if hasattr(tool_module, 'execute_tool'):
+                # Create proper input schema for the tool
+                tool_input = self._create_tool_input(tool_name, parameters)
+                result = await tool_module.execute_tool(tool_input)
+                
+                return {
+                    "success": True,
+                    "result": result,
+                    "tool_name": tool_name,
+                    "execution_time": datetime.now().isoformat()
+                }
+            else:
+                return {"success": False, "error": f"Tool {tool_name} missing execute_tool function"}
+                
+        except ImportError as e:
+            return {"success": False, "error": f"Failed to import tool {tool_name}: {str(e)}"}
+        except Exception as e:
+            return {"success": False, "error": f"Tool execution failed: {str(e)}"}
+    
+    def _validate_tool_parameters(self, tool_name: str, parameters: Dict[str, Any]) -> bool:
+        """Validate tool parameters for security"""
+        # Basic security validation
+        if not isinstance(parameters, dict):
+            return False
         
-        return outputs.get(tool_name, {"result": "Tool executed successfully"})
+        # Check for dangerous patterns in parameter values
+        dangerous_patterns = [
+            "; rm -rf", "DROP TABLE", "../../", "javascript:", "eval(",
+            "<script>", "cmd.exe", "/etc/passwd", "system(", "exec("
+        ]
+        
+        for key, value in parameters.items():
+            if isinstance(value, str):
+                for pattern in dangerous_patterns:
+                    if pattern.lower() in value.lower():
+                        return False
+        
+        return True
+    
+    def _create_tool_input(self, tool_name: str, parameters: Dict[str, Any]):
+        """Create appropriate input schema for the tool"""
+        # Import the tool's schema
+        try:
+            schema_module = importlib.import_module(f"app.tools.{tool_name}.schemas")
+            
+            # Get the input schema class (usually ends with Input)
+            input_class = None
+            for attr_name in dir(schema_module):
+                if attr_name.endswith("Input"):
+                    input_class = getattr(schema_module, attr_name)
+                    break
+            
+            if input_class:
+                return input_class(**parameters)
+            else:
+                # Fallback to generic dict if no schema found
+                return parameters
+                
+        except ImportError:
+            return parameters
+
+    def _remove_mock_output_method(self):
+        """This method replaces the old mock output generation"""
+        pass
 
     async def _generate_automation_metrics(self) -> AutomationMetrics:
-        """Generate automation metrics"""
-        
+        """Generate real automation metrics from execution history"""
+        # TODO: Implement real metrics from database/logs
+        # For now, return minimal metrics with real data structure
         return AutomationMetrics(
-            total_executions=random.randint(50, 200),
-            successful_executions=random.randint(40, 180),
-            failed_executions=random.randint(5, 20),
-            average_execution_time=f"{random.randint(10, 60)} minutes",
-            most_used_tools=random.sample(self.available_tools, 3),
-            error_patterns=[
-                "Network timeout errors",
-                "Authentication failures",
-                "Resource unavailability"
-            ]
+            total_executions=0,  # Should come from database
+            successful_executions=0,  # Should come from database  
+            failed_executions=0,  # Should come from database
+            average_execution_time="0 minutes",  # Should be calculated from real data
+            most_used_tools=[],  # Should come from usage statistics
+            error_patterns=[]  # Should come from error log analysis
         )
 
     def _generate_recommendations(self, execution: WorkflowExecution) -> List[str]:

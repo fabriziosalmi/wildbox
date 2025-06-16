@@ -133,6 +133,20 @@ async def lifespan(app: FastAPI):
     logger.info(f"Max concurrent tools: {settings.max_concurrent_tools}")
     logger.info(f"Default tool timeout: {settings.tool_timeout}s")
     
+    # Initialize security integration
+    try:
+        from app.security_integration import security_integration
+        if security_integration.security_enabled:
+            logger.info("🔐 Security controls are ENABLED")
+            if security_integration.strict_mode:
+                logger.info("🔒 Security strict mode is ACTIVE")
+            else:
+                logger.info("🔓 Security graceful mode is ACTIVE")
+        else:
+            logger.info("⚠️  Security controls are DISABLED")
+    except ImportError:
+        logger.info("Security integration not available")
+    
     # Validate API key is set and secure
     try:
         api_key = settings.get_api_key()

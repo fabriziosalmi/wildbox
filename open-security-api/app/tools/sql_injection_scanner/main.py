@@ -46,6 +46,11 @@ SAFE_SQL_PAYLOADS = [
 # - System command execution attempts
 
 # Error patterns that indicate SQL injection vulnerability
+# - "'; EXEC xp_cmdshell('dir')--" 
+# - All WAITFOR DELAY and SLEEP commands
+# - System command execution attempts
+
+# Error patterns that indicate SQL injection vulnerability
 ERROR_PATTERNS = [
     "mysql_fetch",
     "ora-01756",
