@@ -13,6 +13,23 @@ from urllib.parse import urljoin, urlparse, parse_qs
 logger = logging.getLogger(__name__)
 import yaml
 
+def validate_auth_value(auth_value: str) -> str:
+    """Validate and sanitize authentication value"""
+    if not auth_value:
+        return ""
+    
+    # Remove any potential injection characters and limit length
+    # Keep only alphanumeric, common token chars, and basic special chars
+    import re
+    cleaned_value = re.sub(r'[^\w\-\._~:/?#[\]@!$&\'()*+,;=%]', '', auth_value.strip())
+    
+    # Limit length to prevent oversized tokens
+    if len(cleaned_value) > 1000:
+        cleaned_value = cleaned_value[:1000]
+        logger.warning("Authentication value truncated due to excessive length")
+    
+    return cleaned_value
+
 from schemas import (
     APISecurityTesterInput,
     APISecurityTesterOutput,
@@ -44,11 +61,14 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
     # Prepare authentication headers
     headers = data.custom_headers or {}
     if data.authentication_type == "bearer" and data.authentication_value:
-        headers["Authorization"] = f"Bearer {data.authentication_value}"
+        safe_auth_value = validate_auth_value(data.authentication_value)
+        headers["Authorization"] = f"Bearer {safe_auth_value}"
     elif data.authentication_type == "api_key" and data.authentication_value:
-        headers["X-API-Key"] = data.authentication_value
+        safe_auth_value = validate_auth_value(data.authentication_value)
+        headers["X-API-Key"] = safe_auth_value
     elif data.authentication_type == "basic" and data.authentication_value:
-        headers["Authorization"] = f"Basic {data.authentication_value}"
+        safe_auth_value = validate_auth_value(data.authentication_value)
+        headers["Authorization"] = f"Basic {safe_auth_value}"
     
     try:
         # Discover API endpoints
@@ -404,7 +424,8 @@ async def test_broken_user_authentication(base_url: str, endpoints: List[APIEndp
                                         remediation="Implement strong password policies and account lockout mechanisms"
                                     ))
                                     test.passed = False
-                            except:
+                            except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
+                                logger.debug(f"Error in injection testing: {e}")
                                 pass
             
             except Exception:
@@ -461,7 +482,8 @@ async def test_excessive_data_exposure(base_url: str, endpoints: List[APIEndpoin
                                     ))
                                     test.passed = False
                                     test.findings.append(f"Sensitive field found: {pattern}")
-                        except:
+                        except (aiohttp.ClientError, asyncio.TimeoutError, json.JSONDecodeError) as e:
+                            logger.debug(f"Error in sensitive data testing: {e}")
                             pass
         
         except Exception:

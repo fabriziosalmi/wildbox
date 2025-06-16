@@ -1,9 +1,13 @@
 import time
 import json
 import asyncio
+import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 import aiohttp
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 from schemas import (
     CloudSecurityAnalyzerInput,
@@ -12,6 +16,21 @@ from schemas import (
     ComplianceCheck,
     ResourceInventory
 )
+
+def validate_cloud_provider(provider: str) -> str:
+    """Validate and sanitize cloud provider input"""
+    if not provider:
+        raise ValueError("Cloud provider cannot be empty")
+    
+    # Whitelist of supported providers
+    supported_providers = {'aws', 'azure', 'gcp', 'google', 'microsoft'}
+    cleaned_provider = provider.lower().strip()
+    
+    if cleaned_provider not in supported_providers:
+        logger.warning(f"Unknown cloud provider requested: {provider}")
+        return "unknown"
+    
+    return cleaned_provider
 
 # Tool metadata
 TOOL_INFO = {
@@ -35,17 +54,20 @@ async def execute_tool(data: CloudSecurityAnalyzerInput) -> CloudSecurityAnalyze
     recommendations = []
     
     try:
+        # Validate and sanitize cloud provider input
+        safe_provider = validate_cloud_provider(data.cloud_provider)
+        
         # Simulate cloud provider connection and analysis
-        if data.cloud_provider.lower() == "aws":
+        if safe_provider == "aws":
             analysis_result = await analyze_aws_infrastructure(data)
-        elif data.cloud_provider.lower() == "azure":
+        elif safe_provider == "azure":
             analysis_result = await analyze_azure_infrastructure(data)
-        elif data.cloud_provider.lower() == "gcp":
+        elif safe_provider in ["gcp", "google"]:
             analysis_result = await analyze_gcp_infrastructure(data)
-        elif data.cloud_provider.lower() == "multi":
+        elif safe_provider == "multi":
             analysis_result = await analyze_multi_cloud_infrastructure(data)
         else:
-            raise ValueError(f"Unsupported cloud provider: {data.cloud_provider}")
+            raise ValueError(f"Unsupported cloud provider: {safe_provider}")
         
         misconfigurations = analysis_result["misconfigurations"]
         compliance_results = analysis_result["compliance_results"]

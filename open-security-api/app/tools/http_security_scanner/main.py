@@ -262,10 +262,10 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
     start_time = datetime.now()
     
     try:
-        # Normalize the URL
-        normalized_url = HttpSecurityScanner(input_data.timeout).normalize_url(input_data.url)
-        
         async with HttpSecurityScanner(input_data.timeout) as scanner:
+            # Normalize the URL
+            normalized_url = scanner.normalize_url(input_data.url)
+            
             # Fetch headers from the main URL
             headers, http_status, final_url = await scanner.fetch_headers(
                 normalized_url, 

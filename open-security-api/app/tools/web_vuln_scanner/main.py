@@ -96,7 +96,8 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth) -> List[Vuln
                                 remediation="Implement proper input validation and output encoding"
                             ))
                             break
-                except:
+                except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+                    logger.error(f"Error testing XSS on {url}: {e}")
                     pass
             
             # Test for SQL injection indicators
@@ -123,7 +124,8 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth) -> List[Vuln
                     
                     if any(v.id == "SQLi-001" for v in vulnerabilities):
                         break
-                except:
+                except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+                    logger.error(f"Error testing SQL injection on {test_url}: {e}")
                     pass
             
             # Check for information disclosure
@@ -153,7 +155,8 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth) -> List[Vuln
                                     evidence="Git repository files accessible",
                                     remediation="Remove .git directory from web-accessible location"
                                 ))
-                except:
+                except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
+                    logger.error(f"Error testing information disclosure on {test_url}: {e}")
                     pass
                     
     except Exception as e:

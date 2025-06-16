@@ -355,7 +355,8 @@ def perform_cross_platform_analysis(profiles: List[Dict[str, Any]]) -> Dict[str,
             try:
                 date = datetime.fromisoformat(profile["account_created"].replace('Z', '+00:00'))
                 creation_dates.append((profile["platform"], date))
-            except:
+            except (ValueError, KeyError) as e:
+                logger.debug(f"Error parsing creation date for profile: {e}")
                 pass
     
     if creation_dates:

@@ -1,7 +1,11 @@
 from typing import Dict, Any, List
 import asyncio
 import random
+import logging
 from datetime import datetime, timedelta
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 try:
     from .schemas import (
@@ -27,6 +31,24 @@ except ImportError:
         ComplianceCheck,
         VulnerabilityFinding
     )
+
+def validate_database_type(database_type: str) -> str:
+    """Validate and sanitize database type input"""
+    if not database_type:
+        raise ValueError("Database type cannot be empty")
+    
+    # Whitelist of allowed database types
+    allowed_types = {
+        'mysql', 'postgresql', 'mongodb', 'oracle', 'sqlserver', 
+        'redis', 'cassandra', 'elasticsearch', 'mariadb', 'sqlite'
+    }
+    
+    cleaned_type = database_type.lower().strip()
+    if cleaned_type not in allowed_types:
+        logger.warning(f"Unknown database type: {database_type}")
+        return "unknown"
+    
+    return cleaned_type
 
 class DatabaseSecurityAnalyzer:
     """Database Security Analyzer - Comprehensive database security assessment"""
@@ -385,12 +407,14 @@ class DatabaseSecurityAnalyzer:
         # Add some common vulnerabilities
         for cve in random.sample(common_vulns, random.randint(0, min(2, len(common_vulns)))):
             if random.random() < 0.3:  # 30% chance of having vulnerability
+                # Validate and sanitize the database type before using in description
+                safe_db_type = validate_database_type(input_data.database_type)
                 vuln = VulnerabilityFinding(
                     vulnerability_id=f"DB-{random.randint(1000, 9999)}",
                     severity=random.choice(["Critical", "High", "Medium", "Low"]),
                     category=random.choice(["Authentication", "Authorization", "Injection", "Configuration"]),
-                    description=f"Known vulnerability in {input_data.database_type}",
-                    affected_component=input_data.database_type,
+                    description=f"Known vulnerability in {safe_db_type}",
+                    affected_component=safe_db_type,
                     remediation="Update database to latest version and apply security patches",
                     cve_reference=cve
                 )

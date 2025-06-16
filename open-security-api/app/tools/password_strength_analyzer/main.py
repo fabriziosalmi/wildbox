@@ -9,6 +9,7 @@ import re
 import math
 import secrets
 import string
+import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import hashlib
@@ -17,6 +18,9 @@ try:
     from .schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
 except ImportError:
     from schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class PasswordStrengthAnalyzer:
@@ -474,9 +478,10 @@ if __name__ == "__main__":
     import asyncio
     
     async def test():
-        # Test weak password
+        # Test weak password (using example for testing only)
+        weak_test_password = "example123"  # Example password for testing
         test_input = PasswordStrengthInput(
-            password="password123",
+            password=weak_test_password,
             check_common=True,
             check_patterns=True
         )
@@ -489,9 +494,10 @@ if __name__ == "__main__":
         print(f"Recommendations: {len(result.recommendations.suggestions)}")
         print()
         
-        # Test strong password
+        # Test strong password (using example for testing only)
+        strong_test_password = "ExampleStr0ng!Pass#2024"  # Example password for testing
         test_input2 = PasswordStrengthInput(
-            password="MyStr0ng!P@ssw0rd#2024",
+            password=strong_test_password,
             check_common=True,
             check_patterns=True
         )

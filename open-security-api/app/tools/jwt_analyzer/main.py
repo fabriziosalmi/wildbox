@@ -4,12 +4,16 @@ import base64
 import json
 import hmac
 import hashlib
+import logging
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 try:
     from .schemas import JWTAnalyzerInput, JWTAnalyzerOutput, JWTVulnerability, JWTClaim
 except ImportError:
     from schemas import JWTAnalyzerInput, JWTAnalyzerOutput, JWTVulnerability, JWTClaim
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Common JWT secrets for brute force
 COMMON_SECRETS = [
@@ -207,7 +211,8 @@ def analyze_claims(payload: Dict) -> List[JWTClaim]:
             try:
                 timestamp = datetime.fromtimestamp(value, tz=timezone.utc)
                 formatted_value = f"{value} ({timestamp.isoformat()})"
-            except:
+            except (ValueError, OSError, OverflowError) as e:
+                logger.debug(f"Error formatting timestamp {value}: {e}")
                 formatted_value = value
         else:
             formatted_value = value

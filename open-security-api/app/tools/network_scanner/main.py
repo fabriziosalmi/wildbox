@@ -5,12 +5,16 @@ import socket
 import subprocess
 import ipaddress
 import time
+import logging
 from datetime import datetime
 from typing import List, Optional
 try:
     from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 except ImportError:
     from schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Common ports to scan for TCP scans
 COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1723, 3389, 5900, 8080]
@@ -34,7 +38,8 @@ async def ping_host(ip: str, timeout: int) -> HostInfo:
             hostname = None
             try:
                 hostname = socket.gethostbyaddr(ip)[0]
-            except:
+            except (socket.herror, socket.gaierror, OSError) as e:
+                logger.debug(f"Could not resolve hostname for {ip}: {e}")
                 pass
             
             # Calculate response time
@@ -80,7 +85,8 @@ async def tcp_scan_host(ip: str, timeout: int) -> HostInfo:
                 writer.close()
                 await writer.wait_closed()
                 return port
-            except:
+            except (asyncio.TimeoutError, ConnectionRefusedError, OSError) as e:
+                logger.debug(f"Port {port} on {ip} is closed or filtered: {e}")
                 return None
         
         # Create tasks for all ports
@@ -130,7 +136,8 @@ async def comprehensive_scan_host(ip: str, timeout: int) -> HostInfo:
                             if ':' in part and len(part) == 17:
                                 host_info.mac_address = part
                                 break
-        except:
+        except (subprocess.CalledProcessError, OSError, UnicodeDecodeError) as e:
+            logger.debug(f"Could not get MAC address for {ip}: {e}")
             pass
     
     return host_info
@@ -140,7 +147,8 @@ def generate_ip_list(network: str) -> List[str]:
     try:
         network_obj = ipaddress.ip_network(network, strict=False)
         return [str(ip) for ip in network_obj.hosts()]
-    except:
+    except (ipaddress.AddressValueError, ValueError) as e:
+        logger.error(f"Error parsing network {network}: {e}")
         # If not CIDR, try to parse as single IP or range
         if '-' in network:
             # Range like 192.168.1.1-10

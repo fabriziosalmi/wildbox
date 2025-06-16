@@ -12,6 +12,33 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+def validate_target(target: str) -> str:
+    """Validate and sanitize target input"""
+    if not target:
+        raise ValueError("Target cannot be empty")
+    
+    # Remove any potentially dangerous characters
+    import re
+    # Allow only alphanumeric, dots, hyphens, and underscores
+    cleaned_target = re.sub(r'[^a-zA-Z0-9\.\-_]', '', target.strip())
+    
+    if not cleaned_target:
+        raise ValueError("Target contains no valid characters")
+    
+    # Limit length
+    if len(cleaned_target) > 253:  # Max domain name length
+        raise ValueError("Target too long")
+    
+    return cleaned_target
+
+def validate_timeout(timeout: int) -> int:
+    """Validate and sanitize timeout input"""
+    if timeout <= 0:
+        return 5  # Default timeout
+    if timeout > 300:  # Max 5 minutes
+        return 300
+    return timeout
+
 COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 143, 443, 445, 993, 995, 3389, 8080, 8443]
 
 SERVICE_MAP = {
@@ -66,25 +93,30 @@ def scan_port(target: str, port: int, timeout: int) -> PortScanResult:
 async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
     """Execute the port scanner tool - main entry point."""
     start_time = datetime.now()
-    logger.info(f"Starting port scan on {input_data.target}")
+    
+    # Validate and sanitize inputs
+    safe_target = validate_target(input_data.target)
+    safe_timeout = validate_timeout(input_data.timeout)
+    
+    logger.info(f"Starting port scan on {safe_target}")
     
     try:
         # Resolve target if it's a domain
         try:
-            target_ip = socket.gethostbyname(input_data.target)
-            logger.info(f"Resolved {input_data.target} to {target_ip}")
+            target_ip = socket.gethostbyname(safe_target)
+            logger.info(f"Resolved {safe_target} to {target_ip}")
         except socket.gaierror:
-            target_ip = input_data.target
+            target_ip = safe_target
             logger.info(f"Using IP address directly: {target_ip}")
         
         # Determine ports to scan
         ports = input_data.ports or COMMON_PORTS
-        logger.info(f"Scanning {len(ports)} ports with timeout {input_data.timeout}s")
+        logger.info(f"Scanning {len(ports)} ports with timeout {safe_timeout}s")
         
         # Perform concurrent port scanning
         tasks = []
         for port in ports:
-            task = scan_port_async(target_ip, port, input_data.timeout)
+            task = scan_port_async(target_ip, port, safe_timeout)
             tasks.append(task)
         
         # Execute all scans concurrently

@@ -2,12 +2,16 @@
 
 import socket
 import re
+import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 try:
     from .schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
 except ImportError:
     from schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # WHOIS servers for different TLDs
 WHOIS_SERVERS = {
@@ -255,7 +259,8 @@ def execute_tool(input_data: WHOISLookupInput) -> WHOISLookupOutput:
             if redirect_server != whois_server:
                 try:
                     raw_data = query_whois_server(domain, redirect_server, input_data.timeout)
-                except:
+                except (socket.error, socket.timeout, Exception) as e:
+                    logger.error(f"Error querying redirect WHOIS server {redirect_server}: {e}")
                     pass  # Use original data if redirect fails
         
         # Parse the WHOIS data

@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import json
+import logging
 import time
 from datetime import datetime
 from typing import Dict, List, Any
@@ -9,6 +10,9 @@ import ssl
 import re
 
 from schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Tool metadata
 TOOL_INFO = {
@@ -197,10 +201,14 @@ async def analyze_ssl_configuration(session: aiohttp.ClientSession, url: str) ->
                                         cwe_id="CWE-326",
                                         affected_endpoint=url
                                     ))
-            except:
-                pass
-    except Exception:
-        pass
+            except (ssl.SSLError, aiohttp.ClientConnectorError) as e:
+                logger.warning(f"SSL connection error for {url}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error during SSL analysis for {url}: {e}")
+    except (ConnectionError, aiohttp.ClientError) as e:
+        logger.warning(f"Network connection error for {url}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in SSL configuration analysis: {e}")
     
     return issues
 
@@ -335,11 +343,15 @@ async def analyze_authentication(session: aiohttp.ClientSession, url: str, api_t
                             cwe_id="CWE-306",
                             affected_endpoint=test_url
                         ))
-            except:
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error testing authentication for {test_url}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error during authentication test for {test_url}: {e}")
     
-    except Exception:
-        pass
+    except (ConnectionError, aiohttp.ClientError) as e:
+        logger.warning(f"Network error during authentication analysis for {url}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in authentication analysis: {e}")
     
     return issues, auth_methods
 
@@ -370,11 +382,15 @@ async def analyze_authorization(session: aiohttp.ClientSession, url: str, api_ty
                             cwe_id="CWE-285",
                             affected_endpoint=url
                         ))
-            except:
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error testing authorization bypass for {url}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error during authorization bypass test: {e}")
     
-    except Exception:
-        pass
+    except (ConnectionError, aiohttp.ClientError) as e:
+        logger.warning(f"Network error during authorization analysis for {url}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in authorization analysis: {e}")
     
     return issues
 
@@ -476,11 +492,17 @@ async def analyze_input_validation(session: aiohttp.ClientSession, url: str, api
                                     cwe_id="CWE-79" if injection_type == "XSS" else "CWE-89",
                                     affected_endpoint=url
                                 ))
-            except:
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.warning(f"Network error testing input validation for {url}: {e}")
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                logger.warning(f"Data encoding error during input validation test: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error during input validation test: {e}")
     
-    except Exception:
-        pass
+    except (ConnectionError, aiohttp.ClientError) as e:
+        logger.warning(f"Network error during input validation analysis for {url}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in input validation analysis: {e}")
     
     return issues
 
@@ -507,8 +529,10 @@ async def discover_rest_endpoints(session: aiohttp.ClientSession, url: str) -> L
                 async with session.get(test_url) as response:
                     if response.status == 200:
                         endpoints.append(test_url)
-            except:
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.debug(f"Network error testing endpoint {test_url}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error testing endpoint {test_url}: {e}")
         
         # Common REST endpoints
         common_paths = [
@@ -528,11 +552,15 @@ async def discover_rest_endpoints(session: aiohttp.ClientSession, url: str) -> L
                 async with session.get(test_url) as response:
                     if response.status in [200, 401, 403]:  # Include auth-protected endpoints
                         endpoints.append(test_url)
-            except:
-                pass
+            except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+                logger.debug(f"Network error testing common endpoint {test_url}: {e}")
+            except Exception as e:
+                logger.error(f"Unexpected error testing common endpoint {test_url}: {e}")
     
-    except Exception:
-        pass
+    except (ConnectionError, aiohttp.ClientError) as e:
+        logger.warning(f"Network error during REST endpoint discovery for {url}: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in REST endpoint discovery: {e}")
     
     return endpoints
 

@@ -1,0 +1,1996 @@
+{
+  "summary": {
+    "total_tools_scanned": 57,
+    "tools_with_critical_issues": 0,
+    "tools_with_high_issues": 14,
+    "total_issues": 130,
+    "issues_by_severity": {
+      "MEDIUM": 115,
+      "HIGH": 15
+    },
+    "issues_by_type": {
+      "logging": 35,
+      "input_validation": 44,
+      "error_handling": 34,
+      "import_pattern": 2,
+      "rate_limiting": 14,
+      "session_leak": 1
+    }
+  },
+  "critical_issues": [],
+  "high_issues": [
+    {
+      "tool": "url_security_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "xss_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "header_analyzer",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "web_vuln_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "directory_bruteforcer",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "mobile_security_analyzer",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "static_malware_analyzer",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "ip_geolocation",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "metadata_extractor",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "sql_injection_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "cookie_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "url_analyzer",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "http_security_scanner",
+      "type": "session_leak",
+      "description": "Line 83: HTTP session created without async with context manager",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "http_security_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    },
+    {
+      "tool": "file_upload_scanner",
+      "type": "rate_limiting",
+      "description": "External API calls without rate limiting",
+      "severity": "HIGH"
+    }
+  ],
+  "medium_issues": [
+    {
+      "tool": "threat_intelligence_aggregator",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_security_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_security_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_security_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "incident_response_automation",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "incident_response_automation",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_security_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_security_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_security_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "xss_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "xss_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "xss_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "header_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "header_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "header_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "subdomain_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "subdomain_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "subdomain_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "web_vuln_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "pki_certificate_manager",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "pki_certificate_manager",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_port_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "password_strength_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "dns_enumerator",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "dns_enumerator",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ssl_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ssl_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ssl_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "directory_bruteforcer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "directory_bruteforcer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "directory_bruteforcer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "mobile_security_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "blockchain_security_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "blockchain_security_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "blockchain_security_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_cracker",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_cracker",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_cracker",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "static_malware_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ip_geolocation",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ip_geolocation",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ip_geolocation",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "web_application_firewall_bypass",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "web_application_firewall_bypass",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "api_security_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "saml_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "saml_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "saml_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_compliance_checker",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_compliance_checker",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_compliance_checker",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "crypto_strength_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "crypto_strength_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "crypto_strength_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "digital_footprint_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "digital_footprint_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "digital_footprint_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "container_security_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "container_security_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "container_security_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ca_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ca_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_scanner_fixed",
+      "type": "import_pattern",
+      "description": "Mixed relative and absolute imports - inconsistent pattern",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "dns_security_checker",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "dns_security_checker",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "dns_security_checker",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "metadata_extractor",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "metadata_extractor",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "metadata_extractor",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "sql_injection_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "sql_injection_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "sql_injection_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "social_media_osint",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "cookie_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "cookie_scanner",
+      "type": "import_pattern",
+      "description": "Mixed relative and absolute imports - inconsistent pattern",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_analyzer",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "url_analyzer",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "jwt_decoder",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "jwt_decoder",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "jwt_decoder",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_vulnerability_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_vulnerability_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_vulnerability_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "jwt_analyzer",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "whois_lookup",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "password_generator",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "password_generator",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "password_generator",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "compliance_checker",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "compliance_checker",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "compliance_checker",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "threat_hunting_platform",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "threat_hunting_platform",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "vulnerability_db_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "base64_tool",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "base64_tool",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_generator",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_generator",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "hash_generator",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_harvester",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_harvester",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "email_harvester",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "ct_log_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "network_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "http_security_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "iot_security_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "malware_hash_checker",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "malware_hash_checker",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_automation_orchestrator",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_automation_orchestrator",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "security_automation_orchestrator",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "file_upload_scanner",
+      "type": "input_validation",
+      "description": "No input validation detected",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "file_upload_scanner",
+      "type": "error_handling",
+      "description": "Exception handling without proper logging",
+      "severity": "MEDIUM"
+    },
+    {
+      "tool": "file_upload_scanner",
+      "type": "logging",
+      "description": "No logging implementation detected",
+      "severity": "MEDIUM"
+    }
+  ],
+  "top_problematic_tools": [
+    {
+      "tool": "url_security_scanner",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/url_security_scanner/main.py"
+    },
+    {
+      "tool": "xss_scanner",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/xss_scanner/main.py"
+    },
+    {
+      "tool": "header_analyzer",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/header_analyzer/main.py"
+    },
+    {
+      "tool": "directory_bruteforcer",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/directory_bruteforcer/main.py"
+    },
+    {
+      "tool": "ip_geolocation",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/ip_geolocation/main.py"
+    },
+    {
+      "tool": "metadata_extractor",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/metadata_extractor/main.py"
+    },
+    {
+      "tool": "sql_injection_scanner",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/sql_injection_scanner/main.py"
+    },
+    {
+      "tool": "url_analyzer",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/url_analyzer/main.py"
+    },
+    {
+      "tool": "file_upload_scanner",
+      "issue_count": 4,
+      "critical_count": 0,
+      "high_count": 1,
+      "file_path": "app/tools/file_upload_scanner/main.py"
+    },
+    {
+      "tool": "email_security_analyzer",
+      "issue_count": 3,
+      "critical_count": 0,
+      "high_count": 0,
+      "file_path": "app/tools/email_security_analyzer/main.py"
+    }
+  ],
+  "detailed_results": {
+    "threat_intelligence_aggregator": {
+      "file_path": "app/tools/threat_intelligence_aggregator/main.py",
+      "total_lines": 394,
+      "issues": [
+        {
+          "tool": "threat_intelligence_aggregator",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "email_security_analyzer": {
+      "file_path": "app/tools/email_security_analyzer/main.py",
+      "total_lines": 735,
+      "issues": [
+        {
+          "tool": "email_security_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "email_security_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "email_security_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "database_security_analyzer": {
+      "file_path": "app/tools/database_security_analyzer/main.py",
+      "total_lines": 633,
+      "issues": []
+    },
+    "incident_response_automation": {
+      "file_path": "app/tools/incident_response_automation/main.py",
+      "total_lines": 302,
+      "issues": [
+        {
+          "tool": "incident_response_automation",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "incident_response_automation",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "url_security_scanner": {
+      "file_path": "app/tools/url_security_scanner/main.py",
+      "total_lines": 532,
+      "issues": [
+        {
+          "tool": "url_security_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_security_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_security_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_security_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "xss_scanner": {
+      "file_path": "app/tools/xss_scanner/main.py",
+      "total_lines": 238,
+      "issues": [
+        {
+          "tool": "xss_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "xss_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "xss_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "xss_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "header_analyzer": {
+      "file_path": "app/tools/header_analyzer/main.py",
+      "total_lines": 370,
+      "issues": [
+        {
+          "tool": "header_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "header_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "header_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "header_analyzer",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "subdomain_scanner": {
+      "file_path": "app/tools/subdomain_scanner/main.py",
+      "total_lines": 86,
+      "issues": [
+        {
+          "tool": "subdomain_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "subdomain_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "subdomain_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "web_vuln_scanner": {
+      "file_path": "app/tools/web_vuln_scanner/main.py",
+      "total_lines": 233,
+      "issues": [
+        {
+          "tool": "web_vuln_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "web_vuln_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "pki_certificate_manager": {
+      "file_path": "app/tools/pki_certificate_manager/main.py",
+      "total_lines": 442,
+      "issues": [
+        {
+          "tool": "pki_certificate_manager",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "pki_certificate_manager",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "social_engineering_toolkit": {
+      "file_path": "app/tools/social_engineering_toolkit/main.py",
+      "total_lines": 454,
+      "issues": []
+    },
+    "network_port_scanner": {
+      "file_path": "app/tools/network_port_scanner/main.py",
+      "total_lines": 514,
+      "issues": [
+        {
+          "tool": "network_port_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "password_strength_analyzer": {
+      "file_path": "app/tools/password_strength_analyzer/main.py",
+      "total_lines": 513,
+      "issues": [
+        {
+          "tool": "password_strength_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "dns_enumerator": {
+      "file_path": "app/tools/dns_enumerator/main.py",
+      "total_lines": 356,
+      "issues": [
+        {
+          "tool": "dns_enumerator",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "dns_enumerator",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "ssl_analyzer": {
+      "file_path": "app/tools/ssl_analyzer/main.py",
+      "total_lines": 235,
+      "issues": [
+        {
+          "tool": "ssl_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ssl_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ssl_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "directory_bruteforcer": {
+      "file_path": "app/tools/directory_bruteforcer/main.py",
+      "total_lines": 144,
+      "issues": [
+        {
+          "tool": "directory_bruteforcer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "directory_bruteforcer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "directory_bruteforcer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "directory_bruteforcer",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "port_scanner": {
+      "file_path": "app/tools/port_scanner/main.py",
+      "total_lines": 154,
+      "issues": []
+    },
+    "mobile_security_analyzer": {
+      "file_path": "app/tools/mobile_security_analyzer/main.py",
+      "total_lines": 709,
+      "issues": [
+        {
+          "tool": "mobile_security_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "mobile_security_analyzer",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "blockchain_security_analyzer": {
+      "file_path": "app/tools/blockchain_security_analyzer/main.py",
+      "total_lines": 399,
+      "issues": [
+        {
+          "tool": "blockchain_security_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "blockchain_security_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "blockchain_security_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "hash_cracker": {
+      "file_path": "app/tools/hash_cracker/main.py",
+      "total_lines": 201,
+      "issues": [
+        {
+          "tool": "hash_cracker",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "hash_cracker",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "hash_cracker",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "static_malware_analyzer": {
+      "file_path": "app/tools/static_malware_analyzer/main.py",
+      "total_lines": 606,
+      "issues": [
+        {
+          "tool": "static_malware_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "static_malware_analyzer",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "ip_geolocation": {
+      "file_path": "app/tools/ip_geolocation/main.py",
+      "total_lines": 351,
+      "issues": [
+        {
+          "tool": "ip_geolocation",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ip_geolocation",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ip_geolocation",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ip_geolocation",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "web_application_firewall_bypass": {
+      "file_path": "app/tools/web_application_firewall_bypass/main.py",
+      "total_lines": 467,
+      "issues": [
+        {
+          "tool": "web_application_firewall_bypass",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "web_application_firewall_bypass",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "api_security_analyzer": {
+      "file_path": "app/tools/api_security_analyzer/main.py",
+      "total_lines": 695,
+      "issues": [
+        {
+          "tool": "api_security_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "saml_analyzer": {
+      "file_path": "app/tools/saml_analyzer/main.py",
+      "total_lines": 375,
+      "issues": [
+        {
+          "tool": "saml_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "saml_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "saml_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "security_compliance_checker": {
+      "file_path": "app/tools/security_compliance_checker/main.py",
+      "total_lines": 346,
+      "issues": [
+        {
+          "tool": "security_compliance_checker",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "security_compliance_checker",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "security_compliance_checker",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "crypto_strength_analyzer": {
+      "file_path": "app/tools/crypto_strength_analyzer/main.py",
+      "total_lines": 713,
+      "issues": [
+        {
+          "tool": "crypto_strength_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "crypto_strength_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "crypto_strength_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "digital_footprint_analyzer": {
+      "file_path": "app/tools/digital_footprint_analyzer/main.py",
+      "total_lines": 489,
+      "issues": [
+        {
+          "tool": "digital_footprint_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "digital_footprint_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "digital_footprint_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "container_security_scanner": {
+      "file_path": "app/tools/container_security_scanner/main.py",
+      "total_lines": 413,
+      "issues": [
+        {
+          "tool": "container_security_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "container_security_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "container_security_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "ca_analyzer": {
+      "file_path": "app/tools/ca_analyzer/main.py",
+      "total_lines": 506,
+      "issues": [
+        {
+          "tool": "ca_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "ca_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "network_scanner_fixed": {
+      "file_path": "app/tools/network_scanner_fixed/main.py",
+      "total_lines": 450,
+      "issues": [
+        {
+          "tool": "network_scanner_fixed",
+          "type": "import_pattern",
+          "description": "Mixed relative and absolute imports - inconsistent pattern",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "dns_security_checker": {
+      "file_path": "app/tools/dns_security_checker/main.py",
+      "total_lines": 580,
+      "issues": [
+        {
+          "tool": "dns_security_checker",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "dns_security_checker",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "dns_security_checker",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "metadata_extractor": {
+      "file_path": "app/tools/metadata_extractor/main.py",
+      "total_lines": 480,
+      "issues": [
+        {
+          "tool": "metadata_extractor",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "metadata_extractor",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "metadata_extractor",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "metadata_extractor",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "sql_injection_scanner": {
+      "file_path": "app/tools/sql_injection_scanner/main.py",
+      "total_lines": 209,
+      "issues": [
+        {
+          "tool": "sql_injection_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "sql_injection_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "sql_injection_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "sql_injection_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "social_media_osint": {
+      "file_path": "app/tools/social_media_osint/main.py",
+      "total_lines": 557,
+      "issues": [
+        {
+          "tool": "social_media_osint",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "cookie_scanner": {
+      "file_path": "app/tools/cookie_scanner/main.py",
+      "total_lines": 311,
+      "issues": [
+        {
+          "tool": "cookie_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "cookie_scanner",
+          "type": "import_pattern",
+          "description": "Mixed relative and absolute imports - inconsistent pattern",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "cookie_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "url_analyzer": {
+      "file_path": "app/tools/url_analyzer/main.py",
+      "total_lines": 344,
+      "issues": [
+        {
+          "tool": "url_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_analyzer",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_analyzer",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "url_analyzer",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "jwt_decoder": {
+      "file_path": "app/tools/jwt_decoder/main.py",
+      "total_lines": 437,
+      "issues": [
+        {
+          "tool": "jwt_decoder",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "jwt_decoder",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "jwt_decoder",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "network_vulnerability_scanner": {
+      "file_path": "app/tools/network_vulnerability_scanner/main.py",
+      "total_lines": 547,
+      "issues": [
+        {
+          "tool": "network_vulnerability_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "network_vulnerability_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "network_vulnerability_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "jwt_analyzer": {
+      "file_path": "app/tools/jwt_analyzer/main.py",
+      "total_lines": 314,
+      "issues": [
+        {
+          "tool": "jwt_analyzer",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "whois_lookup": {
+      "file_path": "app/tools/whois_lookup/main.py",
+      "total_lines": 305,
+      "issues": [
+        {
+          "tool": "whois_lookup",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "password_generator": {
+      "file_path": "app/tools/password_generator/main.py",
+      "total_lines": 370,
+      "issues": [
+        {
+          "tool": "password_generator",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "password_generator",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "password_generator",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "compliance_checker": {
+      "file_path": "app/tools/compliance_checker/main.py",
+      "total_lines": 559,
+      "issues": [
+        {
+          "tool": "compliance_checker",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "compliance_checker",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "compliance_checker",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "threat_hunting_platform": {
+      "file_path": "app/tools/threat_hunting_platform/main.py",
+      "total_lines": 189,
+      "issues": [
+        {
+          "tool": "threat_hunting_platform",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "threat_hunting_platform",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "vulnerability_db_scanner": {
+      "file_path": "app/tools/vulnerability_db_scanner/main.py",
+      "total_lines": 395,
+      "issues": [
+        {
+          "tool": "vulnerability_db_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "base64_tool": {
+      "file_path": "app/tools/base64_tool/main.py",
+      "total_lines": 357,
+      "issues": [
+        {
+          "tool": "base64_tool",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "base64_tool",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "hash_generator": {
+      "file_path": "app/tools/hash_generator/main.py",
+      "total_lines": 320,
+      "issues": [
+        {
+          "tool": "hash_generator",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "hash_generator",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "hash_generator",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "cloud_security_analyzer": {
+      "file_path": "app/tools/cloud_security_analyzer/main.py",
+      "total_lines": 566,
+      "issues": []
+    },
+    "email_harvester": {
+      "file_path": "app/tools/email_harvester/main.py",
+      "total_lines": 253,
+      "issues": [
+        {
+          "tool": "email_harvester",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "email_harvester",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "email_harvester",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "ct_log_scanner": {
+      "file_path": "app/tools/ct_log_scanner/main.py",
+      "total_lines": 534,
+      "issues": [
+        {
+          "tool": "ct_log_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "network_scanner": {
+      "file_path": "app/tools/network_scanner/main.py",
+      "total_lines": 228,
+      "issues": [
+        {
+          "tool": "network_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "http_security_scanner": {
+      "file_path": "app/tools/http_security_scanner/main.py",
+      "total_lines": 347,
+      "issues": [
+        {
+          "tool": "http_security_scanner",
+          "type": "session_leak",
+          "description": "Line 83: HTTP session created without async with context manager",
+          "severity": "HIGH"
+        },
+        {
+          "tool": "http_security_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "http_security_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    },
+    "api_security_tester": {
+      "file_path": "app/tools/api_security_tester/main.py",
+      "total_lines": 675,
+      "issues": []
+    },
+    "iot_security_scanner": {
+      "file_path": "app/tools/iot_security_scanner/main.py",
+      "total_lines": 381,
+      "issues": [
+        {
+          "tool": "iot_security_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "malware_hash_checker": {
+      "file_path": "app/tools/malware_hash_checker/main.py",
+      "total_lines": 457,
+      "issues": [
+        {
+          "tool": "malware_hash_checker",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "malware_hash_checker",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "security_automation_orchestrator": {
+      "file_path": "app/tools/security_automation_orchestrator/main.py",
+      "total_lines": 304,
+      "issues": [
+        {
+          "tool": "security_automation_orchestrator",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "security_automation_orchestrator",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "security_automation_orchestrator",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        }
+      ]
+    },
+    "file_upload_scanner": {
+      "file_path": "app/tools/file_upload_scanner/main.py",
+      "total_lines": 284,
+      "issues": [
+        {
+          "tool": "file_upload_scanner",
+          "type": "input_validation",
+          "description": "No input validation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "file_upload_scanner",
+          "type": "error_handling",
+          "description": "Exception handling without proper logging",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "file_upload_scanner",
+          "type": "logging",
+          "description": "No logging implementation detected",
+          "severity": "MEDIUM"
+        },
+        {
+          "tool": "file_upload_scanner",
+          "type": "rate_limiting",
+          "description": "External API calls without rate limiting",
+          "severity": "HIGH"
+        }
+      ]
+    }
+  }
+}

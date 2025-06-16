@@ -2,6 +2,10 @@ from typing import Dict, Any, List
 import ipaddress
 import asyncio
 import random
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 try:
     from .schemas import (
@@ -108,7 +112,8 @@ class IoTSecurityScanner:
             network = ipaddress.ip_network(ip_range, strict=False)
             # Limit to reasonable number for demo
             return [str(ip) for ip in list(network.hosts())[:20]]
-        except:
+        except (ipaddress.AddressValueError, ValueError) as e:
+            logger.error(f"Error parsing IP range {ip_range}: {e}")
             return [ip_range]  # Assume single IP if CIDR fails
     
     def _get_local_network_range(self) -> List[str]:
