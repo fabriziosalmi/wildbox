@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
-from app.security import verify_api_key
+from app.auth import verify_api_key
 from app.execution_manager import execution_manager
 from app.logging_config import get_logger
 

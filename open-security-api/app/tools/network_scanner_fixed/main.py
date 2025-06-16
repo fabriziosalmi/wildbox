@@ -24,7 +24,8 @@ from app.utils.tool_utils import (
     InputValidator, SessionManager, ToolExceptionHandler, 
     RateLimiter, MetricsCollector
 )
-from app.config.tool_config import ToolConfig, SecurityConfig
+# Note: Using simplified config for demonstration
+# from app.config.tool_config import ToolConfig, SecurityConfig
 
 try:
     from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
@@ -47,6 +48,37 @@ TOOL_INFO = {
 
 # Common ports to scan for TCP scans
 COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1723, 3389, 5900, 8080]
+
+# Simplified configuration for demonstration (replacing missing app.config.tool_config)
+class SimpleToolConfig:
+    DEFAULT_TIMEOUT = 30
+    @staticmethod
+    def get_tool_config(tool_name):
+        return {
+            'timeout': 30,
+            'max_concurrent': 50,
+            'rate_limit': 10
+        }
+
+class SimpleSecurityConfig:
+    MAX_BATCH_SIZE = 1000
+    
+    @staticmethod
+    def validate_scan_target(ip):
+        # Simple validation - check if it's a valid IP format
+        import re
+        pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        return re.match(pattern, ip) is not None
+    
+    @staticmethod
+    def is_port_restricted(port):
+        # Basic port restrictions
+        restricted_ports = [22, 25, 135, 139, 445, 1433, 3389]
+        return port in restricted_ports
+
+# Use simplified configs
+ToolConfig = SimpleToolConfig
+SecurityConfig = SimpleSecurityConfig
 
 # Initialize rate limiter and metrics
 rate_limiter = RateLimiter(max_requests=50, time_window=60)  # 50 requests per minute

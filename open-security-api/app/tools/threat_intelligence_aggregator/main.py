@@ -5,7 +5,11 @@ import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
-from .schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
+
+try:
+    from .schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
+except ImportError:
+    from schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
 
 # Tool metadata
 TOOL_INFO = {

@@ -5,10 +5,17 @@ import urllib.parse
 import base64
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
-from .schemas import (
-    WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
-    WAFBypassTechnique
-)
+
+try:
+    from .schemas import (
+        WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
+        WAFBypassTechnique
+    )
+except ImportError:
+    from schemas import (
+        WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
+        WAFBypassTechnique
+    )
 
 # Tool metadata
 TOOL_INFO = {

@@ -60,7 +60,7 @@ class APISecurityTesterOutput(BaseModel):
     vulnerabilities: List[APIVulnerability]
     endpoints_discovered: List[APIEndpoint]
     security_tests: List[SecurityTest]
-    owasp_api_top10_compliance: Dict[str, str]
+    owasp_api_top10_compliance: Dict[str, Any]  # Changed from Dict[str, str] to allow complex structure
     security_score: float  # 0-100
     risk_rating: str  # Low, Medium, High, Critical
     recommendations: List[str]

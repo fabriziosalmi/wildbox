@@ -2,16 +2,29 @@ from typing import Dict, Any, List
 import asyncio
 import random
 from datetime import datetime, timedelta
-from .schemas import (
-    ComplianceCheckerInput, 
-    ComplianceCheckerOutput,
-    ComplianceRequirement,
-    SecurityControl,
-    DataProtectionAssessment,
-    AuditTrailAssessment,
-    EncryptionAssessment,
-    ComplianceGap
-)
+
+try:
+    from .schemas import (
+        ComplianceCheckerInput, 
+        ComplianceCheckerOutput,
+        ComplianceRequirement,
+        SecurityControl,
+        DataProtectionAssessment,
+        AuditTrailAssessment,
+        EncryptionAssessment,
+        ComplianceGap
+    )
+except ImportError:
+    from schemas import (
+        ComplianceCheckerInput, 
+        ComplianceCheckerOutput,
+        ComplianceRequirement,
+        SecurityControl,
+        DataProtectionAssessment,
+        AuditTrailAssessment,
+        EncryptionAssessment,
+        ComplianceGap
+    )
 
 class ComplianceChecker:
     """Compliance Checker - Comprehensive compliance assessment for multiple frameworks"""

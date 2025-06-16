@@ -7,7 +7,10 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import random
 
-from .schemas import PortScannerRequest, PortScannerResponse, PortInfo
+try:
+    from .schemas import PortScannerRequest, PortScannerResponse, PortInfo
+except ImportError:
+    from schemas import PortScannerRequest, PortScannerResponse, PortInfo
 
 logger = logging.getLogger(__name__)
 

