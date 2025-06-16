@@ -48,6 +48,9 @@ class ToolConfig:
     @classmethod
     def get_api_key(cls, service: str) -> Optional[str]:
         """Get API key for a service from environment variables"""
+        # Use secure credential manager
+        from app.security.credential_manager import credential_manager
+        return credential_manager.get_api_key(service)
         key_name = f'{service.upper()}_API_KEY'
         return os.getenv(key_name)
     

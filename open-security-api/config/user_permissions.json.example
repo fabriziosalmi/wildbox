@@ -1,0 +1,28 @@
+{
+    "admin_user_123": [
+        "read_only",
+        "passive_scan", 
+        "active_scan",
+        "destructive_test",
+        "credential_test",
+        "vulnerability_exploit"
+    ],
+    "security_analyst_456": [
+        "read_only",
+        "passive_scan",
+        "active_scan"
+    ],
+    "junior_analyst_789": [
+        "read_only",
+        "passive_scan"
+    ],
+    "description": "User permissions for different operation types",
+    "operation_types": {
+        "read_only": "Information gathering without active probing",
+        "passive_scan": "Non-intrusive scanning and analysis",
+        "active_scan": "Active network and service scanning", 
+        "destructive_test": "Potentially destructive security tests",
+        "credential_test": "Authentication and credential testing",
+        "vulnerability_exploit": "Exploit testing (highest risk)"
+    }
+}

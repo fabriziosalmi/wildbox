@@ -271,8 +271,10 @@ def execute_tool(input_data: JWTAnalyzerInput) -> JWTAnalyzerOutput:
     cracked_secret = None
     
     if input_data.verify_signature:
-        # Use custom wordlist or default
-        wordlist = input_data.secret_wordlist or COMMON_SECRETS
+        # Use custom wordlist or load from configuration
+        wordlist = input_data.secret_wordlist or load_jwt_secrets()
+        if not wordlist:
+            wordlist = get_common_secrets()  # Minimal fallback
         
         # Try to crack the secret
         cracked_secret = crack_secret(header, payload, signature, wordlist)

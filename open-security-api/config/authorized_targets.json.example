@@ -1,0 +1,16 @@
+{
+    "targets": [
+        "https://httpbin.org",
+        "https://jsonplaceholder.typicode.com",
+        "192.168.1.0/24",
+        ".example.com",
+        "test-server.local"
+    ],
+    "description": "List of authorized targets for security testing",
+    "notes": [
+        "Use full URLs for web targets",
+        "Use CIDR notation for IP ranges", 
+        "Use .domain.com format for wildcard domains",
+        "Only add targets you own or have explicit permission to test"
+    ]
+}

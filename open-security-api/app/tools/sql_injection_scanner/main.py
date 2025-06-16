@@ -10,19 +10,17 @@ try:
 except ImportError:
     from schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 
-# SQL injection payloads for different database types
-SQL_PAYLOADS = [
-    # Error-based payloads
+# Safe SQL injection test payloads (non-destructive)
+SAFE_SQL_PAYLOADS = [
+    # Basic error-based payloads
     "'",
     "\"",
     "' OR '1'='1",
     "\" OR \"1\"=\"1",
     "' OR 1=1--",
     "\" OR 1=1--",
-    "'; DROP TABLE users--",
-    "'; EXEC xp_cmdshell('dir')--",
     
-    # Union-based payloads
+    # Union-based payloads (safe)
     "' UNION SELECT NULL--",
     "' UNION SELECT 1,2,3--",
     "' UNION ALL SELECT NULL,NULL,NULL--",
@@ -32,26 +30,20 @@ SQL_PAYLOADS = [
     "' AND 1=2--",
     "' AND (SELECT COUNT(*) FROM information_schema.tables)>0--",
     
-    # Time-based payloads
-    "'; WAITFOR DELAY '00:00:05'--",
-    "'; SELECT SLEEP(5)--",
-    "' AND (SELECT COUNT(*) FROM (SELECT 1 UNION SELECT 2 UNION SELECT 3)x GROUP BY CONCAT(MID(version(),1,50),FLOOR(RAND(0)*2)))a)--",
+    # Time-based payloads (short delays only)
+    "' AND (SELECT COUNT(*) FROM (SELECT 1 UNION SELECT 2)x)>0--",
     
-    # MySQL specific
-    "' AND (SELECT * FROM (SELECT COUNT(*),CONCAT(version(),FLOOR(RAND(0)*2))x FROM information_schema.tables GROUP BY x)a)--",
-    
-    # PostgreSQL specific
-    "'; SELECT pg_sleep(5)--",
-    "' AND (SELECT COUNT(*) FROM pg_stat_activity)>0--",
-    
-    # MSSQL specific
-    "'; EXEC('SELECT @@version')--",
-    "' AND (SELECT COUNT(*) FROM sys.databases)>0--",
-    
-    # Oracle specific
-    "' AND (SELECT COUNT(*) FROM user_tables)>0--",
-    "' UNION SELECT NULL FROM dual--"
+    # Database-specific safe tests
+    "' AND @@version IS NOT NULL--",  # MSSQL
+    "' AND version() IS NOT NULL--",   # PostgreSQL
+    "' AND CONNECTION_ID()>0--",       # MySQL
 ]
+
+# REMOVED: All destructive payloads including:
+# - "'; DROP TABLE users--"
+# - "'; EXEC xp_cmdshell('dir')--" 
+# - All WAITFOR DELAY and SLEEP commands
+# - System command execution attempts
 
 # Error patterns that indicate SQL injection vulnerability
 ERROR_PATTERNS = [
@@ -135,8 +127,25 @@ def test_sql_injection(url: str, method: str, param_name: str, param_value: str,
             response_time=response_time
         )
 
-def execute_tool(input_data: SQLInjectionScannerInput) -> SQLInjectionScannerOutput:
-    """Execute the SQL injection scanner tool."""
+def execute_tool(input_data: SQLInjectionScannerInput, user_id: str = None) -> SQLInjectionScannerOutput:
+    """Execute the SQL injection scanner tool with authorization."""
+    from app.security.authorization import authorization_manager, OperationType
+    from app.security.validator import security_validator
+    
+    # Validate and sanitize inputs
+    target_url = security_validator.validate_url(input_data.target_url)
+    
+    # Check authorization for destructive testing
+    if user_id:
+        authorization_manager.require_authorization(
+            target=target_url,
+            user_id=user_id,
+            operation=OperationType.DESTRUCTIVE_TEST,
+            tool_name="sql_injection_scanner"
+        )
+    else:
+        raise PermissionError("User authentication required for SQL injection testing")
+    
     timestamp = datetime.now()
     results = []
     
@@ -159,7 +168,7 @@ def execute_tool(input_data: SQLInjectionScannerInput) -> SQLInjectionScannerOut
     
     # Test each parameter with each payload
     for param_name, param_value in parameters.items():
-        for payload in SQL_PAYLOADS:
+        for payload in SAFE_SQL_PAYLOADS:
             result = test_sql_injection(
                 input_data.target_url,
                 input_data.method,
