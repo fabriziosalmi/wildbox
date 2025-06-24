@@ -64,7 +64,7 @@ plotly==5.17.0
 dash==2.14.2
 
 # Optional: Machine learning for threat scoring
-scikit-learn==1.3.2
+scikit-learn==1.5.0
 
 # Optional: Natural language processing for IOC extraction
 spacy==3.7.2
