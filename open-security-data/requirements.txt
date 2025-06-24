@@ -57,7 +57,7 @@ mypy==1.7.1
 pre-commit==3.6.0
 
 # Optional: Production server
-gunicorn==21.2.0
+gunicorn==23.0.0
 
 # Optional: Visualization
 plotly==5.17.0
