@@ -47,11 +47,11 @@ services:
       - DATABASE_URL=postgresql://secdata:secdata123@postgres:5432/securitydata
       - REDIS_URL=redis://redis:6379/0
       - API_HOST=0.0.0.0
-      - API_PORT=8000
+      - API_PORT=8001
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
     ports:
-      - "8000:8000"
+      - "8001:8001"
     depends_on:
       postgres:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
       - ./data:/app/data
       - ./logs:/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 5

@@ -45,7 +45,7 @@ class RedisConfig:
 class APIConfig:
     """API server configuration"""
     host: str = os.getenv("API_HOST", "0.0.0.0")
-    port: int = int(os.getenv("API_PORT", "8000"))
+    port: int = int(os.getenv("API_PORT", "8001"))
     workers: int = int(os.getenv("API_WORKERS", "4"))
     max_requests: int = int(os.getenv("API_MAX_REQUESTS", "1000"))
     max_requests_jitter: int = int(os.getenv("API_MAX_REQUESTS_JITTER", "100"))

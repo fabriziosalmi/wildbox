@@ -52,36 +52,36 @@ python -m app.scheduler.main &
 
 ### 4. Access the Platform
 
-- **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
-- **Statistics**: http://localhost:8000/api/v1/stats
+- **API Documentation**: http://localhost:8001/docs
+- **Health Check**: http://localhost:8001/health
+- **Statistics**: http://localhost:8001/api/v1/stats
 
 ### 5. Basic Usage Examples
 
 #### Search for indicators
 ```bash
 # Search for malicious IPs
-curl "http://localhost:8000/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware"
+curl "http://localhost:8001/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware"
 
 # Search for phishing domains
-curl "http://localhost:8000/api/v1/indicators/search?indicator_type=domain&threat_types=phishing"
+curl "http://localhost:8001/api/v1/indicators/search?indicator_type=domain&threat_types=phishing"
 ```
 
 #### Lookup specific indicators
 ```bash
 # Check IP address
-curl "http://localhost:8000/api/v1/ips/1.2.3.4"
+curl "http://localhost:8001/api/v1/ips/1.2.3.4"
 
 # Check domain
-curl "http://localhost:8000/api/v1/domains/malicious.example.com"
+curl "http://localhost:8001/api/v1/domains/malicious.example.com"
 
 # Check file hash
-curl "http://localhost:8000/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
+curl "http://localhost:8001/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
 ```
 
 #### Bulk lookup
 ```bash
-curl -X POST "http://localhost:8000/api/v1/indicators/lookup" \
+curl -X POST "http://localhost:8001/api/v1/indicators/lookup" \
   -H "Content-Type: application/json" \
   -d '{
     "indicators": [
@@ -94,7 +94,7 @@ curl -X POST "http://localhost:8000/api/v1/indicators/lookup" \
 #### Real-time threat feed
 ```bash
 # Get recent threats (NDJSON format)
-curl "http://localhost:8000/api/v1/feeds/realtime?since_minutes=60"
+curl "http://localhost:8001/api/v1/feeds/realtime?since_minutes=60"
 ```
 
 ### 6. Configuration
@@ -149,12 +149,12 @@ Data is automatically:
 import requests
 
 # Search for indicators
-response = requests.get("http://localhost:8000/api/v1/indicators/search", 
+response = requests.get("http://localhost:8001/api/v1/indicators/search", 
                        params={"q": "malware", "limit": 100})
 indicators = response.json()
 
 # Check if IP is malicious
-response = requests.get("http://localhost:8000/api/v1/ips/1.2.3.4")
+response = requests.get("http://localhost:8001/api/v1/ips/1.2.3.4")
 if response.status_code == 200:
     print("IP found in threat intelligence!")
 ```
@@ -162,7 +162,7 @@ if response.status_code == 200:
 #### SIEM Integration
 Use the real-time feed endpoint to stream threats into your SIEM:
 ```bash
-curl -N "http://localhost:8000/api/v1/feeds/realtime" | jq .
+curl -N "http://localhost:8001/api/v1/feeds/realtime" | jq .
 ```
 
 ### 10. Development

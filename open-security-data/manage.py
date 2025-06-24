@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """
-Database management script for Open Security Data
+Management script for Open Security Data platform
 """
 
 import asyncio
+import click
 import logging
 import sys
-from typing import List, Dict, Any
 from datetime import datetime, timezone
-
 from sqlalchemy.orm import Session
-from app.config import get_config
-from app.utils.database import get_db_session, create_tables, drop_tables
-from app.models import Source
-from app.collectors.sources import *
 
-logger = logging.getLogger(__name__)
+from app.config import get_config
+from app.models import Source, Base
+from app.utils.database import engine, get_db_session, create_tables, drop_tables
+from app.collectors.sources import (
+    MalwareDomainListCollector, PhishTankCollector, FeodoTrackerCollector,
+    ThreatFoxCollector, MalwareBazaarCollector
+)
+
 config = get_config()
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Default sources configuration
 DEFAULT_SOURCES = [
