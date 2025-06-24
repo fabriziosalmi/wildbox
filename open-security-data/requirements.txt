@@ -34,7 +34,7 @@ pytz==2023.3
 click==8.1.7
 
 # Security
-cryptography==41.0.8
+cryptography==44.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 
