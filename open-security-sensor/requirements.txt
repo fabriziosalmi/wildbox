@@ -1,0 +1,42 @@
+# Open Security Sensor - Python Requirements
+
+# Core dependencies
+asyncio-mqtt>=0.13.0
+aiohttp>=3.8.0
+aiohttp-cors>=0.7.0
+PyYAML>=6.0
+psutil>=5.9.0
+feedparser>=6.0.10
+
+# Data processing
+jsonschema>=4.17.0
+python-dateutil>=2.8.2
+
+# System monitoring
+watchdog>=2.1.9
+
+# Logging and monitoring
+structlog>=22.1.0
+
+# Security
+cryptography>=3.4.8
+certifi>=2022.12.7
+
+# Development dependencies (optional)
+pytest>=7.2.0
+pytest-asyncio>=0.20.3
+pytest-cov>=4.0.0
+black>=22.10.0
+flake8>=6.0.0
+mypy>=0.991
+
+# Platform-specific dependencies
+# Windows
+pywin32>=304 ; sys_platform == "win32"
+wmi>=1.5.1 ; sys_platform == "win32"
+
+# Linux
+python-systemd>=234 ; sys_platform == "linux"
+
+# macOS  
+pyobjc-framework-Cocoa>=9.0 ; sys_platform == "darwin"

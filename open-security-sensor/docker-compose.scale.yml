@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Load balancer for multiple sensor instances
+  nginx:
+    image: nginx:alpine
+    container_name: sensor-nginx
+    restart: unless-stopped
+    
+    ports:
+      - "80:80"
+      - "443:443"
+    
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    
+    networks:
+      - sensor-network
+    
+    depends_on:
+      - sensor
+
+  # Override sensor service for scaling
+  sensor:
+    # Remove port mapping for scaled instances
+    ports: []
+    
+    # Add environment for load balancing
+    environment:
+      - SENSOR_INSTANCE_ID=${HOSTNAME:-sensor}
+    
+    # Scale-specific configuration
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 384M
+          cpus: '0.3'
+        reservations:
+          memory: 192M
+          cpus: '0.15'

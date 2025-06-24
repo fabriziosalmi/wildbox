@@ -1,0 +1,121 @@
+version: '3.8'
+
+services:
+  # Development version of Open Security Sensor
+  sensor-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: open-security-sensor-dev
+    restart: unless-stopped
+    
+    # Development environment
+    environment:
+      - SENSOR_LOGGING_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - FLASK_ENV=development
+      - DEVELOPMENT=true
+    
+    # Development volumes (code mounting for hot reload)
+    volumes:
+      - .:/app:rw
+      - ./config.yaml.example:/etc/security-sensor/config.yaml:ro
+      - sensor_dev_logs:/var/log/security-sensor
+      - sensor_dev_data:/var/lib/security-sensor
+      # Host monitoring
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Network configuration
+    ports:
+      - "8899:8899"  # Local API port
+      - "5678:5678"  # Debug port
+    
+    # Security context (relaxed for development)
+    security_opt:
+      - no-new-privileges:true
+    
+    # Capabilities for system monitoring
+    cap_add:
+      - SYS_PTRACE
+      - DAC_READ_SEARCH
+    
+    # PID namespace for process monitoring
+    pid: host
+    
+    # Networks
+    networks:
+      - sensor-dev-network
+    
+    # Dependencies
+    depends_on:
+      - redis-dev
+    
+    # Override command for development
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "main.py", "--config", "/etc/security-sensor/config.yaml"]
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8899/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis for development
+  redis-dev:
+    image: redis:7-alpine
+    container_name: sensor-redis-dev
+    restart: unless-stopped
+    
+    volumes:
+      - redis_dev_data:/data
+    
+    ports:
+      - "6379:6379"
+    
+    networks:
+      - sensor-dev-network
+    
+    command: redis-server --appendonly yes
+
+  # Test database for integration tests
+  postgres-test:
+    image: postgres:15-alpine
+    container_name: sensor-postgres-test
+    restart: unless-stopped
+    
+    environment:
+      - POSTGRES_DB=sensor_test
+      - POSTGRES_USER=sensor_test
+      - POSTGRES_PASSWORD=sensor_test_pass
+    
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    
+    ports:
+      - "5432:5432"
+    
+    networks:
+      - sensor-dev-network
+    
+    profiles:
+      - testing
+
+volumes:
+  sensor_dev_logs:
+    driver: local
+  sensor_dev_data:
+    driver: local
+  redis_dev_data:
+    driver: local
+  postgres_test_data:
+    driver: local
+
+networks:
+  sensor-dev-network:
+    driver: bridge
+    name: sensor-dev-network

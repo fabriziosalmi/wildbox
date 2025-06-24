@@ -1,0 +1,159 @@
+version: '3.8'
+
+services:
+  # Open Security Sensor
+  sensor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: open-security-sensor
+    restart: unless-stopped
+    
+    # Environment variables
+    environment:
+      - SENSOR_LOGGING_LEVEL=INFO
+      - PYTHONPATH=/app
+    
+    # Configuration volume
+    volumes:
+      - ./config.yaml:/etc/security-sensor/config.yaml:ro
+      - sensor_logs:/var/log/security-sensor
+      - sensor_data:/var/lib/security-sensor
+      # Host monitoring (required for system telemetry)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    
+    # Network configuration
+    ports:
+      - "8899:8899"  # Local API port
+    
+    # Security context
+    security_opt:
+      - no-new-privileges:true
+    
+    # Capabilities for system monitoring
+    cap_add:
+      - SYS_PTRACE
+      - DAC_READ_SEARCH
+    
+    # PID namespace for process monitoring
+    pid: host
+    
+    # Networks
+    networks:
+      - sensor-network
+      - security-suite
+    
+    # Dependencies
+    depends_on:
+      - redis
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8899/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Redis for caching and queuing
+  redis:
+    image: redis:7-alpine
+    container_name: sensor-redis
+    restart: unless-stopped
+    
+    volumes:
+      - redis_data:/data
+    
+    ports:
+      - "6379:6379"
+    
+    networks:
+      - sensor-network
+    
+    # Redis configuration
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Optional: Prometheus for metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: sensor-prometheus
+    restart: unless-stopped
+    
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    
+    ports:
+      - "9090:9090"
+    
+    networks:
+      - sensor-network
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: sensor-grafana
+    restart: unless-stopped
+    
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    
+    ports:
+      - "3000:3000"
+    
+    networks:
+      - sensor-network
+    
+    depends_on:
+      - prometheus
+    
+    profiles:
+      - monitoring
+
+volumes:
+  sensor_logs:
+    driver: local
+  sensor_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  sensor-network:
+    driver: bridge
+    name: sensor-network
+  
+  # External network for connecting to other security suite components
+  security-suite:
+    external: true
+    name: security-suite

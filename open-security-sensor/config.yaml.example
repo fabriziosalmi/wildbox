@@ -1,0 +1,67 @@
+# Open Security Sensor Configuration
+
+# Data Lake Connection
+data_lake:
+  endpoint: "https://your-security-data-platform.com/api/v1/ingest"
+  api_key: "your-api-key-here"
+  tls_verify: true
+  batch_size: 100
+  flush_interval: 30
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
+
+# Telemetry Collection
+collection:
+  process_events: true
+  network_connections: true
+  file_monitoring: true
+  user_events: true
+  system_inventory: true
+  log_forwarding: false
+
+# File Integrity Monitoring
+fim:
+  enabled: true
+  paths:
+    - "/etc"
+    - "/bin"
+    - "/usr/bin"
+    - "/opt"
+    # Windows paths (if running on Windows)
+    # - "C:\\Windows\\System32"
+    # - "C:\\Program Files"
+    # macOS paths (if running on macOS)
+    # - "/System"
+    # - "/Applications"
+  exclude_patterns:
+    - "*.tmp"
+    - "*.log"
+    - "*.cache"
+    - "*.pid"
+    - "*.lock"
+  recursive: true
+  max_depth: 10
+
+# Performance Tuning
+performance:
+  query_interval: 10
+  max_memory_mb: 128
+  max_cpu_percent: 5
+  max_queue_size: 1000
+  worker_threads: 4
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "/var/log/security-sensor/sensor.log"  # Set to null to disable file logging
+  max_size: 10485760  # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Network Configuration
+network:
+  bind_address: "127.0.0.1"
+  bind_port: 8899
+  enable_api: true
+  api_key: null  # Set to require API key authentication
