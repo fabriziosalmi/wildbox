@@ -61,7 +61,7 @@ gunicorn==23.0.0
 
 # Optional: Visualization
 plotly==5.17.0
-dash==2.14.2
+dash==2.15.0
 
 # Optional: Machine learning for threat scoring
 scikit-learn==1.5.0
