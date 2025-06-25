@@ -1,0 +1,324 @@
+{
+  "name": "Daily OSINT Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/feeds/rss",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "id": "b2c3d4e5-f6g7-8901-2345-67890abcdef1",
+      "name": "Get RSS Feed List",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Initialize RSS feeds from environment or API response\nconst inputData = $input.first().json;\nlet feeds = [];\n\n// Try to get feeds from API response first\nif (inputData && inputData.feeds) {\n  feeds = inputData.feeds;\n} else {\n  // Fallback to environment variable\n  const envFeeds = $env.SECURITY_RSS_FEEDS;\n  if (envFeeds) {\n    feeds = envFeeds.split(',').map(url => ({\n      url: url.trim(),\n      name: new URL(url.trim()).hostname,\n      category: 'security'\n    }));\n  }\n}\n\n// Default feeds if none are configured\nif (feeds.length === 0) {\n  feeds = [\n    {\n      url: 'https://feeds.feedburner.com/TheHackersNews',\n      name: 'The Hacker News',\n      category: 'security'\n    },\n    {\n      url: 'https://krebsonsecurity.com/feed/',\n      name: 'Krebs on Security',\n      category: 'security'\n    },\n    {\n      url: 'https://www.darkreading.com/rss.xml',\n      name: 'Dark Reading',\n      category: 'security'\n    },\n    {\n      url: 'https://blog.talosintelligence.com/feeds/posts/default',\n      name: 'Cisco Talos',\n      category: 'threat-intel'\n    },\n    {\n      url: 'https://www.bleepingcomputer.com/feed/',\n      name: 'Bleeping Computer',\n      category: 'security'\n    }\n  ];\n}\n\n// Return each feed as a separate item for batch processing\nreturn feeds.map(feed => ({ json: feed }));"
+      },
+      "id": "c3d4e5f6-g7h8-9012-3456-7890abcdef12",
+      "name": "Initialize RSS Feeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "batchSize": 5,
+        "options": {}
+      },
+      "id": "d4e5f6g7-h8i9-0123-4567-890abcdef123",
+      "name": "Split Feeds in Batches",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "e5f6g7h8-i9j0-1234-5678-90abcdef1234",
+      "name": "Fetch RSS Feed",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process and filter RSS articles\nconst articles = $input.all().map(item => item.json);\nconst currentTime = new Date();\nconst oneDayAgo = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);\n\n// Filter articles from the last 24 hours\nconst recentArticles = articles.filter(article => {\n  const pubDate = new Date(article.pubDate || article.published || article.date);\n  return pubDate >= oneDayAgo;\n});\n\n// Group articles by keywords/themes\nconst themes = {\n  'malware': [],\n  'ransomware': [],\n  'data_breach': [],\n  'vulnerability': [],\n  'apt_groups': [],\n  'zero_day': [],\n  'phishing': [],\n  'supply_chain': [],\n  'iot_security': [],\n  'cloud_security': [],\n  'ai_security': [],\n  'other': []\n};\n\n// Keywords for categorization\nconst keywords = {\n  'malware': ['malware', 'trojan', 'virus', 'backdoor', 'botnet'],\n  'ransomware': ['ransomware', 'encryption', 'ransom', 'lockbit', 'conti'],\n  'data_breach': ['data breach', 'hack', 'stolen data', 'leak', 'exposed'],\n  'vulnerability': ['vulnerability', 'cve', 'exploit', 'patch', 'security flaw'],\n  'apt_groups': ['apt', 'advanced persistent', 'nation state', 'state-sponsored'],\n  'zero_day': ['zero-day', '0-day', 'zero day', 'unknown vulnerability'],\n  'phishing': ['phishing', 'social engineering', 'email attack', 'business email'],\n  'supply_chain': ['supply chain', 'third party', 'vendor', 'supply-chain'],\n  'iot_security': ['iot', 'internet of things', 'smart device', 'connected device'],\n  'cloud_security': ['cloud security', 'aws', 'azure', 'gcp', 'saas'],\n  'ai_security': ['ai security', 'machine learning', 'artificial intelligence', 'llm']\n};\n\n// Categorize articles\nrecentArticles.forEach(article => {\n  const text = `${article.title} ${article.description || article.summary || ''}`.toLowerCase();\n  let categorized = false;\n  \n  for (const [theme, themeKeywords] of Object.entries(keywords)) {\n    if (themeKeywords.some(keyword => text.includes(keyword))) {\n      themes[theme].push({\n        ...article,\n        theme: theme,\n        source: article.meta?.title || article.source || 'Unknown'\n      });\n      categorized = true;\n      break;\n    }\n  }\n  \n  if (!categorized) {\n    themes.other.push({\n      ...article,\n      theme: 'other',\n      source: article.meta?.title || article.source || 'Unknown'\n    });\n  }\n});\n\n// Prepare data for summary generation\nconst summaryData = {\n  total_articles: recentArticles.length,\n  date: currentTime.toISOString().split('T')[0],\n  themes: Object.entries(themes)\n    .filter(([theme, articles]) => articles.length > 0)\n    .map(([theme, articles]) => ({\n      theme: theme,\n      count: articles.length,\n      articles: articles.slice(0, 10)\n    }))\n};\n\nreturn [{ json: summaryData }];"
+      },
+      "id": "f6g7h8i9-j0k1-2345-6789-0abcdef12345",
+      "name": "Process and Categorize Articles",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "expression": "={{ $json.themes }}"
+      },
+      "id": "g7h8i9j0-k1l2-3456-789a-bcdef1234567",
+      "name": "Split by Theme",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/agents/v1/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"task_type\": \"summarize_cybersecurity_news\",\n  \"input_data\": {\n    \"theme\": \"{{ $json.theme }}\",\n    \"articles\": {{ JSON.stringify($json.articles) }},\n    \"date\": \"{{ $('Process and Categorize Articles').first().json.date }}\"\n  },\n  \"context\": {\n    \"format\": \"markdown\",\n    \"target_audience\": \"security_professionals\",\n    \"tone\": \"professional\",\n    \"max_length\": 500\n  }\n}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "h8i9j0k1-l2m3-4567-89ab-cdef12345678",
+      "name": "Generate Theme Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all theme summaries into final report\nconst summaries = $input.all().map(item => item.json);\nconst originalData = $('Process and Categorize Articles').first().json;\n\n// Create comprehensive report\nconst reportDate = originalData.date;\nconst totalArticles = originalData.total_articles;\n\n// Build markdown report\nlet report = `# 🛡️ Wildbox Daily Cybersecurity Intelligence Report\\n\\n`;\nreport += `**Date:** ${reportDate}\\n`;\nreport += `**Total Articles Analyzed:** ${totalArticles}\\n`;\nreport += `**Generated:** ${new Date().toISOString()}\\n\\n`;\n\nreport += `## 📊 Executive Summary\\n\\n`;\nreport += `Our automated intelligence gathering system analyzed ${totalArticles} security-related articles from major cybersecurity news sources over the past 24 hours. `;\nreport += `Key themes identified include ${summaries.map(s => s.theme.replace('_', ' ')).join(', ')}.\\n\\n`;\n\n// Add theme sections\nsummaries.forEach(summary => {\n  const themeTitle = summary.theme.replace('_', ' ').replace(/\\b\\w/g, l => l.toUpperCase());\n  report += `## 🔍 ${themeTitle}\\n\\n`;\n  \n  if (summary.summary) {\n    report += `${summary.summary}\\n\\n`;\n  }\n  \n  // Add top articles\n  const themeData = originalData.themes.find(t => t.theme === summary.theme);\n  if (themeData && themeData.articles.length > 0) {\n    report += `### Key Articles:\\n\\n`;\n    themeData.articles.slice(0, 5).forEach(article => {\n      report += `- **[${article.title}](${article.link})** - ${article.source}\\n`;\n      if (article.description) {\n        report += `  ${article.description.substring(0, 150)}...\\n`;\n      }\n      report += `\\n`;\n    });\n  }\n  \n  report += `\\n`;\n});\n\n// Add footer\nreport += `## 🤖 About This Report\\n\\n`;\nreport += `This report was automatically generated by the Wildbox Security Intelligence System. `;\nreport += `Articles were collected from trusted cybersecurity news sources and analyzed using AI-powered classification and summarization.\\n\\n`;\nreport += `For more detailed analysis or custom intelligence reports, contact the Wildbox Security team.\\n\\n`;\nreport += `---\\n`;\nreport += `*Generated by Wildbox Open Security Automations - ${new Date().toISOString()}*`;\n\nreturn [{\n  json: {\n    report: report,\n    metadata: {\n      date: reportDate,\n      total_articles: totalArticles,\n      themes_count: summaries.length,\n      generation_time: new Date().toISOString(),\n      sources: [...new Set(originalData.themes.flatMap(t => t.articles.map(a => a.source)))]\n    }\n  }\n}];"
+      },
+      "id": "i9j0k1l2-m3n4-5678-9abc-def123456789",
+      "name": "Compile Final Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2000, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/reports",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"daily_osint\",\n  \"title\": \"Daily Cybersecurity Intelligence Report - {{ $json.metadata.date }}\",\n  \"content\": \"{{ $json.report }}\",\n  \"format\": \"markdown\",\n  \"metadata\": {{ JSON.stringify($json.metadata) }},\n  \"tags\": [\"osint\", \"daily\", \"intelligence\", \"automated\"]\n}"
+      },
+      "id": "j0k1l2m3-n4o5-6789-abcd-ef1234567890",
+      "name": "Save Report to Data Lake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_USER }}",
+        "toEmail": "intelligence@wildbox.security",
+        "subject": "=📊 Daily Cybersecurity Intelligence Report - {{ $json.metadata.date }}",
+        "text": "={{ $json.report }}",
+        "options": {
+          "attachments": "attachment",
+          "attachmentPropertyName": "report_attachment"
+        }
+      },
+      "id": "k1l2m3n4-o5p6-789a-bcde-f12345678901",
+      "name": "Email Report",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [2220, 300],
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"📊 Daily OSINT Report Generated\",\n    \"description\": \"New cybersecurity intelligence report is available\",\n    \"color\": 3447003,\n    \"fields\": [\n      {\n        \"name\": \"Date\",\n        \"value\": \"{{ $json.metadata.date }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Articles Analyzed\",\n        \"value\": \"{{ $json.metadata.total_articles }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Themes Identified\",\n        \"value\": \"{{ $json.metadata.themes_count }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Sources\",\n        \"value\": \"{{ $json.metadata.sources.slice(0, 5).join(', ') }}{{ $json.metadata.sources.length > 5 ? ' +' + ($json.metadata.sources.length - 5) + ' more' : '' }}\",\n        \"inline\": false\n      }\n    ],\n    \"timestamp\": \"{{ $json.metadata.generation_time }}\"\n  }]\n}"
+      },
+      "id": "l2m3n4o5-p6q7-89ab-cdef-123456789012",
+      "name": "Notify Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 420]
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get RSS Feed List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get RSS Feed List": {
+      "main": [
+        [
+          {
+            "node": "Initialize RSS Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize RSS Feeds": {
+      "main": [
+        [
+          {
+            "node": "Split Feeds in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Feeds in Batches": {
+      "main": [
+        [
+          {
+            "node": "Fetch RSS Feed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch RSS Feed": {
+      "main": [
+        [
+          {
+            "node": "Split Feeds in Batches",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Process and Categorize Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process and Categorize Articles": {
+      "main": [
+        [
+          {
+            "node": "Split by Theme",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split by Theme": {
+      "main": [
+        [
+          {
+            "node": "Generate Theme Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Theme Summary": {
+      "main": [
+        [
+          {
+            "node": "Compile Final Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compile Final Report": {
+      "main": [
+        [
+          {
+            "node": "Save Report to Data Lake",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Email Report",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-26T10:00:00.000Z",
+      "updatedAt": "2025-01-26T10:00:00.000Z",
+      "id": "intelligence",
+      "name": "Intelligence"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-26T10:00:00.000Z",
+  "versionId": "1"
+}

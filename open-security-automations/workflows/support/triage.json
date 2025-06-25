@@ -1,0 +1,358 @@
+{
+  "name": "Support Ticket Triage",
+  "nodes": [
+    {
+      "parameters": {
+        "protocol": "imap",
+        "host": "={{ $env.SUPPORT_EMAIL_HOST }}",
+        "port": 993,
+        "secure": true,
+        "user": "={{ $env.SUPPORT_EMAIL_USER }}",
+        "password": "={{ $env.SUPPORT_EMAIL_PASSWORD }}",
+        "folder": "INBOX",
+        "readOnly": false,
+        "markSeen": true,
+        "downloadAttachments": false
+      },
+      "id": "60c1c3e8-7b6a-4b5e-9f3a-2d8e7c9b1a5f",
+      "name": "Monitor Support Email",
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "credentials": {
+        "imap": {
+          "id": "support_email_imap",
+          "name": "Support Email IMAP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Clean and prepare email content for analysis\nconst emailData = $input.first().json;\n\n// Extract email content\nconst subject = emailData.subject || '';\nconst textBody = emailData.text || '';\nconst htmlBody = emailData.html || '';\nconst sender = emailData.from?.text || '';\n\n// Clean the text content\nlet cleanText = textBody;\n\n// Remove email signatures\ncleanText = cleanText.replace(/--\\s*\\n[\\s\\S]*$/gm, '');\ncleanText = cleanText.replace(/_{3,}/g, '');\n\n// Remove quoted text (previous emails)\ncleanText = cleanText.replace(/^>.*$/gm, '');\ncleanText = cleanText.replace(/On .*wrote:$/gm, '');\n\n// Remove excessive whitespace\ncleanText = cleanText.replace(/\\n{3,}/g, '\\n\\n');\ncleanText = cleanText.trim();\n\n// Prepare data for AI analysis\nconst analysisData = {\n  email_id: emailData.messageId,\n  sender: sender,\n  subject: subject,\n  content: cleanText,\n  original_length: textBody.length,\n  cleaned_length: cleanText.length,\n  timestamp: new Date().toISOString()\n};\n\nreturn [{ json: analysisData }];"
+      },
+      "id": "a2b3c4d5-e6f7-8901-2345-6789abcdef01",
+      "name": "Clean Email Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/agents/v1/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"task_type\": \"classify_support_email\",\n  \"input_data\": {\n    \"email_text\": \"{{ $json.subject }} - {{ $json.content }}\",\n    \"sender\": \"{{ $json.sender }}\",\n    \"subject\": \"{{ $json.subject }}\"\n  },\n  \"context\": {\n    \"priority\": \"normal\",\n    \"department\": \"support\"\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "b3c4d5e6-f7g8-9012-3456-789abcdef012",
+      "name": "Analyze with AI Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "expression": "={{ $json.category }}"
+      },
+      "id": "c4d5e6f7-g8h9-0123-4567-89abcdef0123",
+      "name": "Route by Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "routing": {
+        "rules": [
+          {
+            "value": "billing",
+            "condition": "equal"
+          },
+          {
+            "value": "bug_report",
+            "condition": "equal"
+          },
+          {
+            "value": "technical_question",
+            "condition": "equal"
+          },
+          {
+            "value": "feature_request",
+            "condition": "equal"
+          }
+        ]
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/tickets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"billing\",\n  \"priority\": \"high\",\n  \"subject\": \"{{ $('Clean Email Content').item.json.subject }}\",\n  \"content\": \"{{ $('Clean Email Content').item.json.content }}\",\n  \"sender\": \"{{ $('Clean Email Content').item.json.sender }}\",\n  \"category\": \"billing\",\n  \"status\": \"open\",\n  \"assigned_to\": \"billing-team\",\n  \"metadata\": {\n    \"email_id\": \"{{ $('Clean Email Content').item.json.email_id }}\",\n    \"auto_classified\": true,\n    \"confidence\": \"{{ $json.confidence }}\"\n  }\n}"
+      },
+      "id": "d5e6f7g8-h9i0-1234-5678-9abcdef01234",
+      "name": "Create Billing Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "owner": "={{ $env.GITHUB_ORG }}",
+        "repository": "={{ $env.GITHUB_REPO }}",
+        "title": "=Bug Report: {{ $('Clean Email Content').item.json.subject }}",
+        "body": "=**Reporter:** {{ $('Clean Email Content').item.json.sender }}\\n\\n**Subject:** {{ $('Clean Email Content').item.json.subject }}\\n\\n**Description:**\\n{{ $('Clean Email Content').item.json.content }}\\n\\n**Classification:**\\n- Category: {{ $json.category }}\\n- Confidence: {{ $json.confidence }}\\n- Auto-classified: Yes\\n\\n**Email ID:** {{ $('Clean Email Content').item.json.email_id }}",
+        "labels": ["bug", "from-support", "auto-created"],
+        "assignees": []
+      },
+      "id": "e6f7g8h9-i0j1-2345-6789-abcdef012345",
+      "name": "Create GitHub Issue",
+      "type": "n8n-nodes-base.github",
+      "typeVersion": 1,
+      "position": [1120, 300],
+      "credentials": {
+        "githubApi": {
+          "id": "github_api",
+          "name": "GitHub API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/search/documentation",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $('Clean Email Content').item.json.subject }} {{ $('Clean Email Content').item.json.content }}\",\n  \"limit\": 3,\n  \"type\": \"documentation\"\n}"
+      },
+      "id": "f7g8h9i0-j1k2-3456-789a-bcdef0123456",
+      "name": "Search Documentation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 420],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.results?.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "g8h9i0j1-k2l3-4567-89ab-cdef01234567",
+      "name": "Has Documentation Results",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1340, 420]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.SMTP_USER }}",
+        "toEmail": "={{ $('Clean Email Content').item.json.sender }}",
+        "subject": "=Re: {{ $('Clean Email Content').item.json.subject }}",
+        "text": "=Hi there,\\n\\nThank you for contacting Wildbox Security support!\\n\\nI found some relevant documentation that might help answer your question:\\n\\n{{ $('Search Documentation').item.json.results.map(r => `• ${r.title}: ${r.url}`).join('\\n') }}\\n\\nIf these resources don't fully address your question, please don't hesitate to reply and we'll have a human team member assist you further.\\n\\nBest regards,\\nWildbox Security Automation Team",
+        "options": {}
+      },
+      "id": "h9i0j1k2-l3m4-5678-9abc-def012345678",
+      "name": "Send Auto-Response",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1560, 360],
+      "credentials": {
+        "smtp": {
+          "id": "smtp_credentials",
+          "name": "SMTP Credentials"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"📧 New Technical Question\",\n    \"description\": \"A technical question needs human attention\",\n    \"color\": 16776960,\n    \"fields\": [\n      {\n        \"name\": \"From\",\n        \"value\": \"{{ $('Clean Email Content').item.json.sender }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Subject\", \n        \"value\": \"{{ $('Clean Email Content').item.json.subject }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Category\",\n        \"value\": \"{{ $('Analyze with AI Agent').item.json.category }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Content Preview\",\n        \"value\": \"{{ $('Clean Email Content').item.json.content.substring(0, 200) }}...\",\n        \"inline\": false\n      }\n    ],\n    \"timestamp\": \"{{ new Date().toISOString() }}\"\n  }]\n}"
+      },
+      "id": "i0j1k2l3-m4n5-6789-abcd-ef0123456789",
+      "name": "Notify Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 480]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/tickets",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"feature_request\",\n  \"priority\": \"medium\",\n  \"subject\": \"{{ $('Clean Email Content').item.json.subject }}\",\n  \"content\": \"{{ $('Clean Email Content').item.json.content }}\",\n  \"sender\": \"{{ $('Clean Email Content').item.json.sender }}\",\n  \"category\": \"feature_request\",\n  \"status\": \"open\",\n  \"assigned_to\": \"product-team\",\n  \"metadata\": {\n    \"email_id\": \"{{ $('Clean Email Content').item.json.email_id }}\",\n    \"auto_classified\": true,\n    \"confidence\": \"{{ $json.confidence }}\"\n  }\n}"
+      },
+      "id": "j1k2l3m4-n5o6-789a-bcde-f01234567890",
+      "name": "Create Feature Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 540],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Monitor Support Email": {
+      "main": [
+        [
+          {
+            "node": "Clean Email Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clean Email Content": {
+      "main": [
+        [
+          {
+            "node": "Analyze with AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze with AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Route by Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Category": {
+      "main": [
+        [
+          {
+            "node": "Create Billing Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create GitHub Issue",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search Documentation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Feature Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Documentation": {
+      "main": [
+        [
+          {
+            "node": "Has Documentation Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Documentation Results": {
+      "main": [
+        [
+          {
+            "node": "Send Auto-Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-26T10:00:00.000Z",
+      "updatedAt": "2025-01-26T10:00:00.000Z",
+      "id": "support",
+      "name": "Support"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-26T10:00:00.000Z",
+  "versionId": "1"
+}

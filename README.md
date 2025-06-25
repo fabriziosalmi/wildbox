@@ -863,6 +863,597 @@ intrusion_detection:
 
 ---
 
+## 🏗️ Architecture
+
+Wildbox follows a modern microservices architecture with clear separation of concerns and well-defined APIs. Each component is designed to be independently deployable, scalable, and maintainable.
+
+### 🔄 **System Architecture**
+
+```mermaid
+graph TD
+    subgraph "Client Layer"
+        UI[Dashboard UI]
+        CLI[CLI Tools]
+        API_CLIENT[API Clients]
+    end
+    
+    subgraph "API Gateway Layer"
+        GATEWAY[🚪 API Gateway]
+        IDENTITY[🔐 Identity Service]
+        LOAD_BALANCER[Load Balancer]
+    end
+    
+    subgraph "Core Services"
+        API[🔧 Security API]
+        DATA[📊 Data Lake]
+        GUARDIAN[🛡️ Guardian]
+        RESPONDER[⚡ Responder]
+        AGENTS[🧠 AI Agents]
+        SENSOR[📡 Sensor]
+    end
+    
+    subgraph "Data Layer"
+        POSTGRES[(PostgreSQL)]
+        REDIS[(Redis)]
+        ELASTICSEARCH[(Elasticsearch)]
+    end
+    
+    subgraph "External Services"
+        STRIPE[Stripe]
+        OPENAI[OpenAI]
+        FEEDS[Threat Feeds]
+    end
+    
+    UI --> LOAD_BALANCER
+    CLI --> LOAD_BALANCER
+    API_CLIENT --> LOAD_BALANCER
+    
+    LOAD_BALANCER --> GATEWAY
+    GATEWAY --> IDENTITY
+    
+    GATEWAY --> API
+    GATEWAY --> DATA
+    GATEWAY --> GUARDIAN
+    GATEWAY --> RESPONDER
+    GATEWAY --> AGENTS
+    
+    SENSOR --> GATEWAY
+    
+    API --> REDIS
+    DATA --> POSTGRES
+    DATA --> ELASTICSEARCH
+    GUARDIAN --> POSTGRES
+    RESPONDER --> REDIS
+    AGENTS --> REDIS
+    
+    IDENTITY --> STRIPE
+    AGENTS --> OPENAI
+    DATA --> FEEDS
+```
+
+### 🔌 **Service Communication**
+
+| Service | Port | Protocol | Authentication |
+|---------|------|----------|---------------|
+| **Dashboard** | 3000 | HTTP/HTTPS | JWT + Session |
+| **API Gateway** | 80/443 | HTTP/HTTPS | API Key + JWT |
+| **Identity Service** | 8001 | HTTP | Internal + JWT |
+| **Security API** | 8000 | HTTP | API Key |
+| **Data Lake** | 8002 | HTTP | API Key |
+| **Guardian** | 8003 | HTTP | API Key |
+| **Sensor** | 8004 | HTTPS | Certificate |
+| **Responder** | 8005 | HTTP | API Key |
+| **AI Agents** | 8006 | HTTP | API Key |
+
+### 🛡️ **Security Architecture**
+
+#### **Authentication Flow**
+1. **User Registration/Login** → Identity Service issues JWT
+2. **API Key Creation** → Team-scoped API keys for service access
+3. **Request Authorization** → Gateway validates with Identity Service
+4. **Service Access** → Authenticated requests forwarded to services
+
+#### **Authorization Matrix**
+
+| Role | Dashboard | API Access | Team Management | Billing |
+|------|-----------|-------------|-----------------|---------|
+| **Owner** | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
+| **Admin** | ✅ Full | ✅ Full | ✅ Limited | ❌ None |
+| **Member** | ✅ Limited | ✅ Limited | ❌ None | ❌ None |
+| **Viewer** | ✅ Read-only | ✅ Read-only | ❌ None | ❌ None |
+
+---
+
+## 🚀 Components
+
+### 🔐 **open-security-identity**
+**The Authentication & Authorization Hub**
+
+- **Purpose**: Centralized identity management, JWT authentication, API key management, and subscription billing
+- **Technology**: FastAPI, PostgreSQL, Stripe, JWT
+- **Key Features**:
+  - User registration and authentication
+  - Team management with RBAC
+  - API key lifecycle management
+  - Stripe integration for subscriptions
+  - Rate limiting and permissions
+
+```bash
+# Start Identity Service
+cd open-security-identity
+docker-compose up -d
+
+# Access: http://localhost:8001
+# API Docs: http://localhost:8001/docs
+```
+
+### 🚪 **open-security-gateway** 
+**The Traffic Controller**
+
+- **Purpose**: Single entry point for all API requests with authentication, rate limiting, and routing
+- **Technology**: Nginx, Lua, Redis
+- **Key Features**:
+  - Request routing and load balancing
+  - API key validation and caching
+  - Rate limiting per user/team
+  - Security headers and SSL termination
+
+### 🔧 **open-security-api**
+**The Security Toolbox**
+
+- **Purpose**: Unified API for 50+ security tools with dynamic discovery and execution
+- **Technology**: FastAPI, Redis, Docker
+- **Key Features**:
+  - Dynamic tool discovery and loading
+  - Async tool execution with timeout handling
+  - Schema validation and documentation
+  - Web interface and API endpoints
+
+```bash
+# Start Security API
+cd open-security-api
+make dev
+
+# Access: http://localhost:8000
+# Tools: 50+ security tools available
+```
+
+### 📊 **open-security-data**
+**The Intelligence Repository**
+
+- **Purpose**: Centralized threat intelligence aggregation and serving
+- **Technology**: FastAPI, PostgreSQL, Elasticsearch, Redis
+- **Key Features**:
+  - 50+ threat intelligence sources
+  - Real-time data collection and processing
+  - IOC lookup and enrichment
+  - Geolocation and reputation scoring
+
+```bash
+# Start Data Lake
+cd open-security-data
+docker-compose up -d
+
+# Access: http://localhost:8002
+# Sources: 50+ threat intelligence feeds
+```
+
+### 🛡️ **open-security-guardian**
+**The Vulnerability Manager**
+
+- **Purpose**: Comprehensive vulnerability lifecycle management with risk-based prioritization
+- **Technology**: Django, PostgreSQL, Celery, Redis
+- **Key Features**:
+  - Asset discovery and inventory
+  - Multi-scanner integration
+  - Risk-based vulnerability prioritization
+  - Compliance framework support
+  - Remediation workflow automation
+
+```bash
+# Start Guardian
+cd open-security-guardian
+docker-compose up -d
+
+# Access: http://localhost:8003
+# Features: CSPM, vulnerability management, compliance
+```
+
+### 📡 **open-security-sensor**
+**The Endpoint Agent**
+
+- **Purpose**: Lightweight endpoint monitoring and telemetry collection
+- **Technology**: osquery, Python, HTTPS
+- **Key Features**:
+  - Cross-platform endpoint monitoring
+  - Real-time telemetry collection
+  - Centralized configuration management
+  - Encrypted data transmission
+
+```bash
+# Deploy Sensor
+cd open-security-sensor
+./scripts/deploy-agent.sh
+
+# Monitor: Real-time endpoint telemetry
+```
+
+### ⚡ **open-security-responder**
+**The Automation Engine**
+
+- **Purpose**: SOAR platform for incident response automation
+- **Technology**: FastAPI, Dramatiq, Redis, YAML
+- **Key Features**:
+  - YAML-based playbook definition
+  - Async workflow execution
+  - External system integrations
+  - Real-time execution monitoring
+
+```bash
+# Start Responder
+cd open-security-responder
+docker-compose up -d
+
+# Access: http://localhost:8005
+# Features: Playbook automation, workflow orchestration
+```
+
+### 🧠 **open-security-agents**
+**The AI Brain**
+
+- **Purpose**: AI-powered security analysis and automation
+- **Technology**: FastAPI, Celery, LangChain, OpenAI
+- **Key Features**:
+  - GPT-4 powered threat analysis
+  - Automated report generation
+  - Natural language querying
+  - Tool orchestration via AI
+
+```bash
+# Start AI Agents
+cd open-security-agents
+docker-compose up -d
+
+# Access: http://localhost:8006
+# Features: AI-powered analysis, automated insights
+```
+
+### 🖥️ **open-security-dashboard**
+**The Command Center**
+
+- **Purpose**: Unified web interface for the entire security platform
+- **Technology**: Next.js, TypeScript, Tailwind CSS, TanStack Query
+- **Key Features**:
+  - Real-time security dashboards
+  - Multi-service integration
+  - Role-based access control
+  - Modern responsive UI
+
+```bash
+# Start Dashboard
+cd open-security-dashboard
+npm run dev
+
+# Access: http://localhost:3000
+# Features: Unified security operations center
+```
+
+```
+
+---
+
+## ✨ Key Features
+
+### 🔧 **50+ Security Tools**
+Comprehensive security toolkit covering all aspects of cybersecurity:
+
+#### **Network Security**
+- Port scanning and service enumeration
+- Network vulnerability assessment
+- SSL/TLS certificate analysis
+- DNS security testing
+
+#### **Web Application Security**
+- XSS vulnerability scanning
+- SQL injection testing
+- API security analysis
+- Header security validation
+
+#### **Cloud Security (CSPM)**
+- Multi-cloud security posture management
+- AWS, Azure, GCP compliance scanning
+- Infrastructure as Code analysis
+- Cloud resource inventory
+
+#### **Threat Intelligence**
+- IOC lookup and analysis
+- Malware hash verification
+- Domain reputation checking
+- IP geolocation and ASN lookup
+
+#### **Cryptography & Analysis**
+- Hash generation and verification
+- Certificate analysis
+- Encryption strength testing
+- Key management validation
+
+### 🤖 **AI-Powered Analysis**
+Advanced artificial intelligence capabilities for modern security operations:
+
+- **GPT-4 Integration**: Leverage cutting-edge language models for threat analysis
+- **Automated Report Generation**: AI-generated security reports with actionable insights
+- **Natural Language Queries**: Ask questions about your security posture in plain English
+- **Pattern Recognition**: AI-powered anomaly detection and threat correlation
+- **Intelligent Prioritization**: ML-based risk scoring and vulnerability prioritization
+
+### 🔄 **Automated Response**
+Complete SOAR (Security Orchestration, Automation and Response) capabilities:
+
+- **Playbook Engine**: YAML-based playbook definition for complex workflows
+- **Real-time Execution**: Async execution with real-time status monitoring
+- **External Integrations**: Connect with ticketing systems, SIEM, and security tools
+- **Conditional Logic**: Smart branching and decision-making in playbooks
+- **Audit Trail**: Complete audit logs for compliance and forensics
+
+### 📊 **Advanced Analytics**
+Enterprise-grade analytics and reporting:
+
+- **Real-time Dashboards**: Live security metrics and KPIs
+- **Executive Reporting**: High-level security posture summaries
+- **Trend Analysis**: Historical analysis and predictive insights
+- **Custom Visualizations**: Drag-and-drop dashboard builder
+- **Export Capabilities**: PDF, Excel, and API export options
+
+### 🌐 **Multi-Cloud Support**
+Unified security across all major cloud platforms:
+
+- **AWS Security**: Complete AWS security posture management
+- **Azure Security**: Microsoft Azure compliance and security scanning
+- **Google Cloud**: GCP security assessment and monitoring
+- **Hybrid Cloud**: Unified view across multi-cloud environments
+- **Kubernetes**: Container security and orchestration platform monitoring
+
+---
+
+## 🔧 Quick Start
+
+### 🐳 **Docker Deployment (Recommended)**
+
+The fastest way to get Wildbox running is using Docker Compose:
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/wildbox.git
+cd wildbox
+
+# Start all services
+docker-compose up -d
+
+# Verify deployment
+docker-compose ps
+
+# Access the dashboard
+open http://localhost:3000
+```
+
+### 🔧 **Manual Deployment**
+
+For development or custom deployments:
+
+```bash
+# 1. Start Identity Service
+cd open-security-identity
+cp .env.example .env
+# Edit .env with your configuration
+docker-compose up -d
+
+# 2. Start API Gateway
+cd ../open-security-gateway
+docker-compose up -d
+
+# 3. Start Core Services
+cd ../open-security-api && make dev &
+cd ../open-security-data && docker-compose up -d &
+cd ../open-security-guardian && docker-compose up -d &
+
+# 4. Start Optional Services
+cd ../open-security-responder && docker-compose up -d &
+cd ../open-security-agents && docker-compose up -d &
+
+# 5. Start Dashboard
+cd ../open-security-dashboard
+npm install
+npm run dev
+```
+
+### ⚙️ **Configuration**
+
+Key environment variables for configuration:
+
+```bash
+# Identity Service
+DATABASE_URL=postgresql://user:pass@localhost:5432/identity
+JWT_SECRET_KEY=your-secret-key
+STRIPE_SECRET_KEY=sk_test_...
+
+# API Services
+API_KEY=your-secure-api-key
+REDIS_URL=redis://localhost:6379
+DEBUG=false
+
+# AI Services
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Dashboard
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+NEXTAUTH_SECRET=your-nextauth-secret
+```
+
+---
+
+## 🐳 Docker Deployment
+
+### 🏗️ **Production Deployment**
+
+Complete production-ready deployment with SSL, monitoring, and high availability:
+
+```yaml
+# docker-compose.prod.yml
+version: '3.8'
+
+services:
+  # Load Balancer with SSL
+  traefik:
+    image: traefik:v3.0
+    command:
+      - --api.dashboard=true
+      - --providers.docker=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.email=admin@yourdomain.com
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./acme:/acme
+
+  # Dashboard
+  dashboard:
+    image: wildbox/dashboard:latest
+    labels:
+      - traefik.http.routers.dashboard.rule=Host(`wildbox.yourdomain.com`)
+      - traefik.http.routers.dashboard.tls.certresolver=letsencrypt
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=https://api.wildbox.yourdomain.com
+
+  # API Gateway
+  gateway:
+    image: nginx:alpine
+    labels:
+      - traefik.http.routers.api.rule=Host(`api.wildbox.yourdomain.com`)
+      - traefik.http.routers.api.tls.certresolver=letsencrypt
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/nginx.conf
+
+  # Core Services
+  identity:
+    image: wildbox/identity:latest
+    environment:
+      - DATABASE_URL=postgresql://user:pass@postgres:5432/identity
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+
+  security-api:
+    image: wildbox/security-api:latest
+    environment:
+      - API_KEY=${API_KEY}
+      - REDIS_URL=redis://redis:6379
+
+  # Databases
+  postgres:
+    image: postgres:15
+    environment:
+      - POSTGRES_DB=wildbox
+      - POSTGRES_USER=wildbox
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  postgres_data:
+  redis_data:
+  grafana_data:
+```
+
+### 🔐 **Security Hardening**
+
+Production security configuration:
+
+```bash
+# Generate secure secrets
+export JWT_SECRET_KEY=$(openssl rand -hex 64)
+export API_KEY=$(openssl rand -hex 32)
+export POSTGRES_PASSWORD=$(openssl rand -hex 32)
+
+# Set file permissions
+chmod 600 .env
+chmod 600 docker-compose.prod.yml
+
+# Configure firewall
+ufw allow 22/tcp    # SSH
+ufw allow 80/tcp    # HTTP
+ufw allow 443/tcp   # HTTPS
+ufw deny 8000:8010/tcp  # Block direct service access
+ufw enable
+
+# SSL Configuration
+certbot --nginx -d wildbox.yourdomain.com -d api.wildbox.yourdomain.com
+```
+
+---
+
+## 📊 Service Ports
+
+| Service | Port | Protocol | Purpose | Status |
+|---------|------|----------|---------|--------|
+| **Dashboard** | 3000 | HTTP | Web interface | ✅ Active |
+| **API Gateway** | 80/443 | HTTP/HTTPS | Load balancer | ✅ Active |
+| **Identity** | 8001 | HTTP | Authentication | ✅ Active |
+| **Security API** | 8000 | HTTP | Security tools | ✅ Active |
+| **Data Lake** | 8002 | HTTP | Threat intelligence | ✅ Active |
+| **Guardian** | 8003 | HTTP | Vulnerability mgmt | ✅ Active |
+| **Sensor Agent** | 8004 | HTTPS | Endpoint monitoring | ✅ Active |
+| **Responder** | 8005 | HTTP | Automation engine | ✅ Active |
+| **AI Agents** | 8006 | HTTP | AI services | ✅ Active |
+| **PostgreSQL** | 5432 | TCP | Primary database | ✅ Active |
+| **Redis** | 6379 | TCP | Cache & queues | ✅ Active |
+| **Elasticsearch** | 9200 | HTTP | Search & analytics | 🔄 Optional |
+| **Prometheus** | 9090 | HTTP | Metrics collection | 🔄 Optional |
+| **Grafana** | 3001 | HTTP | Dashboards | 🔄 Optional |
+
+### 🔗 Service URLs
+
+**Development Environment:**
+- Dashboard: http://localhost:3000
+- API Documentation: http://localhost:8000/docs
+- Identity API: http://localhost:8001/docs
+- Data Lake API: http://localhost:8002/docs
+- Guardian API: http://localhost:8003/docs
+- Responder API: http://localhost:8005/docs
+- AI Agents API: http://localhost:8006/docs
+
+**Production Environment:**
+- Dashboard: https://wildbox.yourdomain.com
+- API Gateway: https://api.wildbox.yourdomain.com
+- Monitoring: https://monitoring.wildbox.yourdomain.com
+
+---
+
 ## 📞 Support & Professional Services
 
 ### 🛠️ **Support Tiers**

@@ -1,0 +1,455 @@
+{
+  "name": "Honeypot Alert Classifier",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "honeypot-alert",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+      "name": "Honeypot Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": "honeypot-alert-classifier"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and validate honeypot log data\nconst webhookData = $input.first().json;\n\n// Extract log data from webhook payload\nconst logData = webhookData.body || webhookData;\n\n// Validate required fields\nif (!logData.timestamp || !logData.source_ip || !logData.event_type) {\n  throw new Error('Invalid honeypot log: missing required fields');\n}\n\n// Enrich log data with additional metadata\nconst enrichedLog = {\n  ...logData,\n  received_at: new Date().toISOString(),\n  log_id: logData.log_id || `hp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,\n  honeypot_type: logData.honeypot_type || 'unknown',\n  severity: 'unknown' // Will be determined by classification\n};\n\n// Determine if this is a trivial event\nconst trivialEvents = [\n  'port_scan',\n  'connection_attempt',\n  'failed_login_single'\n];\n\nconst isTrivial = trivialEvents.includes(enrichedLog.event_type) && \n                 !enrichedLog.successful_login && \n                 !enrichedLog.command_executed;\n\nreturn [{\n  json: {\n    ...enrichedLog,\n    is_trivial: isTrivial,\n    needs_analysis: !isTrivial\n  }\n}];"
+      },
+      "id": "b2c3d4e5-f6g7-8901-2345-67890abcdef1",
+      "name": "Parse and Validate Log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "1",
+              "leftValue": "={{ $json.needs_analysis }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3d4e5f6-g7h8-9012-3456-7890abcdef12",
+      "name": "Is Interesting Event",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/agents/v1/analyze",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"task_type\": \"classify_honeypot_log\",\n  \"input_data\": {\n    \"event_type\": \"{{ $json.event_type }}\",\n    \"source_ip\": \"{{ $json.source_ip }}\",\n    \"destination_port\": \"{{ $json.destination_port }}\",\n    \"protocol\": \"{{ $json.protocol }}\",\n    \"payload\": \"{{ $json.payload || '' }}\",\n    \"user_agent\": \"{{ $json.user_agent || '' }}\",\n    \"attempted_credentials\": \"{{ $json.attempted_credentials || '' }}\",\n    \"commands_executed\": \"{{ $json.commands_executed || '' }}\",\n    \"honeypot_type\": \"{{ $json.honeypot_type }}\"\n  },\n  \"context\": {\n    \"timestamp\": \"{{ $json.timestamp }}\",\n    \"log_id\": \"{{ $json.log_id }}\",\n    \"severity_levels\": [\"low\", \"medium\", \"high\", \"critical\"]\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "d4e5f6g7-h8i9-0123-4567-890abcdef123",
+      "name": "Classify with AI Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/logs/enrich/{{ $('Parse and Validate Log').item.json.log_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"classification\": {\n    \"attack_type\": \"{{ $json.attack_type }}\",\n    \"severity\": \"{{ $json.severity }}\",\n    \"confidence\": {{ $json.confidence }},\n    \"threat_indicators\": {{ JSON.stringify($json.threat_indicators || []) }},\n    \"attack_vector\": \"{{ $json.attack_vector || 'unknown' }}\",\n    \"classification_timestamp\": \"{{ new Date().toISOString() }}\"\n  },\n  \"enrichment\": {\n    \"ip_reputation\": {{ JSON.stringify($json.ip_reputation || {}) }},\n    \"geolocation\": {{ JSON.stringify($json.geolocation || {}) }},\n    \"known_malware\": {{ JSON.stringify($json.known_malware || []) }},\n    \"similar_attacks\": {{ JSON.stringify($json.similar_attacks || []) }}\n  },\n  \"automated_analysis\": true,\n  \"analysis_timestamp\": \"{{ new Date().toISOString() }}\"\n}"
+      },
+      "id": "e5f6g7h8-i9j0-1234-5678-90abcdef1234",
+      "name": "Enrich Log in Data Lake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 240],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "expression",
+        "expression": "={{ $('Classify with AI Agent').item.json.attack_type }}"
+      },
+      "id": "f6g7h8i9-j0k1-2345-6789-0abcdef12345",
+      "name": "Route by Attack Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [1340, 240],
+      "routing": {
+        "rules": [
+          {
+            "value": "brute_force",
+            "condition": "equal"
+          },
+          {
+            "value": "rce_attempt",
+            "condition": "equal"
+          },
+          {
+            "value": "malware_download",
+            "condition": "equal"
+          },
+          {
+            "value": "data_exfiltration",
+            "condition": "equal"
+          },
+          {
+            "value": "lateral_movement",
+            "condition": "equal"
+          }
+        ]
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=http://redis:6379/INCR/brute_force_{{ $('Parse and Validate Log').item.json.source_ip }}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"command\": \"INCR\",\n  \"key\": \"brute_force_{{ $('Parse and Validate Log').item.json.source_ip }}\",\n  \"expire\": 3600\n}"
+      },
+      "id": "g7h8i9j0-k1l2-3456-789a-bcdef1234567",
+      "name": "Increment Brute Force Counter",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 120]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"embeds\": [{\n    \"title\": \"🚨 HIGH PRIORITY: Remote Code Execution Attempt\",\n    \"description\": \"Critical security event detected on honeypot\",\n    \"color\": 15158332,\n    \"fields\": [\n      {\n        \"name\": \"Attack Type\",\n        \"value\": \"{{ $('Classify with AI Agent').item.json.attack_type }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Source IP\",\n        \"value\": \"{{ $('Parse and Validate Log').item.json.source_ip }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Severity\",\n        \"value\": \"{{ $('Classify with AI Agent').item.json.severity }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Honeypot Type\",\n        \"value\": \"{{ $('Parse and Validate Log').item.json.honeypot_type }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Destination Port\",\n        \"value\": \"{{ $('Parse and Validate Log').item.json.destination_port }}\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Confidence\",\n        \"value\": \"{{ $('Classify with AI Agent').item.json.confidence }}%\",\n        \"inline\": true\n      },\n      {\n        \"name\": \"Commands Executed\",\n        \"value\": \"```{{ $('Parse and Validate Log').item.json.commands_executed || 'N/A' }}```\",\n        \"inline\": false\n      },\n      {\n        \"name\": \"Log ID\",\n        \"value\": \"{{ $('Parse and Validate Log').item.json.log_id }}\",\n        \"inline\": false\n      }\n    ],\n    \"timestamp\": \"{{ $('Parse and Validate Log').item.json.timestamp }}\",\n    \"footer\": {\n      \"text\": \"Wildbox Security Automations\"\n    }\n  }],\n  \"content\": \"@here Critical honeypot alert requires immediate attention!\"\n}"
+      },
+      "id": "h8i9j0k1-l2m3-4567-89ab-cdef12345678",
+      "name": "High Priority Discord Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/iocs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"type\": \"malware_sample\",\n  \"value\": \"{{ $('Classify with AI Agent').item.json.file_hash || $('Parse and Validate Log').item.json.payload }}\",\n  \"source\": \"honeypot_{{ $('Parse and Validate Log').item.json.honeypot_type }}\",\n  \"confidence\": {{ $('Classify with AI Agent').item.json.confidence }},\n  \"severity\": \"{{ $('Classify with AI Agent').item.json.severity }}\",\n  \"first_seen\": \"{{ $('Parse and Validate Log').item.json.timestamp }}\",\n  \"context\": {\n    \"source_ip\": \"{{ $('Parse and Validate Log').item.json.source_ip }}\",\n    \"honeypot_log_id\": \"{{ $('Parse and Validate Log').item.json.log_id }}\",\n    \"attack_type\": \"{{ $('Classify with AI Agent').item.json.attack_type }}\",\n    \"download_url\": \"{{ $('Parse and Validate Log').item.json.download_url || '' }}\"\n  },\n  \"tags\": [\"honeypot\", \"malware\", \"automated\"]\n}"
+      },
+      "id": "i9j0k1l2-m3n4-5678-9abc-def123456789",
+      "name": "Store IoC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 360],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/responder/v1/incidents",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"title\": \"Data Exfiltration Attempt Detected\",\n  \"description\": \"Potential data exfiltration detected on honeypot {{ $('Parse and Validate Log').item.json.honeypot_type }}\",\n  \"severity\": \"{{ $('Classify with AI Agent').item.json.severity }}\",\n  \"source\": \"honeypot_automation\",\n  \"artifact_data\": {\n    \"source_ip\": \"{{ $('Parse and Validate Log').item.json.source_ip }}\",\n    \"log_id\": \"{{ $('Parse and Validate Log').item.json.log_id }}\",\n    \"attack_type\": \"{{ $('Classify with AI Agent').item.json.attack_type }}\",\n    \"honeypot_type\": \"{{ $('Parse and Validate Log').item.json.honeypot_type }}\",\n    \"timestamp\": \"{{ $('Parse and Validate Log').item.json.timestamp }}\",\n    \"classification\": {{ JSON.stringify($('Classify with AI Agent').item.json) }}\n  },\n  \"tags\": [\"honeypot\", \"data_exfiltration\", \"automated\"],\n  \"auto_created\": true\n}"
+      },
+      "id": "j0k1l2m3-n4o5-6789-abcd-ef1234567890",
+      "name": "Create Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 480],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/guardian/v1/block-ip",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"ip_address\": \"{{ $('Parse and Validate Log').item.json.source_ip }}\",\n  \"reason\": \"Lateral movement attempt detected on honeypot\",\n  \"severity\": \"{{ $('Classify with AI Agent').item.json.severity }}\",\n  \"duration\": 86400,\n  \"source\": \"honeypot_automation\",\n  \"context\": {\n    \"log_id\": \"{{ $('Parse and Validate Log').item.json.log_id }}\",\n    \"attack_type\": \"{{ $('Classify with AI Agent').item.json.attack_type }}\",\n    \"honeypot_type\": \"{{ $('Parse and Validate Log').item.json.honeypot_type }}\"\n  }\n}"
+      },
+      "id": "k1l2m3n4-o5p6-789a-bcde-f12345678901",
+      "name": "Block Suspicious IP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 600],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/data/v1/logs/archive",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"log_id\": \"{{ $json.log_id }}\",\n  \"reason\": \"trivial_event\",\n  \"status\": \"archived\",\n  \"metadata\": {\n    \"event_type\": \"{{ $json.event_type }}\",\n    \"source_ip\": \"{{ $json.source_ip }}\",\n    \"archived_at\": \"{{ new Date().toISOString() }}\",\n    \"auto_archived\": true\n  }\n}"
+      },
+      "id": "l2m3n4o5-p6q7-89ab-cdef-123456789012",
+      "name": "Archive Trivial Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox_api_auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={\n  \"status\": \"success\",\n  \"message\": \"Honeypot alert processed successfully\",\n  \"log_id\": \"{{ $('Parse and Validate Log').item.json.log_id }}\",\n  \"classification\": {\n    \"attack_type\": \"{{ $('Classify with AI Agent').item.json.attack_type || 'unknown' }}\",\n    \"severity\": \"{{ $('Classify with AI Agent').item.json.severity || 'low' }}\",\n    \"is_trivial\": {{ $('Parse and Validate Log').item.json.is_trivial }}\n  },\n  \"processed_at\": \"{{ new Date().toISOString() }}\",\n  \"processing_time_ms\": \"{{ Date.now() - new Date($('Parse and Validate Log').item.json.received_at).getTime() }}\"\n}",
+        "options": {}
+      },
+      "id": "m3n4o5p6-q7r8-9abc-def1-23456789013",
+      "name": "Webhook Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1780, 300]
+    }
+  ],
+  "connections": {
+    "Honeypot Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse and Validate Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse and Validate Log": {
+      "main": [
+        [
+          {
+            "node": "Is Interesting Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Interesting Event": {
+      "main": [
+        [
+          {
+            "node": "Classify with AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Archive Trivial Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify with AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Enrich Log in Data Lake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Log in Data Lake": {
+      "main": [
+        [
+          {
+            "node": "Route by Attack Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Attack Type": {
+      "main": [
+        [
+          {
+            "node": "Increment Brute Force Counter",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "High Priority Discord Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Store IoC",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Incident",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Block Suspicious IP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Brute Force Counter": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "High Priority Discord Alert": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store IoC": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Incident": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Block Suspicious IP": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Archive Trivial Event": {
+      "main": [
+        [
+          {
+            "node": "Webhook Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "createdAt": "2025-01-26T10:00:00.000Z",
+      "updatedAt": "2025-01-26T10:00:00.000Z",
+      "id": "intelligence",
+      "name": "Intelligence"
+    }
+  ],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-26T10:00:00.000Z",
+  "versionId": "1"
+}

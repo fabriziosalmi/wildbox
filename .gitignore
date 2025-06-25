@@ -15,3 +15,8 @@ open-security-api/app/tools/saml_analyzer/__pycache__/main.cpython-312.pyc
 open-security-api/app/tools/saml_analyzer/__pycache__/schemas.cpython-312.pyc
 open-security-api/app/tools/static_malware_analyzer/__pycache__/main.cpython-312.pyc
 open-security-api/app/tools/static_malware_analyzer/__pycache__/schemas.cpython-312.pyc
+
+# Private blueprint document
+BLUEPRINT.md
+.DS_Store
+structure_simplified.txt

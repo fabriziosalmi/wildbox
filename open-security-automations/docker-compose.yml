@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: wildbox-automations-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # n8n Configuration
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-wildbox_n8n_2025}
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - GENERIC_TIMEZONE=${TIMEZONE:-UTC}
+      - N8N_LOG_LEVEL=${N8N_LOG_LEVEL:-info}
+      
+      # Webhook Configuration
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678}
+      
+      # Database Configuration (SQLite by default)
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+      
+      # Security Settings
+      - N8N_SECURE_COOKIE=false
+      - N8N_METRICS=true
+      
+      # Wildbox Integration Environment Variables
+      - WILDBOX_API_GATEWAY_URL=${WILDBOX_API_GATEWAY_URL:-http://wildbox-gateway:8000}
+      - WILDBOX_API_KEY=${WILDBOX_API_KEY:-wildbox-security-api-key-2025}
+      
+      # External Service Configuration
+      - SUPPORT_EMAIL_HOST=${SUPPORT_EMAIL_HOST:-}
+      - SUPPORT_EMAIL_USER=${SUPPORT_EMAIL_USER:-}
+      - SUPPORT_EMAIL_PASSWORD=${SUPPORT_EMAIL_PASSWORD:-}
+      
+      # Notification Services
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      
+    volumes:
+      # Persistent data storage
+      - n8n_data:/home/node/.n8n
+      # Custom nodes (for future extensions)
+      - ./n8n-data/custom:/home/node/.n8n/custom
+      # Workflow backups
+      - ./workflows:/home/node/.n8n/workflows
+      
+    networks:
+      - wildbox-net
+      
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.n8n.rule=Host(`automations.wildbox.local`)"
+      - "traefik.http.routers.n8n.tls=true"
+      - "traefik.http.services.n8n.loadbalancer.server.port=5678"
+      
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # Redis for workflow state and caching (optional but recommended)
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-automations-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - wildbox-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for production use (alternative to SQLite)
+  # Uncomment if you prefer PostgreSQL over SQLite
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: wildbox-automations-postgres
+  #   restart: unless-stopped
+  #   environment:
+  #     - POSTGRES_DB=n8n
+  #     - POSTGRES_USER=n8n
+  #     - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-n8n_password}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - wildbox-net
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U n8n"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+volumes:
+  n8n_data:
+    driver: local
+  redis_data:
+    driver: local
+  # postgres_data:
+  #   driver: local
+
+networks:
+  wildbox-net:
+    external: true
+    name: wildbox-net
