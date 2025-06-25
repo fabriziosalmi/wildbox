@@ -51,7 +51,7 @@ class ApiClient {
 
         if (error.response) {
           apiError.status = error.response.status
-          apiError.message = error.response.data?.message || error.message
+          apiError.message = (error.response.data as any)?.message || error.message || 'API Error'
           apiError.details = error.response.data
 
           // Handle auth errors
