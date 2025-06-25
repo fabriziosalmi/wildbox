@@ -44,7 +44,7 @@ class CheckRunner:
             provider_module = importlib.import_module(f"app.checks.{provider}")
             
             # Get all check classes from the module and its submodules
-            check_classes = self._find_check_classes(provider_module, provider)
+            check_classes = self._find_check_classes(provider_module, provider, "")
             
             # Instantiate and register checks
             provider_enum = CloudProvider(provider)
@@ -62,7 +62,7 @@ class CheckRunner:
         except ImportError as e:
             logger.warning(f"Provider module {provider} not found: {e}")
     
-    def _find_check_classes(self, module, provider: str) -> List[Type[BaseCheck]]:
+    def _find_check_classes(self, module, provider: str, path_prefix: str = "") -> List[Type[BaseCheck]]:
         """Find all BaseCheck subclasses in a module and its submodules."""
         check_classes = []
         
@@ -73,12 +73,25 @@ class CheckRunner:
                 hasattr(obj, 'get_metadata')):
                 check_classes.append(obj)
         
-        # Check submodules
+        # Check submodules recursively
         if hasattr(module, '__path__'):
             for importer, modname, ispkg in pkgutil.iter_modules(module.__path__):
                 try:
-                    submodule = importlib.import_module(f"app.checks.{provider}.{modname}")
-                    check_classes.extend(self._find_check_classes(submodule, provider))
+                    full_module_path = f"app.checks.{provider}"
+                    if path_prefix:
+                        full_module_path += f".{path_prefix}"
+                    full_module_path += f".{modname}"
+                    
+                    submodule = importlib.import_module(full_module_path)
+                    
+                    # If it's a package, recursively search within it
+                    if ispkg:
+                        new_prefix = f"{path_prefix}.{modname}" if path_prefix else modname
+                        check_classes.extend(self._find_check_classes(submodule, provider, new_prefix))
+                    else:
+                        # If it's a module, search for check classes
+                        check_classes.extend(self._find_check_classes(submodule, provider, path_prefix))
+                        
                 except Exception as e:
                     logger.error(f"Failed to load submodule {modname}: {e}")
         

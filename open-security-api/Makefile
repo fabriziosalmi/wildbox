@@ -126,6 +126,25 @@ health:
 	@curl -s http://localhost:5678 > /dev/null && echo "✅ Automation (n8n) (5678)" || echo "❌ Automation (n8n) (5678)"
 	@echo ""
 
+check-missing-modules:
+	@echo "🔍 Checking for Missing Modules Across All Services"
+	@echo "=================================================="
+	@echo ""
+	@echo "🐍 Python Package Issues:"
+	@docker-compose logs 2>&1 | grep -i "no module named\|modulenotfounderror\|failed to load tool" | sort | uniq | head -20
+	@echo ""
+	@echo "📁 Missing CSPM Check Modules:"
+	@echo "Expected AWS checks:" && find ../open-security-cspm/app/checks/aws -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ CSPM directory not found"
+	@echo "Expected GCP checks:" && find ../open-security-cspm/app/checks/gcp -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ GCP checks not found"
+	@echo "Expected Azure checks:" && find ../open-security-cspm/app/checks/azure -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ Azure checks not found"
+	@echo ""
+	@echo "📦 Missing Python Dependencies:"
+	@echo "API Service missing packages:" && docker-compose exec api pip list | grep -E "(whois|lxml)" || echo "  ❌ whois, lxml packages missing"
+	@echo ""
+	@echo "🔧 Schema Import Issues:"
+	@echo "Checking for schema import problems..." && docker-compose logs api 2>&1 | grep -i "cannot import name" | tail -5
+	@echo ""
+
 health-detailed:
 	@../comprehensive_health_check.sh check
 

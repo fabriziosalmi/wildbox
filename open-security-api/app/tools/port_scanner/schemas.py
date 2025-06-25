@@ -29,6 +29,13 @@ class PortScannerOutput(BaseToolOutput):
     filtered_ports: int = Field(default=0, description="Number of filtered ports")
     scan_statistics: dict = Field(default_factory=dict, description="Scan statistics")
 
+class PortScanResult(BaseToolOutput):
+    """Individual port scan result - for backwards compatibility."""
+    port: int = Field(description="Port number")
+    state: str = Field(description="Port state (open/closed/filtered)")
+    service: Optional[str] = Field(None, description="Service running on port")
+    version: Optional[str] = Field(None, description="Service version if detected")
+
 # Tool metadata for registration
 TOOL_METADATA = ToolMetadata(
     name="port_scanner",

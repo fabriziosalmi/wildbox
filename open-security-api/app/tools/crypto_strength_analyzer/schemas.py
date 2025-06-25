@@ -103,3 +103,7 @@ class CryptoStrengthAnalyzerOutput(BaseToolOutput):
     analysis_confidence: float  # 0-1
     timestamp: str
     processing_time_ms: int
+
+# Aliases for backward compatibility
+CryptoAnalysisRequest = CryptoStrengthAnalyzerInput
+CryptoStrengthResponse = CryptoStrengthAnalyzerOutput
