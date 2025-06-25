@@ -357,6 +357,69 @@ services:
       timeout: 10s
       retries: 3
 
+  # Sensor Service (System Monitoring)
+  sensor:
+    build:
+      context: ./open-security-sensor
+      dockerfile: Dockerfile
+    container_name: open-security-sensor
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - SENSOR_LOGGING_LEVEL=INFO
+      - PYTHONPATH=/app
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./open-security-sensor/config.yaml:/etc/security-sensor/config.yaml:ro
+      - sensor_logs:/var/log/security-sensor
+      - sensor_data:/var/lib/security-sensor
+      # Host monitoring (required for system telemetry)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Automations Service (n8n workflow automation)
+  automations:
+    image: n8nio/n8n:latest
+    container_name: open-security-automations
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=wildbox_n8n_2025
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - GENERIC_TIMEZONE=UTC
+      - N8N_LOG_LEVEL=info
+      - WEBHOOK_URL=http://localhost:5678
+      - DB_TYPE=sqlite
+      - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
+      - N8N_SECURE_COOKIE=false
+      - N8N_METRICS=true
+    volumes:
+      - ./open-security-automations/n8n-data:/home/node/.n8n
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
   identity_redis_data:
@@ -365,3 +428,5 @@ volumes:
   responder_redis_data:
   cspm_redis_data:
   agents_redis_data:
+  sensor_logs:
+  sensor_data:

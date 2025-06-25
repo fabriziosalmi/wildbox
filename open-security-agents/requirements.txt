@@ -7,7 +7,7 @@ pydantic-settings==2.1.0
 
 # Task Queue
 celery[redis]==5.3.4
-redis==5.0.1
+redis==4.6.0
 
 # AI/LLM Framework
 langchain==0.1.0
