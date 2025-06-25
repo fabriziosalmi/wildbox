@@ -20,7 +20,7 @@ google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.2.0
 
 # Azure
-azure-identity==1.15.0
+azure-identity==1.16.1
 azure-mgmt-resource==23.0.1
 azure-mgmt-storage==21.1.0
 azure-mgmt-network==25.2.0
