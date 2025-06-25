@@ -1,7 +1,7 @@
 # Wildbox Security API - Docker Management
 # =======================================
 
-.PHONY: help build up down logs shell clean dev prod restart status
+.PHONY: help build up down logs shell clean dev prod restart status health health-detailed
 
 # Default target
 help:
@@ -20,6 +20,14 @@ help:
 	@echo "  prod-down    - Stop production environment"
 	@echo "  prod-logs    - Show production logs"
 	@echo "  prod-nginx   - Start with Nginx reverse proxy"
+	@echo ""
+	@echo "Health & Monitoring:"
+	@echo "  health       - Quick health check of all services"
+	@echo "  health-detailed - Detailed health report with service status"
+	@echo "  health-fix   - Apply auto-fixes for known issues"
+	@echo "  fix-db       - Fix database connectivity issues"
+	@echo "  status       - Show container status"
+	@echo "  logs         - Show logs"
 	@echo ""
 	@echo "Management:"
 	@echo "  build        - Build Docker images"
@@ -97,6 +105,35 @@ status:
 	@docker-compose ps
 	@echo ""
 	@docker-compose -f docker-compose.dev.yml ps
+
+# Health checks and monitoring
+health:
+	@echo "🔍 Quick Health Check - Wildbox Security Platform"
+	@echo "=================================================="
+	@echo ""
+	@echo "Core Services:"
+	@curl -s http://localhost:8000/health > /dev/null && echo "✅ API Service (8000)" || echo "❌ API Service (8000)"
+	@curl -s http://localhost:8001/health > /dev/null && echo "✅ Identity Service (8001)" || echo "❌ Identity Service (8001)"
+	@curl -s http://localhost:8002/health > /dev/null && echo "✅ Data Service (8002)" || echo "❌ Data Service (8002)"
+	@curl -s http://localhost:8003/health > /dev/null && echo "✅ Guardian Service (8003)" || echo "❌ Guardian Service (8003)"
+	@curl -s http://localhost:8004/health > /dev/null && echo "✅ Sensor Service (8004)" || echo "❌ Sensor Service (8004)"
+	@curl -s http://localhost:8005/health > /dev/null && echo "✅ Responder Service (8005)" || echo "❌ Responder Service (8005)"
+	@curl -s http://localhost:8006/health > /dev/null && echo "✅ Agents Service (8006)" || echo "❌ Agents Service (8006)"
+	@curl -s http://localhost:8007/health > /dev/null && echo "✅ CSPM Service (8007)" || echo "❌ CSPM Service (8007)"
+	@echo ""
+	@echo "Web Interfaces:"
+	@curl -s http://localhost:3000 > /dev/null && echo "✅ Dashboard (3000)" || echo "❌ Dashboard (3000)"
+	@curl -s http://localhost:5678 > /dev/null && echo "✅ Automation (n8n) (5678)" || echo "❌ Automation (n8n) (5678)"
+	@echo ""
+
+health-detailed:
+	@../comprehensive_health_check.sh check
+
+health-fix:
+	@../comprehensive_health_check.sh fix
+
+fix-db:
+	@../fix_database_issues.sh
 
 # Cleanup commands
 clean:
