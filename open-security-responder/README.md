@@ -115,8 +115,8 @@ Environment variables:
 |----------|-------------|---------|
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6381/0` |
 | `WILDBOX_API_URL` | Open Security API URL | `http://localhost:8000` |
-| `WILDBOX_DATA_URL` | Open Security Data URL | `http://localhost:8001` |
-| `WILDBOX_GUARDIAN_URL` | Open Security Guardian URL | `http://localhost:8002` |
+| `WILDBOX_DATA_URL` | Open Security Data URL | `http://localhost:8002` |
+| `WILDBOX_GUARDIAN_URL` | Open Security Guardian URL | `http://localhost:8003` |
 | `WILDBOX_SENSOR_URL` | Open Security Sensor URL | `http://localhost:8899` |
 | `DEBUG` | Enable debug mode | `false` |
 

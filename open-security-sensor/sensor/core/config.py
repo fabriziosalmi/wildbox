@@ -69,7 +69,7 @@ class LoggingConfig:
 class NetworkConfig:
     """Network configuration"""
     bind_address: str = "127.0.0.1"
-    bind_port: int = 8899
+    bind_port: int = 8004
     enable_api: bool = True
     api_key: Optional[str] = None
 
@@ -274,7 +274,7 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
     net_data = config_data.get('network', {})
     network = NetworkConfig(
         bind_address=net_data.get('bind_address', '127.0.0.1'),
-        bind_port=net_data.get('bind_port', 8899),
+        bind_port=net_data.get('bind_port', 8004),
         enable_api=net_data.get('enable_api', True),
         api_key=net_data.get('api_key')
     )

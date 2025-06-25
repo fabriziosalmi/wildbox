@@ -19,20 +19,20 @@ services:
     build: .
     command: >
       sh -c "python -m dramatiq app.workflow_engine &
-             uvicorn app.main:app --host 0.0.0.0 --port 8003 --reload"
+             uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload"
     volumes:
       - .:/app
       - ./playbooks:/app/playbooks
       - ./logs:/app/logs
     ports:
-      - "8003:8003"
+      - "8005:8005"
     environment:
       - DEBUG=true
       - REDIS_URL=redis://redis:6379/0
       - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8001
-      - WILDBOX_GUARDIAN_URL=http://localhost:8002
-      - WILDBOX_SENSOR_URL=http://localhost:8899
+      - WILDBOX_DATA_URL=http://localhost:8002
+      - WILDBOX_GUARDIAN_URL=http://localhost:8003
+      - WILDBOX_SENSOR_URL=http://localhost:8004
     depends_on:
       redis:
         condition: service_healthy
@@ -48,9 +48,9 @@ services:
       - DEBUG=true
       - REDIS_URL=redis://redis:6379/0
       - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8001
-      - WILDBOX_GUARDIAN_URL=http://localhost:8002
-      - WILDBOX_SENSOR_URL=http://localhost:8899
+      - WILDBOX_DATA_URL=http://localhost:8002
+      - WILDBOX_GUARDIAN_URL=http://localhost:8003
+      - WILDBOX_SENSOR_URL=http://localhost:8004
     depends_on:
       - redis
       - responder

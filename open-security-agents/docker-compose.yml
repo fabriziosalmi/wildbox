@@ -17,12 +17,12 @@ services:
 
   agents-api:
     build: .
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
     volumes:
       - .:/app
       - ./logs:/app/logs
     ports:
-      - "8004:8004"
+      - "8006:8006"
     environment:
       - DEBUG=true
       - REDIS_URL=redis://redis:6379/0

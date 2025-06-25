@@ -165,16 +165,16 @@ ARCHIVE_AFTER_DAYS=90
 
 ```bash
 # Get recent malicious IPs
-curl "http://localhost:8001/api/v1/ips?status=malicious&limit=100"
+curl "http://localhost:8002/api/v1/ips?status=malicious&limit=100"
 
 # Search for domain intelligence
-curl "http://localhost:8001/api/v1/domains/example.com"
+curl "http://localhost:8002/api/v1/domains/example.com"
 
 # Get threat intelligence by hash
-curl "http://localhost:8001/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
+curl "http://localhost:8002/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
 
 # Real-time threat feed
-curl "http://localhost:8001/api/v1/feeds/realtime" \
+curl "http://localhost:8002/api/v1/feeds/realtime" \
   -H "Accept: application/x-ndjson"
 ```
 

@@ -27,7 +27,7 @@ services:
     
     # Network configuration
     ports:
-      - "8899:8899"  # Local API port
+      - "8004:8004"  # Local API port
     
     # Security context
     security_opt:

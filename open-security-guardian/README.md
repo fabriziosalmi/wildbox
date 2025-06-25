@@ -233,7 +233,7 @@ from open_security_data.client import DataClient
 
 # Initialize clients
 guardian = GuardianClient("http://localhost:8002")
-data_lake = DataClient("http://localhost:8001")
+data_lake = DataClient("http://localhost:8002")
 
 # Enrich vulnerability with threat intelligence
 vuln = guardian.get_vulnerability("CVE-2023-12345")

@@ -27,24 +27,24 @@ class Settings(BaseSettings):
         description="Open Security API service URL"
     )
     wildbox_data_url: str = Field(
-        default="http://localhost:8001",
+        default="http://localhost:8002",
         env="WILDBOX_DATA_URL",
         description="Open Security Data service URL"
     )
     wildbox_guardian_url: str = Field(
-        default="http://localhost:8002",
+        default="http://localhost:8003",
         env="WILDBOX_GUARDIAN_URL",
         description="Open Security Guardian service URL"
     )
     wildbox_sensor_url: str = Field(
-        default="http://localhost:8899",
+        default="http://localhost:8004",
         env="WILDBOX_SENSOR_URL",
         description="Open Security Sensor service URL"
     )
     
     # API configuration
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
-    api_port: int = Field(default=8003, env="API_PORT")
+    api_port: int = Field(default=8005, env="API_PORT")
     api_key: Optional[str] = Field(default=None, env="API_KEY")
     
     # Playbook configuration

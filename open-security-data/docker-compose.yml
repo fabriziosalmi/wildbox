@@ -47,11 +47,11 @@ services:
       - DATABASE_URL=postgresql://secdata:secdata123@postgres:5432/securitydata
       - REDIS_URL=redis://redis:6379/0
       - API_HOST=0.0.0.0
-      - API_PORT=8001
+      - API_PORT=8002
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
     ports:
-      - "8001:8001"
+      - "8002:8002"
     depends_on:
       postgres:
         condition: service_healthy

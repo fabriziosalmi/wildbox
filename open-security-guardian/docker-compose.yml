@@ -36,13 +36,13 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8002"
+             python manage.py runserver 0.0.0.0:8003"
     volumes:
       - .:/app
       - media_data:/app/media
       - static_data:/app/staticfiles
     ports:
-      - "8002:8002"
+      - "8003:8003"
     environment:
       - DEBUG=true
       - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
@@ -50,7 +50,7 @@ services:
       - SECRET_KEY=your-development-secret-key-change-in-production
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
       - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8001
+      - WILDBOX_DATA_URL=http://localhost:8002
     depends_on:
       db:
         condition: service_healthy
