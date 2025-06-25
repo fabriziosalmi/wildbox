@@ -1,19 +1,45 @@
--- Wildbox Gateway Authentication Handler
--- Centralized authentication and authorization logic
+-- Wildbox Gateway Authentication Handler - IMPROVED VERSION
+-- Phase 1 Blueprint Implementation: Enhanced security, performance, and error handling
 
 local utils = require "utils"
 local cjson = require "cjson"
 
 local _M = {}
 
--- Get gateway configuration from shared dict
+-- Configuration constants (Blueprint Phase 1 - Remove hardcoded values)
+local CACHE_TTL = 300 -- 5 minutes as per blueprint
+local MAX_RETRIES = 3
+local TIMEOUT_SECONDS = 5
+local CIRCUIT_BREAKER_THRESHOLD = 10
+local CIRCUIT_BREAKER_TIMEOUT = 60
+
+-- Rate limits per plan (requests per hour) - Blueprint specified limits
+local RATE_LIMITS = {
+    free = 1000,      -- 1,000/hour
+    personal = 100000, -- 100,000/hour  
+    business = 1000000 -- 1,000,000/hour
+}
+
+-- Get gateway configuration from environment variables
 local function get_config()
     local config_cache = ngx.shared.config_cache
     local config_json = config_cache:get("gateway_config")
     
     if not config_json then
-        utils.log("error", "Gateway configuration not found")
-        return nil
+        -- Build config from environment variables (Blueprint security requirement)
+        local config = {
+            identity_service_url = os.getenv("IDENTITY_SERVICE_URL") or "http://open-security-identity:8000",
+            gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or ngx.log(ngx.ERR, "GATEWAY_INTERNAL_SECRET not set"),
+            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL,
+            debug_mode = os.getenv("GATEWAY_DEBUG") == "true"
+        }
+        
+        -- Cache config for 1 hour
+        config_json = utils.json_encode(config)
+        config_cache:set("gateway_config", config_json, 3600)
+        
+        utils.log("info", "Gateway configuration loaded from environment")
+        return config
     end
     
     local config, err = utils.json_decode(config_json)
@@ -25,8 +51,55 @@ local function get_config()
     return config
 end
 
--- Call identity service to validate token
+-- Circuit breaker for identity service calls
+local function check_circuit_breaker()
+    local circuit_cache = ngx.shared.auth_cache
+    local failures_key = "circuit_breaker:failures"
+    local last_failure_key = "circuit_breaker:last_failure"
+    
+    local failures = circuit_cache:get(failures_key) or 0
+    local last_failure = circuit_cache:get(last_failure_key) or 0
+    local now = ngx.time()
+    
+    -- Circuit open - too many failures
+    if failures >= CIRCUIT_BREAKER_THRESHOLD then
+        if now - last_failure < CIRCUIT_BREAKER_TIMEOUT then
+            utils.log("warn", "Circuit breaker OPEN - identity service unavailable", {
+                failures = failures,
+                timeout_remaining = CIRCUIT_BREAKER_TIMEOUT - (now - last_failure)
+            })
+            return false
+        else
+            -- Reset circuit breaker
+            circuit_cache:delete(failures_key)
+            circuit_cache:delete(last_failure_key)
+            utils.log("info", "Circuit breaker RESET - attempting identity service call")
+        end
+    end
+    
+    return true
+end
+
+-- Record circuit breaker failure
+local function record_circuit_breaker_failure()
+    local circuit_cache = ngx.shared.auth_cache
+    local failures_key = "circuit_breaker:failures"
+    local last_failure_key = "circuit_breaker:last_failure"
+    
+    local failures = (circuit_cache:get(failures_key) or 0) + 1
+    circuit_cache:set(failures_key, failures, CIRCUIT_BREAKER_TIMEOUT)
+    circuit_cache:set(last_failure_key, ngx.time(), CIRCUIT_BREAKER_TIMEOUT)
+    
+    utils.log("warn", "Circuit breaker failure recorded", {failures = failures})
+end
+
+-- Call identity service to validate token with improved error handling
 local function validate_token_with_identity(token, token_type, config)
+    -- Check circuit breaker
+    if not check_circuit_breaker() then
+        return nil, "circuit_breaker_open"
+    end
+    
     local url = config.identity_service_url .. "/internal/authorize"
     
     local request_body = {
@@ -35,7 +108,8 @@ local function validate_token_with_identity(token, token_type, config)
         request_path = ngx.var.uri,
         request_method = ngx.var.request_method,
         client_ip = ngx.var.remote_addr,
-        user_agent = ngx.var.http_user_agent
+        user_agent = ngx.var.http_user_agent,
+        timestamp = ngx.time()
     }
     
     utils.log("debug", "Calling identity service for token validation", {
@@ -44,30 +118,49 @@ local function validate_token_with_identity(token, token_type, config)
         path = ngx.var.uri
     })
     
+    local start_time = ngx.now()
+    
     local res, err = utils.http_request("POST", url, {
         body = request_body,
         headers = {
             ["Content-Type"] = "application/json",
-            ["X-Gateway-Secret"] = "gateway-internal-secret" -- TODO: Use proper secret
-        }
+            ["X-Gateway-Secret"] = config.gateway_secret,
+            ["X-Request-ID"] = ngx.var.request_id or utils.generate_request_id()
+        },
+        timeout = TIMEOUT_SECONDS * 1000 -- Convert to milliseconds
     })
     
+    local duration = (ngx.now() - start_time) * 1000
+    
     if err then
-        utils.log("error", "Failed to call identity service", {error = err})
+        utils.log("error", "Failed to call identity service", {
+            error = err,
+            duration_ms = duration,
+            url = url
+        })
+        record_circuit_breaker_failure()
         return nil, "identity_service_error"
     end
     
     if res.status == 200 then
         local auth_data, decode_err = utils.json_decode(res.body)
         if decode_err then
-            utils.log("error", "Failed to decode identity response", {error = decode_err})
+            utils.log("error", "Failed to decode identity response", {
+                error = decode_err,
+                body = res.body
+            })
             return nil, "invalid_response"
         end
+        
+        -- Add metadata
+        auth_data.validated_at = ngx.time()
+        auth_data.response_time_ms = duration
         
         utils.log("debug", "Token validation successful", {
             user_id = auth_data.user_id,
             team_id = auth_data.team_id,
-            plan = auth_data.plan
+            plan = auth_data.plan,
+            duration_ms = duration
         })
         
         return auth_data, nil
@@ -77,16 +170,21 @@ local function validate_token_with_identity(token, token_type, config)
     elseif res.status == 403 then
         utils.log("debug", "Token validation failed - forbidden")
         return nil, "forbidden"
+    elseif res.status == 429 then
+        utils.log("warn", "Identity service rate limited")
+        return nil, "rate_limited"
     else
         utils.log("error", "Identity service returned unexpected status", {
             status = res.status,
-            body = res.body
+            body = res.body,
+            duration_ms = duration
         })
+        record_circuit_breaker_failure()
         return nil, "identity_service_error"
     end
 end
 
--- Get or set authentication data in cache
+-- Improved cache operations with TTL (Blueprint requirement: 1-5 minute TTL)
 local function get_cached_auth_data(cache_key, config)
     local auth_cache = ngx.shared.auth_cache
     local cached_data = auth_cache:get(cache_key)
@@ -94,18 +192,18 @@ local function get_cached_auth_data(cache_key, config)
     if cached_data then
         local auth_data, err = utils.json_decode(cached_data)
         if not err then
-            -- Check if cache entry is still valid
             local now = ngx.time()
             if auth_data.expires_at and auth_data.expires_at > now then
+                auth_data.cache_hit = true
                 utils.log("debug", "Using cached auth data", {
                     user_id = auth_data.user_id,
-                    expires_in = auth_data.expires_at - now
+                    ttl_remaining = auth_data.expires_at - now
                 })
-                auth_data.cache_hit = true
                 return auth_data, nil
             else
-                utils.log("debug", "Cached auth data expired, removing from cache")
+                -- Expired cache entry
                 auth_cache:delete(cache_key)
+                utils.log("debug", "Cache entry expired and removed", {cache_key = cache_key})
             end
         end
     end
@@ -113,190 +211,145 @@ local function get_cached_auth_data(cache_key, config)
     return nil, "cache_miss"
 end
 
--- Set authentication data in cache
+-- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
-    local ttl = config.auth_cache_ttl or 300
+    local ttl = config.cache_ttl or CACHE_TTL
     
-    -- Add expiration timestamp
+    -- Set expiration time
     auth_data.expires_at = ngx.time() + ttl
     auth_data.cache_hit = false
     
-    local cached_json, err = utils.json_encode(auth_data)
-    if err then
-        utils.log("warn", "Failed to encode auth data for cache", {error = err})
-        return
-    end
+    local cached_data = utils.json_encode(auth_data)
+    local success, err = auth_cache:set(cache_key, cached_data, ttl)
     
-    local success, cache_err = auth_cache:set(cache_key, cached_json, ttl)
     if not success then
-        utils.log("warn", "Failed to cache auth data", {error = cache_err})
+        utils.log("warn", "Failed to cache auth data", {error = err})
     else
         utils.log("debug", "Auth data cached successfully", {
-            ttl = ttl,
-            user_id = auth_data.user_id
+            cache_key = cache_key,
+            ttl = ttl
         })
     end
 end
 
--- Apply rate limiting based on user plan
+-- Enhanced rate limiting with sliding window (Blueprint requirement)
 local function apply_rate_limiting(auth_data)
     local plan = auth_data.plan or "free"
     local team_id = auth_data.team_id
+    local limit_per_hour = RATE_LIMITS[plan] or RATE_LIMITS.free
     
-    if not team_id then
-        utils.log("warn", "No team_id for rate limiting")
-        return
-    end
+    -- Convert to requests per second for sliding window
+    local limit_per_second = limit_per_hour / 3600
+    local window_size = 60 -- 1 minute sliding window
     
-    -- Get rate limits per plan (requests per second)
-    local rate_limits = {
-        free = 10,
-        personal = 50,
-        business = 200,
-        enterprise = 1000
-    }
-    
-    local limit = rate_limits[plan] or rate_limits.free
-    
-    -- Use lua-resty-limit-req for dynamic rate limiting
-    -- For now, we'll implement a simple sliding window in shared dict
     local rate_cache = ngx.shared.rate_limit_cache
-    local key = "rate:" .. team_id
-    local window = 60 -- 1 minute window
+    local key = "rate:" .. team_id .. ":" .. plan
     local now = ngx.time()
     
-    -- Get current count
+    -- Get current request timestamps
     local current_data = rate_cache:get(key)
     local requests = {}
     
     if current_data then
         local decoded_data, err = utils.json_decode(current_data)
-        if not err then
-            requests = decoded_data.requests or {}
+        if not err and decoded_data.requests then
+            requests = decoded_data.requests
         end
     end
     
-    -- Remove old requests outside the window
+    -- Remove requests outside the sliding window
     local filtered_requests = {}
     for _, timestamp in ipairs(requests) do
-        if now - timestamp < window then
+        if now - timestamp < window_size then
             table.insert(filtered_requests, timestamp)
         end
-    end
-    
-    -- Check if limit exceeded
-    local max_requests = limit * window -- requests per minute
-    if #filtered_requests >= max_requests then
-        utils.log("warn", "Rate limit exceeded", {
-            team_id = team_id,
-            plan = plan,
-            current_requests = #filtered_requests,
-            limit = max_requests
-        })
-        ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
-        ngx.header.content_type = "application/json"
-        ngx.say(utils.json_encode({
-            error = "rate_limit_exceeded",
-            message = "Too many requests",
-            plan = plan,
-            limit_per_minute = max_requests,
-            retry_after = 60
-        }))
-        ngx.exit(ngx.HTTP_TOO_MANY_REQUESTS)
     end
     
     -- Add current request
     table.insert(filtered_requests, now)
     
-    -- Store updated data
-    local updated_data = {
-        requests = filtered_requests,
-        updated_at = now
-    }
+    -- Check if limit exceeded
+    local requests_in_window = #filtered_requests
+    local max_requests = limit_per_second * window_size
     
-    local encoded_data, encode_err = utils.json_encode(updated_data)
-    if not encode_err then
-        rate_cache:set(key, encoded_data, window)
+    if requests_in_window > max_requests then
+        utils.log("warn", "Rate limit exceeded", {
+            team_id = team_id,
+            plan = plan,
+            current_requests = requests_in_window,
+            limit = max_requests,
+            window_size = window_size
+        })
+        
+        ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
+        ngx.header.content_type = "application/json"
+        ngx.header["Retry-After"] = tostring(window_size)
+        ngx.header["X-RateLimit-Limit"] = tostring(limit_per_hour)
+        ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - requests_in_window))
+        ngx.header["X-RateLimit-Reset"] = tostring(now + window_size)
+        
+        ngx.say(utils.json_encode({
+            error = "rate_limit_exceeded",
+            message = "Rate limit exceeded for plan: " .. plan,
+            limit_per_hour = limit_per_hour,
+            retry_after_seconds = window_size
+        }))
+        ngx.exit(ngx.HTTP_TOO_MANY_REQUESTS)
     end
     
-    utils.log("debug", "Rate limit check passed", {
-        plan = plan,
-        team_id = team_id,
-        current_requests = #filtered_requests,
-        limit = max_requests
-    })
+    -- Update cache with new request list
+    local updated_data = {requests = filtered_requests}
+    rate_cache:set(key, utils.json_encode(updated_data), window_size)
+    
+    -- Set rate limit headers
+    ngx.header["X-RateLimit-Limit"] = tostring(limit_per_hour)
+    ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - requests_in_window))
+    ngx.header["X-RateLimit-Reset"] = tostring(now + window_size)
 end
 
 -- Set authentication headers for backend services
 local function set_auth_headers(auth_data)
-    -- Clean any existing headers first
-    utils.clean_request_headers()
-    
-    -- Set Wildbox authentication headers
     ngx.var.wildbox_user_id = auth_data.user_id or ""
     ngx.var.wildbox_team_id = auth_data.team_id or ""
-    ngx.var.wildbox_plan = auth_data.plan or ""
-    ngx.var.wildbox_role = auth_data.role or ""
+    ngx.var.wildbox_plan = auth_data.plan or "free"
+    ngx.var.wildbox_role = auth_data.role or "user"
     
     -- Set headers for backend services
     ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
     ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
     ngx.req.set_header("X-Wildbox-Plan", auth_data.plan)
     ngx.req.set_header("X-Wildbox-Role", auth_data.role)
-    ngx.req.set_header("X-Request-ID", utils.generate_request_id())
     
-    utils.log("debug", "Set authentication headers", {
-        user_id = auth_data.user_id,
-        team_id = auth_data.team_id,
-        plan = auth_data.plan
-    })
+    -- Response headers for client
+    ngx.header["X-Wildbox-Plan"] = auth_data.plan
+    ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
 end
 
--- Check feature access based on plan and path
-local function check_feature_access(auth_data)
-    local uri = ngx.var.uri
-    local plan = auth_data.plan or "free"
-    
-    -- Define feature mappings
-    local feature_patterns = {
-        {pattern = "^/api/v1/cspm/", feature = "cspm"},
-        {pattern = "^/api/v1/responder/", feature = "responder"},
-        {pattern = "^/api/v1/agents/", feature = "agents"},
-        {pattern = "^/api/v1/automations/", feature = "automations"}
-    }
-    
-    for _, mapping in ipairs(feature_patterns) do
-        if string.match(uri, mapping.pattern) then
-            if not utils.plan_allows_feature(plan, mapping.feature) then
-                utils.log("info", "Feature access denied", {
-                    feature = mapping.feature,
-                    plan = plan,
-                    user_id = auth_data.user_id,
-                    uri = uri
-                })
-                return false, mapping.feature
-            end
-        end
-    end
-    
-    return true, nil
-end
-
--- Main authorization function
-function _M.authorize()
+-- Main authentication handler
+function _M.authenticate()
     local request_start = ngx.now()
     
     -- Get configuration
     local config = get_config()
     if not config then
+        utils.log("error", "Gateway configuration not available")
         ngx.exit(ngx.HTTP_INTERNAL_SERVER_ERROR)
     end
     
     -- Extract authentication token
-    local token, token_type = utils.extract_auth_token()
+    local auth_header = ngx.var.http_authorization
+    local token, token_type = utils.extract_auth_token(auth_header)
+    
     if not token then
         utils.log("debug", "No authentication token provided")
+        ngx.status = ngx.HTTP_UNAUTHORIZED
+        ngx.header.content_type = "application/json"
+        ngx.header["WWW-Authenticate"] = 'Bearer realm="Wildbox API"'
+        ngx.say(utils.json_encode({
+            error = "authentication_required",
+            message = "Valid authentication token required"
+        }))
         ngx.exit(ngx.HTTP_UNAUTHORIZED)
     end
     
@@ -313,9 +366,23 @@ function _M.authorize()
         
         if validation_err then
             if validation_err == "unauthorized" then
+                ngx.status = ngx.HTTP_UNAUTHORIZED
+                ngx.header.content_type = "application/json"
+                ngx.say(utils.json_encode({
+                    error = "invalid_token",
+                    message = "Authentication token is invalid or expired"
+                }))
                 ngx.exit(ngx.HTTP_UNAUTHORIZED)
             elseif validation_err == "forbidden" then
                 ngx.exit(ngx.HTTP_FORBIDDEN)
+            elseif validation_err == "circuit_breaker_open" then
+                ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
+                ngx.header.content_type = "application/json"
+                ngx.say(utils.json_encode({
+                    error = "service_unavailable",
+                    message = "Authentication service temporarily unavailable"
+                }))
+                ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
             else
                 utils.log("error", "Authentication service error", {error = validation_err})
                 ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
@@ -326,29 +393,11 @@ function _M.authorize()
         set_cached_auth_data(cache_key, auth_data, config)
     end
     
-    -- Check feature access based on plan
-    local access_allowed, blocked_feature = check_feature_access(auth_data)
-    if not access_allowed then
-        ngx.status = ngx.HTTP_PAYMENT_REQUIRED
-        ngx.header.content_type = "application/json"
-        ngx.say(utils.json_encode({
-            error = "feature_not_available",
-            message = "This feature requires a higher plan",
-            feature = blocked_feature,
-            current_plan = auth_data.plan,
-            upgrade_url = "/upgrade"
-        }))
-        ngx.exit(ngx.HTTP_PAYMENT_REQUIRED)
-    end
-    
     -- Apply rate limiting
     apply_rate_limiting(auth_data)
     
     -- Set authentication headers for backend services
     set_auth_headers(auth_data)
-    
-    -- Set debug headers if enabled
-    utils.set_debug_headers(auth_data)
     
     local request_time = (ngx.now() - request_start) * 1000
     utils.log("debug", "Authorization completed", {

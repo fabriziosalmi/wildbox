@@ -19,6 +19,11 @@ services:
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - WILDBOX_ENV=${WILDBOX_ENV:-development}
       - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
+      # Authentication service configuration (Blueprint Phase 1 requirements)
+      - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8000}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET:-changeme-in-production}
+      - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
+      - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
     networks:
       - wildbox-net
     depends_on:
