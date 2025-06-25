@@ -42,7 +42,7 @@ python-libnmap==0.7.3
 
 # Ticketing System Integrations
 jira==3.5.0
-python-servicenow==1.0.0
+servicenow-api==0.20.68
 
 # Monitoring & Observability
 prometheus-client==0.17.1
