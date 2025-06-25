@@ -26,7 +26,7 @@ python-jose[cryptography]==3.3.0
 # HTTP Clients & Integrations
 requests==2.31.0
 httpx==0.24.1
-pydantic==2.1.1
+pydantic==2.5.3
 python-dotenv==1.0.0
 
 # Data Processing
