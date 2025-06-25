@@ -36,7 +36,7 @@ pywin32>=304 ; sys_platform == "win32"
 wmi>=1.5.1 ; sys_platform == "win32"
 
 # Linux
-python-systemd>=234 ; sys_platform == "linux"
+python-systemd>=0.9.0 ; sys_platform == "linux"
 
 # macOS  
 pyobjc-framework-Cocoa>=9.0 ; sys_platform == "darwin"
