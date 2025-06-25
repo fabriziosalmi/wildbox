@@ -12,12 +12,27 @@ RUN apt-get update && apt-get install -y \
     software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
-# Install osquery
-RUN curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_amd64.deb -o osquery.deb \
-    && dpkg -i osquery.deb || apt-get install -f -y \
-    && rm osquery.deb \
-    && ln -sf /usr/bin/osqueryd /usr/local/bin/osqueryd \
-    && ln -sf /usr/bin/osqueryi /usr/local/bin/osqueryi
+# Install osquery - detect architecture and install accordingly
+RUN ARCH=$(dpkg --print-architecture) && \
+    if [ "$ARCH" = "amd64" ]; then \
+        curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_amd64.deb -o osquery.deb; \
+    elif [ "$ARCH" = "arm64" ]; then \
+        curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_arm64.deb -o osquery.deb; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    dpkg -i osquery.deb || apt-get install -f -y && \
+    rm osquery.deb && \
+    # Create symlinks to make osqueryd available in PATH
+    if [ -f /opt/osquery/bin/osqueryd ]; then \
+        ln -sf /opt/osquery/bin/osqueryd /usr/local/bin/osqueryd; \
+        ln -sf /opt/osquery/bin/osqueryi /usr/local/bin/osqueryi; \
+    elif [ -f /usr/bin/osqueryd ]; then \
+        ln -sf /usr/bin/osqueryd /usr/local/bin/osqueryd; \
+        ln -sf /usr/bin/osqueryi /usr/local/bin/osqueryi; \
+    else \
+        echo "osqueryd not found in expected locations" && exit 1; \
+    fi
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
