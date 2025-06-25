@@ -1,0 +1,26 @@
+playbook_id: "simple_notification"
+name: "Simple Notification Test"
+description: "A basic playbook that logs a message for testing the workflow engine"
+version: "1.0"
+author: "Wildbox Security"
+tags: ["test", "notification"]
+
+trigger:
+  type: "api"
+
+steps:
+  - name: "log_message"
+    action: "system.log"
+    input:
+      message: "Hello from playbook! Received: {{ trigger.message | default('No message provided') }}"
+      level: "info"
+      
+  - name: "wait_step"
+    action: "system.sleep"
+    input:
+      seconds: 2
+      
+  - name: "final_log"
+    action: "system.log"
+    input:
+      message: "Playbook completed successfully. Previous step result: {{ steps.log_message.output.status }}"

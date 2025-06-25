@@ -1,0 +1,88 @@
+playbook_id: "triage_url"
+name: "URL Analysis and Response"
+description: "Analyze suspicious URLs and automatically blacklist malicious ones"
+version: "1.0"
+author: "Wildbox Security"
+tags: ["triage", "url", "malware", "blacklist"]
+
+trigger:
+  type: "api"
+
+steps:
+  - name: "validate_url"
+    action: "system.validate"
+    input:
+      type: "url"
+      value: "{{ trigger.url }}"
+      
+  - name: "url_analysis"
+    action: "api.run_tool"
+    input:
+      tool_name: "url_analyzer"
+      params:
+        url: "{{ trigger.url }}"
+        deep_scan: true
+        screenshot: true
+    condition: "{{ steps.validate_url.output.valid == true }}"
+    
+  - name: "reputation_check"
+    action: "api.run_tool"
+    input:
+      tool_name: "reputation_check"
+      params:
+        url: "{{ trigger.url }}"
+        sources: ["virustotal", "urlvoid", "phishtank"]
+    condition: "{{ steps.validate_url.output.valid == true }}"
+    
+  - name: "extract_domain"
+    action: "system.extract"
+    input:
+      type: "domain"
+      from_url: "{{ trigger.url }}"
+      
+  - name: "domain_reputation"
+    action: "api.run_tool"
+    input:
+      tool_name: "domain_reputation"
+      params:
+        domain: "{{ steps.extract_domain.output.domain }}"
+    condition: "{{ steps.extract_domain.output.domain is defined }}"
+    
+  - name: "threat_verdict"
+    action: "system.evaluate"
+    input:
+      verdict_logic: |
+        {% set malicious_count = 0 %}
+        {% if steps.url_analysis.output.verdict == 'malicious' %}
+          {% set malicious_count = malicious_count + 1 %}
+        {% endif %}
+        {% if steps.reputation_check.output.malicious_sources|length > 2 %}
+          {% set malicious_count = malicious_count + 1 %}
+        {% endif %}
+        {% if steps.domain_reputation.output.reputation_score < 3 %}
+          {% set malicious_count = malicious_count + 1 %}
+        {% endif %}
+        {{ 'malicious' if malicious_count >= 2 else 'clean' }}
+        
+  - name: "add_to_blacklist"
+    action: "data.add_to_blacklist"
+    input:
+      type: "url"
+      value: "{{ trigger.url }}"
+      reason: "Automated analysis detected malicious content"
+      source: "url_triage_playbook"
+      confidence: "{{ steps.threat_verdict.output.confidence }}"
+    condition: "{{ steps.threat_verdict.output.verdict == 'malicious' }}"
+    
+  - name: "notify_security_team"
+    action: "system.notification"
+    input:
+      channel: "security-alerts"
+      message: |
+        🚨 Malicious URL detected and blacklisted:
+        URL: {{ trigger.url }}
+        Verdict: {{ steps.threat_verdict.output.verdict }}
+        Analysis: {{ steps.url_analysis.output.summary }}
+        Action: Added to blacklist
+      priority: "high"
+    condition: "{{ steps.threat_verdict.output.verdict == 'malicious' }}"

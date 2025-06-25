@@ -1,0 +1,62 @@
+playbook_id: "triage_ip"
+name: "IP Address Triage"
+description: "Comprehensive IP address analysis including port scanning and reputation checks"
+version: "1.0"
+author: "Wildbox Security"
+tags: ["triage", "ip", "network", "security"]
+
+trigger:
+  type: "api"
+
+steps:
+  - name: "validate_ip"
+    action: "system.validate"
+    input:
+      type: "ip_address"
+      value: "{{ trigger.ip }}"
+      
+  - name: "scan_ports"
+    action: "api.run_tool"
+    input:
+      tool_name: "nmap"
+      params:
+        target: "{{ trigger.ip }}"
+        scan_type: "quick"
+        ports: "1-1000"
+    condition: "{{ steps.validate_ip.output.valid == true }}"
+    
+  - name: "check_reputation"
+    action: "api.run_tool"
+    input:
+      tool_name: "reputation_check"
+      params:
+        ip: "{{ trigger.ip }}"
+        sources: ["virustotal", "abuseipdb", "shodan"]
+    condition: "{{ steps.validate_ip.output.valid == true }}"
+    
+  - name: "whois_lookup"
+    action: "api.run_tool"
+    input:
+      tool_name: "whois"
+      params:
+        target: "{{ trigger.ip }}"
+    condition: "{{ steps.scan_ports.output.open_ports|length > 0 }}"
+    
+  - name: "threat_assessment"
+    action: "system.evaluate"
+    input:
+      conditions:
+        high_risk: "{{ steps.check_reputation.output.reputation_score < 3 }}"
+        open_ports: "{{ steps.scan_ports.output.open_ports|length > 5 }}"
+        suspicious_services: "{{ 'ftp' in steps.scan_ports.output.services or 'telnet' in steps.scan_ports.output.services }}"
+        
+  - name: "generate_report"
+    action: "system.create_report"
+    input:
+      template: "ip_triage_report"
+      data:
+        ip: "{{ trigger.ip }}"
+        scan_results: "{{ steps.scan_ports.output }}"
+        reputation: "{{ steps.check_reputation.output }}"
+        whois: "{{ steps.whois_lookup.output }}"
+        risk_assessment: "{{ steps.threat_assessment.output }}"
