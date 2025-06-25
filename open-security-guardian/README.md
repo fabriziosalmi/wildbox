@@ -121,7 +121,7 @@ python manage.py migrate
 python manage.py create-admin
 
 # Start the application
-python manage.py runserver 0.0.0.0:8002
+python manage.py runserver 0.0.0.0:8003
 ```
 
 ## ⚙️ Configuration
@@ -174,16 +174,16 @@ scanners:
 
 ```bash
 # Discover assets
-curl -X POST "http://localhost:8002/api/v1/assets/discover" \
+curl -X POST "http://localhost:8003/api/v1/assets/discover" \
   -H "Authorization: Bearer your-api-key" \
   -d '{"network_range": "10.0.0.0/24", "scan_type": "comprehensive"}'
 
 # Get asset inventory
-curl "http://localhost:8002/api/v1/assets?criticality=high&limit=100" \
+curl "http://localhost:8003/api/v1/assets?criticality=high&limit=100" \
   -H "Authorization: Bearer your-api-key"
 
 # Update asset criticality
-curl -X PATCH "http://localhost:8002/api/v1/assets/12345" \
+curl -X PATCH "http://localhost:8003/api/v1/assets/12345" \
   -H "Authorization: Bearer your-api-key" \
   -d '{"criticality": "critical", "business_function": "payment_processing"}'
 ```
@@ -192,16 +192,16 @@ curl -X PATCH "http://localhost:8002/api/v1/assets/12345" \
 
 ```bash
 # Get prioritized vulnerabilities
-curl "http://localhost:8002/api/v1/vulnerabilities?priority=critical&status=open" \
+curl "http://localhost:8003/api/v1/vulnerabilities?priority=critical&status=open" \
   -H "Authorization: Bearer your-api-key"
 
 # Create remediation ticket
-curl -X POST "http://localhost:8002/api/v1/vulnerabilities/67890/remediate" \
+curl -X POST "http://localhost:8003/api/v1/vulnerabilities/67890/remediate" \
   -H "Authorization: Bearer your-api-key" \
   -d '{"assignee": "security-team", "due_date": "2025-07-15"}'
 
 # Bulk risk assessment
-curl -X POST "http://localhost:8002/api/v1/vulnerabilities/assess" \
+curl -X POST "http://localhost:8003/api/v1/vulnerabilities/assess" \
   -H "Authorization: Bearer your-api-key" \
   -d '{"vulnerability_ids": [1, 2, 3, 4, 5]}'
 ```
@@ -210,15 +210,15 @@ curl -X POST "http://localhost:8002/api/v1/vulnerabilities/assess" \
 
 ```bash
 # Executive dashboard data
-curl "http://localhost:8002/api/v1/reports/executive" \
+curl "http://localhost:8003/api/v1/reports/executive" \
   -H "Authorization: Bearer your-api-key"
 
 # Compliance report
-curl "http://localhost:8002/api/v1/reports/compliance?framework=PCI_DSS" \
+curl "http://localhost:8003/api/v1/reports/compliance?framework=PCI_DSS" \
   -H "Authorization: Bearer your-api-key"
 
 # Remediation metrics
-curl "http://localhost:8002/api/v1/reports/remediation?timeframe=30d" \
+curl "http://localhost:8003/api/v1/reports/remediation?timeframe=30d" \
   -H "Authorization: Bearer your-api-key"
 ```
 
@@ -232,7 +232,7 @@ from guardian.client import GuardianClient
 from open_security_data.client import DataClient
 
 # Initialize clients
-guardian = GuardianClient("http://localhost:8002")
+guardian = GuardianClient("http://localhost:8003")
 data_lake = DataClient("http://localhost:8002")
 
 # Enrich vulnerability with threat intelligence
@@ -354,16 +354,16 @@ class CustomRiskCalculator(BaseRiskCalculator):
 
 ```bash
 # Application health
-curl http://localhost:8002/health
+curl http://localhost:8003/health
 
 # Database connectivity
-curl http://localhost:8002/health/database
+curl http://localhost:8003/health/database
 
 # Scanner connectivity
-curl http://localhost:8002/health/scanners
+curl http://localhost:8003/health/scanners
 
 # Integration health
-curl http://localhost:8002/health/integrations
+curl http://localhost:8003/health/integrations
 ```
 
 ### Metrics

@@ -151,7 +151,7 @@ src/
    # API Endpoints
    NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
    NEXT_PUBLIC_DATA_API_URL=http://localhost:8002
-   NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8002
+   NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
    NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
    NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
    NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8005
