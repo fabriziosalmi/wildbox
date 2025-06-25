@@ -2,7 +2,7 @@
 
 **The Complete Open-Source Security Operations Suite**
 
-A comprehensive, modular, and scalable open-source security platform designed for modern cybersecurity operations. Wildbox provides enterprise-grade security tools, threat intelligence, vulnerability management, endpoint monitoring, automated response, and AI-powered analysis through a unified architecture.
+A comprehensive, modular, and scalable open-source security platform designed for modern cybersecurity operations. Wildbox provides enterprise-grade security tools, threat intelligence, cloud security posture management (CSPM), vulnerability management, endpoint monitoring, automated response, and AI-powered analysis through a unified architecture with intelligent API gateway.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Docker](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://docker.com)
@@ -38,11 +38,13 @@ Wildbox is a **complete security operations platform** built from the ground up 
 ### 🎪 What Makes Wildbox Special
 
 - **🧩 Modular Architecture**: Independent microservices that work together seamlessly
-- **🔐 Centralized Authentication**: Enterprise-grade identity management with JWT and API keys
-- **🔧 50+ Security Tools**: Comprehensive toolkit covering all security domains
+- **� Intelligent API Gateway**: Single entry point with plan-based feature gating and dynamic rate limiting
+- **�🔐 Centralized Authentication**: Enterprise-grade identity management with JWT and API keys
+- **🔧 250+ Security Tools & Checks**: Comprehensive toolkit covering all security domains including 50+ general security tools and 200+ cloud security checks
+- **☁️ Multi-Cloud CSPM**: Complete cloud security posture management for AWS, Azure, and GCP
 - **🤖 AI-Powered Analysis**: GPT-4o powered intelligent threat analysis and reporting  
 - **🏭 Enterprise-Ready**: Production-grade with Docker, monitoring, and scalability
-- **🌐 Modern Tech Stack**: Built with FastAPI, Django, Next.js, and TypeScript
+- **🌐 Modern Tech Stack**: Built with FastAPI, Django, Next.js, OpenResty, and TypeScript
 - **📊 Unified Dashboard**: Single pane of glass for all security operations
 - **🔗 API-First Design**: Complete REST APIs for automation and integration
 
@@ -84,6 +86,7 @@ Wildbox is a **complete security operations platform** built from the ground up 
 ### ⚙️ **Backend Technologies**
 - **FastAPI**: Modern, fast web framework for building APIs with Python
 - **Django 5.0**: High-level Python web framework for rapid development
+- **OpenResty**: High-performance web platform with Nginx and LuaJIT scripting
 - **PostgreSQL 15**: Advanced open-source relational database
 - **Redis 7**: In-memory data structure store for caching and queues
 - **SQLAlchemy**: Python SQL toolkit and Object-Relational Mapping
@@ -877,15 +880,15 @@ graph TD
         API_CLIENT[API Clients]
     end
     
-    subgraph "API Gateway Layer"
-        GATEWAY[🚪 API Gateway]
+    subgraph "Gateway Layer"
+        GATEWAY[🚪 Security Gateway]
         IDENTITY[🔐 Identity Service]
-        LOAD_BALANCER[Load Balancer]
     end
     
     subgraph "Core Services"
         API[🔧 Security API]
         DATA[📊 Data Lake]
+        CSPM[☁️ CSPM Service]
         GUARDIAN[🛡️ Guardian]
         RESPONDER[⚡ Responder]
         AGENTS[🧠 AI Agents]
@@ -902,22 +905,42 @@ graph TD
         STRIPE[Stripe]
         OPENAI[OpenAI]
         FEEDS[Threat Feeds]
+        CLOUD_APIS[Cloud APIs]
     end
     
-    UI --> LOAD_BALANCER
-    CLI --> LOAD_BALANCER
-    API_CLIENT --> LOAD_BALANCER
+    UI --> GATEWAY
+    CLI --> GATEWAY
+    API_CLIENT --> GATEWAY
     
-    LOAD_BALANCER --> GATEWAY
     GATEWAY --> IDENTITY
-    
     GATEWAY --> API
     GATEWAY --> DATA
+    GATEWAY --> CSPM
     GATEWAY --> GUARDIAN
     GATEWAY --> RESPONDER
     GATEWAY --> AGENTS
     
     SENSOR --> GATEWAY
+    
+    API --> POSTGRES
+    DATA --> POSTGRES
+    CSPM --> POSTGRES
+    GUARDIAN --> POSTGRES
+    RESPONDER --> POSTGRES
+    AGENTS --> POSTGRES
+    
+    GATEWAY --> REDIS
+    API --> REDIS
+    CSPM --> REDIS
+    RESPONDER --> REDIS
+    
+    DATA --> ELASTICSEARCH
+    
+    IDENTITY --> STRIPE
+    AGENTS --> OPENAI
+    DATA --> FEEDS
+    CSPM --> CLOUD_APIS
+```
     
     API --> REDIS
     DATA --> POSTGRES
@@ -988,15 +1011,27 @@ docker-compose up -d
 ```
 
 ### 🚪 **open-security-gateway** 
-**The Traffic Controller**
+**The Intelligent API Gateway**
 
-- **Purpose**: Single entry point for all API requests with authentication, rate limiting, and routing
-- **Technology**: Nginx, Lua, Redis
+- **Purpose**: Single entry point for all Wildbox services with advanced security and routing
+- **Technology**: OpenResty (Nginx + Lua), Redis, Docker
 - **Key Features**:
-  - Request routing and load balancing
-  - API key validation and caching
-  - Rate limiting per user/team
-  - Security headers and SSL termination
+  - Centralized authentication and authorization
+  - Plan-based feature gating (Free/Personal/Business/Enterprise)
+  - Dynamic rate limiting with Lua scripting
+  - SSL/TLS termination with security headers
+  - Intelligent caching and request routing
+  - Real-time monitoring and logging
+
+```bash
+# Start Gateway
+cd open-security-gateway
+make start
+
+# Access: https://wildbox.local
+# Health: https://wildbox.local/health
+# Features: Unified entry point for all services
+```
 
 ### 🔧 **open-security-api**
 **The Security Toolbox**
@@ -1036,6 +1071,28 @@ docker-compose up -d
 
 # Access: http://localhost:8002
 # Sources: 50+ threat intelligence feeds
+```
+
+### ☁️ **open-security-cspm**
+**The Cloud Security Posture Manager**
+
+- **Purpose**: Multi-cloud security posture management and compliance scanning
+- **Technology**: FastAPI, Celery, Redis, Python cloud SDKs
+- **Key Features**:
+  - Multi-cloud support (AWS, Azure, GCP)
+  - 200+ security checks across cloud providers
+  - Compliance frameworks (CIS, NIST, SOC2, PCI-DSS)
+  - Risk-based prioritization and scoring
+  - Automated remediation recommendations
+  - Executive dashboards and reporting
+
+```bash
+# Start CSPM Service
+cd open-security-cspm
+make start
+
+# Access: http://localhost:8002
+# Features: Cloud security scanning, compliance monitoring
 ```
 
 ### 🛡️ **open-security-guardian**
@@ -1144,7 +1201,7 @@ npm run dev
 
 ## ✨ Key Features
 
-### 🔧 **50+ Security Tools**
+### 🔧 **250+ Security Tools & Checks**
 Comprehensive security toolkit covering all aspects of cybersecurity:
 
 #### **Network Security**
@@ -1160,10 +1217,13 @@ Comprehensive security toolkit covering all aspects of cybersecurity:
 - Header security validation
 
 #### **Cloud Security (CSPM)**
-- Multi-cloud security posture management
-- AWS, Azure, GCP compliance scanning
-- Infrastructure as Code analysis
-- Cloud resource inventory
+- Multi-cloud security posture management (AWS, Azure, GCP)
+- 200+ compliance checks across cloud providers
+- CIS, NIST, SOC2, PCI-DSS framework support
+- Infrastructure as Code security analysis
+- Cloud resource inventory and drift detection
+- Automated remediation recommendations
+- Executive dashboards and compliance reporting
 
 #### **Threat Intelligence**
 - IOC lookup and analysis
@@ -1249,11 +1309,12 @@ docker-compose up -d
 
 # 2. Start API Gateway
 cd ../open-security-gateway
-docker-compose up -d
+make start
 
 # 3. Start Core Services
 cd ../open-security-api && make dev &
 cd ../open-security-data && docker-compose up -d &
+cd ../open-security-cspm && make start &
 cd ../open-security-guardian && docker-compose up -d &
 
 # 4. Start Optional Services
@@ -1422,14 +1483,15 @@ certbot --nginx -d wildbox.yourdomain.com -d api.wildbox.yourdomain.com
 | Service | Port | Protocol | Purpose | Status |
 |---------|------|----------|---------|--------|
 | **Dashboard** | 3000 | HTTP | Web interface | ✅ Active |
-| **API Gateway** | 80/443 | HTTP/HTTPS | Load balancer | ✅ Active |
-| **Identity** | 8001 | HTTP | Authentication | ✅ Active |
-| **Security API** | 8000 | HTTP | Security tools | ✅ Active |
+| **Gateway** | 80/443 | HTTP/HTTPS | API Gateway & Load Balancer | ✅ Active |
+| **Identity** | 8001 | HTTP | Authentication & Authorization | ✅ Active |
+| **Security API** | 8000 | HTTP | 50+ Security tools | ✅ Active |
 | **Data Lake** | 8002 | HTTP | Threat intelligence | ✅ Active |
-| **Guardian** | 8003 | HTTP | Vulnerability mgmt | ✅ Active |
+| **CSPM** | 8002 | HTTP | Cloud Security Posture | ✅ Active |
+| **Guardian** | 8003 | HTTP | Vulnerability management | ✅ Active |
 | **Sensor Agent** | 8004 | HTTPS | Endpoint monitoring | ✅ Active |
 | **Responder** | 8005 | HTTP | Automation engine | ✅ Active |
-| **AI Agents** | 8006 | HTTP | AI services | ✅ Active |
+| **AI Agents** | 8006 | HTTP | AI-powered analysis | ✅ Active |
 | **PostgreSQL** | 5432 | TCP | Primary database | ✅ Active |
 | **Redis** | 6379 | TCP | Cache & queues | ✅ Active |
 | **Elasticsearch** | 9200 | HTTP | Search & analytics | 🔄 Optional |
@@ -1440,9 +1502,11 @@ certbot --nginx -d wildbox.yourdomain.com -d api.wildbox.yourdomain.com
 
 **Development Environment:**
 - Dashboard: http://localhost:3000
+- Gateway: https://wildbox.local (with SSL)
 - API Documentation: http://localhost:8000/docs
 - Identity API: http://localhost:8001/docs
 - Data Lake API: http://localhost:8002/docs
+- CSPM API: http://localhost:8002/docs
 - Guardian API: http://localhost:8003/docs
 - Responder API: http://localhost:8005/docs
 - AI Agents API: http://localhost:8006/docs

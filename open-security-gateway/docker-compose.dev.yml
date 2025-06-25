@@ -1,0 +1,87 @@
+version: '3.8'
+
+# Development configuration for Wildbox Gateway
+# Includes additional debugging and development tools
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wildbox-gateway-dev
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"  # Additional debug port
+    volumes:
+      - ./nginx:/etc/nginx
+      - ./logs:/var/log/nginx
+      - ./ssl:/etc/ssl/wildbox:ro
+      - nginx_cache:/var/cache/nginx
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+      - WILDBOX_ENV=development
+      - GATEWAY_LOG_LEVEL=debug
+      - GATEWAY_DEBUG=true
+    networks:
+      - wildbox-net
+    depends_on:
+      - redis
+      - mock-identity
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Redis for caching (development settings)
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-gateway-redis-dev
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru --loglevel debug
+    ports:
+      - "6379:6379"  # Expose for debugging
+    volumes:
+      - redis_data:/data
+    networks:
+      - wildbox-net
+
+  # Mock identity service for testing
+  mock-identity:
+    image: nginx:alpine
+    container_name: wildbox-mock-identity
+    volumes:
+      - ./test/mock-identity.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./test/mock-responses:/usr/share/nginx/html:ro
+    networks:
+      - wildbox-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Log aggregator for development
+  logviewer:
+    image: gliderlabs/logspout:latest
+    container_name: wildbox-logs
+    command: syslog://logs:514
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8000:80"  # Web interface for logs
+    networks:
+      - wildbox-net
+
+volumes:
+  nginx_cache:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  wildbox-net:
+    external: false

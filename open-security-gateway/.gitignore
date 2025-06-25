@@ -1,0 +1,60 @@
+# SSL certificates and keys
+ssl/*.key
+ssl/*.crt
+ssl/*.csr
+ssl/*.pem
+
+# Log files
+logs/*.log
+logs/nginx/
+
+# Cache directories
+cache/
+nginx_cache/
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+
+# Docker volumes
+volumes/
+
+# Backup files
+*.tar.gz
+*.backup
+*.bak
+
+# Temporary files
+*.tmp
+*.temp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime files
+*.pid
+
+# Test artifacts
+test/logs/
+test/reports/
+
+# Development databases
+*.db
+*.sqlite
+
+# Compiled Lua files
+*.luac
+
+# Coverage reports
+coverage/
+*.coverage

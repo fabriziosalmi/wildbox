@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: wildbox-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx:/etc/nginx:ro
+      - ./logs:/var/log/nginx
+      - ./ssl:/etc/ssl/wildbox:ro
+      - nginx_cache:/var/cache/nginx
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+      - WILDBOX_ENV=${WILDBOX_ENV:-development}
+      - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
+    networks:
+      - wildbox-net
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for caching authentication data
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-gateway-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - wildbox-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  nginx_cache:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  wildbox-net:
+    external: true
