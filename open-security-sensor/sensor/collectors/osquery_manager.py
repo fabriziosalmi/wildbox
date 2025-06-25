@@ -247,13 +247,15 @@ class OsqueryManager:
         """Start osquery daemon process"""
         # Create a temporary directory for osquery runtime files
         osquery_runtime_dir = Path(tempfile.mkdtemp(prefix="osquery_"))
+        logs_dir = osquery_runtime_dir / 'logs'
+        logs_dir.mkdir(parents=True, exist_ok=True)
         
         osquery_cmd = [
             'osqueryd', 
             '--config_path', str(config_file),
             '--pidfile', str(osquery_runtime_dir / 'osquery.pid'),
             '--database_path', str(osquery_runtime_dir),
-            '--logger_path', str(osquery_runtime_dir / 'logs'),
+            '--logger_path', str(logs_dir),
             '--disable_events=false',
             '--disable_audit=false'
         ]
