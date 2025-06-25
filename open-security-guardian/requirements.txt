@@ -36,7 +36,7 @@ python-dateutil==2.8.2
 
 # Vulnerability Scanner Integrations
 python-nmap==0.7.1
-tenable-io==1.17.0
+pytenable==1.7.5
 qualysapi==0.6.0
 python-libnmap==0.7.3
 

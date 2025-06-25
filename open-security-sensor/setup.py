@@ -36,9 +36,6 @@ extra_requirements = {
         'pywin32>=304',
         'wmi>=1.5.1'
     ],
-    'linux': [
-        'python-systemd>=234'
-    ],
     'macos': [
         'pyobjc-framework-Cocoa>=9.0'
     ]
