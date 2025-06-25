@@ -19,14 +19,14 @@ django-celery-beat==2.5.0
 django-celery-results==2.5.1
 
 # Security & Authentication
-django-oauth-toolkit==1.7.1
+django-oauth-toolkit==3.0.1
 cryptography==41.0.3
 python-jose[cryptography]==3.3.0
 
 # HTTP Clients & Integrations
 requests==2.31.0
 httpx==0.24.1
-pydantic==2.5.3
+pydantic==2.8.2
 python-dotenv==1.0.0
 
 # Data Processing
@@ -41,7 +41,7 @@ qualysapi==8.1.0
 python-libnmap==0.7.3
 
 # Ticketing System Integrations
-jira==3.5.0
+jira==3.8.0
 servicenow-api==0.20.68
 
 # Monitoring & Observability
