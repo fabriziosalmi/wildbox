@@ -3,11 +3,12 @@ Schemas for Hash Generator Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class HashGeneratorInput(BaseModel):
+class HashGeneratorInput(BaseToolInput):
     """Input schema for hash generation"""
     input_text: str = Field(
         description="Text to generate hashes for"
@@ -55,7 +56,7 @@ class HashAnalysis(BaseModel):
     deprecated_algorithms: List[str] = Field(description="Deprecated/weak algorithms detected")
 
 
-class HashGeneratorOutput(BaseModel):
+class HashGeneratorOutput(BaseToolOutput):
     """Output schema for hash generation"""
     success: bool = Field(description="Whether hash generation was successful")
     input_text: str = Field(description="Original input text")

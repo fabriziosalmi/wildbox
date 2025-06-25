@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class IoTSecurityScannerInput(BaseModel):
+class IoTSecurityScannerInput(BaseToolInput):
     """Input schema for IoT Security Scanner tool"""
     target_ip: Optional[str] = Field(None, description="Target IoT device IP address")
     ip_range: Optional[str] = Field(None, description="IP range to scan for IoT devices (CIDR notation)")
@@ -59,7 +60,7 @@ class FirmwareAnalysis(BaseModel):
     security_features: List[str]
     missing_features: List[str]
 
-class IoTSecurityScannerOutput(BaseModel):
+class IoTSecurityScannerOutput(BaseToolOutput):
     """Output schema for IoT Security Scanner tool"""
     devices_found: List[IoTDevice]
     vulnerabilities: List[IoTVulnerability]

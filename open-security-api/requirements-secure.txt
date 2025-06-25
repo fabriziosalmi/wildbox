@@ -1,0 +1,46 @@
+# Security dependencies - PINNED VERSIONS (Blueprint Phase 1 - Security Hardening)
+defusedxml==0.7.1
+
+# Web framework - Latest secure versions
+fastapi==0.115.13
+uvicorn[standard]==0.34.3
+pydantic==2.11.7
+pydantic-settings==2.10.1
+python-dotenv==1.1.1
+Jinja2==3.1.6
+aiofiles==24.1.0
+
+# DNS enumeration dependencies - Latest secure
+dnspython==2.7.0
+aiodns==3.5.0
+
+# Port scanning dependencies - Latest secure
+python-nmap==0.7.1
+
+# Web vulnerability scanning dependencies - Latest secure
+aiohttp==3.12.13
+beautifulsoup4==4.13.4
+requests==2.32.4
+
+# SSL/TLS analysis dependencies - Latest secure
+cryptography==45.0.4
+pyOpenSSL==25.1.0
+
+# Additional security and performance - Latest secure
+slowapi==0.1.9
+redis==6.2.0
+psutil==7.0.0
+
+# Development and testing - Latest secure
+pytest==8.4.1
+pytest-asyncio==1.0.0
+httpx==0.28.1
+
+# Additional security dependencies for process isolation
+docker==7.1.0  # For containerized execution
+pydantic-extra-types==2.9.0  # For enhanced validation
+validators==0.31.0  # For input validation
+resource==0.2.1  # For resource limiting (if available)
+
+# Performance monitoring
+prometheus-client==0.21.1

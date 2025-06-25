@@ -3,11 +3,12 @@ Schemas for Password Strength Analyzer Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class PasswordStrengthInput(BaseModel):
+class PasswordStrengthInput(BaseToolInput):
     """Input schema for password strength analysis"""
     password: str = Field(
         description="Password to analyze"
@@ -43,7 +44,7 @@ class PasswordRecommendations(BaseModel):
     policy_compliance: Dict[str, bool] = Field(description="Compliance with common password policies")
 
 
-class PasswordStrengthOutput(BaseModel):
+class PasswordStrengthOutput(BaseToolOutput):
     """Output schema for password strength analysis"""
     success: bool = Field(description="Whether the analysis was successful")
     password_length: int = Field(description="Length of the analyzed password")

@@ -3,11 +3,12 @@ Schemas for Email Security Analyzer Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class EmailSecurityInput(BaseModel):
+class EmailSecurityInput(BaseToolInput):
     """Input schema for email security analysis"""
     email_headers: str = Field(
         description="Raw email headers to analyze"
@@ -96,7 +97,7 @@ class PhishingIndicators(BaseModel):
     social_engineering: List[str] = Field(description="Social engineering tactics")
 
 
-class EmailSecurityOutput(BaseModel):
+class EmailSecurityOutput(BaseToolOutput):
     """Output schema for email security analysis"""
     success: bool = Field(description="Whether the analysis was successful")
     sender_email: str = Field(description="Sender email address")

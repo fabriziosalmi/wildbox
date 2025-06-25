@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class CloudSecurityAnalyzerInput(BaseModel):
+class CloudSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Cloud Security Analyzer tool"""
     cloud_provider: str = Field(..., description="Cloud provider (aws, azure, gcp, multi)")
     assessment_type: str = Field(default="comprehensive", description="Assessment type (quick, standard, comprehensive)")
@@ -47,7 +48,7 @@ class ResourceInventory(BaseModel):
     security_score: float
     estimated_monthly_cost: Optional[float] = None
 
-class CloudSecurityAnalyzerOutput(BaseModel):
+class CloudSecurityAnalyzerOutput(BaseToolOutput):
     """Output schema for Cloud Security Analyzer tool"""
     cloud_provider: str
     analysis_timestamp: str

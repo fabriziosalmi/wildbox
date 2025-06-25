@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, List, Optional
 from datetime import datetime
 
-class ThreatIntelligenceRequest(BaseModel):
+class ThreatIntelligenceRequest(BaseToolInput):
     """Request model for threat intelligence aggregation"""
     indicator: str = Field(..., description="Threat indicator (IP, domain, hash, URL)")
     indicator_type: str = Field(..., description="Type of indicator: ip, domain, hash, url, email")
@@ -24,7 +25,7 @@ class ThreatIntelligenceSource(BaseModel):
     confidence: int
     source_url: Optional[str] = None
 
-class ThreatIntelligenceResponse(BaseModel):
+class ThreatIntelligenceResponse(BaseToolOutput):
     """Response model for threat intelligence aggregation"""
     indicator: str
     indicator_type: str

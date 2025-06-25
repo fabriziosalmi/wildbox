@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class SAMLAnalyzerInput(BaseModel):
+class SAMLAnalyzerInput(BaseToolInput):
     """Input schema for SAML Analyzer tool"""
     saml_response: str = Field(..., description="Base64 encoded SAML response to analyze")
     verify_signature: bool = Field(default=True, description="Verify digital signature")
@@ -16,7 +17,7 @@ class SAMLFinding(BaseModel):
     description: str
     recommendation: str
 
-class SAMLAnalyzerOutput(BaseModel):
+class SAMLAnalyzerOutput(BaseToolOutput):
     """Output schema for SAML Analyzer tool"""
     is_valid: bool
     issuer: Optional[str]

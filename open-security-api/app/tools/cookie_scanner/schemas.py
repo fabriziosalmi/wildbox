@@ -1,10 +1,11 @@
 """Pydantic schemas for the cookie security scanner tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict
 from datetime import datetime
 
-class CookieScannerInput(BaseModel):
+class CookieScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL to analyze cookies", example="https://example.com")
     include_subdomains: bool = Field(default=True, description="Include subdomain cookie analysis")
     timeout: int = Field(default=10, description="Request timeout in seconds", ge=1, le=60)
@@ -22,7 +23,7 @@ class CookieAnalysis(BaseModel):
     vulnerabilities: List[str] = Field(default=[], description="Security issues found")
     risk_level: str = Field(..., description="Risk level: low, medium, high, critical")
 
-class CookieScannerOutput(BaseModel):
+class CookieScannerOutput(BaseToolOutput):
     success: bool = Field(..., description="Whether the scan was successful")
     target_url: str = Field(..., description="Target URL analyzed")
     timestamp: datetime = Field(..., description="Analysis timestamp")

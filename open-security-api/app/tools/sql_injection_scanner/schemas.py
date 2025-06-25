@@ -1,10 +1,11 @@
 """Pydantic schemas for the SQL injection scanner tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict
 from datetime import datetime
 
-class SQLInjectionScannerInput(BaseModel):
+class SQLInjectionScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL to test for SQL injection", example="https://example.com/login.php")
     method: str = Field(default="GET", description="HTTP method to use", example="GET")
     parameters: Optional[Dict[str, str]] = Field(None, description="Parameters to test", example={"id": "1", "name": "test"})
@@ -18,7 +19,7 @@ class SQLInjectionResult(BaseModel):
     error_message: Optional[str] = Field(None, description="Database error message if detected")
     response_time: float = Field(..., description="Response time in seconds")
 
-class SQLInjectionScannerOutput(BaseModel):
+class SQLInjectionScannerOutput(BaseToolOutput):
     target_url: str = Field(..., description="Target URL that was tested")
     timestamp: datetime = Field(..., description="Scan timestamp")
     total_tests: int = Field(..., description="Total number of tests performed")

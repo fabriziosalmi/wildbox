@@ -3,11 +3,12 @@ Schemas for Metadata Extractor Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
 
-class MetadataExtractorInput(BaseModel):
+class MetadataExtractorInput(BaseToolInput):
     """Input schema for metadata extraction"""
     file_url: Optional[str] = Field(
         default=None,
@@ -103,7 +104,7 @@ class SecurityAnalysis(BaseModel):
     metadata_ratio: float = Field(description="Metadata to file size ratio")
 
 
-class MetadataExtractorOutput(BaseModel):
+class MetadataExtractorOutput(BaseToolOutput):
     """Output schema for metadata extraction"""
     success: bool = Field(description="Whether extraction was successful")
     file_info: FileInfo = Field(description="Basic file information")

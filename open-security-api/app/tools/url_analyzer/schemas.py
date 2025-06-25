@@ -3,11 +3,12 @@ Schemas for URL Shortener Analyzer Tool
 """
 
 from pydantic import BaseModel, Field, HttpUrl
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class URLShortenerInput(BaseModel):
+class URLShortenerInput(BaseToolInput):
     """Input schema for URL shortener analysis"""
     shortened_url: HttpUrl = Field(
         description="Shortened URL to analyze"
@@ -54,7 +55,7 @@ class SecurityAnalysis(BaseModel):
     malware_indicators: List[str] = Field(description="Malware indicators found")
 
 
-class URLShortenerOutput(BaseModel):
+class URLShortenerOutput(BaseToolOutput):
     """Output schema for URL shortener analysis"""
     success: bool = Field(description="Whether the analysis was successful")
     original_url: str = Field(description="Original shortened URL")

@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-class AutomationWorkflowInput(BaseModel):
+class AutomationWorkflowInput(BaseToolInput):
     workflow_name: str = Field(..., description="Name of the automation workflow")
     trigger_type: str = Field(..., description="Trigger type (event, schedule, manual, api)")
     workflow_steps: List[Dict[str, Any]] = Field(..., description="List of workflow steps with tool and parameters")
@@ -45,7 +46,7 @@ class AutomationMetrics(BaseModel):
     most_used_tools: List[str]
     error_patterns: List[str]
 
-class SecurityAutomationOutput(BaseModel):
+class SecurityAutomationOutput(BaseToolOutput):
     success: bool
     execution_id: str
     workflow_execution: WorkflowExecution

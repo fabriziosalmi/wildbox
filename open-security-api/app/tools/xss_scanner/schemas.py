@@ -1,10 +1,11 @@
 """Pydantic schemas for the XSS scanner tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict
 from datetime import datetime
 
-class XSSScannerInput(BaseModel):
+class XSSScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL to test for XSS", example="https://example.com/search")
     method: str = Field(default="GET", description="HTTP method to use", example="GET")
     parameters: Optional[Dict[str, str]] = Field(None, description="Parameters to test", example={"q": "test", "category": "all"})
@@ -21,7 +22,7 @@ class XSSResult(BaseModel):
     response_time: float = Field(..., description="Response time in seconds")
     confidence: str = Field(..., description="Confidence level: low, medium, high")
 
-class XSSScannerOutput(BaseModel):
+class XSSScannerOutput(BaseToolOutput):
     target_url: str = Field(..., description="Target URL that was tested")
     timestamp: datetime = Field(..., description="Scan timestamp")
     total_tests: int = Field(..., description="Total number of tests performed")

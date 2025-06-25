@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
-class SocialMediaOSINTRequest(BaseModel):
+class SocialMediaOSINTInput(BaseToolInput):
+    """Input schema for Social Media OSINT tool"""
     username: str = Field(..., description="Username to search across social media platforms")
     platforms: List[str] = Field(
         default=["twitter", "instagram", "linkedin", "facebook", "github", "reddit"],
@@ -18,7 +20,8 @@ class SocialMediaOSINTRequest(BaseModel):
     )
 
 
-class SocialMediaOSINTResponse(BaseModel):
+class SocialMediaOSINTOutput(BaseToolOutput):
+    """Output schema for Social Media OSINT tool"""
     username: str
     platforms_searched: List[str]
     profiles_found: List[Dict[str, Any]]

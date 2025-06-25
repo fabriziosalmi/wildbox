@@ -1,4 +1,8 @@
-from .main import execute_tool, TOOL_INFO
-from .schemas import CTLogScannerRequest, CTLogScannerResponse, CertificateInfo
+"""
+Ct Log Scanner Tool
+"""
 
-__all__ = ["execute_tool", "TOOL_INFO", "CTLogScannerRequest", "CTLogScannerResponse", "CertificateInfo"]
+from .main import execute_tool, TOOL_INFO
+from .schemas import CTLogScannerInput, CTLogScannerOutput
+
+__all__ = ['execute_tool', 'TOOL_INFO', 'CTLogScannerInput', 'CTLogScannerOutput']

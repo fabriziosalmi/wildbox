@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
-class APISecurityAnalyzerInput(BaseModel):
+class APISecurityAnalyzerInput(BaseToolInput):
     """Input schema for API Security Analyzer tool"""
     target_url: str = Field(..., description="Target API URL to analyze")
     api_type: str = Field(default="REST", description="API type (REST, GraphQL, SOAP)")
@@ -22,7 +23,7 @@ class SecurityIssue(BaseModel):
     cwe_id: Optional[str] = None
     affected_endpoint: Optional[str] = None
 
-class APISecurityAnalyzerOutput(BaseModel):
+class APISecurityAnalyzerOutput(BaseToolOutput):
     """Output schema for API Security Analyzer tool"""
     target_url: str
     api_type: str

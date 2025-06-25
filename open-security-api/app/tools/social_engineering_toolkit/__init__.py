@@ -1,4 +1,8 @@
-from .main import execute_tool, TOOL_INFO
-from .schemas import SocialEngToolkitRequest, SocialEngToolkitResponse
+"""
+Social Engineering Toolkit Tool
+"""
 
-__all__ = ["execute_tool", "TOOL_INFO", "SocialEngToolkitRequest", "SocialEngToolkitResponse"]
+from .main import execute_tool, TOOL_INFO
+from .schemas import SocialEngineeringToolkitInput, SocialEngineeringToolkitOutput
+
+__all__ = ['execute_tool', 'TOOL_INFO', 'SocialEngineeringToolkitInput', 'SocialEngineeringToolkitOutput']

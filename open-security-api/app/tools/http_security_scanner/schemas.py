@@ -1,11 +1,12 @@
 """Pydantic schemas for the HTTP Security Headers Scanner."""
 
 from pydantic import BaseModel, Field, HttpUrl
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 
-class HttpSecurityScannerInput(BaseModel):
+class HttpSecurityScannerInput(BaseToolInput):
     """Input schema for the HTTP Security Headers Scanner."""
     
     url: str = Field(
@@ -40,7 +41,7 @@ class SecurityHeader(BaseModel):
     recommendation: Optional[str] = Field(None, description="Recommendation if header is missing")
 
 
-class HttpSecurityScannerOutput(BaseModel):
+class HttpSecurityScannerOutput(BaseToolOutput):
     """Output schema for the HTTP Security Headers Scanner."""
     
     url: str = Field(..., description="URL that was scanned")

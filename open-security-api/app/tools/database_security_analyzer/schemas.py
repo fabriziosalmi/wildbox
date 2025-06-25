@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class DatabaseSecurityAnalyzerInput(BaseModel):
+class DatabaseSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Database Security Analyzer tool"""
     database_type: str = Field(description="Database type (mysql, postgresql, mongodb, oracle, mssql)")
     host: str = Field(description="Database host address")
@@ -76,7 +77,7 @@ class VulnerabilityFinding(BaseModel):
     remediation: str
     cve_reference: Optional[str] = None
 
-class DatabaseSecurityAnalyzerOutput(BaseModel):
+class DatabaseSecurityAnalyzerOutput(BaseToolOutput):
     """Output schema for Database Security Analyzer tool"""
     database_info: Dict[str, str]
     connection_successful: bool

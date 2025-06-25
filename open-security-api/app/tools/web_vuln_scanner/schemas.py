@@ -1,6 +1,7 @@
 """Web vulnerability scanner tool schemas."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -21,7 +22,7 @@ class VulnerabilityLevel(str, Enum):
     CRITICAL = "critical"
 
 
-class WebVulnScannerInput(BaseModel):
+class WebVulnScannerInput(BaseToolInput):
     """Input schema for the web vulnerability scanner."""
     
     target_url: str = Field(
@@ -80,7 +81,7 @@ class SecurityHeader(BaseModel):
     recommendation: str = Field(..., description="Security recommendation")
 
 
-class WebVulnScannerOutput(BaseModel):
+class WebVulnScannerOutput(BaseToolOutput):
     """Output schema for the web vulnerability scanner."""
     
     target_url: str = Field(..., description="Target URL that was scanned")

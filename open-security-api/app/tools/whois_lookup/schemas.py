@@ -1,10 +1,11 @@
 """Pydantic schemas for the WHOIS lookup tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class WHOISLookupInput(BaseModel):
+class WHOISLookupInput(BaseToolInput):
     domain: str = Field(..., description="Domain to lookup", example="example.com")
     include_raw: bool = Field(default=False, description="Include raw WHOIS data")
     timeout: int = Field(default=30, description="Timeout in seconds", ge=5, le=120)
@@ -29,7 +30,7 @@ class WHOISResult(BaseModel):
     tech_contact: Optional[WHOISContact] = Field(None, description="Technical contact")
     dnssec: Optional[str] = Field(None, description="DNSSEC status")
     
-class WHOISLookupOutput(BaseModel):
+class WHOISLookupOutput(BaseToolOutput):
     timestamp: datetime = Field(..., description="Lookup timestamp")
     domain: str = Field(..., description="Queried domain")
     success: bool = Field(..., description="Whether lookup was successful")

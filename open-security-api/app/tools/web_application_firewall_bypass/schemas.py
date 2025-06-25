@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, List, Optional
 from datetime import datetime
 
-class WAFBypassRequest(BaseModel):
+class WAFBypassRequest(BaseToolInput):
     """Request model for WAF bypass testing"""
     target_url: str = Field(..., description="Target URL to test WAF bypass techniques")
     payload_types: List[str] = Field(
@@ -44,7 +45,7 @@ class WAFBypassTechnique(BaseModel):
     examples: List[str]
     recommendations: List[str]
 
-class WAFBypassResponse(BaseModel):
+class WAFBypassResponse(BaseToolOutput):
     """Response model for WAF bypass testing"""
     target_url: str
     waf_detected: bool

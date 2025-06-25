@@ -1,10 +1,11 @@
 """Pydantic schemas for the SSL/TLS analyzer tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class SSLAnalyzerInput(BaseModel):
+class SSLAnalyzerInput(BaseToolInput):
     target: str = Field(..., description="Target domain or IP address", example="example.com")
     port: int = Field(default=443, description="Port to connect to", ge=1, le=65535)
     timeout: int = Field(default=10, description="Timeout in seconds", ge=1, le=60)
@@ -25,7 +26,7 @@ class SSLVulnerability(BaseModel):
     severity: str = Field(..., description="Vulnerability severity")
     description: str = Field(..., description="Vulnerability description")
 
-class SSLAnalyzerOutput(BaseModel):
+class SSLAnalyzerOutput(BaseToolOutput):
     target: str = Field(..., description="Target that was analyzed")
     port: int = Field(..., description="Port that was analyzed")
     timestamp: datetime = Field(..., description="Analysis timestamp")

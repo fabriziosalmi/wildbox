@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class ContainerSecurityScannerInput(BaseModel):
+class ContainerSecurityScannerInput(BaseToolInput):
     """Input schema for Container Security Scanner tool"""
     image_name: Optional[str] = Field(None, description="Docker image name to scan")
     dockerfile_content: Optional[str] = Field(None, description="Dockerfile content to analyze")
@@ -56,7 +57,7 @@ class ComplianceCheck(BaseModel):
     severity: str
     recommendation: str
 
-class ContainerSecurityScannerOutput(BaseModel):
+class ContainerSecurityScannerOutput(BaseToolOutput):
     """Output schema for Container Security Scanner tool"""
     image_analyzed: str
     scan_timestamp: datetime

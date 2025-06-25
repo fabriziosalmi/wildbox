@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
-class SocialEngToolkitRequest(BaseModel):
+class SocialEngineeringToolkitInput(BaseToolInput):
+    """Input schema for Social Engineering Toolkit tool"""
     target: str = Field(..., description="Target email, phone, or domain to analyze")
     analysis_type: str = Field(
         default="comprehensive",
@@ -14,7 +16,8 @@ class SocialEngToolkitRequest(BaseModel):
     )
 
 
-class SocialEngToolkitResponse(BaseModel):
+class SocialEngineeringToolkitOutput(BaseToolOutput):
+    """Output schema for Social Engineering Toolkit tool"""
     target: str
     analysis_type: str
     email_analysis: Optional[Dict[str, Any]] = None

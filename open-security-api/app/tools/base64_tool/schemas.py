@@ -3,10 +3,11 @@ Schemas for Base64 Decoder/Encoder Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Optional, Literal
 
 
-class Base64ToolInput(BaseModel):
+class Base64ToolInput(BaseToolInput):
     """Input schema for Base64 operations"""
     operation: Literal["encode", "decode"] = Field(
         description="Operation to perform: encode or decode"
@@ -34,7 +35,7 @@ class Base64ToolInput(BaseModel):
     )
 
 
-class Base64ToolOutput(BaseModel):
+class Base64ToolOutput(BaseToolOutput):
     """Output schema for Base64 operations"""
     success: bool = Field(description="Whether the operation was successful")
     operation: str = Field(description="Operation performed")

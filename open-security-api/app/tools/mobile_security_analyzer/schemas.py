@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class MobileSecurityAnalyzerInput(BaseModel):
+class MobileSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Mobile Security Analyzer tool"""
     app_file: Optional[str] = Field(None, description="Base64 encoded APK/IPA file content")
     app_url: Optional[str] = Field(None, description="URL to download mobile app file")
@@ -59,7 +60,7 @@ class AppMetadata(BaseModel):
     signing_certificate: Optional[Dict[str, Any]] = None
     permissions: List[str]
 
-class MobileSecurityAnalyzerOutput(BaseModel):
+class MobileSecurityAnalyzerOutput(BaseToolOutput):
     """Output schema for Mobile Security Analyzer tool"""
     platform: str
     analysis_timestamp: str

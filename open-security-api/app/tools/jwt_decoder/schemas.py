@@ -3,11 +3,12 @@ Schemas for JWT Decoder Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class JWTDecoderInput(BaseModel):
+class JWTDecoderInput(BaseToolInput):
     """Input schema for JWT decoding and analysis"""
     jwt_token: str = Field(
         description="JWT token to decode and analyze"
@@ -65,7 +66,7 @@ class JWTSecurityAnalysis(BaseModel):
     signature_valid: Optional[bool] = Field(description="Whether signature is valid (if verified)")
 
 
-class JWTDecoderOutput(BaseModel):
+class JWTDecoderOutput(BaseToolOutput):
     """Output schema for JWT decoding and analysis"""
     success: bool = Field(description="Whether the decoding was successful")
     is_valid_jwt: bool = Field(description="Whether the token is a valid JWT format")

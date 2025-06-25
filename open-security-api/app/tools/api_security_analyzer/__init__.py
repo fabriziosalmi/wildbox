@@ -1,5 +1,5 @@
 """
-API Security Analyzer Tool
+Api Security Analyzer Tool
 """
 
 from .main import execute_tool, TOOL_INFO

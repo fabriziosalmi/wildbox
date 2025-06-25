@@ -1,8 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
-class PortScannerRequest(BaseModel):
+class NetworkPortScannerInput(BaseToolInput):
+    """Input schema for Network Port Scanner tool"""
     target: str = Field(..., description="Target IP address or hostname to scan")
     ports: Optional[str] = Field(
         default="1-1000",
@@ -36,7 +38,8 @@ class PortInfo(BaseModel):
     confidence: Optional[int] = None
 
 
-class PortScannerResponse(BaseModel):
+class NetworkPortScannerOutput(BaseToolOutput):
+    """Output schema for Network Port Scanner tool"""
     target: str
     target_ip: str
     ports_scanned: int

@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class PKICertificateManagerInput(BaseModel):
+class PKICertificateManagerInput(BaseToolInput):
     """Input schema for PKI Certificate Manager tool"""
     domain: Optional[str] = Field(None, description="Domain to analyze certificate")
     certificate_pem: Optional[str] = Field(None, description="PEM encoded certificate to analyze")
@@ -45,7 +46,7 @@ class SecurityAnalysis(BaseModel):
     vulnerabilities: List[str]
     compliance_issues: List[str]
 
-class PKICertificateManagerOutput(BaseModel):
+class PKICertificateManagerOutput(BaseToolOutput):
     """Output schema for PKI Certificate Manager tool"""
     certificate_info: CertificateInfo
     validation_results: CertificateValidation

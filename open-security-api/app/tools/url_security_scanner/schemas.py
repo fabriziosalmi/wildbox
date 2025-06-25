@@ -3,11 +3,12 @@ Schemas for URL Security Scanner Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class URLSecurityInput(BaseModel):
+class URLSecurityInput(BaseToolInput):
     """Input schema for URL security scanning"""
     url: str = Field(
         description="URL to analyze for security risks"
@@ -78,7 +79,7 @@ class ReputationAnalysis(BaseModel):
     whitelist_matches: List[str] = Field(description="Whitelists that approved this URL")
 
 
-class URLSecurityOutput(BaseModel):
+class URLSecurityOutput(BaseToolOutput):
     """Output schema for URL security analysis"""
     success: bool = Field(description="Whether the analysis was successful")
     original_url: str = Field(description="Original URL analyzed")

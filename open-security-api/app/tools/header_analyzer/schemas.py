@@ -5,10 +5,11 @@ Pydantic models for HTTP header security analysis requests and responses.
 """
 
 from pydantic import BaseModel, Field, HttpUrl
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 
 
-class HeaderAnalyzerInput(BaseModel):
+class HeaderAnalyzerInput(BaseToolInput):
     """Input model for HTTP header security analysis."""
     
     url: HttpUrl = Field(
@@ -55,7 +56,7 @@ class HeaderAnalysis(BaseModel):
     recommendations: List[str] = Field(..., description="Security recommendations")
 
 
-class HeaderAnalyzerOutput(BaseModel):
+class HeaderAnalyzerOutput(BaseToolOutput):
     """Output model for HTTP header security analysis."""
     
     success: bool = Field(..., description="Whether the analysis was successful")

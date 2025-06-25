@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-class ComplianceCheckerInput(BaseModel):
+class ComplianceCheckerInput(BaseToolInput):
     """Input schema for Compliance Checker tool"""
     target_url: Optional[str] = Field(None, description="Target website/application URL")
     domain: Optional[str] = Field(None, description="Domain to analyze")
@@ -78,7 +79,7 @@ class ComplianceGap(BaseModel):
     remediation_steps: List[str]
     timeline: str
 
-class ComplianceCheckerOutput(BaseModel):
+class ComplianceCheckerOutput(BaseToolOutput):
     """Output schema for Compliance Checker tool"""
     assessment_target: str
     organization_type: str

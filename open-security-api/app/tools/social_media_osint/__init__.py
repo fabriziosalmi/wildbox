@@ -1,4 +1,8 @@
-from .main import execute_tool, TOOL_INFO
-from .schemas import SocialMediaOSINTRequest, SocialMediaOSINTResponse
+"""
+Social Media Osint Tool
+"""
 
-__all__ = ["execute_tool", "TOOL_INFO", "SocialMediaOSINTRequest", "SocialMediaOSINTResponse"]
+from .main import execute_tool, TOOL_INFO
+from .schemas import SocialMediaOSINTInput, SocialMediaOSINTOutput
+
+__all__ = ['execute_tool', 'TOOL_INFO', 'SocialMediaOSINTInput', 'SocialMediaOSINTOutput']

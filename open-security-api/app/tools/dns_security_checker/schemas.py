@@ -3,11 +3,12 @@ Schemas for DNS Security Checker Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class DNSSecurityInput(BaseModel):
+class DNSSecurityInput(BaseToolInput):
     """Input schema for DNS security checking"""
     domain: str = Field(
         description="Domain name to check for DNS security issues",
@@ -61,7 +62,7 @@ class SecurityCheck(BaseModel):
     details: Optional[str] = Field(description="Additional details")
 
 
-class DNSSecurityOutput(BaseModel):
+class DNSSecurityOutput(BaseToolOutput):
     """Output schema for DNS security checking"""
     success: bool = Field(description="Whether the analysis was successful")
     domain: str = Field(description="Domain that was analyzed")

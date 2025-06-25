@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Union
 from datetime import datetime
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
-class CryptoAnalysisRequest(BaseModel):
-    """Request model for cryptographic strength analysis"""
+class CryptoStrengthAnalyzerInput(BaseToolInput):
+    """Input schema for Crypto Strength Analyzer tool"""
     analysis_type: str = Field(..., description="Type of analysis: algorithm, key, implementation, certificate, random")
     
     # For algorithm analysis
@@ -71,8 +72,8 @@ class RandomnessAnalysis(BaseModel):
     predictability_risk: str  # Low, Medium, High
     recommended_improvements: List[str]
 
-class CryptoStrengthResponse(BaseModel):
-    """Response model for cryptographic strength analysis"""
+class CryptoStrengthAnalyzerOutput(BaseToolOutput):
+    """Output schema for Crypto Strength Analyzer tool"""
     analysis_type: str
     overall_security_rating: str  # Critical, Weak, Moderate, Strong, Excellent
     security_score: int  # 0-100

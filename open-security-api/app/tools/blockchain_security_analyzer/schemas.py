@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class BlockchainSecurityAnalyzerInput(BaseModel):
+class BlockchainSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Blockchain Security Analyzer tool"""
     contract_address: Optional[str] = Field(None, description="Smart contract address to analyze")
     contract_code: Optional[str] = Field(None, description="Smart contract source code (Solidity)")
@@ -30,7 +31,7 @@ class GasOptimization(BaseModel):
     line_number: Optional[int] = None
     recommendation: str
 
-class BlockchainSecurityAnalyzerOutput(BaseModel):
+class BlockchainSecurityAnalyzerOutput(BaseToolOutput):
     """Output schema for Blockchain Security Analyzer tool"""
     contract_address: Optional[str]
     blockchain: str

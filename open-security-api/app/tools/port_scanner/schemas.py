@@ -1,18 +1,40 @@
-"""Pydantic schemas for the port scanner tool."""
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
+"""Pydantic schemas for the port scanner tool - STANDARDIZED VERSION."""
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 from typing import List, Optional
+import sys
+import os
 
-class PortScannerInput(BaseModel):
-    target: str = Field(..., description="Target domain or IP address to scan", example="example.com")
+# Add app directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
+
+from app.standardized_schemas import (
+    BaseToolInput, 
+    BaseToolOutput, 
+    NetworkPort,
+    ToolCategory,
+    ToolMetadata
+)
+
+class PortScannerInput(BaseToolInput):
+    """Port scanner input schema - inherits from BaseToolInput."""
     ports: Optional[List[int]] = Field(None, description="List of ports to scan. If not provided, scans common ports.")
-    timeout: int = Field(default=3, description="Timeout in seconds for each port scan.", ge=1, le=60)
+    scan_type: str = Field(default="tcp", description="Scan type (tcp/udp/syn)")
 
-class PortScanResult(BaseModel):
-    port: int = Field(..., description="Port number")
-    state: str = Field(..., description="Port state (open/closed)")
-    service: Optional[str] = Field(None, description="Service running on the port, if detected.")
+class PortScannerOutput(BaseToolOutput):
+    """Port scanner output schema - inherits from BaseToolOutput."""
+    open_ports: List[NetworkPort] = Field(default_factory=list, description="Open ports found")
+    closed_ports: int = Field(default=0, description="Number of closed ports")
+    filtered_ports: int = Field(default=0, description="Number of filtered ports")
+    scan_statistics: dict = Field(default_factory=dict, description="Scan statistics")
 
-class PortScannerOutput(BaseModel):
-    target: str = Field(..., description="Scanned target")
-    results: List[PortScanResult] = Field(..., description="List of port scan results.")
+# Tool metadata for registration
+TOOL_METADATA = ToolMetadata(
+    name="port_scanner",
+    version="1.0.0",
+    category=ToolCategory.NETWORK_SCANNING,
+    description="Network port scanner for discovering open services",
+    author="Wildbox Security",
+    tags=["network", "scanning", "ports", "tcp", "udp"]
+)

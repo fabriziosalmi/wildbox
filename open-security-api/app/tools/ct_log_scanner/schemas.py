@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
-class CTLogScannerRequest(BaseModel):
+class CTLogScannerInput(BaseToolInput):
+    """Input schema for CT Log Scanner tool"""
     domain: str = Field(..., description="Domain to search in certificate transparency logs")
     include_subdomains: bool = Field(
         default=True,
@@ -40,7 +42,8 @@ class CertificateInfo(BaseModel):
     log_timestamp: str
 
 
-class CTLogScannerResponse(BaseModel):
+class CTLogScannerOutput(BaseToolOutput):
+    """Output schema for CT Log Scanner tool"""
     domain: str
     certificates_found: List[CertificateInfo]
     subdomain_analysis: Dict[str, Any]

@@ -1,10 +1,11 @@
 """Pydantic schemas for the file upload scanner tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict
 from datetime import datetime
 
-class FileUploadScannerInput(BaseModel):
+class FileUploadScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL with file upload functionality", example="https://example.com/upload")
     file_param: str = Field(default="file", description="File parameter name", example="file")
     additional_params: Optional[Dict[str, str]] = Field(None, description="Additional form parameters")
@@ -22,7 +23,7 @@ class FileUploadResult(BaseModel):
     evidence: Optional[str] = Field(None, description="Evidence of vulnerability")
     risk_level: str = Field(..., description="Risk level: low, medium, high, critical")
 
-class FileUploadScannerOutput(BaseModel):
+class FileUploadScannerOutput(BaseToolOutput):
     target_url: str = Field(..., description="Target URL that was tested")
     timestamp: datetime = Field(..., description="Scan timestamp")
     total_tests: int = Field(..., description="Total number of tests performed")

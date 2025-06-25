@@ -1,4 +1,8 @@
-from .main import execute_tool, TOOL_INFO
-from .schemas import PortScannerRequest, PortScannerResponse, PortInfo
+"""
+Network Port Scanner Tool
+"""
 
-__all__ = ["execute_tool", "TOOL_INFO", "PortScannerRequest", "PortScannerResponse", "PortInfo"]
+from .main import execute_tool, TOOL_INFO
+from .schemas import NetworkPortScannerInput, NetworkPortScannerOutput
+
+__all__ = ['execute_tool', 'TOOL_INFO', 'NetworkPortScannerInput', 'NetworkPortScannerOutput']

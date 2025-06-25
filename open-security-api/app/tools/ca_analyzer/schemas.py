@@ -3,11 +3,12 @@ Schemas for Certificate Authority Analyzer Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class CAAnalyzerInput(BaseModel):
+class CAAnalyzerInput(BaseToolInput):
     """Input schema for CA and certificate analysis"""
     target: str = Field(
         description="Domain name or certificate to analyze"
@@ -89,7 +90,7 @@ class SecurityAnalysis(BaseModel):
     security_score: float = Field(description="Security score (0-100)")
 
 
-class CAAnalyzerOutput(BaseModel):
+class CAAnalyzerOutput(BaseToolOutput):
     """Output schema for CA and certificate analysis"""
     success: bool = Field(description="Whether the analysis was successful")
     target: str = Field(description="Target domain analyzed")

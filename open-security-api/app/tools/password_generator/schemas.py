@@ -3,10 +3,11 @@ Schemas for Password Generator Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Optional, List
 
 
-class PasswordGeneratorInput(BaseModel):
+class PasswordGeneratorInput(BaseToolInput):
     """Input schema for password generation"""
     length: int = Field(
         default=12,
@@ -59,7 +60,7 @@ class PasswordStrengthAnalysis(BaseModel):
     feedback: List[str] = Field(description="Feedback and suggestions")
 
 
-class PasswordGeneratorOutput(BaseModel):
+class PasswordGeneratorOutput(BaseToolOutput):
     """Output schema for password generation"""
     success: bool = Field(description="Whether the generation was successful")
     passwords: List[str] = Field(description="Generated passwords")

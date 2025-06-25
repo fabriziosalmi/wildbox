@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-class IncidentResponseInput(BaseModel):
+class IncidentResponseInput(BaseToolInput):
     incident_type: str = Field(..., description="Type of incident (malware, data_breach, ddos, insider_threat, phishing)")
     severity: str = Field(..., description="Incident severity (low, medium, high, critical)")
     affected_assets: List[str] = Field(..., description="List of affected systems/assets")
@@ -42,7 +43,7 @@ class IncidentTimeline(BaseModel):
     action: str
     outcome: str
 
-class IncidentResponseOutput(BaseModel):
+class IncidentResponseOutput(BaseToolOutput):
     success: bool
     incident_id: str
     response_status: str

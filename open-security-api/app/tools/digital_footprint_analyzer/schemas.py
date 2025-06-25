@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class DigitalFootprintAnalyzerInput(BaseModel):
+class DigitalFootprintAnalyzerInput(BaseToolInput):
     """Input schema for Digital Footprint Analyzer tool"""
     target_identifier: str = Field(..., description="Target identifier (email, username, phone, domain)")
     identifier_type: str = Field(default="auto", description="Type of identifier (email, username, phone, domain, auto)")
@@ -67,7 +68,7 @@ class OSINTFinding(BaseModel):
     data_found: Dict[str, Any]
     recommendations: List[str]
 
-class DigitalFootprintAnalyzerOutput(BaseModel):
+class DigitalFootprintAnalyzerOutput(BaseToolOutput):
     """Output schema for Digital Footprint Analyzer tool"""
     target_identifier: str
     identifier_type: str

@@ -3,11 +3,12 @@ Schemas for IP Geolocation Tool
 """
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
-class IPGeolocationInput(BaseModel):
+class IPGeolocationInput(BaseToolInput):
     """Input schema for IP geolocation lookup"""
     ip_address: str = Field(
         description="IP address to geolocate",
@@ -73,7 +74,7 @@ class WHOISInfo(BaseModel):
     tech_contact: Optional[str] = Field(description="Technical contact")
 
 
-class IPGeolocationOutput(BaseModel):
+class IPGeolocationOutput(BaseToolOutput):
     """Output schema for IP geolocation lookup"""
     success: bool = Field(description="Whether the lookup was successful")
     ip_address: str = Field(description="IP address that was analyzed")

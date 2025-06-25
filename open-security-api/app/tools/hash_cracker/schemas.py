@@ -1,10 +1,11 @@
 """Pydantic schemas for the hash cracker tool."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict
 from datetime import datetime
 
-class HashCrackerInput(BaseModel):
+class HashCrackerInput(BaseToolInput):
     hash_value: str = Field(..., description="Hash value to crack", example="5d41402abc4b2a76b9719d911017c592")
     hash_type: str = Field(default="auto", description="Hash type (md5, sha1, sha256, auto)", example="md5")
     wordlist_type: str = Field(default="common", description="Wordlist type (common, rockyou, custom)", example="common")
@@ -19,7 +20,7 @@ class HashResult(BaseModel):
     attempts: int = Field(..., description="Number of attempts made")
     time_taken: float = Field(..., description="Time taken in seconds")
 
-class HashCrackerOutput(BaseModel):
+class HashCrackerOutput(BaseToolOutput):
     timestamp: datetime = Field(..., description="Analysis timestamp")
     total_hashes: int = Field(..., description="Total hashes processed")
     successful_cracks: int = Field(..., description="Number of successfully cracked hashes")

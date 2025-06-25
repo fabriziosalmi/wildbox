@@ -1,6 +1,7 @@
 """DNS enumeration tool schemas."""
 
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -26,7 +27,7 @@ class EnumerationMode(str, Enum):
     SUBDOMAIN_BRUTE = "subdomain_brute"
 
 
-class DNSEnumeratorInput(BaseModel):
+class DNSEnumeratorInput(BaseToolInput):
     """Input schema for the DNS enumeration tool."""
     
     target_domain: str = Field(
@@ -95,7 +96,7 @@ class ZoneTransferResult(BaseModel):
     error: Optional[str] = Field(None, description="Error message if failed")
 
 
-class DNSEnumeratorOutput(BaseModel):
+class DNSEnumeratorOutput(BaseToolOutput):
     """Output schema for the DNS enumeration tool."""
     
     target_domain: str = Field(..., description="Target domain that was enumerated")

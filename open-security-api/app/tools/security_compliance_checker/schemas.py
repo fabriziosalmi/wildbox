@@ -1,8 +1,9 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-class ComplianceCheckInput(BaseModel):
+class ComplianceCheckInput(BaseToolInput):
     framework: str = Field(..., description="Compliance framework (ISO27001, SOC2, PCI_DSS, GDPR, HIPAA, NIST)")
     scope: str = Field(..., description="Assessment scope (infrastructure, applications, policies, all)")
     target_systems: List[str] = Field(..., description="Target systems to assess")
@@ -41,7 +42,7 @@ class RemediationPlan(BaseModel):
     responsible_party: str
     dependencies: List[str]
 
-class SecurityComplianceOutput(BaseModel):
+class SecurityComplianceOutput(BaseToolOutput):
     success: bool
     assessment_id: str
     framework: str

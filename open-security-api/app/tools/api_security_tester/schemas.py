@@ -1,7 +1,8 @@
 from pydantic import BaseModel, Field
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
-class APISecurityTesterInput(BaseModel):
+class APISecurityTesterInput(BaseToolInput):
     """Input schema for API Security Tester tool"""
     api_base_url: str = Field(..., description="Base URL of the API to test")
     api_specification: Optional[str] = Field(None, description="OpenAPI/Swagger specification URL or content")
@@ -46,7 +47,7 @@ class SecurityTest(BaseModel):
     findings: List[str]
     recommendations: List[str]
 
-class APISecurityTesterOutput(BaseModel):
+class APISecurityTesterOutput(BaseToolOutput):
     """Output schema for API Security Tester tool"""
     api_base_url: str
     test_timestamp: str
