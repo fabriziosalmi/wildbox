@@ -18,15 +18,10 @@ RUN mkdir -p /etc/nginx/lua \
     && mkdir -p /var/cache/nginx \
     && mkdir -p /etc/ssl/wildbox
 
-# Install luarocks manually and then lua-resty-http
-RUN wget -O /tmp/luarocks.tar.gz https://luarocks.org/releases/luarocks-3.9.2.tar.gz \
-    && cd /tmp \
-    && tar zxpf luarocks.tar.gz \
-    && cd luarocks-3.9.2 \
-    && ./configure --prefix=/usr/local/openresty/luajit --with-lua=/usr/local/openresty/luajit --lua-suffix=jit --with-lua-include=/usr/local/openresty/luajit/include/luajit-2.1 \
-    && make && make install \
-    && cd / && rm -rf /tmp/luarocks* \
-    && /usr/local/openresty/luajit/bin/luarocks install lua-resty-http
+# Install lua-resty-http directly without luarocks due to manifest issues
+RUN cd /usr/local/openresty/lualib/resty \
+    && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http.lua \
+    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_headers.lua
 
 # Copy configuration files
 COPY nginx/ /etc/nginx/

@@ -333,7 +333,7 @@ class CollectionRun(Base):
     error_details = Column(JSON)
     
     # Metadata
-    metadata = Column(JSON, default=dict)
+    run_metadata = Column(JSON, default=dict)  # Renamed from metadata to avoid SQLAlchemy conflict
     
     # Indexes
     __table_args__ = (

@@ -47,6 +47,7 @@ services:
       - DEBUG=true
       - LOG_LEVEL=INFO
       - ENVIRONMENT=development
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:80,http://localhost
     networks:
       - wildbox
     healthcheck:
@@ -68,6 +69,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data
       - DEBUG=true
       - LOG_LEVEL=INFO
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:80,http://localhost
     depends_on:
       - postgres
     networks:

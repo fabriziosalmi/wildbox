@@ -60,7 +60,7 @@ class IndicatorResponse(IndicatorBase):
     expires_at: Optional[datetime] = Field(None, description="When this indicator expires")
     active: bool = Field(True, description="Whether this indicator is active")
     source_id: str = Field(..., description="Source that provided this indicator")
-    metadata: Dict[str, Any] = Field(default={}, description="Additional metadata")
+    indicator_metadata: Dict[str, Any] = Field(default={}, description="Additional metadata")
     created_at: datetime = Field(..., description="When this record was created")
     updated_at: datetime = Field(..., description="When this record was last updated")
 

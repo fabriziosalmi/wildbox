@@ -59,7 +59,9 @@ class APIConfig:
     
     # CORS
     cors_enabled: bool = os.getenv("CORS_ENABLED", "true").lower() == "true"
-    cors_origins: List[str] = field(default_factory=lambda: os.getenv("CORS_ORIGINS", "*").split(","))
+    cors_origins: List[str] = field(default_factory=lambda: [
+        origin.strip() for origin in os.getenv("CORS_ORIGINS", "*").split(",") if origin.strip()
+    ] if os.getenv("CORS_ORIGINS") else ["*"])
 
 @dataclass
 class CollectionConfig:

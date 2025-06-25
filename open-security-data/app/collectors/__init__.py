@@ -206,7 +206,7 @@ class BaseCollector(ABC):
                 existing.confidence = indicator_data.get('confidence', existing.confidence)
                 existing.severity = indicator_data.get('severity', existing.severity)
                 existing.tags = indicator_data.get('tags', existing.tags)
-                existing.metadata = indicator_data.get('metadata', existing.metadata)
+                existing.indicator_metadata = indicator_data.get('metadata', existing.indicator_metadata)
                 existing.raw_data = raw_data
                 existing.updated_at = current_time
                 
@@ -228,7 +228,7 @@ class BaseCollector(ABC):
                     severity=indicator_data.get('severity', 5),
                     description=indicator_data.get('description'),
                     tags=indicator_data.get('tags', []),
-                    metadata=indicator_data.get('metadata', {}),
+                    indicator_metadata=indicator_data.get('metadata', {}),
                     first_seen=current_time,
                     last_seen=current_time,
                     expires_at=indicator_data.get('expires_at'),
