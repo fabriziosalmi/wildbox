@@ -1,0 +1,24 @@
+# Development dependencies
+-r requirements.txt
+
+# Additional development tools
+django-debug-toolbar==4.1.0
+django-silk==5.0.3
+ipython==8.14.0
+jupyter==1.0.0
+
+# API documentation
+mkdocs==1.5.0
+mkdocs-material==9.1.21
+mkdocs-mermaid2-plugin==1.1.1
+
+# Code quality
+bandit==1.7.5
+safety==2.3.5
+vulture==2.9.1
+
+# Performance testing
+locust==2.16.1
+
+# Database tools
+pgcli==3.5.0

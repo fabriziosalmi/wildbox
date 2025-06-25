@@ -1,0 +1,113 @@
+# Open Security Guardian - Docker Compose Configuration
+
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: guardian
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: guardian_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U guardian"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  guardian:
+    build: .
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             python manage.py runserver 0.0.0.0:8002"
+    volumes:
+      - .:/app
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    ports:
+      - "8002:8002"
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-development-secret-key-change-in-production
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
+      - WILDBOX_API_URL=http://localhost:8000
+      - WILDBOX_DATA_URL=http://localhost:8001
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery:
+    build: .
+    command: celery -A guardian worker -l info
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-development-secret-key-change-in-production
+    depends_on:
+      - db
+      - redis
+      - guardian
+
+  celery-beat:
+    build: .
+    command: celery -A guardian beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-development-secret-key-change-in-production
+    depends_on:
+      - db
+      - redis
+      - guardian
+
+  flower:
+    build: .
+    command: celery -A guardian flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - DEBUG=true
+      - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=your-development-secret-key-change-in-production
+    depends_on:
+      - redis
+      - celery
+
+volumes:
+  postgres_data:
+  redis_data:
+  media_data:
+  static_data:
+
+networks:
+  default:
+    name: wildbox-network
+    external: false
