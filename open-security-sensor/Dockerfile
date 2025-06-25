@@ -15,7 +15,9 @@ RUN apt-get update && apt-get install -y \
 # Install osquery
 RUN curl -L https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_amd64.deb -o osquery.deb \
     && dpkg -i osquery.deb || apt-get install -f -y \
-    && rm osquery.deb
+    && rm osquery.deb \
+    && ln -sf /usr/bin/osqueryd /usr/local/bin/osqueryd \
+    && ln -sf /usr/bin/osqueryi /usr/local/bin/osqueryi
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
@@ -53,6 +55,7 @@ USER sensor
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV SENSOR_LOGGING_LEVEL=INFO
+ENV PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
 
 # Run the sensor
 CMD ["python", "main.py", "--config", "/etc/security-sensor/config.yaml"]
