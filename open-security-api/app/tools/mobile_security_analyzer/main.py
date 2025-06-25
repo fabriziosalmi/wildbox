@@ -36,7 +36,7 @@ except ImportError:
         parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
         return ET.fromstring(text, parser)
 
-from .schemas import (
+from schemas import (
     MobileSecurityAnalyzerInput,
     MobileSecurityAnalyzerOutput,
     SecurityVulnerability,

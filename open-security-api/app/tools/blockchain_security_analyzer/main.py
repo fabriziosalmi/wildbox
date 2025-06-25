@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 
 try:
-    from .schemas import (
+    from schemas import (
         BlockchainSecurityAnalyzerInput, 
         BlockchainSecurityAnalyzerOutput, 
         SecurityVulnerability, 

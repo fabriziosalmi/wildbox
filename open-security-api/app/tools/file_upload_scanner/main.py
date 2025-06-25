@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 from typing import List, Dict, Tuple
 try:
-    from .schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
+    from schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
 except ImportError:
     from schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
 

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 
 try:
-    from .schemas import CookieScannerInput, CookieScannerOutput
+    from schemas import CookieScannerInput, CookieScannerOutput
 except ImportError:
     from app.tools.cookie_scanner.schemas import CookieScannerInput, CookieScannerOutput
 

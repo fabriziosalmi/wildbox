@@ -4,7 +4,7 @@ import random
 from datetime import datetime, timedelta
 
 try:
-    from .schemas import (
+    from schemas import (
         ComplianceCheckerInput, 
         ComplianceCheckerOutput,
         ComplianceRequirement,

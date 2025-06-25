@@ -14,7 +14,7 @@ from email.parser import HeaderParser
 from email import policy
 
 try:
-    from .schemas import (
+    from schemas import (
         EmailSecurityInput, EmailSecurityOutput, SPFAnalysis, DKIMAnalysis,
         DMARCAnalysis, EmailRouting, ReputationAnalysis, PhishingIndicators
     )

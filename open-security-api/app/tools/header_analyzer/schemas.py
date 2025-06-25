@@ -5,7 +5,7 @@ Pydantic models for HTTP header security analysis requests and responses.
 """
 
 from pydantic import BaseModel, Field, HttpUrl
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 
 

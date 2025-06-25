@@ -15,7 +15,7 @@ import time
 import re
 
 try:
-    from .schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
+    from schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 except ImportError:
     from schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 

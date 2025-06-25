@@ -9,7 +9,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 try:
-    from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
+    from schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 except ImportError:
     from schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 

@@ -7,7 +7,7 @@ import os
 from datetime import datetime, timedelta
 
 try:
-    from .schemas import (
+    from schemas import (
         AutomationWorkflowInput,
         SecurityAutomationOutput,
         WorkflowStep,

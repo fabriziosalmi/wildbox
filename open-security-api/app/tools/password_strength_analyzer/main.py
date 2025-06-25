@@ -15,7 +15,7 @@ from datetime import datetime
 import hashlib
 
 try:
-    from .schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
+    from schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
 except ImportError:
     from schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
 

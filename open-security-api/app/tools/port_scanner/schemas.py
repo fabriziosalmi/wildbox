@@ -1,4 +1,4 @@
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 """Pydantic schemas for the port scanner tool - STANDARDIZED VERSION."""
 
 from pydantic import Field

@@ -9,7 +9,7 @@ import os
 from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 try:
-    from .schemas import JWTAnalyzerInput, JWTAnalyzerOutput, JWTVulnerability, JWTClaim
+    from schemas import JWTAnalyzerInput, JWTAnalyzerOutput, JWTVulnerability, JWTClaim
 except ImportError:
     from schemas import JWTAnalyzerInput, JWTAnalyzerOutput, JWTVulnerability, JWTClaim
 

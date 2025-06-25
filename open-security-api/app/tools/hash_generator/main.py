@@ -15,7 +15,7 @@ from datetime import datetime
 import hmac
 
 try:
-    from .schemas import HashGeneratorInput, HashGeneratorOutput, HashResult, HashAnalysis
+    from schemas import HashGeneratorInput, HashGeneratorOutput, HashResult, HashAnalysis
 except ImportError:
     from schemas import HashGeneratorInput, HashGeneratorOutput, HashResult, HashAnalysis
 

@@ -34,7 +34,7 @@ except ImportError:
         DEFAULT_RATE_WINDOW = 60
 
 try:
-    from .schemas import (
+    from schemas import (
         URLSecurityInput, URLSecurityOutput, URLComponents, SecurityAnalysis,
         RedirectAnalysis, ReputationAnalysis
     )

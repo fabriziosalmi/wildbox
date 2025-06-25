@@ -28,7 +28,7 @@ from app.utils.tool_utils import (
 # from app.config.tool_config import ToolConfig, SecurityConfig
 
 try:
-    from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
+    from schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 except ImportError:
     from schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 

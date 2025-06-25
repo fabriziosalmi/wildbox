@@ -5,7 +5,7 @@ import socket
 from datetime import datetime, timezone
 from typing import List, Dict
 try:
-    from .schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
+    from schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
 except ImportError:
     from schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
 

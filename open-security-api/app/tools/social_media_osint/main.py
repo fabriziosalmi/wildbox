@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 
-from .schemas import SocialMediaOSINTInput, SocialMediaOSINTOutput
+from schemas import SocialMediaOSINTInput, SocialMediaOSINTOutput
 
 logger = logging.getLogger(__name__)
 

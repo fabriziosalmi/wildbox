@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 
 
 class CTLogScannerInput(BaseToolInput):

@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from typing import List, Optional
 try:
-    from .schemas import HashCrackerInput, HashCrackerOutput, HashResult
+    from schemas import HashCrackerInput, HashCrackerOutput, HashResult
 except ImportError:
     from schemas import HashCrackerInput, HashCrackerOutput, HashResult
 

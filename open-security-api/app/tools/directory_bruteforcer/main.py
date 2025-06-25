@@ -27,7 +27,7 @@ except ImportError:
         DEFAULT_RATE_WINDOW = 60
 
 try:
-    from .schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
+    from schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
 except ImportError:
     from schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
 

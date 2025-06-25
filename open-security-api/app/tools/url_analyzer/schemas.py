@@ -3,7 +3,7 @@ Schemas for URL Shortener Analyzer Tool
 """
 
 from pydantic import BaseModel, Field, HttpUrl
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 

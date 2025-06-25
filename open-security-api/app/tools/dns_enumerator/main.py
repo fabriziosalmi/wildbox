@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 import logging
 
 try:
-    from .schemas import (
+    from schemas import (
         DNSEnumeratorInput, DNSEnumeratorOutput, DNSRecord, SubdomainInfo,
         ZoneTransferResult, RecordType, EnumerationMode
     )

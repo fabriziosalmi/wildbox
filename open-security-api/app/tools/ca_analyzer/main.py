@@ -20,7 +20,7 @@ except ImportError:
     CRYPTO_AVAILABLE = False
 
 try:
-    from .schemas import (
+    from schemas import (
         CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
         RevocationStatus, SecurityAnalysis
     )

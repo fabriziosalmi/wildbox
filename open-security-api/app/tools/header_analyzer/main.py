@@ -32,7 +32,7 @@ except ImportError:
         DEFAULT_RATE_WINDOW = 60
 
 try:
-    from .schemas import HeaderAnalyzerInput, HeaderAnalyzerOutput
+    from schemas import HeaderAnalyzerInput, HeaderAnalyzerOutput
 except ImportError:
     from schemas import HeaderAnalyzerInput, HeaderAnalyzerOutput
 

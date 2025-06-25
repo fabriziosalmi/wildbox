@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 
 try:
-    from .schemas import (
+    from schemas import (
         ContainerSecurityScannerInput, 
         ContainerSecurityScannerOutput,
         Vulnerability,

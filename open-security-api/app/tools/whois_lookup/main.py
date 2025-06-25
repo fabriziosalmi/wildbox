@@ -6,7 +6,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
 try:
-    from .schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
+    from schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
 except ImportError:
     from schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
 

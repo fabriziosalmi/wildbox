@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Union
 from datetime import datetime
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 
 class CryptoStrengthAnalyzerInput(BaseToolInput):
     """Input schema for Crypto Strength Analyzer tool"""

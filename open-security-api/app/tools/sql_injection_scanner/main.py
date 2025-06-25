@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
 try:
-    from .schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
+    from schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 except ImportError:
     from schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 

@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional, Tuple
 import re
 
 try:
-    from .schemas import (
+    from schemas import (
         JWTDecoderInput, JWTDecoderOutput, JWTHeader, JWTPayload, 
         JWTSecurityAnalysis
     )

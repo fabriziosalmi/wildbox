@@ -66,9 +66,18 @@ def discover_tools() -> Dict[str, Any]:
             continue
         
         try:
-            # Import the tool's schemas module first
+            # Import the standardized_schemas module first
+            standardized_schemas_path = Path(__file__).parent / "standardized_schemas.py"
+            standardized_spec = importlib.util.spec_from_file_location("standardized_schemas", standardized_schemas_path)
+            standardized_module = importlib.util.module_from_spec(standardized_spec)
+            standardized_spec.loader.exec_module(standardized_module)
+            
+            # Import the tool's schemas module with standardized_schemas available
             schemas_spec = importlib.util.spec_from_file_location(f"{tool_name}.schemas", schemas_file)
             schemas_module = importlib.util.module_from_spec(schemas_spec)
+            
+            # Add standardized_schemas to sys.modules temporarily so schemas.py can import it
+            sys.modules['standardized_schemas'] = standardized_module
             
             # Add the tool directory to sys.path temporarily for schemas
             sys.path.insert(0, str(tool_dir))
@@ -76,6 +85,9 @@ def discover_tools() -> Dict[str, Any]:
                 schemas_spec.loader.exec_module(schemas_module)
             finally:
                 sys.path.remove(str(tool_dir))
+                # Clean up the temporary standardized_schemas module from sys.modules
+                if 'standardized_schemas' in sys.modules:
+                    del sys.modules['standardized_schemas']
             
             # Import the tool's main module
             spec = importlib.util.spec_from_file_location(f"{tool_name}.main", main_file)

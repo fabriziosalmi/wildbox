@@ -1,7 +1,7 @@
 """Pydantic schemas for the HTTP Security Headers Scanner."""
 
 from pydantic import BaseModel, Field, HttpUrl
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 

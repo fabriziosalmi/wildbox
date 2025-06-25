@@ -7,7 +7,7 @@ import json
 import random
 import hashlib
 
-from .schemas import CTLogScannerInput, CTLogScannerOutput, CertificateInfo
+from schemas import CTLogScannerInput, CTLogScannerOutput, CertificateInfo
 
 logger = logging.getLogger(__name__)
 

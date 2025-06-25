@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 logger = logging.getLogger(__name__)
 
 try:
-    from .schemas import (
+    from schemas import (
         DatabaseSecurityAnalyzerInput, 
         DatabaseSecurityAnalyzerOutput,
         DatabaseUser,

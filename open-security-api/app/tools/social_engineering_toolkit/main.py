@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import json
 
-from .schemas import SocialEngineeringToolkitInput, SocialEngineeringToolkitOutput
+from schemas import SocialEngineeringToolkitInput, SocialEngineeringToolkitOutput
 
 logger = logging.getLogger(__name__)
 

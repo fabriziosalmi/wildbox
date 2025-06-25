@@ -10,7 +10,7 @@ from urllib.parse import urlparse, urljoin
 import ssl
 import socket
 
-from .schemas import (
+from schemas import (
     DigitalFootprintAnalyzerInput,
     DigitalFootprintAnalyzerOutput,
     SocialMediaProfile,

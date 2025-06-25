@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta
 
 try:
-    from .schemas import (
+    from schemas import (
         ThreatHuntingInput, 
         ThreatHuntingOutput,
         ThreatIndicator,

@@ -10,7 +10,7 @@ import logging
 import re
 
 try:
-    from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
+    from schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 except ImportError:
     from schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 

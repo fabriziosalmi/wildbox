@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 

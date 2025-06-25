@@ -23,7 +23,7 @@ except ImportError:
         parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
         return ET.fromstring(text, parser)
 
-from .schemas import SAMLAnalyzerInput, SAMLAnalyzerOutput, SAMLFinding
+from schemas import SAMLAnalyzerInput, SAMLAnalyzerOutput, SAMLFinding
 
 # Tool metadata
 TOOL_INFO = {

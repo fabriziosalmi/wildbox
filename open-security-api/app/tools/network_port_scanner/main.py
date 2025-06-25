@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import random
 
 try:
-    from .schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
+    from schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
 except ImportError:
     from schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
 

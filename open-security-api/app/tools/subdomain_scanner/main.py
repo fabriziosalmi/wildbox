@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import List
 try:
-    from .schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
+    from schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
 except ImportError:
     from schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
 

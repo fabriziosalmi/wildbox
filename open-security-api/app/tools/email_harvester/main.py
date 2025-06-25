@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import List, Set, Dict
 from urllib.parse import quote_plus, urljoin
 try:
-    from .schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
+    from schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
 except ImportError:
     from schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
 

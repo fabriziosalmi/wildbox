@@ -7,7 +7,7 @@ import binascii
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Union
 from collections import Counter
-from .schemas import (
+from schemas import (
     CryptoAnalysisRequest, CryptoStrengthResponse, AlgorithmAnalysis,
     KeyAnalysis, ImplementationAnalysis, RandomnessAnalysis
 )

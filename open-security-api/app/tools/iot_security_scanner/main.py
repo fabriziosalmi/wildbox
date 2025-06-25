@@ -10,7 +10,7 @@ import json
 logger = logging.getLogger(__name__)
 
 try:
-    from .schemas import (
+    from schemas import (
         IoTSecurityScannerInput, 
         IoTSecurityScannerOutput, 
         IoTDevice, 

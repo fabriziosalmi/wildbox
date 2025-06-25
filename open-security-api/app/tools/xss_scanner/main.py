@@ -29,7 +29,7 @@ except ImportError:
         DEFAULT_RATE_WINDOW = 60
 
 try:
-    from .schemas import XSSScannerInput, XSSScannerOutput, XSSResult
+    from schemas import XSSScannerInput, XSSScannerOutput, XSSResult
 except ImportError:
     from schemas import XSSScannerInput, XSSScannerOutput, XSSResult
 

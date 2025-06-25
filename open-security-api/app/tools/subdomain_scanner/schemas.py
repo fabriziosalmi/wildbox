@@ -1,7 +1,7 @@
 """Pydantic schemas for the subdomain scanner tool."""
 
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional
 from datetime import datetime
 

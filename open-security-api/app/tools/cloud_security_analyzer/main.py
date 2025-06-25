@@ -9,7 +9,7 @@ import aiohttp
 # Configure logging
 logger = logging.getLogger(__name__)
 
-from .schemas import (
+from schemas import (
     CloudSecurityAnalyzerInput,
     CloudSecurityAnalyzerOutput,
     CloudMisconfiguration,

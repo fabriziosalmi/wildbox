@@ -34,7 +34,7 @@ except ImportError:
         DEFAULT_RATE_WINDOW = 60
 
 try:
-    from .schemas import IPGeolocationInput, IPGeolocationOutput, GeolocationData, ISPInfo, ThreatIntel, WHOISInfo
+    from schemas import IPGeolocationInput, IPGeolocationOutput, GeolocationData, ISPInfo, ThreatIntel, WHOISInfo
 except ImportError:
     from schemas import IPGeolocationInput, IPGeolocationOutput, GeolocationData, ISPInfo, ThreatIntel, WHOISInfo
 
