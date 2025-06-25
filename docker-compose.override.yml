@@ -38,7 +38,7 @@ services:
     build:
       context: ./open-security-dashboard
       dockerfile: Dockerfile.dev
-    container_name: open-security-dashboard-dev
+    container_name: open-security-dashboard
     restart: unless-stopped
     ports:
       - "3000:3000"

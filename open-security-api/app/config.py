@@ -2,7 +2,7 @@
 
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator, SecretStr
-from typing import Optional, List
+from typing import Optional, List, Union
 import secrets
 import os
 
@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     log_format: str = Field(default="json", description="Log format: json or text")
     
     # CORS settings
-    cors_origins: List[str] = Field(default=["*"], description="Allowed CORS origins")
+    cors_origins: Union[List[str], str] = Field(default=["*"], description="Allowed CORS origins")
     cors_allow_credentials: bool = Field(default=True, description="Allow CORS credentials")
     
     # Rate limiting
