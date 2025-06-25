@@ -1,0 +1,77 @@
+# Open Security Agents - Docker Compose Configuration
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6382:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  agents-api:
+    build: .
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    ports:
+      - "8004:8004"
+    environment:
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - WILDBOX_API_URL=http://localhost:8000
+      - WILDBOX_DATA_URL=http://localhost:8001
+      - WILDBOX_GUARDIAN_URL=http://localhost:8002
+      - WILDBOX_RESPONDER_URL=http://localhost:8003
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  celery-worker:
+    build: .
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    volumes:
+      - .:/app
+      - ./logs:/app/logs
+    environment:
+      - DEBUG=true
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - WILDBOX_API_URL=http://localhost:8000
+      - WILDBOX_DATA_URL=http://localhost:8001
+      - WILDBOX_GUARDIAN_URL=http://localhost:8002
+      - WILDBOX_RESPONDER_URL=http://localhost:8003
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    depends_on:
+      - redis
+      - agents-api
+
+  celery-flower:
+    build: .
+    command: celery -A app.worker flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    depends_on:
+      - redis
+      - celery-worker
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    name: wildbox-network
