@@ -43,7 +43,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_KEY=wildbox-api-key-for-integration-testing-2025-secure
+      - API_KEY=wbx-6f8a9d2c-4e7b-1a3f-9c8e-2d5a6b4c8e9f-2025-prod
       - DEBUG=true
       - LOG_LEVEL=INFO
       - ENVIRONMENT=development
@@ -107,6 +107,13 @@ services:
     depends_on:
       - gateway-redis
       - identity
+      - data
+      - guardian
+      - responder
+      - agents
+      - cspm
+      - sensor
+      - automations
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -207,10 +214,13 @@ services:
     ports:
       - "8003:8003"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/guardian
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/guardian
       - REDIS_URL=redis://guardian-redis:6379/0
       - DEBUG=true
       - LOG_LEVEL=INFO
+      - LOG_FILE=/app/logs/guardian.log
+    volumes:
+      - guardian_logs:/app/logs
     depends_on:
       - postgres
       - guardian-redis
@@ -328,6 +338,7 @@ services:
     ports:
       - "8006:8006"
     environment:
+      - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
       - REDIS_URL=redis://agents-redis:6379/0
       - DEBUG=true
       - LOG_LEVEL=INFO
@@ -372,7 +383,7 @@ services:
       - DEBUG=true
       - LOG_LEVEL=INFO
     volumes:
-      - ./open-security-sensor/config.yaml:/etc/security-sensor/config.yaml:ro
+      - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor
       - sensor_data:/var/lib/security-sensor
       # Host monitoring (required for system telemetry)
@@ -425,6 +436,7 @@ volumes:
   identity_redis_data:
   gateway_redis_data:
   guardian_redis_data:
+  guardian_logs:
   responder_redis_data:
   cspm_redis_data:
   agents_redis_data:

@@ -375,3 +375,18 @@ class BatchStatusResponse(BaseModel):
     running_scans: int
     scan_statuses: List[BatchScanStatusSchema]
     started_at: datetime
+
+
+class DashboardSummaryResponse(BaseModel):
+    """Dashboard summary response."""
+    total_scans: int = Field(..., description="Total number of scans")
+    active_scans: int = Field(..., description="Number of active scans")
+    failed_scans: int = Field(..., description="Number of failed scans")
+    completed_scans: int = Field(..., description="Number of completed scans")
+    total_findings: int = Field(..., description="Total security findings")
+    critical_findings: int = Field(..., description="Critical severity findings")
+    high_findings: int = Field(..., description="High severity findings")
+    medium_findings: int = Field(..., description="Medium severity findings")
+    low_findings: int = Field(..., description="Low severity findings")
+    compliance_score: float = Field(..., description="Overall compliance score")
+    last_scan_at: Optional[datetime] = Field(None, description="Last scan timestamp")
