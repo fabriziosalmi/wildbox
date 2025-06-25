@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 import time
+from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.staticfiles import StaticFiles
@@ -338,6 +339,88 @@ def create_app() -> FastAPI:
             "docs": "/docs",
             "tools": f"/api/tools",
             "available_tools": list(discovered_tools.keys())
+        }
+    
+    @app.get("/api/system/health-aggregate", tags=["System"])
+    async def system_health_aggregate():
+        """Get aggregated health metrics from all services."""
+        import httpx
+        
+        services = {
+            "identity": settings.identity_service_url or "http://open-security-identity:8001",
+            "data": settings.data_service_url or "http://open-security-data:8002", 
+            "guardian": settings.guardian_service_url or "http://open-security-guardian:8003",
+            "sensor": settings.sensor_service_url or "http://open-security-sensor:8004",
+            "responder": settings.responder_service_url or "http://open-security-responder:8005",
+            "agents": settings.agents_service_url or "http://open-security-agents:8006",
+            "cspm": settings.cspm_service_url or "http://open-security-cspm:8007"
+        }
+        
+        health_status = {
+            "api": {
+                "status": "operational",
+                "uptime": time.time() - startup_time,
+                "response_time": 0,  # Will be calculated
+                "version": "1.0.0"
+            }
+        }
+        
+        total_services = len(services) + 1  # +1 for API itself
+        operational_services = 1  # API is operational
+        total_response_time = 0
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            for service_name, service_url in services.items():
+                try:
+                    start_time = time.time()
+                    response = await client.get(f"{service_url}/health")
+                    response_time = (time.time() - start_time) * 1000
+                    
+                    if response.status_code == 200:
+                        health_status[service_name] = {
+                            "status": "operational",
+                            "response_time": response_time,
+                            "data": response.json()
+                        }
+                        operational_services += 1
+                        total_response_time += response_time
+                    else:
+                        health_status[service_name] = {
+                            "status": "degraded",
+                            "response_time": response_time,
+                            "error": f"HTTP {response.status_code}"
+                        }
+                        total_response_time += response_time
+                        
+                except Exception as e:
+                    health_status[service_name] = {
+                        "status": "down",
+                        "error": str(e)
+                    }
+        
+        # Calculate aggregate metrics
+        uptime_percentage = (operational_services / total_services) * 100
+        avg_response_time = total_response_time / total_services if total_services > 0 else 0
+        error_rate = ((total_services - operational_services) / total_services) * 100
+        
+        overall_status = "operational"
+        if uptime_percentage < 50:
+            overall_status = "down"
+        elif uptime_percentage < 90:
+            overall_status = "degraded"
+            
+        return {
+            "status": overall_status,
+            "uptime_percentage": round(uptime_percentage, 2),
+            "avg_response_time": round(avg_response_time, 0),
+            "error_rate": round(error_rate, 2),
+            "services": health_status,
+            "summary": {
+                "total_services": total_services,
+                "operational_services": operational_services,
+                "degraded_services": total_services - operational_services,
+                "timestamp": datetime.now().isoformat()
+            }
         }
     
     return app

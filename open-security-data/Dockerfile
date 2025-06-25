@@ -24,8 +24,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app/ ./app/
-COPY config/ ./config/
-COPY scripts/ ./scripts/
+COPY manage.py ./
+
+# Copy config and scripts if they exist
+COPY README.md QUICKSTART.md ./
 
 # Create necessary directories
 RUN mkdir -p /app/data /app/logs

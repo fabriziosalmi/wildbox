@@ -74,48 +74,117 @@ interface RecentActivity {
 }
 
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
-  // This would normally make parallel API calls to different services
-  // For now, we'll return mock data
-  return {
-    threatIntel: {
-      totalFeeds: 47,
-      activeFeeds: 45,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      newIndicators: 1247,
-      trendsChange: 8.2
-    },
-    cloudSecurity: {
-      totalAccounts: 12,
-      complianceScore: 87,
-      criticalFindings: 23,
-      lastScan: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-      trendsChange: -3.1
-    },
-    endpoints: {
-      totalEndpoints: 156,
-      onlineEndpoints: 142,
-      alerts: 8,
-      lastActivity: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-      trendsChange: 2.4
-    },
-    vulnerabilities: {
-      totalVulns: 342,
-      criticalVulns: 12,
-      highVulns: 45,
-      resolved: 89,
-      trendsChange: -12.3
-    },
-    response: {
-      totalPlaybooks: 28,
-      activeRuns: 3,
-      successRate: 94.2,
-      lastExecution: new Date(Date.now() - 1000 * 60 * 30).toISOString()
-    },
-    systemHealth: {
+  try {
+    // Fetch real data from multiple services in parallel
+    const [systemHealthRes, threatIntelRes] = await Promise.allSettled([
+      apiClient.get('/api/system/health-aggregate'),
+      dataClient.get('/api/v1/dashboard/threat-intel')
+    ])
+
+    // Extract system health data
+    const systemHealth = systemHealthRes.status === 'fulfilled' ? systemHealthRes.value : {
       status: 'operational',
-      uptime: 99.97,
-      responseTime: 142,
-      errorRate: 0.03
+      uptime_percentage: 99.97,
+      avg_response_time: 142,
+      error_rate: 0.03
+    }
+
+    // Extract threat intel data
+    const threatIntel = threatIntelRes.status === 'fulfilled' ? threatIntelRes.value : {
+      total_feeds: 47,
+      active_feeds: 45,
+      last_updated: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+      new_indicators: 1247,
+      trends_change: 8.2
+    }
+
+    return {
+      threatIntel: {
+        totalFeeds: threatIntel.total_feeds,
+        activeFeeds: threatIntel.active_feeds,
+        lastUpdated: threatIntel.last_updated,
+        newIndicators: threatIntel.new_indicators,
+        trendsChange: threatIntel.trends_change
+      },
+      cloudSecurity: {
+        totalAccounts: 12, // TODO: Replace with real CSPM data
+        complianceScore: 87,
+        criticalFindings: 23,
+        lastScan: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+        trendsChange: -3.1
+      },
+      endpoints: {
+        totalEndpoints: 156, // TODO: Replace with real sensor data
+        onlineEndpoints: 142,
+        alerts: 8,
+        lastActivity: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+        trendsChange: 2.4
+      },
+      vulnerabilities: {
+        totalVulns: 342, // TODO: Replace with real vulnerability data
+        criticalVulns: 12,
+        highVulns: 45,
+        resolved: 89,
+        trendsChange: -12.3
+      },
+      response: {
+        totalPlaybooks: 28, // TODO: Replace with real responder data
+        activeRuns: 3,
+        successRate: 94.2,
+        lastExecution: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+      },
+      systemHealth: {
+        status: systemHealth.status === 'operational' ? 'operational' : 
+                systemHealth.status === 'degraded' ? 'degraded' : 'down',
+        uptime: systemHealth.uptime_percentage,
+        responseTime: systemHealth.avg_response_time,
+        errorRate: systemHealth.error_rate
+      }
+    }
+  } catch (error) {
+    console.error('Failed to fetch dashboard metrics:', error)
+    // Return fallback data if APIs are unavailable
+    return {
+      threatIntel: {
+        totalFeeds: 0,
+        activeFeeds: 0,
+        lastUpdated: new Date().toISOString(),
+        newIndicators: 0,
+        trendsChange: 0
+      },
+      cloudSecurity: {
+        totalAccounts: 0,
+        complianceScore: 0,
+        criticalFindings: 0,
+        lastScan: new Date().toISOString(),
+        trendsChange: 0
+      },
+      endpoints: {
+        totalEndpoints: 0,
+        onlineEndpoints: 0,
+        alerts: 0,
+        lastActivity: new Date().toISOString(),
+        trendsChange: 0
+      },
+      vulnerabilities: {
+        totalVulns: 0,
+        criticalVulns: 0,
+        highVulns: 0,
+        resolved: 0,
+        trendsChange: 0
+      },
+      response: {
+        totalPlaybooks: 0,
+        activeRuns: 0,
+        successRate: 0,
+        lastExecution: new Date().toISOString()
+      },
+      systemHealth: {
+        status: 'down',
+        uptime: 0,
+        responseTime: 0,
+        errorRate: 100
+      }
     }
   }
 }

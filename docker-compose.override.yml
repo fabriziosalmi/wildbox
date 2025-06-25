@@ -1,0 +1,83 @@
+# Docker Compose Override for Development Integration
+# Extends the main docker-compose.yml with development-specific settings
+
+services:
+  # API Service with development integration settings  
+  api:
+    environment:
+      # Enable CORS for development (comma-separated string)
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
+      - CORS_ALLOW_CREDENTIALS=true
+      # Service URLs for health aggregation
+      - IDENTITY_SERVICE_URL=http://open-security-identity:8001
+      - DATA_SERVICE_URL=http://open-security-data:8002
+      - GUARDIAN_SERVICE_URL=http://open-security-guardian:8003
+      - SENSOR_SERVICE_URL=http://open-security-sensor:8004
+      - RESPONDER_SERVICE_URL=http://open-security-responder:8005
+      - AGENTS_SERVICE_URL=http://open-security-agents:8006
+      - CSPM_SERVICE_URL=http://open-security-cspm:8007
+      # Development settings
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      # Mount source for hot reload
+      - ./open-security-api/app:/app/app:ro
+
+  # Data Service with development CORS
+  data:
+    environment:
+      - CORS_ENABLED=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    volumes:
+      - ./open-security-data/app:/app/app:ro
+
+  # Dashboard with development settings (if running in Docker)
+  dashboard:
+    build:
+      context: ./open-security-dashboard
+      dockerfile: Dockerfile.dev
+    container_name: open-security-dashboard-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+      - "3001:3001"  # For Next.js HMR
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_BASE_URL=http://open-security-api:8000
+      - NEXT_PUBLIC_DATA_API_URL=http://open-security-data:8002
+      - NEXT_PUBLIC_IDENTITY_API_URL=http://open-security-identity:8001
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://open-security-guardian:8003
+      - NEXT_PUBLIC_SENSOR_API_URL=http://open-security-sensor:8004
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://open-security-responder:8005
+      - NEXT_PUBLIC_AGENTS_API_URL=http://open-security-agents:8006
+      - NEXTAUTH_SECRET=wildbox-dev-secret
+      - NEXTAUTH_URL=http://localhost:3000
+    volumes:
+      - ./open-security-dashboard:/app:cached
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - wildbox
+    depends_on:
+      - api
+      - data
+      - identity
+    command: npm run dev
+
+  # Development tools container
+  integration-tester:
+    image: curlimages/curl:latest
+    container_name: wildbox-integration-tester
+    networks:
+      - wildbox
+    volumes:
+      - ./test_integration.sh:/test_integration.sh:ro
+    command: tail -f /dev/null  # Keep running for manual testing
+    profiles:
+      - tools  # Only start with --profile tools
+
+networks:
+  wildbox:
+    external: false

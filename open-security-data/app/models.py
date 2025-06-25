@@ -122,7 +122,7 @@ class Indicator(Base):
     # Metadata
     description = Column(Text)
     tags = Column(JSON, default=list)
-    metadata = Column(JSON, default=dict)
+    indicator_metadata = Column(JSON, default=dict)  # Renamed from metadata to avoid SQLAlchemy conflict
     
     # Temporal information
     first_seen = Column(DateTime(timezone=True), nullable=False,

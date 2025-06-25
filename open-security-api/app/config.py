@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     # Tool discovery
     tools_directory: str = Field(default="app/tools", description="Directory containing security tools")
     auto_reload_tools: bool = Field(default=True, description="Auto-reload tools on changes")
+    
+    # Service URLs for health aggregation
+    identity_service_url: Optional[str] = Field(default=None, description="Identity service URL")
+    data_service_url: Optional[str] = Field(default=None, description="Data service URL") 
+    guardian_service_url: Optional[str] = Field(default=None, description="Guardian service URL")
+    sensor_service_url: Optional[str] = Field(default=None, description="Sensor service URL")
+    responder_service_url: Optional[str] = Field(default=None, description="Responder service URL")
+    agents_service_url: Optional[str] = Field(default=None, description="Agents service URL")
+    cspm_service_url: Optional[str] = Field(default=None, description="CSPM service URL")
 
     @validator('log_level')
     def validate_log_level(cls, v):
@@ -98,8 +107,13 @@ class Settings(BaseSettings):
     @validator('cors_origins')
     def validate_cors_origins(cls, v):
         if isinstance(v, str):
+            # Handle comma-separated string from environment variables
+            if ',' in v:
+                return [origin.strip() for origin in v.split(',') if origin.strip()]
             return [v] if v else ["*"]
-        return v or ["*"]
+        if isinstance(v, list):
+            return v if v else ["*"]
+        return ["*"]
     
     @validator('tools_directory')
     def validate_tools_directory(cls, v):
