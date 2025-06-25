@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import json
 
-from schemas import SocialEngToolkitRequest, SocialEngToolkitResponse
+from .schemas import SocialEngineeringToolkitInput, SocialEngineeringToolkitOutput
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,7 @@ def generate_recommendations(risk_score: int, email_analysis: Optional[Dict],
     return recommendations
 
 
-async def execute_tool(request: SocialEngToolkitRequest) -> SocialEngToolkitResponse:
+async def execute_tool(request: SocialEngineeringToolkitInput) -> SocialEngineeringToolkitOutput:
     """Execute social engineering toolkit analysis."""
     try:
         logger.info(f"Starting social engineering analysis for target: {request.target}")
@@ -425,7 +425,7 @@ async def execute_tool(request: SocialEngToolkitRequest) -> SocialEngToolkitResp
             risk_score, email_analysis, phone_analysis, breach_data
         )
         
-        return SocialEngToolkitResponse(
+        return SocialEngineeringToolkitOutput(
             target=request.target,
             analysis_type=request.analysis_type,
             email_analysis=email_analysis,
@@ -442,7 +442,7 @@ async def execute_tool(request: SocialEngToolkitRequest) -> SocialEngToolkitResp
         
     except Exception as e:
         logger.error(f"Error in social engineering toolkit: {str(e)}")
-        return SocialEngToolkitResponse(
+        return SocialEngineeringToolkitOutput(
             target=request.target,
             analysis_type=request.analysis_type,
             risk_score=0,

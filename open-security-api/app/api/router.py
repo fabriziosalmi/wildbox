@@ -3,10 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
 from app.auth import verify_api_key
-from app.execution_manager import execution_manager
+from app.secure_execution_manager import SecureExecutionManager
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+# Initialize the secure execution manager
+secure_execution_manager = SecureExecutionManager()
 
 # Create the main API router
 router = APIRouter(prefix="/api", tags=["Security Tools"])
@@ -151,8 +154,8 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         })
         
         try:
-            # Execute tool with the execution manager
-            execution_result = await execution_manager.execute_tool(
+            # Execute tool with the secure execution manager
+            execution_result = await secure_execution_manager.execute_tool(
                 tool_func=execute_func,
                 input_data=validated_input,
                 tool_name=tool_name,

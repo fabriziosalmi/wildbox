@@ -7,7 +7,7 @@ import json
 import random
 import hashlib
 
-from schemas import CTLogScannerRequest, CTLogScannerResponse, CertificateInfo
+from .schemas import CTLogScannerInput, CTLogScannerOutput, CertificateInfo
 
 logger = logging.getLogger(__name__)
 
@@ -461,7 +461,7 @@ def generate_recommendations(certificates: List[CertificateInfo],
     return recommendations
 
 
-async def execute_tool(request: CTLogScannerRequest) -> CTLogScannerResponse:
+async def execute_tool(request: CTLogScannerInput) -> CTLogScannerOutput:
     """Execute Certificate Transparency log scanning."""
     try:
         logger.info(f"Starting CT log scan for domain: {request.domain}")
@@ -500,7 +500,7 @@ async def execute_tool(request: CTLogScannerRequest) -> CTLogScannerResponse:
         # Generate recommendations
         recommendations = generate_recommendations(certificates, suspicious_patterns, security_insights)
         
-        return CTLogScannerResponse(
+        return CTLogScannerOutput(
             domain=request.domain,
             certificates_found=certificates,
             subdomain_analysis=subdomain_analysis,
@@ -517,7 +517,7 @@ async def execute_tool(request: CTLogScannerRequest) -> CTLogScannerResponse:
         
     except Exception as e:
         logger.error(f"Error in CT log scanner: {str(e)}")
-        return CTLogScannerResponse(
+        return CTLogScannerOutput(
             domain=request.domain,
             certificates_found=[],
             subdomain_analysis={},

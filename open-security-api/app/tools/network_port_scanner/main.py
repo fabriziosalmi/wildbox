@@ -8,9 +8,9 @@ from typing import Dict, Any, List, Optional, Tuple
 import random
 
 try:
-    from .schemas import PortScannerRequest, PortScannerResponse, PortInfo
+    from .schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
 except ImportError:
-    from schemas import PortScannerRequest, PortScannerResponse, PortInfo
+    from schemas import NetworkPortScannerInput, NetworkPortScannerOutput, PortInfo
 
 logger = logging.getLogger(__name__)
 
@@ -515,7 +515,7 @@ def generate_recommendations(open_ports: List[PortInfo], security_analysis: Dict
     return recommendations
 
 
-async def execute_tool(request: PortScannerRequest) -> PortScannerResponse:
+async def execute_tool(request: NetworkPortScannerInput) -> NetworkPortScannerOutput:
     """Execute network port scanning."""
     start_time = time.time()
     
@@ -596,7 +596,7 @@ async def execute_tool(request: PortScannerRequest) -> PortScannerResponse:
         
         scan_duration = time.time() - start_time
         
-        return PortScannerResponse(
+        return NetworkPortScannerOutput(
             target=request.target,
             target_ip=target_ip,
             ports_scanned=len(ports_to_scan),
@@ -617,7 +617,7 @@ async def execute_tool(request: PortScannerRequest) -> PortScannerResponse:
         scan_duration = time.time() - start_time
         logger.error(f"Error in port scanner: {str(e)}")
         
-        return PortScannerResponse(
+        return NetworkPortScannerOutput(
             target=request.target,
             target_ip="",
             ports_scanned=0,

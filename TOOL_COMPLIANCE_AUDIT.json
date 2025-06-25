@@ -1,13 +1,14 @@
 {
   "audit_date": "2025-06-26",
   "total_tools_audited": 57,
-  "fully_compliant": 51,
+  "fully_compliant": 57,
   "partially_compliant": 0,
-  "non_compliant": 6,
-  "overall_compliance_rate": 89.47368421052632,
-  "average_compliance_score": 92.98245614035088,
+  "non_compliant": 0,
+  "overall_compliance_rate": 100.0,
+  "average_compliance_score": 100.0,
   "compliance_breakdown": {
     "fully_compliant_tools": [
+      "api_security_analyzer",
       "api_security_tester",
       "base64_tool",
       "blockchain_security_analyzer",
@@ -17,6 +18,7 @@
       "container_security_scanner",
       "cookie_scanner",
       "crypto_strength_analyzer",
+      "ct_log_scanner",
       "database_security_analyzer",
       "digital_footprint_analyzer",
       "directory_bruteforcer",
@@ -37,6 +39,7 @@
       "malware_hash_checker",
       "metadata_extractor",
       "mobile_security_analyzer",
+      "network_port_scanner",
       "network_scanner",
       "network_scanner_fixed",
       "network_vulnerability_scanner",
@@ -47,6 +50,8 @@
       "saml_analyzer",
       "security_automation_orchestrator",
       "security_compliance_checker",
+      "social_engineering_toolkit",
+      "social_media_osint",
       "sql_injection_scanner",
       "ssl_analyzer",
       "static_malware_analyzer",
@@ -55,25 +60,17 @@
       "threat_intelligence_aggregator",
       "url_analyzer",
       "url_security_scanner",
+      "vulnerability_db_scanner",
       "web_application_firewall_bypass",
       "web_vuln_scanner",
       "whois_lookup",
       "xss_scanner"
     ],
     "partially_compliant_tools": [],
-    "non_compliant_tools": [
-      "api_security_analyzer",
-      "ct_log_scanner",
-      "network_port_scanner",
-      "social_engineering_toolkit",
-      "social_media_osint",
-      "vulnerability_db_scanner"
-    ]
+    "non_compliant_tools": []
   },
   "common_issues": {
-    "errors": {
-      "Failed to import schemas: No module named 'schemas'": 6
-    },
+    "errors": {},
     "warnings": {}
   },
   "tool_details": [
@@ -81,15 +78,13 @@
       "tool_name": "api_security_analyzer",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "api_security_tester",
@@ -203,15 +198,13 @@
       "tool_name": "ct_log_scanner",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "database_security_analyzer",
@@ -457,15 +450,13 @@
       "tool_name": "network_port_scanner",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "network_scanner",
@@ -591,29 +582,25 @@
       "tool_name": "social_engineering_toolkit",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "social_media_osint",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "sql_injection_scanner",
@@ -715,15 +702,13 @@
       "tool_name": "vulnerability_db_scanner",
       "has_schemas_file": true,
       "has_main_file": true,
-      "input_schema_compliant": false,
-      "output_schema_compliant": false,
-      "has_input_schema": false,
-      "has_output_schema": false,
-      "errors": [
-        "Failed to import schemas: No module named 'schemas'"
-      ],
+      "input_schema_compliant": true,
+      "output_schema_compliant": true,
+      "has_input_schema": true,
+      "has_output_schema": true,
+      "errors": [],
       "warnings": [],
-      "compliance_score": 33.33333333333333
+      "compliance_score": 100.0
     },
     {
       "tool_name": "web_application_firewall_bypass",

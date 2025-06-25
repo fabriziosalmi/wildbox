@@ -30,7 +30,7 @@ def validate_auth_value(auth_value: str) -> str:
     
     return cleaned_value
 
-from schemas import (
+from .schemas import (
     APISecurityTesterInput,
     APISecurityTesterOutput,
     APIVulnerability,

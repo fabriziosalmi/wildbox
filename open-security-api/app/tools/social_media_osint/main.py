@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 
-from schemas import SocialMediaOSINTRequest, SocialMediaOSINTResponse
+from .schemas import SocialMediaOSINTInput, SocialMediaOSINTOutput
 
 logger = logging.getLogger(__name__)
 
@@ -500,7 +500,7 @@ def generate_intelligence_summary(profiles: List[Dict[str, Any]],
     return summary
 
 
-async def execute_tool(request: SocialMediaOSINTRequest) -> SocialMediaOSINTResponse:
+async def execute_tool(request: SocialMediaOSINTInput) -> SocialMediaOSINTOutput:
     """Execute social media OSINT analysis."""
     try:
         logger.info(f"Starting social media OSINT for username: {request.username}")
@@ -528,7 +528,7 @@ async def execute_tool(request: SocialMediaOSINTRequest) -> SocialMediaOSINTResp
             profiles_found, cross_platform_analysis, risk_indicators
         )
         
-        return SocialMediaOSINTResponse(
+        return SocialMediaOSINTOutput(
             username=request.username,
             platforms_searched=request.platforms,
             profiles_found=profiles_found,
@@ -543,7 +543,7 @@ async def execute_tool(request: SocialMediaOSINTRequest) -> SocialMediaOSINTResp
         
     except Exception as e:
         logger.error(f"Error in social media OSINT: {str(e)}")
-        return SocialMediaOSINTResponse(
+        return SocialMediaOSINTOutput(
             username=request.username,
             platforms_searched=request.platforms,
             profiles_found=[],

@@ -30,6 +30,7 @@ from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool
 from app.web.router import router as web_router
 from app.web.router import DISCOVERED_TOOLS as web_discovered_tools
 from app.execution_manager import execution_manager
+from app.secure_execution_manager import SecureExecutionManager
 
 # Configure logging first
 configure_logging()
