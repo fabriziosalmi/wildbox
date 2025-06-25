@@ -245,7 +245,18 @@ class OsqueryManager:
     
     async def _start_osquery_daemon(self, config_file: Path):
         """Start osquery daemon process"""
-        osquery_cmd = ['osqueryd', '--config_path', str(config_file)]
+        # Create a temporary directory for osquery runtime files
+        osquery_runtime_dir = Path(tempfile.mkdtemp(prefix="osquery_"))
+        
+        osquery_cmd = [
+            'osqueryd', 
+            '--config_path', str(config_file),
+            '--pidfile', str(osquery_runtime_dir / 'osquery.pid'),
+            '--database_path', str(osquery_runtime_dir),
+            '--logger_path', str(osquery_runtime_dir / 'logs'),
+            '--disable_events=false',
+            '--disable_audit=false'
+        ]
         
         # Platform-specific adjustments
         if is_windows():
