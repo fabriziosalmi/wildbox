@@ -1,0 +1,3 @@
+"""
+AWS KMS module initialization
+"""

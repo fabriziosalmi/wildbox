@@ -1,0 +1,110 @@
+# Open Security CSPM - Cloud Security Posture Management
+
+version: '3.8'
+
+services:
+  cspm:
+    build: .
+    container_name: wildbox-cspm
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - PROMETHEUS_PORT=9090
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - wildbox-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  celery-worker:
+    build: .
+    container_name: wildbox-cspm-worker
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - wildbox-network
+
+  celery-beat:
+    build: .
+    container_name: wildbox-cspm-scheduler
+    restart: unless-stopped
+    command: celery -A app.worker beat --loglevel=info
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+    networks:
+      - wildbox-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: wildbox-cspm-redis
+    restart: unless-stopped
+    ports:
+      - "6385:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - wildbox-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Optional: Flower for monitoring Celery tasks
+  flower:
+    build: .
+    container_name: wildbox-cspm-flower
+    restart: unless-stopped
+    command: celery -A app.worker flower --port=5555
+    ports:
+      - "5558:5555"
+    environment:
+      - ENVIRONMENT=production
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - wildbox-network
+    profiles:
+      - dev
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  wildbox-network:
+    external: true

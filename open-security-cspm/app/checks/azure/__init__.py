@@ -1,0 +1,3 @@
+"""
+Azure security checks
+"""

@@ -1,0 +1,67 @@
+# Open Security CSPM - Cloud Security Posture Management
+# Python Dependencies
+
+# Core framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Task queue for async scans
+celery[redis]==5.3.1
+redis==5.0.1
+
+# Cloud provider SDKs
+boto3==1.34.0
+botocore==1.34.0
+
+# GCP
+google-api-python-client==2.108.0
+google-auth==2.24.0
+google-auth-oauthlib==1.1.0
+google-auth-httplib2==0.2.0
+
+# Azure
+azure-identity==1.15.0
+azure-mgmt-resource==23.0.1
+azure-mgmt-storage==21.1.0
+azure-mgmt-network==25.2.0
+azure-mgmt-compute==30.3.0
+azure-mgmt-sql==3.0.1
+azure-mgmt-security==6.0.0
+azure-mgmt-monitor==6.0.2
+
+# Configuration and validation
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Data processing
+jinja2==3.1.2
+pyyaml==6.0.1
+
+# HTTP clients
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Security utilities
+cryptography==41.0.7
+python-jose[cryptography]==3.3.0
+
+# Logging and monitoring
+structlog==23.2.0
+prometheus-client==0.19.0
+
+# Development dependencies
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Production server
+gunicorn==21.2.0
+
+# Utilities
+python-dateutil==2.8.2
+python-dotenv==1.0.0
+click==8.1.7
