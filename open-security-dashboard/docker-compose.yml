@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  dashboard:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_DATA_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
+      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8005
+      - NEXTAUTH_SECRET=your-production-secret
+      - NEXTAUTH_URL=http://localhost:3000
+    networks:
+      - wildbox-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development with hot reload
+  dashboard-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_DEBUG=true
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - NEXT_PUBLIC_DATA_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
+      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8005
+    networks:
+      - wildbox-network
+    profiles:
+      - dev
+
+networks:
+  wildbox-network:
+    external: true
