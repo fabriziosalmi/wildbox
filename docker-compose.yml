@@ -197,7 +197,171 @@ services:
       timeout: 10s
       retries: 3
 
+  # Guardian Service (Security Monitoring)
+  guardian:
+    build:
+      context: ./open-security-guardian
+      dockerfile: Dockerfile
+    container_name: open-security-guardian
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/guardian
+      - REDIS_URL=redis://guardian-redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - postgres
+      - guardian-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Guardian Service)
+  guardian-redis:
+    image: redis:7-alpine
+    container_name: wildbox-guardian-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - guardian_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Responder Service (Incident Response)
+  responder:
+    build:
+      context: ./open-security-responder
+      dockerfile: Dockerfile
+    container_name: open-security-responder
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/responder
+      - REDIS_URL=redis://responder-redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - postgres
+      - responder-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Responder Service)
+  responder-redis:
+    image: redis:7-alpine
+    container_name: wildbox-responder-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - responder_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CSPM Service (Cloud Security Posture Management)
+  cspm:
+    build:
+      context: ./open-security-cspm
+      dockerfile: Dockerfile
+    container_name: open-security-cspm
+    restart: unless-stopped
+    ports:
+      - "8007:8007"
+    environment:
+      - REDIS_URL=redis://cspm-redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - cspm-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8007/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (CSPM Service)
+  cspm-redis:
+    image: redis:7-alpine
+    container_name: wildbox-cspm-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - cspm_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agents Service (Security Agents)
+  agents:
+    build:
+      context: ./open-security-agents
+      dockerfile: Dockerfile
+    container_name: open-security-agents
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      - REDIS_URL=redis://agents-redis:6379/0
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - agents-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Agents Service)
+  agents-redis:
+    image: redis:7-alpine
+    container_name: wildbox-agents-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - agents_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   postgres_data:
   identity_redis_data:
   gateway_redis_data:
+  guardian_redis_data:
+  responder_redis_data:
+  cspm_redis_data:
+  agents_redis_data:
