@@ -37,7 +37,7 @@ python-dateutil==2.8.2
 # Vulnerability Scanner Integrations
 python-nmap==0.7.1
 pytenable==1.7.5
-qualysapi==0.6.0
+qualysapi==8.1.0
 python-libnmap==0.7.3
 
 # Ticketing System Integrations
