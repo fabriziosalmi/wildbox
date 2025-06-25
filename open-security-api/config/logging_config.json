@@ -1,0 +1,22 @@
+{
+    "security_logging": {
+        "enabled": true,
+        "log_authentication": true,
+        "log_authorization": true,
+        "log_sensitive_operations": true,
+        "mask_sensitive_data": true,
+        "audit_trail": {
+            "enabled": true,
+            "retention_days": 90,
+            "include_user_actions": true,
+            "include_api_calls": true
+        }
+    },
+    "security_events": {
+        "failed_authentication": "WARNING",
+        "unauthorized_access": "ERROR",
+        "suspicious_activity": "WARNING",
+        "tool_execution": "INFO",
+        "data_access": "INFO"
+    }
+}

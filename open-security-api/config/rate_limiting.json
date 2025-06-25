@@ -1,0 +1,20 @@
+{
+    "rate_limits": {
+        "authentication": {
+            "requests_per_minute": 5,
+            "lockout_duration": 300
+        },
+        "api_calls": {
+            "requests_per_minute": 100,
+            "burst_limit": 20
+        },
+        "tool_execution": {
+            "requests_per_minute": 10,
+            "concurrent_limit": 3
+        }
+    },
+    "whitelist": {
+        "ips": ["127.0.0.1", "::1"],
+        "enabled": true
+    }
+}

@@ -344,7 +344,3 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
                 "additional_info": "Scan failed due to error"
             }
         )
-
-# TODO: Implement proper session management with async with
-# TODO: Add proper SSL certificate verification
-# TODO: Implement request/response logging for audit
