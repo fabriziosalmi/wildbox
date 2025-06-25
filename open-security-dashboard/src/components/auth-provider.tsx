@@ -4,13 +4,14 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Cookies from 'js-cookie'
 import { User } from '@/types'
-import { apiClient } from '@/lib/api-client'
+import { identityClient } from '@/lib/api-client'
 
 interface AuthContextType {
   user: User | null
   isLoading: boolean
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string, name: string) => Promise<void>
   logout: () => void
   refetchUser: () => Promise<void>
 }
@@ -38,15 +39,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await apiClient.post('/auth/login', { email, password })
-      const { token, user: userData } = response
+      // Login with form data (OAuth2PasswordRequestForm)
+      const formData = new URLSearchParams()
+      formData.append('username', email)
+      formData.append('password', password)
+
+      const response = await identityClient.postForm('/api/v1/auth/login', formData)
+      const { access_token } = response
 
       // Store token
-      Cookies.set('auth_token', token, { expires: 7, secure: true, sameSite: 'strict' })
-      localStorage.setItem('auth_token', token)
+      Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+      localStorage.setItem('auth_token', access_token)
+
+      // Fetch user data separately
+      const userData = await identityClient.get('/api/v1/auth/me')
+      setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
+      router.push('/dashboard')
+    } catch (error) {
+      throw error
+    }
+  }
+
+  const register = async (email: string, password: string, name: string) => {
+    try {
+      const response = await identityClient.post('/api/v1/auth/register', { email, password, name })
+      const { access_token } = response
+
+      // Store token
+      Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+      localStorage.setItem('auth_token', access_token)
+
+      // Fetch user data separately
+      const userData = await identityClient.get('/api/v1/auth/me')
       setUser(userData)
+      localStorage.setItem('user', JSON.stringify(userData))
+
       router.push('/dashboard')
     } catch (error) {
       throw error
@@ -65,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refetchUser = async () => {
     try {
-      const userData = await apiClient.get('/auth/me')
+      const userData = await identityClient.get('/api/v1/auth/me')
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
@@ -86,7 +115,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(userData)
             
             // Validate token by making a request
-            await apiClient.get('/auth/me')
+            await identityClient.get('/api/v1/auth/me')
           } catch (error) {
             // Token is invalid, clear it
             logout()
@@ -107,6 +136,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     isAuthenticated,
     login,
+    register,
     logout,
     refetchUser,
   }

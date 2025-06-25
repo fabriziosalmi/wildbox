@@ -38,7 +38,8 @@ Wildbox is a **complete security operations platform** built from the ground up 
 ### 🎪 What Makes Wildbox Special
 
 - **🧩 Modular Architecture**: Independent microservices that work together seamlessly
-- **🔧 50+ Security Tools**: Comprehensive toolkit covering all security domains
+- **� Centralized Authentication**: Enterprise-grade identity management with JWT and API keys
+- **�🔧 50+ Security Tools**: Comprehensive toolkit covering all security domains
 - **🤖 AI-Powered Analysis**: GPT-4o powered intelligent threat analysis and reporting
 - **🏭 Enterprise-Ready**: Production-grade with Docker, monitoring, and scalability
 - **🌐 Modern Tech Stack**: Built with FastAPI, Django, Next.js, and TypeScript
@@ -59,7 +60,7 @@ Wildbox follows a **distributed microservices architecture** where each componen
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐             │
 │  │  🖥️ Dashboard    │    │  🧠 AI Agents   │    │  ⚡ Responder    │             │
 │  │  (Next.js)      │    │  (LangChain)    │    │  (Dramatiq)     │             │
-│  │  Port: 3000     │    │  Port: 8004     │    │  Port: 8003     │             │
+│  │  Port: 3000     │    │  Port: 8006     │    │  Port: 8005     │             │
 │  └─────────────────┘    └─────────────────┘    └─────────────────┘             │
 │           │                       │                       │                     │
 │           │                       ▼                       │                     │
@@ -72,10 +73,18 @@ Wildbox follows a **distributed microservices architecture** where each componen
 │           │                       │                       │                     │
 │           ▼                       ▼                       ▼                     │
 │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐             │
-│  │  📊 Data Lake   │    │  🛡️ Guardian    │    │  📡 Sensor      │             │
-│  │  (PostgreSQL)   │    │  (Django)       │    │  (osquery)      │             │
-│  │  Port: 8001     │    │  Port: 8002     │    │  Port: 8899     │             │
+│  │  � Identity    │    │  �📊 Data Lake   │    │  🛡️ Guardian    │             │
+│  │  (FastAPI)      │    │  (PostgreSQL)   │    │  (Django)       │             │
+│  │  Port: 8001     │    │  Port: 8002     │    │  Port: 8003     │             │
 │  └─────────────────┘    └─────────────────┘    └─────────────────┘             │
+│           │                       │                       │                     │
+│           └───────────────────────┼───────────────────────┘                     │
+│                                   ▼                                             │
+│                          ┌─────────────────┐                                    │
+│                          │  📡 Sensor      │                                    │
+│                          │  (osquery)      │                                    │
+│                          │  Port: 8004     │                                    │
+│                          └─────────────────┘                                    │
 │                                                                                 │
 ├─────────────────────────────────────────────────────────────────────────────────┤
 │                      🔗 SHARED INFRASTRUCTURE                                   │
@@ -112,7 +121,14 @@ Wildbox follows a **distributed microservices architecture** where each componen
 - **Purpose**: 50+ security tools with unified API interface
 - **Features**: Dynamic tool discovery, auto-documentation, async execution, web interface
 
-### 📊 [Open Security Data](./open-security-data/)
+### � [Open Security Identity](./open-security-identity/)
+**Centralized Authentication & Authorization**
+
+- **Technology**: FastAPI, PostgreSQL, JWT, Stripe
+- **Purpose**: User management, authentication, billing, and access control
+- **Features**: JWT authentication, API key management, team management, Stripe billing integration
+
+### �📊 [Open Security Data](./open-security-data/)
 **Threat Intelligence Data Lake**
 
 - **Technology**: Django, PostgreSQL, Redis
@@ -151,7 +167,15 @@ Wildbox follows a **distributed microservices architecture** where each componen
 
 ## ✨ Key Features
 
-### 🔍 **Comprehensive Threat Intelligence**
+### � **Centralized Authentication & Authorization**
+- **JWT-Based Authentication**: Secure token-based user authentication
+- **API Key Management**: Service-to-service authentication with team-scoped keys
+- **Role-Based Access Control**: Owner, Admin, Member roles with granular permissions
+- **Multi-Tenant Teams**: Organization and team membership management
+- **Integrated Billing**: Stripe integration with subscription tiers and usage tracking
+- **Rate Limiting**: Plan-based API rate limits and feature access control
+
+### �🔍 **Comprehensive Threat Intelligence**
 - **IOC Analysis**: Multi-source reputation checking and correlation
 - **Feed Management**: 50+ threat intelligence sources with auto-ingestion
 - **Geolocation & Context**: IP geolocation, ASN, WHOIS, and certificate data
@@ -214,7 +238,8 @@ docker-compose up -d
 # Verify deployment
 curl http://localhost:3000  # Dashboard
 curl http://localhost:8000  # Security API
-curl http://localhost:8001  # Data Lake API
+curl http://localhost:8001  # Identity Service
+curl http://localhost:8002  # Data Lake API
 ```
 
 ### 🎛️ Individual Service Deployment
@@ -224,6 +249,10 @@ Each component can be deployed independently:
 ```bash
 # Security API
 cd open-security-api
+make dev
+
+# Identity Service
+cd open-security-identity
 make dev
 
 # Dashboard
@@ -394,11 +423,12 @@ cd open-security-dashboard && npm test
 |---------|------|----------|---------|
 | **Dashboard** | 3000 | HTTP | Web interface and main UI |
 | **Security API** | 8000 | HTTP | Security tools and execution |
-| **Data Lake** | 8001 | HTTP | Threat intelligence data |
-| **Guardian** | 8002 | HTTP | Vulnerability management |
-| **Responder** | 8003 | HTTP | SOAR and automation |
-| **AI Agents** | 8004 | HTTP | AI-powered analysis |
-| **Sensor** | 8899 | HTTP | Endpoint monitoring |
+| **Identity** | 8001 | HTTP | Authentication and authorization |
+| **Data Lake** | 8002 | HTTP | Threat intelligence data |
+| **Guardian** | 8003 | HTTP | Vulnerability management |
+| **Sensor** | 8004 | HTTP | Endpoint monitoring |
+| **Responder** | 8005 | HTTP | SOAR and automation |
+| **AI Agents** | 8006 | HTTP | AI-powered analysis |
 | **Redis** | 6379 | TCP | Cache and message queue |
 | **PostgreSQL** | 5432 | TCP | Database storage |
 
@@ -415,20 +445,24 @@ All components expose comprehensive REST APIs:
 curl -H "Authorization: Bearer $API_KEY" \
   http://localhost:8000/api/tools
 
+# Identity & Authentication
+curl -X POST http://localhost:8001/api/v1/auth/login \
+  -d "username=user@example.com&password=secret"
+
 # Threat Intelligence
-curl http://localhost:8001/api/v1/iocs/lookup/8.8.8.8
+curl http://localhost:8002/api/v1/iocs/lookup/8.8.8.8
 
 # Vulnerability Data
-curl http://localhost:8002/api/v1/vulnerabilities?severity=critical
+curl http://localhost:8003/api/v1/vulnerabilities?severity=critical
 
 # Execute Playbook
 curl -X POST -H "Content-Type: application/json" \
-  http://localhost:8003/v1/playbooks/incident_response/execute \
+  http://localhost:8005/v1/playbooks/incident_response/execute \
   -d '{"target": "suspicious.domain.com"}'
 
 # AI Analysis
 curl -X POST -H "Content-Type: application/json" \
-  http://localhost:8004/v1/analyze \
+  http://localhost:8006/v1/analyze \
   -d '{"ioc": {"type": "ipv4", "value": "192.168.1.100"}}'
 ```
 
@@ -448,7 +482,8 @@ curl -X POST -H "Content-Type: application/json" \
 
 - [🖥️ Dashboard Documentation](./open-security-dashboard/README.md)
 - [🔧 Security API Guide](./open-security-api/README.md)
-- [📊 Data Lake Documentation](./open-security-data/README.md)
+- [� Identity Service Guide](./open-security-identity/README.md)
+- [�📊 Data Lake Documentation](./open-security-data/README.md)
 - [🛡️ Guardian Quick Start](./open-security-guardian/GETTING_STARTED.md)
 - [⚡ Responder Guide](./open-security-responder/README.md)
 - [🧠 AI Agents Documentation](./open-security-agents/README.md)
@@ -457,10 +492,11 @@ curl -X POST -H "Content-Type: application/json" \
 ### API Documentation
 
 - **Security API**: http://localhost:8000/docs
-- **Data Lake**: http://localhost:8001/docs
-- **Guardian**: http://localhost:8002/docs
-- **Responder**: http://localhost:8003/docs
-- **AI Agents**: http://localhost:8004/docs
+- **Identity Service**: http://localhost:8001/docs
+- **Data Lake**: http://localhost:8002/docs
+- **Guardian**: http://localhost:8003/docs
+- **Responder**: http://localhost:8005/docs
+- **AI Agents**: http://localhost:8006/docs
 
 ### Deployment Guides
 
@@ -502,7 +538,8 @@ curl -X POST -H "Content-Type: application/json" \
 ## 🚀 Roadmap
 
 ### 🎯 Current Status (v1.0)
-- ✅ All 7 core components implemented and integrated
+- ✅ All 8 core components implemented and integrated
+- ✅ Centralized authentication and authorization service
 - ✅ 50+ security tools across multiple categories
 - ✅ AI-powered analysis with GPT-4o integration
 - ✅ Production-ready Docker deployment
@@ -546,12 +583,13 @@ curl -X POST -H "Content-Type: application/json" \
 
 ### 🛡️ **Security Features**
 
-- **Authentication**: JWT-based with configurable providers
-- **Authorization**: Role-based access control (RBAC)
-- **Encryption**: TLS 1.3 for all communications
-- **Audit Logging**: Complete audit trail of all operations
-- **Input Validation**: Comprehensive input sanitization
-- **Rate Limiting**: DDoS protection and resource management
+- **Centralized Authentication**: Dedicated identity service with JWT and API key management
+- **Multi-Tenant Authorization**: Team-based access control with role-based permissions
+- **Secure API Keys**: SHA-256 hashed keys with expiration and usage tracking
+- **Encryption**: TLS 1.3 for all communications and bcrypt for password hashing
+- **Audit Logging**: Complete audit trail of all authentication and authorization events
+- **Input Validation**: Comprehensive input sanitization and request validation
+- **Rate Limiting**: Plan-based rate limiting and DDoS protection
 
 ### 🔒 **Hardening Checklist**
 

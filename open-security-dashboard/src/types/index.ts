@@ -2,13 +2,83 @@
 export interface User {
   id: string
   email: string
-  name: string
-  role: 'admin' | 'analyst' | 'viewer'
+  is_active: boolean
+  is_superuser: boolean
+  created_at: string
+  updated_at: string
+  stripe_customer_id?: string
+  team_memberships?: TeamMembership[]
+  // Legacy fields for backward compatibility
+  name?: string
+  role?: 'admin' | 'analyst' | 'viewer'
   avatar?: string
   lastLogin?: Date
-  permissions: string[]
+  permissions?: string[]
   organization?: string
-  settings: UserSettings
+  settings?: UserSettings
+}
+
+export interface Team {
+  id: string
+  name: string
+  owner_id: string
+  created_at: string
+  updated_at: string
+  subscription?: Subscription
+}
+
+export interface TeamMembership {
+  user_id: string
+  team_id: string
+  role: 'owner' | 'admin' | 'member'
+  joined_at: string
+  team: Team
+}
+
+export interface Subscription {
+  id: string
+  team_id: string
+  stripe_subscription_id?: string
+  plan_id: 'free' | 'pro' | 'business'
+  status: 'active' | 'canceled' | 'past_due' | 'incomplete'
+  current_period_end?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface ApiKey {
+  id: string
+  name: string
+  prefix: string
+  user_id: string
+  team_id: string
+  is_active: boolean
+  expires_at?: string
+  last_used_at?: string
+  created_at: string
+}
+
+export interface LoginRequest {
+  username: string // OAuth2PasswordRequestForm uses 'username' field
+  password: string
+}
+
+export interface LoginResponse {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+export interface RegisterRequest {
+  email: string
+  password: string
+  name?: string // Optional in the new API
+}
+
+export interface CreateApiKeyRequest {
+  name: string
+  scopes: string[]
+  expires_at?: string
 }
 
 export interface UserSettings {

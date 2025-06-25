@@ -93,6 +93,16 @@ class ApiClient {
     return response.data
   }
 
+  // Form data POST (for OAuth2 login)
+  async postForm<T = any>(endpoint: string, formData: URLSearchParams): Promise<T> {
+    const response = await this.client.post(endpoint, formData, {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    })
+    return response.data
+  }
+
   async put<T = any>(endpoint: string, data?: any): Promise<T> {
     const response = await this.client.put(endpoint, data)
     return response.data
@@ -134,24 +144,28 @@ export const apiClient = new ApiClient(
   process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
 )
 
+export const identityClient = new ApiClient(
+  process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001'
+)
+
 export const dataClient = new ApiClient(
-  process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8001'
+  process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002'
 )
 
 export const guardianClient = new ApiClient(
-  process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8002'
+  process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8003'
 )
 
 export const sensorClient = new ApiClient(
-  process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8003'
+  process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8004'
 )
 
 export const responderClient = new ApiClient(
-  process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8004'
+  process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8005'
 )
 
 export const agentsClient = new ApiClient(
-  process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8005'
+  process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006'
 )
 
 export default apiClient
