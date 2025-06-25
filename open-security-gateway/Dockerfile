@@ -1,11 +1,16 @@
 FROM openresty/openresty:alpine
 
-# Install dependencies
+# Install dependencies including build tools and luarocks
 RUN apk add --no-cache \
     curl \
     openssl \
     ca-certificates \
-    gettext
+    gettext \
+    unzip \
+    wget \
+    make \
+    gcc \
+    musl-dev
 
 # Create directories
 RUN mkdir -p /etc/nginx/lua \
@@ -13,8 +18,15 @@ RUN mkdir -p /etc/nginx/lua \
     && mkdir -p /var/cache/nginx \
     && mkdir -p /etc/ssl/wildbox
 
-# Install lua-resty-http for internal service communication
-RUN /usr/local/openresty/luajit/bin/luarocks install lua-resty-http
+# Install luarocks manually and then lua-resty-http
+RUN wget -O /tmp/luarocks.tar.gz https://luarocks.org/releases/luarocks-3.9.2.tar.gz \
+    && cd /tmp \
+    && tar zxpf luarocks.tar.gz \
+    && cd luarocks-3.9.2 \
+    && ./configure --prefix=/usr/local/openresty/luajit --with-lua=/usr/local/openresty/luajit --lua-suffix=jit --with-lua-include=/usr/local/openresty/luajit/include/luajit-2.1 \
+    && make && make install \
+    && cd / && rm -rf /tmp/luarocks* \
+    && /usr/local/openresty/luajit/bin/luarocks install lua-resty-http
 
 # Copy configuration files
 COPY nginx/ /etc/nginx/

@@ -1,0 +1,158 @@
+version: '3.8'
+
+# Wildbox Security Suite - Integration Testing Orchestrator
+# Coordinates all services with shared networking for end-to-end testing
+
+networks:
+  wildbox:
+    driver: bridge
+
+services:
+  # Identity Service (Authentication & Authorization)
+  identity:
+    build:
+      context: ./open-security-identity
+      dockerfile: Dockerfile
+    container_name: open-security-identity
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
+      - REDIS_URL=redis://identity-redis:6379/0
+      - JWT_SECRET_KEY=wildbox-super-secret-jwt-key-for-testing
+      - STRIPE_SECRET_KEY=sk_test_dummy_key_for_testing
+      - STRIPE_WEBHOOK_SECRET=whsec_dummy_webhook_for_testing
+      - STRIPE_PUBLISHABLE_KEY=pk_test_dummy_publishable_for_testing
+    depends_on:
+      - postgres
+      - identity-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway (Request Routing & Security)
+  gateway:
+    build:
+      context: ./open-security-gateway
+      dockerfile: Dockerfile
+    container_name: open-security-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./open-security-gateway/nginx:/etc/nginx:ro
+      - ./open-security-gateway/logs:/var/log/nginx
+      - ./open-security-gateway/ssl:/etc/ssl/wildbox:ro
+    environment:
+      - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
+      - WILDBOX_ENV=development
+      - GATEWAY_LOG_LEVEL=info
+      - IDENTITY_SERVICE_URL=http://open-security-identity:8001
+      - GATEWAY_INTERNAL_SECRET=integration-test-secret-2025
+      - AUTH_CACHE_TTL=300
+      - GATEWAY_DEBUG=true
+    networks:
+      - wildbox
+    depends_on:
+      - gateway-redis
+      - identity
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dashboard (Frontend)
+  dashboard:
+    build:
+      context: ./open-security-dashboard
+      dockerfile: Dockerfile.dev
+    container_name: open-security-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./open-security-dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_DEBUG=true
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:80
+      - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:8001
+      - NEXT_PUBLIC_DATA_API_URL=http://localhost:8002
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
+      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8004
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8005
+      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8006
+      - NEXTAUTH_SECRET=wildbox-dashboard-secret-for-testing
+      - NEXTAUTH_URL=http://localhost:3000
+    networks:
+      - wildbox
+    depends_on:
+      - gateway
+      - identity
+
+  # PostgreSQL Database (Identity Service)
+  postgres:
+    image: postgres:15
+    container_name: wildbox-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=identity
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis Cache (Identity Service)
+  identity-redis:
+    image: redis:7-alpine
+    container_name: wildbox-identity-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - identity_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache (Gateway Service)
+  gateway-redis:
+    image: redis:7-alpine
+    container_name: wildbox-gateway-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - gateway_redis_data:/data
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  identity_redis_data:
+  gateway_redis_data:
