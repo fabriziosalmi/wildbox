@@ -78,25 +78,21 @@ class IdentityServiceTester:
             {
                 "email": "admin@wildbox.com",
                 "password": "admin123!",
-                "full_name": "Admin User",
                 "role": "admin"
             },
             {
                 "email": "manager@wildbox.com", 
                 "password": "manager123!",
-                "full_name": "Manager User",
                 "role": "manager"
             },
             {
                 "email": "analyst@wildbox.com",
                 "password": "analyst123!",
-                "full_name": "Security Analyst",
                 "role": "analyst"
             },
             {
                 "email": "viewer@wildbox.com",
                 "password": "viewer123!",
-                "full_name": "Viewer User", 
                 "role": "viewer"
             }
         ]
@@ -104,7 +100,12 @@ class IdentityServiceTester:
         success = True
         for user_data in test_users:
             try:
-                response = self.make_request("POST", "/api/v1/auth/register", user_data)
+                # Only send email and password for registration
+                registration_data = {
+                    "email": user_data["email"],
+                    "password": user_data["password"]
+                }
+                response = self.make_request("POST", "/api/v1/auth/register", registration_data)
                 
                 if response.status_code in [200, 201]:
                     result = response.json()
@@ -117,8 +118,8 @@ class IdentityServiceTester:
                 else:
                     # User might already exist, try login instead
                     self.log(f"Registration failed for {user_data['email']}, trying login...")
-                    login_response = self.make_request("POST", "/api/v1/auth/login", {
-                        "email": user_data["email"],
+                    login_response = self.make_request("POST", "/api/v1/auth/login-json", {
+                        "username": user_data["email"],  # UserLogin schema expects 'username' field
                         "password": user_data["password"]
                     })
                     
@@ -147,18 +148,17 @@ class IdentityServiceTester:
         success = True
         for email, user_data in self.test_users.items():
             try:
-                # Try the main auth login endpoint
-                response = self.make_request("POST", "/api/v1/auth/login", {
-                    "username": email,  # Some APIs use username instead of email
+                # Try the JSON login endpoint first
+                response = self.make_request("POST", "/api/v1/auth/login-json", {
+                    "username": email,  # UserLogin schema expects 'username' field
                     "password": user_data["password"]
                 })
                 
-                # If that fails, try with email field
+                # If that fails, try the form-based endpoint (for completeness)
                 if response.status_code != 200:
-                    response = self.make_request("POST", "/api/v1/auth/login", {
-                        "email": email,
-                        "password": user_data["password"]
-                    })
+                    # For form-based endpoint, we need to send form data, but our make_request sends JSON
+                    # So we'll skip this for now and just use the JSON endpoint
+                    pass
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -192,7 +192,7 @@ class IdentityServiceTester:
                 continue
                 
             try:
-                response = self.make_request("GET", "/api/v1/users/me", token=token)
+                response = self.make_request("GET", "/api/v1/auth/me", token=token)
                 
                 if response.status_code == 200:
                     profile = response.json()
@@ -258,7 +258,7 @@ class IdentityServiceTester:
         
         # Test with invalid token
         try:
-            response = self.make_request("GET", "/api/v1/users/me", token="invalid_token")
+            response = self.make_request("GET", "/api/v1/auth/me", token="invalid_token")
             if response.status_code in [401, 403]:
                 self.log("✓ Invalid token properly rejected")
             else:
@@ -270,7 +270,7 @@ class IdentityServiceTester:
             
         # Test with no token
         try:
-            response = self.make_request("GET", "/api/v1/users/me")
+            response = self.make_request("GET", "/api/v1/auth/me")
             if response.status_code in [401, 403]:
                 self.log("✓ Missing token properly rejected")
             else:

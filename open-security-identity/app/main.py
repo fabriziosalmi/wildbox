@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
-from .api_v1.endpoints import users, api_keys, billing
+from .api_v1.endpoints import auth, users, api_keys, billing
 from .internal import router as internal_router
 from .webhooks import router as webhooks_router
 
@@ -32,7 +32,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(
-    users.router,
+    auth.router,
     prefix=f"{settings.api_v1_prefix}/auth",
     tags=["authentication"]
 )
