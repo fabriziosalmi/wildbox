@@ -111,16 +111,12 @@ check_databases() {
         error "❌ PostgreSQL is not responding"
     fi
     
-    # Check Redis instances
-    local redis_services=("redis" "wildbox-gateway-redis" "wildbox-responder-redis" "wildbox-identity-redis" "wildbox-agents-redis" "wildbox-cspm-redis" "wildbox-guardian-redis")
-    
-    for redis_service in "${redis_services[@]}"; do
-        if docker-compose exec -T "$redis_service" redis-cli ping >/dev/null 2>&1; then
-            success "✅ $redis_service is healthy"
-        else
-            warn "❌ $redis_service is not responding"
-        fi
-    done
+    # Check Redis instance (consolidated)
+    if docker-compose exec -T wildbox-redis redis-cli ping >/dev/null 2>&1; then
+        success "✅ wildbox-redis is healthy"
+    else
+        error "❌ wildbox-redis is not responding"
+    fi
 }
 
 # Function to check service health endpoints
