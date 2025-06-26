@@ -148,6 +148,17 @@ export const identityClient = new ApiClient(
   process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001'
 )
 
+// Gateway-aware clients for authenticated access through Wildbox Gateway
+const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://api.wildbox.local'
+
+export const gatewayDataClient = new ApiClient(`${gatewayUrl}/api/v1/data`)
+export const gatewayCSPMClient = new ApiClient(`${gatewayUrl}/api/v1/cspm`)
+export const gatewayGuardianClient = new ApiClient(`${gatewayUrl}/api/v1/guardian`)
+export const gatewayResponderClient = new ApiClient(`${gatewayUrl}/api/v1/responder`)
+export const gatewayAgentsClient = new ApiClient(`${gatewayUrl}/api/v1/agents`)
+export const gatewayIdentityClient = new ApiClient(`${gatewayUrl}/api/v1/identity`)
+
+// Direct service clients (for development/testing when gateway is not available)
 export const dataClient = new ApiClient(
   process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002'
 )
@@ -166,6 +177,10 @@ export const responderClient = new ApiClient(
 
 export const agentsClient = new ApiClient(
   process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006'
+)
+
+export const cspmClient = new ApiClient(
+  process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8007'
 )
 
 export default apiClient

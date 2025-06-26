@@ -38,6 +38,7 @@ const navigation = [
     children: [
       { name: 'Feeds', href: '/threat-intel/feeds' },
       { name: 'Lookup', href: '/threat-intel/lookup' },
+      { name: 'Data', href: '/threat-intel/data' },
     ],
   },
   {
@@ -83,6 +84,12 @@ const navigation = [
     href: '/ai-analyst',
     icon: Brain,
     description: 'Intelligent analysis',
+  },
+  {
+    name: 'API Docs',
+    href: '/api-docs',
+    icon: Shield,
+    description: 'API reference and examples',
   },
   {
     name: 'Settings',

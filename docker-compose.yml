@@ -17,14 +17,14 @@ services:
       - "8001:8001"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
-      - REDIS_URL=redis://identity-redis:6379/0
+      - REDIS_URL=redis://wildbox-redis:6379/0
       - JWT_SECRET_KEY=wildbox-super-secret-jwt-key-for-testing
       - STRIPE_SECRET_KEY=sk_test_dummy_key_for_testing
       - STRIPE_WEBHOOK_SECRET=whsec_dummy_webhook_for_testing
       - STRIPE_PUBLISHABLE_KEY=pk_test_dummy_publishable_for_testing
     depends_on:
       - postgres
-      - identity-redis
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -105,7 +105,7 @@ services:
     networks:
       - wildbox
     depends_on:
-      - gateway-redis
+      - wildbox-redis
       - identity
       - data
       - guardian
@@ -172,14 +172,14 @@ services:
       timeout: 10s
       retries: 5
 
-  # Redis Cache (Identity Service)
-  identity-redis:
+  # Shared Redis Cache (Consolidated for all services)
+  wildbox-redis:
     image: redis:7-alpine
-    container_name: wildbox-identity-redis
+    container_name: wildbox-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --databases 16
     volumes:
-      - identity_redis_data:/data
+      - wildbox_redis_data:/data
     networks:
       - wildbox
     healthcheck:
@@ -188,21 +188,6 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis Cache (Gateway Service)
-  gateway-redis:
-    image: redis:7-alpine
-    container_name: wildbox-gateway-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    volumes:
-      - gateway_redis_data:/data
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
   # Guardian Service (Security Monitoring)
   guardian:
@@ -215,7 +200,7 @@ services:
       - "8003:8003"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/guardian
-      - REDIS_URL=redis://guardian-redis:6379/0
+      - REDIS_URL=redis://wildbox-redis:6379/1
       - DEBUG=true
       - LOG_LEVEL=INFO
       - LOG_FILE=/app/logs/guardian.log
@@ -223,7 +208,7 @@ services:
       - guardian_logs:/app/logs
     depends_on:
       - postgres
-      - guardian-redis
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -232,21 +217,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis Cache (Guardian Service)
-  guardian-redis:
-    image: redis:7-alpine
-    container_name: wildbox-guardian-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    volumes:
-      - guardian_redis_data:/data
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
 
   # Responder Service (Incident Response)
   responder:
@@ -259,12 +230,12 @@ services:
       - "8005:8005"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/responder
-      - REDIS_URL=redis://responder-redis:6379/0
+      - REDIS_URL=redis://wildbox-redis:6379/2
       - DEBUG=true
       - LOG_LEVEL=INFO
     depends_on:
       - postgres
-      - responder-redis
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -273,21 +244,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis Cache (Responder Service)
-  responder-redis:
-    image: redis:7-alpine
-    container_name: wildbox-responder-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    volumes:
-      - responder_redis_data:/data
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
 
   # CSPM Service (Cloud Security Posture Management)
   cspm:
@@ -299,11 +256,11 @@ services:
     ports:
       - "8007:8007"
     environment:
-      - REDIS_URL=redis://cspm-redis:6379/0
+      - REDIS_URL=redis://wildbox-redis:6379/3
       - DEBUG=true
       - LOG_LEVEL=INFO
     depends_on:
-      - cspm-redis
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -312,21 +269,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis Cache (CSPM Service)
-  cspm-redis:
-    image: redis:7-alpine
-    container_name: wildbox-cspm-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    volumes:
-      - cspm_redis_data:/data
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
 
   # Agents Service (Security Agents)
   agents:
@@ -339,11 +282,11 @@ services:
       - "8006:8006"
     environment:
       - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
-      - REDIS_URL=redis://agents-redis:6379/0
+      - REDIS_URL=redis://wildbox-redis:6379/4
       - DEBUG=true
       - LOG_LEVEL=INFO
     depends_on:
-      - agents-redis
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -352,21 +295,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Redis Cache (Agents Service)
-  agents-redis:
-    image: redis:7-alpine
-    container_name: wildbox-agents-redis
-    restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
-    volumes:
-      - agents_redis_data:/data
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+
 
   # Sensor Service (System Monitoring)
   sensor:
@@ -433,12 +362,7 @@ services:
 
 volumes:
   postgres_data:
-  identity_redis_data:
-  gateway_redis_data:
-  guardian_redis_data:
+  wildbox_redis_data:
   guardian_logs:
-  responder_redis_data:
-  cspm_redis_data:
-  agents_redis_data:
   sensor_logs:
   sensor_data:

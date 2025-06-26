@@ -1,3 +1,8 @@
+# Open Security Sensor - Docker Compose Configuration
+#
+# NOTE: This file is for standalone development of the sensor service.
+# When running the full Wildbox stack, use the main docker-compose.yml.
+
 version: '3.8'
 
 services:
@@ -58,12 +63,13 @@ services:
       retries: 3
       start_period: 10s
 
-  # Redis for caching and queuing
+  # Local Redis for standalone development
+  # When using main stack, sensor service operates without Redis dependency
   redis:
     image: redis:7-alpine
     container_name: sensor-redis
     restart: unless-stopped
-    
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     volumes:
       - redis_data:/data
     
@@ -72,9 +78,6 @@ services:
     
     networks:
       - sensor-network
-    
-    # Redis configuration
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

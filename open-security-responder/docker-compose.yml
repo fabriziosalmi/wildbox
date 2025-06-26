@@ -1,14 +1,21 @@
 # Open Security Responder - Docker Compose Configuration
+#
+# NOTE: This file is for standalone development of the responder service.
+# When running the full Wildbox stack, use the main docker-compose.yml 
+# which provides a shared Redis instance (wildbox-redis:6379/2).
 
 version: '3.8'
 
 services:
+  # Local Redis for standalone development
+  # When using main stack, responder service connects to wildbox-redis:6379/2
   redis:
     image: redis:7-alpine
     ports:
       - "6381:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -28,7 +35,10 @@ services:
       - "8005:8005"
     environment:
       - DEBUG=true
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
       - WILDBOX_GUARDIAN_URL=http://localhost:8003
@@ -46,7 +56,10 @@ services:
       - ./logs:/app/logs
     environment:
       - DEBUG=true
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
       - WILDBOX_GUARDIAN_URL=http://localhost:8003

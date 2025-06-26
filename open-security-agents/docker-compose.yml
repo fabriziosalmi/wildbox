@@ -1,14 +1,21 @@
 # Open Security Agents - Docker Compose Configuration
+# 
+# NOTE: This file is for standalone development of the agents service.
+# When running the full Wildbox stack, use the main docker-compose.yml 
+# which provides a shared Redis instance (wildbox-redis:6379/4).
 
 version: '3.8'
 
 services:
+  # Local Redis for standalone development
+  # When using main stack, agents service connects to wildbox-redis:6379/4
   redis:
     image: redis:7-alpine
     ports:
       - "6382:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -25,9 +32,14 @@ services:
       - "8006:8006"
     environment:
       - DEBUG=true
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/4
+      # - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
+      # - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
       - WILDBOX_GUARDIAN_URL=http://localhost:8002
@@ -45,9 +57,14 @@ services:
       - ./logs:/app/logs
     environment:
       - DEBUG=true
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/4
+      # - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
+      # - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
       - WILDBOX_GUARDIAN_URL=http://localhost:8002

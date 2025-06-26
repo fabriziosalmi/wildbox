@@ -1,3 +1,8 @@
+# Open Security API - Docker Compose Configuration
+#
+# NOTE: This file is for standalone development of the API service.
+# When running the full Wildbox stack, use the main docker-compose.yml.
+
 version: '3.8'
 
 services:
@@ -29,7 +34,8 @@ services:
       retries: 3
       start_period: 40s
 
-  # Redis for caching and rate limiting
+  # Local Redis for standalone development
+  # When using main stack, API service can optionally use shared wildbox-redis
   redis:
     image: redis:7-alpine
     container_name: wildbox-redis
@@ -37,10 +43,10 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     restart: unless-stopped
     networks:
       - wildbox-network
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s

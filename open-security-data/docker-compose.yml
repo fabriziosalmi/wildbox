@@ -1,3 +1,9 @@
+# Open Security Data - Docker Compose Configuration
+#
+# NOTE: This file is for standalone development of the data service.
+# When running the full Wildbox stack, use the main docker-compose.yml 
+# which provides shared database and Redis instances.
+
 version: '3.8'
 
 services:
@@ -21,7 +27,8 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Redis Cache
+  # Local Redis for standalone development
+  # When using main stack, data service uses wildbox-redis for caching
   redis:
     image: redis:7-alpine
     container_name: securitydata-redis
@@ -29,7 +36,7 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s

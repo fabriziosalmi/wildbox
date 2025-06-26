@@ -114,6 +114,9 @@ class LocalAPI:
         self.app.router.add_get('/api/v1/components', self._components_status_handler)
         self.app.router.add_get('/api/v1/stats', self._stats_handler)
         
+        # Dashboard endpoint
+        self.app.router.add_get('/api/v1/dashboard/metrics', self._dashboard_metrics_handler)
+        
         # Control endpoints
         self.app.router.add_post('/api/v1/test-connection', self._test_connection_handler)
         
@@ -366,6 +369,62 @@ class LocalAPI:
                 status=500
             )
     
+    async def _dashboard_metrics_handler(self, request: web_request.Request) -> web.Response:
+        """Get dashboard metrics for endpoint management"""
+        try:
+            # Get basic endpoint information
+            status = self.agent.get_status()
+            stats = self.agent.stats
+            
+            # Calculate metrics
+            total_endpoints = 1  # This sensor represents one endpoint
+            online_endpoints = 1 if self.agent.running else 0
+            
+            # Check for any alerts/issues
+            alerts = 0
+            if stats.get('error_count', 0) > 0:
+                alerts += 1
+            if stats.get('cpu_usage', 0) > 80:
+                alerts += 1
+            if stats.get('memory_usage', 0) > 80:
+                alerts += 1
+            
+            # Last activity timestamp
+            last_activity = datetime.now(timezone.utc).isoformat()
+            
+            # Trends (simplified for single endpoint)
+            trends_change = 0  # Would need historical data for proper trends
+            if not self.agent.running:
+                trends_change = -100  # Endpoint went offline
+            
+            dashboard_metrics = {
+                'total_endpoints': total_endpoints,
+                'online_endpoints': online_endpoints,
+                'alerts': alerts,
+                'last_activity': last_activity,
+                'trends_change': trends_change,
+                'endpoint_details': {
+                    'hostname': status.get('hostname', 'unknown'),
+                    'os': status.get('os', 'unknown'),
+                    'agent_version': status.get('version', '1.0.0'),
+                    'uptime_seconds': stats.get('uptime_seconds', 0),
+                    'cpu_usage': stats.get('cpu_usage', 0),
+                    'memory_usage': stats.get('memory_usage', 0),
+                    'disk_usage': stats.get('disk_usage', 0),
+                    'network_connections': stats.get('network_connections', 0),
+                    'process_count': stats.get('process_count', 0)
+                }
+            }
+            
+            return web.json_response(dashboard_metrics)
+            
+        except Exception as e:
+            logger.error(f"Error getting dashboard metrics: {e}")
+            return web.json_response(
+                {'error': 'Failed to get dashboard metrics', 'details': str(e)},
+                status=500
+            )
+    
     async def _test_connection_handler(self, request: web_request.Request) -> web.Response:
         """Test connection to data lake"""
         try:
@@ -440,6 +499,9 @@ class LocalAPI:
             </div>
             <div class="endpoint">
                 <span class="method">GET</span> <code>/api/v1/stats</code> - Statistics
+            </div>
+            <div class="endpoint">
+                <span class="method">GET</span> <code>/api/v1/dashboard/metrics</code> - Dashboard metrics
             </div>
             <div class="endpoint">
                 <span class="method">POST</span> <code>/api/v1/test-connection</code> - Test data lake connection

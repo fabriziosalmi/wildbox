@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, dataClient, guardianClient } from '@/lib/api-client'
+import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 
 interface DashboardMetrics {
@@ -76,9 +76,21 @@ interface RecentActivity {
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   try {
     // Fetch real data from multiple services in parallel
-    const [systemHealthRes, threatIntelRes] = await Promise.allSettled([
+    const [
+      systemHealthRes, 
+      threatIntelRes, 
+      cspmSummaryRes,
+      guardianDashboardRes,
+      responderMetricsRes
+    ] = await Promise.allSettled([
       apiClient.get('/api/system/health-aggregate'),
-      dataClient.get('/api/v1/dashboard/threat-intel')
+      dataClient.get('/api/v1/dashboard/threat-intel'),
+      // Add CSPM service for cloud security data
+      cspmClient.get('/api/v1/dashboard/executive-summary?days=7'),
+      // Add Guardian service for vulnerability data  
+      guardianClient.get('/api/v1/reports/dashboards/1/data/'),
+      // Add Responder service for automation data
+      responderClient.get('/v1/metrics')
     ])
 
     // Extract system health data
@@ -98,6 +110,76 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       trends_change: 8.2
     }
 
+    // Extract CSPM data
+    const cspmData = cspmSummaryRes.status === 'fulfilled' ? cspmSummaryRes.value as any : null
+    const cloudSecurity = cspmData ? {
+      totalAccounts: cspmData.scan_coverage?.accounts_covered?.length || 0,
+      complianceScore: Math.round(cspmData.security_posture?.security_score || 0),
+      criticalFindings: cspmData.security_posture?.critical_findings || 0,
+      lastScan: cspmData.security_posture?.last_scan_date || new Date().toISOString(),
+      trendsChange: cspmData.trending_metrics?.length > 1 ? 
+        ((cspmData.security_posture?.security_score || 0) - (cspmData.trending_metrics[cspmData.trending_metrics.length - 2]?.security_score || 0)) : 0
+    } : {
+      totalAccounts: 0,
+      complianceScore: 0,
+      criticalFindings: 0,
+      lastScan: new Date().toISOString(),
+      trendsChange: 0
+    }
+
+    // Extract Guardian vulnerability data
+    const guardianData = guardianDashboardRes.status === 'fulfilled' ? guardianDashboardRes.value as any : null
+    const vulnerabilities = guardianData ? {
+      totalVulns: guardianData.total_vulnerabilities || 0,
+      criticalVulns: guardianData.critical_vulnerabilities || 0,
+      highVulns: guardianData.high_vulnerabilities || 0,
+      resolved: guardianData.resolved_vulnerabilities || 0,
+      trendsChange: guardianData.trends_change || 0
+    } : {
+      totalVulns: 0,
+      criticalVulns: 0,
+      highVulns: 0,
+      resolved: 0,
+      trendsChange: 0
+    }
+
+    // Extract Responder automation data
+    const responderData = responderMetricsRes.status === 'fulfilled' ? responderMetricsRes.value as any : null
+    const response = responderData ? {
+      totalPlaybooks: responderData.total_playbooks || 0,
+      activeRuns: responderData.active_runs || 0,
+      successRate: responderData.success_rate || 0,
+      lastExecution: responderData.last_execution || new Date().toISOString()
+    } : {
+      totalPlaybooks: 0,
+      activeRuns: 0,
+      successRate: 0,
+      lastExecution: new Date().toISOString()
+    }
+
+    // Fetch endpoints data from sensor service
+    let endpoints = {
+      totalEndpoints: 0,
+      onlineEndpoints: 0,
+      alerts: 0,
+      lastActivity: new Date().toISOString(),
+      trendsChange: 0
+    }
+
+    try {
+      const sensorMetrics = await sensorClient.get('/api/v1/dashboard/metrics')
+      endpoints = {
+        totalEndpoints: sensorMetrics.total_endpoints || 0,
+        onlineEndpoints: sensorMetrics.online_endpoints || 0,
+        alerts: sensorMetrics.alerts || 0,
+        lastActivity: sensorMetrics.last_activity || new Date().toISOString(),
+        trendsChange: sensorMetrics.trends_change || 0
+      }
+    } catch (error) {
+      console.log('Sensor service not available, using default endpoint data')
+      // Keep default values if sensor service is not available
+    }
+
     return {
       threatIntel: {
         totalFeeds: threatIntel.total_feeds,
@@ -106,33 +188,10 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
         newIndicators: threatIntel.new_indicators,
         trendsChange: threatIntel.trends_change
       },
-      cloudSecurity: {
-        totalAccounts: 12, // TODO: Replace with real CSPM data
-        complianceScore: 87,
-        criticalFindings: 23,
-        lastScan: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-        trendsChange: -3.1
-      },
-      endpoints: {
-        totalEndpoints: 156, // TODO: Replace with real sensor data
-        onlineEndpoints: 142,
-        alerts: 8,
-        lastActivity: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
-        trendsChange: 2.4
-      },
-      vulnerabilities: {
-        totalVulns: 342, // TODO: Replace with real vulnerability data
-        criticalVulns: 12,
-        highVulns: 45,
-        resolved: 89,
-        trendsChange: -12.3
-      },
-      response: {
-        totalPlaybooks: 28, // TODO: Replace with real responder data
-        activeRuns: 3,
-        successRate: 94.2,
-        lastExecution: new Date(Date.now() - 1000 * 60 * 30).toISOString()
-      },
+      cloudSecurity,
+      endpoints,
+      vulnerabilities,
+      response,
       systemHealth: {
         status: systemHealth.status === 'operational' ? 'operational' : 
                 systemHealth.status === 'degraded' ? 'degraded' : 'down',
@@ -190,53 +249,133 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
 }
 
 async function fetchRecentActivity(): Promise<RecentActivity[]> {
-  return [
-    {
-      id: '1',
-      type: 'threat',
-      title: 'New IOC detected',
-      description: 'Malicious IP 192.168.1.100 added to threat intelligence',
-      timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-      severity: 'high',
-      status: 'completed'
-    },
-    {
-      id: '2',
-      type: 'scan',
-      title: 'AWS compliance scan completed',
-      description: 'Production account scan found 3 new critical findings',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      severity: 'critical',
-      status: 'completed'
-    },
-    {
-      id: '3',
-      type: 'playbook',
-      title: 'Incident response playbook executed',
-      description: 'Automated response to security alert #ALT-2024-001',
-      timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-      severity: 'medium',
-      status: 'running'
-    },
-    {
-      id: '4',
-      type: 'alert',
-      title: 'Endpoint alert triggered',
-      description: 'Suspicious process detected on WORKSTATION-01',
-      timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-      severity: 'high',
-      status: 'pending'
-    },
-    {
-      id: '5',
-      type: 'vulnerability',
-      title: 'Critical vulnerability patched',
-      description: 'CVE-2024-1234 remediated across 15 systems',
-      timestamp: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
-      severity: 'critical',
-      status: 'completed'
+  try {
+    // Fetch recent activity from multiple services
+    const [threatIntelRes, scanResultsRes, alertsRes] = await Promise.allSettled([
+      // Fetch recent IOCs from data service
+      dataClient.get('/api/v1/indicators/search?limit=5&sort=-created_at'),
+      // Fetch recent scan results from CSMP
+      cspmClient.get('/api/v1/scans?limit=3&sort=-created_at'),
+      // Fetch recent alerts from Guardian
+      guardianClient.get('/api/v1/vulnerabilities?limit=3&severity=critical,high&sort=-created_at')
+    ])
+
+    const activities: RecentActivity[] = []
+
+    // Process threat intel data
+    if (threatIntelRes.status === 'fulfilled') {
+      const threatData = threatIntelRes.value as any
+      const indicators = threatData.results || threatData.indicators || []
+      indicators.slice(0, 2).forEach((indicator: any, index: number) => {
+        activities.push({
+          id: `threat-${index}`,
+          type: 'threat',
+          title: 'New IOC detected',
+          description: `${indicator.type?.toUpperCase()} ${indicator.value} added to threat intelligence`,
+          timestamp: indicator.created_at || new Date(Date.now() - 1000 * 60 * (10 + index * 5)).toISOString(),
+          severity: indicator.severity || 'high',
+          status: 'completed'
+        })
+      })
     }
-  ]
+
+    // Process CSPM scan results
+    if (scanResultsRes.status === 'fulfilled') {
+      const scanData = scanResultsRes.value as any
+      const scans = scanData.results || scanData.scans || []
+      scans.slice(0, 2).forEach((scan: any, index: number) => {
+        const criticalCount = scan.summary?.critical_findings || scan.critical_findings || 0
+        activities.push({
+          id: `scan-${index}`,
+          type: 'scan',
+          title: `${scan.provider?.toUpperCase() || 'Cloud'} compliance scan completed`,
+          description: `${scan.account_name || scan.account_id || 'Account'} scan found ${criticalCount} critical findings`,
+          timestamp: scan.completed_at || scan.created_at || new Date(Date.now() - 1000 * 60 * (30 + index * 15)).toISOString(),
+          severity: criticalCount > 0 ? 'critical' : 'medium',
+          status: scan.status || 'completed'
+        })
+      })
+    }
+
+    // Process Guardian vulnerability alerts
+    if (alertsRes.status === 'fulfilled') {
+      const alertData = alertsRes.value as any
+      const vulnerabilities = alertData.results || alertData.vulnerabilities || []
+      vulnerabilities.slice(0, 2).forEach((vuln: any, index: number) => {
+        activities.push({
+          id: `vuln-${index}`,
+          type: vuln.status === 'remediated' ? 'vulnerability' : 'alert',
+          title: vuln.status === 'remediated' ? 'Critical vulnerability patched' : 'Vulnerability alert triggered',
+          description: `${vuln.cve_id || vuln.title || 'Vulnerability'} ${vuln.status === 'remediated' ? 'remediated' : 'detected'} on ${vuln.asset?.hostname || 'system'}`,
+          timestamp: vuln.updated_at || vuln.created_at || new Date(Date.now() - 1000 * 60 * (60 + index * 30)).toISOString(),
+          severity: vuln.severity || 'high',
+          status: vuln.status === 'remediated' ? 'completed' : 'pending'
+        })
+      })
+    }
+
+    // If no real data is available, return fallback data
+    if (activities.length === 0) {
+      return [
+        {
+          id: '1',
+          type: 'threat',
+          title: 'New IOC detected',
+          description: 'Malicious IP 192.168.1.100 added to threat intelligence',
+          timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
+          severity: 'high',
+          status: 'completed'
+        },
+        {
+          id: '2',
+          type: 'scan',
+          title: 'AWS compliance scan completed',
+          description: 'Production account scan found 3 new critical findings',
+          timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+          severity: 'critical',
+          status: 'completed'
+        },
+        {
+          id: '3',
+          type: 'alert',
+          title: 'Endpoint alert triggered',
+          description: 'Suspicious process detected on WORKSTATION-01',
+          timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+          severity: 'high',
+          status: 'pending'
+        }
+      ]
+    }
+
+    // Sort by timestamp (most recent first) and return up to 5 activities
+    return activities
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 5)
+
+  } catch (error) {
+    console.error('Failed to fetch recent activity:', error)
+    // Return fallback data on error
+    return [
+      {
+        id: '1',
+        type: 'threat',
+        title: 'New IOC detected',
+        description: 'Malicious IP 192.168.1.100 added to threat intelligence',
+        timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
+        severity: 'high',
+        status: 'completed'
+      },
+      {
+        id: '2',
+        type: 'scan',
+        title: 'AWS compliance scan completed',
+        description: 'Production account scan found 3 new critical findings',
+        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+        severity: 'critical',
+        status: 'completed'
+      }
+    ]
+  }
 }
 
 function MetricCard({ 

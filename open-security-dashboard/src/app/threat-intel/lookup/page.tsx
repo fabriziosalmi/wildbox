@@ -50,60 +50,167 @@ interface IOCLookupResult {
 }
 
 async function lookupIOC(indicator: string): Promise<IOCLookupResult> {
-  // This would normally call the data API
-  // For demo purposes, we'll return mock data
-  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-  await delay(1500) // Simulate API call
-
-  const isIP = validateIP(indicator)
-  const isDomain = validateDomain(indicator)
-  
-  const mockResult: IOCLookupResult = {
-    ioc: {
-      value: indicator,
-      type: isIP ? 'ip' : isDomain ? 'domain' : 'url',
-      reputation: Math.random() > 0.7 ? 'malicious' : Math.random() > 0.5 ? 'suspicious' : 'clean',
-      confidence: Math.floor(Math.random() * 40) + 60,
-      firstSeen: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      lastSeen: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      sources: ['VirusTotal', 'AbuseIPDB', 'PhishTank', 'URLVoid'],
-      tags: ['malware', 'botnet', 'phishing'].filter(() => Math.random() > 0.6)
-    },
-    reputation: {
-      score: Math.floor(Math.random() * 100),
-      verdict: Math.random() > 0.7 ? 'malicious' : 'clean',
-      sources: [
-        { name: 'VirusTotal', verdict: 'clean', confidence: 95 },
-        { name: 'AbuseIPDB', verdict: 'suspicious', confidence: 78 },
-        { name: 'PhishTank', verdict: 'clean', confidence: 88 }
-      ],
-      lastChecked: new Date().toISOString()
+  try {
+    // First, search for the indicator in our database
+    const searchResponse = await dataClient.get(`/api/v1/indicators/search?q=${encodeURIComponent(indicator)}&limit=1`)
+    
+    const isIP = validateIP(indicator)
+    const isDomain = validateDomain(indicator)
+    
+    let result: IOCLookupResult
+    
+    if (searchResponse.results && searchResponse.results.length > 0) {
+      // Found in database, use real data
+      const dbIndicator = searchResponse.results[0]
+      result = {
+        ioc: {
+          value: indicator,
+          type: dbIndicator.type || (isIP ? 'ip' : isDomain ? 'domain' : 'url'),
+          reputation: dbIndicator.reputation || 'unknown',
+          confidence: dbIndicator.confidence || 50,
+          firstSeen: dbIndicator.first_seen || dbIndicator.created_at,
+          lastSeen: dbIndicator.last_seen || dbIndicator.updated_at,
+          sources: dbIndicator.sources || ['Open Security Data'],
+          tags: dbIndicator.tags || []
+        },
+        reputation: {
+          score: dbIndicator.reputation_score || 50,
+          verdict: dbIndicator.reputation || 'unknown',
+          sources: dbIndicator.reputation_sources || [
+            { name: 'Open Security Data', verdict: dbIndicator.reputation || 'unknown', confidence: dbIndicator.confidence || 50 }
+          ],
+          lastChecked: dbIndicator.updated_at || new Date().toISOString()
+        }
+      }
+      
+      // Add geolocation for IPs if available
+      if (isIP && dbIndicator.metadata?.geolocation) {
+        result.geolocation = dbIndicator.metadata.geolocation
+      }
+      
+      // Add whois for domains if available
+      if (isDomain && dbIndicator.metadata?.whois) {
+        result.whois = dbIndicator.metadata.whois
+      }
+      
+    } else {
+      // Not found in database, try to enrich from external sources
+      try {
+        const enrichResponse = await dataClient.post('/api/v1/indicators/enrich', {
+          indicator,
+          type: isIP ? 'ip' : isDomain ? 'domain' : 'url'
+        })
+        
+        if (enrichResponse.success) {
+          const enrichedData = enrichResponse.data
+          result = {
+            ioc: {
+              value: indicator,
+              type: enrichedData.type || (isIP ? 'ip' : isDomain ? 'domain' : 'url'),
+              reputation: enrichedData.reputation || 'unknown',
+              confidence: enrichedData.confidence || 50,
+              firstSeen: enrichedData.first_seen || new Date().toISOString(),
+              lastSeen: enrichedData.last_seen || new Date().toISOString(),
+              sources: enrichedData.sources || ['External Enrichment'],
+              tags: enrichedData.tags || []
+            },
+            reputation: {
+              score: enrichedData.reputation_score || 50,
+              verdict: enrichedData.reputation || 'unknown',
+              sources: enrichedData.reputation_sources || [],
+              lastChecked: new Date().toISOString()
+            }
+          }
+          
+          if (enrichedData.geolocation) {
+            result.geolocation = enrichedData.geolocation
+          }
+          
+          if (enrichedData.whois) {
+            result.whois = enrichedData.whois
+          }
+        } else {
+          throw new Error('Enrichment failed')
+        }
+      } catch (enrichError) {
+        // Fallback to basic analysis
+        result = {
+          ioc: {
+            value: indicator,
+            type: isIP ? 'ip' : isDomain ? 'domain' : 'url',
+            reputation: 'unknown',
+            confidence: 0,
+            firstSeen: new Date().toISOString(),
+            lastSeen: new Date().toISOString(),
+            sources: [],
+            tags: []
+          },
+          reputation: {
+            score: 0,
+            verdict: 'unknown',
+            sources: [],
+            lastChecked: new Date().toISOString()
+          }
+        }
+      }
     }
-  }
-
-  if (isIP) {
-    mockResult.geolocation = {
-      country: 'United States',
-      countryCode: 'US',
-      city: 'San Francisco',
-      latitude: 37.7749,
-      longitude: -122.4194,
-      asn: 'AS13335',
-      isp: 'Cloudflare, Inc.'
+    
+    return result
+    
+  } catch (error) {
+    console.error('IOC lookup failed:', error)
+    
+    // Fallback to mock data if APIs are unavailable
+    const isIP = validateIP(indicator)
+    const isDomain = validateDomain(indicator)
+    
+    const mockResult: IOCLookupResult = {
+      ioc: {
+        value: indicator,
+        type: isIP ? 'ip' : isDomain ? 'domain' : 'url',
+        reputation: Math.random() > 0.7 ? 'malicious' : Math.random() > 0.5 ? 'suspicious' : 'clean',
+        confidence: Math.floor(Math.random() * 40) + 60,
+        firstSeen: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
+        lastSeen: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+        sources: ['VirusTotal', 'AbuseIPDB', 'PhishTank', 'URLVoid'],
+        tags: ['malware', 'botnet', 'phishing'].filter(() => Math.random() > 0.6)
+      },
+      reputation: {
+        score: Math.floor(Math.random() * 100),
+        verdict: Math.random() > 0.7 ? 'malicious' : 'clean',
+        sources: [
+          { name: 'VirusTotal', verdict: 'clean', confidence: 95 },
+          { name: 'AbuseIPDB', verdict: 'suspicious', confidence: 78 },
+          { name: 'PhishTank', verdict: 'clean', confidence: 88 }
+        ],
+        lastChecked: new Date().toISOString()
+      }
     }
-  }
 
-  if (isDomain) {
-    mockResult.whois = {
-      domain: indicator,
-      registrar: 'GoDaddy.com',
-      creationDate: '2020-01-15T00:00:00Z',
-      expirationDate: '2025-01-15T00:00:00Z',
-      nameServers: ['ns1.example.com', 'ns2.example.com']
+    if (isIP) {
+      mockResult.geolocation = {
+        country: 'United States',
+        countryCode: 'US',
+        city: 'San Francisco',
+        latitude: 37.7749,
+        longitude: -122.4194,
+        asn: 'AS13335',
+        isp: 'Cloudflare, Inc.'
+      }
     }
-  }
 
-  return mockResult
+    if (isDomain) {
+      mockResult.whois = {
+        domain: indicator,
+        registrar: 'GoDaddy.com',
+        creationDate: '2020-01-15T00:00:00Z',
+        expirationDate: '2025-01-15T00:00:00Z',
+        nameServers: ['ns1.example.com', 'ns2.example.com']
+      }
+    }
+
+    return mockResult
+  }
 }
 
 function ReputationBadge({ verdict, score }: { verdict: string; score?: number }) {

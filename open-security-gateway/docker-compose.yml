@@ -1,3 +1,9 @@
+# Open Security Gateway - Docker Compose Configuration
+#
+# NOTE: This file is for standalone development of the gateway service.
+# When running the full Wildbox stack, use the main docker-compose.yml 
+# which provides a shared Redis instance for authentication caching.
+
 version: '3.8'
 
 services:
@@ -35,12 +41,13 @@ services:
       retries: 3
       start_period: 40s
 
-  # Redis for caching authentication data
+  # Local Redis for standalone development
+  # When using main stack, gateway uses wildbox-redis for auth caching
   redis:
     image: redis:7-alpine
     container_name: wildbox-gateway-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     volumes:
       - redis_data:/data
     networks:

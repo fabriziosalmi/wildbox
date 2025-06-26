@@ -1,4 +1,8 @@
 # Open Security CSPM - Cloud Security Posture Management
+#
+# NOTE: This file is for standalone development of the CSPM service.
+# When running the full Wildbox stack, use the main docker-compose.yml 
+# which provides a shared Redis instance (wildbox-redis:6379/3).
 
 version: '3.8'
 
@@ -11,7 +15,10 @@ services:
       - "8006:8006"
     environment:
       - ENVIRONMENT=production
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/3
       - LOG_LEVEL=INFO
       - PROMETHEUS_PORT=9090
     depends_on:
@@ -36,7 +43,10 @@ services:
     command: celery -A app.worker worker --loglevel=info --concurrency=4
     environment:
       - ENVIRONMENT=production
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/3
       - LOG_LEVEL=INFO
     depends_on:
       redis:
@@ -54,7 +64,10 @@ services:
     command: celery -A app.worker beat --loglevel=info
     environment:
       - ENVIRONMENT=production
+      # For standalone development (uses local Redis)
       - REDIS_URL=redis://redis:6379/0
+      # For integration with main stack, use:
+      # - REDIS_URL=redis://wildbox-redis:6379/3
       - LOG_LEVEL=INFO
     depends_on:
       redis:
@@ -65,6 +78,8 @@ services:
     networks:
       - wildbox-network
 
+  # Local Redis for standalone development
+  # When using main stack, CSPM service connects to wildbox-redis:6379/3
   redis:
     image: redis:7-alpine
     container_name: wildbox-cspm-redis
@@ -73,6 +88,7 @@ services:
       - "6385:6379"
     volumes:
       - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
     networks:
       - wildbox-network
     healthcheck:
