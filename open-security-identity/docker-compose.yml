@@ -12,7 +12,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8001:8001"
+      - "8001:8004"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
       - REDIS_URL=redis://redis:6379/0
@@ -26,7 +26,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
 
   postgres:
     image: postgres:15

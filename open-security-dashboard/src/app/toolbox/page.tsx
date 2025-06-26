@@ -42,6 +42,7 @@ interface ToolExecution {
 
 async function fetchSecurityTools(): Promise<SecurityTool[]> {
   try {
+    // Use the gateway-aware API client or direct API client
     const response = await apiClient.get('/api/tools')
     return response
   } catch (error) {

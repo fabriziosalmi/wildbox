@@ -9,7 +9,7 @@ services:
   # Main application
   wildbox-api:
     build: .
-    container_name: wildbox-security-api
+    container_name: wildbox-security-api-main
     ports:
       - "8000:8000"
     environment:
@@ -38,7 +38,7 @@ services:
   # When using main stack, API service can optionally use shared wildbox-redis
   redis:
     image: redis:7-alpine
-    container_name: wildbox-redis
+    container_name: wildbox-redis-api
     ports:
       - "6379:6379"
     volumes:
@@ -56,7 +56,7 @@ services:
   # Nginx reverse proxy (optional)
   nginx:
     image: nginx:alpine
-    container_name: wildbox-nginx
+    container_name: wildbox-nginx-api
     ports:
       - "80:80"
       - "443:443"
@@ -80,4 +80,4 @@ networks:
     driver: bridge
     ipam:
       config:
-        - subnet: 172.20.0.0/16
+        - subnet: 172.21.0.0/16

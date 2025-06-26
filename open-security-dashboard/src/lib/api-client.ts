@@ -29,9 +29,19 @@ class ApiClient {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
       (config) => {
-        const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`
+        // Check if this is a request to the security API service
+        const isSecurityAPI = this.baseURL.includes('localhost:8000') || this.baseURL.includes(':8000')
+        
+        if (isSecurityAPI) {
+          // Use API key for security tools API
+          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'UrZMId_lkb_-9TcWSicVPCVNqSvnwr8e2VS9iXTAfxw'
+          config.headers['X-API-Key'] = apiKey
+        } else {
+          // Use JWT token for other services (identity, etc.)
+          const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`
+          }
         }
         return config
       },
