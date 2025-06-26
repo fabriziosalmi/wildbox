@@ -147,10 +147,18 @@ class IdentityServiceTester:
         success = True
         for email, user_data in self.test_users.items():
             try:
+                # Try the main auth login endpoint
                 response = self.make_request("POST", "/api/v1/auth/login", {
-                    "email": email,
+                    "username": email,  # Some APIs use username instead of email
                     "password": user_data["password"]
                 })
+                
+                # If that fails, try with email field
+                if response.status_code != 200:
+                    response = self.make_request("POST", "/api/v1/auth/login", {
+                        "email": email,
+                        "password": user_data["password"]
+                    })
                 
                 if response.status_code == 200:
                     result = response.json()
@@ -163,6 +171,8 @@ class IdentityServiceTester:
                         
                 else:
                     self.log(f"✗ Login failed for {email}: {response.status_code}", "ERROR")
+                    if response.status_code == 422:
+                        self.log(f"Validation error: {response.text}", "ERROR")
                     success = False
                     
             except Exception as e:
@@ -205,8 +215,8 @@ class IdentityServiceTester:
         
         # Test admin endpoints with different roles
         admin_endpoints = [
-            "/api/v1/users",  # List all users
-            "/internal/health",  # Internal health check
+            "/api/v1/auth/admin/users",  # List all users (admin only)
+            "/health",  # Health check endpoint
         ]
         
         for endpoint in admin_endpoints:
