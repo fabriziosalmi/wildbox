@@ -42,6 +42,9 @@ class StripeBillingService:
             
         Returns:
             Stripe customer ID
+            
+        Raises:
+            HTTPException: If Stripe operation fails
         """
         try:
             customer = stripe.Customer.create(
@@ -51,8 +54,16 @@ class StripeBillingService:
                 }
             )
             return customer.id
+        except stripe.error.InvalidRequestError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid request to Stripe: {str(e)}")
+        except stripe.error.AuthenticationError as e:
+            raise HTTPException(status_code=500, detail="Stripe authentication failed")
+        except stripe.error.APIConnectionError as e:
+            raise HTTPException(status_code=503, detail="Unable to connect to Stripe")
         except stripe.error.StripeError as e:
-            raise HTTPException(status_code=400, detail=f"Stripe error: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Unexpected error creating customer: {str(e)}")
     
     async def create_checkout_session(
         self, 

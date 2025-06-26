@@ -55,8 +55,9 @@ async def register_user(
         stripe_customer_id = await billing_service.create_customer(user)
         user.stripe_customer_id = stripe_customer_id
     except Exception as e:
-        # Log error but don't fail registration
-        print(f"Failed to create Stripe customer: {e}")
+        # Log error but don't fail registration - user can still use free tier
+        print(f"Warning: Failed to create Stripe customer for {user_data.email}: {e}")
+        # Consider logging to proper logging system in production
     
     # Create team with user as owner
     team = Team(

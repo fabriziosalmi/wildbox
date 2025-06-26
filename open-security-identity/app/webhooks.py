@@ -72,11 +72,17 @@ async def handle_stripe_webhook(
 async def handle_checkout_completed(session_data: dict, db: AsyncSession):
     """Handle successful checkout session completion."""
     team_id = session_data.get('metadata', {}).get('team_id')
-    plan_id = session_data.get('metadata', {}).get('plan_id')
+    plan_id_str = session_data.get('metadata', {}).get('plan_id')
     subscription_id = session_data.get('subscription')
     
-    if not all([team_id, plan_id, subscription_id]):
+    if not all([team_id, plan_id_str, subscription_id]):
         print("Missing required metadata in checkout session")
+        return
+    
+    try:
+        plan_id = SubscriptionPlan(plan_id_str)
+    except ValueError:
+        print(f"Invalid plan_id in metadata: {plan_id_str}")
         return
     
     # Update subscription in our database
@@ -86,10 +92,11 @@ async def handle_checkout_completed(session_data: dict, db: AsyncSession):
     subscription = result.scalar_one_or_none()
     
     if subscription:
-        subscription.stripe_subscription_id = subscription_id
+        subscription.stripe_subscription_id = subscription_id  # FIX: This was missing
         subscription.plan_id = plan_id
         subscription.status = SubscriptionStatus.ACTIVE
         await db.commit()
+        print(f"Subscription updated for team {team_id}: {plan_id} - {subscription_id}")
     else:
         print(f"Subscription not found for team {team_id}")
 

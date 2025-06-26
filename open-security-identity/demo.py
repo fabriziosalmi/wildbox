@@ -99,14 +99,15 @@ def demo_subscription_plans():
     print("=" * 40)
     
     from app.billing import billing_service
+    from app.models import SubscriptionPlan
     
-    plans = ["free", "pro", "business"]
+    plans = [SubscriptionPlan.FREE, SubscriptionPlan.PRO, SubscriptionPlan.BUSINESS]
     
     for plan in plans:
         permissions = billing_service.get_plan_permissions(plan)
         rate_limits = billing_service.get_rate_limits(plan)
         
-        print(f"\n{plan.upper()} Plan:")
+        print(f"\n{plan.value.upper()} Plan:")
         print(f"  Permissions: {', '.join(permissions)}")
         print(f"  Rate Limits: {rate_limits}")
 

@@ -59,8 +59,8 @@ async def get_team_and_check_permission(
 
 @router.post("/{team_id}/api-keys", response_model=ApiKeyWithSecret)
 async def create_api_key(
+    key_data: ApiKeyCreate,
     team_id: str = Path(..., description="Team ID"),
-    key_data: ApiKeyCreate = ...,
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):

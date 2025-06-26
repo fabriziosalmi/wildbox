@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
     internal_api_prefix: str = "/internal"
     
-    # CORS
-    cors_origins: list[str] = ["*"]
+    # CORS - SECURITY: Restrict origins in production
+    cors_origins: list[str] = ["http://localhost:3000", "https://wildbox.local", "https://dashboard.wildbox.local"]
     cors_allow_credentials: bool = True
-    cors_allow_methods: list[str] = ["*"]
+    cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_allow_headers: list[str] = ["*"]
     
     # Frontend URLs (for Stripe redirects)
