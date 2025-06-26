@@ -222,7 +222,7 @@ cd open-security-identity
 ./setup.sh
 
 # Access API documentation
-open http://localhost:8000/docs
+open http://localhost:8001/docs
 
 # Run demo
 python demo.py

@@ -157,7 +157,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           <h1 className="text-2xl font-bold mb-2">Wildbox Security</h1>
           <p className="text-muted-foreground mb-6">Please log in to continue</p>
           <Link 
-            href="/auth/login"
+            href="/"
             className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
           >
             Go to Login
@@ -269,11 +269,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                 </div>
               </Link>
               <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  handleLogout()
-                }}
+                onClick={handleLogout}
                 className="p-1 rounded hover:bg-destructive/10 transition-colors"
                 title="Logout"
               >

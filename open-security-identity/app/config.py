@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     app_name: str = "Open Security Identity"
     app_version: str = "1.0.0"
     debug: bool = False
+    port: int = 8001
     
     # Database
     database_url: str = Field(..., description="Database connection URL")

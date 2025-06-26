@@ -136,17 +136,21 @@ services:
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_DEBUG=true
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:80
-      - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:8001
-      - NEXT_PUBLIC_DATA_API_URL=http://localhost:8002
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
-      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8004
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8005
-      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8006
+      - NEXT_PUBLIC_USE_GATEWAY=true
+      - NEXT_PUBLIC_GATEWAY_URL=http://gateway:80
+      - NEXT_PUBLIC_API_BASE_URL=http://gateway:80/api/v1/tools
+      - NEXT_PUBLIC_IDENTITY_API_URL=http://gateway:80/api/v1/identity
+      - NEXT_PUBLIC_DATA_API_URL=http://gateway:80/api/v1/data
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://gateway:80/api/v1/guardian
+      - NEXT_PUBLIC_SENSOR_API_URL=http://gateway:80/api/v1/sensor
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://gateway:80/api/v1/responder
+      - NEXT_PUBLIC_AGENTS_API_URL=http://gateway:80/api/v1/agents
       - NEXTAUTH_SECRET=wildbox-dashboard-secret-for-testing
       - NEXTAUTH_URL=http://localhost:3000
     networks:
-      - wildbox
+      wildbox:
+        aliases:
+          - dashboard
     depends_on:
       - gateway
       - identity

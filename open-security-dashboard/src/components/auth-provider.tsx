@@ -89,7 +89,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     localStorage.removeItem('user')
 
     setUser(null)
-    router.push('/auth/login')
+    router.push('/')
   }
 
   const refetchUser = async () => {

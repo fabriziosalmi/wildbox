@@ -678,19 +678,19 @@ async def create_my_api_key(
     """
     User endpoint: Create a new API key.
     """
-    from ...auth import generate_api_key
     import uuid
     from datetime import datetime
+    import secrets
     
     # Generate API key
-    api_key = generate_api_key()
+    api_key = secrets.token_urlsafe(32)
     prefix = api_key[:8]
     
     # Get user's primary team
     team_membership = await db.execute(
         select(TeamMembership)
         .where(TeamMembership.user_id == current_user.id)
-        .order_by(TeamMembership.joined_at.asc())
+        .order_by(TeamMembership.created_at.asc())
     )
     primary_membership = team_membership.scalar_one_or_none()
     
@@ -787,7 +787,7 @@ async def get_team_members(
         select(TeamMembership)
         .options(selectinload(TeamMembership.user))
         .where(TeamMembership.team_id == team_id)
-        .order_by(TeamMembership.joined_at.asc())
+        .order_by(TeamMembership.created_at.asc())
     )
     
     members = []
@@ -796,7 +796,7 @@ async def get_team_members(
             "user_id": str(membership.user_id),
             "team_id": str(membership.team_id),
             "role": membership.role.value,
-            "joined_at": membership.joined_at.isoformat(),
+            "joined_at": membership.created_at.isoformat(),
             "user": {
                 "id": str(membership.user.id),
                 "email": membership.user.email,

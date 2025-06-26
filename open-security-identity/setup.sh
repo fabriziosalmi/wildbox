@@ -5,7 +5,7 @@
 
 set -e
 
-echo "🎯 Open Security Identity - Setup Script"
+echo "🎯 Open Security Ident    echo "   ht    echo "📖 Documentation: http://localhost:8001/docs"p://localhost:8001/docs"ty - Setup Script"
 echo "========================================"
 
 # Colors for output
@@ -137,7 +137,7 @@ run_tests() {
     sleep 5
     
     # Test the health endpoint
-    if curl -f http://localhost:8000/health >/dev/null 2>&1; then
+    if curl -f http://localhost:8001/health >/dev/null 2>&1; then
         log "Health check passed ✓"
     else
         warn "Health check failed - service may still be starting"

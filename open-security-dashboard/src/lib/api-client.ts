@@ -149,55 +149,57 @@ class ApiClient {
   }
 }
 
-// API Clients for different services
+// API Clients - All requests go through Wildbox Gateway for production
 const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY === 'true'
 const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
 
-// Main API client (security tools)
+// Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 
     ? `${gatewayUrl}/api/v1/tools`
     : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
 )
 
-// Identity client
 export const identityClient = new ApiClient(
   useGateway 
     ? `${gatewayUrl}/api/v1/identity`
     : (process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001')
 )
 
-// Gateway-aware clients for authenticated access through Wildbox Gateway
-export const gatewayDataClient = new ApiClient(`${gatewayUrl}/api/v1/data`)
-export const gatewayCSPMClient = new ApiClient(`${gatewayUrl}/api/v1/cspm`)
-export const gatewayGuardianClient = new ApiClient(`${gatewayUrl}/api/v1/guardian`)
-export const gatewayResponderClient = new ApiClient(`${gatewayUrl}/api/v1/responder`)
-export const gatewayAgentsClient = new ApiClient(`${gatewayUrl}/api/v1/agents`)
-export const gatewayIdentityClient = new ApiClient(`${gatewayUrl}/api/v1/identity`)
-
-// Direct service clients (for development/testing when gateway is not available)
 export const dataClient = new ApiClient(
-  process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/data`
+    : (process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002')
 )
 
 export const guardianClient = new ApiClient(
-  process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8003'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/guardian`
+    : (process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8003')
 )
 
 export const sensorClient = new ApiClient(
-  process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8004'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/sensor`
+    : (process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8004')
 )
 
 export const responderClient = new ApiClient(
-  process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8005'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/responder`
+    : (process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8005')
 )
 
 export const agentsClient = new ApiClient(
-  process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/agents`
+    : (process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006')
 )
 
 export const cspmClient = new ApiClient(
-  process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8007'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/cspm`
+    : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8007')
 )
 
 export default apiClient

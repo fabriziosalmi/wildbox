@@ -67,7 +67,7 @@ async def demo_api_endpoints():
     print("\n🌐 API Endpoints Demo")
     print("=" * 40)
     
-    base_url = "http://localhost:8000"
+    base_url = "http://localhost:8001"
     
     try:
         async with httpx.AsyncClient() as client:
@@ -89,7 +89,7 @@ async def demo_api_endpoints():
                 print("❌ Health check failed")
                 
     except httpx.ConnectError:
-        print("❌ Cannot connect to service. Make sure it's running on port 8000.")
+        print("❌ Cannot connect to service. Make sure it's running on port 8001.")
         print("   Start with: uvicorn app.main:app --reload")
 
 
@@ -124,7 +124,7 @@ async def main():
     print("\n✅ Demo completed!")
     print("\nNext steps:")
     print("1. Start the service: uvicorn app.main:app --reload")
-    print("2. Visit http://localhost:8000/docs for API documentation")
+    print("2. Visit http://localhost:8001/docs for API documentation")
     print("3. Use the API endpoints to register users and create API keys")
 
 
