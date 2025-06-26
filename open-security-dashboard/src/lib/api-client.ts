@@ -150,17 +150,24 @@ class ApiClient {
 }
 
 // API Clients for different services
+const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY === 'true'
+const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
+
+// Main API client (security tools)
 export const apiClient = new ApiClient(
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/tools`
+    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
 )
 
+// Identity client
 export const identityClient = new ApiClient(
-  process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001'
+  useGateway 
+    ? `${gatewayUrl}/api/v1/identity`
+    : (process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001')
 )
 
 // Gateway-aware clients for authenticated access through Wildbox Gateway
-const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'https://api.wildbox.local'
-
 export const gatewayDataClient = new ApiClient(`${gatewayUrl}/api/v1/data`)
 export const gatewayCSPMClient = new ApiClient(`${gatewayUrl}/api/v1/cspm`)
 export const gatewayGuardianClient = new ApiClient(`${gatewayUrl}/api/v1/guardian`)

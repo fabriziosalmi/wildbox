@@ -162,3 +162,53 @@ class AuthorizationResponse(BaseModel):
 # Update forward references
 UserWithTeams.model_rebuild()
 TeamWithSubscription.model_rebuild()
+
+# Additional schemas for extended user management
+class UserProfileUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    current_password: Optional[str] = None
+    new_password: Optional[str] = None
+
+
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+
+class AccountDeletionRequest(BaseModel):
+    password: str
+    confirm_deletion: bool = Field(..., description="Must be True to confirm deletion")
+
+
+class UserStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class TeamRoleUpdate(BaseModel):
+    new_role: TeamRole
+
+
+class UserActivityResponse(BaseModel):
+    user_id: str
+    email: str
+    created_at: datetime
+    last_login: Optional[datetime] = None
+    team_memberships: List[dict] = []
+    active_api_keys: int
+    account_status: str
+
+
+class TeamMembershipInfo(BaseModel):
+    team_id: str
+    team_name: str
+    my_role: str
+    subscription_plan: str
+    subscription_status: str
+    joined_at: datetime
+
+
+class UserListQuery(BaseModel):
+    skip: int = Field(0, ge=0)
+    limit: int = Field(100, ge=1, le=1000)
+    email_filter: Optional[str] = None
+    is_active: Optional[bool] = None

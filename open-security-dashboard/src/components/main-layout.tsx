@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/components/auth-provider'
 import Link from 'next/link'
 import {
   LayoutDashboard,
@@ -20,8 +21,10 @@ import {
   User,
   LogOut,
   ChevronDown,
+  Crown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 
 const navigation = [
   {
@@ -113,6 +116,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])
   const pathname = usePathname()
+  const { user, logout, isAuthenticated } = useAuth()
 
   const toggleExpanded = (name: string) => {
     setExpandedItems(prev =>
@@ -124,6 +128,43 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   const isActive = (href: string) => {
     return pathname === href || pathname.startsWith(href + '/')
+  }
+
+  const handleLogout = () => {
+    logout()
+  }
+
+  const getUserRole = () => {
+    if (user?.is_superuser) return 'Super Admin'
+    if (user?.team_memberships?.[0]?.role === 'owner') return 'Team Owner'
+    if (user?.team_memberships?.[0]?.role === 'admin') return 'Team Admin'
+    return 'Member'
+  }
+
+  const getRoleBadgeColor = () => {
+    if (user?.is_superuser) return 'text-red-600 border-red-600'
+    if (user?.team_memberships?.[0]?.role === 'owner') return 'text-yellow-600 border-yellow-600'
+    if (user?.team_memberships?.[0]?.role === 'admin') return 'text-blue-600 border-blue-600'
+    return 'text-gray-600 border-gray-600'
+  }
+
+  // If not authenticated, redirect to login
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-primary mx-auto mb-4" />
+          <h1 className="text-2xl font-bold mb-2">Wildbox Security</h1>
+          <p className="text-muted-foreground mb-6">Please log in to continue</p>
+          <Link 
+            href="/auth/login"
+            className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+          >
+            Go to Login
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -212,15 +253,32 @@ export function MainLayout({ children }: MainLayoutProps) {
 
           {/* User Profile */}
           <div className="p-4 border-t">
-            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent cursor-pointer">
-              <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-primary-foreground" />
-              </div>
-              <div className="flex-1">
-                <div className="text-sm font-medium">Admin User</div>
-                <div className="text-xs text-muted-foreground">admin@wildbox.com</div>
-              </div>
-              <LogOut className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors">
+              <Link href="/settings/profile" className="flex items-center gap-3 flex-1">
+                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                  <User className="w-4 h-4 text-primary-foreground" />
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm font-medium">{user?.email || 'User'}</div>
+                  <div className="flex items-center gap-1 mt-1">
+                    <Badge variant="outline" className={`text-xs ${getRoleBadgeColor()}`}>
+                      {user?.is_superuser && <Crown className="w-3 h-3 mr-1" />}
+                      {getUserRole()}
+                    </Badge>
+                  </div>
+                </div>
+              </Link>
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleLogout()
+                }}
+                className="p-1 rounded hover:bg-destructive/10 transition-colors"
+                title="Logout"
+              >
+                <LogOut className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+              </button>
             </div>
           </div>
         </div>

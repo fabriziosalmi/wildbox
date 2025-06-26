@@ -38,6 +38,12 @@ app.include_router(
 )
 
 app.include_router(
+    users.router,
+    prefix=f"{settings.api_v1_prefix}/users",
+    tags=["users"]
+)
+
+app.include_router(
     api_keys.router,
     prefix=f"{settings.api_v1_prefix}/teams",
     tags=["api-keys"]
