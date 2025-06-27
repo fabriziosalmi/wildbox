@@ -266,8 +266,31 @@ export default function AdminPage() {
     }
   }
 
-  const handleDeleteUser = async (userId: string) => {
-    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    // First check if the user can be deleted
+    try {
+      const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/users/admin/users/${userId}/can-delete`))
+      
+      if (!checkResponse.can_delete) {
+        const reasons = checkResponse.reasons.join('\n• ')
+        toast({
+          title: "Cannot Delete User",
+          description: `User cannot be deleted:\n\n• ${reasons}`,
+          variant: "destructive",
+        })
+        return
+      }
+    } catch (error) {
+      console.error('Failed to check if user can be deleted:', error)
+      // Show warning but allow to continue
+      toast({
+        title: "Warning",
+        description: "Could not verify if user can be deleted safely. Proceeding with caution.",
+        variant: "destructive",
+      })
+    }
+
+    if (!confirm(`Are you sure you want to delete ${userEmail}?\n\nThis action cannot be undone and will:\n- Permanently remove the user account\n- Remove them from all teams\n- Delete all their API keys\n\nNote: Users who own teams cannot be deleted until ownership is transferred.`)) {
       return
     }
 
@@ -276,15 +299,29 @@ export default function AdminPage() {
       
       toast({
         title: "Success",
-        description: "User deleted successfully",
+        description: `User ${userEmail} deleted successfully`,
       })
       
       fetchUsers()
     } catch (error: any) {
       console.error('Failed to delete user:', error)
+      
+      // Extract specific error message from the API response
+      let errorMessage = "Failed to delete user"
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail
+      } else if (error.message) {
+        errorMessage = error.message
+      }
+      
+      // Provide more helpful error message for common cases
+      if (errorMessage.includes("owns") && errorMessage.includes("team")) {
+        errorMessage += "\n\nTo delete this user, first transfer team ownership to another user or delete the team."
+      }
+      
       toast({
-        title: "Error",
-        description: "Failed to delete user",
+        title: "Cannot Delete User",
+        description: errorMessage,
         variant: "destructive",
       })
     }
@@ -296,7 +333,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/superuser`), {
+      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/role`), {
         is_superuser: true
       })
       
@@ -322,7 +359,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/superuser`), {
+      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/role`), {
         is_superuser: false
       })
       
@@ -373,6 +410,16 @@ export default function AdminPage() {
       }
     }
     return 'Active' // Default status
+  }
+
+  // Helper function to check if user owns any teams
+  const isTeamOwner = (user: AdminUserData) => {
+    return user.team_memberships?.some(membership => membership.role === 'owner') || false
+  }
+
+  // Helper function to get owned teams count
+  const getOwnedTeamsCount = (user: AdminUserData) => {
+    return user.team_memberships?.filter(membership => membership.role === 'owner').length || 0
   }
 
   // Don't render anything if not superuser
@@ -551,12 +598,24 @@ export default function AdminPage() {
                       <td className="p-3">
                         <div className="space-y-1">
                           {user.team_memberships?.map((membership) => (
-                            <Badge key={membership.team_id} variant="outline" className="text-xs">
+                            <Badge 
+                              key={membership.team_id} 
+                              variant={membership.role === 'owner' ? "default" : "outline"} 
+                              className={`text-xs ${membership.role === 'owner' ? 'bg-blue-100 text-blue-800 border-blue-200' : ''}`}
+                            >
                               {membership.team_name} ({membership.role})
+                              {membership.role === 'owner' && (
+                                <Crown className="w-3 h-3 ml-1 inline" />
+                              )}
                             </Badge>
                           ))}
                           {!user.team_memberships?.length && (
                             <span className="text-sm text-muted-foreground">No teams</span>
+                          )}
+                          {isTeamOwner(user) && (
+                            <div className="text-xs text-blue-600 mt-1">
+                              Owns {getOwnedTeamsCount(user)} team(s)
+                            </div>
                           )}
                         </div>
                       </td>
@@ -572,7 +631,7 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleUserStatus(user.id, user.is_active)}
-                            disabled={user.is_superuser && user.id === user?.id}
+                            disabled={user.is_superuser && user.email === 'superadmin@wildbox.com'}
                           >
                             {user.is_active ? (
                               <>
@@ -616,10 +675,16 @@ export default function AdminPage() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleDeleteUser(user.id)}
-                            disabled={user.is_superuser}
+                            onClick={() => handleDeleteUser(user.id, user.email)}
+                            disabled={user.is_superuser || isTeamOwner(user)}
                             className="text-red-600 hover:text-red-700"
-                            title="Delete user permanently"
+                            title={
+                              user.is_superuser 
+                                ? "Cannot delete superuser accounts" 
+                                : isTeamOwner(user)
+                                ? `Cannot delete team owner. User owns ${getOwnedTeamsCount(user)} team(s).`
+                                : "Delete user permanently"
+                            }
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>

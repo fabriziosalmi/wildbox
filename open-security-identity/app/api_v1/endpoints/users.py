@@ -210,6 +210,71 @@ async def update_user_status(
     return {"message": f"User {'activated' if is_active else 'deactivated'} successfully"}
 
 
+@router.get("/admin/users/{user_id}/can-delete")
+async def check_user_deletable(
+    user_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Admin endpoint: Check if a user can be safely deleted.
+    
+    Requires: Superuser role
+    """
+    # Only superusers can check delete permissions
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    
+    # Get user with relationships
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.owned_teams),
+            selectinload(User.team_memberships),
+            selectinload(User.api_keys)
+        )
+        .where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check various conditions
+    can_delete = True
+    reasons = []
+    
+    # Cannot delete self
+    if user_id == str(current_user.id):
+        can_delete = False
+        reasons.append("Cannot delete your own account")
+    
+    # Cannot delete superusers (extra protection)
+    if user.is_superuser:
+        can_delete = False
+        reasons.append("Cannot delete superuser accounts")
+    
+    # Cannot delete users who own teams
+    if user.owned_teams:
+        can_delete = False
+        team_names = [team.name for team in user.owned_teams]
+        reasons.append(f"User owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Transfer ownership first.")
+    
+    return {
+        "can_delete": can_delete,
+        "reasons": reasons,
+        "owned_teams": len(user.owned_teams) if user.owned_teams else 0,
+        "team_memberships": len(user.team_memberships) if user.team_memberships else 0,
+        "api_keys": len(user.api_keys) if user.api_keys else 0
+    }
+
+
 @router.delete("/admin/users/{user_id}")
 async def delete_user(
     user_id: str,
@@ -220,6 +285,7 @@ async def delete_user(
     Admin endpoint: Delete a user account (hard delete).
     
     Requires: Superuser role
+    Note: Users who own teams cannot be deleted - transfer ownership first.
     """
     # Only superusers can delete accounts
     if not current_user.is_superuser:
@@ -253,22 +319,36 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
     
-    # Check if user owns any teams
-    if user.owned_teams:
-        # For now, prevent deletion of users who own teams
-        # In the future, you might want to transfer ownership or delete teams
+    # Prevent deleting superusers (extra protection)
+    if user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s). Transfer ownership first."
+            detail="Cannot delete superuser accounts. Remove superuser privileges first."
         )
     
-    # Hard delete - SQLAlchemy will handle cascading deletes for:
-    # - team_memberships (cascade="all, delete-orphan")  
-    # - api_keys (cascade="all, delete-orphan")
-    await db.delete(user)
-    await db.commit()
+    # Check if user owns any teams
+    if user.owned_teams:
+        team_names = [team.name for team in user.owned_teams]
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Transfer ownership first."
+        )
     
-    return {"message": "User deleted successfully"}
+    try:
+        # Hard delete - SQLAlchemy will handle cascading deletes for:
+        # - team_memberships (cascade="all, delete-orphan")  
+        # - api_keys (cascade="all, delete-orphan")
+        await db.delete(user)
+        await db.commit()
+        
+        return {"message": f"User {user.email} deleted successfully"}
+        
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete user: {str(e)}"
+        )
 
 
 @router.patch("/admin/users/{user_id}/superuser")
@@ -309,6 +389,60 @@ async def update_user_superuser_status(
     
     # Get the new superuser status from request data
     is_superuser = superuser_data.get("is_superuser", False)
+    
+    # Update superuser status
+    user.is_superuser = is_superuser
+    await db.commit()
+    
+    action = "promoted to" if is_superuser else "demoted from"
+    return {"message": f"User {action} superuser successfully"}
+
+
+@router.patch("/admin/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    role_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Admin endpoint: Update user role (promote/demote superuser).
+    
+    Requires: Superuser role
+    """
+    # Only superusers can change user roles
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    
+    # Get user
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Prevent changing own superuser status
+    if user_id == str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own role"
+        )
+    
+    # Prevent changing the main superadmin account
+    if user.email == 'superadmin@wildbox.com':
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change the main superadmin account role"
+        )
+    
+    # Get the new superuser status from request data
+    is_superuser = role_data.get("is_superuser", False)
     
     # Update superuser status
     user.is_superuser = is_superuser
