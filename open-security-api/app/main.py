@@ -365,7 +365,7 @@ def create_app() -> FastAPI:
             "sensor": settings.sensor_service_url or "http://open-security-sensor:8004",
             "responder": settings.responder_service_url or "http://open-security-responder:8005",
             "agents": settings.agents_service_url or "http://open-security-agents:8006",
-            "cspm": settings.cspm_service_url or "http://open-security-cspm:8007"
+            "cspm": settings.cspm_service_url or "http://open-security-cspm:8019"
         }
         
         health_status = {

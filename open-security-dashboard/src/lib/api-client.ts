@@ -271,7 +271,7 @@ export const agentsClient = new ApiClient(
 export const cspmClient = new ApiClient(
   useGateway 
     ? `${gatewayUrl}/api/v1/cspm`
-    : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8007')
+    : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8019')
 )
 
 // Gateway client for direct gateway API access

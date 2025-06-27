@@ -170,7 +170,7 @@ const apiServices: ApiService[] = [
   {
     name: 'Cloud Security (CSPM)',
     description: 'Cloud Security Posture Management and compliance scanning',
-    port: 8007,
+    port: 8019,
     icon: Cloud,
     status: 'healthy',
     endpoints: [

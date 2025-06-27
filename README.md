@@ -170,7 +170,7 @@ curl http://localhost:8013/health    # Guardian
 curl http://localhost:8004/health    # Sensor
 curl http://localhost:8005/health    # Responder
 curl http://localhost:8006/health    # AI Agents
-curl http://localhost:8007/health    # CSPM
+curl http://localhost:8019/health    # CSPM
 
 # Metrics endpoints
 curl http://localhost:8000/metrics   # Prometheus metrics

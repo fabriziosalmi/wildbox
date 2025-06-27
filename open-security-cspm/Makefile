@@ -2,7 +2,9 @@
 
 .PHONY: help install dev build test lint format clean docker-build docker-up docker-down logs
 
-# Colors for terminal output
+# Colors 	docker run --rm -d --name cspm-test -p 8019:8019 wildbox/cspm:latest
+	@sleep 5
+	@curl -f http://localhost:8019/health || (echo "$(RED)Health check failed$(NC)" && exit 1) terminal output
 RED = \033[0;31m
 GREEN = \033[0;32m
 YELLOW = \033[1;33m

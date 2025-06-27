@@ -12,7 +12,7 @@ services:
     container_name: wildbox-cspm
     restart: unless-stopped
     ports:
-      - "8006:8006"
+      - "8019:8019"
     environment:
       - ENVIRONMENT=production
       # For standalone development (uses local Redis)
@@ -30,7 +30,7 @@ services:
     networks:
       - wildbox-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
       interval: 30s
       timeout: 10s
       retries: 3

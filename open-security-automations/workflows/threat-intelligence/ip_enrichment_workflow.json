@@ -1,0 +1,220 @@
+{
+  "name": "Threat Intelligence Enrichment",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "http://wildbox-sensor:8004/api/v1/events/stream",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}"
+          }
+        }
+      },
+      "name": "Security Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$node[\"Security Event Webhook\"].json[\"event_type\"]}}",
+              "operation": "equal",
+              "value2": "suspicious_activity"
+            }
+          ]
+        }
+      },
+      "name": "Filter Suspicious Events",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "url": "https://api.virustotal.com/api/v3/ip_addresses/{{$node[\"Security Event Webhook\"].json[\"source_ip\"]}}",
+        "options": {
+          "headers": {
+            "x-apikey": "{{$env.VIRUSTOTAL_API_KEY}}"
+          }
+        }
+      },
+      "name": "VirusTotal IP Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [700, 150]
+    },
+    {
+      "parameters": {
+        "url": "https://api.abuseipdb.com/api/v2/check",
+        "options": {
+          "headers": {
+            "Key": "{{$env.ABUSEIPDB_API_KEY}}",
+            "Accept": "application/json"
+          },
+          "queryParameters": {
+            "ipAddress": "{{$node[\"Security Event Webhook\"].json[\"source_ip\"]}}",
+            "maxAgeInDays": "90"
+          }
+        }
+      },
+      "name": "AbuseIPDB Lookup",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [700, 250]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Threat Intelligence Enrichment\nconst event = items[0].json;\nconst vtData = items[1].json;\nconst abuseData = items[2].json;\n\n// Calculate threat score\nlet threatScore = 0;\nif (vtData.data && vtData.data.attributes) {\n  threatScore += vtData.data.attributes.last_analysis_stats.malicious * 10;\n  threatScore += vtData.data.attributes.last_analysis_stats.suspicious * 5;\n}\n\nif (abuseData.data && abuseData.data.abuseConfidencePercentage) {\n  threatScore += abuseData.data.abuseConfidencePercentage / 10;\n}\n\n// Enrich event with threat intelligence\nconst enrichedEvent = {\n  ...event,\n  threat_intelligence: {\n    threat_score: Math.min(100, threatScore),\n    virustotal_detections: vtData.data?.attributes?.last_analysis_stats || {},\n    abuse_confidence: abuseData.data?.abuseConfidencePercentage || 0,\n    country: abuseData.data?.countryCode || 'Unknown',\n    isp: abuseData.data?.isp || 'Unknown',\n    enrichment_timestamp: new Date().toISOString()\n  },\n  risk_level: threatScore > 50 ? 'high' : threatScore > 20 ? 'medium' : 'low'\n};\n\nreturn [{json: enrichedEvent}];"
+      },
+      "name": "Enrich Event Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [900, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://wildbox-responder:8005/api/v1/incidents",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",
+            "Content-Type": "application/json"
+          },
+          "body": "{{$node[\"Enrich Event Data\"].json}}"
+        },
+        "method": "POST"
+      },
+      "name": "Create Security Incident",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$node[\"Enrich Event Data\"].json[\"risk_level\"]}}",
+              "operation": "equal",
+              "value2": "high"
+            }
+          ]
+        }
+      },
+      "name": "Check High Risk",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1300, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://wildbox-responder:8005/api/v1/response/isolate",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "source_ip": "{{$node[\"Security Event Webhook\"].json[\"source_ip\"]}}",
+            "action": "block",
+            "duration": "1h",
+            "reason": "High threat score: {{$node[\"Enrich Event Data\"].json[\"threat_intelligence\"][\"threat_score\"]}}"
+          }
+        },
+        "method": "POST"
+      },
+      "name": "Auto-Block High Risk IP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1500, 150]
+    }
+  ],
+  "connections": {
+    "Security Event Webhook": {
+      "main": [
+        [
+          {
+            "node": "Filter Suspicious Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Suspicious Events": {
+      "main": [
+        [
+          {
+            "node": "VirusTotal IP Lookup",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AbuseIPDB Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "VirusTotal IP Lookup": {
+      "main": [
+        [
+          {
+            "node": "Enrich Event Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AbuseIPDB Lookup": {
+      "main": [
+        [
+          {
+            "node": "Enrich Event Data",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Enrich Event Data": {
+      "main": [
+        [
+          {
+            "node": "Create Security Incident",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Security Incident": {
+      "main": [
+        [
+          {
+            "node": "Check High Risk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check High Risk": {
+      "main": [
+        [
+          {
+            "node": "Auto-Block High Risk IP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}

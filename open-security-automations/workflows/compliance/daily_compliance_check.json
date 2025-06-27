@@ -1,0 +1,135 @@
+{
+  "name": "Security Compliance Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression", 
+              "cronExpression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.cronTrigger",
+      "typeVersion": 1,
+      "position": [300, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://wildbox-cspm:8019/api/v1/compliance/summary",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}"
+          }
+        }
+      },
+      "name": "Get Compliance Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [500, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$node[\"Get Compliance Status\"].json[\"compliance_score\"]}}",
+              "operation": "smaller",
+              "value2": 80
+            }
+          ]
+        }
+      },
+      "name": "Check Compliance Threshold",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [700, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://wildbox-gateway:8000/api/v1/alerts",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "alert_type": "compliance_violation",
+            "severity": "high",
+            "message": "Compliance score below threshold: {{$node[\"Get Compliance Status\"].json[\"compliance_score\"]}}%",
+            "details": "{{$node[\"Get Compliance Status\"].json}}"
+          }
+        },
+        "method": "POST"
+      },
+      "name": "Create Compliance Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 150]
+    },
+    {
+      "parameters": {
+        "url": "http://wildbox-cspm:8019/api/v1/remediation/auto-fix",
+        "options": {
+          "headers": {
+            "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",
+            "Content-Type": "application/json"
+          },
+          "body": {
+            "findings": "{{$node[\"Get Compliance Status\"].json[\"critical_findings\"]}}",
+            "auto_fix_enabled": true
+          }
+        },
+        "method": "POST"
+      },
+      "name": "Auto-Fix Critical Issues",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [900, 250]
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Compliance Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Compliance Status": {
+      "main": [
+        [
+          {
+            "node": "Check Compliance Threshold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Compliance Threshold": {
+      "main": [
+        [
+          {
+            "node": "Create Compliance Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Auto-Fix Critical Issues",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    }
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "name": "Executive Security Dashboard Automation",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/dashboard/executive-summary",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "options": {}
+      },
+      "name": "Get Dashboard Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [740, 240],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "1",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.cronTrigger",
+      "typeVersion": 1,
+      "position": [540, 240]
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/cspm/summary",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "options": {}
+      },
+      "name": "Get CSPM Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [940, 240],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "1",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/sensors/summary",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpBasicAuth",
+        "options": {}
+      },
+      "name": "Get Sensor Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1140, 240],
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "1",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Executive Security Report Generator\\nconst dashboardData = items[0].json;\\nconst cspmData = items[1].json;\\nconst sensorData = items[2].json;\\n\\n// Calculate security metrics\\nconst totalIssues = cspmData.critical_findings + csmpData.high_findings + csmpData.medium_findings;\\nconst criticalCount = cspmData.critical_findings || 0;\\nconst riskScore = Math.round((criticalCount * 10 + cspmData.high_findings * 5 + csmpData.medium_findings * 2) / 10);\\n\\n// Generate executive summary\\nconst executiveSummary = {\\n  report_date: new Date().toISOString().split('T')[0],\\n  security_posture_score: Math.max(0, 100 - riskScore),\\n  total_findings: totalIssues,\\n  critical_findings: criticalCount,\\n  high_findings: cspmData.high_findings || 0,\\n  medium_findings: cspmData.medium_findings || 0,\\n  endpoints_monitored: sensorData.active_endpoints || 0,\\n  compliance_score: cspmData.compliance_percentage || 85,\\n  top_risks: [\\n    \\"Unencrypted data stores\\",\\n    \\"Open security groups\\",\\n    \\"Missing MFA enforcement\\",\\n    \\"Outdated access keys\\",\\n    \\"Unmonitored privileged accounts\\"\\n  ],\\n  recommendations: [\\n    \\"Enable MFA for all privileged accounts\\",\\n    \\"Implement data encryption at rest\\",\\n    \\"Review and restrict security group rules\\",\\n    \\"Rotate access keys older than 90 days\\",\\n    \\"Enable detailed logging for critical resources\\"\\n  ],\\n  trend_analysis: {\\n    security_improvement: riskScore < 50 ? 'Improving' : 'Needs Attention',\\n    compliance_trend: 'Stable',\\n    threat_level: criticalCount > 5 ? 'High' : criticalCount > 0 ? 'Medium' : 'Low'\\n  }\\n};\\n\\nreturn [{json: executiveSummary}];"
+      },
+      "name": "Generate Executive Report",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1340, 240]
+    },
+    {
+      "parameters": {
+        "to": "{{$node[\"Schedule Trigger\"].json[\"executive_email\"]}}",
+        "subject": "Weekly Security Posture Report - {{$node[\"Generate Executive Report\"].json[\"report_date\"]}}",
+        "html": "<h2>🛡️ Weekly Security Posture Report</h2>\\n<h3>Executive Summary</h3>\\n<table border=\\"1\\" style=\\"border-collapse: collapse; width: 100%;\\">\\n  <tr><td><strong>Security Posture Score</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"security_posture_score\"]}}/100</td></tr>\\n  <tr><td><strong>Total Findings</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"total_findings\"]}}</td></tr>\\n  <tr><td><strong>Critical Issues</strong></td><td style=\\"color: red;\\">{{$node[\"Generate Executive Report\"].json[\"critical_findings\"]}}</td></tr>\\n  <tr><td><strong>Compliance Score</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"compliance_score\"]}}%</td></tr>\\n  <tr><td><strong>Endpoints Monitored</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"endpoints_monitored\"]}}</td></tr>\\n</table>\\n\\n<h3>🎯 Top Security Risks</h3>\\n<ul>\\n{{#each $node[\"Generate Executive Report\"].json.top_risks}}\\n  <li>{{this}}</li>\\n{{/each}}\\n</ul>\\n\\n<h3>💡 Recommended Actions</h3>\\n<ol>\\n{{#each $node[\"Generate Executive Report\"].json.recommendations}}\\n  <li>{{this}}</li>\\n{{/each}}\\n</ol>\\n\\n<p><em>Generated by Wildbox Security Platform</em></p>",
+        "options": {}
+      },
+      "name": "Send Executive Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1540, 240]
+    },
+    {
+      "parameters": {
+        "url": "{{$node[\"Schedule Trigger\"].json[\"slack_webhook\"]}}",
+        "options": {},
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "text",
+              "value": "📊 Weekly Security Report Generated\\n\\n🛡️ Security Score: {{$node[\"Generate Executive Report\"].json[\"security_posture_score\"]}}/100\\n🚨 Critical Issues: {{$node[\"Generate Executive Report\"].json[\"critical_findings\"]}}\\n📈 Compliance: {{$node[\"Generate Executive Report\"].json[\"compliance_score\"]}}%\\n\\nTrend: {{$node[\"Generate Executive Report\"].json.trend_analysis.security_improvement}}"
+            }
+          ]
+        }
+      },
+      "name": "Slack Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [1540, 440]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Dashboard Data": {
+      "main": [
+        [
+          {
+            "node": "Get CSPM Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CSPM Summary": {
+      "main": [
+        [
+          {
+            "node": "Get Sensor Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Sensor Summary": {
+      "main": [
+        [
+          {
+            "node": "Generate Executive Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Executive Report": {
+      "main": [
+        [
+          {
+            "node": "Send Executive Email",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
