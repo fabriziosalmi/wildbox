@@ -1,0 +1,410 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useAuth } from '@/components/auth-provider'
+import { MainLayout } from '@/components/main-layout'
+import { identityClient } from '@/lib/api-client'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { 
+  Shield, 
+  Users, 
+  Search,
+  Eye,
+  Ban,
+  Trash2,
+  AlertCircle,
+  UserCheck,
+  UserX,
+  Calendar,
+  Mail,
+  Crown,
+  Filter,
+  MoreHorizontal,
+  Settings,
+  Database,
+  Activity
+} from 'lucide-react'
+import { useToast } from '@/hooks/use-toast'
+import { User as UserType } from '@/types'
+import { useRouter } from 'next/navigation'
+
+interface AdminUserData {
+  id: string
+  email: string
+  is_active: boolean
+  is_superuser: boolean
+  created_at: string
+  updated_at: string
+  stripe_customer_id?: string
+  team_memberships?: Array<{
+    user_id: string
+    team_id: string
+    team_name: string
+    role: string
+    joined_at: string
+  }>
+}
+
+export default function AdminPage() {
+  const { user } = useAuth()
+  const { toast } = useToast()
+  const router = useRouter()
+  const [users, setUsers] = useState<AdminUserData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterActive, setFilterActive] = useState<boolean | null>(null)
+  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
+
+  // Check if user is superuser
+  useEffect(() => {
+    if (!user?.is_superuser && user?.email !== 'superadmin@wildbox.com') {
+      router.push('/dashboard')
+      return
+    }
+  }, [user, router])
+
+  useEffect(() => {
+    if (user?.is_superuser || user?.email === 'superadmin@wildbox.com') {
+      fetchUsers()
+    }
+  }, [user])
+
+  const fetchUsers = async () => {
+    try {
+      setIsLoading(true)
+      const response = await identityClient.get('/api/v1/users/admin/users', {
+        params: {
+          email_filter: searchTerm || undefined,
+          is_active: filterActive,
+          limit: 100
+        }
+      })
+      setUsers(response || [])
+    } catch (error: any) {
+      console.error('Failed to fetch users:', error)
+      toast({
+        title: "Error",
+        description: "Failed to load users",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSearch = () => {
+    fetchUsers()
+  }
+
+  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
+    try {
+      await identityClient.patch(`/api/v1/users/${userId}/admin/toggle-status`, {
+        is_active: !currentStatus
+      })
+      
+      toast({
+        title: "Success",
+        description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
+      })
+      
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Failed to toggle user status:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update user status",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return
+    }
+
+    try {
+      await identityClient.delete(`/api/v1/users/${userId}`)
+      
+      toast({
+        title: "Success",
+        description: "User deleted successfully",
+      })
+      
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Failed to delete user:', error)
+      toast({
+        title: "Error",
+        description: "Failed to delete user",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Don't render anything if not superuser
+  if (!user?.is_superuser && user?.email !== 'superadmin@wildbox.com') {
+    return null
+  }
+
+  return (
+    <MainLayout>
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
+              <Crown className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">System Administration</h1>
+              <p className="text-muted-foreground">
+                Manage users, teams, and system settings
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className="text-red-600 border-red-600">
+            <Shield className="w-3 h-3 mr-1" />
+            Super Admin Access
+          </Badge>
+        </div>
+
+        {/* Admin Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <Users className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Total Users</p>
+                <p className="text-2xl font-bold">{users.length}</p>
+              </div>
+            </div>
+          </Card>
+          
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                <UserCheck className="w-6 h-6 text-green-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Active Users</p>
+                <p className="text-2xl font-bold">{users.filter(u => u.is_active).length}</p>
+              </div>
+            </div>
+          </Card>
+          
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
+                <Shield className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Super Admins</p>
+                <p className="text-2xl font-bold">{users.filter(u => u.is_superuser).length}</p>
+              </div>
+            </div>
+          </Card>
+          
+          <Card className="p-6">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                <Activity className="w-6 h-6 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground">System Health</p>
+                <p className="text-lg font-bold text-green-600">Operational</p>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* User Management */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold">User Management</h2>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search users..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  className="w-64"
+                />
+                <Button onClick={handleSearch} variant="outline" size="sm">
+                  Search
+                </Button>
+              </div>
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-muted-foreground" />
+                <select
+                  value={filterActive === null ? 'all' : filterActive ? 'active' : 'inactive'}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    setFilterActive(value === 'all' ? null : value === 'active')
+                    setTimeout(fetchUsers, 100)
+                  }}
+                  className="border rounded px-2 py-1 text-sm"
+                >
+                  <option value="all">All Users</option>
+                  <option value="active">Active Only</option>
+                  <option value="inactive">Inactive Only</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left p-3 font-medium">User</th>
+                    <th className="text-left p-3 font-medium">Status</th>
+                    <th className="text-left p-3 font-medium">Teams</th>
+                    <th className="text-left p-3 font-medium">Created</th>
+                    <th className="text-left p-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b hover:bg-muted/50">
+                      <td className="p-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
+                            <Mail className="w-4 h-4 text-primary-foreground" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{user.email}</p>
+                            {user.is_superuser && (
+                              <Badge variant="outline" className="text-xs text-red-600 border-red-600 mt-1">
+                                <Crown className="w-3 h-3 mr-1" />
+                                Super Admin
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <Badge variant={user.is_active ? "default" : "secondary"}>
+                          {user.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </td>
+                      <td className="p-3">
+                        <div className="space-y-1">
+                          {user.team_memberships?.map((membership) => (
+                            <Badge key={membership.team_id} variant="outline" className="text-xs">
+                              {membership.team_name} ({membership.role})
+                            </Badge>
+                          ))}
+                          {!user.team_memberships?.length && (
+                            <span className="text-sm text-muted-foreground">No teams</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Calendar className="w-4 h-4" />
+                          {formatDate(user.created_at)}
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleUserStatus(user.id, user.is_active)}
+                            disabled={user.is_superuser}
+                          >
+                            {user.is_active ? (
+                              <>
+                                <UserX className="w-4 h-4 mr-1" />
+                                Deactivate
+                              </>
+                            ) : (
+                              <>
+                                <UserCheck className="w-4 h-4 mr-1" />
+                                Activate
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user.id)}
+                            disabled={user.is_superuser}
+                            className="text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              
+              {users.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground">
+                  No users found
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* System Settings */}
+        <Card className="p-6">
+          <h2 className="text-xl font-semibold mb-4">System Settings</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="p-4 border-2 border-dashed border-muted">
+              <div className="flex items-center gap-3 mb-2">
+                <Database className="w-5 h-5 text-muted-foreground" />
+                <h3 className="font-medium">Database Management</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Manage database connections and backups
+              </p>
+              <Button variant="outline" size="sm">
+                Configure
+              </Button>
+            </Card>
+            
+            <Card className="p-4 border-2 border-dashed border-muted">
+              <div className="flex items-center gap-3 mb-2">
+                <Settings className="w-5 h-5 text-muted-foreground" />
+                <h3 className="font-medium">System Configuration</h3>
+              </div>
+              <p className="text-sm text-muted-foreground mb-3">
+                Configure system-wide settings and features
+              </p>
+              <Button variant="outline" size="sm">
+                Configure
+              </Button>
+            </Card>
+          </div>
+        </Card>
+      </div>
+    </MainLayout>
+  )
+}

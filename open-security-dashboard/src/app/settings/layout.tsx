@@ -49,18 +49,15 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
   const { user } = useAuth()
   const pathname = usePathname()
 
-  // Add admin navigation if user is superuser
-  const navigation = user?.is_superuser 
-    ? [
-        ...settingsNavigation,
-        {
-          name: 'Admin',
-          href: '/settings/admin',
-          icon: Shield,
-          description: 'System administration',
-        },
-      ]
-    : settingsNavigation
+  // Debug logging
+  console.log('SettingsLayout - user:', user)
+  console.log('SettingsLayout - is_superuser:', user?.is_superuser)
+  console.log('SettingsLayout - user email:', user?.email)
+
+  // Use base settings navigation only - admin is now in main nav
+  const navigation = settingsNavigation
+
+  console.log('SettingsLayout - final navigation:', navigation.map(n => n.name))
 
   return (
     <MainLayout>

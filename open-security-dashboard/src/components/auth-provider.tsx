@@ -107,17 +107,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     const initAuth = async () => {
       try {
         const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
-        const savedUser = localStorage.getItem('user')
 
-        if (token && savedUser) {
+        if (token) {
           try {
-            const userData = JSON.parse(savedUser)
+            // Always fetch fresh user data to ensure we have the latest info
+            const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
             setUser(userData)
-            
-            // Validate token by making a request
-            await identityClient.get(getAuthPath('/api/v1/auth/me'))
+            localStorage.setItem('user', JSON.stringify(userData))
           } catch (error) {
             // Token is invalid, clear it
+            console.error('Failed to fetch user data:', error)
             logout()
           }
         }

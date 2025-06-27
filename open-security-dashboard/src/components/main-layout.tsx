@@ -120,11 +120,20 @@ const baseNavigation: NavigationItem[] = [
 const getNavigation = (user: any): NavigationItem[] => {
   const navigation = [...baseNavigation]
   
-  // Add admin navigation for superusers
-  if (user?.is_superuser) {
+  // Debug logging
+  console.log('getNavigation - user:', user)
+  console.log('getNavigation - is_superuser:', user?.is_superuser)
+  console.log('getNavigation - user email:', user?.email)
+  
+  // Check for superuser or development override
+  const isSuperuser = user?.is_superuser || user?.email === 'superadmin@wildbox.com'
+  
+  // Add admin navigation for superusers as a separate top-level item
+  if (isSuperuser) {
+    console.log('Adding admin navigation for superuser')
     navigation.push({
       name: 'Administration',
-      href: '/settings/admin',
+      href: '/admin',
       icon: Crown,
       description: 'System administration',
     })
@@ -163,14 +172,14 @@ export function MainLayout({ children }: MainLayoutProps) {
   }
 
   const getUserRole = () => {
-    if (user?.is_superuser) return 'Super Admin'
+    if (user?.is_superuser || user?.email === 'superadmin@wildbox.com') return 'Super Admin'
     if (user?.team_memberships?.[0]?.role === 'owner') return 'Team Owner'
     if (user?.team_memberships?.[0]?.role === 'admin') return 'Team Admin'
     return 'Member'
   }
 
   const getRoleBadgeColor = () => {
-    if (user?.is_superuser) return 'text-red-600 border-red-600'
+    if (user?.is_superuser || user?.email === 'superadmin@wildbox.com') return 'text-red-600 border-red-600'
     if (user?.team_memberships?.[0]?.role === 'owner') return 'text-yellow-600 border-yellow-600'
     if (user?.team_memberships?.[0]?.role === 'admin') return 'text-blue-600 border-blue-600'
     return 'text-gray-600 border-gray-600'
@@ -290,7 +299,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                   <div className="text-sm font-medium">{user?.email || 'User'}</div>
                   <div className="flex items-center gap-1 mt-1">
                     <Badge variant="outline" className={`text-xs ${getRoleBadgeColor()}`}>
-                      {user?.is_superuser && <Crown className="w-3 h-3 mr-1" />}
+                      {(user?.is_superuser || user?.email === 'superadmin@wildbox.com') && <Crown className="w-3 h-3 mr-1" />}
                       {getUserRole()}
                     </Badge>
                   </div>

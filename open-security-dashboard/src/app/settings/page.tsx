@@ -48,19 +48,8 @@ const settingsCards = [
 export default function SettingsPage() {
   const { user } = useAuth()
 
-  // Add admin card if user is superuser
-  const allCards = user?.is_superuser 
-    ? [
-        ...settingsCards,
-        {
-          title: 'Administration',
-          description: 'Manage all users and system settings',
-          icon: Shield,
-          href: '/settings/admin',
-          color: 'from-red-500 to-red-600',
-        },
-      ]
-    : settingsCards
+  // Use base settings cards only - admin is now a separate page
+  const allCards = settingsCards
 
   return (
     <div className="max-w-4xl">
