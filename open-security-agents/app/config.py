@@ -6,6 +6,7 @@ Uses Pydantic Settings for environment-based configuration.
 
 import os
 from typing import Optional
+from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
@@ -22,11 +23,11 @@ class Settings(BaseSettings):
     openai_temperature: float = 0.1
     
     # Redis Configuration
-    redis_url: str = "redis://localhost:6379/0"
+    redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
     
     # Celery Configuration
-    celery_broker_url: str = "redis://localhost:6379/0"
-    celery_result_backend: str = "redis://localhost:6379/0"
+    celery_broker_url: str = Field(default="redis://localhost:6379/0", env="CELERY_BROKER_URL")
+    celery_result_backend: str = Field(default="redis://localhost:6379/0", env="CELERY_RESULT_BACKEND")
     
     # Wildbox Services
     wildbox_api_url: str = "http://localhost:8000"

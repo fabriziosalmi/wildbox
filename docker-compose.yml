@@ -276,6 +276,24 @@ services:
       timeout: 10s
       retries: 3
 
+  # CSPM Celery Worker (Background Tasks)
+  cspm-worker:
+    build:
+      context: ./open-security-cspm
+      dockerfile: Dockerfile
+    container_name: open-security-cspm-worker
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    environment:
+      - REDIS_URL=redis://wildbox-redis:6379/3
+      - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
+      - LOG_LEVEL=INFO
+    depends_on:
+      - wildbox-redis
+    networks:
+      - wildbox
+
 
 
   # Agents Service (Security Agents)
@@ -290,6 +308,8 @@ services:
     environment:
       - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
       - REDIS_URL=redis://wildbox-redis:6379/4
+      - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
+      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
       - DEBUG=true
       - LOG_LEVEL=INFO
     depends_on:
@@ -301,6 +321,26 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Agents Celery Worker (AI Processing Tasks)
+  agents-worker:
+    build:
+      context: ./open-security-agents
+      dockerfile: Dockerfile
+    container_name: open-security-agents-worker
+    restart: unless-stopped
+    command: celery -A app.worker worker --loglevel=info --concurrency=4
+    environment:
+      - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
+      - REDIS_URL=redis://wildbox-redis:6379/4
+      - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
+      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+    depends_on:
+      - wildbox-redis
+    networks:
+      - wildbox
 
 
 
