@@ -17,6 +17,6 @@ open-security-api/app/tools/static_malware_analyzer/__pycache__/main.cpython-312
 open-security-api/app/tools/static_malware_analyzer/__pycache__/schemas.cpython-312.pyc
 
 # Private blueprint document
-BLUEPRINT.md
+# BLUEPRINT.md (removed - should be tracked as critical documentation)
 .DS_Store
 structure_simplified.txt
