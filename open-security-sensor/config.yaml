@@ -1,0 +1,62 @@
+# Open Security Sensor Configuration
+
+# Data Lake Connection
+data_lake:
+  endpoint: "http://open-security-data:8002/api/v1/ingest"  # Connect to internal data service
+  api_key: "sensor-api-key-2025"
+  tls_verify: false  # Disable for internal HTTP communication
+  batch_size: 50
+  flush_interval: 30
+  timeout: 30
+  retry_attempts: 3
+  retry_delay: 5
+
+# Telemetry Collection
+collection:
+  process_events: true
+  network_connections: true
+  file_monitoring: true
+  user_events: true
+  system_inventory: true
+  log_forwarding: false
+
+# File Integrity Monitoring (Docker-optimized paths)
+fim:
+  enabled: true
+  paths:
+    # Host paths (mounted as /host/*)
+    - "/host/etc"
+    - "/host/bin"
+    - "/host/usr/bin"
+    - "/host/opt"
+  exclude_patterns:
+    - "*.tmp"
+    - "*.log"
+    - "*.cache"
+    - "*.pid"
+    - "*.lock"
+  recursive: true
+  max_depth: 10
+
+# Performance Tuning (Docker-optimized)
+performance:
+  query_interval: 10
+  max_memory_mb: 256  # Higher for Docker
+  max_cpu_percent: 10  # Slightly higher for containerized environment
+  max_queue_size: 2000
+  worker_threads: 4
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  file: "/var/log/security-sensor/sensor.log"
+  max_size: 10485760  # 10MB
+  backup_count: 5
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Network Configuration
+network:
+  bind_address: "0.0.0.0"  # Bind to all interfaces for Docker
+  bind_port: 8004
+  enable_api: true
+  api_key: null  # Set to require API key authentication

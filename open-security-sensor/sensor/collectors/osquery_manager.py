@@ -147,8 +147,8 @@ class OsqueryManager:
                     'interval': 300,
                     'description': 'System startup items'
                 },
-                'services': {
-                    'query': 'SELECT * FROM services;',
+                'system_services': {
+                    'query': self._get_services_query(),
                     'interval': 300,
                     'description': 'System services'
                 }
@@ -366,3 +366,65 @@ class OsqueryManager:
             'query_packs': list(self.query_packs.keys()),
             'total_queries': sum(len(pack['queries']) for pack in self.query_packs.values())
         }
+    
+    def _get_services_query(self) -> str:
+        """Get platform-specific services query"""
+        if is_linux():
+            # Try systemd services first, fallback to init services
+            return '''
+                SELECT name, status, pid, path, 'systemd' as service_type
+                FROM systemd_units 
+                WHERE type = 'service'
+                UNION ALL
+                SELECT name, 'unknown' as status, 0 as pid, path, 'init' as service_type
+                FROM launchd 
+                WHERE type = 'service'
+            '''
+        elif is_macos():
+            # macOS uses launchd
+            return '''
+                SELECT name, status, pid, path, 'launchd' as service_type
+                FROM launchd
+            '''
+        elif is_windows():
+            # Windows services
+            return '''
+                SELECT name, status, pid, path, 'windows' as service_type
+                FROM services
+            '''
+        else:
+            # Fallback - try generic processes that might be services
+            return '''
+                SELECT name, 'unknown' as status, pid, path, 'process' as service_type
+                FROM processes 
+                WHERE name LIKE '%service%' OR name LIKE '%daemon%' OR name LIKE '%server%'
+                LIMIT 50
+            '''
+    
+    def _validate_query(self, query: str) -> bool:
+        """Validate if a query can be executed by checking table availability"""
+        try:
+            # Extract table names from the query
+            import re
+            # Simple regex to find table names after FROM/JOIN
+            table_pattern = r'(?:FROM|JOIN)\s+(\w+)'
+            tables = re.findall(table_pattern, query, re.IGNORECASE)
+            
+            # Check if tables exist by running a simple query
+            for table in tables:
+                test_query = f"SELECT COUNT(*) FROM {table} LIMIT 1;"
+                result = subprocess.run(
+                    ['osqueryi', '--json', test_query],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode != 0:
+                    if "no such table" in result.stderr.lower():
+                        logger.warning(f"Table '{table}' not available on this platform")
+                        return False
+                    
+            return True
+        except Exception as e:
+            logger.debug(f"Query validation failed: {e}")
+            return False

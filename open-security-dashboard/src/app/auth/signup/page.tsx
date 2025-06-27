@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Shield, Eye, EyeOff, Loader2, User, Mail, Lock } from 'lucide-react'
@@ -20,8 +20,32 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   
-  const { register } = useAuth()
+  const { register, isAuthenticated, isLoading: authLoading } = useAuth()
   const router = useRouter()
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      router.replace('/dashboard')
+    }
+  }, [isAuthenticated, authLoading, router])
+
+  // Show loading while checking auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render anything if authenticated (will redirect)
+  if (isAuthenticated) {
+    return null
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -42,7 +66,8 @@ export default function SignupPage() {
 
     try {
       await register(email, password, name)
-      router.push('/dashboard')
+      // Don't redirect here - let the auth provider handle the redirect
+      // to prevent race conditions
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please try again.')
     } finally {

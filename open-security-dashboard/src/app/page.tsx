@@ -33,7 +33,7 @@ export default function HomePage() {
 
     try {
       await login(email, password)
-      // Router redirect will happen via useEffect above
+      // Redirect is now handled in the auth provider login function
     } catch (err: any) {
       toast({
         title: "Login Failed",

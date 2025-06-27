@@ -331,7 +331,11 @@ export default function CloudSecurityScansPage() {
                         value={newScan.credentials?.access_key_id || ''}
                         onChange={(e) => setNewScan({
                           ...newScan,
-                          credentials: {...newScan.credentials, access_key_id: e.target.value}
+                          credentials: {
+                            ...newScan.credentials, 
+                            auth_method: newScan.credentials?.auth_method || 'access_key',
+                            access_key_id: e.target.value
+                          }
                         })}
                         placeholder="Enter AWS Access Key ID"
                       />
@@ -344,7 +348,11 @@ export default function CloudSecurityScansPage() {
                         value={newScan.credentials?.secret_access_key || ''}
                         onChange={(e) => setNewScan({
                           ...newScan,
-                          credentials: {...newScan.credentials, secret_access_key: e.target.value}
+                          credentials: {
+                            ...newScan.credentials,
+                            auth_method: newScan.credentials?.auth_method || 'access_key',
+                            secret_access_key: e.target.value
+                          }
                         })}
                         placeholder="Enter AWS Secret Access Key"
                       />

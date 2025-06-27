@@ -56,7 +56,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
-      router.push('/dashboard')
+      // Redirect immediately after successful login to prevent race conditions
+      router.replace('/dashboard')
     } catch (error) {
       throw error
     }
@@ -76,7 +77,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
-      router.push('/dashboard')
+      // Redirect immediately after successful registration
+      router.replace('/dashboard')
     } catch (error) {
       throw error
     }
@@ -89,7 +91,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     localStorage.removeItem('user')
 
     setUser(null)
-    router.push('/')
+    
+    // Use replace to prevent going back to authenticated state
+    router.replace('/auth/login')
   }
 
   const refetchUser = async () => {
@@ -99,7 +103,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
       console.error('Failed to refetch user:', error)
-      logout()
+      // Clear auth silently and let the page handle the redirect
+      Cookies.remove('auth_token')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
+      setUser(null)
     }
   }
 
@@ -115,9 +123,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(userData)
             localStorage.setItem('user', JSON.stringify(userData))
           } catch (error) {
-            // Token is invalid, clear it
+            // Token is invalid, clear it silently without redirect
             console.error('Failed to fetch user data:', error)
-            logout()
+            Cookies.remove('auth_token')
+            localStorage.removeItem('auth_token')
+            localStorage.removeItem('user')
+            setUser(null)
           }
         }
       } catch (error) {

@@ -198,8 +198,8 @@ export function MainLayout({ children }: MainLayoutProps) {
     )
   }
 
-  // If not authenticated, redirect to login
-  if (!isAuthenticated) {
+  // If not authenticated, redirect to login (but only after loading is complete)
+  if (!isLoading && !isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
