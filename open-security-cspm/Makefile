@@ -76,7 +76,7 @@ setup: install docker-build ## Setup development environment
 
 run-local: ## Run locally without Docker
 	@echo "$(YELLOW)Starting local development server...$(NC)"
-	uvicorn app.main:app --reload --port 8006
+	uvicorn app.main:app --reload --port 8019
 
 worker: ## Start Celery worker locally
 	@echo "$(YELLOW)Starting Celery worker...$(NC)"
