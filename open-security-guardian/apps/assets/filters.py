@@ -7,7 +7,7 @@ Django filter classes for asset management API endpoints.
 import django_filters
 from django.db.models import Q
 
-from .models import Asset, AssetSoftware, AssetPort
+from .models import Asset, AssetSoftware, AssetPort, AssetType, AssetCriticality, AssetStatus
 
 
 class AssetFilter(django_filters.FilterSet):
@@ -20,9 +20,9 @@ class AssetFilter(django_filters.FilterSet):
     ip_range = django_filters.CharFilter(method='filter_ip_range', label='IP Range')
     
     # Multiple choice filters
-    asset_type = django_filters.MultipleChoiceFilter(choices=Asset.AssetType.choices)
-    criticality = django_filters.MultipleChoiceFilter(choices=Asset.AssetCriticality.choices)
-    status = django_filters.MultipleChoiceFilter(choices=Asset.AssetStatus.choices)
+    asset_type = django_filters.MultipleChoiceFilter(choices=AssetType.choices)
+    criticality = django_filters.MultipleChoiceFilter(choices=AssetCriticality.choices)
+    status = django_filters.MultipleChoiceFilter(choices=AssetStatus.choices)
     
     # Foreign key filters
     environment = django_filters.CharFilter(field_name='environment__name', lookup_expr='icontains')

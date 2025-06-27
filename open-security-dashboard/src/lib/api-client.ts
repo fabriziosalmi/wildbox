@@ -153,6 +153,15 @@ class ApiClient {
 const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY === 'true'
 const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
 
+// Helper function to get the correct auth endpoint path
+export const getAuthPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/identity
+    return endpoint.replace('/api/v1/auth', '/auth')
+  }
+  return endpoint
+}
+
 // Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 

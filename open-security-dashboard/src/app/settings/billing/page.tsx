@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
-import { identityClient } from '@/lib/api-client'
+import { identityClient, getAuthPath } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -101,7 +101,7 @@ export default function BillingPage() {
     try {
       setIsLoading(true)
       // Get current user with team data
-      const userData = await identityClient.get('/api/v1/auth/me')
+      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
       
       // For now, use mock data - in a real app, this would come from a billing endpoint
       setBillingData({

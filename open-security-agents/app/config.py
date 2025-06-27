@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Wildbox Services
     wildbox_api_url: str = "http://localhost:8000"
     wildbox_data_url: str = "http://localhost:8001"
-    wildbox_guardian_url: str = "http://localhost:8002"
+    wildbox_guardian_url: str = "http://localhost:8013"
     wildbox_responder_url: str = "http://localhost:8003"
     
     # Security

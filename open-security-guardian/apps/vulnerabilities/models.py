@@ -441,3 +441,34 @@ class VulnerabilityHistory(models.Model):
 
     def __str__(self):
         return f"{self.vulnerability.title}: {self.field_name} changed"
+
+
+class VulnerabilityAttachment(models.Model):
+    """File attachments for vulnerabilities"""
+    vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='attachments')
+    uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
+    
+    # File details
+    file = models.FileField(upload_to='vulnerability_attachments/%Y/%m/%d/')
+    filename = models.CharField(max_length=255)
+    file_size = models.PositiveIntegerField()
+    content_type = models.CharField(max_length=100)
+    
+    # Metadata
+    description = models.TextField(blank=True)
+    attachment_type = models.CharField(max_length=20, choices=[
+        ('screenshot', 'Screenshot'),
+        ('report', 'Report'),
+        ('log', 'Log File'),
+        ('evidence', 'Evidence'),
+        ('patch', 'Patch File'),
+        ('other', 'Other')
+    ], default='other')
+    
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-uploaded_at']
+    
+    def __str__(self):
+        return f"{self.filename} - {self.vulnerability.title}"

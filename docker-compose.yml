@@ -137,12 +137,12 @@ services:
       - NODE_ENV=development
       - NEXT_PUBLIC_DEBUG=true
       - NEXT_PUBLIC_USE_GATEWAY=true
-      - NEXT_PUBLIC_GATEWAY_URL=http://gateway:80
-      - NEXT_PUBLIC_API_BASE_URL=http://gateway:80/api/v1/tools
-      - NEXT_PUBLIC_IDENTITY_API_URL=http://gateway:80/api/v1/identity
-      - NEXT_PUBLIC_DATA_API_URL=http://gateway:80/api/v1/data
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://gateway:80/api/v1/guardian
-      - NEXT_PUBLIC_SENSOR_API_URL=http://gateway:80/api/v1/sensor
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:80
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
+      - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:80/api/v1/identity
+      - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:80/api/v1/guardian
+      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
       - NEXT_PUBLIC_RESPONDER_API_URL=http://gateway:80/api/v1/responder
       - NEXT_PUBLIC_AGENTS_API_URL=http://gateway:80/api/v1/agents
       - NEXTAUTH_SECRET=wildbox-dashboard-secret-for-testing
@@ -201,7 +201,7 @@ services:
     container_name: open-security-guardian
     restart: unless-stopped
     ports:
-      - "8003:8003"
+      - "8013:8013"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/guardian
       - REDIS_URL=redis://wildbox-redis:6379/1
@@ -216,7 +216,7 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
       interval: 30s
       timeout: 10s
       retries: 3

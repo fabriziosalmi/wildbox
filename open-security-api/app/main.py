@@ -361,7 +361,7 @@ def create_app() -> FastAPI:
         services = {
             "identity": settings.identity_service_url or "http://open-security-identity:8001",
             "data": settings.data_service_url or "http://open-security-data:8002", 
-            "guardian": settings.guardian_service_url or "http://open-security-guardian:8003",
+            "guardian": settings.guardian_service_url or "http://open-security-guardian:8013",
             "sensor": settings.sensor_service_url or "http://open-security-sensor:8004",
             "responder": settings.responder_service_url or "http://open-security-responder:8005",
             "agents": settings.agents_service_url or "http://open-security-agents:8006",

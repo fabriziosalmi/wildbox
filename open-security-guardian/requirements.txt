@@ -48,6 +48,7 @@ servicenow-api==0.20.68
 prometheus-client==0.17.1
 structlog==23.1.0
 sentry-sdk==1.29.2
+psutil==5.9.5
 
 # Utilities
 python-magic==0.4.27

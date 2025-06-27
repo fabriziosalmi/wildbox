@@ -52,7 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('auth_token', access_token)
 
       // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get('/api/v1/auth/me')
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const register = async (email: string, password: string, name: string) => {
     try {
-      const response = await identityClient.post(getAuthPath('/api/v1/auth/register'), { email, password, name })
+      const response = await identityClient.post('/api/v1/auth/register', { email, password, name })
       const { access_token } = response
 
       // Store token
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('auth_token', access_token)
 
       // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get('/api/v1/auth/me')
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refetchUser = async () => {
     try {
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get('/api/v1/auth/me')
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(userData)
             
             // Validate token by making a request
-            await identityClient.get(getAuthPath('/api/v1/auth/me'))
+            await identityClient.get('/api/v1/auth/me')
           } catch (error) {
             // Token is invalid, clear it
             logout()

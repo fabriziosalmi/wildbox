@@ -409,4 +409,4 @@ class VulnerabilityAssessmentViewSet(viewsets.ModelViewSet):
     serializer_class = VulnerabilityAssessmentSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['vulnerability', 'exploit_available', 'in_wild_exploitation']
+    filterset_fields = ['vulnerability', 'exploit_available', 'exploit_public']

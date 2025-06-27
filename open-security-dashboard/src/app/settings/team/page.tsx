@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
-import { identityClient } from '@/lib/api-client'
+import { identityClient, getAuthPath } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -74,7 +74,7 @@ export default function TeamPage() {
   const fetchTeamData = async () => {
     try {
       setIsLoading(true)
-      const userData = await identityClient.get('/api/v1/auth/me')
+      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
       
       if (userData.team_memberships && userData.team_memberships.length > 0) {
         const primaryMembership = userData.team_memberships[0]

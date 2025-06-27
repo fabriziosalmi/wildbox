@@ -11,7 +11,7 @@ services:
       # Service URLs for health aggregation
       - IDENTITY_SERVICE_URL=http://open-security-identity:8001
       - DATA_SERVICE_URL=http://open-security-data:8002
-      - GUARDIAN_SERVICE_URL=http://open-security-guardian:8003
+      - GUARDIAN_SERVICE_URL=http://open-security-guardian:8013
       - SENSOR_SERVICE_URL=http://open-security-sensor:8004
       - RESPONDER_SERVICE_URL=http://open-security-responder:8005
       - AGENTS_SERVICE_URL=http://open-security-agents:8006
@@ -48,7 +48,7 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=http://open-security-api:8000
       - NEXT_PUBLIC_DATA_API_URL=http://open-security-data:8002
       - NEXT_PUBLIC_IDENTITY_API_URL=http://open-security-identity:8001
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://open-security-guardian:8003
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://open-security-guardian:8013
       - NEXT_PUBLIC_SENSOR_API_URL=http://open-security-sensor:8004
       - NEXT_PUBLIC_RESPONDER_API_URL=http://open-security-responder:8005
       - NEXT_PUBLIC_AGENTS_API_URL=http://open-security-agents:8006

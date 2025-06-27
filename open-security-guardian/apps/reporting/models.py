@@ -2,7 +2,6 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
-from django.contrib.postgres.fields import JSONField
 import uuid
 
 
@@ -36,8 +35,8 @@ class ReportTemplate(models.Model):
     report_type = models.CharField(max_length=30, choices=REPORT_TYPES)
     template_content = models.TextField()  # Template content (HTML, etc.)
     default_format = models.CharField(max_length=10, choices=FORMAT_CHOICES, default='pdf')
-    filters_schema = JSONField(default=dict, blank=True)  # JSON schema for filters
-    parameters_schema = JSONField(default=dict, blank=True)  # JSON schema for parameters
+    filters_schema = models.JSONField(default=dict, blank=True)  # JSON schema for filters
+    parameters_schema = models.JSONField(default=dict, blank=True)  # JSON schema for parameters
     is_active = models.BooleanField(default=True)
     is_public = models.BooleanField(default=False)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_templates')
@@ -79,9 +78,9 @@ class ReportSchedule(models.Model):
     description = models.TextField(blank=True)
     template = models.ForeignKey(ReportTemplate, on_delete=models.CASCADE, related_name='schedules')
     frequency = models.CharField(max_length=20, choices=FREQUENCY_CHOICES)
-    parameters = JSONField(default=dict, blank=True)  # Report parameters
-    filters = JSONField(default=dict, blank=True)  # Report filters
-    recipients = JSONField(default=list, blank=True)  # Email recipients
+    parameters = models.JSONField(default=dict, blank=True)  # Report parameters
+    filters = models.JSONField(default=dict, blank=True)  # Report filters
+    recipients = models.JSONField(default=list, blank=True)  # Email recipients
     format = models.CharField(max_length=10, choices=ReportTemplate.FORMAT_CHOICES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     next_run = models.DateTimeField()
@@ -119,8 +118,8 @@ class Report(models.Model):
     schedule = models.ForeignKey(ReportSchedule, on_delete=models.SET_NULL, null=True, blank=True, related_name='reports')
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='generating')
     format = models.CharField(max_length=10, choices=ReportTemplate.FORMAT_CHOICES)
-    parameters = JSONField(default=dict, blank=True)
-    filters = JSONField(default=dict, blank=True)
+    parameters = models.JSONField(default=dict, blank=True)
+    filters = models.JSONField(default=dict, blank=True)
     file_path = models.CharField(max_length=500, blank=True)
     file_size = models.PositiveIntegerField(null=True, blank=True)  # Size in bytes
     file_hash = models.CharField(max_length=64, blank=True)  # SHA-256
@@ -163,9 +162,9 @@ class Dashboard(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     dashboard_type = models.CharField(max_length=20, choices=DASHBOARD_TYPES)
-    layout_config = JSONField(default=dict)  # Dashboard layout configuration
-    widgets_config = JSONField(default=list)  # Widget configurations
-    filters_config = JSONField(default=dict, blank=True)  # Default filters
+    layout_config = models.JSONField(default=dict)  # Dashboard layout configuration
+    widgets_config = models.JSONField(default=list)  # Widget configurations
+    filters_config = models.JSONField(default=dict, blank=True)  # Default filters
     refresh_interval = models.PositiveIntegerField(default=300)  # Seconds
     is_active = models.BooleanField(default=True)
     is_public = models.BooleanField(default=False)
@@ -217,8 +216,8 @@ class Widget(models.Model):
     widget_type = models.CharField(max_length=20, choices=WIDGET_TYPES)
     chart_type = models.CharField(max_length=20, choices=CHART_TYPES, blank=True, null=True)
     data_source = models.CharField(max_length=100)  # API endpoint or data source
-    query_config = JSONField(default=dict)  # Query configuration
-    display_config = JSONField(default=dict)  # Display configuration
+    query_config = models.JSONField(default=dict)  # Query configuration
+    display_config = models.JSONField(default=dict)  # Display configuration
     refresh_interval = models.PositiveIntegerField(default=300)  # Seconds
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
@@ -290,10 +289,10 @@ class AlertRule(models.Model):
     description = models.TextField(blank=True)
     data_source = models.CharField(max_length=100)  # API endpoint or data source
     condition_type = models.CharField(max_length=20, choices=CONDITION_TYPES)
-    condition_config = JSONField(default=dict)  # Condition configuration
+    condition_config = models.JSONField(default=dict)  # Condition configuration
     threshold_value = models.FloatField(null=True, blank=True)
     operator = models.CharField(max_length=10, choices=OPERATORS, blank=True)
-    notification_config = JSONField(default=dict)  # Notification settings
+    notification_config = models.JSONField(default=dict)  # Notification settings
     is_active = models.BooleanField(default=True)
     last_triggered = models.DateTimeField(null=True, blank=True)
     trigger_count = models.PositiveIntegerField(default=0)

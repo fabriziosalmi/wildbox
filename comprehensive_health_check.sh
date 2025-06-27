@@ -30,7 +30,7 @@ success() {
 }
 
 # Service configuration (using simple arrays for macOS compatibility)
-SERVICES="api:8000 identity:8001 data:8002 guardian:8003 sensor:8004 responder:8005 agents:8006 cspm:8007 dashboard:3000 automations:5678"
+SERVICES="api:8000 identity:8001 data:8002 guardian:8013 sensor:8004 responder:8005 agents:8006 cspm:8007 dashboard:3000 automations:5678"
 
 # Function to check if a service is responding
 check_service() {

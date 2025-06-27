@@ -43,7 +43,7 @@ SERVICES ANALYZED
 ✅ open-security-api (8000) - Mostly healthy, schema issues resolved
 ✅ open-security-identity (8001) - No missing modules found
 ✅ open-security-data (8002) - No missing modules found  
-✅ open-security-guardian (8003) - No missing modules found
+✅ open-security-guardian (8013) - No missing modules found
 ✅ open-security-sensor (8004) - No missing modules found
 ✅ open-security-responder (8005) - No missing modules found
 ✅ open-security-agents (8006) - No missing modules found

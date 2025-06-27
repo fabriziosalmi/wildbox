@@ -42,7 +42,7 @@ services:
       # - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
-      - WILDBOX_GUARDIAN_URL=http://localhost:8002
+      - WILDBOX_GUARDIAN_URL=http://localhost:8013
       - WILDBOX_RESPONDER_URL=http://localhost:8003
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
@@ -67,7 +67,7 @@ services:
       # - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
-      - WILDBOX_GUARDIAN_URL=http://localhost:8002
+      - WILDBOX_GUARDIAN_URL=http://localhost:8013
       - WILDBOX_RESPONDER_URL=http://localhost:8003
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:

@@ -107,7 +107,7 @@ NEXT_PUBLIC_CSPM_API_URL=http://localhost:8007
 | **System Health** | open-security-api | 8000 | `/api/system/health-aggregate` | ✅ Implemented |
 | **Threat Intelligence** | open-security-data | 8002 | `/api/v1/dashboard/threat-intel` | ✅ Implemented |
 | **Cloud Security** | open-security-cspm | 8007 | `/api/v1/dashboard/executive-summary` | ✅ Implemented |
-| **Vulnerability Management** | open-security-guardian | 8003 | `/api/v1/reports/dashboards/1/data/` | ✅ Implemented |
+| **Vulnerability Management** | open-security-guardian | 8013 | `/api/v1/reports/dashboards/1/data/` | ✅ Implemented |
 | **Response Automation** | open-security-responder | 8005 | `/v1/metrics` | ✅ Implemented |
 | **Endpoint Management** | open-security-sensor | 8004 | `/api/v1/dashboard/metrics` | ✅ Implemented |
 
@@ -237,7 +237,7 @@ To verify the integration:
    curl http://localhost:8000/health
    curl http://localhost:8002/health
    curl http://localhost:8007/health
-   curl http://localhost:8003/health
+   curl http://localhost:8013/health
    
    # Test dashboard data endpoints
    curl http://localhost:8002/api/v1/dashboard/threat-intel

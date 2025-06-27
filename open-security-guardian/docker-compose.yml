@@ -43,17 +43,19 @@ services:
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
-             python manage.py runserver 0.0.0.0:8003"
+             python manage.py runserver 0.0.0.0:8013"
     volumes:
       - .:/app
       - media_data:/app/media
       - static_data:/app/staticfiles
     ports:
-      - "8003:8003"
+      - "8013:8013"
     environment:
       - DEBUG=true
       - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=your-development-secret-key-change-in-production
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0
       - WILDBOX_API_URL=http://localhost:8000
@@ -73,6 +75,8 @@ services:
       - DEBUG=true
       - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=your-development-secret-key-change-in-production
     depends_on:
       - db
@@ -88,6 +92,8 @@ services:
       - DEBUG=true
       - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=your-development-secret-key-change-in-production
     depends_on:
       - db
@@ -103,6 +109,8 @@ services:
       - DEBUG=true
       - DATABASE_URL=postgresql://guardian:guardian_password@db:5432/guardian
       - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/1
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       - SECRET_KEY=your-development-secret-key-change-in-production
     depends_on:
       - redis
@@ -116,5 +124,5 @@ volumes:
 
 networks:
   default:
-    name: wildbox-network
+    name: guardian-network
     external: false
