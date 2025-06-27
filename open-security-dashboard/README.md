@@ -76,7 +76,7 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 │  └── Responsive Mobile-First Design                        │
 ├─────────────────────────────────────────────────────────────┤
 │  API Integration Layer                                       │
-│  ├── open-security-api      (Tools & Execution)            │
+│  ├── open-security-tools     (Tools & Execution)            │
 │  ├── open-security-data     (Threat Intelligence)          │
 │  ├── open-security-guardian (Vulnerability Management)     │
 │  ├── open-security-sensor   (Endpoint Management)          │
@@ -294,7 +294,7 @@ The dashboard integrates with multiple Wildbox microservices:
 
 | Service | Port | Purpose |
 |---------|------|---------|
-| open-security-api | 8000 | Security tools execution |
+| open-security-tools | 8000 | Security tools execution |
 | open-security-data | 8002 | Threat intelligence data |
 | open-security-guardian | 8003 | Vulnerability management |
 | open-security-sensor | 8004 | Endpoint management |

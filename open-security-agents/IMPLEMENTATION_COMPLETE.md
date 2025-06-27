@@ -235,7 +235,7 @@ docker-compose -f docker-compose.yml up -d
 
 ### Service Integration
 The service integrates seamlessly with other Wildbox components:
-- **open-security-api**: Provides security tools
+- **open-security-tools**: Provides security tools
 - **open-security-data**: Provides threat intelligence data  
 - **open-security-guardian**: Provides vulnerability data
 - **open-security-responder**: Consumes AI analysis results

@@ -51,7 +51,7 @@ def audit_tool_schemas(tool_name: str) -> Dict[str, Any]:
     
     try:
         # Check if files exist
-        tool_path = Path(f'/Users/fab/GitHub/wildbox/open-security-api/app/tools/{tool_name}')
+        tool_path = Path(f'/Users/fab/GitHub/wildbox/open-security-tools/app/tools/{tool_name}')
         schemas_file = tool_path / 'schemas.py'
         main_file = tool_path / 'main.py'
         

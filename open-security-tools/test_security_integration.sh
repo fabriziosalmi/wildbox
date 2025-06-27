@@ -27,7 +27,7 @@ test_warning() {
 
 # Check if we're in the right directory
 if [ ! -f "app/main.py" ]; then
-    test_failed "Not in the correct directory. Please run from the open-security-api root."
+    test_failed "Not in the correct directory. Please run from the open-security-tools root."
     exit 1
 fi
 

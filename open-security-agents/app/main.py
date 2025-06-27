@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Open Security Agents",
+    title="Open Security Agents API",
     description="AI-powered threat intelligence enrichment service",
     version="1.0.0",
     docs_url="/docs",

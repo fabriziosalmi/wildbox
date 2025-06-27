@@ -127,7 +127,7 @@ if [ -f /.dockerenv ] || grep -q docker /proc/1/cgroup 2>/dev/null; then
     echo -e "${GREEN}✅ Running in Docker environment${NC}"
     
     # Test internal service names
-    test_endpoint "http://open-security-api:8000/health" "API via Docker network"
+    test_endpoint "http://open-security-tools:8000/health" "API via Docker network"
     test_endpoint "http://open-security-data:8002/health" "Data Service via Docker network"
 else
     echo -e "${BLUE}ℹ️  Running outside Docker - using localhost endpoints${NC}"

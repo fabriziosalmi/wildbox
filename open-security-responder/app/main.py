@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Open Security Responder",
+    title="Open Security Responder API",
     description="SOAR (Security Orchestration, Automation and Response) microservice",
     version="1.0.0",
     docs_url="/docs",

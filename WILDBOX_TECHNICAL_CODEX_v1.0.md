@@ -208,7 +208,7 @@ def process_threat_feeds():
 - `CORS_ORIGINS=http://localhost:3000,http://localhost:80` - Dashboard integration
 - Connessione al gateway per autenticazione API
 
-### 🔧 open-security-api  
+### 🔧 open-security-tools  
 **Scopo Tecnico nel Contesto dell'Ecosistema:** Fornisce 57+ security tools con esecuzione sicura, consumati dal dashboard tramite interfaccia web e da automazioni via API REST.
 
 **Stack Tecnologico e Dipendenze Chiave:**
@@ -554,7 +554,7 @@ curl -H "X-API-Key: $API_KEY" http://localhost:80/api/v1/data/iocs/
 3. **Deployment Scripts per Modulo:**
 - `open-security-identity/setup.sh` - Database migration e initial data
 - `open-security-gateway/scripts/generate-ssl.sh` - Certificate generation  
-- `open-security-api/scripts/tool-discovery.py` - Tool registration
+- `open-security-tools/scripts/tool-discovery.py` - Tool registration
 
 ### Stato dell'Hardening (Basato su Audit Tecnici)
 
@@ -572,7 +572,7 @@ Basato su `open-security-gateway/IMPLEMENTATION_COMPLETE.md`:
 
 **API Security Framework (COMPLETATO):**
 
-Da `open-security-api/SECURITY_FIXES_APPLIED.md`:
+Da `open-security-tools/SECURITY_FIXES_APPLIED.md`:
 - ✅ Input sanitization per tutti i 57 tools
 - ✅ Resource limits per execution (CPU, memory, timeout)  
 - ✅ Plan-based rate limiting integration

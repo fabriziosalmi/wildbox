@@ -168,7 +168,7 @@ Each service uses a different database number (0-7), preventing data collision.
 
 ### Individual Service Files
 - `/open-security-agents/docker-compose.yml`
-- `/open-security-api/docker-compose.yml`
+- `/open-security-tools/docker-compose.yml`
 - `/open-security-automations/docker-compose.yml`
 - `/open-security-cspm/docker-compose.yml`
 - `/open-security-data/docker-compose.yml`

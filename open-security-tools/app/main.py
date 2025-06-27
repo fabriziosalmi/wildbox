@@ -198,7 +198,7 @@ def create_app() -> FastAPI:
         Configured FastAPI application instance
     """
     app = FastAPI(
-        title="Wildbox Security API",
+        title="Wildbox Security Tools",
         description="A modular security tools platform with dynamic tool discovery",
         version="1.0.0",
         docs_url=None,  # Disable default docs, using custom ones
@@ -277,7 +277,7 @@ def create_app() -> FastAPI:
         active_executions = execution_manager.get_active_executions()
         return {
             "application": {
-                "name": "Wildbox Security API",
+                "name": "Wildbox Security Tools",
                 "version": "1.0.0",
                 "environment": settings.environment,
                 "debug": settings.debug
@@ -346,7 +346,7 @@ def create_app() -> FastAPI:
     async def api_root():
         """API root endpoint with basic information."""
         return {
-            "message": "Wildbox Security API",
+            "message": "Wildbox Security Tools",
             "version": "1.0.0",
             "docs": "/docs",
             "tools": f"/api/tools",

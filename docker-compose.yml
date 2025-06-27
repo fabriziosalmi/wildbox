@@ -262,6 +262,8 @@ services:
       - "8019:8019"
     environment:
       - REDIS_URL=redis://wildbox-redis:6379/3
+      - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
+      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
       - DEBUG=true
       - LOG_LEVEL=INFO
     depends_on:

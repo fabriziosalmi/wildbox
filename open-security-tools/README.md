@@ -1,6 +1,11 @@
-# Wildbox Security API
+# Wildbox Security Tools
 
-A robust and extensible open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by simply adding them to the `tools` directory.
+A robust and ex# Manual setup
+git clone <repository-url>
+cd open-security-tools
+
+# Copy and configure environment
+cp .env.example .envle open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by simply adding them to the `tools` directory.
 
 ## 🚀 Features
 
@@ -22,7 +27,7 @@ The fastest way to get started is using our automated setup:
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd open-security-api
+cd open-security-tools
 
 # Run the setup script (recommended)
 ./scripts/setup.sh
@@ -39,7 +44,7 @@ Visit http://localhost:8000 to access the web interface.
 ```bash
 # Manual setup
 git clone <repository-url>
-cd open-security-api
+cd open-security-tools
 
 # Copy and configure environment
 cp .env.example .env
@@ -69,7 +74,7 @@ make prod
 1. **Clone and setup:**
    ```bash
    git clone https://github.com/fabriziosalmi/wildbox.git
-   cd wildbox/open-security-api
+   cd wildbox/open-security-tools
    make setup  # Creates .env from .env.example
    ```
 
@@ -156,7 +161,7 @@ make urls         # Show useful URLs
    ```bash
    # Clone repository
    git clone <repository-url>
-   cd open-security-api
+   cd open-security-tools
    
    # Setup environment
    cp .env.example .env
@@ -276,7 +281,7 @@ TOOL_INFO = {
 
 ### Docker Services
 
-- **wildbox-api**: Main FastAPI application
+- **wildbox-api**: Main FastAPI application service
 - **redis**: Redis for caching and rate limiting
 - **nginx**: Optional reverse proxy with SSL/TLS support
 
@@ -292,7 +297,7 @@ TOOL_INFO = {
 ## 📁 Project Structure
 
 ```
-open-security-api/
+open-security-tools/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application and tool discovery
@@ -359,8 +364,8 @@ open-security-api/
 
 1. **Clone or create the project directory:**
    ```bash
-   mkdir open-security-api
-   cd open-security-api
+   mkdir open-security-tools
+   cd open-security-tools
    ```
 
 2. **Create a virtual environment (recommended):**

@@ -106,7 +106,7 @@ Key configuration options:
 1. **Clone and setup:**
    ```bash
    git clone <repository>
-   cd open-security-api
+   cd open-security-tools
    ./scripts/setup.sh
    ```
 

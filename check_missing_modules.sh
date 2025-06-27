@@ -215,7 +215,7 @@ if [ ! -z "$API_MISSING" ]; then
     echo "docker-compose exec api pip install$API_MISSING"
     echo ""
     echo "Or update requirements.txt and rebuild:"
-    echo "echo '$API_MISSING' | tr ' ' '\n' >> open-security-api/requirements.txt"
+    echo "echo '$API_MISSING' | tr ' ' '\n' >> open-security-tools/requirements.txt"
     echo "docker-compose build api && docker-compose restart api"
     echo ""
 fi

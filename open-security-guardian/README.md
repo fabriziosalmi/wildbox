@@ -44,7 +44,7 @@ Built with Django and Django REST Framework, the Guardian provides a modern, sca
 
 ### 🔗 **Deep Integration**
 - **Scanner Agnostic**: Integrates with Nessus, Qualys, Rapid7, OpenVAS, and custom scanners
-- **Wildbox Suite**: Deep integration with open-security-api, open-security-data, and open-security-sensor
+- **Wildbox Suite**: Deep integration with open-security-tools, open-security-data, and open-security-sensor
 - **RESTful APIs**: Complete REST API for all functionality
 - **Webhook Support**: Real-time notifications via webhooks
 - **SIEM/SOAR**: Feeds vulnerability context into security operations workflows
