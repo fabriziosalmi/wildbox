@@ -218,24 +218,59 @@ class ChecksListResponse(BaseModel):
 
 
 class ComplianceFrameworkSummary(BaseModel):
-    """Summary for a specific compliance framework."""
-    
-    framework: str = Field(..., description="Compliance framework name")
-    total_checks: int = Field(..., description="Total applicable checks")
-    passed_checks: int = Field(..., description="Passed checks")
-    failed_checks: int = Field(..., description="Failed checks")
+    """Summary information for a compliance framework."""
+    name: str = Field(..., description="Framework name")
+    version: str = Field(..., description="Framework version")
+    description: str = Field(..., description="Framework description")
+    total_controls: int = Field(..., description="Total number of controls")
+    passed_controls: int = Field(..., description="Number of passed controls")
+    failed_controls: int = Field(..., description="Number of failed controls")
     compliance_percentage: float = Field(..., description="Compliance percentage")
+    last_assessment: str = Field(..., description="Last assessment timestamp")
 
 
-class ComplianceReportResponse(BaseModel):
-    """Response for compliance-specific reporting."""
-    
-    scan_id: str = Field(..., description="Source scan ID")
-    account_id: str = Field(..., description="Account ID")
-    generated_at: datetime = Field(..., description="Report generation time")
-    frameworks: List[ComplianceFrameworkSummary] = Field(..., description="Framework summaries")
+class ComplianceTrend(BaseModel):
+    """Compliance trend information."""
+    direction: str = Field(..., description="Trend direction: up, down, stable")
+    percentage: float = Field(..., description="Percentage change")
+
+
+class ComplianceSummaryResponse(BaseModel):
+    """Aggregated compliance summary response."""
+    total_resources: int = Field(..., description="Total number of resources evaluated")
+    compliant_resources: int = Field(..., description="Number of compliant resources")
+    non_compliant_resources: int = Field(..., description="Number of non-compliant resources")
     overall_score: float = Field(..., description="Overall compliance score")
-    recommendations: List[str] = Field(..., description="Top recommendations")
+    frameworks: List[ComplianceFrameworkSummary] = Field(..., description="Framework summaries")
+    trend: ComplianceTrend = Field(..., description="Compliance trend")
+    summary_period_days: int = Field(..., description="Summary period in days")
+    provider_filter: Optional[str] = Field(None, description="Provider filter applied")
+    last_updated: str = Field(..., description="Last update timestamp")
+
+
+class ComplianceFinding(BaseModel):
+    """Individual compliance finding."""
+    finding_id: str = Field(..., description="Unique finding identifier")
+    framework: str = Field(..., description="Compliance framework name")
+    control_id: str = Field(..., description="Control identifier")
+    control_title: str = Field(..., description="Control title")
+    resource_id: str = Field(..., description="Resource identifier")
+    resource_type: str = Field(..., description="Resource type")
+    region: str = Field(..., description="Resource region")
+    status: str = Field(..., description="Finding status: passed, failed, warning, not_applicable")
+    severity: str = Field(..., description="Finding severity: critical, high, medium, low, info")
+    description: str = Field(..., description="Finding description")
+    remediation: str = Field(..., description="Remediation guidance")
+    last_checked: str = Field(..., description="Last check timestamp")
+
+
+class ComplianceFindingsResponse(BaseModel):
+    """Compliance findings response with pagination."""
+    findings: List[ComplianceFinding] = Field(..., description="List of compliance findings")
+    total_count: int = Field(..., description="Total number of findings")
+    limit: int = Field(..., description="Result limit")
+    offset: int = Field(..., description="Result offset")
+    has_more: bool = Field(..., description="Whether more results are available")
 
 
 class ErrorResponse(BaseModel):
