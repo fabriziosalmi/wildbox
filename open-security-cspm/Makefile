@@ -126,9 +126,9 @@ docs: ## Generate documentation
 # Monitoring and metrics
 monitor: ## View monitoring info
 	@echo "$(GREEN)Monitoring Information:$(NC)"
-	@echo "Health Check: curl http://localhost:8006/health"
+	@echo "Health Check: curl http://localhost:8019/health"
 	@echo "Flower UI: http://localhost:5558"
-	@echo "API Docs: http://localhost:8006/docs"
+	@echo "API Docs: http://localhost:8019/docs"
 
 # Production deployment helpers
 production-build: ## Build for production
@@ -146,14 +146,14 @@ production-test: ## Test production build
 # Example usage and testing
 example-scan: ## Run example scan (requires AWS credentials)
 	@echo "$(YELLOW)Running example AWS scan...$(NC)"
-	curl -X POST "http://localhost:8006/api/v1/scans" \
+	curl -X POST "http://localhost:8019/api/v1/scans" \
 		 -H "Content-Type: application/json" \
 		 -H "Authorization: Bearer dev-token" \
 		 -d '{"provider":"aws","credentials":{"auth_method":"access_key","access_key_id":"EXAMPLE","secret_access_key":"EXAMPLE"},"account_id":"123456789012","account_name":"Test Account"}'
 
 list-checks: ## List available checks
 	@echo "$(YELLOW)Listing available checks...$(NC)"
-	curl -H "Authorization: Bearer dev-token" "http://localhost:8006/api/v1/checks" | jq .
+	curl -H "Authorization: Bearer dev-token" "http://localhost:8019/api/v1/checks" | jq .
 
 # Quality assurance
 qa: format lint test ## Run all quality assurance checks
