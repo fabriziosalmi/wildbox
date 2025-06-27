@@ -38,8 +38,8 @@ Wildbox is a **complete security operations platform** built from the ground up 
 ### 🎪 What Makes Wildbox Special
 
 - **🧩 Modular Architecture**: Independent microservices that work together seamlessly
-- **� Intelligent API Gateway**: Single entry point with plan-based feature gating and dynamic rate limiting
-- **�🔐 Centralized Authentication**: Enterprise-grade identity management with JWT and API keys
+- **🚪 Intelligent API Gateway**: Single entry point with plan-based feature gating and dynamic rate limiting
+- **🔐 Centralized Authentication**: Enterprise-grade identity management with JWT and API keys
 - **🔧 250+ Security Tools & Checks**: Comprehensive toolkit covering all security domains including 50+ general security tools and 200+ cloud security checks
 - **☁️ Multi-Cloud CSPM**: Complete cloud security posture management for AWS, Azure, and GCP
 - **🤖 AI-Powered Analysis**: GPT-4o powered intelligent threat analysis and reporting  
@@ -941,18 +941,6 @@ graph TD
     DATA --> FEEDS
     CSPM --> CLOUD_APIS
 ```
-    
-    API --> REDIS
-    DATA --> POSTGRES
-    DATA --> ELASTICSEARCH
-    GUARDIAN --> POSTGRES
-    RESPONDER --> REDIS
-    AGENTS --> REDIS
-    
-    IDENTITY --> STRIPE
-    AGENTS --> OPENAI
-    DATA --> FEEDS
-```
 
 ### 🔌 **Service Communication**
 
@@ -1195,8 +1183,6 @@ npm run dev
 # Features: Unified security operations center
 ```
 
-```
-
 ---
 
 ## ✨ Key Features
@@ -1313,7 +1299,7 @@ make start
 
 # 3. Start Core Services
 cd ../open-security-api && make dev &
-cd ../open-security-data && docker-compose up -d &
+cd ../open-security-data && python -m uvicorn app.main:app --reload --port 8002 &
 cd ../open-security-cspm && make start &
 cd ../open-security-guardian && docker-compose up -d &
 
@@ -1579,3 +1565,333 @@ Join thousands of security professionals who have chosen Wildbox as their securi
 **🚀 Get started today and transform your security operations with Wildbox!**
 
 ---
+
+## 🛠️ Development
+
+### 🔧 **Local Development Setup**
+
+#### **Prerequisites**
+- **Docker**: 20.10+ with Docker Compose
+- **Node.js**: 18+ with npm/yarn
+- **Python**: 3.11+ with pip
+- **Git**: Latest version
+
+#### **Development Environment**
+```bash
+# Clone the repository
+git clone https://github.com/your-username/wildbox.git
+cd wildbox
+
+# Copy environment files
+find . -name ".env.example" -exec sh -c 'cp "$1" "${1%.example}"' _ {} \;
+
+# Start core services
+docker-compose -f docker-compose.dev.yml up -d postgres redis
+
+# Start services in development mode
+cd open-security-identity && python -m uvicorn app.main:app --reload --port 8001 &
+cd open-security-api && python -m uvicorn app.main:app --reload --port 8000 &
+cd open-security-data && python -m uvicorn app.main:app --reload --port 8002 &
+
+# Start dashboard
+cd open-security-dashboard
+npm install
+npm run dev
+```
+
+### 🧪 **Testing**
+
+#### **Unit Tests**
+```bash
+# Run all unit tests
+make test
+
+# Run tests for specific service
+cd open-security-api
+pytest tests/unit/
+
+# Run with coverage
+pytest --cov=app tests/
+```
+
+#### **Integration Tests**
+```bash
+# Start test environment
+docker-compose -f docker-compose.test.yml up -d
+
+# Run integration tests
+pytest tests/integration/
+
+# End-to-end tests
+npm run test:e2e
+```
+
+### 🔍 **Code Quality**
+
+#### **Linting and Formatting**
+```bash
+# Python services
+black .
+isort .
+flake8 .
+mypy .
+
+# TypeScript/JavaScript
+npm run lint
+npm run format
+npm run type-check
+```
+
+#### **Security Scanning**
+```bash
+# Dependency scanning
+safety check
+npm audit
+
+# SAST scanning
+bandit -r .
+semgrep --config=auto .
+```
+
+### 📦 **Building and Deployment**
+
+#### **Docker Images**
+```bash
+# Build all images
+make build
+
+# Build specific service
+docker build -t wildbox/security-api open-security-api/
+
+# Push to registry
+make push
+```
+
+#### **Kubernetes Deployment**
+```bash
+# Deploy to K8s cluster
+kubectl apply -f k8s/
+
+# Helm deployment
+helm install wildbox ./helm/wildbox
+
+# Check deployment status
+kubectl get pods -n wildbox
+```
+---
+
+## 🔗 Integration
+
+### 🔌 **API Integration**
+
+#### **Authentication**
+```bash
+# Get API key
+curl -X POST http://localhost:8001/api/v1/auth/api-keys \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My API Key", "scopes": ["read", "write"]}'
+
+# Use API key
+curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/tools
+```
+
+#### **Webhook Integration**
+```python
+# Python webhook example
+import requests
+
+webhook_url = "https://your-webhook-endpoint.com"
+wildbox_data = {
+    "event": "vulnerability_detected",
+    "severity": "high",
+    "asset": "web-server-01",
+    "details": {...}
+}
+
+response = requests.post(webhook_url, json=wildbox_data)
+```
+
+### 🔄 **Third-party Integrations**
+
+#### **SIEM Integration**
+```bash
+# Splunk integration
+./scripts/setup-splunk-integration.sh --splunk-host splunk.company.com
+
+# Elastic Stack integration
+./scripts/setup-elastic-integration.sh --elastic-host elastic.company.com
+
+# Chronicle integration
+./scripts/setup-chronicle-integration.sh --project-id your-project
+```
+
+#### **Ticketing Systems**
+```yaml
+# integrations.yml
+jira:
+  url: "https://company.atlassian.net"
+  username: "security@company.com"
+  api_token: "your-api-token"
+  project_key: "SEC"
+
+servicenow:
+  instance: "company.service-now.com"
+  username: "wildbox-integration"
+  password: "secure-password"
+  table: "incident"
+```
+
+### 📡 **Data Export**
+
+#### **REST API Export**
+```bash
+# Export vulnerability data
+curl -H "X-API-Key: YOUR_API_KEY" \
+  "http://localhost:8003/api/v1/vulnerabilities?format=json&limit=1000"
+
+# Export threat intelligence
+curl -H "X-API-Key: YOUR_API_KEY" \
+  "http://localhost:8002/api/v1/indicators?type=hash&format=csv"
+```
+
+#### **Automated Reports**
+```python
+# Scheduled report generation
+from wildbox.reporting import ReportGenerator
+
+generator = ReportGenerator(api_key="YOUR_API_KEY")
+report = generator.generate_executive_summary(
+    start_date="2024-01-01",
+    end_date="2024-01-31",
+    format="pdf"
+)
+
+# Email report
+generator.email_report(report, recipients=["ciso@company.com"])
+```
+
+---
+
+## 📖 Documentation
+
+### 📚 **API Documentation**
+
+- **OpenAPI Specs**: Available at `/docs` endpoint for each service
+- **Postman Collections**: Import-ready collections for all APIs
+- **SDK Documentation**: Official SDKs for Python, JavaScript, and Go
+- **Integration Guides**: Step-by-step integration tutorials
+
+### 🎓 **User Guides**
+
+- **Getting Started**: Quick start guide for new users
+- **Administrator Guide**: Complete platform administration
+- **Developer Guide**: Custom tool and integration development
+- **Best Practices**: Security and operational best practices
+
+### 🔧 **Technical Documentation**
+
+- **Architecture Guide**: Detailed system architecture
+- **Deployment Guide**: Production deployment instructions
+- **Troubleshooting**: Common issues and solutions
+- **API Reference**: Complete API documentation
+
+### 📋 **Compliance Documentation**
+
+- **Security Controls**: Implemented security controls
+- **Compliance Mappings**: Framework compliance matrices
+- **Audit Reports**: Security assessment reports
+- **Certification**: Third-party security certifications
+
+---
+
+## 📄 License
+
+### 📜 **MIT License**
+
+```
+MIT License
+
+Copyright (c) 2024 Wildbox Security Platform
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### 🤝 **Open Source Commitment**
+
+Wildbox is committed to the open-source community and maintains a transparent development process:
+
+- **Community-driven**: All development is open and community-driven
+- **No vendor lock-in**: Complete freedom to modify and deploy
+- **Commercial-friendly**: MIT license allows commercial use
+- **Long-term support**: Committed to long-term maintenance and support
+
+### 📋 **Third-party Licenses**
+
+This project uses several third-party libraries and tools. A complete list of dependencies and their licenses can be found in:
+
+- `open-security-api/requirements.txt`
+- `open-security-dashboard/package.json`
+- `LICENSE-THIRD-PARTY.md` (comprehensive list)
+
+### 🛡️ **Security and Compliance**
+
+- **GDPR Compliant**: Privacy by design principles
+- **SOC 2 Type II**: Security controls and processes
+- **ISO 27001**: Information security management
+- **NIST Framework**: Cybersecurity framework alignment
+
+---
+
+## 🙏 Acknowledgments
+
+### 🌟 **Contributors**
+
+Special thanks to all the contributors who have helped make Wildbox possible:
+
+- **Core Team**: The dedicated developers and security professionals
+- **Community Contributors**: Open-source community members
+- **Security Researchers**: Vulnerability reporters and security experts
+- **Beta Testers**: Early adopters who provided valuable feedback
+
+### 🏢 **Organizations**
+
+Thanks to the organizations that have supported Wildbox development:
+
+- **Cloud Security Alliance**: Industry guidance and best practices
+- **OWASP Foundation**: Security standards and methodologies
+- **NIST**: Cybersecurity framework and guidelines
+- **MITRE Corporation**: ATT&CK framework and threat intelligence
+
+### 🔧 **Technology Partners**
+
+- **OpenAI**: AI and machine learning capabilities
+- **Docker**: Containerization and deployment platform
+- **GitHub**: Source code hosting and CI/CD
+- **AWS/Azure/GCP**: Cloud infrastructure and services
+
+---
+
+*Made with ❤️ by the Wildbox Security Team*
+
+**Follow us:**
+- 🐦 Twitter: [@WildboxSec](https://twitter.com/WildboxSec)
+- 💬 Discord: [Join Community](https://discord.gg/wildbox)
+- 📧 Email: [contact@wildbox.io](mailto:contact@wildbox.io)
+- 🌐 Website: [wildbox.io](https://wildbox.io)
