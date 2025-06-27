@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient } from '@/lib/api-client'
+import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient, getSensorPath } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 
 interface DashboardMetrics {
@@ -167,7 +167,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     try {
-      const sensorMetrics = await sensorClient.get('/api/v1/dashboard/metrics')
+      const sensorMetrics = await sensorClient.get(getSensorPath('/api/v1/dashboard/metrics'))
       endpoints = {
         totalEndpoints: sensorMetrics.total_endpoints || 0,
         onlineEndpoints: sensorMetrics.online_endpoints || 0,

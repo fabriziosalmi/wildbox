@@ -21,7 +21,7 @@ app_name = 'integrations'
 
 urlpatterns = [
     # Include router URLs
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
     
     # Additional custom endpoints
     # path('api/integrations/test-connection/', views.TestConnectionView.as_view(), name='test-connection'),

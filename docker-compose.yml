@@ -209,6 +209,7 @@ services:
       - DEBUG=true
       - LOG_LEVEL=INFO
       - LOG_FILE=/app/logs/guardian.log
+      - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,open-security-guardian
     volumes:
       - guardian_logs:/app/logs
     depends_on:

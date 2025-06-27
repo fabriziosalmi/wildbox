@@ -17,10 +17,10 @@ router.register(r'vulnerability-assessments', views.VulnerabilityAssessmentViewS
 app_name = 'vulnerabilities'
 
 urlpatterns = [
-    # Include router URLs
-    path('api/', include(router.urls)),
+    # Include router URLs directly
+    path('', include(router.urls)),
     
     # Additional custom endpoints can be added here
-    # path('api/vulnerabilities/export/', views.ExportVulnerabilitiesView.as_view(), name='export-vulnerabilities'),
-    # path('api/vulnerabilities/import/', views.ImportVulnerabilitiesView.as_view(), name='import-vulnerabilities'),
+    # path('export/', views.ExportVulnerabilitiesView.as_view(), name='export-vulnerabilities'),
+    # path('import/', views.ImportVulnerabilitiesView.as_view(), name='import-vulnerabilities'),
 ]

@@ -7,7 +7,7 @@ Initialize the Guardian platform with sample data and configurations.
 from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth.models import User
 from django.utils import timezone
-from apps.assets.models import Asset, AssetType, Criticality, Environment
+from apps.assets.models import Asset, AssetType, AssetCriticality, Environment
 from apps.vulnerabilities.models import VulnerabilityTemplate
 from apps.scanners.models import Scanner, ScanProfile, ScannerType
 from apps.remediation.models import RemediationTemplate
@@ -97,6 +97,16 @@ class Command(BaseCommand):
         """Create sample assets for testing"""
         self.stdout.write('Creating sample assets...')
         
+        # First create environments
+        prod_env, created = Environment.objects.get_or_create(
+            name='Production',
+            defaults={'description': 'Production environment', 'risk_weight': 2.0}
+        )
+        dev_env, created = Environment.objects.get_or_create(
+            name='Development',
+            defaults={'description': 'Development environment', 'risk_weight': 0.5}
+        )
+        
         sample_assets = [
             {
                 'name': 'Web Server 01',
@@ -104,8 +114,8 @@ class Command(BaseCommand):
                 'ip_address': '192.168.1.10',
                 'hostname': 'web01.company.com',
                 'operating_system': 'Ubuntu 20.04 LTS',
-                'criticality': Criticality.HIGH,
-                'environment': Environment.PRODUCTION,
+                'criticality': AssetCriticality.HIGH,
+                'environment': prod_env,
                 'description': 'Production web server hosting main application'
             },
             {
@@ -114,8 +124,8 @@ class Command(BaseCommand):
                 'ip_address': '192.168.1.20',
                 'hostname': 'db01.company.com',
                 'operating_system': 'CentOS 8',
-                'criticality': Criticality.CRITICAL,
-                'environment': Environment.PRODUCTION,
+                'criticality': AssetCriticality.CRITICAL,
+                'environment': prod_env,
                 'description': 'Primary database server'
             },
             {
@@ -124,8 +134,8 @@ class Command(BaseCommand):
                 'ip_address': '192.168.2.50',
                 'hostname': 'dev-ws-01',
                 'operating_system': 'Windows 10',
-                'criticality': Criticality.MEDIUM,
-                'environment': Environment.DEVELOPMENT,
+                'criticality': AssetCriticality.MEDIUM,
+                'environment': dev_env,
                 'description': 'Developer workstation'
             },
             {
@@ -135,16 +145,16 @@ class Command(BaseCommand):
                 'hostname': 'router-main',
                 'vendor': 'Cisco',
                 'model': 'ISR 4321',
-                'criticality': Criticality.HIGH,
-                'environment': Environment.PRODUCTION,
+                'criticality': AssetCriticality.HIGH,
+                'environment': prod_env,
                 'description': 'Main network router'
             },
             {
                 'name': 'Corporate Website',
-                'asset_type': AssetType.WEB_APPLICATION,
+                'asset_type': AssetType.APPLICATION,
                 'hostname': 'www.company.com',
-                'criticality': Criticality.HIGH,
-                'environment': Environment.PRODUCTION,
+                'criticality': AssetCriticality.HIGH,
+                'environment': prod_env,
                 'description': 'Corporate website'
             }
         ]

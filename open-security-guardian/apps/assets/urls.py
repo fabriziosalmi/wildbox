@@ -21,5 +21,5 @@ router.register(r'software', AssetSoftwareViewSet)
 router.register(r'ports', AssetPortViewSet)
 
 urlpatterns = [
-    path('api/v1/', include(router.urls)),
+    path('', include(router.urls)),
 ]

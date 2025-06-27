@@ -7,7 +7,7 @@ async function getAuthToken() {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: 'username=superadmin@wildbox.com&password=wildbox123'
+    body: 'username=superadmin@wildbox.com&password=admin123456'
   });
   
   if (!response.ok) {

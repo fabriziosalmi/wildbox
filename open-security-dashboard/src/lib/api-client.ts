@@ -29,8 +29,8 @@ class ApiClient {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
       (config) => {
-        // Check if this is a request to the security API service
-        const isSecurityAPI = this.baseURL.includes('localhost:8000') || this.baseURL.includes(':8000')
+        // Check if this is a request to the security tools API service
+        const isSecurityAPI = this.baseURL.includes('/api/v1/tools') || this.baseURL.includes('localhost:8000') || this.baseURL.includes(':8000')
         
         if (isSecurityAPI) {
           // Use API key for security tools API
@@ -88,7 +88,7 @@ class ApiClient {
     
     // Redirect to login if we're not already there
     if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth')) {
-      window.location.href = '/auth/login'
+      window.location.href = '/'
     }
   }
 
@@ -156,7 +156,8 @@ const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
 // Helper function to get the correct auth endpoint path
 export const getAuthPath = (endpoint: string): string => {
   if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/identity
+    // When using gateway with identityClient, just return the auth path
+    // since identityClient base URL is already /api/v1/identity
     return endpoint.replace('/api/v1/auth', '/auth')
   }
   return endpoint

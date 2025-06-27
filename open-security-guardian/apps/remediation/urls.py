@@ -20,7 +20,7 @@ app_name = 'remediation'
 
 urlpatterns = [
     # Include router URLs
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
     
     # Additional custom endpoints
     # path('api/remediation/metrics/', views.RemediationMetricsView.as_view(), name='remediation-metrics'),

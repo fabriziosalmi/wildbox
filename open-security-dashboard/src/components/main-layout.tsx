@@ -150,7 +150,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>([])
   const pathname = usePathname()
-  const { user, logout, isAuthenticated } = useAuth()
+  const { user, logout, isAuthenticated, isLoading } = useAuth()
 
   // Get navigation items based on user role
   const navigation = getNavigation(user)
@@ -183,6 +183,19 @@ export function MainLayout({ children }: MainLayoutProps) {
     if (user?.team_memberships?.[0]?.role === 'owner') return 'text-yellow-600 border-yellow-600'
     if (user?.team_memberships?.[0]?.role === 'admin') return 'text-blue-600 border-blue-600'
     return 'text-gray-600 border-gray-600'
+  }
+
+  // If authentication is still loading, show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Shield className="w-16 h-16 text-primary mx-auto mb-4 animate-pulse" />
+          <h1 className="text-2xl font-bold mb-2">Wildbox Security</h1>
+          <p className="text-muted-foreground mb-6">Loading...</p>
+        </div>
+      </div>
+    )
   }
 
   // If not authenticated, redirect to login

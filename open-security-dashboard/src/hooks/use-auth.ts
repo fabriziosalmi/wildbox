@@ -32,7 +32,7 @@ export function useLogout() {
     mutationFn: () => identityClient.post(getAuthPath('/api/v1/auth/logout')),
     onSuccess: () => {
       queryClient.clear()
-      window.location.href = '/auth/login'
+      window.location.href = '/'
     },
   })
 }

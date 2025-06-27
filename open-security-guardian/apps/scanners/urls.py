@@ -20,7 +20,7 @@ app_name = 'scanners'
 
 urlpatterns = [
     # Include router URLs
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
     
     # Additional custom endpoints
     # path('api/scanners/import/', views.ImportScanResultsView.as_view(), name='import-scan-results'),
