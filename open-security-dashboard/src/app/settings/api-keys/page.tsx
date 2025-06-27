@@ -38,10 +38,16 @@ const availableScopes = [
   { id: 'admin', name: 'Admin', description: 'Administrative access' },
   { id: 'tools:read', name: 'Tools Read', description: 'Read access to security tools' },
   { id: 'tools:execute', name: 'Tools Execute', description: 'Execute security tools' },
+  { id: 'tools:admin', name: 'Tools Admin', description: 'Manage security tools' },
   { id: 'data:read', name: 'Data Read', description: 'Read access to data services' },
   { id: 'data:write', name: 'Data Write', description: 'Write access to data services' },
+  { id: 'data:delete', name: 'Data Delete', description: 'Delete access to data services' },
   { id: 'reports:read', name: 'Reports Read', description: 'Read access to reports' },
   { id: 'reports:write', name: 'Reports Write', description: 'Create and modify reports' },
+  { id: 'team:read', name: 'Team Read', description: 'Read team information' },
+  { id: 'team:manage', name: 'Team Manage', description: 'Manage team members and settings' },
+  { id: 'billing:read', name: 'Billing Read', description: 'Read billing information' },
+  { id: 'billing:manage', name: 'Billing Manage', description: 'Manage billing and subscriptions' },
 ]
 
 export default function ApiKeysPage() {
@@ -260,16 +266,57 @@ export default function ApiKeysPage() {
               <label className="block text-sm font-medium text-foreground mb-2">
                 Scopes
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              
+              {/* Quick Scope Presets */}
+              <div className="mb-3">
+                <div className="text-xs text-muted-foreground mb-2">Quick presets:</div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: ['read', 'tools:read', 'data:read', 'reports:read'] }))}
+                  >
+                    Read Only
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: ['read', 'write', 'tools:execute', 'data:read', 'data:write', 'reports:write'] }))}
+                  >
+                    Analyst
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: ['admin', 'tools:admin', 'data:delete', 'team:manage', 'billing:manage'] }))}
+                  >
+                    Admin
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: [] }))}
+                  >
+                    Clear All
+                  </Button>
+                </div>
+              </div>
+              
+              {/* Individual Scope Selection */}
+              <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto border border-border rounded-md p-3">
                 {availableScopes.map((scope) => (
-                  <label key={scope.id} className="flex items-center space-x-2 cursor-pointer">
+                  <label key={scope.id} className="flex items-center space-x-2 cursor-pointer p-1 hover:bg-muted rounded">
                     <input
                       type="checkbox"
                       checked={createForm.scopes.includes(scope.id)}
                       onChange={() => toggleScope(scope.id)}
                       className="rounded border-gray-300"
                     />
-                    <div>
+                    <div className="flex-1">
                       <div className="text-sm font-medium">{scope.name}</div>
                       <div className="text-xs text-muted-foreground">{scope.description}</div>
                     </div>

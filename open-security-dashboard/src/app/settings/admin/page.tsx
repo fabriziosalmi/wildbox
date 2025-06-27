@@ -221,7 +221,7 @@ export default function AdminPage() {
 
       {/* Search and Filters */}
       <Card className="p-6 mb-6">
-        <div className="flex flex-col sm:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-4 mb-4">
           <div className="flex-1">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -246,6 +246,26 @@ export default function AdminPage() {
               <option value="active">Active Only</option>
               <option value="inactive">Inactive Only</option>
             </select>
+          </div>
+        </div>
+        
+        {/* User Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg">{totalUsers}</div>
+            <div className="text-sm text-muted-foreground">Total Users</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg text-green-600">{users.filter(u => u.is_active).length}</div>
+            <div className="text-sm text-muted-foreground">Active</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg text-orange-600">{users.filter(u => u.is_superuser).length}</div>
+            <div className="text-sm text-muted-foreground">Admins</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg text-blue-600">{users.filter(u => u.team_memberships && u.team_memberships.length > 0).length}</div>
+            <div className="text-sm text-muted-foreground">In Teams</div>
           </div>
         </div>
       </Card>

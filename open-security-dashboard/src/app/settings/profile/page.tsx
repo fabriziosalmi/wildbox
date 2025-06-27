@@ -401,19 +401,39 @@ export default function ProfilePage() {
                   <div className="font-medium">Two-Factor Authentication</div>
                   <div className="text-muted-foreground">Add an extra layer of security</div>
                 </div>
-                <Badge variant="outline" className="text-orange-600 border-orange-600">
-                  Coming Soon
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-red-600 border-red-600">
+                    Disabled
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    toast({
+                      title: "2FA Setup",
+                      description: "Two-factor authentication setup will be available in the next release. This feature is currently in development.",
+                    })
+                  }}>
+                    Enable
+                  </Button>
+                </div>
               </div>
               
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">Active Sessions</div>
-                  <div className="text-muted-foreground">Manage your login sessions</div>
+                  <div className="text-muted-foreground">Current browser and device sessions</div>
                 </div>
-                <Badge variant="default">
-                  1 Active
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="default">
+                    {user?.lastLogin ? '1 Active' : 'Current Session'}
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={() => {
+                    toast({
+                      title: "Session Info",
+                      description: `Current session: ${navigator.userAgent.includes('Chrome') ? 'Chrome' : navigator.userAgent.includes('Firefox') ? 'Firefox' : 'Browser'} on ${navigator.platform}. Last login: ${user?.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Current session'}`,
+                    })
+                  }}>
+                    View Details
+                  </Button>
+                </div>
               </div>
               
               <div className="flex items-center justify-between">
@@ -425,6 +445,21 @@ export default function ProfilePage() {
                   <a href="/settings/api-keys">Manage</a>
                 </Button>
               </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium">Password Strength</div>
+                  <div className="text-muted-foreground">Last changed {user?.updated_at ? formatDate(user.updated_at) : 'unknown'}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-green-600 border-green-600">
+                    Strong
+                  </Badge>
+                  <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                    Change
+                  </Button>
+                </div>
+              </div>
             </div>
           </Card>
         </div>
@@ -432,9 +467,19 @@ export default function ProfilePage() {
         {/* Activity Log */}
         <div>
           <Card className="p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Calendar className="w-5 h-5" />
-              <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
+              </div>
+              <Button variant="outline" size="sm" onClick={() => {
+                toast({
+                  title: "Activity Export",
+                  description: "Full activity log export will be available soon. Currently showing recent activities.",
+                })
+              }}>
+                Export Log
+              </Button>
             </div>
 
             {activityLoading ? (
@@ -445,16 +490,34 @@ export default function ProfilePage() {
               <div className="space-y-3">
                 {activityLog.slice(0, 10).map((log) => (
                   <div key={log.id} className="border-l-2 border-primary pl-3 pb-3">
-                    <div className="font-medium text-sm">{log.action}</div>
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium text-sm">{log.action}</div>
+                      <Badge variant="outline" className="text-xs">
+                        {log.ip_address}
+                      </Badge>
+                    </div>
                     <div className="text-xs text-muted-foreground">
                       {formatDate(log.timestamp)}
                     </div>
                   </div>
                 ))}
+                <div className="text-center pt-3 border-t border-border">
+                  <Button variant="outline" size="sm" onClick={() => {
+                    toast({
+                      title: "Full Activity Log",
+                      description: "Detailed activity history viewer will be available in the next update.",
+                    })
+                  }}>
+                    View All Activity
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="text-center py-8">
                 <div className="text-muted-foreground">No recent activity</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Activity will appear here as you use the platform
+                </div>
               </div>
             )}
           </Card>

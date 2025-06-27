@@ -293,7 +293,7 @@ export default function TeamPage() {
 
       {/* Team Overview */}
       <Card className="p-6 mb-6">
-        <div className="flex items-center gap-4 mb-4">
+        <div className="flex items-center gap-4 mb-6">
           <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
             <Users className="w-8 h-8 text-white" />
           </div>
@@ -302,6 +302,26 @@ export default function TeamPage() {
             <div className="text-muted-foreground">
               {teamData.members.length} member{teamData.members.length !== 1 ? 's' : ''}
             </div>
+          </div>
+        </div>
+
+        {/* Team Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg">{teamData.members.length}</div>
+            <div className="text-sm text-muted-foreground">Total Members</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg">{teamData.members.filter(m => m.role === 'admin').length}</div>
+            <div className="text-sm text-muted-foreground">Admins</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg">{teamData.members.filter(m => m.role === 'owner').length}</div>
+            <div className="text-sm text-muted-foreground">Owners</div>
+          </div>
+          <div className="text-center p-3 border border-border rounded-lg">
+            <div className="font-semibold text-lg text-green-600">Active</div>
+            <div className="text-sm text-muted-foreground">Status</div>
           </div>
         </div>
 
