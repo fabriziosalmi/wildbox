@@ -266,40 +266,115 @@ export default function AdminPage() {
     }
   }
 
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
-    // First check if the user can be deleted
-    try {
-      const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/users/admin/users/${userId}/can-delete`))
-      
-      if (!checkResponse.can_delete) {
-        const reasons = checkResponse.reasons.join('\n• ')
+  const handleDeleteUser = async (userId: string, userEmail: string, forceDelete: boolean = false) => {
+    // Check if this is a superuser (except primary superadmin)
+    const targetUser = users.find(u => u.id === userId)
+    const isSuperuser = targetUser?.is_superuser && userEmail !== 'superadmin@wildbox.com'
+    
+    // First check if the user can be deleted (unless forcing)
+    if (!forceDelete) {
+      try {
+        const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/users/admin/users/${userId}/can-delete`))
+        
+        if (!checkResponse.can_delete) {
+          // Check if force delete is possible
+          if (checkResponse.can_force_delete) {
+            let forceMessage = `User cannot be deleted normally.\n\nReasons:\n• ${checkResponse.reasons.join('\n• ')}\n\n`
+            
+            forceMessage += `As a superadmin, you can FORCE DELETE this user which will:\n• ${checkResponse.force_delete_info.join('\n• ')}\n\n`
+            forceMessage += `Do you want to FORCE DELETE this user?`
+            
+            const forceConfirm = confirm(forceMessage)
+            
+            if (forceConfirm) {
+              return handleDeleteUser(userId, userEmail, true)
+            }
+            return
+          } else {
+            // Cannot delete at all
+            toast({
+              title: "Cannot Delete User",
+              description: `User cannot be deleted:\n\n• ${checkResponse.reasons.join('\n• ')}`,
+              variant: "destructive",
+            })
+            return
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check if user can be deleted:', error)
+        
+        // If the can-delete endpoint fails (404), assume we need force delete for superusers/team owners
+        const isSuperuser = targetUser?.is_superuser && userEmail !== 'superadmin@wildbox.com'
+        const hasTeamOwnership = targetUser?.team_memberships?.some((m: any) => m.role === 'owner') || false
+        
+        if (isSuperuser || hasTeamOwnership) {
+          let forceMessage = `Cannot verify deletion safety (server error).\n\n`
+          
+          if (isSuperuser) {
+            forceMessage += `This user is a superuser. `
+          }
+          if (hasTeamOwnership) {
+            forceMessage += `This user may own teams. `
+          }
+          
+          forceMessage += `\nAs a superadmin, you can FORCE DELETE this user.\n\n`
+          forceMessage += `Do you want to FORCE DELETE this user?`
+          
+          const forceConfirm = confirm(forceMessage)
+          
+          if (forceConfirm) {
+            return handleDeleteUser(userId, userEmail, true)
+          }
+          return
+        }
+        
+        // Show warning but allow to continue for regular users
         toast({
-          title: "Cannot Delete User",
-          description: `User cannot be deleted:\n\n• ${reasons}`,
+          title: "Warning",
+          description: "Could not verify if user can be deleted safely. Proceeding with caution.",
           variant: "destructive",
         })
-        return
       }
-    } catch (error) {
-      console.error('Failed to check if user can be deleted:', error)
-      // Show warning but allow to continue
-      toast({
-        title: "Warning",
-        description: "Could not verify if user can be deleted safely. Proceeding with caution.",
-        variant: "destructive",
-      })
     }
 
-    if (!confirm(`Are you sure you want to delete ${userEmail}?\n\nThis action cannot be undone and will:\n- Permanently remove the user account\n- Remove them from all teams\n- Delete all their API keys\n\nNote: Users who own teams cannot be deleted until ownership is transferred.`)) {
+    // Different confirmation messages for normal vs force delete
+    let confirmMessage = ""
+    
+    if (forceDelete) {
+      confirmMessage = `FORCE DELETE: Are you sure you want to force delete ${userEmail}?\n\n`
+      
+      if (isSuperuser) {
+        confirmMessage += `This will:\n- Remove superuser privileges\n- Permanently delete the user account\n`
+      } else {
+        confirmMessage += `This will:\n- Permanently remove the user account\n`
+      }
+      
+      confirmMessage += `- Transfer team ownership to other admins/members\n` +
+                       `- Delete teams with no other members\n` +
+                       `- Delete all their API keys\n\n` +
+                       `This action cannot be undone!`
+    } else {
+      confirmMessage = `Are you sure you want to delete ${userEmail}?\n\n` +
+                      `This action cannot be undone and will:\n` +
+                      `- Permanently remove the user account\n` +
+                      `- Remove them from all teams\n` +
+                      `- Delete all their API keys`
+    }
+
+    if (!confirm(confirmMessage)) {
       return
     }
 
     try {
-      await identityClient.delete(getIdentityPath(`/api/v1/users/admin/users/${userId}`))
+      const deleteUrl = forceDelete 
+        ? getIdentityPath(`/api/v1/users/admin/users/${userId}?force=true`)
+        : getIdentityPath(`/api/v1/users/admin/users/${userId}`)
+        
+      await identityClient.delete(deleteUrl)
       
       toast({
         title: "Success",
-        description: `User ${userEmail} deleted successfully`,
+        description: `User ${userEmail} ${forceDelete ? 'force ' : ''}deleted successfully`,
       })
       
       fetchUsers()
@@ -315,8 +390,10 @@ export default function AdminPage() {
       }
       
       // Provide more helpful error message for common cases
-      if (errorMessage.includes("owns") && errorMessage.includes("team")) {
-        errorMessage += "\n\nTo delete this user, first transfer team ownership to another user or delete the team."
+      if ((errorMessage.includes("owns") && errorMessage.includes("team")) || errorMessage.includes("superuser")) {
+        if (!forceDelete) {
+          errorMessage += "\n\nAs a superadmin, you can force delete users who own teams or have superuser privileges. Try again and choose 'Force Delete' when prompted."
+        }
       }
       
       toast({
@@ -676,13 +753,15 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id, user.email)}
-                            disabled={user.is_superuser || isTeamOwner(user)}
+                            disabled={user.email === 'superadmin@wildbox.com'}
                             className="text-red-600 hover:text-red-700"
                             title={
-                              user.is_superuser 
-                                ? "Cannot delete superuser accounts" 
+                              user.email === 'superadmin@wildbox.com'
+                                ? "Cannot delete the primary superadmin account" 
+                                : user.is_superuser
+                                ? "Superuser account - requires force deletion confirmation"
                                 : isTeamOwner(user)
-                                ? `Cannot delete team owner. User owns ${getOwnedTeamsCount(user)} team(s).`
+                                ? `User owns ${getOwnedTeamsCount(user)} team(s). As superadmin, you can force delete to automatically handle team ownership.`
                                 : "Delete user permanently"
                             }
                           >

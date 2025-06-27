@@ -113,6 +113,84 @@ async def list_all_users(
     return user_responses
 
 
+@router.get("/admin/users/{user_id}/can-delete")
+async def check_user_deletable(
+    user_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Admin endpoint: Check if a user can be safely deleted.
+    
+    Requires: Superuser role
+    """
+    # Only superusers can check delete permissions
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    
+    # Get user with relationships
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.owned_teams),
+            selectinload(User.team_memberships),
+            selectinload(User.api_keys)
+        )
+        .where(User.id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Check various conditions
+    can_delete = True
+    can_force_delete = True
+    reasons = []
+    force_delete_reasons = []
+    
+    # Cannot delete self
+    if user_id == str(current_user.id):
+        can_delete = False
+        can_force_delete = False
+        reasons.append("Cannot delete your own account")
+        force_delete_reasons.append("Cannot delete your own account")
+    
+    # Cannot delete superusers (but can force delete)
+    if user.is_superuser:
+        can_delete = False
+        reasons.append("User is a superuser - use force delete to override")
+        force_delete_reasons.append("Will remove superuser privileges and delete")
+    
+    # Cannot delete users who own teams (but can force delete)
+    if user.owned_teams:
+        can_delete = False
+        team_names = [team.name for team in user.owned_teams]
+        reasons.append(f"User owns {len(user.owned_teams)} team(s): {', '.join(team_names)} - use force delete to automatically handle")
+        force_delete_reasons.append(f"Will transfer/delete {len(user.owned_teams)} owned team(s): {', '.join(team_names)}")
+    
+    return {
+        "can_delete": can_delete,
+        "can_force_delete": can_force_delete,
+        "reasons": reasons,
+        "force_delete_info": force_delete_reasons if force_delete_reasons else ["User can be safely deleted"],
+        "user_info": {
+            "email": user.email,
+            "is_superuser": user.is_superuser,
+            "is_active": user.is_active
+        },
+        "owned_teams": len(user.owned_teams) if user.owned_teams else 0,
+        "team_memberships": len(user.team_memberships) if user.team_memberships else 0,
+        "api_keys": len(user.api_keys) if user.api_keys else 0
+    }
+
+
 @router.get("/admin/users/{user_id}", response_model=UserWithTeams)
 async def get_user_by_id(
     user_id: str,
@@ -210,74 +288,10 @@ async def update_user_status(
     return {"message": f"User {'activated' if is_active else 'deactivated'} successfully"}
 
 
-@router.get("/admin/users/{user_id}/can-delete")
-async def check_user_deletable(
-    user_id: str,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Admin endpoint: Check if a user can be safely deleted.
-    
-    Requires: Superuser role
-    """
-    # Only superusers can check delete permissions
-    if not current_user.is_superuser:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superuser access required"
-        )
-    
-    # Get user with relationships
-    result = await db.execute(
-        select(User)
-        .options(
-            selectinload(User.owned_teams),
-            selectinload(User.team_memberships),
-            selectinload(User.api_keys)
-        )
-        .where(User.id == user_id)
-    )
-    user = result.scalar_one_or_none()
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    # Check various conditions
-    can_delete = True
-    reasons = []
-    
-    # Cannot delete self
-    if user_id == str(current_user.id):
-        can_delete = False
-        reasons.append("Cannot delete your own account")
-    
-    # Cannot delete superusers (extra protection)
-    if user.is_superuser:
-        can_delete = False
-        reasons.append("Cannot delete superuser accounts")
-    
-    # Cannot delete users who own teams
-    if user.owned_teams:
-        can_delete = False
-        team_names = [team.name for team in user.owned_teams]
-        reasons.append(f"User owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Transfer ownership first.")
-    
-    return {
-        "can_delete": can_delete,
-        "reasons": reasons,
-        "owned_teams": len(user.owned_teams) if user.owned_teams else 0,
-        "team_memberships": len(user.team_memberships) if user.team_memberships else 0,
-        "api_keys": len(user.api_keys) if user.api_keys else 0
-    }
-
-
 @router.delete("/admin/users/{user_id}")
 async def delete_user(
     user_id: str,
+    force: bool = Query(False, description="Force delete even if user owns teams"),
     current_user: User = Depends(get_current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -285,10 +299,16 @@ async def delete_user(
     Admin endpoint: Delete a user account (hard delete).
     
     Requires: Superuser role
-    Note: Users who own teams cannot be deleted - transfer ownership first.
+    
+    If force=True, superadmins can delete team owners by:
+    - Transferring ownership to another admin/member if available
+    - Deleting the team if no other members exist
     """
+    print(f"DEBUG: Delete user called with user_id={user_id}, force={force}, current_user={current_user.email}")
+    
     # Only superusers can delete accounts
     if not current_user.is_superuser:
+        print(f"DEBUG: Non-superuser attempted delete: is_superuser={current_user.is_superuser}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Superuser access required"
@@ -298,7 +318,7 @@ async def delete_user(
     result = await db.execute(
         select(User)
         .options(
-            selectinload(User.owned_teams),
+            selectinload(User.owned_teams).selectinload(Team.memberships).selectinload(TeamMembership.user),
             selectinload(User.team_memberships),
             selectinload(User.api_keys)
         )
@@ -314,34 +334,83 @@ async def delete_user(
     
     # Prevent deleting self
     if user_id == str(current_user.id):
+        print(f"DEBUG: Attempted to delete self: user_id={user_id}, current_user.id={current_user.id}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
         )
     
-    # Prevent deleting superusers (extra protection)
-    if user.is_superuser:
+    # Prevent deleting superusers (extra protection) - but allow force deletion by superadmin
+    if user.is_superuser and not force:
+        print(f"DEBUG: Attempted to delete superuser without force: user.is_superuser={user.is_superuser}, force={force}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete superuser accounts. Remove superuser privileges first."
+            detail="Cannot delete superuser accounts. Use force=true to override or remove superuser privileges first."
         )
     
-    # Check if user owns any teams
+    deleted_teams = []
+    transferred_teams = []
+    
+    # Handle team ownership if user owns teams
     if user.owned_teams:
-        team_names = [team.name for team in user.owned_teams]
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Transfer ownership first."
-        )
+        if not force:
+            team_names = [team.name for team in user.owned_teams]
+            print(f"DEBUG: User owns teams and no force flag: owned_teams={len(user.owned_teams)}, force={force}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Use force=true to automatically handle team ownership."
+            )
+        
+        # Force deletion - handle each owned team
+        for team in user.owned_teams:
+            # Get other team members (excluding the user being deleted)
+            other_members = [m for m in team.memberships if m.user_id != user.id]
+            
+            if not other_members:
+                # No other members - delete the team
+                deleted_teams.append(team.name)
+                await db.delete(team)
+            else:
+                # Find the best candidate for new ownership (admins first, then members)
+                admin_members = [m for m in other_members if m.role == TeamRole.ADMIN]
+                
+                if admin_members:
+                    # Transfer to first admin
+                    new_owner = admin_members[0].user
+                    team.owner_id = new_owner.id
+                    # Update their membership to owner
+                    admin_members[0].role = TeamRole.OWNER
+                    transferred_teams.append(f"{team.name} -> {new_owner.email}")
+                else:
+                    # No admins, transfer to first member and promote them
+                    new_owner = other_members[0].user
+                    team.owner_id = new_owner.id
+                    # Update their membership to owner
+                    other_members[0].role = TeamRole.OWNER
+                    transferred_teams.append(f"{team.name} -> {new_owner.email}")
     
     try:
-        # Hard delete - SQLAlchemy will handle cascading deletes for:
-        # - team_memberships (cascade="all, delete-orphan")  
-        # - api_keys (cascade="all, delete-orphan")
+        # First, explicitly remove the user from all team memberships
+        # This must be done before deleting the user to avoid foreign key issues
+        for membership in user.team_memberships:
+            await db.delete(membership)
+        
+        # Delete user's API keys
+        for api_key in user.api_keys:
+            await db.delete(api_key)
+        
+        # Hard delete user - now safe since relationships are cleaned up
         await db.delete(user)
         await db.commit()
         
-        return {"message": f"User {user.email} deleted successfully"}
+        # Build success message
+        message = f"User {user.email} deleted successfully"
+        if deleted_teams:
+            message += f". Deleted {len(deleted_teams)} team(s): {', '.join(deleted_teams)}"
+        if transferred_teams:
+            message += f". Transferred ownership of {len(transferred_teams)} team(s): {'; '.join(transferred_teams)}"
+        
+        return {"message": message}
         
     except Exception as e:
         await db.rollback()
@@ -530,55 +599,6 @@ async def change_my_password_put(
     User endpoint: Change own password (PUT version).
     """
     return await change_my_password(password_change, current_user, db)
-async def update_my_profile(
-    profile_update: UserProfileUpdate,
-    current_user: User = Depends(get_current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    User endpoint: Update own profile information.
-    """
-    updates_made = False
-    
-    # Update email if provided
-    if profile_update.email and profile_update.email != current_user.email:
-        # Check if email is already taken
-        result = await db.execute(
-            select(User).where(User.email == profile_update.email, User.id != current_user.id)
-        )
-        if result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already in use"
-            )
-        
-        current_user.email = profile_update.email
-        updates_made = True
-    
-    # Update password if provided
-    if profile_update.new_password:
-        if not profile_update.current_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password required to set new password"
-            )
-        
-        # Verify current password
-        if not verify_password(profile_update.current_password, current_user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incorrect current password"
-            )
-        
-        # Hash and set new password
-        current_user.hashed_password = get_password_hash(profile_update.new_password)
-        updates_made = True
-    
-    if updates_made:
-        await db.commit()
-        await db.refresh(current_user)
-    
-    return current_user
 
 
 @router.post("/me/change-password")
