@@ -18,7 +18,7 @@ COPY . .
 RUN mkdir -p logs
 
 # Expose port
-EXPOSE 8004
+EXPOSE 8006
 
 # Default command (can be overridden in docker-compose)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]

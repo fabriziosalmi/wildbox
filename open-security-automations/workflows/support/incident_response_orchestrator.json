@@ -1,0 +1,380 @@
+{
+  "name": "Security Incident Response Orchestrator",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security-incident",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Incident Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.severity}}",
+              "operation": "equal",
+              "value2": "critical"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Is Critical Incident?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-api:8000/api/v1/alerts",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert_type",
+              "value": "security_incident"
+            },
+            {
+              "name": "severity",
+              "value": "={{$json.severity}}"
+            },
+            {
+              "name": "description",
+              "value": "={{$json.description}}"
+            },
+            {
+              "name": "source",
+              "value": "={{$json.source}}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{$json.timestamp}}"
+            }
+          ]
+        }
+      },
+      "id": "http-1",
+      "name": "Create Alert in API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-guardian:8001/api/v1/incidents",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "incident_type",
+              "value": "={{$json.type}}"
+            },
+            {
+              "name": "severity",
+              "value": "={{$json.severity}}"
+            },
+            {
+              "name": "description",
+              "value": "={{$json.description}}"
+            },
+            {
+              "name": "affected_systems",
+              "value": "={{$json.affected_systems}}"
+            },
+            {
+              "name": "initial_response",
+              "value": "automated_triage"
+            }
+          ]
+        }
+      },
+      "id": "http-2",
+      "name": "Log to Guardian",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$json.slack_webhook_url}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "🚨 CRITICAL SECURITY INCIDENT DETECTED 🚨"
+            },
+            {
+              "name": "attachments",
+              "value": "[{\"color\":\"danger\",\"fields\":[{\"title\":\"Incident Type\",\"value\":\"{{$json.type}}\",\"short\":true},{\"title\":\"Severity\",\"value\":\"{{$json.severity}}\",\"short\":true},{\"title\":\"Source\",\"value\":\"{{$json.source}}\",\"short\":true},{\"title\":\"Time\",\"value\":\"{{$json.timestamp}}\",\"short\":true},{\"title\":\"Description\",\"value\":\"{{$json.description}}\",\"short\":false},{\"title\":\"Affected Systems\",\"value\":\"{{$json.affected_systems}}\",\"short\":false}]}]"
+            }
+          ]
+        }
+      },
+      "id": "http-3",
+      "name": "Critical Alert to Slack",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 80]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-api:8000/api/v1/alerts",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert_type",
+              "value": "security_incident"
+            },
+            {
+              "name": "severity",
+              "value": "={{$json.severity}}"
+            },
+            {
+              "name": "description",
+              "value": "={{$json.description}}"
+            },
+            {
+              "name": "source",
+              "value": "={{$json.source}}"
+            },
+            {
+              "name": "timestamp",
+              "value": "={{$json.timestamp}}"
+            }
+          ]
+        }
+      },
+      "id": "http-4",
+      "name": "Log Standard Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 420],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enrichment and analysis logic\nconst incident = $input.first().json;\n\n// Basic threat classification\nlet riskScore = 0;\nlet threatCategory = 'unknown';\n\n// Classify based on type\nif (incident.type && incident.type.toLowerCase().includes('malware')) {\n  riskScore += 30;\n  threatCategory = 'malware';\n} else if (incident.type && incident.type.toLowerCase().includes('intrusion')) {\n  riskScore += 40;\n  threatCategory = 'intrusion';\n} else if (incident.type && incident.type.toLowerCase().includes('data')) {\n  riskScore += 50;\n  threatCategory = 'data_breach';\n}\n\n// Adjust score based on severity\nif (incident.severity === 'critical') {\n  riskScore += 40;\n} else if (incident.severity === 'high') {\n  riskScore += 30;\n} else if (incident.severity === 'medium') {\n  riskScore += 20;\n} else {\n  riskScore += 10;\n}\n\n// Determine recommended actions\nlet recommendedActions = [];\nif (riskScore > 70) {\n  recommendedActions = [\n    'Immediate isolation of affected systems',\n    'Contact incident response team',\n    'Preserve forensic evidence',\n    'Activate emergency procedures'\n  ];\n} else if (riskScore > 40) {\n  recommendedActions = [\n    'Monitor affected systems closely',\n    'Update security controls',\n    'Review system logs',\n    'Notify security team'\n  ];\n} else {\n  recommendedActions = [\n    'Log incident for monitoring',\n    'Schedule routine review',\n    'Update documentation'\n  ];\n}\n\n// Create enriched incident data\nconst enrichedIncident = {\n  ...incident,\n  analysis: {\n    risk_score: riskScore,\n    threat_category: threatCategory,\n    recommended_actions: recommendedActions,\n    analysis_timestamp: new Date().toISOString(),\n    analyst: 'automated_system'\n  }\n};\n\nreturn [{ json: enrichedIncident }];"
+      },
+      "id": "code-1",
+      "name": "Enrich Incident Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-data:8002/api/v1/incidents",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "incident_data",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-5",
+      "name": "Store in Data Lake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1240, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Incident Webhook": {
+      "main": [
+        [
+          {
+            "node": "Is Critical Incident?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Critical Incident?": {
+      "main": [
+        [
+          {
+            "node": "Critical Alert to Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Alert in API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Standard Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Alert in API": {
+      "main": [
+        [
+          {
+            "node": "Log to Guardian",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log to Guardian": {
+      "main": [
+        [
+          {
+            "node": "Enrich Incident Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Alert to Slack": {
+      "main": [
+        []
+      ]
+    },
+    "Log Standard Alert": {
+      "main": [
+        [
+          {
+            "node": "Enrich Incident Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich Incident Data": {
+      "main": [
+        [
+          {
+            "node": "Store in Data Lake",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in Data Lake": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "id": "security",
+      "name": "security"
+    },
+    {
+      "id": "incident-response",
+      "name": "incident-response"
+    }
+  ],
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "1.0.0"
+}

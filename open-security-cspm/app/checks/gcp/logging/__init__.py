@@ -1,0 +1,1 @@
+# GCP LOGGING Security Checks\n

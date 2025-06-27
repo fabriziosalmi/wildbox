@@ -1,0 +1,1 @@
+# Azure SENTINEL Security Checks\n

@@ -42,11 +42,11 @@ RUN adduser --disabled-password --gecos '' cspm \
 USER cspm
 
 # Expose port
-EXPOSE 8006
+EXPOSE 8007
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8006/health || exit 1
+    CMD curl -f http://localhost:8007/health || exit 1
 
 # Default command
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8006"]

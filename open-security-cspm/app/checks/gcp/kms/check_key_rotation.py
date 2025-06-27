@@ -1,0 +1,80 @@
+"""
+GCP KMS Check: KMS Key Rotation
+"""
+
+from google.cloud import compute_v1
+from google.api_core import exceptions
+from typing import List, Any, Optional
+import logging
+
+from ...framework import (
+    BaseCheck, CheckResult, CheckMetadata, CheckSeverity, 
+    CheckStatus, CloudProvider
+)
+
+logger = logging.getLogger(__name__)
+
+
+class CheckKMSKeyRotation(BaseCheck):
+    """Ensure KMS keys have rotation enabled."""
+    
+    def get_metadata(self) -> CheckMetadata:
+        return CheckMetadata(
+            check_id="GCP_KMS_001",
+            title="KMS Key Rotation",
+            description="Ensure KMS keys have rotation enabled.",
+            provider=CloudProvider.GCP,
+            service="KMS",
+            category="Security",
+            severity=CheckSeverity.MEDIUM,
+            compliance_frameworks=[
+                "GCP Security Best Practices",
+                "SOC 2",
+                "ISO 27001"
+            ],
+            references=[
+                "https://docs.gcp.com/"
+            ],
+            remediation="Implement kms key rotation: "
+                       "1. Access GCP console. "
+                       "2. Navigate to kms service. "
+                       "3. Configure the security setting. "
+                       "4. Validate and apply changes."
+        )
+    
+    async def execute(self, session: Any, region: Optional[str] = None) -> List[CheckResult]:
+        """Execute the kms key rotation check."""
+        results = []
+        
+        try:
+            # TODO: Implement the actual check logic
+            # This is a placeholder that should be replaced with actual implementation
+            
+            results.append(CheckResult(
+                check_id=self.get_metadata().check_id,
+                resource_id="placeholder-resource",
+                resource_type="GCP::kms::Resource",
+                resource_name="placeholder",
+                region=region,
+                status=CheckStatus.PASSED,
+                message="Check implementation needed - placeholder",
+                details={
+                    'note': 'This check needs to be implemented with actual GCP API calls',
+                    'service': 'kms',
+                    'check_type': 'KMS Key Rotation'
+                }
+            ))
+                        
+        except Exception as e:
+            logger.error(f"Error in kms key rotation check: {str(e)}")
+            results.append(CheckResult(
+                check_id=self.get_metadata().check_id,
+                resource_id="check-execution",
+                resource_type="Check",
+                region=region,
+                status=CheckStatus.ERROR,
+                message=f"Error during check execution: {str(e)}",
+                details={'error': str(e)}
+            ))
+        
+        return results

@@ -1,0 +1,1 @@
+# Azure CDN Security Checks\n

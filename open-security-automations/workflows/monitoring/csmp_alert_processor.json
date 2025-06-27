@@ -1,0 +1,426 @@
+{
+  "name": "CSPM Alert Processor",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "csmp-alerts",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "CSPM Alert Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "credentials": {}
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process and validate CSMP alert data\nconst alertData = $input.first().json;\n\n// Validate required fields\nif (!alertData.check_id || !alertData.severity || !alertData.resource_id) {\n  throw new Error('Missing required fields: check_id, severity, or resource_id');\n}\n\n// Normalize severity levels\nconst severityMap = {\n  'CRITICAL': 'critical',\n  'HIGH': 'high', \n  'MEDIUM': 'medium',\n  'LOW': 'low',\n  'WARNING': 'low'\n};\n\nconst normalizedSeverity = severityMap[alertData.severity.toUpperCase()] || 'medium';\n\n// Determine priority based on severity and check type\nlet priority = 'normal';\nif (normalizedSeverity === 'critical') {\n  priority = 'urgent';\n} else if (normalizedSeverity === 'high') {\n  priority = 'high';\n}\n\n// Extract cloud provider from check_id\nlet cloudProvider = 'unknown';\nif (alertData.check_id.startsWith('AWS_')) {\n  cloudProvider = 'aws';\n} else if (alertData.check_id.startsWith('GCP_')) {\n  cloudProvider = 'gcp';\n} else if (alertData.check_id.startsWith('AZURE_')) {\n  cloudProvider = 'azure';\n}\n\n// Create standardized alert object\nconst processedAlert = {\n  alert_id: alertData.scan_id + '_' + alertData.check_id + '_' + Date.now(),\n  source: 'cspm',\n  check_id: alertData.check_id,\n  severity: normalizedSeverity,\n  priority: priority,\n  cloud_provider: cloudProvider,\n  resource_id: alertData.resource_id,\n  resource_type: alertData.resource_type || 'unknown',\n  resource_name: alertData.resource_name || alertData.resource_id,\n  region: alertData.region || 'unknown',\n  message: alertData.message || 'Security compliance check failed',\n  remediation: alertData.remediation || 'No remediation provided',\n  compliance_frameworks: alertData.compliance_frameworks || [],\n  timestamp: new Date().toISOString(),\n  scan_details: {\n    scan_id: alertData.scan_id,\n    account_id: alertData.account_id,\n    account_name: alertData.account_name\n  },\n  raw_details: alertData.details || {}\n};\n\nreturn [{ json: processedAlert }];"
+      },
+      "id": "code-1",
+      "name": "Process CSPM Alert",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.severity}}",
+              "operation": "equal",
+              "value2": "critical"
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Is Critical Finding?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-guardian:8001/api/v1/threats",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "threat_type",
+              "value": "compliance_violation"
+            },
+            {
+              "name": "severity",
+              "value": "={{$json.severity}}"
+            },
+            {
+              "name": "source",
+              "value": "cspm_scan"
+            },
+            {
+              "name": "description",
+              "value": "={{$json.message}}"
+            },
+            {
+              "name": "affected_resource",
+              "value": "={{$json.resource_id}}"
+            },
+            {
+              "name": "cloud_provider",
+              "value": "={{$json.cloud_provider}}"
+            },
+            {
+              "name": "compliance_frameworks",
+              "value": "={{JSON.stringify($json.compliance_frameworks)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-1",
+      "name": "Alert Security Guardian",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 180],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{$json.discord_webhook_url}}",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "🚨 **CRITICAL COMPLIANCE VIOLATION DETECTED** 🚨"
+            },
+            {
+              "name": "embeds",
+              "value": "[{\"title\":\"{{$json.check_id}}\",\"description\":\"{{$json.message}}\",\"color\":15158332,\"fields\":[{\"name\":\"Resource\",\"value\":\"{{$json.resource_name}} ({{$json.resource_type}})\",\"inline\":true},{\"name\":\"Cloud Provider\",\"value\":\"{{$json.cloud_provider.toUpperCase()}}\",\"inline\":true},{\"name\":\"Region\",\"value\":\"{{$json.region}}\",\"inline\":true},{\"name\":\"Severity\",\"value\":\"{{$json.severity.toUpperCase()}}\",\"inline\":true},{\"name\":\"Account\",\"value\":\"{{$json.scan_details.account_name || $json.scan_details.account_id}}\",\"inline\":true},{\"name\":\"Compliance Frameworks\",\"value\":\"{{$json.compliance_frameworks.join(', ') || 'None specified'}}\",\"inline\":false},{\"name\":\"Remediation\",\"value\":\"{{$json.remediation}}\",\"inline\":false}],\"timestamp\":\"{{$json.timestamp}}\"}]"
+            }
+          ]
+        }
+      },
+      "id": "http-2",
+      "name": "Critical Alert to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 80]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-api:8000/api/v1/compliance/findings",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "finding_data",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-3",
+      "name": "Log Finding to API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [840, 420],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate remediation tickets based on severity and check type\nconst alert = $input.first().json;\n\n// Determine if automatic remediation is possible\nconst autoRemediableChecks = [\n  'AWS_S3_001', // Public S3 buckets\n  'AWS_EC2_001', // Unencrypted EBS volumes  \n  'AWS_IAM_003', // Unused access keys\n  'AZURE_STORAGE_001', // Public storage containers\n  'GCP_STORAGE_001' // Public Cloud Storage buckets\n];\n\nconst isAutoRemediable = autoRemediableChecks.includes(alert.check_id);\n\n// Create ticket data\nconst ticketData = {\n  title: `CSMP Compliance Violation: ${alert.check_id}`,\n  description: `**Security Compliance Issue Detected**\\n\\n` +\n               `**Check ID:** ${alert.check_id}\\n` +\n               `**Severity:** ${alert.severity.toUpperCase()}\\n` +\n               `**Resource:** ${alert.resource_name} (${alert.resource_type})\\n` +\n               `**Cloud Provider:** ${alert.cloud_provider.toUpperCase()}\\n` +\n               `**Region:** ${alert.region}\\n` +\n               `**Account:** ${alert.scan_details.account_name || alert.scan_details.account_id}\\n\\n` +\n               `**Issue Description:**\\n${alert.message}\\n\\n` +\n               `**Remediation Steps:**\\n${alert.remediation}\\n\\n` +\n               `**Compliance Frameworks:** ${alert.compliance_frameworks.join(', ') || 'None specified'}\\n\\n` +\n               `**Scan ID:** ${alert.scan_details.scan_id}\\n` +\n               `**Alert ID:** ${alert.alert_id}`,\n  priority: alert.priority,\n  severity: alert.severity,\n  labels: [\n    'csmp-compliance',\n    `cloud-${alert.cloud_provider}`,\n    `severity-${alert.severity}`,\n    `check-${alert.check_id.toLowerCase().replace(/_/g, '-')}`\n  ],\n  assignee: isAutoRemediable ? 'automation-bot' : 'security-team',\n  auto_remediable: isAutoRemediable,\n  metadata: {\n    alert_id: alert.alert_id,\n    scan_id: alert.scan_details.scan_id,\n    check_id: alert.check_id,\n    resource_id: alert.resource_id,\n    cloud_provider: alert.cloud_provider,\n    region: alert.region\n  }\n};\n\nreturn [{ json: { alert: alert, ticket: ticketData } }];"
+      },
+      "id": "code-2",
+      "name": "Generate Remediation Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-api:8000/api/v1/tickets",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "ticket_data",
+              "value": "={{JSON.stringify($json.ticket)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-4",
+      "name": "Create Remediation Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1240, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.ticket.auto_remediable}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-2",
+      "name": "Is Auto-Remediable?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-responder:8003/api/v1/automation/remediate",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "check_id",
+              "value": "={{$json.alert.check_id}}"
+            },
+            {
+              "name": "resource_id",
+              "value": "={{$json.alert.resource_id}}"
+            },
+            {
+              "name": "cloud_provider",
+              "value": "={{$json.alert.cloud_provider}}"
+            },
+            {
+              "name": "region",
+              "value": "={{$json.alert.region}}"
+            },
+            {
+              "name": "account_id",
+              "value": "={{$json.alert.scan_details.account_id}}"
+            }
+          ]
+        }
+      },
+      "id": "http-5",
+      "name": "Execute Auto Remediation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1640, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "CSPM Alert Webhook": {
+      "main": [
+        [
+          {
+            "node": "Process CSPM Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process CSPM Alert": {
+      "main": [
+        [
+          {
+            "node": "Is Critical Finding?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Critical Finding?": {
+      "main": [
+        [
+          {
+            "node": "Critical Alert to Discord",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Alert Security Guardian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Finding to API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Security Guardian": {
+      "main": [
+        [
+          {
+            "node": "Generate Remediation Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Critical Alert to Discord": {
+      "main": [
+        []
+      ]
+    },
+    "Log Finding to API": {
+      "main": [
+        [
+          {
+            "node": "Generate Remediation Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Remediation Ticket": {
+      "main": [
+        [
+          {
+            "node": "Create Remediation Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Remediation Ticket": {
+      "main": [
+        [
+          {
+            "node": "Is Auto-Remediable?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Auto-Remediable?": {
+      "main": [
+        [
+          {
+            "node": "Execute Auto Remediation",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Execute Auto Remediation": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "id": "cspm",
+      "name": "cspm"
+    },
+    {
+      "id": "compliance",
+      "name": "compliance"
+    },
+    {
+      "id": "automation",
+      "name": "automation"
+    }
+  ],
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "1.0.0"
+}

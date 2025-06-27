@@ -1,0 +1,385 @@
+{
+  "name": "Threat Intelligence Feed Aggregator",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "cron-1",
+      "name": "Every 6 Hours",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Initialize threat intelligence sources\nconst sources = [\n  {\n    name: 'MISP Feed',\n    url: 'https://www.circl.lu/doc/misp/feed-osint/',\n    type: 'misp',\n    priority: 'high'\n  },\n  {\n    name: 'AlienVault OTX',\n    url: 'https://otx.alienvault.com/api/v1/indicators/export',\n    type: 'otx',\n    priority: 'high'\n  },\n  {\n    name: 'Abuse.ch URLhaus',\n    url: 'https://urlhaus.abuse.ch/downloads/csv/',\n    type: 'urlhaus',\n    priority: 'medium'\n  },\n  {\n    name: 'Feodo Tracker',\n    url: 'https://feodotracker.abuse.ch/downloads/ipblocklist.csv',\n    type: 'feodo',\n    priority: 'medium'\n  },\n  {\n    name: 'EmergingThreats Rules',\n    url: 'https://rules.emergingthreats.net/open/suricata/rules/',\n    type: 'suricata',\n    priority: 'low'\n  },\n  {\n    name: 'PhishTank',\n    url: 'http://data.phishtank.com/data/online-valid.csv',\n    type: 'phishtank',\n    priority: 'medium'\n  }\n];\n\n// Create output for each source\nconst outputs = sources.map(source => ({\n  json: {\n    source: source,\n    timestamp: new Date().toISOString(),\n    collection_id: 'ti_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)\n  }\n}));\n\nreturn outputs;"
+      },
+      "id": "code-1",
+      "name": "Initialize TI Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.source.url}}",
+        "options": {
+          "timeout": 30000,
+          "retry": {
+            "enabled": true,
+            "maxTries": 3
+          }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Wildbox-Security-Platform/1.0 (Threat Intelligence Collector)"
+            }
+          ]
+        }
+      },
+      "id": "http-1",
+      "name": "Fetch TI Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse and normalize threat intelligence data\nconst input = $input.first().json;\nconst sourceInfo = input.source;\nconst rawData = input.body;\n\nlet indicators = [];\n\n// Parse based on source type\nswitch (sourceInfo.type) {\n  case 'urlhaus':\n    // Parse CSV format from URLhaus\n    if (rawData && rawData.includes('id,dateadded,url')) {\n      const lines = rawData.split('\\n').slice(1); // Skip header\n      indicators = lines.slice(0, 1000).map(line => { // Limit to 1000 entries\n        const parts = line.split(',');\n        if (parts.length >= 8) {\n          return {\n            type: 'url',\n            value: parts[2],\n            threat_type: parts[4] || 'malware',\n            confidence: 'medium',\n            source: sourceInfo.name,\n            tags: [parts[3], parts[4]].filter(Boolean),\n            first_seen: parts[1],\n            last_seen: new Date().toISOString()\n          };\n        }\n        return null;\n      }).filter(Boolean);\n    }\n    break;\n    \n  case 'feodo':\n    // Parse IP blocklist\n    if (rawData) {\n      const lines = rawData.split('\\n').filter(line => \n        line && !line.startsWith('#') && line.includes('.')\n      );\n      indicators = lines.slice(0, 500).map(line => {\n        const ip = line.trim().split(',')[0] || line.trim();\n        return {\n          type: 'ip',\n          value: ip,\n          threat_type: 'botnet',\n          confidence: 'high',\n          source: sourceInfo.name,\n          tags: ['feodo', 'botnet', 'c2'],\n          first_seen: new Date().toISOString(),\n          last_seen: new Date().toISOString()\n        };\n      });\n    }\n    break;\n    \n  case 'phishtank':\n    // Parse PhishTank CSV\n    if (rawData && rawData.includes('phish_id,url')) {\n      const lines = rawData.split('\\n').slice(1);\n      indicators = lines.slice(0, 500).map(line => {\n        const parts = line.split(',');\n        if (parts.length >= 2) {\n          return {\n            type: 'url',\n            value: parts[1],\n            threat_type: 'phishing',\n            confidence: 'high',\n            source: sourceInfo.name,\n            tags: ['phishing', 'phishtank'],\n            first_seen: parts[3] || new Date().toISOString(),\n            last_seen: new Date().toISOString()\n          };\n        }\n        return null;\n      }).filter(Boolean);\n    }\n    break;\n    \n  default:\n    // Generic parsing for other sources\n    if (rawData) {\n      // Try to extract IPs and URLs using regex\n      const ipRegex = /\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b/g;\n      const urlRegex = /https?:\\/\\/(www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b([-a-zA-Z0-9()@:%_\\+.~#?&//=]*)/g;\n      \n      const ips = rawData.match(ipRegex) || [];\n      const urls = rawData.match(urlRegex) || [];\n      \n      indicators = [\n        ...ips.slice(0, 100).map(ip => ({\n          type: 'ip',\n          value: ip,\n          threat_type: 'unknown',\n          confidence: 'low',\n          source: sourceInfo.name,\n          tags: [sourceInfo.type],\n          first_seen: new Date().toISOString(),\n          last_seen: new Date().toISOString()\n        })),\n        ...urls.slice(0, 100).map(url => ({\n          type: 'url',\n          value: url,\n          threat_type: 'unknown',\n          confidence: 'low',\n          source: sourceInfo.name,\n          tags: [sourceInfo.type],\n          first_seen: new Date().toISOString(),\n          last_seen: new Date().toISOString()\n        }))\n      ];\n    }\n    break;\n}\n\n// Add metadata to each indicator\nindicators = indicators.map(indicator => ({\n  ...indicator,\n  id: `${sourceInfo.type}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,\n  collection_timestamp: new Date().toISOString(),\n  source_priority: sourceInfo.priority,\n  ttl_hours: sourceInfo.priority === 'high' ? 24 : 72\n}));\n\nreturn [{\n  json: {\n    source: sourceInfo,\n    indicators: indicators,\n    total_count: indicators.length,\n    collection_timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "code-2",
+      "name": "Parse TI Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [840, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.total_count}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "if-1",
+      "name": "Has Indicators?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1040, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-api:8000/api/v1/threat-intelligence/indicators/bulk",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "indicators",
+              "value": "={{JSON.stringify($json.indicators)}}"
+            },
+            {
+              "name": "source",
+              "value": "={{$json.source.name}}"
+            },
+            {
+              "name": "collection_timestamp",
+              "value": "={{$json.collection_timestamp}}"
+            }
+          ]
+        }
+      },
+      "id": "http-2",
+      "name": "Store in TI Database",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1240, 200],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze indicators for high-value threats\nconst data = $input.first().json;\nconst indicators = data.indicators;\n\n// Filter for high-priority indicators\nconst highPriorityIndicators = indicators.filter(indicator => {\n  // High priority criteria\n  if (indicator.confidence === 'high' && indicator.threat_type !== 'unknown') {\n    return true;\n  }\n  if (indicator.source_priority === 'high') {\n    return true;\n  }\n  if (indicator.tags.includes('apt') || indicator.tags.includes('ransomware')) {\n    return true;\n  }\n  return false;\n});\n\n// Group by threat type\nconst threatGroups = {};\nhighPriorityIndicators.forEach(indicator => {\n  const threatType = indicator.threat_type;\n  if (!threatGroups[threatType]) {\n    threatGroups[threatType] = [];\n  }\n  threatGroups[threatType].push(indicator);\n});\n\n// Create summary\nconst summary = {\n  source: data.source.name,\n  collection_time: data.collection_timestamp,\n  total_indicators: indicators.length,\n  high_priority_indicators: highPriorityIndicators.length,\n  threat_groups: Object.keys(threatGroups).map(threatType => ({\n    threat_type: threatType,\n    count: threatGroups[threatType].length,\n    sample_indicators: threatGroups[threatType].slice(0, 5)\n  })),\n  alert_threshold_met: highPriorityIndicators.length > 10\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "code-3",
+      "name": "Analyze Threat Patterns",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{$json.alert_threshold_met}}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-2",
+      "name": "Alert Threshold Met?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1640, 200]
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-guardian:8001/api/v1/alerts",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "alert_type",
+              "value": "threat_intelligence_spike"
+            },
+            {
+              "name": "severity",
+              "value": "medium"
+            },
+            {
+              "name": "description",
+              "value": "High volume of threat indicators detected from {{$json.source}}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-3",
+      "name": "Alert Guardian",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1840, 100],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "headerAuth",
+        "url": "http://open-security-data:8002/api/v1/threat-intelligence/feed-status",
+        "options": {
+          "timeout": 10000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "feed_summary",
+              "value": "={{JSON.stringify($json)}}"
+            }
+          ]
+        }
+      },
+      "id": "http-4",
+      "name": "Update Feed Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1840, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wildbox-api-auth",
+          "name": "Wildbox API Auth"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 6 Hours": {
+      "main": [
+        [
+          {
+            "node": "Initialize TI Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize TI Sources": {
+      "main": [
+        [
+          {
+            "node": "Fetch TI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch TI Data": {
+      "main": [
+        [
+          {
+            "node": "Parse TI Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse TI Data": {
+      "main": [
+        [
+          {
+            "node": "Has Indicators?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Indicators?": {
+      "main": [
+        [
+          {
+            "node": "Store in TI Database",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Store in TI Database": {
+      "main": [
+        [
+          {
+            "node": "Analyze Threat Patterns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analyze Threat Patterns": {
+      "main": [
+        [
+          {
+            "node": "Alert Threshold Met?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Threshold Met?": {
+      "main": [
+        [
+          {
+            "node": "Alert Guardian",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Feed Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Alert Guardian": {
+      "main": [
+        [
+          {
+            "node": "Update Feed Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Feed Status": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {},
+  "tags": [
+    {
+      "id": "threat-intelligence",
+      "name": "threat-intelligence"
+    },
+    {
+      "id": "feeds",
+      "name": "feeds"
+    },
+    {
+      "id": "automation",
+      "name": "automation"
+    }
+  ],
+  "active": false,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {},
+  "versionId": "1.0.0"
+}
