@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { MainLayout } from '@/components/main-layout'
-import { identityClient, getAuthPath, getIdentityPath, dataClient } from '@/lib/api-client'
+import { identityClient, getAuthPath, getIdentityPath, dataClient, getDataPath } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -97,11 +97,11 @@ export default function AdminPage() {
       // Check health of various services
       const [identityHealth, gatewayHealth, dataHealth] = await Promise.allSettled([
         // Check identity service health
-        identityClient.get('/health').catch(() => null),
+        identityClient.get(getIdentityPath('/health')).catch(() => null),
         // Check gateway status (if accessible)
         fetch('http://localhost/health').then(r => r.json()).catch(() => null),
         // Check data service health
-        dataClient.get('/health').catch(() => null)
+        dataClient.get(getDataPath('/health')).catch(() => null)
       ])
 
       let servicesOnline = 0

@@ -179,7 +179,7 @@ async def delete_user(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Admin endpoint: Delete a user account (soft delete).
+    Admin endpoint: Delete a user account (hard delete).
     
     Requires: Superuser role
     """
@@ -190,8 +190,16 @@ async def delete_user(
             detail="Superuser access required"
         )
     
-    # Get user
-    result = await db.execute(select(User).where(User.id == user_id))
+    # Get user with relationships
+    result = await db.execute(
+        select(User)
+        .options(
+            selectinload(User.owned_teams),
+            selectinload(User.team_memberships),
+            selectinload(User.api_keys)
+        )
+        .where(User.id == user_id)
+    )
     user = result.scalar_one_or_none()
     
     if not user:
@@ -207,9 +215,19 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
     
-    # Soft delete - deactivate and mark email as deleted
-    user.is_active = False
-    user.email = f"deleted_{user.id}@deleted.local"
+    # Check if user owns any teams
+    if user.owned_teams:
+        # For now, prevent deletion of users who own teams
+        # In the future, you might want to transfer ownership or delete teams
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s). Transfer ownership first."
+        )
+    
+    # Hard delete - SQLAlchemy will handle cascading deletes for:
+    # - team_memberships (cascade="all, delete-orphan")  
+    # - api_keys (cascade="all, delete-orphan")
+    await db.delete(user)
     await db.commit()
     
     return {"message": "User deleted successfully"}
@@ -418,7 +436,7 @@ async def delete_my_account(
     
     # Soft delete - deactivate and mark email as deleted
     current_user.is_active = False
-    current_user.email = f"deleted_{current_user.id}@deleted.local"
+    current_user.email = f"deleted_{current_user.id}@example.com"
     await db.commit()
     
     return {"message": "Account deleted successfully"}

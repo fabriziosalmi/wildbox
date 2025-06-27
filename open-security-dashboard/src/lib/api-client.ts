@@ -171,6 +171,60 @@ export const getIdentityPath = (endpoint: string): string => {
   return endpoint
 }
 
+// Helper function to get the correct data endpoint path
+export const getDataPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/data
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
+// Helper function to get the correct guardian endpoint path
+export const getGuardianPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/guardian
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
+// Helper function to get the correct sensor endpoint path
+export const getSensorPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/sensor
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
+// Helper function to get the correct responder endpoint path
+export const getResponderPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/responder
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
+// Helper function to get the correct CSPM endpoint path
+export const getCSPMPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/cspm
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
+// Helper function to get the correct agents endpoint path
+export const getAgentsPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/agents
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
 // Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 
