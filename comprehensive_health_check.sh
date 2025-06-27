@@ -30,7 +30,7 @@ success() {
 }
 
 # Service configuration (using simple arrays for macOS compatibility)
-SERVICES="api:8000 identity:8001 data:8002 guardian:8013 sensor:8004 responder:8005 agents:8006 cspm:8019 dashboard:3000 automations:5678"
+SERVICES="api:8000 identity:8001 data:8002 guardian:8013 sensor:8004 responder:8018 agents:8006 cspm:8019 dashboard:3000 automations:5678"
 
 # Function to check if a service is responding
 check_service() {
@@ -210,9 +210,9 @@ show_service_urls() {
     echo "  • Security API:      http://localhost:8000"
     echo "  • Identity Service:  http://localhost:8001"
     echo "  • Data Service:      http://localhost:8002"
-    echo "  • Guardian:          http://localhost:8003"
+    echo "  • Guardian:          http://localhost:8013"
     echo "  • Sensor:            http://localhost:8004"
-    echo "  • Responder:         http://localhost:8005"
+    echo "  • Responder:         http://localhost:8018"
     echo "  • Agents:            http://localhost:8006"
     echo "  • CSPM:              http://localhost:8019"
     echo ""

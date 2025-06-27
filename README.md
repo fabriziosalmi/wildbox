@@ -168,7 +168,7 @@ curl http://localhost:8001/health    # Identity Service
 curl http://localhost:8002/health    # Data Lake
 curl http://localhost:8013/health    # Guardian
 curl http://localhost:8004/health    # Sensor
-curl http://localhost:8005/health    # Responder
+curl http://localhost:8018/health    # Responder
 curl http://localhost:8006/health    # AI Agents
 curl http://localhost:8019/health    # CSPM
 
@@ -380,7 +380,7 @@ docker-compose logs -f --tail=100
 echo "🔍 Wildbox Health Check"
 echo "======================"
 
-services=("dashboard:3000" "security-api:8000" "identity:8001" "data-lake:8002" "guardian:8013" "sensor:8004" "responder:8005" "agents:8006" "cspm:8019" "automations:5678")
+services=("dashboard:3000" "security-api:8000" "identity:8001" "data-lake:8002" "guardian:8013" "sensor:8004" "responder:8018" "agents:8006" "cspm:8019" "automations:5678")
 
 for service in "${services[@]}"; do
     name=$(echo $service | cut -d: -f1)
@@ -973,9 +973,9 @@ graph TD
 | **Identity Service** | 8001 | HTTP | Internal + JWT |
 | **Security API** | 8000 | HTTP | API Key |
 | **Data Lake** | 8002 | HTTP | API Key |
-| **Guardian** | 8003 | HTTP | API Key |
+| **Guardian** | 8013 | HTTP | API Key |
 | **Sensor** | 8004 | HTTPS | Certificate |
-| **Responder** | 8005 | HTTP | API Key |
+| **Responder** | 8018 | HTTP | API Key |
 | **AI Agents** | 8006 | HTTP | API Key |
 
 ### 🛡️ **Security Architecture**
@@ -1161,7 +1161,7 @@ cd open-security-sensor
 cd open-security-responder
 docker-compose up -d
 
-# Access: http://localhost:8005
+# Access: http://localhost:8018
 # Features: Playbook automation, workflow orchestration
 ```
 

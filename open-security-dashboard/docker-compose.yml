@@ -9,9 +9,9 @@ services:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
       - NEXT_PUBLIC_DATA_API_URL=http://localhost:8002
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
+      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8013
       - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8004
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8005
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8018
       - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8006
       - NEXTAUTH_SECRET=your-production-secret
       - NEXTAUTH_URL=http://localhost:3000
@@ -42,9 +42,9 @@ services:
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
       - NEXT_PUBLIC_DATA_API_URL=http://localhost:8001
       - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8002
-      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
-      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8005
+      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8013
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8018
+      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8006
     networks:
       - wildbox-network
     profiles:

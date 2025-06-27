@@ -117,7 +117,7 @@ health:
 	@curl -s http://localhost:8002/health > /dev/null && echo "✅ Data Service (8002)" || echo "❌ Data Service (8002)"
 	@curl -s http://localhost:8013/health > /dev/null && echo "✅ Guardian Service (8013)" || echo "❌ Guardian Service (8013)"
 	@curl -s http://localhost:8004/health > /dev/null && echo "✅ Sensor Service (8004)" || echo "❌ Sensor Service (8004)"
-	@curl -s http://localhost:8005/health > /dev/null && echo "✅ Responder Service (8005)" || echo "❌ Responder Service (8005)"
+	@curl -s http://localhost:8018/health > /dev/null && echo "✅ Responder Service (8018)" || echo "❌ Responder Service (8018)"
 	@curl -s http://localhost:8006/health > /dev/null && echo "✅ Agents Service (8006)" || echo "❌ Agents Service (8006)"
 	@curl -s http://localhost:8019/health > /dev/null && echo "✅ CSPM Service (8019)" || echo "❌ CSPM Service (8019)"
 	@echo ""

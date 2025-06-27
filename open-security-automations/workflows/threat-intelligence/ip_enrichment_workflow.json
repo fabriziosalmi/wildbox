@@ -76,7 +76,7 @@
     },
     {
       "parameters": {
-        "url": "http://wildbox-responder:8005/api/v1/incidents",
+        "url": "http://wildbox-responder:8018/api/v1/incidents",
         "options": {
           "headers": {
             "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",
@@ -110,7 +110,7 @@
     },
     {
       "parameters": {
-        "url": "http://wildbox-responder:8005/api/v1/response/isolate",
+        "url": "http://wildbox-responder:8018/api/v1/response/isolate",
         "options": {
           "headers": {
             "Authorization": "Bearer {{$env.WILDBOX_API_TOKEN}}",

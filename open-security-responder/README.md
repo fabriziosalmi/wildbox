@@ -65,20 +65,20 @@ make worker
 
 ### Access Points
 
-- **API Server**: http://localhost:8003
-- **API Documentation**: http://localhost:8003/docs
-- **Health Check**: http://localhost:8003/health
+- **API Server**: http://localhost:8018
+- **API Documentation**: http://localhost:8018/docs
+- **Health Check**: http://localhost:8018/health
 
 ### Example Playbook Execution
 
 ```bash
 # Execute a playbook
-curl -X POST "http://localhost:8003/v1/playbooks/triage_ip/execute" \
+curl -X POST "http://localhost:8018/v1/playbooks/triage_ip/execute" \
   -H "Content-Type: application/json" \
   -d '{"ip": "192.168.1.1"}'
 
 # Check execution status
-curl "http://localhost:8003/v1/runs/{run_id}"
+curl "http://localhost:8018/v1/runs/{run_id}"
 ```
 
 ## 📋 Playbook Structure
@@ -116,7 +116,7 @@ Environment variables:
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6381/0` |
 | `WILDBOX_API_URL` | Open Security API URL | `http://localhost:8000` |
 | `WILDBOX_DATA_URL` | Open Security Data URL | `http://localhost:8002` |
-| `WILDBOX_GUARDIAN_URL` | Open Security Guardian URL | `http://localhost:8003` |
+| `WILDBOX_GUARDIAN_URL` | Open Security Guardian URL | `http://localhost:8013` |
 | `WILDBOX_SENSOR_URL` | Open Security Sensor URL | `http://localhost:8899` |
 | `DEBUG` | Enable debug mode | `false` |
 

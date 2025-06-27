@@ -15,7 +15,7 @@ from typing import Dict, Any, Optional
 class ResponderTester:
     """Test client for the Open Security Responder API"""
     
-    def __init__(self, base_url: str = "http://localhost:8003"):
+    def __init__(self, base_url: str = "http://localhost:8018"):
         self.base_url = base_url.rstrip('/')
         self.session = requests.Session()
         

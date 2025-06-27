@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     
     # API configuration
     api_host: str = Field(default="0.0.0.0", env="API_HOST")
-    api_port: int = Field(default=8005, env="API_PORT")
+    api_port: int = Field(default=8018, env="API_PORT")
     api_key: Optional[str] = Field(default=None, env="API_KEY")
     
     # Playbook configuration

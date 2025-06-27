@@ -187,7 +187,7 @@ const apiServices: ApiService[] = [
   {
     name: 'Vulnerability Management',
     description: 'Guardian vulnerability scanning and reporting',
-    port: 8003,
+    port: 8013,
     icon: Bug,
     status: 'healthy',
     endpoints: [
@@ -204,7 +204,7 @@ const apiServices: ApiService[] = [
   {
     name: 'Response Automation',
     description: 'Security playbooks and automated response',
-    port: 8005,
+    port: 8018,
     icon: Zap,
     status: 'healthy',
     endpoints: [

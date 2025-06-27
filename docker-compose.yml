@@ -232,7 +232,7 @@ services:
     container_name: open-security-responder
     restart: unless-stopped
     ports:
-      - "8005:8005"
+      - "8018:8018"
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/responder
       - REDIS_URL=redis://wildbox-redis:6379/2
@@ -244,7 +244,7 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8018/health"]
       interval: 30s
       timeout: 10s
       retries: 3

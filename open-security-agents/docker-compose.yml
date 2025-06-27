@@ -43,7 +43,7 @@ services:
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
       - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_RESPONDER_URL=http://localhost:8003
+      - WILDBOX_RESPONDER_URL=http://localhost:8018
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       redis:
@@ -68,7 +68,7 @@ services:
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8001
       - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_RESPONDER_URL=http://localhost:8003
+      - WILDBOX_RESPONDER_URL=http://localhost:8018
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - redis

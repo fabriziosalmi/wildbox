@@ -234,7 +234,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "url": "http://open-security-responder:8003/api/v1/automation/remediate",
+        "url": "http://open-security-responder:8018/api/v1/automation/remediate",
         "options": {
           "timeout": 30000
         },

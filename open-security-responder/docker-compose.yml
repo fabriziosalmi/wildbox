@@ -26,13 +26,13 @@ services:
     build: .
     command: >
       sh -c "python -m dramatiq app.workflow_engine &
-             uvicorn app.main:app --host 0.0.0.0 --port 8005 --reload"
+             uvicorn app.main:app --host 0.0.0.0 --port 8018 --reload"
     volumes:
       - .:/app
       - ./playbooks:/app/playbooks
       - ./logs:/app/logs
     ports:
-      - "8005:8005"
+      - "8018:8018"
     environment:
       - DEBUG=true
       # For standalone development (uses local Redis)
@@ -41,7 +41,7 @@ services:
       # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
-      - WILDBOX_GUARDIAN_URL=http://localhost:8003
+      - WILDBOX_GUARDIAN_URL=http://localhost:8013
       - WILDBOX_SENSOR_URL=http://localhost:8004
     depends_on:
       redis:
@@ -62,7 +62,7 @@ services:
       # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
-      - WILDBOX_GUARDIAN_URL=http://localhost:8003
+      - WILDBOX_GUARDIAN_URL=http://localhost:8013
       - WILDBOX_SENSOR_URL=http://localhost:8004
     depends_on:
       - redis

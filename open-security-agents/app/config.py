@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     wildbox_api_url: str = "http://localhost:8000"
     wildbox_data_url: str = "http://localhost:8001"
     wildbox_guardian_url: str = "http://localhost:8013"
-    wildbox_responder_url: str = "http://localhost:8003"
+    wildbox_responder_url: str = "http://localhost:8018"
     
     # Security
     internal_api_key: str = "wildbox-internal-key-change-in-production"

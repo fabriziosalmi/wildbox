@@ -153,7 +153,7 @@ Backend services are automatically discovered via Docker networking:
 - `open-security-cspm:8002`
 - `open-security-guardian:8003`
 - `open-security-responder:8004`
-- `open-security-agents:8005`
+- `open-security-agents:8006`
 - `open-security-sensor:8006`
 - `open-security-dashboard:3000`
 - `open-security-automations:5678`

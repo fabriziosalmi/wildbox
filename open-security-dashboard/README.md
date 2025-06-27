@@ -154,7 +154,7 @@ src/
    NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
    NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
    NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
-   NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8005
+   NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8018
    
    # Authentication
    NEXTAUTH_SECRET=your-secret-key
@@ -298,7 +298,7 @@ The dashboard integrates with multiple Wildbox microservices:
 | open-security-data | 8002 | Threat intelligence data |
 | open-security-guardian | 8003 | Vulnerability management |
 | open-security-sensor | 8004 | Endpoint management |
-| open-security-responder | 8005 | Response automation |
+| open-security-responder | 8018 | Response automation |
 | open-security-agents | 8006 | AI-powered analysis |
 
 ### API Client Features

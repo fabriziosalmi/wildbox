@@ -247,7 +247,7 @@ export const dataClient = new ApiClient(
 export const guardianClient = new ApiClient(
   useGateway 
     ? `${gatewayUrl}/api/v1/guardian`
-    : (process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8003')
+    : (process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8013')
 )
 
 export const sensorClient = new ApiClient(
@@ -259,7 +259,7 @@ export const sensorClient = new ApiClient(
 export const responderClient = new ApiClient(
   useGateway 
     ? `${gatewayUrl}/api/v1/responder`
-    : (process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8005')
+    : (process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8018')
 )
 
 export const agentsClient = new ApiClient(

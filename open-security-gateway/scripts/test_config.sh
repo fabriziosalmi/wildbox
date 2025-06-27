@@ -115,7 +115,7 @@ upstream responder_service {
 }
 
 upstream agents_service {
-    server 127.0.0.1:8005;
+    server 127.0.0.1:8006;
 }
 
 upstream dashboard_service {

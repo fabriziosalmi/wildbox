@@ -164,7 +164,7 @@ class PlaybookExecutionRequest(BaseModel):
 class PlaybookListResponse(BaseModel):
     """Response model for listing playbooks"""
     
-    playbooks: List[Dict[str, Union[str, List[str]]]] = Field(
+    playbooks: List[Dict[str, Any]] = Field(
         description="List of available playbooks with basic info"
     )
     total: int = Field(description="Total number of playbooks")

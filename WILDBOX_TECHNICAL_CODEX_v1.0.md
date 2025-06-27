@@ -123,7 +123,7 @@ graph TD
         API[🔧 Security API<br/>FastAPI:8000]
         DATA[📊 Data Lake<br/>Django:8002]
         GUARD[🛡️ Guardian<br/>Django:8013]
-        RESP[⚡ Responder<br/>FastAPI:8005]
+        RESP[⚡ Responder<br/>FastAPI:8018]
         SENS[📡 Sensor<br/>FastAPI:8004]
         CSPM[☁️ CSPM<br/>FastAPI:8007]
         AGENTS[🧠 AI Agents<br/>FastAPI:8006]

@@ -20,8 +20,8 @@ dev: ## Start development environment
 	@echo "$(YELLOW)Starting development environment...$(NC)"
 	docker-compose up -d
 	@echo "$(GREEN)Services started:$(NC)"
-	@echo "  - Responder API: http://localhost:8003"
-	@echo "  - API Documentation: http://localhost:8003/docs"
+	@echo "  - Responder API: http://localhost:8018"
+	@echo "  - API Documentation: http://localhost:8018/docs"
 	@echo "  - Redis: localhost:6381"
 
 test: ## Run tests
@@ -66,7 +66,7 @@ setup: install docker-build ## Setup development environment
 
 run-local: ## Run locally without Docker
 	@echo "$(YELLOW)Starting local development server...$(NC)"
-	uvicorn app.main:app --reload --port 8003
+	uvicorn app.main:app --reload --port 8018
 
 worker: ## Start Dramatiq worker locally
 	@echo "$(YELLOW)Starting Dramatiq worker...$(NC)"
