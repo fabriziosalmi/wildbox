@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ title }}</title>
+    <link rel="stylesheet" type="text/css" href="/static/vendor/swagger-ui/swagger-ui.css" />
+    <link rel="icon" type="image/png" href="/static/favicon.ico" />
+    <style>
+        html {
+            box-sizing: border-box;
+            overflow: -moz-scrollbars-vertical;
+            overflow-y: scroll;
+        }
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+        body {
+            margin:0;
+            background: #fafafa;
+        }
+        
+        /* Hide top bar and ensure clean layout */
+        .swagger-ui .topbar {
+            display: none !important;
+        }
+        
+        /* Remove any extra padding/margin from top */
+        .swagger-ui .wrapper {
+            padding-top: 0 !important;
+        }
+        
+        /* Add proper spacing before the main content */
+        .swagger-ui .info {
+            margin-top: 2rem !important;
+            padding-top: 1.5rem !important;
+        }
+        
+        /* Style adjustments to match other modules */
+        .swagger-ui .info .title {
+            color: #3b4151;
+            font-family: sans-serif;
+            font-size: 36px;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="swagger-ui"></div>
+    <script src="/static/vendor/swagger-ui/swagger-ui-bundle.js" charset="UTF-8"></script>
+    <script>
+        window.onload = function() {
+            const ui = SwaggerUIBundle({
+                url: '{{ openapi_url }}',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "BaseLayout"
+            });
+        };
+    </script>
+</body>
+</html>

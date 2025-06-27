@@ -36,7 +36,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "url": "http://open-security-api:8000/api/v1/alerts",
+        "url": "http://open-security-tools:8000/api/v1/alerts",
         "options": {
           "timeout": 10000
         },
@@ -167,7 +167,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "url": "http://open-security-api:8000/api/v1/alerts",
+        "url": "http://open-security-tools:8000/api/v1/alerts",
         "options": {
           "timeout": 10000
         },

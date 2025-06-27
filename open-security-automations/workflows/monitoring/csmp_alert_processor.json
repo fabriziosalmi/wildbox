@@ -131,7 +131,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "url": "http://open-security-api:8000/api/v1/compliance/findings",
+        "url": "http://open-security-tools:8000/api/v1/compliance/findings",
         "options": {
           "timeout": 10000
         },
@@ -179,7 +179,7 @@
     {
       "parameters": {
         "authentication": "headerAuth",
-        "url": "http://open-security-api:8000/api/v1/tickets",
+        "url": "http://open-security-tools:8000/api/v1/tickets",
         "options": {
           "timeout": 10000
         },

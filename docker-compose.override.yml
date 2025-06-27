@@ -21,7 +21,7 @@ services:
       - LOG_LEVEL=DEBUG
     volumes:
       # Mount source for hot reload
-      - ./open-security-api/app:/app/app:ro
+      - ./open-security-tools/app:/app/app:ro
 
   # Data Service with development CORS
   data:
@@ -45,7 +45,7 @@ services:
       - "3001:3001"  # For Next.js HMR
     environment:
       - NODE_ENV=development
-      - NEXT_PUBLIC_API_BASE_URL=http://open-security-api:8000
+      - NEXT_PUBLIC_API_BASE_URL=http://open-security-tools:8000
       - NEXT_PUBLIC_DATA_API_URL=http://open-security-data:8002
       - NEXT_PUBLIC_IDENTITY_API_URL=http://open-security-identity:8001
       - NEXT_PUBLIC_GUARDIAN_API_URL=http://open-security-guardian:8013

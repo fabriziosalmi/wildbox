@@ -1043,7 +1043,7 @@ make start
 # Features: Unified entry point for all services
 ```
 
-### 🔧 **open-security-api**
+### 🔧 **open-security-tools**
 **The Security Toolbox**
 
 - **Purpose**: Unified API for 50+ security tools with dynamic discovery and execution
@@ -1056,7 +1056,7 @@ make start
 
 ```bash
 # Start Security API
-cd open-security-api
+cd open-security-tools
 make dev
 
 # Access: http://localhost:8000

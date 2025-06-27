@@ -11,7 +11,7 @@ Wildbox is a comprehensive, enterprise-grade security platform delivering automa
 ## Architecture Overview
 
 ### Core Modules (11 Total)
-1. **open-security-api** - 57 security tools with standardized interfaces ✅ **100% Schema Compliant**
+1. **open-security-tools** - 57 security tools with standardized interfaces ✅ **100% Schema Compliant**
 2. **open-security-gateway** - Nginx-based API gateway with Lua-enhanced security ✅ **Hardened**
 3. **open-security-dashboard** - Next.js administrative interface
 4. **open-security-data** - Django-based data management and analytics  

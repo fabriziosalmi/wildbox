@@ -36,9 +36,9 @@ services:
   # API Service (Security Tools Platform)
   api:
     build:
-      context: ./open-security-api
+      context: ./open-security-tools
       dockerfile: Dockerfile
-    container_name: open-security-api
+    container_name: open-security-tools
     restart: unless-stopped
     ports:
       - "8000:8000"
