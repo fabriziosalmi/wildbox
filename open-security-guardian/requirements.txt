@@ -47,7 +47,7 @@ servicenow-api==0.20.68
 # Monitoring & Observability
 prometheus-client==0.17.1
 structlog==23.1.0
-sentry-sdk==1.29.2
+sentry-sdk==1.45.1
 psutil==5.9.5
 
 # Utilities
