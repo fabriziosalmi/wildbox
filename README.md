@@ -380,7 +380,7 @@ docker-compose logs -f --tail=100
 echo "🔍 Wildbox Health Check"
 echo "======================"
 
-services=("dashboard:3000" "security-api:8000" "identity:8001" "data-lake:8002" "guardian:8013" "sensor:8004" "responder:8005" "agents:8006" "cspm:8007" "automations:5678")
+services=("dashboard:3000" "security-api:8000" "identity:8001" "data-lake:8002" "guardian:8013" "sensor:8004" "responder:8005" "agents:8006" "cspm:8019" "automations:5678")
 
 for service in "${services[@]}"; do
     name=$(echo $service | cut -d: -f1)
@@ -1101,7 +1101,7 @@ docker-compose up -d
 cd open-security-cspm
 make start
 
-# Access: http://localhost:8007
+# Access: http://localhost:8019
 # Features: Cloud security scanning, compliance monitoring
 ```
 
@@ -1215,7 +1215,7 @@ The Wildbox platform is **extensively implemented** with real, working functiona
 - **Identity Service (8001)**: Complete authentication, API keys, Stripe billing
 - **Security API (8000)**: 50+ security tools with real execution
 - **Data Service (8002)**: 50+ threat intelligence feeds with real data
-- **CSPM Service (8007)**: 200+ cloud security checks for AWS/Azure/GCP
+- **CSPM Service (8019)**: 200+ cloud security checks for AWS/Azure/GCP
 - **Guardian Service (8013)**: Vulnerability management with PostgreSQL
 - **Sensor Service (8004)**: Real endpoint monitoring and telemetry
 - **AI Agents (8006)**: GPT-4 integration with real analysis

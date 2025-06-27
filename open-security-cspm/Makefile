@@ -20,8 +20,8 @@ install: ## Install Python dependencies
 
 dev: docker-up ## Start development environment
 	@echo "$(GREEN)CSPM Services started:$(NC)"
-	@echo "  - CSPM API: http://localhost:8006"
-	@echo "  - API Documentation: http://localhost:8006/docs"
+	@echo "  - CSPM API: http://localhost:8019"
+	@echo "  - API Documentation: http://localhost:8019/docs"
 	@echo "  - Flower (Celery Monitor): http://localhost:5558"
 	@echo "  - Redis: localhost:6385"
 
@@ -137,10 +137,10 @@ production-build: ## Build for production
 
 production-test: ## Test production build
 	@echo "$(YELLOW)Testing production build...$(NC)"
-	docker run --rm -d --name cspm-test -p 8007:8006 wildbox/cspm:latest
+	docker run --rm -d --name cspm-test -p 8019:8019 wildbox/cspm:latest
 	@sleep 5
-	@curl -f http://localhost:8007/health || (echo "$(RED)Health check failed$(NC)" && exit 1)
-	@docker stop csmp-test
+	@curl -f http://localhost:8019/health || (echo "$(RED)Health check failed$(NC)" && exit 1)
+	@docker stop cspm-test
 	@echo "$(GREEN)Production build test passed$(NC)"
 
 # Example usage and testing

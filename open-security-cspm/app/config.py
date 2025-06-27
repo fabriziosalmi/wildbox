@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     
     # Server configuration
     host: str = Field(default="0.0.0.0", env="HOST")
-    port: int = Field(default=8006, env="PORT")
+    port: int = Field(default=8019, env="PORT")
     workers: int = Field(default=4, env="WORKERS")
     
     # Redis configuration
