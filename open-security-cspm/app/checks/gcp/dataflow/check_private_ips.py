@@ -2,7 +2,7 @@
 GCP DATAFLOW Check: Dataflow Private IPs
 """
 
-from google.cloud import compute_v1
+from google.cloud import dataflow_v1beta3
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

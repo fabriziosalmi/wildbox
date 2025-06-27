@@ -2,7 +2,7 @@
 GCP DNS Check: DNS Private Zones
 """
 
-from google.cloud import compute_v1
+from google.cloud import dns
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

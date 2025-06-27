@@ -410,7 +410,7 @@ async def get_compliance_report(
         for fw, stats in framework_results.items():
             compliance_percentage = (stats["passed"] / stats["total"] * 100) if stats["total"] > 0 else 0
             frameworks_summary.append(
-                schemas.ComplianceFrameworkSummary(
+                schemas.ComplianceReportFrameworkSummary(
                     framework=fw,
                     total_checks=stats["total"],
                     passed_checks=stats["passed"],

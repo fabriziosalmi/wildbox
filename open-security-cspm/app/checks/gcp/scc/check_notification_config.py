@@ -2,7 +2,7 @@
 GCP SCC Check: SCC Notification Config
 """
 
-from google.cloud import compute_v1
+from google.cloud import securitycenter
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

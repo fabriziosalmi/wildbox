@@ -2,7 +2,7 @@
 GCP PUBSUB Check: Pub/Sub Dead Letter Topic
 """
 
-from google.cloud import compute_v1
+from google.cloud import pubsub_v1
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging
@@ -15,7 +15,7 @@ from ...framework import (
 logger = logging.getLogger(__name__)
 
 
-class CheckPub/SubDeadLetterTopic(BaseCheck):
+class CheckPubSubDeadLetterTopic(BaseCheck):
     """Ensure dead letter topics are configured."""
     
     def get_metadata(self) -> CheckMetadata:

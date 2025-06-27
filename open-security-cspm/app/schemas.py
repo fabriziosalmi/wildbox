@@ -65,7 +65,7 @@ class ScanRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "provider": "aws",
                 "credentials": {
@@ -96,7 +96,7 @@ class ScanResponse(BaseModel):
     estimated_duration_minutes: Optional[int] = Field(None, description="Estimated scan duration")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "started",
@@ -120,7 +120,7 @@ class ScanStatusResponse(BaseModel):
     progress: Optional[Dict[str, Any]] = Field(None, description="Scan progress information")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "scan_id": "550e8400-e29b-41d4-a716-446655440000",
                 "status": "running",
@@ -208,7 +208,7 @@ class ChecksListResponse(BaseModel):
     categories: List[str] = Field(..., description="Available categories")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "total_checks": 45,
                 "providers": ["aws", "gcp", "azure"],
@@ -273,6 +273,25 @@ class ComplianceFindingsResponse(BaseModel):
     has_more: bool = Field(..., description="Whether more results are available")
 
 
+class ComplianceReportFrameworkSummary(BaseModel):
+    """Framework summary for compliance report."""
+    framework: str = Field(..., description="Framework name")
+    total_checks: int = Field(..., description="Total number of checks")
+    passed_checks: int = Field(..., description="Number of passed checks") 
+    failed_checks: int = Field(..., description="Number of failed checks")
+    compliance_percentage: float = Field(..., description="Compliance percentage")
+
+
+class ComplianceReportResponse(BaseModel):
+    """Compliance report response."""
+    scan_id: str = Field(..., description="Scan identifier")
+    account_id: str = Field(..., description="Account identifier")
+    generated_at: str = Field(..., description="Report generation timestamp")
+    frameworks: List[ComplianceReportFrameworkSummary] = Field(..., description="Framework summaries")
+    overall_score: float = Field(..., description="Overall compliance score")
+    recommendations: List[str] = Field(..., description="Recommendations")
+
+
 class ErrorResponse(BaseModel):
     """Standard error response."""
     
@@ -282,7 +301,7 @@ class ErrorResponse(BaseModel):
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "error": "ValidationError",
                 "message": "Invalid credentials provided",
@@ -305,7 +324,7 @@ class HealthCheckResponse(BaseModel):
     checks: Dict[str, str] = Field(..., description="Individual component health")
     
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "status": "healthy",
                 "timestamp": "2024-01-15T10:30:00Z",

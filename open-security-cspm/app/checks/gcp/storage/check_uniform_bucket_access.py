@@ -2,7 +2,7 @@
 GCP STORAGE Check: Uniform Bucket Access
 """
 
-from google.cloud import compute_v1
+from google.cloud import storage
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

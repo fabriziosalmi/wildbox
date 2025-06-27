@@ -2,7 +2,7 @@
 GCP LOGGING Check: Log Retention Policy
 """
 
-from google.cloud import compute_v1
+from google.cloud import logging_v2
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

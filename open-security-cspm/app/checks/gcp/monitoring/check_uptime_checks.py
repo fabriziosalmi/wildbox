@@ -2,7 +2,7 @@
 GCP MONITORING Check: Monitoring Uptime Checks
 """
 
-from google.cloud import compute_v1
+from google.cloud import monitoring_v3
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

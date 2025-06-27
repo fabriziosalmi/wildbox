@@ -2,7 +2,7 @@
 GCP FUNCTIONS Check: Cloud Functions Ingress
 """
 
-from google.cloud import compute_v1
+from google.cloud import functions_v1
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging

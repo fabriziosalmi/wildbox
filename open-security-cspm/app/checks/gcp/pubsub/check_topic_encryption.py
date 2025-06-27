@@ -2,7 +2,7 @@
 GCP PUBSUB Check: Pub/Sub Topic Encryption
 """
 
-from google.cloud import compute_v1
+from google.cloud import pubsub_v1
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging
@@ -15,7 +15,7 @@ from ...framework import (
 logger = logging.getLogger(__name__)
 
 
-class CheckPub/SubTopicEncryption(BaseCheck):
+class CheckPubSubTopicEncryption(BaseCheck):
     """Ensure Pub/Sub topics are encrypted."""
     
     def get_metadata(self) -> CheckMetadata:

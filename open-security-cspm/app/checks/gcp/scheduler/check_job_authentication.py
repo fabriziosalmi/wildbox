@@ -2,7 +2,7 @@
 GCP SCHEDULER Check: Scheduler Job Authentication
 """
 
-from google.cloud import compute_v1
+from google.cloud import scheduler_v1
 from google.api_core import exceptions
 from typing import List, Any, Optional
 import logging
