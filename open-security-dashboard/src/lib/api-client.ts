@@ -162,6 +162,15 @@ export const getAuthPath = (endpoint: string): string => {
   return endpoint
 }
 
+// Helper function to get the correct identity endpoint path
+export const getIdentityPath = (endpoint: string): string => {
+  if (useGateway) {
+    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/identity
+    return endpoint.replace('/api/v1/', '/')
+  }
+  return endpoint
+}
+
 // Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 
@@ -210,5 +219,8 @@ export const cspmClient = new ApiClient(
     ? `${gatewayUrl}/api/v1/cspm`
     : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8007')
 )
+
+// Gateway client for direct gateway API access
+export const gatewayDataClient = new ApiClient(gatewayUrl)
 
 export default apiClient

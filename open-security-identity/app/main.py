@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
-from .api_v1.endpoints import auth, users, api_keys, billing
+from .api_v1.endpoints import auth, users, api_keys, billing, analytics
 from .internal import router as internal_router
 from .webhooks import router as webhooks_router
 
@@ -56,6 +56,12 @@ app.include_router(
 )
 
 app.include_router(
+    analytics.router,
+    prefix=f"{settings.api_v1_prefix}/analytics",
+    tags=["analytics"]
+)
+
+app.include_router(
     internal_router,
     prefix=settings.internal_api_prefix,
     tags=["internal"]
@@ -82,11 +88,31 @@ async def root():
 @app.get("/health")
 async def health_check():
     """Health check endpoint for monitoring."""
-    return {
+    from .database import get_db
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy import text
+    import asyncio
+    
+    health_status = {
         "status": "healthy",
         "service": settings.app_name,
-        "version": settings.app_version
+        "version": settings.app_version,
+        "checks": {}
     }
+    
+    # Database health check
+    try:
+        # Get database session and test connection
+        db_gen = get_db()
+        db: AsyncSession = await db_gen.__anext__()
+        result = await db.execute(text("SELECT 1"))
+        await db.close()
+        health_status["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
+    except Exception as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+    
+    return health_status
 
 
 @app.exception_handler(404)
