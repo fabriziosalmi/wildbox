@@ -100,10 +100,19 @@ export default function BillingPage() {
   const fetchBillingData = async () => {
     try {
       setIsLoading(true)
-      // Get current user with team data
+      
+      // Try to get real billing data first
+      try {
+        const billingResponse = await identityClient.get('/api/v1/billing/subscription')
+        setBillingData(billingResponse)
+        return
+      } catch (error) {
+        console.log('Billing endpoint not available, using mock data')
+      }
+      
+      // Fallback to mock data with user data
       const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
       
-      // For now, use mock data - in a real app, this would come from a billing endpoint
       setBillingData({
         subscription: userData.team_memberships?.[0]?.team?.subscription || {
           plan_id: 'free',
@@ -136,20 +145,49 @@ export default function BillingPage() {
   const handleUpgrade = async (planId: string) => {
     setIsUpgrading(true)
     try {
-      // In a real app, this would integrate with Stripe
-      // For now, just show success message
+      // Try to create a Stripe checkout session
+      const checkoutResponse = await identityClient.post('/api/v1/billing/create-checkout-session', {
+        plan_id: planId,
+        success_url: `${window.location.origin}/settings/billing?success=true`,
+        cancel_url: `${window.location.origin}/settings/billing?canceled=true`
+      })
+      
+      // Redirect to Stripe checkout
+      if (checkoutResponse.checkout_url) {
+        window.location.href = checkoutResponse.checkout_url
+      } else {
+        throw new Error('No checkout URL returned')
+      }
+    } catch (error: any) {
+      console.log('Stripe checkout not available:', error)
+      
+      // Fallback message for demo
       toast({
         title: "Coming Soon",
-        description: "Subscription management will be available soon",
-      })
-    } catch (error: any) {
-      toast({
-        title: "Error", 
-        description: error.message || "Failed to upgrade plan",
-        variant: "destructive",
+        description: "Subscription management will be available soon. This is a demo implementation.",
       })
     } finally {
       setIsUpgrading(false)
+    }
+  }
+
+  const handleManageBilling = async () => {
+    try {
+      // Try to create a customer portal session
+      const portalResponse = await identityClient.post('/api/v1/billing/create-portal-session')
+      
+      if (portalResponse.portal_url) {
+        window.location.href = portalResponse.portal_url
+      } else {
+        throw new Error('No portal URL returned')
+      }
+    } catch (error: any) {
+      console.log('Customer portal not available:', error)
+      
+      toast({
+        title: "Coming Soon",
+        description: "Billing management portal will be available soon.",
+      })
     }
   }
 
@@ -305,9 +343,14 @@ export default function BillingPage() {
             )}
             
             {currentPlan !== 'free' && (
-              <Button variant="outline" size="sm" className="mt-2">
-                Update Payment Method
-              </Button>
+              <div className="space-y-2">
+                <Button variant="outline" size="sm" onClick={handleManageBilling}>
+                  Manage Billing
+                </Button>
+                <Button variant="outline" size="sm" className="ml-2">
+                  Update Payment Method
+                </Button>
+              </div>
             )}
           </div>
         </Card>

@@ -26,7 +26,15 @@ import {
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 
-const navigation = [
+interface NavigationItem {
+  name: string
+  href: string
+  icon: any
+  description: string
+  children?: { name: string; href: string }[]
+}
+
+const baseNavigation: NavigationItem[] = [
   {
     name: 'Dashboard',
     href: '/dashboard',
@@ -108,6 +116,23 @@ const navigation = [
   },
 ]
 
+// Function to get navigation items based on user role
+const getNavigation = (user: any): NavigationItem[] => {
+  const navigation = [...baseNavigation]
+  
+  // Add admin navigation for superusers
+  if (user?.is_superuser) {
+    navigation.push({
+      name: 'Administration',
+      href: '/settings/admin',
+      icon: Crown,
+      description: 'System administration',
+    })
+  }
+  
+  return navigation
+}
+
 interface MainLayoutProps {
   children: React.ReactNode
 }
@@ -117,6 +142,9 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([])
   const pathname = usePathname()
   const { user, logout, isAuthenticated } = useAuth()
+
+  // Get navigation items based on user role
+  const navigation = getNavigation(user)
 
   const toggleExpanded = (name: string) => {
     setExpandedItems(prev =>

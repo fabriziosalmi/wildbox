@@ -36,8 +36,12 @@ const availableScopes = [
   { id: 'read', name: 'Read', description: 'Read access to resources' },
   { id: 'write', name: 'Write', description: 'Write access to resources' },
   { id: 'admin', name: 'Admin', description: 'Administrative access' },
-  { id: 'tools', name: 'Security Tools', description: 'Access to security tools' },
-  { id: 'data', name: 'Data Access', description: 'Access to data services' },
+  { id: 'tools:read', name: 'Tools Read', description: 'Read access to security tools' },
+  { id: 'tools:execute', name: 'Tools Execute', description: 'Execute security tools' },
+  { id: 'data:read', name: 'Data Read', description: 'Read access to data services' },
+  { id: 'data:write', name: 'Data Write', description: 'Write access to data services' },
+  { id: 'reports:read', name: 'Reports Read', description: 'Read access to reports' },
+  { id: 'reports:write', name: 'Reports Write', description: 'Create and modify reports' },
 ]
 
 export default function ApiKeysPage() {
@@ -390,13 +394,14 @@ export default function ApiKeysPage() {
                     Scopes
                   </label>
                   <div className="flex flex-wrap gap-1">
-                    {availableScopes
-                      .filter(scope => apiKey.prefix?.includes(scope.id)) // This is a mock - real implementation would store scopes
-                      .map(scope => (
-                      <Badge key={scope.id} variant="outline" className="text-xs">
-                        {scope.name}
-                      </Badge>
-                    ))}
+                    {(apiKey.scopes || ['read']).map((scope: string) => {
+                      const scopeConfig = availableScopes.find(s => s.id === scope)
+                      return (
+                        <Badge key={scope} variant="outline" className="text-xs">
+                          {scopeConfig?.name || scope}
+                        </Badge>
+                      )
+                    })}
                   </div>
                 </div>
 

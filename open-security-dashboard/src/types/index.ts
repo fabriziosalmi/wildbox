@@ -52,6 +52,7 @@ export interface ApiKey {
   prefix: string
   user_id: string
   team_id: string
+  scopes: string[]
   is_active: boolean
   expires_at?: string
   last_used_at?: string
