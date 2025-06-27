@@ -58,8 +58,10 @@ async def list_all_users(
                 detail="Admin access required"
             )
     
-    # Build query
-    query = select(User)
+    # Build query with relationships to get team and subscription data
+    query = select(User).options(
+        selectinload(User.team_memberships).selectinload(TeamMembership.team).selectinload(Team.subscription)
+    )
     
     if email_filter:
         query = query.where(User.email.ilike(f"%{email_filter}%"))
@@ -72,7 +74,43 @@ async def list_all_users(
     result = await db.execute(query)
     users = result.scalars().all()
     
-    return users
+    # Format response with subscription information
+    user_responses = []
+    for user in users:
+        user_data = {
+            "id": str(user.id),
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_superuser": user.is_superuser,
+            "created_at": user.created_at.isoformat(),
+            "updated_at": user.updated_at.isoformat(),
+            "stripe_customer_id": user.stripe_customer_id,
+            "team_memberships": []
+        }
+        
+        # Add team memberships with subscription data
+        for membership in user.team_memberships:
+            membership_data = {
+                "user_id": str(membership.user_id),
+                "team_id": str(membership.team_id),
+                "team_name": membership.team.name,
+                "role": membership.role if isinstance(membership.role, str) else membership.role.value,
+                "joined_at": membership.joined_at.isoformat()
+            }
+            
+            # Add subscription information if available
+            if membership.team.subscription:
+                membership_data["subscription"] = {
+                    "plan_id": membership.team.subscription.plan_id,
+                    "status": membership.team.subscription.status,
+                    "current_period_end": membership.team.subscription.current_period_end.isoformat() if membership.team.subscription.current_period_end else None
+                }
+            
+            user_data["team_memberships"].append(membership_data)
+        
+        user_responses.append(user_data)
+    
+    return user_responses
 
 
 @router.get("/admin/users/{user_id}", response_model=UserWithTeams)
@@ -231,6 +269,53 @@ async def delete_user(
     await db.commit()
     
     return {"message": "User deleted successfully"}
+
+
+@router.patch("/admin/users/{user_id}/superuser")
+async def update_user_superuser_status(
+    user_id: str,
+    superuser_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Admin endpoint: Promote or demote a user to/from superuser status.
+    
+    Requires: Superuser role
+    """
+    # Only superusers can change superuser status
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+    
+    # Get user
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Prevent changing own superuser status
+    if user_id == str(current_user.id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot change your own superuser status"
+        )
+    
+    # Get the new superuser status from request data
+    is_superuser = superuser_data.get("is_superuser", False)
+    
+    # Update superuser status
+    user.is_superuser = is_superuser
+    await db.commit()
+    
+    action = "promoted to" if is_superuser else "demoted from"
+    return {"message": f"User {action} superuser successfully"}
 
 
 # =============================================================================

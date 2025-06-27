@@ -45,6 +45,11 @@ interface AdminUserData {
     team_name: string
     role: string
     joined_at: string
+    subscription?: {
+      plan_id: string
+      status: string
+      current_period_end?: string
+    }
   }>
 }
 
@@ -285,6 +290,58 @@ export default function AdminPage() {
     }
   }
 
+  const handlePromoteToSuperuser = async (userId: string, userEmail: string) => {
+    if (!confirm(`Are you sure you want to promote ${userEmail} to superuser? This will give them full administrative access.`)) {
+      return
+    }
+
+    try {
+      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/superuser`), {
+        is_superuser: true
+      })
+      
+      toast({
+        title: "Success",
+        description: `User ${userEmail} promoted to superuser successfully`,
+      })
+      
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Failed to promote user to superuser:', error)
+      toast({
+        title: "Error",
+        description: "Failed to promote user to superuser",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleDemoteFromSuperuser = async (userId: string, userEmail: string) => {
+    if (!confirm(`Are you sure you want to remove superuser privileges from ${userEmail}?`)) {
+      return
+    }
+
+    try {
+      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/superuser`), {
+        is_superuser: false
+      })
+      
+      toast({
+        title: "Success",
+        description: `Superuser privileges removed from ${userEmail} successfully`,
+      })
+      
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Failed to demote user from superuser:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update user privileges",
+        variant: "destructive",
+      })
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -293,6 +350,29 @@ export default function AdminPage() {
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const getUserSubscriptionPlan = (user: AdminUserData): string => {
+    // Check all team memberships for subscription plans
+    if (user.team_memberships && user.team_memberships.length > 0) {
+      for (const membership of user.team_memberships) {
+        if (membership.subscription) {
+          return membership.subscription.plan_id.charAt(0).toUpperCase() + membership.subscription.plan_id.slice(1)
+        }
+      }
+    }
+    return 'Free' // Default plan
+  }
+
+  const getUserSubscriptionStatus = (user: AdminUserData): string => {
+    if (user.team_memberships && user.team_memberships.length > 0) {
+      for (const membership of user.team_memberships) {
+        if (membership.subscription) {
+          return membership.subscription.status.charAt(0).toUpperCase() + membership.subscription.status.slice(1)
+        }
+      }
+    }
+    return 'Active' // Default status
   }
 
   // Don't render anything if not superuser
@@ -425,6 +505,7 @@ export default function AdminPage() {
                   <tr className="border-b">
                     <th className="text-left p-3 font-medium">User</th>
                     <th className="text-left p-3 font-medium">Status</th>
+                    <th className="text-left p-3 font-medium">Plan</th>
                     <th className="text-left p-3 font-medium">Teams</th>
                     <th className="text-left p-3 font-medium">Created</th>
                     <th className="text-left p-3 font-medium">Actions</th>
@@ -456,6 +537,19 @@ export default function AdminPage() {
                       </td>
                       <td className="p-3">
                         <div className="space-y-1">
+                          <Badge 
+                            variant={getUserSubscriptionPlan(user) === 'Free' ? "secondary" : "default"}
+                            className="text-xs"
+                          >
+                            {getUserSubscriptionPlan(user)}
+                          </Badge>
+                          <div className="text-xs text-muted-foreground">
+                            {getUserSubscriptionStatus(user)}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <div className="space-y-1">
                           {user.team_memberships?.map((membership) => (
                             <Badge key={membership.team_id} variant="outline" className="text-xs">
                               {membership.team_name} ({membership.role})
@@ -473,12 +567,12 @@ export default function AdminPage() {
                         </div>
                       </td>
                       <td className="p-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleUserStatus(user.id, user.is_active)}
-                            disabled={user.is_superuser}
+                            disabled={user.is_superuser && user.id === user?.id}
                           >
                             {user.is_active ? (
                               <>
@@ -492,12 +586,40 @@ export default function AdminPage() {
                               </>
                             )}
                           </Button>
+                          
+                          {!user.is_superuser && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePromoteToSuperuser(user.id, user.email)}
+                              className="text-blue-600 hover:text-blue-700"
+                              title="Promote to Super Admin"
+                            >
+                              <Crown className="w-4 h-4 mr-1" />
+                              Promote
+                            </Button>
+                          )}
+                          
+                          {user.is_superuser && user.email !== 'superadmin@wildbox.com' && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDemoteFromSuperuser(user.id, user.email)}
+                              className="text-orange-600 hover:text-orange-700"
+                              title="Remove Super Admin privileges"
+                            >
+                              <UserX className="w-4 h-4 mr-1" />
+                              Demote
+                            </Button>
+                          )}
+                          
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id)}
                             disabled={user.is_superuser}
                             className="text-red-600 hover:text-red-700"
+                            title="Delete user permanently"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
