@@ -208,6 +208,7 @@ async def get_current_user_info(
         "id": str(user.id),
         "email": user.email,
         "is_active": user.is_active,
+        "is_superuser": user.is_superuser,
         "created_at": user.created_at.isoformat(),
         "team_memberships": [
             {
