@@ -1,0 +1,95 @@
+{
+  "timestamp": "2025-06-27T13:09:50.842092",
+  "summary": {
+    "total_tests": 14,
+    "passed_tests": 14,
+    "failed_tests": 0,
+    "test_details": [
+      {
+        "test_name": "Identity Service Health",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Gateway Service Health",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Dashboard Service Health",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "User Authentication",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Admin User Management",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "API Key Management",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Team Management",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Gateway Routing",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Subscription & Billing",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Dashboard Integration",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Authentication Flow Gateway",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Authentication Flow Direct",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Logout Functionality",
+        "passed": true,
+        "details": ""
+      },
+      {
+        "test_name": "Dashboard Auth Integration",
+        "passed": true,
+        "details": ""
+      }
+    ]
+  },
+  "user_data": {
+    "demo@wildbox.com": {
+      "id": "7d552c1a-9d4a-42b4-b56a-3cd80ec00d04",
+      "email": "demo@wildbox.com",
+      "is_active": true,
+      "created_at": "2025-06-27T10:26:59.596860+00:00"
+    },
+    "superadmin@wildbox.com": {
+      "id": "9abca47a-f484-47a7-afb7-c1626617c1d0",
+      "email": "superadmin@wildbox.com",
+      "is_active": true,
+      "created_at": "2025-06-27T11:06:37.947946+00:00"
+    }
+  },
+  "overall_success": true
+}
