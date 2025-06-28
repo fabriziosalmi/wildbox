@@ -10,7 +10,7 @@ celery[redis]==5.3.4
 redis==4.6.0
 
 # AI/LLM Framework
-langchain==0.1.0
+langchain==0.2.5
 langchain-openai==0.0.2
 langchain-community==0.0.10
 
