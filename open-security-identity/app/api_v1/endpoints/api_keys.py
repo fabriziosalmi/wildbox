@@ -12,7 +12,8 @@ from typing import List
 from ...database import get_db
 from ...models import User, Team, TeamMembership, ApiKey, TeamRole
 from ...schemas import ApiKeyCreate, ApiKeyResponse, ApiKeyWithSecret
-from ...auth import get_current_active_user, generate_api_key
+from ...auth import generate_api_key
+from ...user_manager import current_active_user
 
 router = APIRouter()
 
@@ -61,7 +62,7 @@ async def get_team_and_check_permission(
 async def create_api_key(
     key_data: ApiKeyCreate,
     team_id: str = Path(..., description="Team ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -107,7 +108,7 @@ async def create_api_key(
 @router.get("/{team_id}/api-keys", response_model=List[ApiKeyResponse])
 async def list_api_keys(
     team_id: str = Path(..., description="Team ID"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -133,7 +134,7 @@ async def list_api_keys(
 async def revoke_api_key(
     team_id: str = Path(..., description="Team ID"),
     key_prefix: str = Path(..., description="API key prefix (e.g., wsk_abc1)"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -172,7 +173,7 @@ async def revoke_api_key(
 async def get_api_key(
     team_id: str = Path(..., description="Team ID"),
     key_prefix: str = Path(..., description="API key prefix"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

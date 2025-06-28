@@ -13,7 +13,7 @@ from ...schemas import (
     CreateCheckoutSessionRequest, CheckoutSessionResponse, 
     CustomerPortalResponse
 )
-from ...auth import get_current_active_user
+from ...user_manager import current_active_user
 from ...billing import billing_service
 from ...config import settings
 
@@ -53,7 +53,7 @@ async def get_user_primary_team(user: User, db: AsyncSession) -> Team:
 @router.post("/create-checkout-session", response_model=CheckoutSessionResponse)
 async def create_checkout_session(
     request: CreateCheckoutSessionRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -96,7 +96,7 @@ async def create_checkout_session(
 
 @router.post("/create-portal-session", response_model=CustomerPortalResponse)
 async def create_customer_portal_session(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

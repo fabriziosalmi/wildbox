@@ -2,6 +2,42 @@
 
 The central identity, authentication, authorization, and billing service for the Wildbox Security Suite.
 
+## 🚀 Quick Start (FastAPI Users Migration)
+
+**New automated setup with FastAPI Users integration!**
+
+```bash
+# Quick setup with automatic database migration
+./scripts/setup.sh
+
+# Or manual docker-compose
+docker-compose up --build
+```
+
+The service will automatically:
+- ✅ Create and migrate the database schema
+- ✅ Set up FastAPI Users authentication system  
+- ✅ Create an initial admin user (optional)
+- ✅ Start all services
+
+**Default Access:**
+- **API**: http://localhost:8001
+- **Documentation**: http://localhost:8001/docs
+- **Admin Email**: admin@wildbox.security
+- **Admin Password**: ChangeMeInProduction123!
+
+⚠️ **Change the default admin password after first login!**
+
+## 📋 New FastAPI Users Features
+
+The service now includes enhanced authentication with:
+- 🔐 Secure JWT authentication
+- ✉️ Email verification system
+- 🔑 Password reset functionality  
+- 👥 Admin user management
+- 🛡️ Built-in security best practices
+- 📊 Standardized API responses
+
 ## Overview
 
 Open Security Identity is the critical microservice that manages:

@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from ...database import get_db
 from ...models import User, Team, TeamMembership, ApiKey, Subscription, TeamRole
-from ...auth import get_current_active_user
+from ...user_manager import current_active_user
 from ...schemas import UserResponse
 
 router = APIRouter()
@@ -19,7 +19,7 @@ router = APIRouter()
 
 @router.get("/admin/analytics/system-stats")
 async def get_system_analytics(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
 ):
@@ -218,7 +218,7 @@ async def get_system_analytics(
 
 @router.get("/admin/analytics/user-activity")
 async def get_user_activity_metrics(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
     days: int = Query(7, ge=1, le=30, description="Number of days to analyze")
 ):
@@ -292,7 +292,7 @@ async def get_user_activity_metrics(
 
 @router.get("/admin/analytics/usage-summary")
 async def get_usage_summary(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

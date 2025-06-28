@@ -11,7 +11,42 @@ from pydantic import BaseModel, EmailStr, Field
 from .models import TeamRole, SubscriptionPlan, SubscriptionStatus
 
 
-# Base schemas
+"""
+Pydantic schemas for request/response models.
+"""
+
+import uuid
+from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, EmailStr, Field
+from fastapi_users import schemas
+
+from .models import TeamRole, SubscriptionPlan, SubscriptionStatus
+
+
+# FastAPI Users schemas
+class UserRead(schemas.BaseUser[uuid.UUID]):
+    """Schema for reading user data (responses)."""
+    created_at: datetime
+    updated_at: datetime
+    stripe_customer_id: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class UserCreate(schemas.BaseUserCreate):
+    """Schema for creating new users."""
+    pass  # BaseUserCreate già include email e password con validazione
+
+
+class UserUpdate(schemas.BaseUserUpdate):
+    """Schema for updating existing users."""
+    pass  # BaseUserUpdate include tutti i campi opzionali
+
+
+# Legacy schemas (per compatibilità durante la transizione)
 class UserBase(BaseModel):
     email: EmailStr
 
@@ -24,18 +59,13 @@ class ApiKeyBase(BaseModel):
     name: str = Field(..., min_length=1, max_length=255)
 
 
-# User schemas
-class UserCreate(UserBase):
-    password: str = Field(..., min_length=8)
-
-
 class UserLogin(BaseModel):
     username: EmailStr  # OAuth2PasswordRequestForm expects 'username'
     password: str
 
 
 class UserResponse(UserBase):
-    id: UUID
+    id: uuid.UUID
     is_active: bool
     is_superuser: bool
     created_at: datetime

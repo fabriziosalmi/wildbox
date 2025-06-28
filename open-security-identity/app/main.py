@@ -2,15 +2,20 @@
 FastAPI application for Open Security Identity service.
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
-from .api_v1.endpoints import auth, users, api_keys, billing, analytics
+from .database import get_db
+from .api_v1.endpoints import users, api_keys, billing, analytics
 from .internal import router as internal_router
 from .webhooks import router as webhooks_router
+
+# Import fastapi-users components
+from .user_manager import auth_backend, fastapi_users
+from .schemas import UserRead, UserCreate, UserUpdate
 
 # Create FastAPI application
 app = FastAPI(
@@ -30,17 +35,61 @@ app.add_middleware(
     allow_headers=settings.cors_allow_headers,
 )
 
-# Include routers
+# Middleware per aggiungere la sessione DB alla request (NECESSARIO per on_after_register)
+@app.middleware("http")
+async def db_session_middleware(request: Request, call_next):
+    response = Response("Internal server error", status_code=500)
+    try:
+        db_gen = get_db()
+        request.state.db = await db_gen.__anext__()
+        response = await call_next(request)
+    except Exception as e:
+        print(f"Database middleware error: {e}")
+        # Fallisce gracefully
+        request.state.db = None
+        response = await call_next(request)
+    finally:
+        if hasattr(request.state, 'db') and request.state.db:
+            await request.state.db.close()
+    return response
+
+# FastAPI Users routers (sostituiscono auth.router)
 app.include_router(
-    auth.router,
+    fastapi_users.get_auth_router(auth_backend),
+    prefix=f"{settings.api_v1_prefix}/auth/jwt",
+    tags=["authentication"]
+)
+
+app.include_router(
+    fastapi_users.get_register_router(UserRead, UserCreate),
     prefix=f"{settings.api_v1_prefix}/auth",
     tags=["authentication"]
 )
 
 app.include_router(
-    users.router,
+    fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix=f"{settings.api_v1_prefix}/users",
     tags=["users"]
+)
+
+# Router per reset password e verifica email (opzionali ma raccomandati)
+app.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix=f"{settings.api_v1_prefix}/auth",
+    tags=["authentication"]
+)
+
+app.include_router(
+    fastapi_users.get_verify_router(UserRead),
+    prefix=f"{settings.api_v1_prefix}/auth",
+    tags=["authentication"]
+)
+
+# Include routers custom esistenti (users.router ora contiene solo endpoint admin custom)
+app.include_router(
+    users.router,
+    prefix=f"{settings.api_v1_prefix}/admin",
+    tags=["admin"]
 )
 
 app.include_router(

@@ -14,6 +14,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Copy and make scripts executable
+COPY scripts/ ./scripts/
+RUN chmod +x scripts/*.sh
+
 # Create non-root user
 RUN groupadd -r identity && useradd -r -g identity identity
 RUN chown -R identity:identity /app
@@ -22,5 +26,5 @@ USER identity
 # Expose port
 EXPOSE 8001
 
-# Run the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Use initialization script as entrypoint
+CMD ["./scripts/init.sh"]

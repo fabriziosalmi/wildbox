@@ -16,8 +16,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.sql import func
+from fastapi_users_db_sqlalchemy import SQLAlchemyBaseUserTableUUID
 
 Base = declarative_base()
 
@@ -45,31 +46,26 @@ class SubscriptionStatus(str, Enum):
     UNPAID = "unpaid"
 
 
-class User(Base):
+class User(SQLAlchemyBaseUserTableUUID, Base):
     """User model representing individual users in the system."""
     
     __tablename__ = "users"
     
-    # Primary identification
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    hashed_password = Column(String(255), nullable=False)
+    # I campi standard (id, email, hashed_password, is_active, is_superuser, is_verified)
+    # sono già forniti da SQLAlchemyBaseUserTableUUID.
+    # Non serve ridefinirli.
     
-    # Status flags
-    is_active = Column(Boolean, default=True, nullable=False)
-    is_superuser = Column(Boolean, default=False, nullable=False)
-    
-    # Timestamps
+    # Timestamps (fastapi-users non li gestisce automaticamente)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
     # Stripe integration
-    stripe_customer_id = Column(String(255), unique=True, nullable=True, index=True)
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
     
-    # Relationships
-    team_memberships = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
-    owned_teams = relationship("Team", back_populates="owner")
-    api_keys = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
+    # Relationships (aggiornate con sintassi moderna)
+    team_memberships: Mapped[list["TeamMembership"]] = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
+    owned_teams: Mapped[list["Team"]] = relationship("Team", back_populates="owner")
+    api_keys: Mapped[list["ApiKey"]] = relationship("ApiKey", back_populates="user", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<User {self.email}>"

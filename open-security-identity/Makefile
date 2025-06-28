@@ -1,13 +1,19 @@
-.PHONY: help dev prod test clean build logs shell
+.PHONY: help setup dev prod test clean build logs shell migrate-only
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-dev: ## Start development environment
+setup: ## Quick setup with automatic migration (recommended)
+	./scripts/setup.sh
+
+dev: ## Start development environment with auto-migration
 	docker-compose up --build
 
 prod: ## Start production environment
 	docker-compose -f docker-compose.yml up -d --build
+
+migrate-only: ## Run only database migrations (manual)
+	docker-compose exec identity alembic upgrade head
 
 test: ## Run tests
 	docker-compose exec identity pytest
@@ -18,7 +24,7 @@ logs: ## Show application logs
 shell: ## Open shell in identity container
 	docker-compose exec identity bash
 
-db-migrate: ## Run database migrations
+db-migrate: ## Run database migrations (legacy - use 'make migrate-only')
 	docker-compose exec identity alembic upgrade head
 
 db-reset: ## Reset database (WARNING: destroys all data)

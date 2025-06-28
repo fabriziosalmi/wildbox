@@ -1,5 +1,5 @@
 """
-User management endpoints.
+User management endpoints - Admin functionality only.
 """
 
 from datetime import timedelta
@@ -16,9 +16,7 @@ from ...schemas import (
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
     UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
 )
-from ...auth import (
-    verify_password, get_password_hash, get_current_active_user
-)
+from ...user_manager import current_superuser, current_active_user, get_user_manager, UserManager
 from ...config import settings
 
 router = APIRouter()
@@ -30,7 +28,7 @@ router = APIRouter()
 
 @router.get("/admin/users", response_model=List[UserResponse])
 async def list_all_users(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -116,7 +114,7 @@ async def list_all_users(
 @router.get("/admin/users/{user_id}/can-delete")
 async def check_user_deletable(
     user_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -194,7 +192,7 @@ async def check_user_deletable(
 @router.get("/admin/users/{user_id}", response_model=UserWithTeams)
 async def get_user_by_id(
     user_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -241,7 +239,7 @@ async def get_user_by_id(
 async def update_user_status(
     user_id: str,
     is_active: bool,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -292,7 +290,7 @@ async def update_user_status(
 async def delete_user(
     user_id: str,
     force: bool = Query(False, description="Force delete even if user owns teams"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -424,7 +422,7 @@ async def delete_user(
 async def update_user_superuser_status(
     user_id: str,
     superuser_data: dict,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -471,7 +469,7 @@ async def update_user_superuser_status(
 async def update_user_role(
     user_id: str,
     role_data: dict,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -528,7 +526,7 @@ async def update_user_role(
 @router.patch("/me/profile", response_model=UserResponse)
 async def update_my_profile(
     profile_update: UserProfileUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -580,7 +578,7 @@ async def update_my_profile(
 @router.put("/me", response_model=UserResponse)
 async def update_my_profile_put(
     profile_update: UserProfileUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -592,7 +590,7 @@ async def update_my_profile_put(
 @router.put("/me/password")
 async def change_my_password_put(
     password_change: PasswordChangeRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -604,7 +602,7 @@ async def change_my_password_put(
 @router.post("/me/change-password")
 async def change_my_password(
     password_change: PasswordChangeRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -627,7 +625,7 @@ async def change_my_password(
 @router.delete("/me/account")
 async def delete_my_account(
     deletion_request: AccountDeletionRequest,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -683,7 +681,7 @@ async def delete_my_account(
 
 @router.get("/me/activity", response_model=UserActivityResponse)
 async def get_my_activity_log(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200)
@@ -731,7 +729,7 @@ async def get_my_activity_log(
 
 @router.get("/me/api-keys", response_model=List[dict])
 async def get_my_api_keys(
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -761,7 +759,7 @@ async def get_my_api_keys(
 @router.post("/me/api-keys")
 async def create_my_api_key(
     key_data: dict,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -818,7 +816,7 @@ async def create_my_api_key(
 @router.delete("/me/api-keys/{key_id}")
 async def delete_my_api_key(
     key_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -850,7 +848,7 @@ async def delete_my_api_key(
 @router.get("/teams/{team_id}/members")
 async def get_team_members(
     team_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -901,7 +899,7 @@ async def get_team_members(
 async def invite_team_member(
     team_id: str,
     invite_data: dict,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -932,7 +930,7 @@ async def invite_team_member(
 async def update_team(
     team_id: str,
     team_data: dict,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -978,7 +976,7 @@ async def update_team(
 async def remove_team_member(
     team_id: str,
     user_id: str,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)
 ):
     """

@@ -20,13 +20,17 @@ services:
       - STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
       - STRIPE_WEBHOOK_SECRET=whsec_your_stripe_webhook_secret
       - STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
+      # Auto-migration settings
+      - CREATE_INITIAL_ADMIN=true
+      - INITIAL_ADMIN_EMAIL=admin@wildbox.security
+      - INITIAL_ADMIN_PASSWORD=ChangeMeInProduction123!
     depends_on:
       - postgres
       - redis
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+      - ./scripts:/app/scripts
 
   postgres:
     image: postgres:15
