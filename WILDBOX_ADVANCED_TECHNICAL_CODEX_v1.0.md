@@ -53,18 +53,26 @@ end
 ```
 
 #### 3. **Identity Service (open-security-identity:8001)**
-Il servizio riceve la richiesta di validazione attraverso l'endpoint interno:
+Il servizio riceve la richiesta di validazione attraverso l'endpoint interno utilizzando FastAPI Users:
 ```python
-# app/api_v1/endpoints/internal.py
+# app/internal.py - Service-to-service authorization
 @router.post("/authorize")
-async def authorize_request(request: AuthorizeRequest):
-    # Valida JWT, recupera user/team/role/plan dal database
-    user = await get_user_from_token(request.token)
+async def authorize_request(
+    request: AuthorizeRequest,
+    user_manager: UserManager = Depends(get_user_manager)
+):
+    # FastAPI Users gestisce JWT validation automaticamente
+    user = await user_manager.get_by_id(user_id_from_token)
+    
+    # Recupera team, role, subscription dal database
+    team_membership = await get_team_membership(user.id)
+    
     return {
-        "user_id": user.id,
-        "team_id": user.team_id,
-        "role": user.role,
-        "plan": user.subscription_plan
+        "user_id": str(user.id),
+        "team_id": str(team_membership.team_id),
+        "role": team_membership.role,
+        "plan": team_membership.team.subscription.plan_id,
+        "is_verified": user.is_verified
     }
 ```
 

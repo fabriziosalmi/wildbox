@@ -59,8 +59,9 @@ The gateway routes requests to backend services based on URL patterns:
 
 | Path Pattern | Backend Service | Authentication | Plan Requirement |
 |--------------|----------------|----------------|------------------|
-| `/auth/*` | open-security-identity | ❌ | None |
-| `/api/v1/identity/*` | open-security-identity | ✅ | Any |
+| `/api/v1/auth/*` | open-security-identity | ❌ | None |
+| `/api/v1/users/*` | open-security-identity | ✅ | Any |
+| `/api/v1/admin/*` | open-security-identity | ✅ | Admin Only |
 | `/api/v1/data/*` | open-security-data | ✅ | Any |
 | `/api/v1/cspm/*` | open-security-cspm | ✅ | Personal+ |
 | `/api/v1/guardian/*` | open-security-guardian | ✅ | Any |
