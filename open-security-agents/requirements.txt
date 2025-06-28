@@ -12,7 +12,7 @@ redis==4.6.0
 # AI/LLM Framework
 langchain==0.2.5
 langchain-openai==0.0.2
-langchain-community==0.0.10
+langchain-community==0.2.19
 
 # HTTP Client
 httpx==0.25.2
