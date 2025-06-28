@@ -40,7 +40,7 @@ google-cloud-service-usage==1.13.1
 google-cloud-dataflow-client==0.8.4
 
 # Azure
-azure-identity==1.15.0
+azure-identity==1.16.1
 azure-mgmt-resource==23.0.1
 azure-mgmt-storage==21.1.0
 azure-mgmt-network==25.2.0
@@ -59,10 +59,10 @@ pyyaml==6.0.1
 
 # HTTP clients
 httpx==0.25.2
-aiohttp==3.9.1
+aiohttp==3.10.11
 
 # Security utilities
-cryptography==41.0.7
+cryptography==44.0.1
 python-jose[cryptography]==3.3.0
 
 # Logging and monitoring
@@ -73,7 +73,7 @@ prometheus-client==0.19.0
 pytest==7.4.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
-black==23.11.0
+black==24.3.0
 isort==5.12.0
 flake8==6.1.0
 mypy==1.7.1

@@ -10,9 +10,9 @@ celery[redis]==5.3.4
 redis==4.6.0
 
 # AI/LLM Framework
-langchain==0.1.0
+langchain==0.2.5
 langchain-openai==0.0.2
-langchain-community==0.0.10
+langchain-community==0.2.19
 
 # HTTP Client
 httpx==0.25.2
@@ -23,4 +23,4 @@ python-dotenv==1.0.0
 # Development
 pytest==7.4.3
 pytest-asyncio==0.21.1
-black==23.11.0
+black==24.3.0

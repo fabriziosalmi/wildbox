@@ -1,7 +1,7 @@
 # Open Security Guardian - Python Dependencies
 
 # Django Framework
-Django==4.2.13
+Django==4.2.22
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
 django-filter==23.2
@@ -47,7 +47,7 @@ servicenow-api==0.20.68
 # Monitoring & Observability
 prometheus-client==0.17.1
 structlog==23.1.0
-sentry-sdk==1.29.2
+sentry-sdk==1.45.1
 psutil==5.9.5
 
 # Utilities
@@ -74,6 +74,6 @@ mypy==1.5.1
 django-stubs==4.2.3
 
 # Production
-gunicorn==21.2.0
+gunicorn==23.0.0
 whitenoise==6.5.0
 dj-database-url==2.0.0
