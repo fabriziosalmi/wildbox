@@ -23,4 +23,4 @@ python-dotenv==1.0.0
 # Development
 pytest==7.4.3
 pytest-asyncio==0.21.1
-black==23.11.0
+black==24.3.0
