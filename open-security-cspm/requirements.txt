@@ -62,7 +62,7 @@ httpx==0.25.2
 aiohttp==3.9.1
 
 # Security utilities
-cryptography==41.0.7
+cryptography==44.0.1
 python-jose[cryptography]==3.3.0
 
 # Logging and monitoring
