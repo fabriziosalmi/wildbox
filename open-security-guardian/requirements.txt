@@ -74,6 +74,6 @@ mypy==1.5.1
 django-stubs==4.2.3
 
 # Production
-gunicorn==21.2.0
+gunicorn==23.0.0
 whitenoise==6.5.0
 dj-database-url==2.0.0
