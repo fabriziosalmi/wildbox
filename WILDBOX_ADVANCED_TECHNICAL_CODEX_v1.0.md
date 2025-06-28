@@ -172,55 +172,119 @@ graph TD
 
 ---
 
-## Parte II: Analisi Dettagliata per Moduli Satellite
-            Agents(🤖 open-security-agents)
-            Automations(⚙️ open-security-automations)
-            CSPM(☁️ open-security-cspm)
-            Data(📊 open-security-data)
-            Guardian(🛡️ open-security-guardian)
-            Responder(🚒 open-security-responder)
-            Sensor(📡 open-security-sensor)
-            Tools(🛠️ open-security-tools)
-        end
+## Parte II: Moduli Core - Hub di Controllo
 
-        subgraph "Databases & Caches"
-            Postgres(🐘 PostgreSQL)
-            Redis(🔺 Redis)
-        end
+### open-security-identity (Authentication & Authorization Hub - Porta 8001)
 
-        subgraph "External Integrations"
-            Stripe(💳 Stripe)
-            OpenAI(🧠 OpenAI)
-        end
+**Scopo Tecnico nel Contesto dell'Ecosistema:**
+L'Identity Service è il cuore dell'autenticazione e autorizzazione di Wildbox. Gestisce l'intero ciclo di vita degli utenti, team, API keys, e billing attraverso un'architettura FastAPI Users enterprise-grade. È il "sistema nervoso" per tutte le operazioni di sicurezza e controllo accessi.
 
-        Dashboard -- API Calls --> Gateway
-        Gateway -- Auth Request --> Identity
-        Identity -- Validates against --> Postgres
-        Identity -- Caches sessions --> Redis
-        Identity -- Manages subscriptions --> Stripe
+**Stack Tecnologico e Dipendenze:**
+- **Framework:** FastAPI con FastAPI Users per authentication standardizzata
+- **Authentication:** JWT tokens, OAuth2 flows, email verification, password reset
+- **Database:** PostgreSQL con SQLAlchemy ORM async per performance
+- **Billing:** Stripe integration completa per subscription management  
+- **Security:** Bcrypt password hashing, CSRF protection, rate limiting
+- **Email:** SMTP integration per verifiche e password reset
 
-        Gateway -- Authorized Route --> Agents
-        Gateway -- Authorized Route --> Automations
-        Gateway -- Authorized Route --> CSPM
-        Gateway -- Authorized Route --> Data
-        Gateway -- Authorized Route --> Guardian
-        Gateway -- Authorized Route --> Responder
-        Gateway -- Authorized Route --> Sensor
-        Gateway -- Authorized Route --> Tools
+**Struttura del Codice Interno (Post-Migrazione FastAPI Users):**
+```
+app/
+├── user_manager.py         # FastAPI Users configuration e logica custom
+├── models.py               # SQLAlchemy models (User eredita da SQLAlchemyBaseUserTableUUID)
+├── schemas.py              # Pydantic schemas (UserRead, UserCreate, UserUpdate)
+├── api_v1/endpoints/       # API endpoints
+│   ├── users.py           # Admin user management custom
+│   ├── api_keys.py        # Team-scoped API key management
+│   ├── billing.py         # Stripe integration endpoints
+│   └── analytics.py       # Usage analytics e metrics
+├── auth.py                 # Legacy auth utilities (da deprecare)
+├── billing.py              # Stripe service integration
+├── database.py             # Database connection e dependencies
+├── config.py               # Configuration management
+├── internal.py             # Service-to-service authorization
+└── webhooks.py             # Stripe webhook handlers
+```
 
-        Agents -- Uses --> OpenAI
-        Data -- Stores data in --> Postgres
-        Guardian -- Stores data in --> Postgres
-        Responder -- Uses task queue --> Redis
-        CSPM -- Stores findings in --> Postgres
-        
-        Tools -- Can interact with any service --> Gateway
-    end
+**Migrazione a FastAPI Users - Benefici Tecnici:**
+1. **Eliminazione Codice Custom**: ~500 linee di auth code eliminate
+2. **Sicurezza Migliorata**: Best practices built-in, aggiornamenti automatici
+3. **Funzionalità Avanzate**: Email verification, password reset out-of-the-box
+4. **Standards Compliance**: OAuth2, OpenAPI compliant endpoints
+5. **Admin Interface**: Built-in superuser management capabilities
 
-    style User fill:#f9f,stroke:#333,stroke-width:2px
-    style Gateway fill:#bbf,stroke:#333,stroke-width:2px
-    style Identity fill:#bbf,stroke:#333,stroke-width:2px
-    style Dashboard fill:#bbf,stroke:#333,stroke-width:2px
+**Endpoint API Principali (Post-FastAPI Users):**
+1. **POST /api/v1/auth/register** - Registrazione con auto-provisioning (team + subscription)
+2. **POST /api/v1/auth/jwt/login** - JWT authentication OAuth2-compliant  
+3. **GET /api/v1/users/me** - Profilo utente corrente con team data
+4. **POST /api/v1/auth/forgot-password** - Password reset sicuro con token
+5. **POST /api/v1/auth/verify** - Email verification per account sicurezza
+6. **GET /api/v1/admin/users** - Admin user management con filtering
+7. **POST /api/v1/teams/{team_id}/api-keys** - Team-scoped API key creation
+8. **POST /internal/authorize** - Service-to-service authorization validation
+
+**Auto-Provisioning Logic (on_after_register):**
+```python
+# user_manager.py - Logica custom preservata post-migrazione
+async def on_after_register(self, user: User, request: Optional[Request] = None):
+    # 1. Crea Stripe customer automaticamente
+    stripe_customer_id = await billing_service.create_customer(user)
+    
+    # 2. Crea team con utente come owner
+    team = Team(name=f"{user.email}'s Team", owner_id=user.id)
+    
+    # 3. Crea team membership con role OWNER
+    membership = TeamMembership(user_id=user.id, team_id=team.id, role=TeamRole.OWNER)
+    
+    # 4. Crea free subscription attiva
+    subscription = Subscription(team_id=team.id, plan_id=SubscriptionPlan.FREE)
+```
+
+**Database Schema Evolution (FastAPI Users):**
+```sql
+-- Campo aggiunto per FastAPI Users compatibility
+ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Schema esistente preservato:
+-- users: id(UUID), email, hashed_password, is_active, is_superuser, created_at, stripe_customer_id
+-- teams: id(UUID), name, owner_id, created_at  
+-- team_memberships: user_id, team_id, role, joined_at
+-- subscriptions: id(UUID), team_id, stripe_subscription_id, plan_id, status
+-- api_keys: id(UUID), hashed_key, prefix, user_id, team_id, name, expires_at
+```
+
+**Configurazione e Interconnessioni:**
+```env
+# Database
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@wildbox-postgres:5432/identity
+
+# JWT Configuration  
+JWT_SECRET_KEY=${JWT_SECRET_KEY}
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=60
+
+# Stripe Integration
+STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+
+# Email (per FastAPI Users verification)
+SMTP_HOST=${SMTP_HOST}
+SMTP_USER=${SMTP_USER}
+SMTP_PASSWORD=${SMTP_PASSWORD}
+```
+
+**Interconnessioni Critiche:**
+- **open-security-gateway**: Authorization validation via `/internal/authorize`
+- **open-security-dashboard**: User management UI e authentication flows
+- **Tutti i moduli satellite**: Ricevono context headers (X-User-ID, X-Team-ID, X-Role) dal Gateway
+- **Stripe**: Billing events via webhooks per subscription lifecycle
+- **SMTP Server**: Email verification e password reset notifications
+
+**Startup e Migrazione Automatica:**
+Il servizio implementa init script (`scripts/init.sh`) che:
+1. Attende database readiness
+2. Esegue `alembic upgrade head` automaticamente
+3. Crea admin user iniziale se richiesto
+4. Avvia server FastAPI con reload per development
 
 ### open-security-tools (API Toolkit - Porta 8000)
 
