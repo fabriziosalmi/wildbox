@@ -676,54 +676,54 @@ export default function AdminPage() {
         </div>
 
         {/* Admin Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="p-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6" data-testid="admin-stats-cards">
+          <Card className="p-6" data-testid="total-users-card">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
                 <Users className="w-6 h-6 text-blue-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-2xl font-bold">{systemStats.totalUsers}</p>
+                <p className="text-2xl font-bold" data-testid="total-users-value">{systemStats.totalUsers}</p>
                 <p className="text-xs text-muted-foreground">+{systemStats.newUsersThisWeek} this week</p>
               </div>
             </div>
           </Card>
           
-          <Card className="p-6">
+          <Card className="p-6" data-testid="active-users-card">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
                 <UserCheck className="w-6 h-6 text-green-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active Users</p>
-                <p className="text-2xl font-bold">{systemStats.activeUsers}</p>
+                <p className="text-2xl font-bold" data-testid="active-users-value">{systemStats.activeUsers}</p>
                 <p className="text-xs text-muted-foreground">{Math.round((systemStats.activeUsers / Math.max(systemStats.totalUsers, 1)) * 100)}% of total</p>
               </div>
             </div>
           </Card>
           
-          <Card className="p-6">
+          <Card className="p-6" data-testid="super-admins-card">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
                 <Shield className="w-6 h-6 text-orange-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Super Admins</p>
-                <p className="text-2xl font-bold">{systemStats.superAdmins}</p>
+                <p className="text-2xl font-bold" data-testid="super-admins-value">{systemStats.superAdmins}</p>
                 <p className="text-xs text-muted-foreground">System administrators</p>
               </div>
             </div>
           </Card>
           
-          <Card className="p-6">
+          <Card className="p-6" data-testid="total-teams-card">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
                 <Activity className="w-6 h-6 text-purple-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Teams</p>
-                <p className="text-2xl font-bold">{systemStats.totalTeams}</p>
+                <p className="text-2xl font-bold" data-testid="total-teams-value">{systemStats.totalTeams}</p>
                 <p className="text-xs text-muted-foreground">Active organizations</p>
               </div>
             </div>
