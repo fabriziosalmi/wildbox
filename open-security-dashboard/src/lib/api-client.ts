@@ -167,9 +167,9 @@ const getGatewayUrl = (): string => {
 export const getAuthPath = (endpoint: string): string => {
   if (useGateway) {
     // When using gateway with identityClient, transform paths correctly
-    // Identity client base URL is already pointing to /api/v1/identity
     // Gateway routes: /auth/ -> identity:/api/v1/auth/ and /auth/users/ -> identity:/api/v1/users/
     return endpoint
+      .replace('/api/v1/auth/jwt/login', '/auth/login')  // Special case for login endpoint
       .replace('/api/v1/auth/jwt', '/auth/jwt')
       .replace('/api/v1/auth', '/auth')
       .replace('/api/v1/users', '/auth/users')

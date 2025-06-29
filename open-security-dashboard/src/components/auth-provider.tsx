@@ -51,6 +51,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = async (email: string, password: string) => {
     try {
+      console.log('🔑 Starting login process...')
+      
       // Login with form data (OAuth2PasswordRequestForm)
       const formData = new URLSearchParams()
       formData.append('username', email)
@@ -58,24 +60,30 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       const response = await identityClient.postForm(getAuthPath('/api/v1/auth/jwt/login'), formData)
       const { access_token } = response
+      console.log('✅ Login successful, got token')
 
       // Store token (only on client side)
       if (typeof window !== 'undefined') {
         Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
         localStorage.setItem('auth_token', access_token)
+        console.log('💾 Token stored in cookies and localStorage')
       }
 
       // Fetch user data separately using the correct FastAPI Users endpoint
       const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+      console.log('👤 User data fetched:', userData.email)
       setUser(userData)
       
       if (typeof window !== 'undefined') {
         localStorage.setItem('user', JSON.stringify(userData))
+        console.log('💾 User data stored in localStorage')
       }
 
+      console.log('🚀 Redirecting to dashboard...')
       // Redirect immediately after successful login to prevent race conditions
       router.replace('/dashboard')
     } catch (error) {
+      console.error('❌ Login failed:', error)
       throw error
     }
   }
@@ -148,27 +156,35 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const initAuth = async () => {
       try {
+        console.log('🔍 Checking for existing auth token...')
         const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
 
         if (token) {
+          console.log('🎫 Found token, fetching user data...')
           try {
             // Always fetch fresh user data to ensure we have the latest info
             const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+            console.log('👤 User data fetched on init:', userData.email)
             setUser(userData)
             localStorage.setItem('user', JSON.stringify(userData))
+            console.log('✅ Auth initialization successful')
           } catch (error) {
             // Token is invalid, clear it silently without redirect
-            console.error('Failed to fetch user data:', error)
+            console.error('❌ Failed to fetch user data on init:', error)
             Cookies.remove('auth_token')
             localStorage.removeItem('auth_token')
             localStorage.removeItem('user')
             setUser(null)
+            console.log('🧹 Cleared invalid auth data')
           }
+        } else {
+          console.log('🚫 No auth token found')
         }
       } catch (error) {
         console.error('Auth initialization error:', error)
       } finally {
         setIsLoading(false)
+        console.log('🏁 Auth initialization complete, isLoading = false')
       }
     }
 

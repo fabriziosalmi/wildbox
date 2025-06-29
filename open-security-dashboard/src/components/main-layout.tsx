@@ -187,6 +187,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   // If authentication is still loading, show loading state
   if (isLoading) {
+    console.log('🔄 MainLayout: Auth still loading...')
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -200,6 +201,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   // If not authenticated, redirect to login (but only after loading is complete)
   if (!isLoading && !isAuthenticated) {
+    console.log('🚫 MainLayout: Not authenticated, showing login prompt')
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
@@ -217,6 +219,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     )
   }
 
+  console.log('✅ MainLayout: Authenticated, rendering main content')
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
