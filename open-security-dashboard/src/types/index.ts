@@ -479,6 +479,46 @@ export interface Vulnerability {
   remediation?: RemediationGuide
 }
 
+// Guardian API Vulnerability (matches actual API response)
+export interface GuardianVulnerability {
+  id: string
+  title: string
+  description: string
+  cve_id?: string
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
+  status: 'open' | 'in_progress' | 'resolved' | 'accepted' | 'false_positive' | 'duplicate'
+  priority: 'p1' | 'p2' | 'p3' | 'p4'
+  risk_score: number
+  cvss_v3_score?: number
+  cvss_v3_vector?: string
+  threat_level: 'imminent' | 'active' | 'emerging' | 'possible' | 'unknown'
+  exploitability_score: number
+  business_impact_score: number
+  port?: number
+  protocol?: string
+  service?: string
+  plugin_id?: string
+  evidence?: string
+  solution?: string
+  references?: string[]
+  scanner?: string
+  scan_id?: string
+  assigned_to?: number
+  assignee_group?: string
+  due_date?: string
+  sla_hours?: number
+  first_discovered: string
+  last_detected: string
+  created_at: string
+  updated_at: string
+  asset_name?: string
+  asset_type?: string
+  days_to_due?: number
+  is_overdue?: boolean
+  assigned_to_name?: string
+  created_by_name?: string
+}
+
 // System and Dashboard Types
 export interface DashboardWidget {
   id: string
