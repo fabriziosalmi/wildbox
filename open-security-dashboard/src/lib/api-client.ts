@@ -42,7 +42,7 @@ class ApiClient {
         
         if (isSecurityAPI) {
           // Use API key for security tools API
-          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'UrZMId_lkb_-9TcWSicVPCVNqSvnwr8e2VS9iXTAfxw'
+          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbx-6f8a9d2c-4e7b-1a3f-9c8e-2d5a6b4c8e9f-2025-prod'
           config.headers['X-API-Key'] = apiKey
           console.log('  - Auth Type: API Key (Security Tools)')
         } else if (isGuardianAPI) {
@@ -100,7 +100,13 @@ class ApiClient {
             console.error('🚨 Request Headers:', error.config?.headers)
             console.error('🚨 Response Data:', error.response.data)
             console.error('🚨 Full Request Config:', error.config)
-            this.handleAuthError()
+            
+            // Only trigger auth error handling for non-admin pages and if not already on auth page
+            if (typeof window !== 'undefined' && 
+                !window.location.pathname.includes('/admin') &&
+                !window.location.pathname.includes('/auth')) {
+              this.handleAuthError()
+            }
           }
         } else if (error.request) {
           apiError.message = 'Network error - please check your connection'
@@ -120,13 +126,24 @@ class ApiClient {
     console.error('🚨 Request that failed - Service:', this.baseURL)
     console.error('🚨 Stack trace:', new Error().stack)
     
-    // Clear auth tokens
+    // Check if this is a gateway request that might need different handling
+    const isGatewayRequest = this.baseURL.includes('localhost:80') || this.baseURL.includes(':80')
+    
+    // Don't immediately redirect for gateway requests - they might need special auth handling
+    if (isGatewayRequest) {
+      console.warn('🚨 Gateway auth error - not auto-redirecting, may need token refresh')
+      return
+    }
+    
+    // Clear auth tokens only for non-gateway auth errors
     Cookies.remove('auth_token')
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
     
-    // Redirect to login if we're not already there
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth')) {
+    // Redirect to login if we're not already there and not on an admin page
+    if (typeof window !== 'undefined' && 
+        !window.location.pathname.includes('/auth') &&
+        !window.location.pathname.includes('/admin')) {
       console.error('🚨 Redirecting to login due to auth error from service:', this.baseURL)
       window.location.href = '/'
     }
@@ -220,7 +237,11 @@ export const getAuthPath = (endpoint: string): string => {
 // Helper function to get the correct identity endpoint path
 export const getIdentityPath = (endpoint: string): string => {
   if (useGateway) {
-    // When using gateway, non-auth identity endpoints go through /api/v1/identity
+    // When using gateway, transform /api/v1/ to /api/v1/identity/
+    // But avoid double transformation - if it already has /api/v1/identity/, don't transform again
+    if (endpoint.includes('/api/v1/identity/')) {
+      return endpoint
+    }
     return endpoint.replace('/api/v1/', '/api/v1/identity/')
   }
   return endpoint
