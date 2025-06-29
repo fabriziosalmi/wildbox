@@ -6,6 +6,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Union
 from contextlib import asynccontextmanager
+import uuid
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Path, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +18,7 @@ import uvicorn
 import json
 
 from app.config import get_config
-from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
+from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun, TelemetryEvent, SensorMetadata
 from app.utils.database import get_db_session, create_tables
 from app.schemas.api import *
 
@@ -591,12 +592,189 @@ async def get_threat_intel_metrics(db: Session = Depends(get_db)):
         "trends_change": round(trend_change, 1)
     }
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "app.api.main:app",
-        host=config.api.host,
-        port=config.api.port,
-        workers=1,  # Use 1 worker for development
-        reload=config.debug,
-        log_level="info"
+# Telemetry ingestion endpoints
+@app.post("/api/v1/ingest", response_model=TelemetryBatchResponse, tags=["Telemetry"])
+async def ingest_telemetry_batch(
+    batch: TelemetryBatch,
+    db: Session = Depends(get_db)
+):
+    """
+    Ingest a batch of telemetry events from security sensors
+    """
+    batch_id = batch.batch_id or str(uuid.uuid4())
+    ingested_at = datetime.now(timezone.utc)
+    events_ingested = 0
+    errors = []
+    
+    # Process each event in the batch
+    for i, event_data in enumerate(batch.events):
+        try:
+            # Update or create sensor metadata
+            sensor = db.query(SensorMetadata).filter(
+                SensorMetadata.sensor_id == event_data.sensor_id
+            ).first()
+            
+            if not sensor:
+                sensor = SensorMetadata(
+                    sensor_id=event_data.sensor_id,
+                    hostname=event_data.source_host,
+                    first_seen=ingested_at,
+                    last_seen=ingested_at,
+                    active=True,
+                    total_events=1,
+                    last_event_at=event_data.timestamp
+                )
+                db.add(sensor)
+            else:
+                sensor.last_seen = ingested_at
+                sensor.total_events += 1
+                sensor.last_event_at = event_data.timestamp
+                sensor.active = True
+            
+            # Create telemetry event
+            telemetry_event = TelemetryEvent(
+                sensor_id=event_data.sensor_id,
+                event_type=event_data.event_type.value,
+                timestamp=event_data.timestamp,
+                source_host=event_data.source_host,
+                event_data=event_data.event_data,
+                raw_data=event_data.raw_data,
+                ingested_at=ingested_at,
+                severity=event_data.severity,
+                tags=event_data.tags
+            )
+            
+            db.add(telemetry_event)
+            events_ingested += 1
+            
+        except Exception as e:
+            errors.append(f"Event {i}: {str(e)}")
+            logger.error(f"Failed to ingest event {i} in batch {batch_id}: {e}")
+    
+    try:
+        db.commit()
+        logger.info(f"Ingested batch {batch_id}: {events_ingested}/{len(batch.events)} events")
+    except Exception as e:
+        db.rollback()
+        error_msg = f"Failed to commit batch {batch_id}: {str(e)}"
+        errors.append(error_msg)
+        logger.error(error_msg)
+        events_ingested = 0
+    
+    return TelemetryBatchResponse(
+        batch_id=batch_id,
+        events_received=len(batch.events),
+        events_ingested=events_ingested,
+        errors=errors,
+        ingested_at=ingested_at
     )
+
+@app.get("/api/v1/telemetry/events", response_model=List[TelemetryEvent], tags=["Telemetry"])
+async def get_telemetry_events(
+    sensor_id: Optional[str] = Query(None, description="Filter by sensor ID"),
+    event_type: Optional[str] = Query(None, description="Filter by event type"),
+    start_time: Optional[datetime] = Query(None, description="Start time filter"),
+    end_time: Optional[datetime] = Query(None, description="End time filter"),
+    limit: int = Query(100, le=1000, description="Maximum number of events to return"),
+    offset: int = Query(0, description="Number of events to skip"),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve telemetry events with optional filtering
+    """
+    query = db.query(TelemetryEvent)
+    
+    # Apply filters
+    if sensor_id:
+        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+    if event_type:
+        query = query.filter(TelemetryEvent.event_type == event_type)
+    if start_time:
+        query = query.filter(TelemetryEvent.timestamp >= start_time)
+    if end_time:
+        query = query.filter(TelemetryEvent.timestamp <= end_time)
+    
+    # Apply pagination and ordering
+    events = query.order_by(desc(TelemetryEvent.timestamp)).offset(offset).limit(limit).all()
+    
+    return events
+
+@app.get("/api/v1/sensors", response_model=List[SensorMetadata], tags=["Telemetry"])
+async def get_sensors(
+    active_only: bool = Query(True, description="Return only active sensors"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get information about registered sensors
+    """
+    query = db.query(SensorMetadata)
+    
+    if active_only:
+        query = query.filter(SensorMetadata.active == True)
+    
+    sensors = query.order_by(desc(SensorMetadata.last_seen)).all()
+    return sensors
+
+@app.get("/api/v1/sensors/{sensor_id}", response_model=SensorMetadata, tags=["Telemetry"])
+async def get_sensor(
+    sensor_id: str = Path(..., description="Sensor ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get information about a specific sensor
+    """
+    sensor = db.query(SensorMetadata).filter(
+        SensorMetadata.sensor_id == sensor_id
+    ).first()
+    
+    if not sensor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Sensor {sensor_id} not found"
+        )
+    
+    return sensor
+
+@app.get("/api/v1/telemetry/stats", tags=["Telemetry"])
+async def get_telemetry_stats(
+    sensor_id: Optional[str] = Query(None, description="Filter by sensor ID"),
+    hours: int = Query(24, description="Time window in hours"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get telemetry statistics
+    """
+    start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+    
+    # Base query
+    query = db.query(TelemetryEvent).filter(TelemetryEvent.timestamp >= start_time)
+    if sensor_id:
+        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+    
+    # Total events
+    total_events = query.count()
+    
+    # Events by type
+    event_type_counts = db.query(
+        TelemetryEvent.event_type,
+        func.count(TelemetryEvent.id).label('count')
+    ).filter(TelemetryEvent.timestamp >= start_time)
+    
+    if sensor_id:
+        event_type_counts = event_type_counts.filter(TelemetryEvent.sensor_id == sensor_id)
+    
+    event_type_counts = event_type_counts.group_by(TelemetryEvent.event_type).all()
+    
+    # Active sensors
+    active_sensors = db.query(func.count(func.distinct(SensorMetadata.sensor_id))).filter(
+        SensorMetadata.active == True,
+        SensorMetadata.last_seen >= start_time
+    ).scalar()
+    
+    return {
+        "time_window_hours": hours,
+        "total_events": total_events,
+        "active_sensors": active_sensors,
+        "events_by_type": {item.event_type: item.count for item in event_type_counts},
+        "query_time": datetime.now(timezone.utc).isoformat()
+    }

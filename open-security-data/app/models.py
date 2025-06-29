@@ -341,3 +341,67 @@ class CollectionRun(Base):
         Index("idx_collection_runs_started", "started_at"),
         Index("idx_collection_runs_status", "status"),
     )
+
+class TelemetryEventType(enum.Enum):
+    """Types of telemetry events"""
+    PROCESS_EVENT = "process_event"
+    NETWORK_CONNECTION = "network_connection"
+    FILE_CHANGE = "file_change"
+    USER_EVENT = "user_event"
+    SYSTEM_INVENTORY = "system_inventory"
+    AUTHENTICATION = "authentication"
+    SECURITY_EVENT = "security_event"
+
+class TelemetryEvent(Base):
+    """Telemetry events from security sensors"""
+    __tablename__ = "telemetry_events"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sensor_id = Column(String(255), nullable=False, index=True)
+    event_type = Column(String(50), nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
+    source_host = Column(String(255), nullable=True, index=True)
+    event_data = Column(JSON, nullable=False)
+    raw_data = Column(Text, nullable=True)
+    
+    # Processing metadata
+    ingested_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    processed = Column(Boolean, default=False, nullable=False, index=True)
+    processed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Event classification
+    severity = Column(Integer, default=1, nullable=False)
+    tags = Column(JSON, default=list, nullable=False)
+    
+    __table_args__ = (
+        Index("idx_telemetry_sensor_timestamp", "sensor_id", "timestamp"),
+        Index("idx_telemetry_type_timestamp", "event_type", "timestamp"),
+        Index("idx_telemetry_ingested", "ingested_at"),
+        Index("idx_telemetry_processed", "processed", "processed_at"),
+    )
+
+class SensorMetadata(Base):
+    """Metadata about registered sensors"""
+    __tablename__ = "sensor_metadata"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sensor_id = Column(String(255), unique=True, nullable=False, index=True)
+    hostname = Column(String(255), nullable=True)
+    platform = Column(String(100), nullable=True)
+    sensor_version = Column(String(50), nullable=True)
+    
+    # Registration details
+    first_seen = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    last_seen = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    active = Column(Boolean, default=True, nullable=False, index=True)
+    
+    # Configuration
+    config = Column(JSON, default=dict, nullable=False)
+    
+    # Statistics
+    total_events = Column(Integer, default=0, nullable=False)
+    last_event_at = Column(DateTime(timezone=True), nullable=True)
+    
+    __table_args__ = (
+        Index("idx_sensor_active_last_seen", "active", "last_seen"),
+    )

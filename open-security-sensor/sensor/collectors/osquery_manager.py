@@ -370,18 +370,14 @@ class OsqueryManager:
     def _get_services_query(self) -> str:
         """Get platform-specific services query"""
         if is_linux():
-            # Try systemd services first, fallback to init services
+            # Linux uses systemd services
             return '''
                 SELECT name, status, pid, path, 'systemd' as service_type
                 FROM systemd_units 
                 WHERE type = 'service'
-                UNION ALL
-                SELECT name, 'unknown' as status, 0 as pid, path, 'init' as service_type
-                FROM launchd 
-                WHERE type = 'service'
             '''
         elif is_macos():
-            # macOS uses launchd
+            # macOS uses launchd  
             return '''
                 SELECT name, status, pid, path, 'launchd' as service_type
                 FROM launchd

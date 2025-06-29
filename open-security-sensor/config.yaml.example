@@ -2,9 +2,9 @@
 
 # Data Lake Connection
 data_lake:
-  endpoint: "https://your-security-data-platform.com/api/v1/ingest"
-  api_key: "your-api-key-here"
-  tls_verify: true
+  endpoint: "http://open-security-data:8002/api/v1/ingest"
+  api_key: "sensor-api-key-2025"
+  tls_verify: false
   batch_size: 100
   flush_interval: 30
   timeout: 30
@@ -24,16 +24,11 @@ collection:
 fim:
   enabled: true
   paths:
-    - "/etc"
-    - "/bin"
-    - "/usr/bin"
-    - "/opt"
-    # Windows paths (if running on Windows)
-    # - "C:\\Windows\\System32"
-    # - "C:\\Program Files"
-    # macOS paths (if running on macOS)
-    # - "/System"
-    # - "/Applications"
+    # Host paths (mounted as /host/*)
+    - "/host/etc"
+    - "/host/bin"
+    - "/host/usr/bin"
+    - "/host/opt"
   exclude_patterns:
     - "*.tmp"
     - "*.log"
@@ -61,7 +56,7 @@ logging:
 
 # Network Configuration
 network:
-  bind_address: "127.0.0.1"
-  bind_port: 8899
+  bind_address: "0.0.0.0"  # Bind to all interfaces for Docker
+  bind_port: 8004
   enable_api: true
   api_key: null  # Set to require API key authentication
