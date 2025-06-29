@@ -102,7 +102,7 @@ export default function AdminPage() {
       // Check health of various services
       const [identityHealth, gatewayHealth, dataHealth] = await Promise.allSettled([
         // Check identity service health
-        identityClient.get(getIdentityPath('/health')).catch(() => null),
+        identityClient.get('/api/v1/identity/health').catch(() => null),
         // Check gateway status (if accessible)
         fetch('http://localhost/health').then(r => r.json()).catch(() => null),
         // Check data service health
@@ -157,8 +157,8 @@ export default function AdminPage() {
     try {
       // Fetch real system analytics from identity service
       const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get(getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')),
-        identityClient.get(getIdentityPath('/api/v1/analytics/admin/usage-summary'))
+        identityClient.get('/api/v1/identity/analytics/admin/system-stats?days=30'),
+        identityClient.get('/api/v1/identity/analytics/admin/usage-summary')
       ])
       
       // Extract real analytics data
@@ -213,27 +213,39 @@ export default function AdminPage() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true)
-      const response = await identityClient.get(getIdentityPath('/api/v1/admin/users'), {
-        email_filter: searchTerm || undefined,
-        is_active: filterActive,
-        limit: 100
+      
+      // Debug: Try direct fetch to bypass any ApiClient issues
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
+      
+      const response = await fetch('http://localhost/api/v1/identity/admin/users?limit=100', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
       })
-      setUsers(response || [])
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
+      const data = await response.json()
+      setUsers(data || [])
       
       // Update stats when users are fetched
-      if (response && Array.isArray(response)) {
+      if (data && Array.isArray(data)) {
         setSystemStats(prev => ({
           ...prev,
-          totalUsers: response.length,
-          activeUsers: response.filter(u => u.is_active).length,
-          superAdmins: response.filter(u => u.is_superuser).length,
-          totalTeams: new Set(response.flatMap((u: AdminUserData) => u.team_memberships?.map((tm: any) => tm.team_id) || [])).size
+          totalUsers: data.length,
+          activeUsers: data.filter(u => u.is_active).length,
+          superAdmins: data.filter(u => u.is_superuser).length,
+          totalTeams: new Set(data.flatMap((u: AdminUserData) => u.team_memberships?.map((tm: any) => tm.team_id) || [])).size
         }))
       }
     } catch (error: any) {
       console.error('Failed to fetch users:', error)
       toast({
-        title: "Error",
+        title: "Error", 
         description: "Failed to load users",
         variant: "destructive",
       })
@@ -248,7 +260,7 @@ export default function AdminPage() {
 
   const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/status?is_active=${!currentStatus}`))
+      await identityClient.patch(`/api/v1/identity/admin/users/${userId}/status?is_active=${!currentStatus}`)
       
       toast({
         title: "Success",
@@ -274,7 +286,7 @@ export default function AdminPage() {
     // First check if the user can be deleted (unless forcing)
     if (!forceDelete) {
       try {
-        const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/admin/users/${userId}/can-delete`))
+        const checkResponse = await identityClient.get(`/api/v1/identity/admin/users/${userId}/can-delete`)
         
         if (!checkResponse.can_delete) {
           // Check if force delete is possible
@@ -367,8 +379,8 @@ export default function AdminPage() {
 
     try {
       const deleteUrl = forceDelete 
-        ? getIdentityPath(`/api/v1/admin/users/${userId}?force=true`)
-        : getIdentityPath(`/api/v1/admin/users/${userId}`)
+        ? `/api/v1/identity/admin/users/${userId}?force=true`
+        : `/api/v1/identity/admin/users/${userId}`
         
       await identityClient.delete(deleteUrl)
       
@@ -410,7 +422,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/role`), {
+      await identityClient.patch(`/api/v1/identity/admin/users/${userId}/role`, {
         is_superuser: true
       })
       
@@ -436,7 +448,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/role`), {
+      await identityClient.patch(`/api/v1/identity/admin/users/${userId}/role`, {
         is_superuser: false
       })
       
