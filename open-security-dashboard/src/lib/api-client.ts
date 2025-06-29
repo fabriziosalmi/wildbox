@@ -153,12 +153,26 @@ class ApiClient {
 const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY === 'true'
 const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
 
+// Helper function to get the correct gateway URL based on environment
+const getGatewayUrl = (): string => {
+  // If we're on server-side (SSR) and have an internal gateway URL, use it
+  if (typeof window === 'undefined' && process.env.INTERNAL_GATEWAY_URL) {
+    return process.env.INTERNAL_GATEWAY_URL
+  }
+  // Otherwise use the public gateway URL for client-side requests
+  return gatewayUrl
+}
+
 // Helper function to get the correct auth endpoint path
 export const getAuthPath = (endpoint: string): string => {
   if (useGateway) {
-    // When using gateway with identityClient, just return the auth path
-    // since identityClient base URL is already /api/v1/identity
-    return endpoint.replace('/api/v1/auth', '/auth')
+    // When using gateway with identityClient, transform paths correctly
+    // Identity client base URL is already pointing to /api/v1/identity
+    // Gateway routes: /auth/ -> identity:/api/v1/auth/ and /auth/users/ -> identity:/api/v1/users/
+    return endpoint
+      .replace('/api/v1/auth/jwt', '/auth/jwt')
+      .replace('/api/v1/auth', '/auth')
+      .replace('/api/v1/users', '/auth/users')
   }
   return endpoint
 }
@@ -166,8 +180,8 @@ export const getAuthPath = (endpoint: string): string => {
 // Helper function to get the correct identity endpoint path
 export const getIdentityPath = (endpoint: string): string => {
   if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/identity
-    return endpoint.replace('/api/v1/', '/')
+    // When using gateway, non-auth identity endpoints go through /api/v1/identity
+    return endpoint.replace('/api/v1/', '/api/v1/identity/')
   }
   return endpoint
 }
@@ -229,53 +243,53 @@ export const getAgentsPath = (endpoint: string): string => {
 // Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/tools`
+    ? `${getGatewayUrl()}/api/v1/tools`
     : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
 )
 
 export const identityClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/identity`
+    ? getGatewayUrl()  // Use gateway root URL for auth endpoints
     : (process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001')
 )
 
 export const dataClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/data`
+    ? `${getGatewayUrl()}/api/v1/data`
     : (process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002')
 )
 
 export const guardianClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/guardian`
+    ? `${getGatewayUrl()}/api/v1/guardian`
     : (process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8013')
 )
 
 export const sensorClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/sensor`
+    ? `${getGatewayUrl()}/api/v1/sensor`
     : (process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8004')
 )
 
 export const responderClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/responder`
+    ? `${getGatewayUrl()}/api/v1/responder`
     : (process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8018')
 )
 
 export const agentsClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/agents`
+    ? `${getGatewayUrl()}/api/v1/agents`
     : (process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006')
 )
 
 export const cspmClient = new ApiClient(
   useGateway 
-    ? `${gatewayUrl}/api/v1/cspm`
+    ? `${getGatewayUrl()}/api/v1/cspm`
     : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8019')
 )
 
 // Gateway client for direct gateway API access
-export const gatewayDataClient = new ApiClient(gatewayUrl)
+export const gatewayDataClient = new ApiClient(getGatewayUrl())
 
 export default apiClient

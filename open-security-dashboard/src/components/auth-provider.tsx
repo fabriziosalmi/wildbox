@@ -20,9 +20,21 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
+  
+  // Check if we're on the client side and context is available
+  if (typeof window === 'undefined' || context === undefined) {
+    // Return a default state for SSR or when outside provider
+    return {
+      user: null,
+      isLoading: true,
+      isAuthenticated: false,
+      login: async () => {},
+      register: async () => {},
+      logout: () => {},
+      refetchUser: async () => {},
+    }
   }
+  
   return context
 }
 
@@ -44,17 +56,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
       formData.append('username', email)
       formData.append('password', password)
 
-      const response = await identityClient.postForm(getAuthPath('/api/v1/auth/login'), formData)
+      const response = await identityClient.postForm(getAuthPath('/api/v1/auth/jwt/login'), formData)
       const { access_token } = response
 
-      // Store token
-      Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
-      localStorage.setItem('auth_token', access_token)
+      // Store token (only on client side)
+      if (typeof window !== 'undefined') {
+        Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+        localStorage.setItem('auth_token', access_token)
+      }
 
-      // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      // Fetch user data separately using the correct FastAPI Users endpoint
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
+      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(userData))
+      }
 
       // Redirect immediately after successful login to prevent race conditions
       router.replace('/dashboard')
@@ -68,14 +85,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await identityClient.post(getAuthPath('/api/v1/auth/register'), { email, password, name })
       const { access_token } = response
 
-      // Store token
-      Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
-      localStorage.setItem('auth_token', access_token)
+      // Store token (only on client side)
+      if (typeof window !== 'undefined') {
+        Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+        localStorage.setItem('auth_token', access_token)
+      }
 
-      // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      // Fetch user data separately using the correct FastAPI Users endpoint
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
-      localStorage.setItem('user', JSON.stringify(userData))
+      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('user', JSON.stringify(userData))
+      }
 
       // Redirect immediately after successful registration
       router.replace('/dashboard')
@@ -85,6 +107,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const logout = () => {
+    // Skip during SSR
+    if (typeof window === 'undefined') return
+
     // Clear tokens
     Cookies.remove('auth_token')
     localStorage.removeItem('auth_token')
@@ -97,8 +122,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const refetchUser = async () => {
+    // Skip during SSR
+    if (typeof window === 'undefined') return
+
     try {
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
@@ -112,6 +140,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   useEffect(() => {
+    // Skip during SSR
+    if (typeof window === 'undefined') {
+      setIsLoading(false)
+      return
+    }
+
     const initAuth = async () => {
       try {
         const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
@@ -119,7 +153,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (token) {
           try {
             // Always fetch fresh user data to ensure we have the latest info
-            const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+            const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
             setUser(userData)
             localStorage.setItem('user', JSON.stringify(userData))
           } catch (error) {

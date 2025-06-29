@@ -12,7 +12,7 @@ This document outlines the changes made to integrate the **open-security-dashboa
 - Dashboard expected: `/api/v1/users/me`
 
 **After:**
-- Updated to use: `/api/v1/auth/login` and `/api/v1/auth/register`
+- Updated to use: `/api/v1/auth/jwt/login` and `/api/v1/auth/register`
 - Updated to use: `/api/v1/auth/me`
 
 ### 2. Authentication Protocol Mismatch
@@ -65,7 +65,7 @@ This document outlines the changes made to integrate the **open-security-dashboa
 2. Response: {access_token, user}
 
 // NEW FLOW  
-1. POST /api/v1/auth/login (form data: username=email&password=password)
+1. POST /api/v1/auth/jwt/login (form data: username=email&password=password)
 2. Response: {access_token, token_type, expires_in}
 3. GET /api/v1/auth/me (with Bearer token)
 4. Response: {user data with team_memberships}

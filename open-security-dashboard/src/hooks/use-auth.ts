@@ -6,7 +6,7 @@ import { User } from '@/types'
 export function useUser() {
   return useQuery({
     queryKey: ['user'],
-    queryFn: () => identityClient.get<User>(getAuthPath('/api/v1/auth/me')),
+    queryFn: () => identityClient.get<User>(getAuthPath('/api/v1/users/me')),
     staleTime: 1000 * 60 * 5, // 5 minutes
   })
 }
@@ -17,7 +17,7 @@ export function useUpdateUser() {
   
   return useMutation({
     mutationFn: (userData: Partial<User>) => 
-      identityClient.put<User>(getAuthPath('/api/v1/auth/profile'), userData),
+      identityClient.put<User>(getAuthPath('/api/v1/users/me'), userData),
     onSuccess: (updatedUser) => {
       queryClient.setQueryData(['user'], updatedUser)
     },
@@ -29,7 +29,7 @@ export function useLogout() {
   const queryClient = useQueryClient()
   
   return useMutation({
-    mutationFn: () => identityClient.post(getAuthPath('/api/v1/auth/logout')),
+    mutationFn: () => identityClient.post(getAuthPath('/api/v1/auth/jwt/logout')),
     onSuccess: () => {
       queryClient.clear()
       window.location.href = '/'

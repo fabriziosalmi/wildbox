@@ -34,7 +34,7 @@ fi
 
 # Test user login
 echo -e "\n3. Testing user login endpoint..."
-LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:8001/api/v1/auth/login" \
+LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:8001/api/v1/auth/jwt/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "username=test@dashboard.com&password=testpassword123")
 

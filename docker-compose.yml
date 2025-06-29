@@ -22,6 +22,9 @@ services:
       - STRIPE_SECRET_KEY=sk_test_dummy_key_for_testing
       - STRIPE_WEBHOOK_SECRET=whsec_dummy_webhook_for_testing
       - STRIPE_PUBLISHABLE_KEY=pk_test_dummy_publishable_for_testing
+      - CREATE_INITIAL_ADMIN=true
+      - INITIAL_ADMIN_EMAIL=admin@wildbox.security
+      - INITIAL_ADMIN_PASSWORD=ChangeMeInProduction123!
     depends_on:
       - postgres
       - wildbox-redis
@@ -143,9 +146,11 @@ services:
       - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
       - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:80/api/v1/guardian
       - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://gateway:80/api/v1/responder
-      - NEXT_PUBLIC_AGENTS_API_URL=http://gateway:80/api/v1/agents
-      - NEXT_PUBLIC_CSPM_API_URL=http://gateway:80/api/v1/cspm
+      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:80/api/v1/responder
+      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:80/api/v1/agents
+      - NEXT_PUBLIC_CSPM_API_URL=http://localhost:80/api/v1/cspm
+      # Internal URLs for server-side requests within Docker network
+      - INTERNAL_GATEWAY_URL=http://open-security-gateway:80
       - NEXTAUTH_SECRET=wildbox-dashboard-secret-for-testing
       - NEXTAUTH_URL=http://localhost:3000
     networks:

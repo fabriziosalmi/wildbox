@@ -44,7 +44,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       formData.append('username', email)
       formData.append('password', password)
 
-      const response = await identityClient.postForm(getAuthPath('/api/v1/auth/login'), formData)
+      const response = await identityClient.postForm(getAuthPath('/api/v1/auth/jwt/login'), formData)
       const { access_token } = response
 
       // Store token
@@ -52,7 +52,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('auth_token', access_token)
 
       // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
@@ -72,7 +72,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       localStorage.setItem('auth_token', access_token)
 
       // Fetch user data separately
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
 
@@ -94,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refetchUser = async () => {
     try {
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
       setUser(userData)
       localStorage.setItem('user', JSON.stringify(userData))
     } catch (error) {
@@ -115,7 +115,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             setUser(userData)
             
             // Validate token by making a request
-            await identityClient.get(getAuthPath('/api/v1/auth/me'))
+            await identityClient.get(getAuthPath('/api/v1/users/me'))
           } catch (error) {
             // Token is invalid, clear it
             logout()
