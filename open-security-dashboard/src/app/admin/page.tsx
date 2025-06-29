@@ -25,7 +25,10 @@ import {
   MoreHorizontal,
   Settings,
   Database,
-  Activity
+  Activity,
+  UserPlus,
+  Lock,
+  AtSign
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { User as UserType } from '@/types'
@@ -79,6 +82,16 @@ export default function AdminPage() {
     identityStatus: 'unknown',
     databaseStatus: 'unknown',
     redisStatus: 'unknown'
+  })
+  
+  // Create user form state
+  const [showCreateUser, setShowCreateUser] = useState(false)
+  const [isCreatingUser, setIsCreatingUser] = useState(false)
+  const [createUserForm, setCreateUserForm] = useState({
+    email: '',
+    password: '',
+    is_superuser: false,
+    is_active: true
   })
 
   // Check if user is superuser
@@ -468,6 +481,130 @@ export default function AdminPage() {
     }
   }
 
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!createUserForm.email || !createUserForm.password) {
+      toast({
+        title: "Error",
+        description: "Email and password are required",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(createUserForm.email)) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid email address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Password length validation
+    if (createUserForm.password.length < 8) {
+      toast({
+        title: "Error",
+        description: "Password must be at least 8 characters long",
+        variant: "destructive",
+      })
+      return
+    }
+
+    try {
+      setIsCreatingUser(true)
+      
+      // Get auth token from cookies
+      const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
+      
+      const response = await fetch('http://localhost/api/v1/identity/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          email: createUserForm.email,
+          password: createUserForm.password
+        })
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.detail || `HTTP ${response.status}`)
+      }
+
+      const newUser = await response.json()
+
+      // If user should be a superuser or inactive, update via admin endpoint
+      if (createUserForm.is_superuser || !createUserForm.is_active) {
+        const userId = newUser.id
+        
+        // Update superuser status if needed
+        if (createUserForm.is_superuser) {
+          const superuserResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/role`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              is_superuser: true
+            })
+          })
+          
+          if (!superuserResponse.ok) {
+            console.warn('Failed to set superuser status for new user')
+          }
+        }
+        
+        // Update active status if needed
+        if (!createUserForm.is_active) {
+          const statusResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            }
+          })
+          
+          if (!statusResponse.ok) {
+            console.warn('Failed to set inactive status for new user')
+          }
+        }
+      }
+
+      toast({
+        title: "Success",
+        description: `User ${createUserForm.email} created successfully`,
+      })
+      
+      // Reset form and close modal
+      setCreateUserForm({
+        email: '',
+        password: '',
+        is_superuser: false,
+        is_active: true
+      })
+      setShowCreateUser(false)
+      
+      // Refresh users list
+      fetchUsers()
+    } catch (error: any) {
+      console.error('Failed to create user:', error)
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create user",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCreatingUser(false)
+    }
+  }
+
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
       year: 'numeric',
@@ -791,6 +928,136 @@ export default function AdminPage() {
                   No users found
                 </div>
               )}
+            </div>
+          )}
+        </Card>
+
+        {/* Create User Section */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-xl font-semibold">Create New User</h2>
+            <Button 
+              onClick={() => setShowCreateUser(!showCreateUser)}
+              variant={showCreateUser ? "outline" : "default"}
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              {showCreateUser ? 'Cancel' : 'Create User'}
+            </Button>
+          </div>
+
+          {showCreateUser && (
+            <form onSubmit={handleCreateUser} className="space-y-4 max-w-md">
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="email">
+                  Email Address *
+                </label>
+                <div className="relative">
+                  <AtSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="user@example.com"
+                    value={createUserForm.email}
+                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, email: e.target.value }))}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium" htmlFor="password">
+                  Password *
+                </label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={createUserForm.password}
+                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, password: e.target.value }))}
+                    className="pl-10"
+                    minLength={8}
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Password must be at least 8 characters long
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={createUserForm.is_active}
+                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium">User Active</span>
+                  <span className="text-xs text-muted-foreground">(User can log in)</span>
+                </label>
+
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={createUserForm.is_superuser}
+                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, is_superuser: e.target.checked }))}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-sm font-medium">Super Admin</span>
+                  <span className="text-xs text-muted-foreground">(Full system access)</span>
+                </label>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  type="submit" 
+                  disabled={isCreatingUser}
+                  className="flex items-center gap-2"
+                >
+                  {isCreatingUser ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="w-4 h-4" />
+                      Create User
+                    </>
+                  )}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => {
+                    setShowCreateUser(false)
+                    setCreateUserForm({
+                      email: '',
+                      password: '',
+                      is_superuser: false,
+                      is_active: true
+                    })
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {!showCreateUser && (
+            <div className="text-center py-8 border-2 border-dashed border-muted rounded-lg">
+              <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground mb-4">
+                Create new users manually with custom permissions
+              </p>
+              <Button onClick={() => setShowCreateUser(true)} variant="outline">
+                <UserPlus className="w-4 h-4 mr-2" />
+                Create New User
+              </Button>
             </div>
           )}
         </Card>
