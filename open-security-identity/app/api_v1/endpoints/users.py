@@ -26,7 +26,7 @@ router = APIRouter()
 # ADMIN USER MANAGEMENT ENDPOINTS
 # =============================================================================
 
-@router.get("/admin/users", response_model=List[UserResponse])
+@router.get("/users", response_model=List[UserResponse])
 async def list_all_users(
     current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -111,7 +111,7 @@ async def list_all_users(
     return user_responses
 
 
-@router.get("/admin/users/{user_id}/can-delete")
+@router.get("/users/{user_id}/can-delete")
 async def check_user_deletable(
     user_id: str,
     current_user: User = Depends(current_active_user),
@@ -189,7 +189,7 @@ async def check_user_deletable(
     }
 
 
-@router.get("/admin/users/{user_id}", response_model=UserWithTeams)
+@router.get("/users/{user_id}", response_model=UserWithTeams)
 async def get_user_by_id(
     user_id: str,
     current_user: User = Depends(current_active_user),
@@ -235,7 +235,7 @@ async def get_user_by_id(
     return user
 
 
-@router.patch("/admin/users/{user_id}/status")
+@router.patch("/users/{user_id}/status")
 async def update_user_status(
     user_id: str,
     is_active: bool,
@@ -286,7 +286,7 @@ async def update_user_status(
     return {"message": f"User {'activated' if is_active else 'deactivated'} successfully"}
 
 
-@router.delete("/admin/users/{user_id}")
+@router.delete("/users/{user_id}")
 async def delete_user(
     user_id: str,
     force: bool = Query(False, description="Force delete even if user owns teams"),
@@ -418,7 +418,7 @@ async def delete_user(
         )
 
 
-@router.patch("/admin/users/{user_id}/superuser")
+@router.patch("/users/{user_id}/superuser")
 async def update_user_superuser_status(
     user_id: str,
     superuser_data: dict,
@@ -465,7 +465,7 @@ async def update_user_superuser_status(
     return {"message": f"User {action} superuser successfully"}
 
 
-@router.patch("/admin/users/{user_id}/role")
+@router.patch("/users/{user_id}/role")
 async def update_user_role(
     user_id: str,
     role_data: dict,

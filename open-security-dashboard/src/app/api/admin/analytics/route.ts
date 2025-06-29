@@ -5,8 +5,8 @@ export async function GET() {
   try {
     // Fetch real analytics data from identity service
     const [systemStats, usageSummary] = await Promise.allSettled([
-      identityClient.get(getIdentityPath('/api/v1/analytics/admin/analytics/system-stats?days=30')),
-      identityClient.get(getIdentityPath('/api/v1/analytics/admin/analytics/usage-summary'))
+      identityClient.get(getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')),
+      identityClient.get(getIdentityPath('/api/v1/analytics/admin/usage-summary'))
     ])
     
     // Extract analytics data

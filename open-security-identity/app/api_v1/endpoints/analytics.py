@@ -17,7 +17,7 @@ from ...schemas import UserResponse
 router = APIRouter()
 
 
-@router.get("/admin/analytics/system-stats")
+@router.get("/admin/system-stats")
 async def get_system_analytics(
     current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -216,7 +216,7 @@ async def get_system_analytics(
         )
 
 
-@router.get("/admin/analytics/user-activity")
+@router.get("/admin/user-activity")
 async def get_user_activity_metrics(
     current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db),
@@ -290,7 +290,7 @@ async def get_user_activity_metrics(
         )
 
 
-@router.get("/admin/analytics/usage-summary")
+@router.get("/admin/usage-summary")
 async def get_usage_summary(
     current_user: User = Depends(current_active_user),
     db: AsyncSession = Depends(get_db)

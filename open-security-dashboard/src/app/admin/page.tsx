@@ -157,8 +157,8 @@ export default function AdminPage() {
     try {
       // Fetch real system analytics from identity service
       const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get(getIdentityPath('/api/v1/analytics/admin/analytics/system-stats?days=30')),
-        identityClient.get(getIdentityPath('/api/v1/analytics/admin/analytics/usage-summary'))
+        identityClient.get(getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')),
+        identityClient.get(getIdentityPath('/api/v1/analytics/admin/usage-summary'))
       ])
       
       // Extract real analytics data
@@ -213,7 +213,7 @@ export default function AdminPage() {
   const fetchUsers = async () => {
     try {
       setIsLoading(true)
-      const response = await identityClient.get(getIdentityPath('/api/v1/users/admin/users'), {
+      const response = await identityClient.get(getIdentityPath('/api/v1/admin/users'), {
         email_filter: searchTerm || undefined,
         is_active: filterActive,
         limit: 100
@@ -248,7 +248,7 @@ export default function AdminPage() {
 
   const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/status?is_active=${!currentStatus}`))
+      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/status?is_active=${!currentStatus}`))
       
       toast({
         title: "Success",
@@ -274,7 +274,7 @@ export default function AdminPage() {
     // First check if the user can be deleted (unless forcing)
     if (!forceDelete) {
       try {
-        const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/users/admin/users/${userId}/can-delete`))
+        const checkResponse = await identityClient.get(getIdentityPath(`/api/v1/admin/users/${userId}/can-delete`))
         
         if (!checkResponse.can_delete) {
           // Check if force delete is possible
@@ -367,8 +367,8 @@ export default function AdminPage() {
 
     try {
       const deleteUrl = forceDelete 
-        ? getIdentityPath(`/api/v1/users/admin/users/${userId}?force=true`)
-        : getIdentityPath(`/api/v1/users/admin/users/${userId}`)
+        ? getIdentityPath(`/api/v1/admin/users/${userId}?force=true`)
+        : getIdentityPath(`/api/v1/admin/users/${userId}`)
         
       await identityClient.delete(deleteUrl)
       
@@ -410,7 +410,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/role`), {
+      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/role`), {
         is_superuser: true
       })
       
@@ -436,7 +436,7 @@ export default function AdminPage() {
     }
 
     try {
-      await identityClient.patch(getIdentityPath(`/api/v1/users/admin/users/${userId}/role`), {
+      await identityClient.patch(getIdentityPath(`/api/v1/admin/users/${userId}/role`), {
         is_superuser: false
       })
       

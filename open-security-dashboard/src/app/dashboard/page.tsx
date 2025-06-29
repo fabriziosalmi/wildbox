@@ -88,7 +88,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       // Add CSPM service for cloud security data
       cspmClient.get(getCSPMPath('/api/v1/dashboard/executive-summary?days=7')),
       // Add Guardian service for vulnerability data  
-      guardianClient.get(getGuardianPath('/api/v1/reports/dashboards/1/data/')),
+      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities/?page_size=10')),
       // Add Responder service for automation data
       responderClient.get(getResponderPath('/api/v1/metrics'))
     ])
@@ -257,7 +257,7 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
       // Fetch recent scan results from CSMP
       cspmClient.get('/api/v1/scans?limit=3&sort=-created_at'),
       // Fetch recent alerts from Guardian
-      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities?limit=3&severity=critical,high&sort=-created_at'))
+      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at'))
     ])
 
     const activities: RecentActivity[] = []
