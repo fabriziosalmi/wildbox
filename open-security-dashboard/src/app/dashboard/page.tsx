@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient, getSensorPath } from '@/lib/api-client'
+import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient, getSensorPath, getGuardianPath, getResponderPath, getCSPMPath } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 
 interface DashboardMetrics {
@@ -86,11 +86,11 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       apiClient.get('/api/system/health-aggregate'),
       dataClient.get('/api/v1/dashboard/threat-intel'),
       // Add CSPM service for cloud security data
-      cspmClient.get('/api/v1/dashboard/executive-summary?days=7'),
+      cspmClient.get(getCSPMPath('/api/v1/dashboard/executive-summary?days=7')),
       // Add Guardian service for vulnerability data  
-      guardianClient.get('/api/v1/reports/dashboards/1/data/'),
+      guardianClient.get(getGuardianPath('/api/v1/reports/dashboards/1/data/')),
       // Add Responder service for automation data
-      responderClient.get('/v1/metrics')
+      responderClient.get(getResponderPath('/api/v1/metrics'))
     ])
 
     // Extract system health data
@@ -257,7 +257,7 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
       // Fetch recent scan results from CSMP
       cspmClient.get('/api/v1/scans?limit=3&sort=-created_at'),
       // Fetch recent alerts from Guardian
-      guardianClient.get('/api/v1/vulnerabilities?limit=3&severity=critical,high&sort=-created_at')
+      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities?limit=3&severity=critical,high&sort=-created_at'))
     ])
 
     const activities: RecentActivity[] = []

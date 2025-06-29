@@ -29,20 +29,39 @@ class ApiClient {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
       (config) => {
+        console.log('🔍 Outgoing API Request:')
+        console.log('  - Base URL:', this.baseURL)
+        console.log('  - Endpoint:', config.url)
+        console.log('  - Method:', config.method?.toUpperCase())
+        
         // Check if this is a request to the security tools API service
         const isSecurityAPI = this.baseURL.includes('/api/v1/tools') || this.baseURL.includes('localhost:8000') || this.baseURL.includes(':8000')
+        
+        // Check if this is a request to the Guardian service
+        const isGuardianAPI = this.baseURL.includes('/api/v1/guardian') || this.baseURL.includes('localhost:8013') || this.baseURL.includes(':8013')
         
         if (isSecurityAPI) {
           // Use API key for security tools API
           const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'UrZMId_lkb_-9TcWSicVPCVNqSvnwr8e2VS9iXTAfxw'
           config.headers['X-API-Key'] = apiKey
+          console.log('  - Auth Type: API Key (Security Tools)')
+        } else if (isGuardianAPI) {
+          // Use API key for Guardian service
+          const guardianApiKey = 'wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263' // From Guardian database
+          config.headers['X-API-Key'] = guardianApiKey
+          console.log('  - Auth Type: API Key (Guardian)')
         } else {
           // Use JWT token for other services (identity, etc.)
           const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
           if (token) {
             config.headers.Authorization = `Bearer ${token}`
+            console.log('  - Auth Type: JWT Token')
+          } else {
+            console.log('  - Auth Type: None (no token found)')
           }
         }
+        
+        console.log('  - Final Headers:', config.headers)
         return config
       },
       (error) => {
@@ -64,8 +83,23 @@ class ApiClient {
           apiError.message = (error.response.data as any)?.message || error.message || 'API Error'
           apiError.details = error.response.data
 
+          // Enhanced debugging for all errors
+          console.log('🔍 API Error Details:')
+          console.log('  - Base URL:', this.baseURL)
+          console.log('  - Endpoint:', error.config?.url)
+          console.log('  - Method:', error.config?.method?.toUpperCase())
+          console.log('  - Status:', error.response.status)
+          console.log('  - Response:', error.response.data)
+          console.log('  - Headers sent:', error.config?.headers)
+
           // Handle auth errors
           if (error.response.status === 401) {
+            console.error('🚨 401 UNAUTHORIZED ERROR DETECTED!')
+            console.error('🚨 Service Base URL:', this.baseURL)
+            console.error('🚨 Failed Endpoint:', error.config?.url)
+            console.error('🚨 Request Headers:', error.config?.headers)
+            console.error('🚨 Response Data:', error.response.data)
+            console.error('🚨 Full Request Config:', error.config)
             this.handleAuthError()
           }
         } else if (error.request) {
@@ -81,6 +115,11 @@ class ApiClient {
   }
 
   private handleAuthError() {
+    console.error('🚨 AUTH ERROR: 401 received, clearing tokens and redirecting')
+    console.error('🚨 Current URL:', window.location.href)
+    console.error('🚨 Request that failed - Service:', this.baseURL)
+    console.error('🚨 Stack trace:', new Error().stack)
+    
     // Clear auth tokens
     Cookies.remove('auth_token')
     localStorage.removeItem('auth_token')
@@ -88,6 +127,7 @@ class ApiClient {
     
     // Redirect to login if we're not already there
     if (typeof window !== 'undefined' && !window.location.pathname.includes('/auth')) {
+      console.error('🚨 Redirecting to login due to auth error from service:', this.baseURL)
       window.location.href = '/'
     }
   }
