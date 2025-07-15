@@ -18,7 +18,7 @@ aiodns==3.5.0
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies - Latest secure
-aiohttp==3.12.13
+aiohttp==3.12.14
 beautifulsoup4==4.13.4
 requests==2.32.4
 
