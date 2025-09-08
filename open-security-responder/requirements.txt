@@ -27,7 +27,7 @@ pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 
 # Production server
-gunicorn==21.2.0
+gunicorn==23.0.0
 
 # Utilities
 python-dotenv==1.0.0
