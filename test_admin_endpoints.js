@@ -1,5 +1,10 @@
 // Test script to verify admin endpoints are working
+// SECURITY WARNING: This contains test credentials - not for production use!
 const API_BASE = 'http://localhost/api/v1/identity';
+
+// Use environment variables or secure credential management in production
+const TEST_USERNAME = process.env.ADMIN_USERNAME || 'superadmin@wildbox.com';
+const TEST_PASSWORD = process.env.ADMIN_PASSWORD || 'CHANGE_THIS_PASSWORD';
 
 async function getAuthToken() {
   const response = await fetch(`${API_BASE}/auth/login`, {
@@ -7,7 +12,7 @@ async function getAuthToken() {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: 'username=superadmin@wildbox.com&password=admin123456'
+    body: `username=${TEST_USERNAME}&password=${TEST_PASSWORD}`
   });
   
   if (!response.ok) {

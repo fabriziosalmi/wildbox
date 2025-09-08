@@ -67,7 +67,7 @@ fi
 
 # Step 3: Generate JWT secret if needed
 print_step "Checking JWT secret key"
-if grep -q "your-super-secret-jwt-key-here-change-this" .env; then
+if grep -q "INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS" .env; then
     JWT_SECRET=$(openssl rand -hex 32)
     sed -i.bak "s/JWT_SECRET_KEY=.*/JWT_SECRET_KEY=$JWT_SECRET/" .env
     print_status "Generated new JWT secret key"

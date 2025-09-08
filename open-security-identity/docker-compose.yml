@@ -16,14 +16,14 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-INSECURE-DEFAULT-JWT-SECRET}
       - STRIPE_SECRET_KEY=sk_test_your_stripe_secret_key
       - STRIPE_WEBHOOK_SECRET=whsec_your_stripe_webhook_secret
       - STRIPE_PUBLISHABLE_KEY=pk_test_your_stripe_publishable_key
       # Auto-migration settings
       - CREATE_INITIAL_ADMIN=true
       - INITIAL_ADMIN_EMAIL=admin@wildbox.security
-      - INITIAL_ADMIN_PASSWORD=ChangeMeInProduction123!
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-INSECURE-DEFAULT-PASSWORD}
     depends_on:
       - postgres
       - redis

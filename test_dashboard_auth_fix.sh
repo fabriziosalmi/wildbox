@@ -1,16 +1,27 @@
 #!/bin/bash
 
 # Test script to verify the authentication fix works from the dashboard perspective
+# SECURITY WARNING: This uses test credentials - set proper credentials via environment variables
 
 echo "🧪 Testing Dashboard Authentication Fix"
 echo "======================================="
+
+# Get credentials from environment or use test defaults (NOT for production!)
+TEST_EMAIL="${TEST_ADMIN_EMAIL:-superadmin@wildbox.com}"
+TEST_PASSWORD="${TEST_ADMIN_PASSWORD:-CHANGE_THIS_PASSWORD}"
+
+if [[ "$TEST_PASSWORD" == "CHANGE_THIS_PASSWORD" ]]; then
+    echo "⚠️  WARNING: Using insecure test credentials!"
+    echo "   Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD environment variables"
+    echo "   for secure testing"
+fi
 
 # Test login via the dashboard API endpoint
 echo -e "\n1. Testing login endpoint through dashboard..."
 
 LOGIN_RESPONSE=$(curl -s -X POST "http://localhost:3000/api/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"email": "superadmin@wildbox.com", "password": "admin123456"}')
+  -d "{\"email\": \"$TEST_EMAIL\", \"password\": \"$TEST_PASSWORD\"}")
 
 if echo "$LOGIN_RESPONSE" | grep -q "access_token"; then
     echo "✅ Dashboard login API endpoint works correctly"
@@ -25,7 +36,7 @@ echo -e "\n2. Testing identity service endpoint that dashboard uses..."
 
 IDENTITY_LOGIN_RESPONSE=$(curl -s -X POST "http://localhost/api/v1/identity/auth/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=superadmin@wildbox.com&password=admin123456")
+  -d "username=$TEST_EMAIL&password=$TEST_PASSWORD")
 
 if echo "$IDENTITY_LOGIN_RESPONSE" | grep -q "access_token"; then
     echo "✅ Identity service login endpoint works correctly"
@@ -51,4 +62,4 @@ fi
 
 echo -e "\n🎉 Authentication endpoint testing complete!"
 echo -e "\nNext step: Try logging in through the web interface at http://localhost:3000"
-echo "Use credentials: superadmin@wildbox.com / admin123456"
+echo "Use credentials: $TEST_EMAIL / [password from environment]"
