@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
     # Security configuration
-    secret_key: str = Field(default="your-super-secret-key-change-in-production", env="SECRET_KEY")
+    secret_key: str = Field(default="INSECURE-DEFAULT-SECRET-KEY-CHANGE-THIS", env="SECRET_KEY")
     access_token_expire_minutes: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
     # API configuration

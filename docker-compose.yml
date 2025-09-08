@@ -1,5 +1,14 @@
 # Wildbox Security Suite - Integration Testing Orchestrator
 # Coordinates all services with shared networking for end-to-end testing
+#
+# 🚨 SECURITY WARNING: This configuration uses default values for testing!
+# 📋 BEFORE PRODUCTION: 
+#   1. Copy .env.example to .env
+#   2. Generate secure random values for all secrets
+#   3. Change all default passwords
+#   4. Review SECURITY.md for complete security checklist
+#
+# See SECURITY.md for complete production security requirements
 
 networks:
   wildbox:
@@ -16,15 +25,15 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
-      - REDIS_URL=redis://wildbox-redis:6379/0
-      - JWT_SECRET_KEY=wildbox-super-secret-jwt-key-for-testing
-      - STRIPE_SECRET_KEY=sk_test_dummy_key_for_testing
-      - STRIPE_WEBHOOK_SECRET=whsec_dummy_webhook_for_testing
-      - STRIPE_PUBLISHABLE_KEY=pk_test_dummy_publishable_for_testing
-      - CREATE_INITIAL_ADMIN=true
-      - INITIAL_ADMIN_EMAIL=admin@wildbox.security
-      - INITIAL_ADMIN_PASSWORD=ChangeMeInProduction123!
+      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/identity}
+      - REDIS_URL=${REDIS_URL:-redis://wildbox-redis:6379/0}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-please-set-jwt-secret-in-env-file}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_set_your_stripe_key}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_set_your_webhook_secret}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-pk_test_set_your_publishable_key}
+      - CREATE_INITIAL_ADMIN=${CREATE_INITIAL_ADMIN:-true}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-admin@wildbox.security}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-CHANGE-THIS-PASSWORD}
     depends_on:
       - postgres
       - wildbox-redis
@@ -46,11 +55,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_KEY=wbx-6f8a9d2c-4e7b-1a3f-9c8e-2d5a6b4c8e9f-2025-prod
-      - DEBUG=true
-      - LOG_LEVEL=INFO
-      - ENVIRONMENT=development
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:80,http://localhost
+      - API_KEY=${API_KEY:-wbx-set-your-secure-api-key-here}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
     networks:
       - wildbox
     healthcheck:
@@ -69,10 +78,10 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data
-      - DEBUG=true
-      - LOG_LEVEL=INFO
-      - CORS_ORIGINS=http://localhost:3000,http://localhost:80,http://localhost
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
     depends_on:
       - postgres
     networks:
@@ -104,7 +113,7 @@ services:
       - IDENTITY_SERVICE_URL=http://open-security-identity:8001
       - GATEWAY_INTERNAL_SECRET=integration-test-secret-2025
       - AUTH_CACHE_TTL=300
-      - GATEWAY_DEBUG=true
+      - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
     networks:
       - wildbox
     depends_on:
@@ -137,8 +146,8 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - NODE_ENV=development
-      - NEXT_PUBLIC_DEBUG=true
+      - NODE_ENV=${NODE_ENV:-production}
+      - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-false}
       - NEXT_PUBLIC_USE_GATEWAY=true
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:80
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
@@ -167,9 +176,9 @@ services:
     container_name: wildbox-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=identity
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE-THIS-DB-PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-identity}
     ports:
       - "5432:5432"
     volumes:
@@ -209,12 +218,12 @@ services:
     ports:
       - "8013:8013"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/guardian
-      - REDIS_URL=redis://wildbox-redis:6379/1
-      - CELERY_BROKER_URL=redis://wildbox-redis:6379/1
-      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/1
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/guardian}
+      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
+      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
+      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/1}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE=/app/logs/guardian.log
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,open-security-guardian
     volumes:
@@ -242,10 +251,10 @@ services:
     ports:
       - "8018:8018"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/responder
-      - REDIS_URL=redis://wildbox-redis:6379/2
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - DATABASE_URL=${RESPONDER_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/responder}
+      - REDIS_URL=${RESPONDER_REDIS_URL:-redis://wildbox-redis:6379/2}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - postgres
       - wildbox-redis
@@ -269,11 +278,11 @@ services:
     ports:
       - "8019:8019"
     environment:
-      - REDIS_URL=redis://wildbox-redis:6379/3
-      - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
-      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
+      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
+      - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - wildbox-redis
     networks:
@@ -314,12 +323,12 @@ services:
     ports:
       - "8006:8006"
     environment:
-      - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
-      - REDIS_URL=redis://wildbox-redis:6379/4
-      - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
-      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-development-only}
+      - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
+      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
+      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - wildbox-redis
     networks:
@@ -339,12 +348,12 @@ services:
     restart: unless-stopped
     command: celery -A app.worker worker --loglevel=info --concurrency=4
     environment:
-      - OPENAI_API_KEY=sk-test-dummy-key-for-development-only
-      - REDIS_URL=redis://wildbox-redis:6379/4
-      - CELERY_BROKER_URL=redis://wildbox-redis:6379/4
-      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/4
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-development-only}
+      - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
+      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
+      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - wildbox-redis
     networks:
@@ -362,10 +371,10 @@ services:
     ports:
       - "8004:8004"
     environment:
-      - SENSOR_LOGGING_LEVEL=INFO
+      - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
       - PYTHONPATH=/app
-      - DEBUG=true
-      - LOG_LEVEL=INFO
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor

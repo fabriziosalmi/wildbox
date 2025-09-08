@@ -24,7 +24,7 @@ The service will automatically:
 - **API**: http://localhost:8001
 - **Documentation**: http://localhost:8001/docs
 - **Admin Email**: admin@wildbox.security
-- **Admin Password**: ChangeMeInProduction123!
+- **Admin Password**: Set via INITIAL_ADMIN_PASSWORD environment variable (see .env.example)
 
 ⚠️ **Change the default admin password after first login!**
 
@@ -160,7 +160,7 @@ Key environment variables:
 DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/identity_db
 
 # JWT Configuration  
-JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production
+JWT_SECRET_KEY=INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # Stripe Configuration

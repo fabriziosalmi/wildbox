@@ -2,12 +2,23 @@
 
 echo "🔐 Final Authentication Flow Verification"
 echo "========================================"
+echo "⚠️  WARNING: This script uses test credentials - use environment variables for secure testing"
+
+# Get credentials from environment or use test defaults (NOT for production!)
+TEST_EMAIL="${TEST_ADMIN_EMAIL:-superadmin@wildbox.com}"
+TEST_PASSWORD="${TEST_ADMIN_PASSWORD:-CHANGE_THIS_PASSWORD}"
+
+if [[ "$TEST_PASSWORD" == "CHANGE_THIS_PASSWORD" ]]; then
+    echo "🚨 CRITICAL: Set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD environment variables"
+    echo "   This script cannot run with default insecure credentials"
+    exit 1
+fi
 
 # Test 1: Login through gateway
 echo -e "\n1. Testing login through gateway..."
 LOGIN_RESPONSE=$(curl -s -X POST "http://localhost/api/v1/identity/auth/login" \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=superadmin@wildbox.com&password=admin123456")
+  -d "username=$TEST_EMAIL&password=$TEST_PASSWORD")
 
 if echo "$LOGIN_RESPONSE" | grep -q "access_token"; then
     echo "✅ Gateway login works"
@@ -23,7 +34,7 @@ echo -e "\n2. Testing user info endpoint..."
 USER_INFO=$(curl -s -X GET "http://localhost/api/v1/identity/auth/me" \
   -H "Authorization: Bearer $ACCESS_TOKEN")
 
-if echo "$USER_INFO" | grep -q "superadmin@wildbox.com"; then
+if echo "$USER_INFO" | grep -q "$TEST_EMAIL"; then
     echo "✅ User info endpoint works"
     echo "   User: $(echo "$USER_INFO" | python3 -c "import sys, json; print(json.load(sys.stdin)['email'])" 2>/dev/null)"
     echo "   Is Superuser: $(echo "$USER_INFO" | python3 -c "import sys, json; print(json.load(sys.stdin)['is_superuser'])" 2>/dev/null)"
@@ -78,7 +89,7 @@ echo "   ✅ Superuser access to admin endpoints works"
 echo "   ✅ Logout functionality works"
 echo -e "\n🌐 Web Interface:"
 echo "   Dashboard: http://localhost:3000"
-echo "   Login with: superadmin@wildbox.com / admin123456"
+echo "   Login with: $TEST_EMAIL / [secure password from environment]"
 echo -e "\n🔧 Technical Details:"
 echo "   - API client path transformation fixed"
 echo "   - Nginx gateway configuration updated"

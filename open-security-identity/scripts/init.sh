@@ -60,6 +60,7 @@ create_superuser() {
     python -c "
 import asyncio
 import os
+import sys
 from app.database import get_db
 from app.models import User
 from app.user_manager import get_user_manager, get_user_db
@@ -67,10 +68,13 @@ from sqlalchemy import select
 
 async def create_initial_superuser():
     admin_email = os.getenv('INITIAL_ADMIN_EMAIL', 'admin@wildbox.security')
-    admin_password = os.getenv('INITIAL_ADMIN_PASSWORD', 'ChangeMeInProduction123!')
+    admin_password = os.getenv('INITIAL_ADMIN_PASSWORD', 'INSECURE-DEFAULT-PASSWORD')
     
-    if admin_email == 'admin@wildbox.security' and admin_password == 'ChangeMeInProduction123!':
-        print('⚠️  Using default admin credentials - CHANGE THEM IN PRODUCTION!')
+    if admin_password == 'INSECURE-DEFAULT-PASSWORD':
+        print('🚨 CRITICAL SECURITY WARNING: Using insecure default password!')
+        print('   Set INITIAL_ADMIN_PASSWORD environment variable to a secure password')
+        print('   See .env.example for configuration guidance')
+        sys.exit(1)
     
     try:
         # Get database session

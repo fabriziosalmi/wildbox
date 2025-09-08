@@ -10,6 +10,7 @@ import json
 import time
 import subprocess
 import sys
+import os
 from typing import Dict, Optional, List
 from datetime import datetime
 
@@ -19,10 +20,11 @@ class WildboxAuthenticationVerifier:
         self.gateway_url = "http://localhost:80"
         self.dashboard_url = "http://localhost:3000"
         
-        # Test users with different roles
+        # Test users with different roles - SECURITY WARNING: These are for testing only!
+        # In production, use environment variables or secure credential management
         self.test_users = {
-            "demo@wildbox.com": {"password": "demopassword123", "role": "demo"},
-            "superadmin@wildbox.com": {"password": "admin123456", "role": "admin"}
+            "demo@wildbox.com": {"password": os.getenv("DEMO_PASSWORD", "demopassword123"), "role": "demo"},
+            "superadmin@wildbox.com": {"password": os.getenv("ADMIN_PASSWORD", "CHANGE_THIS_PASSWORD"), "role": "admin"}
         }
         
         # Store authentication tokens

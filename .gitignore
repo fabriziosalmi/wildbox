@@ -23,7 +23,48 @@ tests/utils/__pycache__/
 tests/reports/*.html
 tests/reports/*.json
 
-# Private blueprint document
-# BLUEPRINT.md (removed - should be tracked as critical documentation)
+# Security sensitive files - NEVER COMMIT THESE!
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.jks
+secrets/
+credentials/
+private_keys/
+certificates/
+*.log
+logs/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.bak
+*.backup
+backup/
+dumps/
+
+# System files
 .DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+
+# Other
 structure_simplified.txt

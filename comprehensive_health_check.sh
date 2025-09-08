@@ -61,9 +61,20 @@ check_service() {
 check_containers() {
     log "Checking container status..."
     
+    # Check for both docker-compose and docker compose
+    local compose_cmd=""
+    if command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        error "Neither docker-compose nor docker compose is available"
+        return 1
+    fi
+    
     # Get all containers from the docker-compose setup
     local containers
-    containers=$(docker-compose ps --format "table {{.Name}}\t{{.State}}\t{{.Ports}}" 2>/dev/null || echo "No containers found")
+    containers=$($compose_cmd ps --format "table {{.Name}}\t{{.State}}\t{{.Ports}}" 2>/dev/null || echo "No containers found")
     
     echo "$containers"
     echo ""
@@ -88,15 +99,26 @@ check_containers() {
 check_databases() {
     log "Checking database connectivity..."
     
+    # Check for compose command
+    local compose_cmd=""
+    if command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        error "Neither docker-compose nor docker compose is available"
+        return 1
+    fi
+    
     # Check PostgreSQL
-    if docker-compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
+    if $compose_cmd exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
         success "✅ PostgreSQL is healthy"
         
         # Check if required databases exist
         local missing_dbs=()
         
         # Check for 'data' database (based on error in logs)
-        if ! docker-compose exec -T postgres psql -U postgres -lqt | cut -d \| -f 1 | grep -qw data; then
+        if ! $compose_cmd exec -T postgres psql -U postgres -lqt | cut -d \| -f 1 | grep -qw data; then
             missing_dbs+=("data")
         fi
         
@@ -104,7 +126,7 @@ check_databases() {
             warn "Missing databases: ${missing_dbs[*]}"
             log "Creating missing databases..."
             for db in "${missing_dbs[@]}"; do
-                docker-compose exec -T postgres createdb -U postgres "$db" || warn "Failed to create database: $db"
+                $compose_cmd exec -T postgres createdb -U postgres "$db" || warn "Failed to create database: $db"
             done
         fi
     else
@@ -112,7 +134,7 @@ check_databases() {
     fi
     
     # Check Redis instance (consolidated)
-    if docker-compose exec -T wildbox-redis redis-cli ping >/dev/null 2>&1; then
+    if $compose_cmd exec -T wildbox-redis redis-cli ping >/dev/null 2>&1; then
         success "✅ wildbox-redis is healthy"
     else
         error "❌ wildbox-redis is not responding"
@@ -144,36 +166,47 @@ check_service_health() {
 fix_known_issues() {
     log "Checking for known issues and applying fixes..."
     
+    # Check for compose command
+    local compose_cmd=""
+    if command -v docker-compose >/dev/null 2>&1; then
+        compose_cmd="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        compose_cmd="docker compose"
+    else
+        error "Neither docker-compose nor docker compose is available"
+        return 1
+    fi
+    
     # Fix 1: Gateway nginx config issue
-    if docker-compose logs gateway 2>/dev/null | grep -q "host not found in upstream"; then
+    if $compose_cmd logs gateway 2>/dev/null | grep -q "host not found in upstream"; then
         warn "Detected nginx upstream host resolution issue in gateway"
         log "Restarting gateway service..."
-        docker-compose restart gateway || warn "Failed to restart gateway"
+        $compose_cmd restart gateway || warn "Failed to restart gateway"
     fi
     
     # Fix 2: Data service database connection
-    if docker-compose logs data 2>/dev/null | grep -q "database.*does not exist"; then
+    if $compose_cmd logs data 2>/dev/null | grep -q "database.*does not exist"; then
         warn "Detected missing database for data service"
         log "Creating missing databases..."
-        docker-compose exec -T postgres createdb -U postgres data 2>/dev/null || warn "Database might already exist"
+        $compose_cmd exec -T postgres createdb -U postgres data 2>/dev/null || warn "Database might already exist"
         log "Restarting data service..."
-        docker-compose restart data || warn "Failed to restart data service"
+        $compose_cmd restart data || warn "Failed to restart data service"
     fi
     
     # Fix 3: Missing Python dependencies
-    if docker-compose logs api 2>/dev/null | grep -q "No module named"; then
+    if $compose_cmd logs api 2>/dev/null | grep -q "No module named"; then
         warn "Detected missing Python dependencies"
         log "Consider rebuilding API container with updated requirements"
     fi
     
     # Fix 4: Sensor osquery table issues
-    if docker-compose logs sensor 2>/dev/null | grep -q "no such table: services"; then
+    if $compose_cmd logs sensor 2>/dev/null | grep -q "no such table: services"; then
         warn "Sensor osquery compatibility issue detected (Linux container trying to query Windows/macOS specific tables)"
         log "This is expected in containerized environments - sensor will continue with available tables"
     fi
     
     # Fix 5: Sensor data lake connectivity
-    if docker-compose logs sensor 2>/dev/null | grep -q "Cannot connect to host your-security-data-platform.com"; then
+    if $compose_cmd logs sensor 2>/dev/null | grep -q "Cannot connect to host your-security-data-platform.com"; then
         warn "Sensor cannot connect to external data platform"
         log "This is expected with default config - update sensor config for production use"
     fi
@@ -224,9 +257,9 @@ main() {
     echo "======================================================"
     echo ""
     
-    # Check if docker-compose is available
-    if ! command -v docker-compose >/dev/null 2>&1; then
-        error "docker-compose is not installed or not in PATH"
+    # Check if docker-compose or docker compose is available
+    if ! command -v docker-compose >/dev/null 2>&1 && ! docker compose version >/dev/null 2>&1; then
+        error "Neither docker-compose nor docker compose is available"
         exit 1
     fi
     

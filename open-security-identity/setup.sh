@@ -78,10 +78,10 @@ setup_environment() {
     # Update with generated secrets
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
-        sed -i '' "s/your-super-secret-jwt-key-change-in-production/$JWT_SECRET/" .env
+        sed -i '' "s/INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS/$JWT_SECRET/" .env
     else
         # Linux
-        sed -i "s/your-super-secret-jwt-key-change-in-production/$JWT_SECRET/" .env
+        sed -i "s/INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS/$JWT_SECRET/" .env
     fi
     
     log "Environment configured with secure secrets ✓"
