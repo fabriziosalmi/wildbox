@@ -79,7 +79,7 @@ flake8==6.1.0
 mypy==1.7.1
 
 # Production server
-gunicorn==21.2.0
+gunicorn==23.0.0
 
 # Utilities
 python-dateutil==2.8.2
