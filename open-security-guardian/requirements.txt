@@ -1,7 +1,7 @@
 # Open Security Guardian - Python Dependencies
 
 # Django Framework
-Django==4.2.22
+Django==4.2.24
 djangorestframework==3.14.0
 django-cors-headers==4.3.1
 django-filter==23.2
