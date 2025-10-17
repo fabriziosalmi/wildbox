@@ -14,7 +14,8 @@ import {
   XCircle, 
   Clock,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Construction
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -146,6 +147,23 @@ export default function CloudSecurityPage() {
 
   return (
     <div className="space-y-8">
+      {/* v1.0 Roadmap Future Notice */}
+      <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Construction className="w-6 h-6 text-amber-600" />
+            <div>
+              <CardTitle className="text-amber-900 dark:text-amber-100">
+                Coming in Future Release
+              </CardTitle>
+              <CardDescription className="text-amber-700 dark:text-amber-200">
+                Cloud Security (CSPM) module is planned for post-v1.0 release. This feature will include comprehensive cloud security posture management across AWS, Azure, and GCP.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Cloud Security</h1>

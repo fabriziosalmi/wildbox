@@ -58,22 +58,24 @@ const baseNavigation: NavigationItem[] = [
     icon: Wrench,
     description: 'Security tools execution',
   },
-  {
-    name: 'Cloud Security',
-    href: '/cloud-security',
-    icon: Cloud,
-    description: 'CSPM and compliance',
-    children: [
-      { name: 'Scans', href: '/cloud-security/scans' },
-      { name: 'Compliance', href: '/cloud-security/compliance' },
-    ],
-  },
-  {
-    name: 'Endpoints',
-    href: '/endpoints',
-    icon: Monitor,
-    description: 'Sensor management',
-  },
+  // REMOVED FOR v1.0 - Cloud Security (CSPM) - Roadmap Future
+  // {
+  //   name: 'Cloud Security',
+  //   href: '/cloud-security',
+  //   icon: Cloud,
+  //   description: 'CSPM and compliance',
+  //   children: [
+  //     { name: 'Scans', href: '/cloud-security/scans' },
+  //     { name: 'Compliance', href: '/cloud-security/compliance' },
+  //   ],
+  // },
+  // REMOVED FOR v1.0 - Endpoints (Sensor) - Roadmap Future
+  // {
+  //   name: 'Endpoints',
+  //   href: '/endpoints',
+  //   icon: Monitor,
+  //   description: 'Sensor management',
+  // },
   {
     name: 'Vulnerabilities',
     href: '/vulnerabilities',

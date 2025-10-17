@@ -20,7 +20,8 @@ import {
   Plus,
   Eye,
   Download,
-  RefreshCw
+  RefreshCw,
+  Construction
 } from 'lucide-react'
 
 interface ScanStatus {
@@ -252,6 +253,23 @@ export default function CloudSecurityScansPage() {
 
   return (
     <div className="space-y-8">
+      {/* v1.0 Roadmap Future Notice */}
+      <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <Construction className="w-6 h-6 text-amber-600" />
+            <div>
+              <CardTitle className="text-amber-900 dark:text-amber-100">
+                Coming in Future Release
+              </CardTitle>
+              <CardDescription className="text-amber-700 dark:text-amber-200">
+                Cloud Security Scans module is planned for post-v1.0 release. This feature will enable automated security scanning across AWS, Azure, and GCP environments.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Cloud Security Scans</h1>
