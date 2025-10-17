@@ -10,9 +10,10 @@ celery[redis]==5.3.4
 redis==4.6.0
 
 # AI/LLM Framework
-langchain==0.2.17
-langchain-openai==0.1.8
-langchain-community==0.3.27
+# Updated for v1.0 - Let pip resolve compatible versions
+langchain
+langchain-openai
+langchain-community
 
 # HTTP Client
 httpx==0.25.2

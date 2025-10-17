@@ -68,29 +68,32 @@ services:
       timeout: 10s
       retries: 3
 
-  # Data Service (Threat Intelligence & IOCs)
-  data:
-    build:
-      context: ./open-security-data
-      dockerfile: Dockerfile
-    container_name: open-security-data
-    restart: unless-stopped
-    ports:
-      - "8002:8002"
-    environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
-    depends_on:
-      - postgres
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # ============================================================================
+  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
+  # Data Service (Threat Intelligence & IOCs) - Development at 45%
+  # ============================================================================
+  # data:
+  #   build:
+  #     context: ./open-security-data
+  #     dockerfile: Dockerfile
+  #   container_name: open-security-data
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8002:8002"
+  #   environment:
+  #     - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
+  #     - DEBUG=${DEBUG:-false}
+  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  #     - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - wildbox
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # API Gateway (Request Routing & Security)
   gateway:
@@ -119,12 +122,9 @@ services:
     depends_on:
       - wildbox-redis
       - identity
-      - data
       - guardian
       - responder
       - agents
-      - cspm
-      - sensor
       - automations
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
@@ -152,12 +152,12 @@ services:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:80
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
       - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:80/api/v1/identity
-      - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
+      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
       - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:80/api/v1/guardian
-      - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
+      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
       - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:80/api/v1/responder
       - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:80/api/v1/agents
-      - NEXT_PUBLIC_CSPM_API_URL=http://localhost:80/api/v1/cspm
+      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_CSPM_API_URL=http://localhost:80/api/v1/cspm
       # Internal URLs for server-side requests within Docker network
       - INTERNAL_GATEWAY_URL=http://open-security-gateway:80
       - NEXTAUTH_SECRET=wildbox-dashboard-secret-for-testing
@@ -268,48 +268,51 @@ services:
 
 
 
-  # CSPM Service (Cloud Security Posture Management)
-  cspm:
-    build:
-      context: ./open-security-cspm
-      dockerfile: Dockerfile
-    container_name: open-security-cspm
-    restart: unless-stopped
-    ports:
-      - "8019:8019"
-    environment:
-      - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
-      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
-      - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    depends_on:
-      - wildbox-redis
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # ============================================================================
+  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
+  # CSPM Service (Cloud Security Posture Management) - 314 files, requires intensive testing
+  # ============================================================================
+  # cspm:
+  #   build:
+  #     context: ./open-security-cspm
+  #     dockerfile: Dockerfile
+  #   container_name: open-security-cspm
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8019:8019"
+  #   environment:
+  #     - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
+  #     - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
+  #     - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
+  #     - DEBUG=${DEBUG:-false}
+  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  #   depends_on:
+  #     - wildbox-redis
+  #   networks:
+  #     - wildbox
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # CSPM Celery Worker (Background Tasks)
-  cspm-worker:
-    build:
-      context: ./open-security-cspm
-      dockerfile: Dockerfile
-    container_name: open-security-cspm-worker
-    restart: unless-stopped
-    command: celery -A app.worker worker --loglevel=info --concurrency=4
-    environment:
-      - REDIS_URL=redis://wildbox-redis:6379/3
-      - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
-      - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
-      - LOG_LEVEL=INFO
-    depends_on:
-      - wildbox-redis
-    networks:
-      - wildbox
+  # cspm-worker:
+  #   build:
+  #     context: ./open-security-cspm
+  #     dockerfile: Dockerfile
+  #   container_name: open-security-cspm-worker
+  #   restart: unless-stopped
+  #   command: celery -A app.worker worker --loglevel=info --concurrency=4
+  #   environment:
+  #     - REDIS_URL=redis://wildbox-redis:6379/3
+  #     - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
+  #     - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
+  #     - LOG_LEVEL=INFO
+  #   depends_on:
+  #     - wildbox-redis
+  #   networks:
+  #     - wildbox
 
 
 
@@ -361,36 +364,39 @@ services:
 
 
 
-  # Sensor Service (System Monitoring)
-  sensor:
-    build:
-      context: ./open-security-sensor
-      dockerfile: Dockerfile
-    container_name: open-security-sensor
-    restart: unless-stopped
-    ports:
-      - "8004:8004"
-    environment:
-      - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
-      - PYTHONPATH=/app
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    volumes:
-      - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
-      - sensor_logs:/var/log/security-sensor
-      - sensor_data:/var/lib/security-sensor
-      # Host monitoring (required for system telemetry)
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - wildbox
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+  # ============================================================================
+  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
+  # Sensor Service (System Monitoring) - Development at 50%
+  # ============================================================================
+  # sensor:
+  #   build:
+  #     context: ./open-security-sensor
+  #     dockerfile: Dockerfile
+  #   container_name: open-security-sensor
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8004:8004"
+  #   environment:
+  #     - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
+  #     - PYTHONPATH=/app
+  #     - DEBUG=${DEBUG:-false}
+  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  #   volumes:
+  #     - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
+  #     - sensor_logs:/var/log/security-sensor
+  #     - sensor_data:/var/lib/security-sensor
+  #     # Host monitoring (required for system telemetry)
+  #     - /proc:/host/proc:ro
+  #     - /sys:/host/sys:ro
+  #     - /etc:/host/etc:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #   networks:
+  #     - wildbox
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
 
   # Automations Service (n8n workflow automation)
   automations:
@@ -428,5 +434,6 @@ volumes:
   postgres_data:
   wildbox_redis_data:
   guardian_logs:
-  sensor_logs:
-  sensor_data:
+  # Volumes for excluded services (v1.0 Roadmap Future)
+  # sensor_logs:
+  # sensor_data:
