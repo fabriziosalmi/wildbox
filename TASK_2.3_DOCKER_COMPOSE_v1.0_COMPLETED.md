@@ -82,6 +82,18 @@ langchain-community
 
 **Risultato:** ✅ Build successful - Pip risolve automaticamente versioni compatibili
 
+#### open-security-identity/requirements.txt
+```python
+# BEFORE (bcrypt incompatibility):
+passlib[bcrypt]==1.7.4
+
+# AFTER (Fixed):
+passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0
+```
+
+**Risultato:** ✅ Login funzionante - bcrypt compatibility issue risolto
+
 ---
 
 ## 🎯 Servizi Attivi nella v1.0
