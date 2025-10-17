@@ -38,11 +38,11 @@ RUN useradd --create-home --shell /bin/bash --uid 1000 appuser && \
 USER appuser
 
 # Expose port
-EXPOSE 8001
+EXPOSE 8002
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8001/health || exit 1
+    CMD curl -f http://localhost:8002/health || exit 1
 
 # Default command
 CMD ["python", "-m", "app.api.main"]

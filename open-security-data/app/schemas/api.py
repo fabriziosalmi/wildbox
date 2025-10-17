@@ -248,30 +248,24 @@ class SensorMetadata(SensorMetadataBase):
     class Config:
         from_attributes = True
 
-# Update exports
+# Update exports - only include actually defined classes
 __all__ = [
     'IndicatorType',
     'ThreatType', 
     'ConfidenceLevel',
     'IndicatorBase',
-    'IndicatorCreate',
-    'Indicator',
-    'IndicatorUpdate',
     'IndicatorResponse',
-    'IndicatorQuery',
+    'IndicatorDetail',
     'IndicatorSearchResponse',
-    'BulkIndicatorCreate',
-    'BulkIndicatorResponse',
-    'SourceBase',
-    'SourceCreate',
-    'Source',
-    'SourceUpdate',
-    'CollectionRunBase',
-    'CollectionRun',
+    'BulkLookupItem',
+    'BulkLookupRequest',
+    'LookupResult',
+    'BulkLookupResponse',
     'SystemStats',
+    'SourceInfo',
     'IPIntelligence',
     'DomainIntelligence',
-    'FileHashIntelligence',
+    'HashIntelligence',
     'URLIntelligence',
     'ThreatFeed',
     'TelemetryEventType',

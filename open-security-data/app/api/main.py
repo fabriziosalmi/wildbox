@@ -778,3 +778,28 @@ async def get_telemetry_stats(
         "events_by_type": {item.event_type: item.count for item in event_type_counts},
         "query_time": datetime.now(timezone.utc).isoformat()
     }
+
+# Main execution
+if __name__ == "__main__":
+    import uvicorn
+    
+    # Configure logging
+    logging.basicConfig(
+        level=getattr(logging, config.logging.level.upper()),
+        format=config.logging.format
+    )
+    
+    logger.info("Starting Open Security Data API")
+    logger.info(f"Environment: {config.environment}")
+    logger.info(f"Debug mode: {config.debug}")
+    logger.info(f"Database URL: {config.database.url.split('@')[-1] if '@' in config.database.url else 'Not configured'}")
+    
+    # Run the application
+    uvicorn.run(
+        "app.api.main:app",
+        host=config.api.host,
+        port=config.api.port,
+        reload=config.debug and config.environment == "development",
+        log_level=config.logging.level.lower(),
+        access_log=True
+    )
