@@ -250,8 +250,11 @@ export const getIdentityPath = (endpoint: string): string => {
 // Helper function to get the correct data endpoint path
 export const getDataPath = (endpoint: string): string => {
   if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/data
-    return endpoint.replace('/api/v1/', '/')
+    // When using gateway, transform /api/v1/ to just / since base URL already has /api/v1/data
+    // This prevents double /api/v1/ in the path
+    if (endpoint.startsWith('/api/v1/')) {
+      return endpoint.substring(7) // Remove '/api/v1' prefix
+    }
   }
   return endpoint
 }

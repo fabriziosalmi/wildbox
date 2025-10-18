@@ -68,32 +68,29 @@ services:
       timeout: 10s
       retries: 3
 
-  # ============================================================================
-  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
-  # Data Service (Threat Intelligence & IOCs) - Development at 45%
-  # ============================================================================
-  # data:
-  #   build:
-  #     context: ./open-security-data
-  #     dockerfile: Dockerfile
-  #   container_name: open-security-data
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8002:8002"
-  #   environment:
-  #     - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
-  #     - DEBUG=${DEBUG:-false}
-  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
-  #     - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
-  #   depends_on:
-  #     - postgres
-  #   networks:
-  #     - wildbox
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
+  # Data Service (Threat Intelligence & IOCs)
+  data:
+    build:
+      context: ./open-security-data
+      dockerfile: Dockerfile
+    container_name: open-security-data
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://secdata:postgres@postgres:5432/data}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
+    depends_on:
+      - postgres
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # API Gateway (Request Routing & Security)
   gateway:
@@ -152,7 +149,7 @@ services:
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:80
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
       - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:80/api/v1/identity
-      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
+      - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
       - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:80/api/v1/guardian
       # EXCLUDED FROM v1.0: - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
       - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:80/api/v1/responder
