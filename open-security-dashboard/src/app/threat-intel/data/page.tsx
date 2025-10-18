@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { dataClient } from '@/lib/api-client'
+import { dataClient, getDataPath } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 
 interface Indicator {
@@ -62,7 +62,7 @@ interface SourceInfo {
 
 async function fetchSystemStats(): Promise<SystemStats> {
   try {
-    const response = await dataClient.get('/api/v1/stats')
+    const response = await dataClient.get(getDataPath('/api/v1/stats'))
     return response
   } catch (error) {
     console.error('Failed to fetch system stats:', error)
@@ -72,7 +72,7 @@ async function fetchSystemStats(): Promise<SystemStats> {
 
 async function fetchSources(): Promise<SourceInfo[]> {
   try {
-    const response = await dataClient.get('/api/v1/sources')
+    const response = await dataClient.get(getDataPath('/api/v1/sources'))
     return response
   } catch (error) {
     console.error('Failed to fetch sources:', error)
@@ -108,7 +108,7 @@ async function searchIndicators(params: {
     if (params.limit) searchParams.append('limit', params.limit.toString())
     if (params.offset) searchParams.append('offset', params.offset.toString())
 
-    const response = await dataClient.get(`/api/v1/indicators/search?${searchParams.toString()}`)
+    const response = await dataClient.get(getDataPath(`/api/v1/indicators/search?${searchParams.toString()}`))
     return response
   } catch (error) {
     console.error('Failed to search indicators:', error)
