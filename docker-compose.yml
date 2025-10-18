@@ -92,6 +92,24 @@ services:
       timeout: 10s
       retries: 3
 
+  # Data Scheduler (Threat Intelligence Collection Tasks)
+  data-scheduler:
+    build:
+      context: ./open-security-data
+      dockerfile: Dockerfile
+    container_name: open-security-data-scheduler
+    restart: unless-stopped
+    command: python -m app.scheduler.main
+    environment:
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://secdata:postgres@postgres:5432/data}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - postgres
+      - data
+    networks:
+      - wildbox
+
   # API Gateway (Request Routing & Security)
   gateway:
     build:
