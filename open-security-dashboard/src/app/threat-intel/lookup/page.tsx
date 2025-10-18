@@ -1,263 +1,410 @@
 'use client'
 
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { Search, Shield, Globe, Clock, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react'
+/**
+ * Threat Intel IOC Lookup Page
+ * 
+ * Provides real-time threat intelligence lookups for:
+ * - IP addresses (IPv4/IPv6)
+ * - Domain names
+ * - File hashes (MD5, SHA1, SHA256)
+ * 
+ * Features:
+ * - Automatic IOC type detection
+ * - Real-time API integration with Data service
+ * - Comprehensive UI states (pristine, loading, error, empty, success)
+ * - Threat severity indicators
+ * - Enrichment data display (geolocation, WHOIS, file metadata)
+ */
+
+import { useState, FormEvent } from 'react'
+import { 
+  Search, 
+  Shield, 
+  AlertTriangle, 
+  CheckCircle, 
+  Globe, 
+  Clock, 
+  Tag,
+  Hash,
+  Network,
+  Server,
+  X,
+  Loader2
+} from 'lucide-react'
+import { MainLayout } from '@/components/main-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { MainLayout } from '@/components/main-layout'
-import { dataClient } from '@/lib/api-client'
-import { validateIP, validateDomain, formatRelativeTime } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { 
+  useThreatLookup,
+  detectIOCType,
+  getMaxSeverity,
+  getAllThreatTypes,
+  getReputationVerdict,
+  formatConfidence,
+  getSeverityColor,
+  getConfidenceColor,
+  type ThreatIndicator,
+  type IPIntelligence,
+  type DomainIntelligence,
+  type HashIntelligence,
+  type IOCType
+} from '@/hooks/use-threat-lookup'
 
-interface IOCLookupResult {
-  ioc: {
-    value: string
-    type: 'ip' | 'domain' | 'url' | 'hash'
-    reputation: 'malicious' | 'suspicious' | 'clean' | 'unknown'
-    confidence: number
-    firstSeen: string
-    lastSeen: string
-    sources: string[]
-    tags: string[]
+// ============================================================================
+// Sub-Components
+// ============================================================================
+
+/**
+ * IOC Type Badge
+ */
+function IOCTypeBadge({ type }: { type: IOCType }) {
+  const config = {
+    ip_address: { icon: Network, label: 'IP Address', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100' },
+    domain: { icon: Globe, label: 'Domain', color: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100' },
+    file_hash: { icon: Hash, label: 'File Hash', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100' },
+    unknown: { icon: Shield, label: 'Unknown', color: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100' },
   }
-  reputation: {
-    score: number
-    verdict: 'malicious' | 'suspicious' | 'clean' | 'unknown'
-    sources: Array<{
-      name: string
-      verdict: string
-      confidence: number
-    }>
-    lastChecked: string
-  }
-  geolocation?: {
-    country: string
-    countryCode: string
-    city: string
-    latitude: number
-    longitude: number
-    asn: string
-    isp: string
-  }
-  whois?: {
-    domain: string
-    registrar: string
-    creationDate: string
-    expirationDate: string
-    nameServers: string[]
-  }
-}
-
-async function lookupIOC(indicator: string): Promise<IOCLookupResult> {
-  try {
-    // First, search for the indicator in our database
-    const searchResponse = await dataClient.get(`/api/v1/indicators/search?q=${encodeURIComponent(indicator)}&limit=1`)
-    
-    const isIP = validateIP(indicator)
-    const isDomain = validateDomain(indicator)
-    
-    let result: IOCLookupResult
-    
-    if (searchResponse.results && searchResponse.results.length > 0) {
-      // Found in database, use real data
-      const dbIndicator = searchResponse.results[0]
-      result = {
-        ioc: {
-          value: indicator,
-          type: dbIndicator.type || (isIP ? 'ip' : isDomain ? 'domain' : 'url'),
-          reputation: dbIndicator.reputation || 'unknown',
-          confidence: dbIndicator.confidence || 50,
-          firstSeen: dbIndicator.first_seen || dbIndicator.created_at,
-          lastSeen: dbIndicator.last_seen || dbIndicator.updated_at,
-          sources: dbIndicator.sources || ['Open Security Data'],
-          tags: dbIndicator.tags || []
-        },
-        reputation: {
-          score: dbIndicator.reputation_score || 50,
-          verdict: dbIndicator.reputation || 'unknown',
-          sources: dbIndicator.reputation_sources || [
-            { name: 'Open Security Data', verdict: dbIndicator.reputation || 'unknown', confidence: dbIndicator.confidence || 50 }
-          ],
-          lastChecked: dbIndicator.updated_at || new Date().toISOString()
-        }
-      }
-      
-      // Add geolocation for IPs if available
-      if (isIP && dbIndicator.metadata?.geolocation) {
-        result.geolocation = dbIndicator.metadata.geolocation
-      }
-      
-      // Add whois for domains if available
-      if (isDomain && dbIndicator.metadata?.whois) {
-        result.whois = dbIndicator.metadata.whois
-      }
-      
-    } else {
-      // Not found in database, try to enrich from external sources
-      try {
-        const enrichResponse = await dataClient.post('/api/v1/indicators/enrich', {
-          indicator,
-          type: isIP ? 'ip' : isDomain ? 'domain' : 'url'
-        })
-        
-        if (enrichResponse.success) {
-          const enrichedData = enrichResponse.data
-          result = {
-            ioc: {
-              value: indicator,
-              type: enrichedData.type || (isIP ? 'ip' : isDomain ? 'domain' : 'url'),
-              reputation: enrichedData.reputation || 'unknown',
-              confidence: enrichedData.confidence || 50,
-              firstSeen: enrichedData.first_seen || new Date().toISOString(),
-              lastSeen: enrichedData.last_seen || new Date().toISOString(),
-              sources: enrichedData.sources || ['External Enrichment'],
-              tags: enrichedData.tags || []
-            },
-            reputation: {
-              score: enrichedData.reputation_score || 50,
-              verdict: enrichedData.reputation || 'unknown',
-              sources: enrichedData.reputation_sources || [],
-              lastChecked: new Date().toISOString()
-            }
-          }
-          
-          if (enrichedData.geolocation) {
-            result.geolocation = enrichedData.geolocation
-          }
-          
-          if (enrichedData.whois) {
-            result.whois = enrichedData.whois
-          }
-        } else {
-          throw new Error('Enrichment failed')
-        }
-      } catch (enrichError) {
-        // Fallback to basic analysis
-        result = {
-          ioc: {
-            value: indicator,
-            type: isIP ? 'ip' : isDomain ? 'domain' : 'url',
-            reputation: 'unknown',
-            confidence: 0,
-            firstSeen: new Date().toISOString(),
-            lastSeen: new Date().toISOString(),
-            sources: [],
-            tags: []
-          },
-          reputation: {
-            score: 0,
-            verdict: 'unknown',
-            sources: [],
-            lastChecked: new Date().toISOString()
-          }
-        }
-      }
-    }
-    
-    return result
-    
-  } catch (error) {
-    console.error('IOC lookup failed:', error)
-    
-    // Fallback to mock data if APIs are unavailable
-    const isIP = validateIP(indicator)
-    const isDomain = validateDomain(indicator)
-    
-    const mockResult: IOCLookupResult = {
-      ioc: {
-        value: indicator,
-        type: isIP ? 'ip' : isDomain ? 'domain' : 'url',
-        reputation: Math.random() > 0.7 ? 'malicious' : Math.random() > 0.5 ? 'suspicious' : 'clean',
-        confidence: Math.floor(Math.random() * 40) + 60,
-        firstSeen: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-        lastSeen: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-        sources: ['VirusTotal', 'AbuseIPDB', 'PhishTank', 'URLVoid'],
-        tags: ['malware', 'botnet', 'phishing'].filter(() => Math.random() > 0.6)
-      },
-      reputation: {
-        score: Math.floor(Math.random() * 100),
-        verdict: Math.random() > 0.7 ? 'malicious' : 'clean',
-        sources: [
-          { name: 'VirusTotal', verdict: 'clean', confidence: 95 },
-          { name: 'AbuseIPDB', verdict: 'suspicious', confidence: 78 },
-          { name: 'PhishTank', verdict: 'clean', confidence: 88 }
-        ],
-        lastChecked: new Date().toISOString()
-      }
-    }
-
-    if (isIP) {
-      mockResult.geolocation = {
-        country: 'United States',
-        countryCode: 'US',
-        city: 'San Francisco',
-        latitude: 37.7749,
-        longitude: -122.4194,
-        asn: 'AS13335',
-        isp: 'Cloudflare, Inc.'
-      }
-    }
-
-    if (isDomain) {
-      mockResult.whois = {
-        domain: indicator,
-        registrar: 'GoDaddy.com',
-        creationDate: '2020-01-15T00:00:00Z',
-        expirationDate: '2025-01-15T00:00:00Z',
-        nameServers: ['ns1.example.com', 'ns2.example.com']
-      }
-    }
-
-    return mockResult
-  }
-}
-
-function ReputationBadge({ verdict, score }: { verdict: string; score?: number }) {
-  const getColor = () => {
-    switch (verdict) {
-      case 'malicious': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
-      case 'suspicious': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100'
-      case 'clean': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
-      default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
-    }
-  }
-
-  const getIcon = () => {
-    switch (verdict) {
-      case 'malicious': return <AlertTriangle className="w-4 h-4" />
-      case 'suspicious': return <AlertTriangle className="w-4 h-4" />
-      case 'clean': return <CheckCircle className="w-4 h-4" />
-      default: return <Shield className="w-4 h-4" />
-    }
-  }
-
+  
+  const { icon: Icon, label, color } = config[type] || config.unknown
+  
   return (
-    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${getColor()}`}>
-      {getIcon()}
-      <span className="capitalize">{verdict}</span>
-      {score !== undefined && <span>({score}%)</span>}
+    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${color}`}>
+      <Icon className="w-4 h-4" />
+      <span>{label}</span>
     </div>
   )
 }
 
+/**
+ * Reputation Badge with severity color
+ */
+function ReputationBadge({ severity }: { severity: number }) {
+  const verdict = getReputationVerdict(severity)
+  
+  const config = {
+    malicious: { 
+      icon: AlertTriangle, 
+      label: 'Malicious', 
+      color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100' 
+    },
+    suspicious: { 
+      icon: AlertTriangle, 
+      label: 'Suspicious', 
+      color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100' 
+    },
+    clean: { 
+      icon: CheckCircle, 
+      label: 'Clean', 
+      color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100' 
+    },
+  }
+  
+  const { icon: Icon, label, color } = config[verdict]
+  
+  return (
+    <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${color}`}>
+      <Icon className="w-4 h-4" />
+      <span>{label}</span>
+      <span className="font-bold">({severity}/10)</span>
+    </div>
+  )
+}
+
+/**
+ * Individual Threat Indicator Card
+ */
+function ThreatIndicatorCard({ indicator }: { indicator: ThreatIndicator }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <div className="space-y-2">
+            <CardTitle className="text-lg">Threat Indicator</CardTitle>
+            <div className="flex items-center gap-2">
+              <span className={`font-mono text-sm ${getSeverityColor(indicator.severity)}`}>
+                {indicator.value}
+              </span>
+            </div>
+          </div>
+          <ReputationBadge severity={indicator.severity} />
+        </div>
+        <CardDescription>{indicator.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Threat Types */}
+        <div>
+          <h4 className="text-sm font-semibold mb-2">Threat Types</h4>
+          <div className="flex flex-wrap gap-2">
+            {indicator.threat_types.map((type, index) => (
+              <Badge key={index} variant="destructive">
+                {type}
+              </Badge>
+            ))}
+          </div>
+        </div>
+        
+        {/* Confidence & Severity */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-sm font-semibold mb-1">Confidence</h4>
+            <p className={`text-sm ${getConfidenceColor(indicator.confidence)}`}>
+              {formatConfidence(indicator.confidence)}
+            </p>
+          </div>
+          <div>
+            <h4 className="text-sm font-semibold mb-1">Severity</h4>
+            <p className={`text-sm font-bold ${getSeverityColor(indicator.severity)}`}>
+              {indicator.severity}/10
+            </p>
+          </div>
+        </div>
+        
+        {/* Timestamps */}
+        <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground">
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <Clock className="w-3 h-3" />
+              <span className="font-medium">First Seen</span>
+            </div>
+            <p>{new Date(indicator.first_seen).toLocaleString()}</p>
+          </div>
+          <div>
+            <div className="flex items-center gap-1 mb-1">
+              <Clock className="w-3 h-3" />
+              <span className="font-medium">Last Seen</span>
+            </div>
+            <p>{new Date(indicator.last_seen).toLocaleString()}</p>
+          </div>
+        </div>
+        
+        {/* Tags */}
+        {indicator.tags && indicator.tags.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold mb-2 flex items-center gap-1">
+              <Tag className="w-4 h-4" />
+              Tags
+            </h4>
+            <div className="flex flex-wrap gap-2">
+              {indicator.tags.map((tag, index) => (
+                <Badge key={index} variant="outline">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {/* Status */}
+        <div className="pt-2 border-t">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Status</span>
+            <Badge variant={indicator.active ? "default" : "secondary"}>
+              {indicator.active ? "Active" : "Inactive"}
+            </Badge>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * IP Enrichment Data Display
+ */
+function IPEnrichmentCard({ data }: { data: IPIntelligence }) {
+  if (!data.enrichment) return null
+  
+  const { enrichment } = data
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Globe className="w-5 h-5" />
+          Geolocation & Network
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {enrichment.country_code && (
+          <div>
+            <span className="text-sm font-semibold">Location:</span>
+            <p className="text-sm text-muted-foreground">
+              {enrichment.city && `${enrichment.city}, `}
+              {enrichment.country_code}
+            </p>
+          </div>
+        )}
+        
+        {enrichment.asn && (
+          <div>
+            <span className="text-sm font-semibold">ASN:</span>
+            <p className="text-sm text-muted-foreground">
+              {enrichment.asn}
+              {enrichment.asn_organization && ` (${enrichment.asn_organization})`}
+            </p>
+          </div>
+        )}
+        
+        {enrichment.coordinates && (
+          <div>
+            <span className="text-sm font-semibold">Coordinates:</span>
+            <p className="text-sm text-muted-foreground font-mono">
+              {enrichment.coordinates.latitude}, {enrichment.coordinates.longitude}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Domain Enrichment Data Display
+ */
+function DomainEnrichmentCard({ data }: { data: DomainIntelligence }) {
+  if (!data.enrichment) return null
+  
+  const { enrichment } = data
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Server className="w-5 h-5" />
+          Domain Information
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {enrichment.registrar && (
+          <div>
+            <span className="text-sm font-semibold">Registrar:</span>
+            <p className="text-sm text-muted-foreground">{enrichment.registrar}</p>
+          </div>
+        )}
+        
+        {enrichment.creation_date && (
+          <div>
+            <span className="text-sm font-semibold">Created:</span>
+            <p className="text-sm text-muted-foreground">
+              {new Date(enrichment.creation_date).toLocaleDateString()}
+            </p>
+          </div>
+        )}
+        
+        {enrichment.expiration_date && (
+          <div>
+            <span className="text-sm font-semibold">Expires:</span>
+            <p className="text-sm text-muted-foreground">
+              {new Date(enrichment.expiration_date).toLocaleDateString()}
+            </p>
+          </div>
+        )}
+        
+        {enrichment.name_servers && enrichment.name_servers.length > 0 && (
+          <div>
+            <span className="text-sm font-semibold">Name Servers:</span>
+            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+              {enrichment.name_servers.map((ns, index) => (
+                <li key={index} className="font-mono">{ns}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
+ * Hash Enrichment Data Display
+ */
+function HashEnrichmentCard({ data }: { data: HashIntelligence }) {
+  if (!data.enrichment) return null
+  
+  const { enrichment } = data
+  
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Hash className="w-5 h-5" />
+          File Information
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {enrichment.file_type && (
+          <div>
+            <span className="text-sm font-semibold">File Type:</span>
+            <p className="text-sm text-muted-foreground">{enrichment.file_type}</p>
+          </div>
+        )}
+        
+        {enrichment.file_size && (
+          <div>
+            <span className="text-sm font-semibold">File Size:</span>
+            <p className="text-sm text-muted-foreground">
+              {(enrichment.file_size / 1024).toFixed(2)} KB
+            </p>
+          </div>
+        )}
+        
+        {enrichment.file_names && enrichment.file_names.length > 0 && (
+          <div>
+            <span className="text-sm font-semibold">Known File Names:</span>
+            <ul className="text-sm text-muted-foreground mt-1 space-y-1">
+              {enrichment.file_names.map((name, index) => (
+                <li key={index} className="font-mono">{name}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================================
+// Main Page Component
+// ============================================================================
+
 export default function ThreatIntelLookupPage() {
-  const [indicator, setIndicator] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-
-  const { data: result, isLoading, error } = useQuery({
-    queryKey: ['ioc-lookup', searchTerm],
-    queryFn: () => lookupIOC(searchTerm),
-    enabled: !!searchTerm,
+  const [inputValue, setInputValue] = useState('')
+  const [searchValue, setSearchValue] = useState('')
+  
+  // Use the custom hook - query only executes when searchValue is set
+  const { 
+    data, 
+    iocType, 
+    isLoading, 
+    error, 
+    isNotFound, 
+    isSuccess 
+  } = useThreatLookup({ 
+    iocValue: searchValue,
+    enabled: searchValue.length > 0 
   })
-
-  const handleSearch = (e: React.FormEvent) => {
+  
+  // Handle form submission
+  const handleSearch = (e: FormEvent) => {
     e.preventDefault()
-    if (indicator.trim()) {
-      setSearchTerm(indicator.trim())
+    const trimmed = inputValue.trim()
+    if (trimmed) {
+      setSearchValue(trimmed)
     }
   }
-
+  
+  // Clear search
+  const handleClear = () => {
+    setInputValue('')
+    setSearchValue('')
+  }
+  
+  // Determine if we should show results section
+  const showResults = searchValue.length > 0
+  const detectedType = searchValue ? detectIOCType(searchValue) : 'unknown'
+  
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -265,12 +412,12 @@ export default function ThreatIntelLookupPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">IOC Lookup</h1>
-            <p className="text-muted-foreground">
-              Analyze indicators of compromise using threat intelligence
+            <p className="text-muted-foreground mt-1">
+              Analyze indicators of compromise using real-time threat intelligence
             </p>
           </div>
         </div>
-
+        
         {/* Search Form */}
         <Card>
           <CardHeader>
@@ -279,215 +426,279 @@ export default function ThreatIntelLookupPage() {
               Indicator Lookup
             </CardTitle>
             <CardDescription>
-              Enter an IP address, domain, URL, or hash to analyze
+              Enter an IP address, domain name, or file hash (MD5, SHA1, SHA256)
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSearch} className="flex gap-4">
-              <Input
-                value={indicator}
-                onChange={(e) => setIndicator(e.target.value)}
-                placeholder="Enter IP, domain, URL, or hash..."
-                className="flex-1"
-                disabled={isLoading}
-              />
-              <Button
-                type="submit"
-                disabled={!indicator.trim() || isLoading}
-                className="px-8"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Search className="w-4 h-4 mr-2" />
-                    Lookup
-                  </>
-                )}
-              </Button>
+            <form onSubmit={handleSearch} className="space-y-4">
+              <div className="flex gap-4">
+                <div className="flex-1 relative">
+                  <Input
+                    value={inputValue}
+                    onChange={(e) => setInputValue(e.target.value)}
+                    placeholder="e.g., 8.8.8.8, malicious-domain.com, or d41d8cd98f00b204e9800998ecf8427e"
+                    className="pr-10"
+                    disabled={isLoading}
+                  />
+                  {inputValue && (
+                    <button
+                      type="button"
+                      onClick={handleClear}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+                <Button
+                  type="submit"
+                  disabled={!inputValue.trim() || isLoading}
+                  className="px-8"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Analyzing...
+                    </>
+                  ) : (
+                    <>
+                      <Search className="w-4 h-4 mr-2" />
+                      Lookup
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {/* Type Detection Helper */}
+              {inputValue && !isLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>Detected type:</span>
+                  <IOCTypeBadge type={detectedType} />
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
-
-        {/* Results */}
-        {error && (
-          <Card className="border-red-200 dark:border-red-800">
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-                <AlertTriangle className="w-5 h-5" />
-                <span>Error occurred while analyzing indicator</span>
+        
+        {/* Results Section */}
+        {showResults && (
+          <>
+            {/* Loading State */}
+            {isLoading && (
+              <Card>
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center space-y-4">
+                    <Loader2 className="w-12 h-12 animate-spin text-primary" />
+                    <div className="text-center">
+                      <p className="font-semibold">Analyzing IOC...</p>
+                      <p className="text-sm text-muted-foreground">
+                        Querying threat intelligence database
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Error State */}
+            {error && !isNotFound && (
+              <Card className="border-red-200 dark:border-red-900">
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                    <AlertTriangle className="w-12 h-12 text-red-600 dark:text-red-400" />
+                    <div>
+                      <p className="font-semibold text-red-600 dark:text-red-400">
+                        Lookup Failed
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        {error.message || 'Unable to query threat intelligence database'}
+                      </p>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="mt-4"
+                        onClick={() => setSearchValue('')}
+                      >
+                        Try Again
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Not Found State (404) */}
+            {isNotFound && (
+              <Card className="border-yellow-200 dark:border-yellow-900">
+                <CardContent className="py-12">
+                  <div className="flex flex-col items-center justify-center space-y-4 text-center">
+                    <Shield className="w-12 h-12 text-yellow-600 dark:text-yellow-400" />
+                    <div>
+                      <p className="font-semibold text-yellow-600 dark:text-yellow-400">
+                        IOC Not Found
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-2">
+                        This indicator is not present in our threat intelligence database.
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        This doesn't necessarily mean it's safe - it may simply be unknown.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+            
+            {/* Success State - Show Results */}
+            {isSuccess && data && (
+              <div className="space-y-6">
+                {/* Summary Card */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-2">
+                        <CardTitle className="text-2xl">Analysis Results</CardTitle>
+                        <div className="flex items-center gap-3">
+                          <code className="text-lg font-mono bg-muted px-3 py-1 rounded">
+                            {searchValue}
+                          </code>
+                          <IOCTypeBadge type={iocType} />
+                        </div>
+                      </div>
+                      <ReputationBadge severity={getMaxSeverity(data.indicators)} />
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4 text-center">
+                      <div>
+                        <p className="text-sm text-muted-foreground">Threat Count</p>
+                        <p className="text-2xl font-bold">{data.threat_count}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Threat Types</p>
+                        <p className="text-2xl font-bold">
+                          {getAllThreatTypes(data.indicators).length}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Max Severity</p>
+                        <p className={`text-2xl font-bold ${getSeverityColor(getMaxSeverity(data.indicators))}`}>
+                          {getMaxSeverity(data.indicators)}/10
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Threat Types Summary */}
+                {data.indicators && data.indicators.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Threat Categories</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2">
+                        {getAllThreatTypes(data.indicators).map((type, index) => (
+                          <Badge key={index} variant="destructive" className="text-sm">
+                            {type}
+                          </Badge>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {/* Enrichment Data */}
+                {'ip_address' in data && <IPEnrichmentCard data={data as IPIntelligence} />}
+                {'domain' in data && <DomainEnrichmentCard data={data as DomainIntelligence} />}
+                {'file_hash' in data && <HashEnrichmentCard data={data as HashIntelligence} />}
+                
+                {/* Individual Indicators */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-semibold">Detailed Threat Indicators</h2>
+                  <div className="grid gap-4">
+                    {data.indicators.map((indicator) => (
+                      <ThreatIndicatorCard key={indicator.id} indicator={indicator} />
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Query Metadata */}
+                <Card className="bg-muted/50">
+                  <CardContent className="py-4">
+                    <div className="flex items-center justify-between text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4" />
+                        <span>Query Time: {new Date(data.query_time).toLocaleString()}</span>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setSearchValue('')}
+                      >
+                        New Lookup
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </>
+        )}
+        
+        {/* Pristine State - Show Examples */}
+        {!showResults && (
+          <Card>
+            <CardHeader>
+              <CardTitle>How to Use</CardTitle>
+              <CardDescription>Try looking up these example indicators:</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3">
+                <button
+                  onClick={() => {
+                    setInputValue('8.8.8.8')
+                    setSearchValue('8.8.8.8')
+                  }}
+                  className="text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Network className="w-4 h-4 text-blue-600" />
+                    <span className="font-mono text-sm">8.8.8.8</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Example IP address lookup</p>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setInputValue('malicious-domain.evil')
+                    setSearchValue('malicious-domain.evil')
+                  }}
+                  className="text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Globe className="w-4 h-4 text-purple-600" />
+                    <span className="font-mono text-sm">malicious-domain.evil</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Example domain name lookup</p>
+                </button>
+                
+                <button
+                  onClick={() => {
+                    setInputValue('d41d8cd98f00b204e9800998ecf8427e')
+                    setSearchValue('d41d8cd98f00b204e9800998ecf8427e')
+                  }}
+                  className="text-left p-3 rounded-lg border hover:bg-accent transition-colors"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Hash className="w-4 h-4 text-orange-600" />
+                    <span className="font-mono text-sm">d41d8cd98f00b204e9800998ecf8427e</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Example file hash lookup (MD5)</p>
+                </button>
               </div>
             </CardContent>
           </Card>
-        )}
-
-        {result && (
-          <div className="space-y-6">
-            {/* Overview */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5" />
-                  Analysis Overview
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-lg font-mono">{result.ioc.value}</div>
-                      <div className="text-sm text-muted-foreground capitalize">
-                        {result.ioc.type} • Confidence: {result.ioc.confidence}%
-                      </div>
-                    </div>
-                    <ReputationBadge 
-                      verdict={result.ioc.reputation} 
-                      score={result.reputation.score}
-                    />
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div>
-                      <div className="text-sm text-muted-foreground">First Seen</div>
-                      <div className="font-medium">
-                        {formatRelativeTime(new Date(result.ioc.firstSeen))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Last Seen</div>
-                      <div className="font-medium">
-                        {formatRelativeTime(new Date(result.ioc.lastSeen))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Sources</div>
-                      <div className="font-medium">{result.ioc.sources.length} providers</div>
-                    </div>
-                  </div>
-
-                  {result.ioc.tags.length > 0 && (
-                    <div>
-                      <div className="text-sm text-muted-foreground mb-2">Tags</div>
-                      <div className="flex flex-wrap gap-2">
-                        {result.ioc.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="px-2 py-1 bg-secondary text-secondary-foreground rounded-md text-xs"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Reputation Sources */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Reputation Sources</CardTitle>
-                <CardDescription>
-                  Analysis from multiple threat intelligence providers
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {result.reputation.sources.map((source) => (
-                    <div key={source.name} className="flex items-center justify-between p-3 border rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <div className="font-medium">{source.name}</div>
-                        <ReputationBadge verdict={source.verdict} />
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {source.confidence}% confidence
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Geolocation (for IPs) */}
-            {result.geolocation && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="w-5 h-5" />
-                    Geolocation
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Location</div>
-                      <div className="font-medium">
-                        {result.geolocation.city}, {result.geolocation.country}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">ISP</div>
-                      <div className="font-medium">{result.geolocation.isp}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">ASN</div>
-                      <div className="font-medium">{result.geolocation.asn}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Coordinates</div>
-                      <div className="font-medium">
-                        {result.geolocation.latitude}, {result.geolocation.longitude}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* WHOIS (for domains) */}
-            {result.whois && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Clock className="w-5 h-5" />
-                    WHOIS Information
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <div className="text-sm text-muted-foreground">Registrar</div>
-                      <div className="font-medium">{result.whois.registrar}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Created</div>
-                      <div className="font-medium">
-                        {formatRelativeTime(new Date(result.whois.creationDate))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Expires</div>
-                      <div className="font-medium">
-                        {formatRelativeTime(new Date(result.whois.expirationDate))}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-muted-foreground">Name Servers</div>
-                      <div className="space-y-1">
-                        {result.whois.nameServers.map((ns) => (
-                          <div key={ns} className="font-mono text-sm">{ns}</div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
         )}
       </div>
     </MainLayout>
