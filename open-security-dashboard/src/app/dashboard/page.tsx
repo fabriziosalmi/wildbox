@@ -464,6 +464,9 @@ function ActivityItem({ activity }: { activity: RecentActivity }) {
 }
 
 export default function DashboardPage() {
+  // Fetch vulnerability stats from dedicated hook
+  const { data: vulnStats, isLoading: vulnStatsLoading } = useVulnerabilityStats()
+  
   const { data: metrics, isLoading: metricsLoading } = useQuery({
     queryKey: ['dashboard-metrics'],
     queryFn: fetchDashboardMetrics,
@@ -476,7 +479,19 @@ export default function DashboardPage() {
     refetchInterval: 60000, // Refresh every minute
   })
 
-  if (metricsLoading || !metrics) {
+  // Merge vulnerability stats from hook with other metrics
+  const enrichedMetrics = metrics && vulnStats ? {
+    ...metrics,
+    vulnerabilities: {
+      totalVulns: vulnStats.total_vulnerabilities,
+      criticalVulns: vulnStats.critical_count,
+      highVulns: vulnStats.high_count,
+      resolved: vulnStats.resolved_count,
+      trendsChange: 0 // Could be calculated from historical data
+    }
+  } : metrics
+
+  if (metricsLoading || vulnStatsLoading || !enrichedMetrics) {
     return (
       <MainLayout>
         <div className="space-y-6">
