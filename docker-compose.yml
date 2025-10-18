@@ -237,7 +237,7 @@ services:
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/1}
-      - DEBUG=${DEBUG:-false}
+      - DEBUG=true
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE=/app/logs/guardian.log
       - ALLOWED_HOSTS=localhost,127.0.0.1,0.0.0.0,open-security-guardian
