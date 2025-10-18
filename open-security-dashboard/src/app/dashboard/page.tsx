@@ -547,32 +547,32 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {metrics.systemHealth.uptime}%
+                  {enrichedMetrics.systemHealth.uptime}%
                 </div>
                 <div className="text-sm text-muted-foreground">Uptime</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold">
-                  {metrics.systemHealth.responseTime}ms
+                  {enrichedMetrics.systemHealth.responseTime}ms
                 </div>
                 <div className="text-sm text-muted-foreground">Response Time</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-green-600">
-                  {metrics.systemHealth.errorRate}%
+                  {enrichedMetrics.systemHealth.errorRate}%
                 </div>
                 <div className="text-sm text-muted-foreground">Error Rate</div>
               </div>
               <div className="text-center">
                 <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-                  metrics.systemHealth.status === 'operational' 
+                  enrichedMetrics.systemHealth.status === 'operational' 
                     ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
                     : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
                 }`}>
                   <div className={`w-2 h-2 rounded-full ${
-                    metrics.systemHealth.status === 'operational' ? 'bg-green-500' : 'bg-red-500'
+                    enrichedMetrics.systemHealth.status === 'operational' ? 'bg-green-500' : 'bg-red-500'
                   }`} />
-                  {metrics.systemHealth.status}
+                  {enrichedMetrics.systemHealth.status}
                 </div>
               </div>
             </div>
@@ -583,35 +583,35 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="Threat Intelligence"
-            value={`${metrics.threatIntel.activeFeeds}/${metrics.threatIntel.totalFeeds}`}
+            value={`${enrichedMetrics.threatIntel.activeFeeds}/${enrichedMetrics.threatIntel.totalFeeds}`}
             description="Active feeds"
             icon={Shield}
             trend="up"
-            trendValue={metrics.threatIntel.trendsChange}
+            trendValue={enrichedMetrics.threatIntel.trendsChange}
           />
           <MetricCard
             title="Cloud Compliance"
-            value={`${metrics.cloudSecurity.complianceScore}%`}
+            value={`${enrichedMetrics.cloudSecurity.complianceScore}%`}
             description="Overall score"
             icon={Activity}
             trend="down"
-            trendValue={Math.abs(metrics.cloudSecurity.trendsChange)}
+            trendValue={Math.abs(enrichedMetrics.cloudSecurity.trendsChange)}
           />
           <MetricCard
             title="Endpoints"
-            value={`${metrics.endpoints.onlineEndpoints}/${metrics.endpoints.totalEndpoints}`}
+            value={`${enrichedMetrics.endpoints.onlineEndpoints}/${enrichedMetrics.endpoints.totalEndpoints}`}
             description="Online endpoints"
             icon={Server}
             trend="up"
-            trendValue={metrics.endpoints.trendsChange}
+            trendValue={enrichedMetrics.endpoints.trendsChange}
           />
           <MetricCard
             title="Vulnerabilities"
-            value={metrics.vulnerabilities.criticalVulns}
+            value={enrichedMetrics.vulnerabilities.criticalVulns}
             description="Critical findings"
             icon={AlertTriangle}
             trend="down"
-            trendValue={Math.abs(metrics.vulnerabilities.trendsChange)}
+            trendValue={Math.abs(enrichedMetrics.vulnerabilities.trendsChange)}
           />
         </div>
 
@@ -619,25 +619,25 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="New IOCs"
-            value={formatNumber(metrics.threatIntel.newIndicators)}
+            value={formatNumber(enrichedMetrics.threatIntel.newIndicators)}
             description="Last 24 hours"
             icon={Shield}
           />
           <MetricCard
             title="Critical Findings"
-            value={metrics.cloudSecurity.criticalFindings}
+            value={enrichedMetrics.cloudSecurity.criticalFindings}
             description="Require attention"
             icon={AlertCircle}
           />
           <MetricCard
             title="Active Alerts"
-            value={metrics.endpoints.alerts}
+            value={enrichedMetrics.endpoints.alerts}
             description="Pending review"
             icon={AlertTriangle}
           />
           <MetricCard
             title="Playbook Success"
-            value={`${metrics.response.successRate}%`}
+            value={`${enrichedMetrics.response.successRate}%`}
             description="Automation rate"
             icon={Zap}
           />
