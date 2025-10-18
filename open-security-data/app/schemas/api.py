@@ -4,8 +4,9 @@ API Schema definitions using Pydantic
 
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+from uuid import UUID
 
 class IndicatorType(str, Enum):
     """Indicator type enumeration"""
@@ -60,9 +61,23 @@ class IndicatorResponse(IndicatorBase):
     expires_at: Optional[datetime] = Field(None, description="When this indicator expires")
     active: bool = Field(True, description="Whether this indicator is active")
     source_id: str = Field(..., description="Source that provided this indicator")
-    indicator_metadata: Dict[str, Any] = Field(default={}, description="Additional metadata")
-    created_at: datetime = Field(..., description="When this record was created")
-    updated_at: datetime = Field(..., description="When this record was last updated")
+    indicator_metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
+    created_at: Optional[datetime] = Field(None, description="When this record was created")
+    updated_at: Optional[datetime] = Field(None, description="When this record was last updated")
+    
+    @field_validator('id', 'source_id', mode='before')
+    @classmethod
+    def convert_uuid_to_str(cls, v):
+        """Convert UUID objects to strings"""
+        if isinstance(v, UUID):
+            return str(v)
+        return v
+    
+    @field_validator('indicator_metadata', mode='before')
+    @classmethod
+    def handle_null_metadata(cls, v):
+        """Convert None to empty dict for metadata"""
+        return v if v is not None else {}
 
 class IndicatorDetail(IndicatorResponse):
     """Detailed indicator information"""
