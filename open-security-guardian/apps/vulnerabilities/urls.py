@@ -9,10 +9,12 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 # Create router and register viewsets
+# Note: Using empty prefix ('') because the parent url (guardian/urls.py) 
+# already includes 'api/v1/vulnerabilities/', avoiding double nesting
 router = DefaultRouter()
-router.register(r'vulnerabilities', views.VulnerabilityViewSet, basename='vulnerability')
-router.register(r'vulnerability-templates', views.VulnerabilityTemplateViewSet, basename='vulnerability-template')
-router.register(r'vulnerability-assessments', views.VulnerabilityAssessmentViewSet, basename='vulnerability-assessment')
+router.register(r'', views.VulnerabilityViewSet, basename='vulnerability')
+router.register(r'templates', views.VulnerabilityTemplateViewSet, basename='vulnerability-template')
+router.register(r'assessments', views.VulnerabilityAssessmentViewSet, basename='vulnerability-assessment')
 
 app_name = 'vulnerabilities'
 

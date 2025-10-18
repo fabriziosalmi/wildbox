@@ -324,23 +324,31 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         
         # Averages
         aggregations = queryset.aggregate(
-            avg_risk_score=Avg('risk_score'),
-            avg_resolution_time_days=Avg(
-                Case(
-                    When(
-                        resolved_at__isnull=False,
-                        then=F('resolved_at') - F('first_discovered')
-                    ),
-                    output_field=IntegerField()
-                )
-            )
+            avg_risk_score=Avg('risk_score')
         )
         
         stats['avg_risk_score'] = round(aggregations['avg_risk_score'] or 0, 2)
-        stats['avg_resolution_time_days'] = round(
-            (aggregations['avg_resolution_time_days'].days if aggregations['avg_resolution_time_days'] else 0), 
-            1
-        )
+        
+        # Calculate average resolution time in Python (more reliable than DB aggregation)
+        # Only consider resolved vulnerabilities with valid timestamps
+        resolved_vulns = queryset.filter(
+            status='resolved',
+            resolved_at__isnull=False,
+            first_discovered__isnull=False
+        ).values_list('resolved_at', 'first_discovered')
+        
+        if resolved_vulns:
+            resolution_times = [
+                (resolved - discovered).total_seconds() / 86400  # Convert to days
+                for resolved, discovered in resolved_vulns
+                if resolved and discovered and resolved > discovered  # Safety check
+            ]
+            stats['avg_resolution_time_days'] = round(
+                sum(resolution_times) / len(resolution_times) if resolution_times else 0,
+                1
+            )
+        else:
+            stats['avg_resolution_time_days'] = 0
         
         serializer = VulnerabilityStatsSerializer(stats)
         return Response(serializer.data)
