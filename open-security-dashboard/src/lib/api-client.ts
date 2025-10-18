@@ -34,21 +34,21 @@ class ApiClient {
         console.log('  - Endpoint:', config.url)
         console.log('  - Method:', config.method?.toUpperCase())
         
-        // Check if this is a request to the Guardian service
+        // Check if this is a request to the Guardian service (still uses legacy API key auth)
         const isGuardianAPI = this.baseURL.includes('/api/v1/guardian') || this.baseURL.includes('localhost:8013') || this.baseURL.includes(':8013')
         
         if (isGuardianAPI) {
-          // Use API key for Guardian service
+          // Use API key for Guardian service (legacy auth)
           const guardianApiKey = 'wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263' // From Guardian database
           config.headers['X-API-Key'] = guardianApiKey
-          console.log('  - Auth Type: API Key (Guardian)')
+          console.log('  - Auth Type: API Key (Guardian - Legacy)')
         } else {
-          // Use JWT token for ALL other services including tools
-          // The gateway will authenticate the user and forward the request appropriately
+          // Use JWT token for all other services (identity, data, tools, responder, etc.)
+          // Gateway validates the JWT and forwards requests with X-Wildbox-* headers
           const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
           if (token) {
             config.headers.Authorization = `Bearer ${token}`
-            console.log('  - Auth Type: JWT Token')
+            console.log('  - Auth Type: JWT Token (Gateway)')
           } else {
             console.log('  - Auth Type: None (no token found)')
           }

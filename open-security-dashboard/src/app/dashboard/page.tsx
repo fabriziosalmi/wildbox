@@ -75,15 +75,21 @@ interface RecentActivity {
 
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   try {
-    // Fetch real data from Guardian (the only service with confirmed working APIs)
+    // Fetch real data from all services
     const [
       guardianVulnsRes,
-      guardianAssetsRes
+      guardianAssetsRes,
+      threatIntelRes,
+      responderPlaybooksRes
     ] = await Promise.allSettled([
       // Get actual vulnerabilities from Guardian
       guardianClient.get(getGuardianPath('/api/v1/vulnerabilities/vulnerabilities/?page_size=100')),
       // Get actual assets from Guardian  
-      guardianClient.get(getGuardianPath('/api/v1/assets/assets/?page_size=100'))
+      guardianClient.get(getGuardianPath('/api/v1/assets/assets/?page_size=100')),
+      // Get threat intel stats from Data service
+      dataClient.get('/api/v1/dashboard/threat-intel'),
+      // Get playbooks from Responder
+      responderClient.get('/v1/playbooks')
     ])
 
     // Process Guardian vulnerabilities data
@@ -130,28 +136,48 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       }
     }
 
-    // Mock data for services that don't have working APIs yet
-    const threatIntel = {
-      totalFeeds: 47,
-      activeFeeds: 45,
+    // Process real threat intel data from Data service
+    let threatIntel = {
+      totalFeeds: 4,
+      activeFeeds: 4,
       lastUpdated: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      newIndicators: 1247,
-      trendsChange: 8.2
+      newIndicators: 0,
+      trendsChange: 0
     }
 
+    if (threatIntelRes.status === 'fulfilled') {
+      const tiData = threatIntelRes.value as any
+      threatIntel = {
+        totalFeeds: tiData.total_feeds || 4,
+        activeFeeds: tiData.active_feeds || 4,
+        lastUpdated: tiData.last_updated || new Date().toISOString(),
+        newIndicators: tiData.new_indicators || 0,
+        trendsChange: tiData.trends_change || 0
+      }
+    }
+
+    // Process real responder data
+    let response = {
+      totalPlaybooks: 0,
+      activeRuns: 0,
+      successRate: 0,
+      lastExecution: new Date().toISOString()
+    }
+
+    if (responderPlaybooksRes.status === 'fulfilled') {
+      const playbooksData = responderPlaybooksRes.value as any
+      if (Array.isArray(playbooksData)) {
+        response.totalPlaybooks = playbooksData.length
+      }
+    }
+
+    // Mock data for services that don't have working APIs yet
     const cloudSecurity = {
       totalAccounts: 12,
       complianceScore: 87,
       criticalFindings: 5,
       lastScan: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
       trendsChange: 3.1
-    }
-
-    const response = {
-      totalPlaybooks: 28,
-      activeRuns: 3,
-      successRate: 94.5,
-      lastExecution: new Date(Date.now() - 1000 * 60 * 45).toISOString()
     }
 
     const systemHealth = {
