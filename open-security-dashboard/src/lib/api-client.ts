@@ -34,24 +34,17 @@ class ApiClient {
         console.log('  - Endpoint:', config.url)
         console.log('  - Method:', config.method?.toUpperCase())
         
-        // Check if this is a request to the security tools API service
-        const isSecurityAPI = this.baseURL.includes('/api/v1/tools') || this.baseURL.includes('localhost:8000') || this.baseURL.includes(':8000')
-        
         // Check if this is a request to the Guardian service
         const isGuardianAPI = this.baseURL.includes('/api/v1/guardian') || this.baseURL.includes('localhost:8013') || this.baseURL.includes(':8013')
         
-        if (isSecurityAPI) {
-          // Use API key for security tools API
-          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90'
-          config.headers['X-API-Key'] = apiKey
-          console.log('  - Auth Type: API Key (Security Tools)')
-        } else if (isGuardianAPI) {
+        if (isGuardianAPI) {
           // Use API key for Guardian service
           const guardianApiKey = 'wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263' // From Guardian database
           config.headers['X-API-Key'] = guardianApiKey
           console.log('  - Auth Type: API Key (Guardian)')
         } else {
-          // Use JWT token for other services (identity, etc.)
+          // Use JWT token for ALL other services including tools
+          // The gateway will authenticate the user and forward the request appropriately
           const token = Cookies.get('auth_token') || localStorage.getItem('auth_token')
           if (token) {
             config.headers.Authorization = `Bearer ${token}`

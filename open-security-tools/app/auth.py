@@ -68,25 +68,38 @@ def verify_api_key(
     request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    api_key: Optional[str] = Header(None, alias="API-Key")
+    api_key: Optional[str] = Header(None, alias="API-Key"),
+    x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
+    x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID")
 ) -> str:
     """
     Verify API key from multiple sources with rate limiting.
+    
+    Also accepts requests from the gateway with X-Wildbox-* headers injected by the gateway
+    after user authentication. This allows logged-in users to access the API without needing
+    a separate API key.
     
     Args:
         request: FastAPI request object
         credentials: HTTP authorization credentials
         x_api_key: API key from X-API-Key header
         api_key: API key from API-Key header
+        x_wildbox_user_id: User ID injected by gateway (if authenticated via gateway)
+        x_wildbox_team_id: Team ID injected by gateway (if authenticated via gateway)
         
     Returns:
-        The verified API key
+        The verified API key or "gateway_authenticated" for gateway-authenticated requests
         
     Raises:
         HTTPException: If API key is invalid, missing, or rate limited
     """
     
     client_ip = get_client_ip(request)
+    
+    # Check if request is authenticated via gateway (has Wildbox headers from gateway)
+    if x_wildbox_user_id and x_wildbox_team_id:
+        logger.info(f"Gateway-authenticated request from user_id: {x_wildbox_user_id}, team_id: {x_wildbox_team_id}, IP: {client_ip}")
+        return "gateway_authenticated"
     
     # Rate limiting check
     if not RateLimiter.is_allowed(client_ip):
