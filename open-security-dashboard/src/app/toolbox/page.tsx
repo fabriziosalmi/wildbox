@@ -43,8 +43,8 @@ interface ToolExecution {
 async function fetchSecurityTools(): Promise<SecurityTool[]> {
   try {
     // Use the gateway-aware API client
-    // apiClient base URL is already http://localhost:80/api/v1/tools (when using gateway)
-    // so we just need to append the path without /api prefix
+    // apiClient base URL is http://localhost:80/api/v1 (when using gateway)
+    // Calling /tools results in full path: /api/v1/tools
     const response = await apiClient.get('/tools')
     return response
   } catch (error) {

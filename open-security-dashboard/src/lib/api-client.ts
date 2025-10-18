@@ -300,7 +300,7 @@ export const getAgentsPath = (endpoint: string): string => {
 // Production-ready clients that always route through the gateway
 export const apiClient = new ApiClient(
   useGateway 
-    ? `${getGatewayUrl()}/api/v1/tools`
+    ? `${getGatewayUrl()}/api/v1`  // Changed: removed /tools to fix double-path issue
     : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
 )
 
