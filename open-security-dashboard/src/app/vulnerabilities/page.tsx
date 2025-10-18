@@ -105,7 +105,7 @@ export default function VulnerabilitiesPage() {
       console.log('🔍 Auth state:', { isAuthenticated, authLoading, user: user?.email })
       
       try {
-        const originalPath = '/api/v1/vulnerabilities/stats/'
+        const originalPath = '/api/v1/vulnerabilities/vulnerabilities/stats/'
         const path = getGuardianPath(originalPath)
         console.log('🔍 Original path:', originalPath)
         console.log('🔍 Transformed path:', path)
@@ -178,7 +178,7 @@ export default function VulnerabilitiesPage() {
       console.log('🔍 Query params:', { search, severityFilter, statusFilter, page })
       
       try {
-        let originalPath = '/api/v1/vulnerabilities/'
+        let originalPath = '/api/v1/vulnerabilities/vulnerabilities/'
         const params = new URLSearchParams()
         
         params.append('page', page.toString())
