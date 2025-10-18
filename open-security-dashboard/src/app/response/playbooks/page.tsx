@@ -1,70 +1,47 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { 
-  PlayCircle, 
   Book, 
   Clock, 
   User,
-  Tag,
   Settings,
   ChevronRight,
   AlertCircle,
-  CheckCircle,
   Loader2,
   Play,
   Search,
-  Filter
+  Filter,
+  CheckCircle,
+  XCircle
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { responderClient } from '@/lib/api-client'
+import { 
+  useResponderPlaybooks, 
+  usePlaybookExecution,
+  filterPlaybooks,
+  getAllTags,
+  getTagColor,
+  getTriggerTypeLabel,
+  type PlaybookSummary
+} from '@/hooks/use-responder-playbooks'
+import { addExecutionToHistory } from '@/hooks/use-execution-status'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 
-interface Playbook {
-  playbook_id: string
-  name: string
-  description: string
-  version: string
-  author: string
-  tags: string[]
-  steps_count: number
-  trigger_type: string
-}
-
-interface PlaybooksResponse {
-  playbooks: Playbook[]
-  total: number
-}
-
-async function fetchPlaybooks(): Promise<PlaybooksResponse> {
-  try {
-    const response = await responderClient.get('/v1/playbooks')
-    return response
-  } catch (error) {
-    console.error('Failed to fetch playbooks:', error)
-    throw error
-  }
-}
-
-function getCategoryColor(tag: string): string {
-  const colors: Record<string, string> = {
-    'test': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100',
-    'notification': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
-    'triage': 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100',
-    'url': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100',
-    'malware': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
-    'blacklist': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100',
-    'ip': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100',
-    'network': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100',
-    'security': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-100',
-  }
-  return colors[tag] || 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100'
-}
-
-function PlaybookCard({ playbook, onExecute }: { playbook: Playbook; onExecute: (playbook: Playbook) => void }) {
+function PlaybookCard({ playbook, onExecute }: { playbook: PlaybookSummary; onExecute: (playbook: PlaybookSummary) => void }) {
   return (
     <Card className="group hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
       <CardHeader className="pb-3">
@@ -86,11 +63,11 @@ function PlaybookCard({ playbook, onExecute }: { playbook: Playbook; onExecute: 
         <div className="space-y-4">
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
-            {playbook.tags.map((tag) => (
+            {playbook.tags.map((tag: string) => (
               <Badge
                 key={tag}
                 variant="secondary"
-                className={`text-xs ${getCategoryColor(tag)}`}
+                className={`text-xs ${getTagColor(tag)}`}
               >
                 {tag}
               </Badge>
@@ -113,7 +90,7 @@ function PlaybookCard({ playbook, onExecute }: { playbook: Playbook; onExecute: 
           <div className="flex items-center gap-2 text-sm">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span>Trigger: {playbook.trigger_type}</span>
+              <span>Trigger: {getTriggerTypeLabel(playbook.trigger_type)}</span>
             </div>
           </div>
 
@@ -131,7 +108,6 @@ function PlaybookCard({ playbook, onExecute }: { playbook: Playbook; onExecute: 
               variant="outline"
               size="sm"
               onClick={() => {
-                // TODO: Implement view details
                 console.log('View details:', playbook.playbook_id)
               }}
             >
@@ -144,38 +120,159 @@ function PlaybookCard({ playbook, onExecute }: { playbook: Playbook; onExecute: 
   )
 }
 
+interface ExecutionDialogProps {
+  playbook: PlaybookSummary | null
+  isOpen: boolean
+  onClose: () => void
+  onExecute: (triggerData: string) => void
+  isLoading: boolean
+}
+
+function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: ExecutionDialogProps) {
+  const [triggerData, setTriggerData] = useState('{}')
+  const [error, setError] = useState<string | null>(null)
+
+  const handleExecute = () => {
+    try {
+      // Validate JSON
+      JSON.parse(triggerData)
+      setError(null)
+      onExecute(triggerData)
+    } catch (e) {
+      setError('Invalid JSON format')
+    }
+  }
+
+  const getExampleData = (playbookId: string): string => {
+    const examples: Record<string, string> = {
+      'simple_notification': JSON.stringify({ message: 'Test notification' }, null, 2),
+      'triage_ip': JSON.stringify({ ip: '8.8.8.8' }, null, 2),
+      'triage_url': JSON.stringify({ url: 'https://example.com' }, null, 2),
+    }
+    return examples[playbookId] || '{}'
+  }
+
+  if (!playbook) return null
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[550px]">
+        <DialogHeader>
+          <DialogTitle>Execute Playbook: {playbook.name}</DialogTitle>
+          <DialogDescription>
+            {playbook.description}
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="trigger-data">Trigger Data (JSON)</Label>
+            <Textarea
+              id="trigger-data"
+              value={triggerData}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTriggerData(e.target.value)}
+              placeholder={getExampleData(playbook.playbook_id)}
+              className="font-mono text-sm min-h-[150px]"
+            />
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-red-600">
+                <XCircle className="h-4 w-4" />
+                {error}
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950 p-3 rounded-md">
+            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <span>
+              Execution will start asynchronously. You'll be redirected to the runs page to monitor progress.
+            </span>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            Cancel
+          </Button>
+          <Button onClick={handleExecute} disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Starting...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Execute
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export default function PlaybooksPage() {
+  const router = useRouter()
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedTag, setSelectedTag] = useState<string>('all')
-
-  const { data: playbooksData, isLoading, error, refetch } = useQuery({
-    queryKey: ['playbooks'],
-    queryFn: fetchPlaybooks,
-    refetchInterval: 30000, // Refetch every 30 seconds
+  const [executionDialog, setExecutionDialog] = useState<{
+    isOpen: boolean
+    playbook: PlaybookSummary | null
+  }>({
+    isOpen: false,
+    playbook: null
   })
 
-  const filteredPlaybooks = playbooksData?.playbooks?.filter((playbook) => {
-    const matchesSearch = playbook.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         playbook.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         playbook.tags.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-    
-    const matchesTag = selectedTag === 'all' || playbook.tags.includes(selectedTag)
-    
-    return matchesSearch && matchesTag
-  }) || []
+  // Use custom hooks
+  const { playbooks, total, isLoading, error, refetch } = useResponderPlaybooks()
+  
+  const { execute, data: executionData, isLoading: isExecuting, isSuccess } = usePlaybookExecution({
+    onSuccess: (response) => {
+      // Save to history
+      addExecutionToHistory({
+        run_id: response.run_id,
+        playbook_id: response.playbook_id,
+        playbook_name: response.playbook_name,
+        started_at: new Date().toISOString()
+      })
+      
+      // Close dialog
+      setExecutionDialog({ isOpen: false, playbook: null })
+      
+      // Redirect to runs page
+      router.push(`/response/runs?run_id=${response.run_id}`)
+    },
+    onError: (error) => {
+      alert(`Failed to execute playbook: ${error.message}`)
+    }
+  })
 
-  const allTags = Array.from(
-    new Set(playbooksData?.playbooks?.flatMap(p => p.tags) || [])
-  ).sort()
+  // Filter playbooks
+  const filteredList = filterPlaybooks(
+    selectedTag === 'all' ? playbooks : playbooks.filter(p => p.tags.includes(selectedTag)),
+    searchTerm
+  )
 
-  const handleExecutePlaybook = async (playbook: Playbook) => {
+  // Get all unique tags
+  const allTags = getAllTags(playbooks)
+
+  const handleExecutePlaybook = (playbook: PlaybookSummary) => {
+    setExecutionDialog({
+      isOpen: true,
+      playbook
+    })
+  }
+
+  const handleConfirmExecution = (triggerDataJson: string) => {
+    if (!executionDialog.playbook) return
+    
     try {
-      // TODO: Implement playbook execution with parameters dialog
-      console.log('Execute playbook:', playbook.playbook_id)
-      alert(`Executing playbook: ${playbook.name}\n\nThis would open a parameters dialog and start execution.`)
-    } catch (error) {
-      console.error('Failed to execute playbook:', error)
-      alert('Failed to execute playbook. Please try again.')
+      const triggerData = JSON.parse(triggerDataJson)
+      execute(executionDialog.playbook.playbook_id, { trigger_data: triggerData })
+    } catch (e) {
+      console.error('Invalid JSON:', e)
     }
   }
 
@@ -196,82 +293,91 @@ export default function PlaybooksPage() {
 
   return (
     <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Response Playbooks</h1>
-            <p className="text-muted-foreground">
-              Automated security response workflows and orchestration
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="px-3 py-1">
-              <Book className="h-4 w-4 mr-1" />
-              {playbooksData?.total || 0} playbooks
-            </Badge>
-            <Button onClick={() => refetch()} variant="outline" size="sm">
-              Refresh
-            </Button>
-          </div>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Response Playbooks</h1>
+          <p className="text-muted-foreground">
+            Automated security response workflows and orchestration
+          </p>
         </div>
-
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search playbooks..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <select
-              value={selectedTag}
-              onChange={(e) => setSelectedTag(e.target.value)}
-              className="px-3 py-2 border border-input bg-background rounded-md text-sm"
-            >
-              <option value="all">All tags</option>
-              {allTags.map((tag) => (
-                <option key={tag} value={tag}>
-                  {tag}
-                </option>
-              ))}
-            </select>
-          </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="px-3 py-1">
+            <Book className="h-4 w-4 mr-1" />
+            {total} playbooks
+          </Badge>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            Refresh
+          </Button>
         </div>
-
-        {/* Playbooks Grid */}
-        {isLoading ? (
-          <div className="flex items-center justify-center min-h-[300px]">
-            <div className="flex items-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span>Loading playbooks...</span>
-            </div>
-          </div>
-        ) : filteredPlaybooks.length > 0 ? (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {filteredPlaybooks.map((playbook) => (
-              <PlaybookCard
-                key={playbook.playbook_id}
-                playbook={playbook}
-                onExecute={handleExecutePlaybook}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
-            <Book className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No playbooks found</h3>
-            <p className="text-muted-foreground">
-              {searchTerm || selectedTag !== 'all' 
-                ? 'Try adjusting your search or filter criteria.'
-                : 'No playbooks are currently available.'}
-            </p>
-          </div>
-        )}
       </div>
+
+      {/* Search and Filter */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search playbooks..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <select
+            value={selectedTag}
+            onChange={(e) => setSelectedTag(e.target.value)}
+            className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+          >
+            <option value="all">All tags</option>
+            {allTags.map((tag) => (
+              <option key={tag} value={tag}>
+                {tag}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Playbooks Grid */}
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-[300px]">
+          <div className="flex items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Loading playbooks...</span>
+          </div>
+        </div>
+      ) : filteredList.length > 0 ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {filteredList.map((playbook) => (
+            <PlaybookCard
+              key={playbook.playbook_id}
+              playbook={playbook}
+              onExecute={handleExecutePlaybook}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
+          <Book className="h-12 w-12 text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No playbooks found</h3>
+          <p className="text-muted-foreground">
+            {searchTerm || selectedTag !== 'all' 
+              ? 'Try adjusting your search or filter criteria.'
+              : 'No playbooks are currently available.'}
+          </p>
+        </div>
+      )}
+
+      {/* Execution Dialog */}
+      <ExecutionDialog
+        playbook={executionDialog.playbook}
+        isOpen={executionDialog.isOpen}
+        onClose={() => setExecutionDialog({ isOpen: false, playbook: null })}
+        onExecute={handleConfirmExecution}
+        isLoading={isExecuting}
+      />
+    </div>
   )
 }
