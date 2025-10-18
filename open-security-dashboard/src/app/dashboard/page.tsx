@@ -19,6 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { MainLayout } from '@/components/main-layout'
 import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient, getSensorPath, getGuardianPath, getResponderPath, getCSPMPath } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
+import { useVulnerabilityStats } from '@/hooks/use-vulnerability-stats'
 
 interface DashboardMetrics {
   threatIntel: {
@@ -77,13 +78,10 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   try {
     // Fetch real data from all services
     const [
-      guardianVulnsRes,
       guardianAssetsRes,
       threatIntelRes,
       responderPlaybooksRes
     ] = await Promise.allSettled([
-      // Get actual vulnerabilities from Guardian
-      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities/vulnerabilities/?page_size=100')),
       // Get actual assets from Guardian  
       guardianClient.get(getGuardianPath('/api/v1/assets/assets/?page_size=100')),
       // Get threat intel stats from Data service
@@ -92,23 +90,14 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       responderClient.get('/v1/playbooks')
     ])
 
-    // Process Guardian vulnerabilities data
-    let vulnerabilities = {
+    // Vulnerability stats will be fetched separately via useVulnerabilityStats hook
+    // to avoid duplication and ensure consistency across dashboard
+    const vulnerabilities = {
       totalVulns: 0,
       criticalVulns: 0,
       highVulns: 0,
       resolved: 0,
-      trendsChange: 5.2
-    }
-
-    if (guardianVulnsRes.status === 'fulfilled') {
-      const vulnData = guardianVulnsRes.value as any
-      if (vulnData?.results) {
-        vulnerabilities.totalVulns = vulnData.count || vulnData.results.length
-        vulnerabilities.criticalVulns = vulnData.results.filter((v: any) => v.severity === 'critical').length
-        vulnerabilities.highVulns = vulnData.results.filter((v: any) => v.severity === 'high').length
-        vulnerabilities.resolved = vulnData.results.filter((v: any) => v.status === 'resolved').length
-      }
+      trendsChange: 0
     }
 
     // Process Guardian assets data for endpoints
