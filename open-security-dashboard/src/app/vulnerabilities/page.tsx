@@ -28,29 +28,13 @@ import { guardianClient, getGuardianPath } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import { GuardianVulnerability } from '@/types'
 import { useAuth } from '@/components/auth-provider'
+import { useVulnerabilityStats, isEmptyStats } from '@/hooks/use-vulnerability-stats'
 
 interface VulnerabilityListResponse {
   count: number
   next?: string
   previous?: string
   results: GuardianVulnerability[]
-}
-
-interface VulnerabilityStats {
-  total_vulnerabilities: number
-  critical_count: number
-  high_count: number
-  medium_count: number
-  low_count: number
-  info_count: number
-  open_count: number
-  in_progress_count: number
-  resolved_count: number
-  overdue_count: number
-  due_today_count: number
-  due_this_week_count: number
-  avg_risk_score: number
-  avg_resolution_time_days: number
 }
 
 const severityColors = {
@@ -97,77 +81,13 @@ export default function VulnerabilitiesPage() {
     }
   }, [isAuthenticated, authLoading, user, mounted])
 
-  // Query for vulnerability statistics
-  const { data: stats, isLoading: statsLoading, error: statsError } = useQuery<VulnerabilityStats>({
-    queryKey: ['vulnerability-stats'],
-    queryFn: async (): Promise<VulnerabilityStats> => {
-      console.log('🔍 Starting stats query...')
-      console.log('🔍 Auth state:', { isAuthenticated, authLoading, user: user?.email })
-      
-      try {
-        const originalPath = '/api/v1/vulnerabilities/vulnerabilities/stats/'
-        const path = getGuardianPath(originalPath)
-        console.log('🔍 Original path:', originalPath)
-        console.log('🔍 Transformed path:', path)
-        
-        const response = await guardianClient.get(path)
-        console.log('✅ Stats API Response:', response)
-        
-        // Ensure we always return a valid object with the correct structure
-        const data: VulnerabilityStats = {
-          total_vulnerabilities: response.total_vulnerabilities || 0,
-          critical_count: response.critical_count || 0,
-          high_count: response.high_count || 0,
-          medium_count: response.medium_count || 0,
-          low_count: response.low_count || 0,
-          info_count: response.info_count || 0,
-          open_count: response.open_count || 0,
-          in_progress_count: response.in_progress_count || 0,
-          resolved_count: response.resolved_count || 0,
-          overdue_count: response.overdue_count || 0,
-          due_today_count: response.due_today_count || 0,
-          due_this_week_count: response.due_this_week_count || 0,
-          avg_risk_score: response.avg_risk_score || 0,
-          avg_resolution_time_days: response.avg_resolution_time_days || 0
-        }
-        
-        console.log('✅ Returning stats data:', data)
-        return data
-      } catch (error: any) {
-        console.error('❌ Stats API Error:', error)
-        console.error('❌ Error details:', {
-          message: error?.message,
-          status: error?.status,
-          response: error?.response?.data
-        })
-        
-        // Return default data instead of throwing to prevent undefined
-        const fallbackData: VulnerabilityStats = {
-          total_vulnerabilities: 0,
-          critical_count: 0,
-          high_count: 0,
-          medium_count: 0,
-          low_count: 0,
-          info_count: 0,
-          open_count: 0,
-          in_progress_count: 0,
-          resolved_count: 0,
-          overdue_count: 0,
-          due_today_count: 0,
-          due_this_week_count: 0,
-          avg_risk_score: 0,
-          avg_resolution_time_days: 0
-        }
-        console.log('🔄 Returning fallback stats data:', fallbackData)
-        return fallbackData
-      }
-    },
-    enabled: mounted && isAuthenticated && !authLoading,
-    retry: false, // Disable retry to prevent loops
-    staleTime: 30000, // 30 seconds
-    gcTime: 300000, // 5 minutes
-    refetchOnWindowFocus: false
-  })
+  // Use custom hook for vulnerability statistics
+  const { 
+    data: stats, 
+    isLoading: statsLoading, 
+    isError: statsError,
+    error: statsErrorDetails 
+  } = useVulnerabilityStats()
 
   // Query for vulnerabilities list
   const { data: vulnerabilities, isLoading: vulnsLoading, error: vulnsError, refetch } = useQuery<VulnerabilityListResponse>({
@@ -311,7 +231,9 @@ export default function VulnerabilitiesPage() {
               <div className="text-center py-4">
                 <AlertTriangle className="w-8 h-8 text-red-500 mx-auto mb-2" />
                 <p className="text-red-600 font-medium">Failed to load statistics</p>
-                <p className="text-sm text-muted-foreground">{statsError.message}</p>
+                <p className="text-sm text-muted-foreground">
+                  {statsErrorDetails?.message || 'Unable to fetch vulnerability statistics'}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -322,12 +244,25 @@ export default function VulnerabilitiesPage() {
                 <CardContent className="pt-6">
                   <div className="animate-pulse">
                     <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-8 bg-gray-200 rounded w-1/2 mb-2"></div>
+                    <div className="h-3 bg-gray-100 rounded w-2/3"></div>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </div>
+        ) : isEmptyStats(stats) ? (
+          <Card>
+            <CardContent className="pt-6">
+              <div className="text-center py-8">
+                <Shield className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No Vulnerabilities Found</h3>
+                <p className="text-muted-foreground">
+                  Great job! Your infrastructure has no recorded vulnerabilities.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         ) : stats && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
