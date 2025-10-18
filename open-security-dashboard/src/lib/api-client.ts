@@ -42,7 +42,7 @@ class ApiClient {
         
         if (isSecurityAPI) {
           // Use API key for security tools API
-          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbx-6f8a9d2c-4e7b-1a3f-9c8e-2d5a6b4c8e9f-2025-prod'
+          const apiKey = process.env.NEXT_PUBLIC_API_KEY || 'wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90'
           config.headers['X-API-Key'] = apiKey
           console.log('  - Auth Type: API Key (Security Tools)')
         } else if (isGuardianAPI) {

@@ -18,6 +18,8 @@ from app.config import get_config
 from app.models import Source, CollectionRun
 from app.utils.database import get_db_session
 from app.collectors import CollectorRegistry
+# Import collectors to register them
+import app.collectors.sources  # noqa: F401
 
 logger = logging.getLogger(__name__)
 config = get_config()

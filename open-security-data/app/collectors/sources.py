@@ -402,3 +402,16 @@ class ThreatFoxCollector(HTTPCollector):
             },
             'expires_at': datetime.now(timezone.utc) + timedelta(days=90)
         }
+
+
+# Register all collectors
+from app.collectors import CollectorRegistry
+
+CollectorRegistry.register_collector('http', HTTPCollector)
+CollectorRegistry.register_collector('malware_domain_list', MalwareDomainListCollector)
+CollectorRegistry.register_collector('abuseipdb', AbuseIPDBCollector)
+CollectorRegistry.register_collector('urlvoid', URLVoidCollector)
+CollectorRegistry.register_collector('phishtank', PhishTankCollector)
+CollectorRegistry.register_collector('feodo_tracker', FeodoTrackerCollector)
+CollectorRegistry.register_collector('malwarebazaar', MalwareBazaarCollector)
+CollectorRegistry.register_collector('threatfox', ThreatFoxCollector)
