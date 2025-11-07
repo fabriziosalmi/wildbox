@@ -5,6 +5,7 @@ AI-powered threat intelligence enrichment service.
 """
 
 import logging
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any
@@ -203,7 +204,7 @@ async def analyze_ioc(request: AnalysisTaskRequest):
         redis_client.setex(
             f"task:{task_id}:metadata",
             settings.task_result_expires,
-            str(task_metadata)
+            json.dumps(task_metadata)
         )
         
         # Submit Celery task
@@ -262,8 +263,8 @@ async def get_analysis_result(task_id: str):
         # Get task metadata
         task_metadata_str = redis_client.get(f"task:{task_id}:metadata")
         if task_metadata_str:
-            # Parse metadata (in production, use proper JSON serialization)
-            task_metadata = eval(task_metadata_str.decode())
+            # Parse metadata using secure JSON deserialization
+            task_metadata = json.loads(task_metadata_str.decode())
         else:
             task_metadata = {"created_at": datetime.now(timezone.utc).isoformat()}
         
