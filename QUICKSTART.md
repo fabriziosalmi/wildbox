@@ -2,6 +2,8 @@
 
 **Get Wildbox running in 5 minutes**
 
+> **📢 Early Evaluation Phase**: Wildbox is actively seeking community feedback, bug reports, and feature suggestions. [Report issues](https://github.com/fabriziosalmi/wildbox/issues) and [share feedback](https://github.com/fabriziosalmi/wildbox/discussions) to help us build the mature platform the community needs.
+
 ---
 
 ## ⚡ Prerequisites

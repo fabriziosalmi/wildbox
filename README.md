@@ -78,7 +78,7 @@ Wildbox is built with **security as a core principle**. All components are harde
 - **✓ CORS secured** - Environment-based configuration (never wildcard)
 - **✓ Security headers** - HSTS, X-Frame-Options, CSP, and more
 - **✓ No hardcoded secrets** - All defaults removed from docker-compose
-- **✓ Production-ready** - Complete deployment and security guides
+- **✓ Ready for evaluation & community feedback** - Comprehensive security audits completed
 
 ### 🛡️ Security Features
 
@@ -185,6 +185,77 @@ docker-compose logs | grep -i "warning\|error\|security"
 ```
 
 **For complete security setup, see [SECURITY.md](SECURITY.md) and [DEPLOYMENT.md](DEPLOYMENT.md)**
+
+---
+
+## 🚀 Community & Roadmap
+
+**Current Status: Early Evaluation Phase**
+
+Wildbox has completed comprehensive security hardening and is ready for community evaluation and feedback. The platform includes all core security components with enterprise-grade controls, but reaches **production maturity through community contributions, bug reports, and real-world usage**.
+
+### 🤝 We Need Community Input On:
+
+**Feedback & Ideas**
+- [ ] Feature requests and use case suggestions
+- [ ] Workflow improvements and usability feedback
+- [ ] Integration requests (new tools, platforms, services)
+- [ ] Performance observations and optimization ideas
+- [ ] Security assessments and penetration testing results
+
+**Bug Reports & Issues**
+- [ ] Functional bugs and edge cases
+- [ ] Compatibility issues (OS, Python, Node versions)
+- [ ] Documentation improvements and clarifications
+- [ ] Error messages and logging enhancements
+- [ ] Performance issues and bottlenecks
+
+**Code Contributions**
+- [ ] New security tools and detections
+- [ ] Cloud provider integrations (AWS, Azure, GCP, etc.)
+- [ ] Additional SOAR playbooks and automation workflows
+- [ ] Dashboard improvements and new visualizations
+- [ ] Language translations and localization
+
+**Operational Experience**
+- [ ] Deployment experiences and best practices
+- [ ] Scalability feedback from larger deployments
+- [ ] Resource optimization in different environments
+- [ ] Monitoring and alerting improvements
+- [ ] Backup and disaster recovery procedures
+
+### 📋 Roadmap
+
+**Phase 1: Evaluation & Stabilization** (Current)
+- ✅ Core security controls implemented
+- ✅ Comprehensive documentation created
+- 🔄 Community feedback and issue resolution (IN PROGRESS)
+- 🔄 Real-world usage validation (IN PROGRESS)
+- 📋 Performance tuning based on feedback
+
+**Phase 2: Feature Expansion** (Based on Community Demand)
+- 📋 Additional cloud provider integrations
+- 📋 Extended SOAR automation capabilities
+- 📋 Advanced threat intelligence integration
+- 📋 Custom plugin/extension framework
+- 📋 Multi-tenancy support
+
+**Phase 3: Enterprise Hardening** (Requires Community Maturity)
+- 📋 High-availability and clustering
+- 📋 Compliance certifications (SOC 2, ISO 27001)
+- 📋 Commercial support and SLA options
+- 📋 Advanced analytics and reporting
+- 📋 API versioning and stability guarantees
+
+### 🎯 How to Help
+
+1. **Test & Report Issues**: Deploy Wildbox, find bugs, report them
+2. **Suggest Features**: Share your security use cases and needs
+3. **Contribute Code**: Fix bugs, add features, improve documentation
+4. **Share Feedback**: Tell us what works and what doesn't
+5. **Spread the Word**: Help grow the community
+
+**See [Contributing](#-contributing) section for detailed guidelines.**
 
 ---
 
@@ -1194,7 +1265,31 @@ webhooks:
 
 ## 🤝 Contributing
 
-We welcome contributions from the security community! Please follow these guidelines:
+We welcome contributions from the security community! In the current evaluation phase, we especially need:
+
+### 🔥 High Priority Contributions (Evaluation Phase)
+
+**Testing & Feedback** (No coding required)
+- [ ] Deploy Wildbox and share your experience
+- [ ] Test different deployment scenarios (Docker, cloud, on-premise)
+- [ ] Try various security integrations and workflows
+- [ ] Report bugs and edge cases you discover
+- [ ] Suggest features based on your security needs
+- [ ] Performance testing in different environments
+
+**Issues & Bug Reports**
+- [ ] Compatibility issues (OS, Python, Node versions)
+- [ ] Documentation gaps or unclear sections
+- [ ] Error messages that need improvement
+- [ ] Configuration options that are confusing
+- [ ] Performance bottlenecks you discover
+
+**Real-World Feedback**
+- [ ] Share your deployment architecture
+- [ ] Document security use cases you implement
+- [ ] Suggest integrations with your tools
+- [ ] Provide scaling feedback (10, 100, 1000+ events/sec)
+- [ ] Report operational issues and solutions
 
 ### Code Contribution Process
 
@@ -1204,6 +1299,29 @@ We welcome contributions from the security community! Please follow these guidel
 4. **Test** your changes thoroughly
 5. **Push** to your fork: `git push origin feature/my-feature`
 6. **Create** a Pull Request with detailed description
+
+### Contribution Areas
+
+**Easy Wins for New Contributors**
+- [ ] Documentation improvements and clarifications
+- [ ] README translations to other languages
+- [ ] Additional example configurations
+- [ ] Docker Compose variations for different scenarios
+- [ ] Helpful scripts and automation
+
+**Medium-Level Contributions**
+- [ ] New SOAR playbook examples
+- [ ] Additional threat intelligence sources
+- [ ] Cloud provider integrations (starter)
+- [ ] Dashboard improvements and visualizations
+- [ ] API client libraries in different languages
+
+**Advanced Contributions**
+- [ ] Multi-tenancy support
+- [ ] High-availability clustering
+- [ ] Advanced analytics features
+- [ ] Custom authentication backends
+- [ ] Performance optimizations
 
 ### Security Contributions
 
@@ -1229,6 +1347,13 @@ Found a security vulnerability?
 - Integration tests for API changes
 - E2E tests for user-facing features
 - Maintain >80% code coverage
+
+### Getting Help with Contributions
+
+- **Questions?** Ask in [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
+- **Feature Ideas?** Post in [Discussions > Ideas](https://github.com/fabriziosalmi/wildbox/discussions/categories/ideas)
+- **Found a Bug?** Create an [Issue](https://github.com/fabriziosalmi/wildbox/issues) with details
+- **Want to Help?** Check [open issues](https://github.com/fabriziosalmi/wildbox/issues) marked as `help-wanted`
 
 ---
 
@@ -1276,18 +1401,27 @@ Wildbox uses open-source components with the following licenses:
 
 ## 📊 Project Status
 
-**Version**: 1.0  
-**Status**: ✅ Production-Ready  
-**Last Updated**: November 7, 2024  
-**Maintenance**: Active  
+**Version**: 1.0
+**Status**: 🔄 Early Evaluation Phase
+**Last Updated**: November 7, 2024
+**Maintenance**: Active Development
+**Maturity**: Ready for Community Testing & Feedback
 
 ### Current Focus
 
-- Security hardening ✅
-- Documentation ✅
-- Testing & QA 🔄
-- Performance optimization 📋
-- Feature enhancements 📋
+- Security hardening ✅ Complete
+- Documentation ✅ Complete
+- Community testing & feedback 🔄 IN PROGRESS
+- Bug fixes & stabilization 🔄 IN PROGRESS
+- Performance optimization 📋 Based on feedback
+- Community-requested features 📋 Planned
+
+### Next Milestones
+
+- **Milestone 1**: 50 GitHub stars & community feedback integration
+- **Milestone 2**: First external security audit results
+- **Milestone 3**: Community-contributed features merged
+- **Milestone 4**: Real-world deployment experiences documented
 
 ---
 

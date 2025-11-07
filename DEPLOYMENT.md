@@ -1,6 +1,13 @@
-# 🚀 Production Deployment Guide
+# 🚀 Deployment Guide
 
 **For Wildbox Security Platform**
+
+**Status**: Ready for Evaluation & Community Testing
+**Maturity**: Early Evaluation Phase - Suitable for Testing, Staging, and Community Deployments
+
+This guide covers deploying Wildbox in various environments. As the platform enters the evaluation phase, real-world deployment feedback is crucial for refining production-grade procedures.
+
+> **📢 Community Feedback Welcome**: Encountered deployment challenges? Found a configuration that works well? [Share your experiences](https://github.com/fabriziosalmi/wildbox/discussions) and [report issues](https://github.com/fabriziosalmi/wildbox/issues). Your real-world insights help us build better deployment procedures.
 
 ---
 
