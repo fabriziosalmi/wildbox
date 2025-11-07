@@ -323,14 +323,236 @@
                 </div>
             </section>
 
-            <!-- Coming Soon Sections -->
+            <!-- Guardian Service Endpoints -->
             <section id="guardian-api" class="scroll-mt-20">
-                <div class="glass-effect p-8 rounded-lg text-center">
-                    <h2 class="text-3xl font-bold mb-4">Guardian Service API</h2>
-                    <p class="text-gray-400 mb-6">Integration management, queue monitoring, and security orchestration endpoints</p>
-                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
-                        Coming Soon - Under Documentation
+                <h2 class="text-3xl font-bold mb-6">Guardian Service API</h2>
+                <p class="text-gray-400 mb-8">Asset management, vulnerability tracking, scanner orchestration, and remediation workflows</p>
+
+                <!-- Assets Endpoints -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold mb-4 text-red-400">Assets Management</h3>
+                    <div class="space-y-4">
+                        <!-- GET /assets -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">List Assets</h4>
+                                    <p class="text-sm text-gray-400">GET /api/v1/assets/</p>
+                                </div>
+                                <span class="api-method method-get">GET</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">List all security assets with filtering and pagination support.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Query Parameters:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>limit: Number of results (default: 20)</li>
+                                        <li>offset: Pagination offset (default: 0)</li>
+                                        <li>status: Filter by status (active, inactive, vulnerable)</li>
+                                        <li>severity: Highest vulnerability (critical, high, medium, low)</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl "http://localhost:8001/api/v1/assets/?status=active&severity=critical" \
+  -H "X-API-Key: your-api-key"</code></div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- POST /assets -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">Create Asset</h4>
+                                    <p class="text-sm text-gray-400">POST /api/v1/assets/</p>
+                                </div>
+                                <span class="api-method method-post">POST</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">Create a new security asset in the system.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Request Body Fields:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>name: Asset name (required)</li>
+                                        <li>asset_type: Type like server, database (required)</li>
+                                        <li>ip_address: IPv4 or IPv6 address</li>
+                                        <li>hostname: FQDN or hostname</li>
+                                        <li>tags: Array of tags for organization</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl -X POST "http://localhost:8001/api/v1/assets/" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Web Server","asset_type":"server","ip_address":"192.168.1.100"}'</code></div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- POST /assets/{id}/scan -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">Scan Asset</h4>
+                                    <p class="text-sm text-gray-400">POST /api/v1/assets/{id}/scan/</p>
+                                </div>
+                                <span class="api-method method-post">POST</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">Initiate a security scan on an asset.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Request Parameters:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>scanner_id: Scanner to use (required)</li>
+                                        <li>scan_profile: full, quick, vulnerability-only</li>
+                                        <li>schedule: immediate, daily, weekly</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl -X POST "http://localhost:8001/api/v1/assets/asset-001/scan/" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"scanner_id":"scanner-nessus-01","scan_profile":"full"}'</code></div>
+                                </div>
+                            </details>
+                        </div>
                     </div>
+                </div>
+
+                <!-- Vulnerabilities Endpoints -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold mb-4 text-red-400">Vulnerabilities Management</h3>
+                    <div class="space-y-4">
+                        <!-- GET /vulnerabilities -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">List Vulnerabilities</h4>
+                                    <p class="text-sm text-gray-400">GET /api/v1/vulnerabilities/</p>
+                                </div>
+                                <span class="api-method method-get">GET</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">List all vulnerabilities with advanced filtering capabilities.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Query Parameters:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>severity: critical, high, medium, low, info</li>
+                                        <li>status: open, in_progress, resolved, false_positive</li>
+                                        <li>asset_id: Filter by specific asset</li>
+                                        <li>has_exploit: Filter by known exploits</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl "http://localhost:8001/api/v1/vulnerabilities/?severity=critical&status=open" \
+  -H "X-API-Key: your-api-key"</code></div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- PATCH /vulnerabilities/{id} -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">Update Vulnerability</h4>
+                                    <p class="text-sm text-gray-400">PATCH /api/v1/vulnerabilities/{id}/</p>
+                                </div>
+                                <span class="api-method method-patch">PATCH</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">Update vulnerability status or assignment.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Request Fields:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>status: open, in_progress, resolved, false_positive</li>
+                                        <li>assigned_to: Team or user assignment</li>
+                                        <li>priority: immediate, high, medium, low</li>
+                                        <li>remediation_notes: Remediation details</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl -X PATCH "http://localhost:8001/api/v1/vulnerabilities/vuln-001/" \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"in_progress","assigned_to":"security-team"}'</code></div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Integration Management -->
+                <div class="mb-8">
+                    <h3 class="text-xl font-semibold mb-4 text-red-400">Integration Management</h3>
+                    <div class="space-y-4">
+                        <!-- GET /integrations -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">List Integrations</h4>
+                                    <p class="text-sm text-gray-400">GET /api/v1/integrations/</p>
+                                </div>
+                                <span class="api-method method-get">GET</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">List all configured integrations with external systems.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Query Parameters:</strong></p>
+                                    <ul class="list-disc list-inside text-xs mb-3 text-gray-400 space-y-1">
+                                        <li>status: active, inactive, error</li>
+                                        <li>integration_type: ticketing, siem, notification, vulnerability</li>
+                                    </ul>
+                                    <p class="mb-1"><strong>Example:</strong></p>
+                                    <div class="code-block text-xs"><code>curl "http://localhost:8001/api/v1/integrations/?status=active" \
+  -H "X-API-Key: your-api-key"</code></div>
+                                </div>
+                            </details>
+                        </div>
+
+                        <!-- POST /integrations/{id}/test -->
+                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                            <div class="flex items-start justify-between mb-3">
+                                <div>
+                                    <h4 class="font-semibold">Test Integration</h4>
+                                    <p class="text-sm text-gray-400">POST /api/v1/integrations/{id}/test/</p>
+                                </div>
+                                <span class="api-method method-post">POST</span>
+                            </div>
+                            <p class="text-gray-400 mb-3">Test connectivity and authentication with an integration.</p>
+                            <details class="group">
+                                <summary class="cursor-pointer text-sm text-red-400 hover:text-red-300">View Details</summary>
+                                <div class="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                                    <p class="mb-2"><strong>Response:</strong></p>
+                                    <div class="code-block text-xs"><code>{"status":"connected","platform":"JIRA","message":"Successfully connected"}</code></div>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Authentication & Rate Limiting -->
+                <div class="glass-effect p-6 rounded-lg mt-8">
+                    <h4 class="font-semibold mb-3">Authentication</h4>
+                    <p class="text-gray-400 text-sm mb-3">Guardian Service supports two authentication methods:</p>
+                    <ul class="list-disc list-inside text-sm text-gray-400 space-y-2">
+                        <li><strong>API Key:</strong> Use X-API-Key header with your API key</li>
+                        <li><strong>Bearer Token:</strong> Use Authorization: Bearer header with JWT token</li>
+                    </ul>
+                    <h4 class="font-semibold mt-4 mb-2">Rate Limiting</h4>
+                    <p class="text-gray-400 text-sm">
+                        <strong>Anonymous:</strong> 100 requests/hour |
+                        <strong>API Key:</strong> 5,000 requests/hour |
+                        <strong>Bearer Token:</strong> 1,000 requests/hour
+                    </p>
+                </div>
+
+                <!-- Full Documentation Link -->
+                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                    <p class="text-gray-400 mb-3">For complete Guardian Service API documentation including all endpoints, error codes, and advanced examples:</p>
+                    <a href="docs/api/guardian/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded transition">
+                        View Full Documentation →
+                    </a>
                 </div>
             </section>
 

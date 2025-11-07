@@ -7,7 +7,7 @@ Complete API reference documentation for all Wildbox microservices with examples
 | Service | Status | Files |
 |---------|--------|-------|
 | **Identity Service** | ✅ Complete | [endpoints.md](identity/endpoints.md) |
-| **Guardian Service** | 🔄 In Progress | Coming soon |
+| **Guardian Service** | ✅ Complete | [endpoints.md](guardian/endpoints.md) |
 | **Agents Service** | 🔄 In Progress | Coming soon |
 | **Data Service** | 🔄 In Progress | Coming soon |
 | **Tools Service** | 🔄 In Progress | Coming soon |
