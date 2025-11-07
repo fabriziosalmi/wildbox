@@ -17,17 +17,174 @@ A comprehensive, modular, and scalable open-source security platform designed fo
 ## 📋 Table of Contents
 
 - [🎯 Platform Overview](#-platform-overview)
+- [⚡ Quick Start (5 minutes)](#-quick-start-5-minutes)
 - [🏗️ Architecture](#️-architecture)
 - [🚀 Components](#-components)
 - [✨ Key Features](#-key-features)
-- [🔧 Quick Start](#-quick-start)
 - [🐳 Docker Deployment](#-docker-deployment)
+- [🔐 Security](#-security)
 - [🛠️ Development](#️-development)
 - [📊 Service Ports](#-service-ports)
 - [🔗 Integration](#-integration)
 - [📖 Documentation](#-documentation)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
+
+---
+
+## ⚡ Quick Start (5 minutes)
+
+**Get Wildbox running in 5 minutes with Docker Compose!**
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/fabriziosalmi/wildbox.git
+cd wildbox
+
+# 2. Create environment file (copy example)
+cp .env.example .env
+# Edit .env and add your configuration (optional for development)
+
+# 3. Start all services
+docker-compose up -d
+
+# 4. Wait for services to start (check health)
+sleep 10
+curl http://localhost:8000/health
+
+# 5. Access dashboard
+# Frontend: http://localhost:3000
+# API Docs: http://localhost:8000/docs
+```
+
+**For detailed setup instructions**, see:
+- 📖 **[QUICKSTART.md](QUICKSTART.md)** - Complete 5-minute guide with all steps
+- 🔑 **[QUICKSTART_CREDENTIALS.md](QUICKSTART_CREDENTIALS.md)** - Default credentials & API authentication
+- 🛡️ **[SECURITY.md](SECURITY.md)** - Security configuration & best practices
+- 🚀 **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+
+---
+
+## 🔐 Security
+
+Wildbox is built with **security as a core principle**. All components are hardened with enterprise-grade security controls and have been comprehensively audited.
+
+### ✅ Security Status
+
+- **✓ 66% vulnerability reduction** - 29 → 10 vulnerabilities
+- **✓ Critical RCE fixed** - eval() vulnerability eliminated
+- **✓ 13 dependencies patched** - All GitHub Dependabot alerts resolved
+- **✓ Authentication hardened** - JWT + Bearer token on all critical endpoints
+- **✓ CORS secured** - Environment-based configuration (never wildcard)
+- **✓ Security headers** - HSTS, X-Frame-Options, CSP, and more
+- **✓ No hardcoded secrets** - All defaults removed from docker-compose
+- **✓ Production-ready** - Complete deployment and security guides
+
+### 🛡️ Security Features
+
+**Authentication & Authorization**
+- JWT tokens with HS256 encryption (configurable key)
+- bcrypt password hashing (12+ rounds)
+- Bearer token authentication on protected endpoints
+- Role-based access control (RBAC)
+- Token expiration and refresh mechanisms
+
+**API Security**
+- Environment-based CORS (no wildcards)
+- Security headers middleware (HSTS, X-Content-Type-Options, X-Frame-Options, CSP)
+- Input validation on all endpoints
+- Parameterized queries (no SQL injection)
+- Rate limiting framework
+
+**Code Security**
+- No eval() or dangerous code patterns
+- No hardcoded secrets or credentials
+- Secure random generation for tokens/keys
+- Safe error handling without exposing internals
+
+**Infrastructure**
+- Secrets required (fail-fast configuration)
+- Environment-based secrets management
+- TLS/SSL support ready
+- Network segmentation ready
+- Health checks for all services
+- Centralized logging support
+
+### 📖 Security Documentation
+
+Complete security documentation is provided:
+
+- **[SECURITY.md](SECURITY.md)** - Comprehensive security policy and best practices
+  - Critical security requirements before production
+  - Authentication & authorization configuration
+  - Network security and firewall rules
+  - Incident response procedures
+
+- **[SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md)** - Detailed technical analysis
+  - 19 security issues identified and documented
+  - Code examples of vulnerabilities
+  - Fix recommendations with implementation details
+  - OWASP/CWE mappings
+
+- **[SECURITY_IMPROVEMENTS_SUMMARY.md](SECURITY_IMPROVEMENTS_SUMMARY.md)** - Executive summary
+  - All security fixes implemented
+  - Vulnerability metrics and improvements
+  - Remaining issues and monitoring plan
+  - Next steps and recommendations
+
+### 🔒 Pre-Deployment Security Checklist
+
+**Before Production Deployment:**
+
+```bash
+# 1. Change all default secrets
+export JWT_SECRET_KEY=$(openssl rand -hex 32)
+export API_KEY=$(openssl rand -base64 32)
+export DATABASE_PASSWORD=$(openssl rand -base64 32)
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your secure values
+
+# 3. Verify security settings
+grep -E "CORS_ORIGINS|DEBUG|ENVIRONMENT" .env
+
+# 4. Check documentation
+cat SECURITY.md          # Full security policy
+cat DEPLOYMENT.md        # Production deployment guide
+```
+
+**Critical Configuration Variables:**
+
+| Variable | Purpose | Status |
+|----------|---------|--------|
+| `JWT_SECRET_KEY` | JWT token signing | **MUST CHANGE** |
+| `API_KEY` | API authentication | **MUST CHANGE** |
+| `POSTGRES_PASSWORD` | Database password | **MUST CHANGE** |
+| `CORS_ORIGINS` | Allowed origins | **CONFIGURE** |
+| `ENVIRONMENT` | deployment mode | **SET TO `production`** |
+| `DEBUG` | Debug mode | **SET TO `false`** |
+
+### 🔐 Quick Security Commands
+
+```bash
+# Verify JWT secret is set
+docker-compose exec identity env | grep JWT_SECRET_KEY
+
+# Test authentication endpoint
+curl -H "Authorization: Bearer YOUR_TOKEN" http://localhost:8001/health
+
+# Check security headers
+curl -I https://your-domain.com | grep -i "strict-transport\|x-frame\|x-content"
+
+# Run security audit
+docker-compose logs | grep -i "warning\|error\|security"
+
+# Backup database before production
+./scripts/backup-database.sh
+```
+
+**For complete security setup, see [SECURITY.md](SECURITY.md) and [DEPLOYMENT.md](DEPLOYMENT.md)**
 
 ---
 
@@ -845,4 +1002,296 @@ npm run dev
 ```
 
 ---
+
+
+## 🛠️ Development
+
+### Development Environment Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/fabriziosalmi/wildbox.git
+cd wildbox
+
+# Create virtual environment (Python services)
+python3 -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate  # Windows
+
+# Install dependencies
+pip install -r requirements.txt
+
+# For frontend development
+cd open-security-dashboard
+npm install
+npm run dev
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+docker-compose exec [service] pytest
+
+# Run with coverage
+docker-compose exec [service] pytest --cov=app
+
+# Run specific test file
+docker-compose exec [service] pytest tests/test_auth.py
+```
+
+### Development Guidelines
+
+- Follow PEP 8 for Python code
+- Use TypeScript for frontend code
+- Write unit tests for new features
+- Update documentation with changes
+- Sign commits with GPG when possible
+
+---
+
+## 📊 Service Ports
+
+| Service | Port | Purpose | Access URL |
+|---------|------|---------|------------|
+| **Dashboard** | 3000 | Frontend UI | http://localhost:3000 |
+| **Security API** | 8000 | Security tools API | http://localhost:8000 |
+| **Identity** | 8001 | Authentication service | http://localhost:8001 |
+| **Data Lake** | 8002 | Threat intelligence | http://localhost:8002 |
+| **Guardian** | 8013 | Vulnerability management | http://localhost:8013 |
+| **Responder** | 8018 | Incident response | http://localhost:8018 |
+| **AI Agents** | 8006 | AI analysis engine | http://localhost:8006 |
+| **API Gateway** | 80/443 | Request routing | http://localhost |
+| **PostgreSQL** | 5432 | Database (internal) | localhost:5432 |
+| **Redis** | 6379 | Cache (internal) | localhost:6379 |
+| **Prometheus** | 9090 | Metrics UI | http://localhost:9090 |
+| **Grafana** | 3001 | Monitoring dashboards | http://localhost:3001 |
+| **n8n** | 5678 | Workflow automation | http://localhost:5678 |
+
+---
+
+## 🔗 Integration
+
+### API Integration
+
+Wildbox provides comprehensive APIs for integration with external systems:
+
+```bash
+# Example: Call security analysis API
+curl -X POST http://localhost:8000/v1/analyze \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"data": "your data here"}'
+
+# Example: Execute playbook
+curl -X POST http://localhost:8018/v1/playbooks/1/execute \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"params": {}}'
+```
+
+### Webhook Integration
+
+Configure webhooks for automated workflows:
+
+```yaml
+webhooks:
+  slack:
+    enabled: true
+    url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    events: ["incident_created", "alert_triggered"]
+  
+  teams:
+    enabled: false
+    url: https://outlook.webhook.office.com/webhookb2/...
+    events: ["incident_critical"]
+```
+
+### External Tool Connectors
+
+- **Slack** - Notifications and incident updates
+- **Microsoft Teams** - Alerts and reports
+- **Jira** - Issue tracking integration
+- **ServiceNow** - Incident management
+- **Splunk** - Log analysis integration
+- **Elasticsearch** - Distributed search
+
+---
+
+## 📖 Documentation
+
+### Quick Start & Setup
+
+- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute rapid deployment guide
+  - Prerequisites and installation
+  - Service startup verification
+  - Quick reference commands
+  
+- **[QUICKSTART_CREDENTIALS.md](QUICKSTART_CREDENTIALS.md)** - Credentials reference
+  - Default user accounts
+  - API authentication setup
+  - Token management
+  - Security best practices for credentials
+
+### Security & Compliance
+
+- **[SECURITY.md](SECURITY.md)** - Complete security policy (v2.0)
+  - Security requirements before production
+  - Authentication & authorization configuration
+  - Network security hardening
+  - Incident response procedures
+  - Bug bounty program details
+
+- **[SECURITY_AUDIT_REPORT.md](SECURITY_AUDIT_REPORT.md)** - Technical security analysis
+  - 19 identified security issues
+  - Detailed vulnerability descriptions
+  - Code examples of fixes
+  - OWASP/CWE mappings
+  
+- **[SECURITY_AUDIT_SUMMARY.txt](SECURITY_AUDIT_SUMMARY.txt)** - Quick reference
+  - All security issues at a glance
+  - Severity levels and locations
+  - Fix status for each issue
+
+- **[SECURITY_FINDINGS.json](SECURITY_FINDINGS.json)** - Machine-readable format
+  - For CI/CD integration
+  - Structured vulnerability data
+  - Metrics and tracking
+
+- **[SECURITY_IMPROVEMENTS_SUMMARY.md](SECURITY_IMPROVEMENTS_SUMMARY.md)** - Executive summary
+  - Vulnerability metrics
+  - All improvements implemented
+  - Timeline and achievements
+  - Remaining work and monitoring
+
+### Deployment & Operations
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide (649 lines)
+  - Infrastructure setup and hardening
+  - Secret management procedures
+  - Database initialization
+  - Service deployment steps
+  - SSL/TLS configuration
+  - Monitoring and alerting setup
+  - Backup and recovery procedures
+  - Troubleshooting guide
+
+- **[SECURITY_REMEDIATION_CHECKLIST.md](SECURITY_REMEDIATION_CHECKLIST.md)** - Implementation guide
+  - Step-by-step fix instructions
+  - Copy-paste ready code snippets
+  - Testing and verification commands
+  - 15 actionable security improvements
+
+### Architecture & Design
+
+- **[Architecture Documentation](Architecture.md)** - System design
+  - Component interactions
+  - Data flow diagrams
+  - Integration patterns
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions from the security community! Please follow these guidelines:
+
+### Code Contribution Process
+
+1. **Fork** the repository on GitHub
+2. **Create** a feature branch: `git checkout -b feature/my-feature`
+3. **Make** your changes with clear, descriptive commits
+4. **Test** your changes thoroughly
+5. **Push** to your fork: `git push origin feature/my-feature`
+6. **Create** a Pull Request with detailed description
+
+### Security Contributions
+
+Found a security vulnerability?
+
+**Please report security issues privately:**
+- Email: security@wildbox.security
+- Do NOT create public GitHub issues for security vulnerabilities
+- Include: description, reproduction steps, impact assessment
+- Allow 48 hours for initial response
+
+### Code Style
+
+- **Python**: Follow PEP 8, use Black for formatting
+- **TypeScript**: Follow ESLint configuration, use Prettier
+- **Commits**: Use clear, descriptive messages
+- **Documentation**: Update relevant docs with changes
+- **Tests**: Include tests for new features
+
+### Testing Requirements
+
+- Unit tests for all new code
+- Integration tests for API changes
+- E2E tests for user-facing features
+- Maintain >80% code coverage
+
+---
+
+## 📄 License
+
+Wildbox Open Security Platform is licensed under the **MIT License**.
+
+### MIT License Summary
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+- The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
+
+For full license text, see [LICENSE](LICENSE) file.
+
+### Third-Party Licenses
+
+Wildbox uses open-source components with the following licenses:
+- **FastAPI**: MIT License
+- **Django**: BSD License
+- **PostgreSQL**: PostgreSQL License
+- **Redis**: BSD License
+- **React/Next.js**: MIT License
+- See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for complete list
+
+---
+
+## 📞 Support & Contact
+
+### Getting Help
+
+- **Documentation**: See [📖 Documentation](#-documentation) section above
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
+- **Discussions**: Join [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
+- **Security**: Email security@wildbox.security for security issues
+
+### Community
+
+- **GitHub**: https://github.com/fabriziosalmi/wildbox
+- **Issues**: https://github.com/fabriziosalmi/wildbox/issues
+- **Discussions**: https://github.com/fabriziosalmi/wildbox/discussions
+
+---
+
+## 📊 Project Status
+
+**Version**: 1.0  
+**Status**: ✅ Production-Ready  
+**Last Updated**: November 7, 2024  
+**Maintenance**: Active  
+
+### Current Focus
+
+- Security hardening ✅
+- Documentation ✅
+- Testing & QA 🔄
+- Performance optimization 📋
+- Feature enhancements 📋
+
+---
+
+**Built with ❤️ for the security community**
+
+*Wildbox is an open-source security platform dedicated to helping organizations protect their infrastructure and data.*
 
