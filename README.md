@@ -1362,8 +1362,8 @@ We welcome contributions from the security community! In the current evaluation 
 - [ ] Additional example configurations
 - [ ] Docker Compose variations for different scenarios
 - [ ] Helpful scripts and automation
-- [ ] **API Documentation** - Document service endpoints ([Contributing Guide](docs/api/CONTRIBUTING.md))
-  - [ ] Guardian Service API endpoints and examples
+- [x] **API Documentation** - Document service endpoints ([Contributing Guide](docs/api/CONTRIBUTING.md))
+  - [x] Guardian Service API endpoints and examples
   - [ ] Agents Service AI analysis endpoints
   - [ ] Data Service aggregation endpoints
   - [ ] Tools Service execution endpoints
