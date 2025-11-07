@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wildbox - Open-Source Security Ops Platform</title>
-    <meta name="description" content="Enterprise-grade security operations in 5 minutes. Open-source SIEM, CSPM, WAF, and threat intelligence in one platform.">
+    <meta name="description" content="Enterprise-grade security operations in 5 minutes. Open-source SIEM, WAF, threat intelligence, and automated incident response in one platform.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%23ef4444'>🛡️</text></svg>">
     <style>
@@ -57,6 +57,7 @@
             <div class="hidden md:flex gap-8">
                 <a href="#features" class="text-gray-300 hover:text-white transition">Features</a>
                 <a href="#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
+                <a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY_STATUS.md" class="text-gray-300 hover:text-white transition">Security</a>
                 <a href="#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
                 <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
             </div>
@@ -86,7 +87,7 @@
             </h1>
 
             <p class="text-xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
-                Open-source SIEM, CSPM, WAF, and threat intelligence. From git clone to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
+                Open-source SIEM, WAF, threat intelligence, and automated incident response. From git clone to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
             </p>
 
             <div class="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -134,18 +135,18 @@
 
         <div class="mt-12 grid md:grid-cols-3 gap-6">
             <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🔐</div>
+                <div class="text-3xl mb-3 text-red-400">●</div>
                 <h3 class="text-xl font-semibold mb-2">Auto-Secured</h3>
                 <p class="text-gray-400">Generates cryptographic keys, SSL certs, and security headers automatically</p>
             </div>
             <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🐳</div>
+                <div class="text-3xl mb-3 text-red-400">●</div>
                 <h3 class="text-xl font-semibold mb-2">Docker Native</h3>
                 <p class="text-gray-400">11 services, pre-configured and interconnected. Just works.</p>
             </div>
             <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🚀</div>
-                <h3 class="text-xl font-semibold mb-2">Production Ready</h3>
+                <div class="text-3xl mb-3 text-red-400">●</div>
+                <h3 class="text-xl font-semibold mb-2">Enterprise Ready</h3>
                 <p class="text-gray-400">Health checks, auto-restart, persistent volumes, monitoring included</p>
             </div>
         </div>
@@ -174,13 +175,13 @@
 
                 <!-- Feature 2 -->
                 <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">☁️</div>
-                    <h3 class="text-2xl font-semibold mb-3">Cloud Security (CSPM)</h3>
-                    <p class="text-gray-400 mb-4">Continuous posture management across AWS, Azure, GCP. 200+ compliance checks automated.</p>
+                    <div class="text-4xl mb-4">🔎</div>
+                    <h3 class="text-2xl font-semibold mb-3">Vulnerability Management</h3>
+                    <p class="text-gray-400 mb-4">Continuous scanning for vulnerabilities, misconfigurations, and security risks across your infrastructure.</p>
                     <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ Multi-cloud scanning</li>
-                        <li>✓ Compliance frameworks</li>
-                        <li>✓ Risk prioritization</li>
+                        <li>✓ Multi-source vulnerability scanning</li>
+                        <li>✓ Risk-based prioritization</li>
+                        <li>✓ Real-time threat correlation</li>
                     </ul>
                 </div>
 
@@ -294,6 +295,117 @@
         </div>
     </section>
 
+    <!-- Security Credentials Section -->
+    <section class="py-24 px-4 bg-gradient-to-b from-transparent via-gray-800/20 to-transparent">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-4">Built on Enterprise Security Standards</h2>
+                <p class="text-xl text-gray-400">Comprehensive security hardening with transparent verification</p>
+            </div>
+
+            <div class="grid md:grid-cols-3 gap-6 mb-12">
+                <div class="glass-effect p-8 rounded-lg">
+                    <div class="text-4xl font-bold text-red-400 mb-2">66%</div>
+                    <div class="text-gray-400 mb-4">Vulnerability Reduction</div>
+                    <p class="text-sm text-gray-500">From 29 identified issues to 10 transitive dependencies, all critical code vulnerabilities fixed.</p>
+                </div>
+
+                <div class="glass-effect p-8 rounded-lg">
+                    <div class="text-4xl font-bold text-red-400 mb-2">7/7</div>
+                    <div class="text-gray-400 mb-4">Security Checks Passing</div>
+                    <p class="text-sm text-gray-500">eval() RCE, authentication, CORS, headers, credentials, docs, and API key validation verified.</p>
+                </div>
+
+                <div class="glass-effect p-8 rounded-lg">
+                    <div class="text-4xl font-bold text-red-400 mb-2">100%</div>
+                    <div class="text-gray-400 mb-4">Transparent Monitoring</div>
+                    <p class="text-sm text-gray-500">Dependabot automated scanning with real-time GitHub Security Alerts integration.</p>
+                </div>
+            </div>
+
+            <div class="glass-effect p-8 rounded-lg">
+                <h3 class="text-xl font-semibold mb-4">Security Implementation Highlights</h3>
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div>
+                        <h4 class="font-semibold text-red-400 mb-3">Core Security</h4>
+                        <ul class="space-y-2 text-gray-400 text-sm">
+                            <li>JWT authentication with HS256</li>
+                            <li>bcrypt password hashing (12+ rounds)</li>
+                            <li>Bearer token validation on critical endpoints</li>
+                            <li>Comprehensive security headers (HSTS, CSP, X-Frame-Options)</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-red-400 mb-3">Infrastructure</h4>
+                        <ul class="space-y-2 text-gray-400 text-sm">
+                            <li>No eval() or hardcoded secrets</li>
+                            <li>Environment-based CORS configuration</li>
+                            <li>API documentation disabled in production</li>
+                            <li>Fail-fast configuration with required secrets</li>
+                        </ul>
+                    </div>
+                </div>
+                <p class="text-center text-gray-500 text-sm mt-6">
+                    <a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY.md" class="text-red-400 hover:text-red-300 transition">View Complete Security Policy</a> |
+                    <a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY_STATUS.md" class="text-red-400 hover:text-red-300 transition">Current Security Status</a>
+                </p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Community-Driven Development -->
+    <section class="py-24 px-4">
+        <div class="max-w-6xl mx-auto">
+            <div class="text-center mb-16">
+                <h2 class="text-4xl md:text-5xl font-bold mb-4">Community-Driven Development</h2>
+                <p class="text-xl text-gray-400">Early Evaluation Phase - Help Shape the Future</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-8 mb-12">
+                <div class="glass-effect p-8 rounded-lg">
+                    <h3 class="text-2xl font-semibold mb-4">Current Phase</h3>
+                    <p class="text-gray-400 mb-4">Wildbox has completed comprehensive security hardening and is ready for community evaluation. All core security components are in place with enterprise-grade controls.</p>
+                    <ul class="space-y-2 text-gray-400 text-sm">
+                        <li>Production maturity through community contributions</li>
+                        <li>Your feedback drives feature development</li>
+                        <li>Bug reports help us build a stable platform</li>
+                        <li>Real-world usage informs roadmap priorities</li>
+                    </ul>
+                </div>
+
+                <div class="glass-effect p-8 rounded-lg">
+                    <h3 class="text-2xl font-semibold mb-4">How You Can Help</h3>
+                    <ul class="space-y-3 text-gray-400 text-sm">
+                        <li class="flex gap-3">
+                            <span class="text-red-400 font-semibold min-w-fit">Deploy &</span>
+                            <span>Test - Share your deployment experiences and discovered issues</span>
+                        </li>
+                        <li class="flex gap-3">
+                            <span class="text-red-400 font-semibold min-w-fit">Report Bugs -</span>
+                            <span>Help us identify and fix edge cases</span>
+                        </li>
+                        <li class="flex gap-3">
+                            <span class="text-red-400 font-semibold min-w-fit">Contribute -</span>
+                            <span>Code, documentation, or security improvements</span>
+                        </li>
+                        <li class="flex gap-3">
+                            <span class="text-red-400 font-semibold min-w-fit">Suggest Features -</span>
+                            <span>Based on your real-world security needs</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="bg-red-600/10 border border-red-600/20 rounded-lg p-8 text-center">
+                <h3 class="text-xl font-semibold mb-3">Join the Community</h3>
+                <p class="text-gray-400 mb-6">Wildbox reaches maturity through community involvement. Star on GitHub, open discussions, and contribute to building the security platform for the community.</p>
+                <a href="https://github.com/fabriziosalmi/wildbox" class="inline-block bg-red-600 hover:bg-red-700 px-8 py-3 rounded-lg font-semibold transition">
+                    Star on GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
     <!-- Use Cases -->
     <section class="py-24 px-4 bg-gradient-to-b from-transparent via-red-600/5 to-transparent">
         <div class="max-w-4xl mx-auto">
@@ -301,19 +413,19 @@
 
             <div class="grid md:grid-cols-2 gap-8">
                 <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🏢 Organizations</h3>
+                    <h3 class="text-xl font-semibold mb-3 text-red-400">Organizations</h3>
                     <p class="text-gray-400">Running their own security ops without expensive SIEM licenses. Companies wanting to avoid vendor lock-in and maintain data sovereignty.</p>
                 </div>
                 <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🛡️ Security Teams</h3>
+                    <h3 class="text-xl font-semibold mb-3 text-red-400">Security Teams</h3>
                     <p class="text-gray-400">Security engineers looking for a modular, extensible platform they can customize and integrate with existing tools.</p>
                 </div>
                 <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🚀 DevOps / Platform Teams</h3>
+                    <h3 class="text-xl font-semibold mb-3 text-red-400">DevOps & Platform Teams</h3>
                     <p class="text-gray-400">Running self-hosted infrastructure and needing security visibility without cloud vendor tools.</p>
                 </div>
                 <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🎓 Security Researchers</h3>
+                    <h3 class="text-xl font-semibold mb-3 text-red-400">Security Researchers</h3>
                     <p class="text-gray-400">Building threat intelligence pipelines, analyzing security data, or prototyping new security concepts.</p>
                 </div>
             </div>
@@ -344,7 +456,7 @@
                     </li>
                     <li class="flex items-center gap-3">
                         <span class="text-green-400">✓</span>
-                        <span>Cloud security (CSPM)</span>
+                        <span>Vulnerability management and scanning</span>
                     </li>
                     <li class="flex items-center gap-3">
                         <span class="text-green-400">✓</span>
@@ -367,14 +479,34 @@
     <section class="py-24 px-4">
         <div class="max-w-4xl mx-auto text-center">
             <h2 class="text-4xl font-bold mb-6">Ready to Own Your Security?</h2>
-            <p class="text-xl text-gray-400 mb-8">Three commands. Five minutes. Your security ops running.</p>
+            <p class="text-xl text-gray-400 mb-12">Three commands. Five minutes. Your security ops running.</p>
+
+            <div class="grid md:grid-cols-3 gap-6 mb-12">
+                <div class="glass-effect p-6 rounded-lg">
+                    <div class="text-2xl font-bold text-red-400 mb-2">Get Started</div>
+                    <p class="text-gray-400 text-sm mb-4">Deploy in minutes with Docker Compose</p>
+                    <a href="#get-started" class="text-red-400 hover:text-red-300 transition font-semibold">View Setup Guide</a>
+                </div>
+
+                <div class="glass-effect p-6 rounded-lg">
+                    <div class="text-2xl font-bold text-red-400 mb-2">Learn More</div>
+                    <p class="text-gray-400 text-sm mb-4">Read comprehensive guides and docs</p>
+                    <a href="https://github.com/fabriziosalmi/wildbox/blob/main/README.md" class="text-red-400 hover:text-red-300 transition font-semibold">Documentation</a>
+                </div>
+
+                <div class="glass-effect p-6 rounded-lg">
+                    <div class="text-2xl font-bold text-red-400 mb-2">Join Community</div>
+                    <p class="text-gray-400 text-sm mb-4">Star the repo and contribute</p>
+                    <a href="https://github.com/fabriziosalmi/wildbox" class="text-red-400 hover:text-red-300 transition font-semibold">GitHub Repository</a>
+                </div>
+            </div>
 
             <div class="flex flex-col sm:flex-row gap-4 justify-center">
                 <a href="https://github.com/fabriziosalmi/wildbox" class="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-lg font-semibold text-lg transition">
                     Clone from GitHub
                 </a>
-                <a href="https://github.com/fabriziosalmi/wildbox/blob/main/INSTALLATION.md" class="border border-gray-600 hover:border-gray-400 px-8 py-4 rounded-lg font-semibold text-lg transition">
-                    Read Docs
+                <a href="https://github.com/fabriziosalmi/wildbox/blob/main/QUICKSTART.md" class="border border-gray-600 hover:border-gray-400 px-8 py-4 rounded-lg font-semibold text-lg transition">
+                    Quickstart Guide
                 </a>
             </div>
         </div>
@@ -396,11 +528,12 @@
                 </ul>
             </div>
             <div>
-                <h4 class="font-semibold mb-4">Docs</h4>
+                <h4 class="font-semibold mb-4">Documentation</h4>
                 <ul class="space-y-2 text-gray-500 text-sm">
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/INSTALLATION.md" class="hover:text-white transition">Installation</a></li>
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY.md" class="hover:text-white transition">Security</a></li>
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/README.md" class="hover:text-white transition">README</a></li>
+                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/QUICKSTART.md" class="hover:text-white transition">Quick Start</a></li>
+                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY_STATUS.md" class="hover:text-white transition">Security Status</a></li>
+                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY.md" class="hover:text-white transition">Security Policy</a></li>
+                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/DEPLOYMENT.md" class="hover:text-white transition">Deployment Guide</a></li>
                 </ul>
             </div>
             <div>
