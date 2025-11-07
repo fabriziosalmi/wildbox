@@ -40,31 +40,31 @@ Complete API reference documentation for all Wildbox microservices with examples
 ### Guardian Service
 - **Description**: Integration management, queue monitoring, orchestration
 - **Port**: 8001
-- **Documentation**: [Coming Soon](guardian/endpoints.md)
+- **Documentation**: [Full Endpoint Reference](guardian/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8001/docs) | [OpenAPI Schema](http://localhost:8001/openapi.json)
 
 ### Agents Service
 - **Description**: AI-powered threat analysis, intelligence enrichment
-- **Port**: 8002
-- **Documentation**: [Coming Soon](agents/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8002/docs) | [OpenAPI Schema](http://localhost:8002/openapi.json)
+- **Port**: 8004
+- **Documentation**: [Full Endpoint Reference](agents/endpoints.md)
+- **Live Docs**: [Swagger UI](http://localhost:8004/docs) | [OpenAPI Schema](http://localhost:8004/openapi.json)
 
 ### Data Service
 - **Description**: Security data aggregation, analysis, reporting
 - **Port**: 8006
-- **Documentation**: [Coming Soon](data/endpoints.md)
+- **Documentation**: [Full Endpoint Reference](data/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8006/docs) | [OpenAPI Schema](http://localhost:8006/openapi.json)
 
 ### Tools Service
 - **Description**: Security tool execution, resource management
 - **Port**: 8013
-- **Documentation**: [Coming Soon](tools/endpoints.md)
+- **Documentation**: [Full Endpoint Reference](tools/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8013/docs) | [OpenAPI Schema](http://localhost:8013/openapi.json)
 
 ### Responder Service
 - **Description**: Incident response, playbook execution, remediation
 - **Port**: 8018
-- **Documentation**: [Coming Soon](responder/endpoints.md)
+- **Documentation**: [Full Endpoint Reference](responder/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8018/docs) | [OpenAPI Schema](http://localhost:8018/openapi.json)
 
 ## 🛠️ Creating API Documentation
