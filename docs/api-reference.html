@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Complete Wildbox API Reference - All endpoints documented with examples">
+    <title>Wildbox API Reference</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%23ef4444'>🛡️</text></svg>">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+        body { font-family: 'Inter', sans-serif; }
+        code, pre { font-family: 'JetBrains Mono', monospace; }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .api-method {
+            display: inline-block;
+            padding: 0.35rem 0.75rem;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            font-family: 'JetBrains Mono';
+        }
+
+        .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .method-post { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .method-put { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .method-delete { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+        .method-patch { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+        .endpoint-card {
+            border-left: 4px solid #ef4444;
+            transition: all 0.3s ease;
+        }
+
+        .endpoint-card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 10px 30px rgba(239, 68, 68, 0.1);
+        }
+
+        .code-block {
+            background: #1f2937;
+            border: 1px solid #374151;
+            border-radius: 8px;
+            padding: 1rem;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            color: #e5e7eb;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .param-table {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .param-table td, .param-table th {
+            padding: 0.75rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            text-align: left;
+            font-size: 0.95rem;
+        }
+
+        .param-table th {
+            background: rgba(239, 68, 68, 0.05);
+            font-weight: 600;
+            color: #f87171;
+        }
+
+        .param-type {
+            color: #93c5fd;
+            font-family: 'JetBrains Mono';
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+
+        .required-badge {
+            display: inline-block;
+            background: #ef4444;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .optional-badge {
+            display: inline-block;
+            background: #6b7280;
+            color: white;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-left: 0.5rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.3rem 0.7rem;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .status-200 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .status-201 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .status-400 { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .status-401 { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+        .status-404 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .status-429 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .status-500 { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+    </style>
+</head>
+<body class="bg-black text-white">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <a href="index.md" class="flex items-center gap-2 hover:opacity-80 transition">
+                    <span class="text-2xl">🛡️</span>
+                    <span class="text-xl font-bold">API Reference</span>
+                </a>
+            </div>
+            <div class="hidden md:flex gap-6">
+                <a href="index.md" class="text-gray-300 hover:text-white transition">Docs Home</a>
+                <a href="api-reference.html" class="text-red-400 transition">API Reference</a>
+                <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="max-w-6xl mx-auto px-4 py-12">
+        <!-- Header -->
+        <div class="mb-16">
+            <h1 class="text-5xl font-bold mb-4">
+                <span class="gradient-text">API Reference</span>
+            </h1>
+            <p class="text-xl text-gray-400 mb-8">Complete documentation for all Wildbox microservices and their endpoints.</p>
+        </div>
+
+        <!-- Quick Links -->
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-16">
+            <a href="#identity-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Identity Service</h3>
+                <p class="text-sm text-gray-400">Authentication, users, tokens</p>
+            </a>
+            <a href="#guardian-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Guardian Service</h3>
+                <p class="text-sm text-gray-400">Integrations, queue management</p>
+            </a>
+            <a href="#agents-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Agents Service</h3>
+                <p class="text-sm text-gray-400">AI analysis, threat intelligence</p>
+            </a>
+            <a href="#data-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Data Service</h3>
+                <p class="text-sm text-gray-400">Data aggregation, analysis</p>
+            </a>
+            <a href="#tools-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Tools Service</h3>
+                <p class="text-sm text-gray-400">Security tool execution</p>
+            </a>
+            <a href="#responder-api" class="glass-effect p-4 rounded-lg hover:bg-gray-900 transition">
+                <h3 class="font-semibold text-red-400 mb-2">Responder Service</h3>
+                <p class="text-sm text-gray-400">Incident response, playbooks</p>
+            </a>
+        </div>
+
+        <!-- Services Documentation -->
+        <div class="space-y-20">
+            <!-- Identity Service -->
+            <section id="identity-api" class="scroll-mt-20">
+                <div class="border-b border-gray-800 pb-8 mb-8">
+                    <h2 class="text-3xl font-bold mb-4">Identity & Authentication Service</h2>
+                    <div class="flex gap-4 items-start mb-4">
+                        <div class="text-gray-400 text-sm max-w-2xl">
+                            <p>Manage user authentication, create and validate JWT tokens, handle user accounts and permissions.</p>
+                            <p class="mt-2 text-xs text-gray-500">Base URL: <code class="bg-gray-800 px-2 py-1 rounded">http://localhost:8000/api/v1</code></p>
+                        </div>
+                    </div>
+                    <div class="flex gap-3">
+                        <a href="/docs/api/identity/endpoints.md" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                            View Full Documentation
+                        </a>
+                        <a href="http://localhost:8000/docs" target="_blank" class="inline-block px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                            Swagger UI
+                        </a>
+                        <a href="http://localhost:8000/openapi.json" target="_blank" class="inline-block px-4 py-2 border border-gray-600 hover:border-gray-400 rounded text-sm transition">
+                            OpenAPI Schema
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Core Endpoints -->
+                <div class="space-y-6">
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-post">POST</span>
+                                <code class="ml-2 text-gray-300">/auth/login</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">User login with email and password. Returns JWT token for authenticated requests.</p>
+                        <details class="cursor-pointer">
+                            <summary class="text-sm text-red-400 hover:text-red-300 font-semibold">View Request/Response</summary>
+                            <div class="mt-4 space-y-4">
+                                <div>
+                                    <h5 class="text-sm font-semibold mb-2">Request Body</h5>
+                                    <div class="code-block">
+                                        <code>{
+  "email": "user@example.com",
+  "password": "password123"
+}</code>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h5 class="text-sm font-semibold mb-2"><span class="status-badge status-200">200 OK</span></h5>
+                                    <div class="code-block">
+                                        <code>{
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIs...",
+    "user_id": "usr-123",
+    "expires_in": 3600
+  },
+  "status": "success"
+}</code>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-post">POST</span>
+                                <code class="ml-2 text-gray-300">/auth/refresh</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Refresh an existing JWT token to extend the session duration.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-post">POST</span>
+                                <code class="ml-2 text-gray-300">/auth/logout</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Logout user and revoke the current JWT token.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-get">GET</span>
+                                <code class="ml-2 text-gray-300">/users</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">List all users with pagination and filtering support.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-post">POST</span>
+                                <code class="ml-2 text-gray-300">/users</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Create a new user account with specified permissions.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-get">GET</span>
+                                <code class="ml-2 text-gray-300">/users/{id}</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Retrieve detailed information about a specific user.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-put">PUT</span>
+                                <code class="ml-2 text-gray-300">/users/{id}</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Update user profile, permissions, and settings.</p>
+                    </div>
+
+                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                        <div class="flex items-start justify-between mb-3">
+                            <div>
+                                <span class="api-method method-delete">DELETE</span>
+                                <code class="ml-2 text-gray-300">/users/{id}</code>
+                            </div>
+                        </div>
+                        <p class="text-gray-400 mb-4">Delete a user account and revoke all associated tokens.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Coming Soon Sections -->
+            <section id="guardian-api" class="scroll-mt-20">
+                <div class="glass-effect p-8 rounded-lg text-center">
+                    <h2 class="text-3xl font-bold mb-4">Guardian Service API</h2>
+                    <p class="text-gray-400 mb-6">Integration management, queue monitoring, and security orchestration endpoints</p>
+                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
+                        Coming Soon - Under Documentation
+                    </div>
+                </div>
+            </section>
+
+            <section id="agents-api" class="scroll-mt-20">
+                <div class="glass-effect p-8 rounded-lg text-center">
+                    <h2 class="text-3xl font-bold mb-4">Agents Service API</h2>
+                    <p class="text-gray-400 mb-6">AI-powered threat analysis and intelligent enrichment endpoints</p>
+                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
+                        Coming Soon - Under Documentation
+                    </div>
+                </div>
+            </section>
+
+            <section id="data-api" class="scroll-mt-20">
+                <div class="glass-effect p-8 rounded-lg text-center">
+                    <h2 class="text-3xl font-bold mb-4">Data Service API</h2>
+                    <p class="text-gray-400 mb-6">Security data aggregation, analysis, and reporting endpoints</p>
+                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
+                        Coming Soon - Under Documentation
+                    </div>
+                </div>
+            </section>
+
+            <section id="tools-api" class="scroll-mt-20">
+                <div class="glass-effect p-8 rounded-lg text-center">
+                    <h2 class="text-3xl font-bold mb-4">Tools Service API</h2>
+                    <p class="text-gray-400 mb-6">Security tool execution, resource management, and orchestration endpoints</p>
+                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
+                        Coming Soon - Under Documentation
+                    </div>
+                </div>
+            </section>
+
+            <section id="responder-api" class="scroll-mt-20">
+                <div class="glass-effect p-8 rounded-lg text-center">
+                    <h2 class="text-3xl font-bold mb-4">Responder Service API</h2>
+                    <p class="text-gray-400 mb-6">Incident response, playbook execution, and remediation endpoints</p>
+                    <div class="inline-block px-4 py-2 bg-gray-800 rounded text-sm text-gray-400">
+                        Coming Soon - Under Documentation
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Authentication Info -->
+        <div class="mt-20 pt-12 border-t border-gray-800">
+            <h2 class="text-2xl font-bold mb-6">Authentication</h2>
+            <div class="glass-effect p-6 rounded-lg">
+                <p class="text-gray-400 mb-4">All API endpoints require authentication using Bearer tokens in the Authorization header:</p>
+                <div class="code-block mb-4">
+                    <code>Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code>
+                </div>
+                <p class="text-gray-400">Obtain a token by logging in via the <code class="bg-gray-800 px-2 py-1 rounded">/auth/login</code> endpoint with your credentials.</p>
+            </div>
+        </div>
+
+        <!-- Error Handling -->
+        <div class="mt-12">
+            <h2 class="text-2xl font-bold mb-6">Error Handling</h2>
+            <div class="glass-effect p-6 rounded-lg">
+                <p class="text-gray-400 mb-4">The API returns standard HTTP status codes. Errors include detailed JSON responses:</p>
+                <div class="code-block">
+                    <code>{
+  "error": "Unauthorized",
+  "message": "Invalid or expired token",
+  "status": "error",
+  "request_id": "req-12345"
+}</code>
+                </div>
+                <p class="text-gray-400 text-sm mt-4">See individual endpoint documentation for specific error codes and handling.</p>
+            </div>
+        </div>
+
+        <!-- Support -->
+        <div class="mt-16 pt-12 border-t border-gray-800 text-center">
+            <h2 class="text-2xl font-bold mb-4">Need Help?</h2>
+            <p class="text-gray-400 mb-6">Check out our resources for more information:</p>
+            <div class="flex flex-col sm:flex-row gap-4 justify-center">
+                <a href="docs.html" class="px-6 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                    Documentation Hub
+                </a>
+                <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="px-6 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                    Discussions
+                </a>
+                <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="px-6 py-2 border border-gray-600 hover:border-gray-400 rounded text-sm transition">
+                    Report Issues
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-gray-800 mt-20 py-12 px-4">
+        <div class="max-w-6xl mx-auto text-center text-gray-500 text-sm">
+            <p>Wildbox API Reference - All endpoints documented with examples and live endpoints</p>
+            <p class="mt-2">Last Updated: November 7, 2024 | API Version: v1</p>
+        </div>
+    </footer>
+</body>
+</html>
