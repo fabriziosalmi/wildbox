@@ -10,7 +10,7 @@ psycopg2-binary==2.9.9
 alembic==1.12.1
 
 # Async HTTP client
-aiohttp==3.10.11
+aiohttp==3.12.14
 aiofiles==23.2.0
 
 # Data processing
