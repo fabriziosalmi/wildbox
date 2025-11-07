@@ -2,6 +2,8 @@
 
 Welcome to the Wildbox Security Platform documentation. This site contains comprehensive guides and resources for deploying, securing, and using the platform.
 
+> **Interactive Documentation Available**: [Open the Interactive Documentation Portal](docs.html) for a guided experience with integrated API reference and dynamic markdown rendering.
+
 ## 🚀 Getting Started
 
 - **[Quickstart Guide](guides/quickstart.md)** - Deploy Wildbox in 5 minutes with Docker Compose
