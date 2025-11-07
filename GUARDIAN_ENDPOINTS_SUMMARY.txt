@@ -1,0 +1,522 @@
+================================================================================
+OPEN SECURITY GUARDIAN - API ENDPOINTS SUMMARY
+================================================================================
+
+LOCATION: /Users/fab/GitHub/wildbox/open-security-guardian/
+BASE URL: http://localhost:8000/api/v1/
+
+================================================================================
+AUTHENTICATION METHODS
+================================================================================
+
+1. API Key Authentication
+   - Header: X-API-Key: your-api-key-here
+   - Alternative: Authorization: Bearer your-api-key-here
+   - File: apps/core/authentication.py
+
+2. JWT Token Authentication
+   - Header: Authorization: Bearer your-jwt-token-here
+   - File: Django built-in SessionAuthentication
+
+3. Session Authentication
+   - Standard Django session authentication for web interface
+
+================================================================================
+RATE LIMITING
+================================================================================
+
+- Anonymous users: 100 requests/hour
+- Authenticated users: 1000 requests/hour
+- API key users: 5000 requests/hour
+
+Response headers:
+  - X-RateLimit-Limit
+  - X-RateLimit-Remaining
+  - X-RateLimit-Reset
+
+================================================================================
+CORE INFRASTRUCTURE ENDPOINTS
+================================================================================
+
+GET  /health/              - Health check (public, no auth required)
+GET  /metrics/             - Prometheus metrics endpoint (public)
+GET  /api/schema/          - OpenAPI/Swagger schema in JSON
+GET  /docs/                - Swagger UI documentation
+GET  /redoc/               - ReDoc API documentation
+
+Configuration File: guardian/urls.py
+Documentation: guardian/settings.py (SPECTACULAR_SETTINGS)
+
+================================================================================
+ENDPOINT CATEGORIES & COUNTS
+================================================================================
+
+1. ASSETS MANAGEMENT (45+ endpoints)
+   Base Path: /api/v1/assets/
+   
+   ViewSets:
+   - AssetViewSet (7 custom actions + standard CRUD)
+   - EnvironmentViewSet (standard CRUD)
+   - BusinessFunctionViewSet (standard CRUD)
+   - AssetGroupViewSet (5 custom actions)
+   - AssetDiscoveryRuleViewSet (5 custom actions)
+   - AssetSoftwareViewSet (standard CRUD + inventory)
+   - AssetPortViewSet (standard CRUD + summary)
+   
+   Key Custom Actions:
+   ✓ POST /assets/{id}/scan/
+   ✓ POST /assets/{id}/add_software/
+   ✓ POST /assets/{id}/add_port/
+   ✓ POST /assets/{id}/add_tag/
+   ✓ DELETE /assets/{id}/remove_tag/
+   ✓ POST /assets/discover/
+   ✓ GET /assets/statistics/
+   ✓ POST /groups/{id}/apply_rules/
+   ✓ POST /groups/{id}/add_assets/
+   ✓ DELETE /groups/{id}/remove_assets/
+   ✓ POST /discovery-rules/{id}/execute/
+   ✓ POST /discovery-rules/{id}/enable/
+   ✓ POST /discovery-rules/{id}/disable/
+   ✓ GET /software/inventory/
+   ✓ GET /ports/summary/
+
+   File: apps/assets/views.py, apps/assets/urls.py
+
+2. VULNERABILITIES MANAGEMENT (35+ endpoints)
+   Base Path: /api/v1/vulnerabilities/
+   
+   ViewSets:
+   - VulnerabilityViewSet (8 custom actions)
+   - VulnerabilityTemplateViewSet (standard CRUD)
+   - VulnerabilityAssessmentViewSet (standard CRUD)
+   
+   Key Custom Actions:
+   ✓ POST /{id}/assign/
+   ✓ POST /{id}/close/
+   ✓ POST /{id}/reopen/
+   ✓ POST /{id}/add_tag/
+   ✓ POST /{id}/remove_tag/
+   ✓ GET /{id}/history/
+   ✓ GET /{id}/attachments/
+   ✓ POST /bulk_action/
+   ✓ GET /stats/
+   ✓ GET /trends/
+
+   File: apps/vulnerabilities/views.py, apps/vulnerabilities/urls.py
+
+3. SCANNERS MANAGEMENT (45+ endpoints)
+   Base Path: /api/v1/scanners/
+   
+   ViewSets:
+   - ScannerViewSet (2 custom actions)
+   - ScanProfileViewSet (standard CRUD)
+   - ScanViewSet (6 custom actions)
+   - ScanResultViewSet (standard CRUD)
+   - ScanScheduleViewSet (3 custom actions)
+   
+   Key Custom Actions:
+   ✓ POST /scanners/{id}/test_connection/
+   ✓ GET /scanners/stats/
+   ✓ POST /scans/{id}/start/
+   ✓ POST /scans/{id}/stop/
+   ✓ POST /scans/{id}/pause/
+   ✓ POST /scans/{id}/resume/
+   ✓ GET /scans/{id}/results/
+   ✓ POST /scans/import_results/
+   ✓ POST /scan-schedules/{id}/trigger/
+   ✓ POST /scan-schedules/{id}/enable/
+   ✓ POST /scan-schedules/{id}/disable/
+
+   File: apps/scanners/views.py, apps/scanners/urls.py
+
+4. REMEDIATION MANAGEMENT (40+ endpoints)
+   Base Path: /api/v1/remediation/
+   
+   ViewSets:
+   - RemediationTicketViewSet (3 custom actions)
+   - RemediationWorkflowViewSet (4 custom actions)
+   - RemediationStepViewSet (3 custom actions)
+   - RemediationCommentViewSet (standard CRUD)
+   - RemediationTemplateViewSet (4 custom actions)
+   
+   Key Custom Actions:
+   ✓ POST /tickets/{id}/assign/
+   ✓ POST /tickets/{id}/update_status/
+   ✓ POST /tickets/{id}/sync_external/
+   ✓ POST /workflows/{id}/start/
+   ✓ POST /workflows/{id}/pause/
+   ✓ POST /workflows/{id}/complete/
+   ✓ GET /workflows/{id}/progress/
+   ✓ POST /steps/{id}/execute/
+   ✓ POST /steps/{id}/complete/
+   ✓ POST /steps/{id}/skip/
+   ✓ POST /templates/{id}/clone/
+   ✓ POST /templates/{id}/apply/
+   ✓ GET /templates/categories/
+
+   File: apps/remediation/views.py, apps/remediation/urls.py
+
+5. COMPLIANCE MANAGEMENT (50+ endpoints)
+   Base Path: /api/v1/compliance/
+   
+   ViewSets:
+   - ComplianceFrameworkViewSet (3 custom actions)
+   - ComplianceControlViewSet (2 custom actions)
+   - ComplianceAssessmentViewSet (3 custom actions)
+   - ComplianceEvidenceViewSet (standard CRUD)
+   - ComplianceResultViewSet (2 custom actions)
+   - ComplianceExceptionViewSet (3 custom actions)
+   - ComplianceMetricsViewSet (1 custom action, read-only)
+   
+   Key Custom Actions:
+   ✓ GET /frameworks/{id}/controls/
+   ✓ GET /frameworks/{id}/assessments/
+   ✓ GET /frameworks/{id}/metrics/
+   ✓ GET /controls/{id}/results/
+   ✓ GET /controls/{id}/evidence/
+   ✓ GET /assessments/{id}/results/
+   ✓ GET /assessments/{id}/evidence/
+   ✓ GET /assessments/{id}/summary/
+   ✓ GET /assessments/overdue/
+   ✓ GET /results/non_compliant/
+   ✓ GET /results/high_risk/
+   ✓ GET /exceptions/pending/
+   ✓ GET /exceptions/expiring_soon/
+   ✓ GET /exceptions/needs_review/
+   ✓ GET /metrics/dashboard/
+
+   File: apps/compliance/views.py, apps/compliance/urls.py
+
+6. REPORTING & ANALYTICS (45+ endpoints)
+   Base Path: /api/v1/reports/
+   
+   ViewSets:
+   - ReportTemplateViewSet (3 custom actions)
+   - ReportScheduleViewSet (2 custom actions)
+   - ReportViewSet (3 custom actions)
+   - DashboardViewSet (2 custom actions)
+   - WidgetViewSet (2 custom actions)
+   - ReportMetricsViewSet (1 custom action, read-only)
+   - AlertRuleViewSet (2 custom actions)
+   
+   Key Custom Actions:
+   ✓ POST /templates/{id}/generate/
+   ✓ GET /templates/{id}/reports/
+   ✓ GET /templates/{id}/metrics/
+   ✓ POST /schedules/{id}/run_now/
+   ✓ GET /schedules/due/
+   ✓ GET /reports/{id}/download/
+   ✓ GET /reports/recent/
+   ✓ GET /reports/failed/
+   ✓ GET /dashboards/{id}/data/
+   ✓ POST /dashboards/{id}/share/
+   ✓ GET /widgets/{id}/data/
+   ✓ POST /widgets/{id}/test/
+   ✓ GET /metrics/summary/
+   ✓ POST /alerts/{id}/test/
+   ✓ POST /alerts/check_all/
+
+   File: apps/reporting/views.py, apps/reporting/urls.py
+
+7. INTEGRATIONS (40+ endpoints)
+   Base Path: /api/v1/integrations/
+   
+   ViewSets:
+   - ExternalSystemViewSet (3 custom actions)
+   - IntegrationMappingViewSet (2 custom actions)
+   - SyncRecordViewSet (2 custom actions)
+   - WebhookEndpointViewSet (2 custom actions)
+   - IntegrationLogViewSet (2 custom actions, read-only)
+   - NotificationChannelViewSet (2 custom actions)
+   
+   Key Custom Actions:
+   ✓ POST /systems/{id}/test_connection/
+   ✓ POST /systems/{id}/health_check/
+   ✓ GET /systems/{id}/sync_status/
+   ✓ POST /mappings/{id}/test_mapping/
+   ✓ POST /mappings/{id}/sync_now/
+   ✓ GET /sync-records/sync_statistics/
+   ✓ POST /sync-records/{id}/retry_sync/
+   ✓ POST /webhooks/{id}/test_webhook/
+   ✓ POST /webhooks/{id}/trigger_webhook/
+   ✓ GET /logs/error_summary/
+   ✓ DELETE /logs/cleanup_logs/
+   ✓ POST /notifications/{id}/test_notification/
+   ✓ POST /notifications/{id}/send_notification/
+
+   File: apps/integrations/views.py, apps/integrations/urls.py
+
+================================================================================
+PERMISSION CLASSES
+================================================================================
+
+File: apps/core/permissions.py
+
+- IsAuthenticated (default for most endpoints)
+- IsAssetManager (asset management endpoints)
+- IsComplianceManager (compliance management endpoints)
+- IsSecurityAnalyst (security analysis endpoints)
+- IsVulnerabilityManager (vulnerability management endpoints)
+
+================================================================================
+ERROR HANDLING
+================================================================================
+
+HTTP Status Codes:
+- 200 OK (successful GET, PUT, PATCH)
+- 201 Created (successful POST)
+- 202 Accepted (async operations)
+- 204 No Content (successful DELETE)
+- 400 Bad Request (validation errors)
+- 401 Unauthorized (authentication required)
+- 403 Forbidden (insufficient permissions)
+- 404 Not Found (resource doesn't exist)
+- 409 Conflict (resource already exists)
+- 422 Unprocessable Entity (validation error)
+- 429 Too Many Requests (rate limit exceeded)
+- 500 Internal Server Error (server error)
+- 503 Service Unavailable (health check failed)
+
+Error Response Format:
+{
+    "error": "Error Type",
+    "message": "Human readable message",
+    "details": {
+        "field_name": ["Error details"]
+    },
+    "code": "ERROR_CODE"
+}
+
+================================================================================
+FILTERING AND PAGINATION
+================================================================================
+
+Standard Pagination:
+- Parameter: ?page=1
+- Parameter: ?page_size=50 (max 100)
+- Response: { count, next, previous, results }
+
+Standard Filtering:
+- DjangoFilterBackend for field filtering
+- SearchFilter for text search
+- OrderingFilter for sorting
+
+Examples:
+- GET /api/v1/vulnerabilities/?severity=critical,high&status=open
+- GET /api/v1/assets/?search=web-server&ordering=-created_at
+- GET /api/v1/vulnerabilities/?discovered_after=2025-06-01
+
+================================================================================
+WEBHOOK SUPPORT
+================================================================================
+
+Available Webhook Events:
+- vulnerability.created
+- vulnerability.updated
+- asset.created
+- scan.completed
+- compliance.assessment.completed
+- remediation.ticket.created
+
+Webhook Management:
+POST /api/v1/integrations/webhooks/
+- Request: { url, events, secret, is_active }
+- Support test triggering and health checks
+
+================================================================================
+OPENAPI/SWAGGER DOCUMENTATION
+================================================================================
+
+Configuration File: guardian/settings.py
+
+Settings:
+- TITLE: "Open Security Guardian API"
+- VERSION: "1.0.0"
+- DESCRIPTION: "Proactive Vulnerability Management Platform"
+- Tags: Assets, Vulnerabilities, Scanners, Remediation, Compliance, Reports
+
+Documentation Generation:
+- Library: drf-spectacular
+- Schema endpoint: /api/schema/
+- Swagger UI: /docs/
+- ReDoc: /redoc/
+
+================================================================================
+CELERY TASK INTEGRATION
+================================================================================
+
+Async Tasks (non-blocking operations):
+- Asset scanning and discovery
+- Report generation
+- Vulnerability risk score calculations
+- Integration sync operations
+- Alert rule checks
+
+Configuration:
+- Broker: Redis (CELERY_BROKER_URL)
+- Result Backend: Redis (CELERY_RESULT_BACKEND)
+- Scheduled Tasks: Celery Beat with Database Scheduler
+
+================================================================================
+LOGGING & MONITORING
+================================================================================
+
+Monitoring Files:
+- Health Check: /health/ (GET)
+- Metrics: /metrics/ (GET) - Prometheus format
+- Sentry Integration: Optional (SENTRY_DSN)
+- Prometheus: Configurable (PROMETHEUS_ENABLED)
+
+Logging:
+- Configuration: guardian/settings.py (LOGGING)
+- Format: JSON or verbose (LOG_FORMAT)
+- Level: Configurable via LOG_LEVEL env var
+
+================================================================================
+CORS CONFIGURATION
+================================================================================
+
+File: guardian/settings.py (CORS_ALLOWED_ORIGINS)
+
+Allowed Origins:
+- http://localhost:3000
+- http://127.0.0.1:3000
+- http://localhost:8000
+- http://127.0.0.1:8000
+- http://localhost:80
+- http://127.0.0.1
+
+Custom Headers:
+- x-api-key
+- api-key
+- x-csrftoken
+- authorization
+
+================================================================================
+DATABASE MODELS & STRUCTURE
+================================================================================
+
+Key Apps & Models:
+
+1. apps.assets
+   - Asset, Environment, BusinessFunction, AssetGroup
+   - AssetSoftware, AssetPort, AssetDiscoveryRule
+
+2. apps.vulnerabilities
+   - Vulnerability, VulnerabilityTemplate, VulnerabilityAssessment
+   - VulnerabilityHistory, VulnerabilityAttachment, VulnerabilityStatus
+
+3. apps.scanners
+   - Scanner, ScanProfile, Scan, ScanResult, ScanSchedule
+
+4. apps.remediation
+   - RemediationTicket, RemediationWorkflow, RemediationStep
+   - RemediationComment, RemediationTemplate, RemediationMetrics
+
+5. apps.compliance
+   - ComplianceFramework, ComplianceControl, ComplianceAssessment
+   - ComplianceEvidence, ComplianceResult, ComplianceException, ComplianceMetrics
+
+6. apps.reporting
+   - ReportTemplate, ReportSchedule, Report, Dashboard, Widget
+   - ReportMetrics, AlertRule
+
+7. apps.integrations
+   - ExternalSystem, IntegrationMapping, SyncRecord
+   - WebhookEndpoint, IntegrationLog, NotificationChannel
+
+8. apps.core
+   - APIKey, SystemConfiguration
+
+================================================================================
+SUMMARY STATISTICS
+================================================================================
+
+Total Endpoints:     280+ HTTP methods
+Total ViewSets:      43
+Total Custom Actions: 120+
+
+Breakdown:
+- GET requests:      120+ (list, retrieve, custom actions)
+- POST requests:     100+ (create, custom actions)
+- PUT requests:      40+ (full update)
+- PATCH requests:    20+ (partial update)
+- DELETE requests:   40+ (delete, cleanup)
+
+Authentication:
+- Public endpoints:   3 (health, metrics, docs)
+- Authenticated:      277+
+
+Rate Limiting:
+- Enabled:           Yes
+- User-based:        Yes
+- Custom headers:    Yes
+
+================================================================================
+FILE LOCATIONS
+================================================================================
+
+Application Structure:
+/Users/fab/GitHub/wildbox/open-security-guardian/
+
+Main Files:
+- guardian/urls.py              - URL routing configuration
+- guardian/settings.py          - Django settings & API configuration
+- apps/*/views.py               - ViewSet definitions
+- apps/*/urls.py                - App-specific URL routing
+- apps/*/serializers.py         - Request/response serialization
+- apps/core/authentication.py   - Authentication classes
+- apps/core/permissions.py      - Permission classes
+- apps/core/middleware.py       - Custom middleware (logging, rate limiting)
+- requirements.txt              - Python dependencies
+
+Documentation:
+- /Users/fab/GitHub/wildbox/API_DOCS.md       - Basic API documentation
+- /Users/fab/GitHub/wildbox/GUARDIAN_API_ENDPOINTS.md - Comprehensive endpoint list
+
+================================================================================
+TESTING & DEVELOPMENT
+================================================================================
+
+Requirements Files:
+- requirements.txt      - Production dependencies
+- requirements-dev.txt  - Development dependencies
+
+Key Libraries:
+- Django 4.x
+- Django REST Framework (DRF)
+- drf-spectacular (OpenAPI/Swagger)
+- django-filter
+- django-cors-headers
+- celery & django-celery-beat
+- redis
+- psutil
+
+Development Server:
+python manage.py runserver
+
+Database Migration:
+python manage.py migrate
+
+Create Admin User:
+python manage.py createsuperuser
+
+================================================================================
+ADDITIONAL RESOURCES
+================================================================================
+
+Documentation Files:
+- API_DOCS.md         - Initial API documentation
+- GETTING_STARTED.md  - Getting started guide
+- README.md           - Main project readme
+- Dockerfile          - Container configuration
+
+Management Commands:
+- python manage.py setup_guardian - Initial setup
+- python manage.py generate_compliance_report - Generate reports
+- python manage.py import_vulnerabilities - Bulk import
+- python manage.py maintenance - Maintenance tasks
+
+================================================================================
+END OF SUMMARY
+================================================================================

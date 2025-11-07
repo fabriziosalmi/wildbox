@@ -1462,7 +1462,7 @@ Wildbox uses open-source components with the following licenses:
 
 ## 📊 Project Status
 
-**Version**: 1.0
+**Version**: v0.1.2
 **Status**: 🔄 Early Evaluation Phase
 **Last Updated**: November 7, 2024
 **Maintenance**: Active Development
@@ -1480,5 +1480,5 @@ Wildbox uses open-source components with the following licenses:
 
 **Built with ❤️ for the security community**
 
-*Wildbox is an open-source security platform dedicated to helping organizations protect their infrastructure and data.*
+*Wildbox is an open-source security platform dedicated to helping organizations and communities to protect their infrastructure and data.*
 
