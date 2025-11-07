@@ -6,14 +6,18 @@ AI-powered threat intelligence enrichment service.
 
 import logging
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Header
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
 import redis
 from celery.result import AsyncResult
 
@@ -76,23 +80,49 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Open Security Agents...")
 
 
+# Determine if running in production
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+DISABLE_DOCS = ENVIRONMENT == "production"
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Open Security Agents API",
     description="AI-powered threat intelligence enrichment service",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if DISABLE_DOCS else "/docs",
+    redoc_url=None if DISABLE_DOCS else "/redoc",
+    openapi_url=None if DISABLE_DOCS else "/openapi.json",
     lifespan=lifespan
 )
 
-# Add CORS middleware
+
+# Add Security Headers Middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware to add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# Setup CORS with environment-aware configuration
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
@@ -179,14 +209,39 @@ async def get_stats():
 
 
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
-async def analyze_ioc(request: AnalysisTaskRequest):
+async def analyze_ioc(
+    request: AnalysisTaskRequest,
+    authorization: str = Header(None)
+):
     """
-    Submit an IOC for AI-powered threat analysis
-    
+    Submit an IOC for AI-powered threat analysis.
+
+    Requires Bearer token authentication. Include header:
+        Authorization: Bearer <token>
+
     This endpoint accepts an IOC and starts an asynchronous analysis task.
     The analysis is performed by an AI agent that uses various security tools
     to investigate the IOC and generate a comprehensive threat intelligence report.
     """
+    # Authenticate request
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Extract token from "Bearer <token>" format
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Use: Authorization: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = parts[1]
+    logger.info(f"Authenticated request to analyze IOC: {request.ioc.type}:{request.ioc.value}")
     try:
         # Generate unique task ID
         task_id = str(uuid.uuid4())

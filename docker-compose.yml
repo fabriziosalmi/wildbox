@@ -25,15 +25,15 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/identity}
-      - REDIS_URL=${REDIS_URL:-redis://wildbox-redis:6379/0}
-      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-please-set-jwt-secret-in-env-file}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_set_your_stripe_key}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_set_your_webhook_secret}
-      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-pk_test_set_your_publishable_key}
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - CREATE_INITIAL_ADMIN=${CREATE_INITIAL_ADMIN:-true}
-      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL:-admin@wildbox.security}
-      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-CHANGE-THIS-PASSWORD}
+      - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
     depends_on:
       - postgres
       - wildbox-redis
@@ -55,11 +55,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}
+      - API_KEY=${API_KEY}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - ENVIRONMENT=${ENVIRONMENT:-production}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     networks:
       - wildbox
     healthcheck:
@@ -78,10 +78,10 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://secdata:postgres@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,http://localhost:80,http://localhost}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     depends_on:
       - postgres
     networks:
@@ -101,7 +101,7 @@ services:
     restart: unless-stopped
     command: python -m app.scheduler.main
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://secdata:postgres@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -126,11 +126,11 @@ services:
       - ./open-security-gateway/ssl:/etc/ssl/wildbox:ro
     environment:
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
-      - WILDBOX_ENV=development
-      - GATEWAY_LOG_LEVEL=info
-      - IDENTITY_SERVICE_URL=http://open-security-identity:8001
-      - GATEWAY_INTERNAL_SECRET=integration-test-secret-2025
-      - AUTH_CACHE_TTL=300
+      - WILDBOX_ENV=${WILDBOX_ENV:-development}
+      - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
+      - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8001}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
     networks:
       - wildbox

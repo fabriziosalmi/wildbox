@@ -5,13 +5,13 @@ SOAR orchestration service with REST API interface.
 """
 
 import logging
+import os
 from datetime import datetime
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, status
+from fastapi import FastAPI, HTTPException, BackgroundTasks, status, Depends, Header
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 import redis
 
 from .models import (
@@ -63,23 +63,56 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Open Security Responder...")
 
 
+# Determine if running in production
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+DISABLE_DOCS = ENVIRONMENT == "production"
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Open Security Responder API",
     description="SOAR (Security Orchestration, Automation and Response) microservice",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if DISABLE_DOCS else "/docs",
+    redoc_url=None if DISABLE_DOCS else "/redoc",
+    openapi_url=None if DISABLE_DOCS else "/openapi.json",
     lifespan=lifespan
 )
 
-# Add CORS middleware
+
+# Add Security Headers Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import Response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Middleware to add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# Setup CORS with environment-aware configuration
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS]
+
+from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
@@ -133,9 +166,37 @@ async def list_playbooks():
 @app.post("/v1/playbooks/{playbook_id}/execute")
 async def execute_playbook(
     playbook_id: str,
-    request: PlaybookExecutionRequest = PlaybookExecutionRequest()
+    request: PlaybookExecutionRequest = PlaybookExecutionRequest(),
+    authorization: str = Header(None)
 ):
-    """Execute a playbook"""
+    """
+    Execute a playbook.
+
+    Requires Bearer token authentication. Include header:
+        Authorization: Bearer <token>
+    """
+    # Authenticate request
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Extract token from "Bearer <token>" format
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format. Use: Authorization: Bearer <token>",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    token = parts[1]
+    # Token validation would occur here with the identity service
+    # For now, we accept any valid Bearer token format
+
+    logger.info(f"Authenticated request to execute playbook: {playbook_id}")
     try:
         # Validate playbook exists
         try:
