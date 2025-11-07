@@ -2,7 +2,7 @@
 
 # Django Framework
 Django==4.2.26
-djangorestframework==3.14.0
+djangorestframework==3.14.1
 django-cors-headers==4.3.1
 django-filter==23.2
 django-extensions==3.2.3
@@ -21,7 +21,7 @@ django-celery-results==2.5.1
 # Security & Authentication
 django-oauth-toolkit==3.0.1
 cryptography==44.0.1
-python-jose[cryptography]==3.3.0
+python-jose[cryptography]==3.3.1
 
 # HTTP Clients & Integrations
 requests>=2.32.3,<3.0.0
@@ -56,7 +56,7 @@ validators==0.20.0
 ipaddress==1.0.23
 netaddr==0.8.0
 PyYAML==6.0.1
-Pillow==10.0.0
+Pillow==11.1.0
 
 # Testing
 pytest==7.4.0
