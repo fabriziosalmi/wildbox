@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wildbox Documentation</title>
+    <meta name="description" content="Complete Wildbox Security Platform documentation, guides, and API reference">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%23ef4444'>🛡️</text></svg>">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .doc-section {
+            display: none;
+        }
+
+        .doc-section.active {
+            display: block;
+        }
+
+        .nav-button {
+            transition: all 0.3s ease;
+        }
+
+        .nav-button.active {
+            background: rgba(239, 68, 68, 0.2);
+            border-left: 3px solid #ef4444;
+        }
+
+        .markdown-content h1, .markdown-content h2, .markdown-content h3,
+        .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-weight: 600;
+        }
+
+        .markdown-content h1 { font-size: 2rem; }
+        .markdown-content h2 { font-size: 1.5rem; color: #f87171; }
+        .markdown-content h3 { font-size: 1.25rem; }
+
+        .markdown-content code {
+            background: #1f2937;
+            color: #10b981;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .markdown-content pre {
+            background: #1f2937;
+            color: #e5e7eb;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 1rem 0;
+        }
+
+        .markdown-content pre code {
+            background: none;
+            color: inherit;
+            padding: 0;
+        }
+
+        .markdown-content ul, .markdown-content ol {
+            margin-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .markdown-content li {
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content a {
+            color: #f87171;
+            text-decoration: none;
+            border-bottom: 1px solid #f87171;
+        }
+
+        .markdown-content a:hover {
+            color: #fca5a5;
+        }
+
+        .markdown-content blockquote {
+            border-left: 4px solid #ef4444;
+            padding-left: 1rem;
+            margin-left: 0;
+            color: #9ca3af;
+        }
+
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        .markdown-content th, .markdown-content td {
+            border: 1px solid #4b5563;
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        .markdown-content th {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .api-endpoint {
+            background: rgba(239, 68, 68, 0.05);
+            border-left: 4px solid #ef4444;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 4px;
+        }
+
+        .api-method {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 3px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            margin-right: 0.5rem;
+        }
+
+        .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .method-post { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
+        .method-put { background: rgba(248, 113, 113, 0.2); color: #f87171; }
+        .method-delete { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+
+        .loading { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-black text-white">
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <a href="index.html" class="flex items-center gap-2 hover:opacity-80 transition">
+                    <span class="text-2xl">🛡️</span>
+                    <span class="text-xl font-bold">Wildbox Docs</span>
+                </a>
+            </div>
+            <div class="hidden md:flex gap-6">
+                <a href="index.html" class="text-gray-300 hover:text-white transition">Home</a>
+                <a href="docs.html" class="text-red-400 transition">Documentation</a>
+                <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="flex min-h-screen">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800 p-6 overflow-y-auto">
+            <h3 class="text-xl font-bold mb-6 text-red-400">Documentation</h3>
+
+            <div class="space-y-4">
+                <div class="space-y-2">
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Getting Started</p>
+                    <button onclick="loadDoc('quickstart')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Quick Start
+                    </button>
+                    <button onclick="loadDoc('credentials')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Credentials & Auth
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Security</p>
+                    <button onclick="loadDoc('security-status')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Security Status
+                    </button>
+                    <button onclick="loadDoc('security-policy')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Security Policy
+                    </button>
+                    <button onclick="loadDoc('security-audit')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Audit Report
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    <p class="text-xs font-semibold text-gray-400 uppercase">Deployment</p>
+                    <button onclick="loadDoc('deployment')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Deployment Guide
+                    </button>
+                    <button onclick="loadDoc('remediation')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Remediation Checklist
+                    </button>
+                </div>
+
+                <div class="space-y-2">
+                    <p class="text-xs font-semibold text-gray-400 uppercase">API Reference</p>
+                    <button onclick="loadDoc('api-docs')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        API Documentation
+                    </button>
+                    <button onclick="loadDoc('api-security')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Security Endpoints
+                    </button>
+                    <button onclick="loadDoc('api-integration')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        Integration API
+                    </button>
+                </div>
+
+                <div class="pt-6 border-t border-gray-800">
+                    <p class="text-xs text-gray-500">Online Resources</p>
+                    <div class="mt-2 space-y-2">
+                        <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                            GitHub Repository
+                        </a>
+                        <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                            Report Issues
+                        </a>
+                        <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                            Discussions
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-auto">
+            <div class="max-w-4xl mx-auto p-8">
+                <!-- Welcome Section (default) -->
+                <div id="welcome-section" class="doc-section active">
+                    <div class="mb-12">
+                        <h1 class="text-5xl font-bold mb-4">
+                            <span class="gradient-text">Wildbox Documentation</span>
+                        </h1>
+                        <p class="text-xl text-gray-400 mb-8">
+                            Complete guides, API reference, and security documentation for the Wildbox Security Platform.
+                        </p>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-6 mb-12">
+                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('quickstart')">
+                            <h3 class="text-xl font-semibold mb-2 text-red-400">Get Started in 5 Minutes</h3>
+                            <p class="text-gray-400">Quickstart guide to deploy Wildbox with Docker Compose and verify services.</p>
+                        </div>
+
+                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('security-status')">
+                            <h3 class="text-xl font-semibold mb-2 text-red-400">Security Status</h3>
+                            <p class="text-gray-400">Current security metrics, verification checks, and vulnerability tracking.</p>
+                        </div>
+
+                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('api-docs')">
+                            <h3 class="text-xl font-semibold mb-2 text-red-400">API Reference</h3>
+                            <p class="text-gray-400">Complete API documentation with examples for all services and endpoints.</p>
+                        </div>
+
+                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('deployment')">
+                            <h3 class="text-xl font-semibold mb-2 text-red-400">Deployment Guide</h3>
+                            <p class="text-gray-400">Production deployment procedures, security configuration, and operations.</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-effect p-8 rounded-lg">
+                        <h2 class="text-2xl font-bold mb-4">Documentation by Role</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <h4 class="font-semibold text-red-400 mb-2">Developer</h4>
+                                <p class="text-gray-400">Start with <button onclick="loadDoc('quickstart')" class="text-red-400 hover:underline">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-red-400 hover:underline">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-red-400 hover:underline">Credentials Guide</button>.</p>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-red-400 mb-2">Security Engineer</h4>
+                                <p class="text-gray-400">Review <button onclick="loadDoc('security-policy')" class="text-red-400 hover:underline">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-red-400 hover:underline">Audit Report</button> for comprehensive security analysis.</p>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-red-400 mb-2">System Administrator</h4>
+                                <p class="text-gray-400">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:underline">Deployment Guide</button> and <button onclick="loadDoc('remediation')" class="text-red-400 hover:underline">Remediation Checklist</button> for production setup.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic Content Sections -->
+                <div id="quickstart-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Quick Start guide...</div>
+                </div>
+
+                <div id="credentials-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Credentials guide...</div>
+                </div>
+
+                <div id="security-status-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Security Status...</div>
+                </div>
+
+                <div id="security-policy-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Security Policy...</div>
+                </div>
+
+                <div id="security-audit-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Security Audit...</div>
+                </div>
+
+                <div id="deployment-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Deployment Guide...</div>
+                </div>
+
+                <div id="remediation-section" class="doc-section">
+                    <div class="markdown-content loading">Loading Remediation Checklist...</div>
+                </div>
+
+                <div id="api-docs-section" class="doc-section">
+                    <div class="markdown-content">
+                        <h1>API Documentation</h1>
+                        <p>Wildbox provides comprehensive REST APIs for all services. Each microservice exposes OpenAPI documentation.</p>
+
+                        <h2>Available APIs</h2>
+                        <div class="space-y-6">
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Identity & Authentication Service</h3>
+                                <p class="text-gray-400 mb-3">User management, authentication, and authorization endpoints.</p>
+                                <a href="http://localhost:8000/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Docs (Swagger UI)
+                                </a>
+                                <a href="http://localhost:8000/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                                    OpenAPI Schema (JSON)
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Guardian Service</h3>
+                                <p class="text-gray-400 mb-3">Integration management and queue monitoring.</p>
+                                <a href="http://localhost:8001/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Docs (Swagger UI)
+                                </a>
+                                <a href="http://localhost:8001/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                                    OpenAPI Schema (JSON)
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Agents Service</h3>
+                                <p class="text-gray-400 mb-3">AI-powered threat analysis and intelligence enrichment.</p>
+                                <a href="http://localhost:8002/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Docs (Swagger UI)
+                                </a>
+                                <a href="http://localhost:8002/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                                    OpenAPI Schema (JSON)
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Data Service</h3>
+                                <p class="text-gray-400 mb-3">Security data aggregation and analysis.</p>
+                                <a href="http://localhost:8006/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Docs (Swagger UI)
+                                </a>
+                                <a href="http://localhost:8006/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                                    OpenAPI Schema (JSON)
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Tools Service</h3>
+                                <p class="text-gray-400 mb-3">Security tool execution and orchestration.</p>
+                                <a href="http://localhost:8013/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Docs (Swagger UI)
+                                </a>
+                                <a href="http://localhost:8013/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
+                                    OpenAPI Schema (JSON)
+                                </a>
+                            </div>
+                        </div>
+
+                        <h2>Authentication</h2>
+                        <p>All API endpoints require authentication via Bearer token in the Authorization header:</p>
+                        <pre><code>Authorization: Bearer {your-jwt-token}</code></pre>
+
+                        <h2>Common Headers</h2>
+                        <ul>
+                            <li><code>Authorization: Bearer {token}</code> - JWT authentication token</li>
+                            <li><code>Content-Type: application/json</code> - Request content type</li>
+                            <li><code>X-API-Key: {key}</code> - Alternative API key authentication</li>
+                        </ul>
+
+                        <h2>Response Format</h2>
+                        <p>All APIs return JSON responses with consistent structure:</p>
+                        <pre><code>{
+  "data": { /* response data */ },
+  "status": "success",
+  "timestamp": "2024-11-07T10:30:00Z"
+}</code></pre>
+                    </div>
+                </div>
+
+                <div id="api-security-section" class="doc-section">
+                    <div class="markdown-content">
+                        <h1>Security Endpoints</h1>
+                        <p>API endpoints for security and compliance operations.</p>
+
+                        <h2>Authentication Endpoints</h2>
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/auth/login</code>
+                            <p class="text-gray-400 mt-2">User login with email and password. Returns JWT token.</p>
+                        </div>
+
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/auth/logout</code>
+                            <p class="text-gray-400 mt-2">User logout and token revocation.</p>
+                        </div>
+
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/auth/refresh</code>
+                            <p class="text-gray-400 mt-2">Refresh JWT token for continued session.</p>
+                        </div>
+
+                        <h2>Security Analysis Endpoints</h2>
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/v1/analyze</code>
+                            <p class="text-gray-400 mt-2">Submit data for security analysis and threat assessment.</p>
+                        </div>
+
+                        <div class="api-endpoint">
+                            <span class="api-method method-get">GET</span>
+                            <code>/v1/findings</code>
+                            <p class="text-gray-400 mt-2">Retrieve security findings and vulnerability assessments.</p>
+                        </div>
+
+                        <h2>Integration Endpoints</h2>
+                        <div class="api-endpoint">
+                            <span class="api-method method-get">GET</span>
+                            <code>/v1/integrations</code>
+                            <p class="text-gray-400 mt-2">List all configured security integrations.</p>
+                        </div>
+
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/v1/integrations/{id}/execute</code>
+                            <p class="text-gray-400 mt-2">Execute security scan through specific integration.</p>
+                        </div>
+
+                        <h2>Remediation Endpoints</h2>
+                        <div class="api-endpoint">
+                            <span class="api-method method-post">POST</span>
+                            <code>/v1/playbooks/{id}/execute</code>
+                            <p class="text-gray-400 mt-2">Execute incident response playbook.</p>
+                        </div>
+
+                        <div class="api-endpoint">
+                            <span class="api-method method-get">GET</span>
+                            <code>/v1/playbooks</code>
+                            <p class="text-gray-400 mt-2">List available response playbooks.</p>
+                        </div>
+
+                        <p class="text-gray-500 text-sm mt-8">For complete API documentation with request/response examples, visit the OpenAPI Swagger UI links in the <button onclick="loadDoc('api-docs')" class="text-red-400 hover:underline">API Documentation</button> section.</p>
+                    </div>
+                </div>
+
+                <div id="api-integration-section" class="doc-section">
+                    <div class="markdown-content">
+                        <h1>Integration API Guide</h1>
+                        <p>Guide for integrating Wildbox with external security tools and platforms.</p>
+
+                        <h2>Webhook Integration</h2>
+                        <p>Wildbox supports incoming webhooks from external tools for automated alert ingestion and processing.</p>
+
+                        <h2>Service-to-Service Communication</h2>
+                        <p>All microservices communicate via internal APIs secured with X-Gateway-Secret headers. See <button onclick="loadDoc('security-policy')" class="text-red-400 hover:underline">Security Policy</button> for authentication details.</p>
+
+                        <h2>Data Export APIs</h2>
+                        <p>Export security data in various formats for integration with external systems:</p>
+                        <ul>
+                            <li>JSON API for programmatic access</li>
+                            <li>CSV export for spreadsheet analysis</li>
+                            <li>SIEM integration feeds</li>
+                            <li>Custom webhook deliveries</li>
+                        </ul>
+
+                        <h2>Getting Help with APIs</h2>
+                        <p>For API integration support:</p>
+                        <ul>
+                            <li>Check individual service OpenAPI documentation</li>
+                            <li>Review <button onclick="loadDoc('quickstart')" class="text-red-400 hover:underline">Quick Start</button> for example requests</li>
+                            <li>Open <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="text-red-400 hover:underline">GitHub Discussions</a> for questions</li>
+                            <li>Report bugs in <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="text-red-400 hover:underline">GitHub Issues</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Map of documents to their raw GitHub URLs
+        const docUrls = {
+            quickstart: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/QUICKSTART.md',
+            credentials: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/QUICKSTART_CREDENTIALS.md',
+            'security-status': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_STATUS.md',
+            'security-policy': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY.md',
+            'security-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_AUDIT_REPORT.md',
+            deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/DEPLOYMENT.md',
+            remediation: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_REMEDIATION_CHECKLIST.md'
+        };
+
+        // Simple markdown to HTML converter
+        function markdownToHtml(markdown) {
+            let html = markdown;
+
+            // Headers
+            html = html.replace(/^### (.*?)$/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>');
+            html = html.replace(/^## (.*?)$/gm, '<h2 class="text-2xl font-bold mt-6 mb-3 text-red-400">$1</h2>');
+            html = html.replace(/^# (.*?)$/gm, '<h1 class="text-4xl font-bold mb-4">$1</h1>');
+
+            // Code blocks
+            html = html.replace(/```([^`]*?)```/gs, '<pre><code>$1</code></pre>');
+
+            // Inline code
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+            // Bold
+            html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+            // Italic
+            html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+
+            // Links
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+
+            // Lists
+            html = html.replace(/^\* (.*?)$/gm, '<li>$1</li>');
+            html = html.replace(/^\- (.*?)$/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*?<\/li>)/s, '<ul class="list-disc list-inside ml-4 mb-4">$1</ul>');
+
+            // Paragraphs
+            html = html.split('\n\n').map(para => {
+                if (!para.startsWith('<')) {
+                    return `<p class="mb-4 text-gray-300">${para}</p>`;
+                }
+                return para;
+            }).join('\n');
+
+            // Block quotes
+            html = html.replace(/^> (.*?)$/gm, '<blockquote>$1</blockquote>');
+
+            return html;
+        }
+
+        // Load documentation
+        async function loadDoc(docName) {
+            // Hide all sections
+            document.querySelectorAll('.doc-section').forEach(section => {
+                section.classList.remove('active');
+            });
+
+            // Hide welcome section
+            document.getElementById('welcome-section').classList.remove('active');
+
+            // Update nav buttons
+            document.querySelectorAll('.nav-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.closest('.nav-button')?.classList.add('active');
+
+            // Show loading
+            const sectionId = `${docName}-section`;
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.add('active');
+                const content = section.querySelector('.markdown-content');
+                content.innerHTML = '<div class="loading">Loading documentation...</div>';
+
+                // Fetch markdown
+                try {
+                    const response = await fetch(docUrls[docName]);
+                    if (response.ok) {
+                        const markdown = await response.text();
+                        const html = markdownToHtml(markdown);
+                        content.innerHTML = html;
+
+                        // Scroll to top
+                        window.scrollTo(0, 0);
+                    } else {
+                        content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
+                    }
+                } catch (error) {
+                    console.error('Error loading doc:', error);
+                    content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
+                }
+            }
+        }
+
+        // Load welcome section by default
+        window.addEventListener('load', () => {
+            document.getElementById('welcome-section').classList.add('active');
+        });
+    </script>
+</body>
+</html>
