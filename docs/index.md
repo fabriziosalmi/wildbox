@@ -83,7 +83,7 @@ The Wildbox Security Platform has completed comprehensive security hardening. Le
 
 - **Issues**: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
-- **Security Reports**: security@wildbox.security
+- **Security Reports**: fabrizio.salmi@gmail.com
 
 ## 🔄 What's in the Repo?
 

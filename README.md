@@ -1382,7 +1382,7 @@ We welcome contributions from the security community! In the current evaluation 
 Found a security vulnerability?
 
 **Please report security issues privately:**
-- Email: security@wildbox.security
+- Email: fabrizio.salmi@gmail.com
 - Do NOT create public GitHub issues for security vulnerabilities
 - Include: description, reproduction steps, impact assessment
 - Allow 48 hours for initial response
@@ -1443,7 +1443,7 @@ Wildbox uses open-source components with the following licenses:
 - **Documentation**: See [📖 Documentation](#-documentation) section above
 - **Issues**: Report bugs on [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 - **Discussions**: Join [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
-- **Security**: Email security@wildbox.security for security issues
+- **Security**: Email fabrizio.salmi@gmail.com for security issues
 
 ### Community
 

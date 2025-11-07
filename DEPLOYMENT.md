@@ -647,7 +647,7 @@ watch -n 1 docker stats
 
 - **Documentation**: SECURITY.md, QUICKSTART.md
 - **Issues**: https://github.com/fabriziosalmi/wildbox/issues
-- **Security**: security@wildbox.security
+- **Security**: fabrizio.salmi@gmail.com
 
 ---
 

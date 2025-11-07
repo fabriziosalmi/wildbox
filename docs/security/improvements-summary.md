@@ -447,7 +447,7 @@ These improvements serve as a reference for:
 
 ## 📞 Support & References
 
-- **Security Issues**: security@wildbox.security
+- **Security Issues**: fabrizio.salmi@gmail.com
 - **Documentation**: See files listed above
 - **GitHub**: https://github.com/fabriziosalmi/wildbox
 - **Resources**: OWASP, CWE/SANS Top 25, NIST Framework

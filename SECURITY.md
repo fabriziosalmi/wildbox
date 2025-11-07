@@ -263,7 +263,7 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 If you discover a security vulnerability:
 
 1. **Do NOT** create a public issue
-2. **Email security team** at: security@wildbox.security
+2. **Email security team** at: fabrizio.salmi@gmail.com
 3. **Include** detailed reproduction steps
 4. **Provide** your contact information
 5. **Allow** 48 hours for initial response
