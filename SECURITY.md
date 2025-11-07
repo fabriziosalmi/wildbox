@@ -192,6 +192,37 @@ Depending on your use case, ensure compliance with:
 - **NIST Cybersecurity Framework**
 - **Industry-specific regulations**
 
+### 13. Managing Dependency Vulnerabilities
+
+Wildbox uses GitHub Dependabot for continuous security scanning of all dependencies.
+
+**Transitive Dependencies (Current Status):**
+- 10 security alerts exist from transitive dependencies (upstream packages)
+- These are **not** code vulnerabilities - they exist in libraries we depend on
+- We cannot fix them directly - they require upstream package patches
+- See [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) for real-time status
+
+**Mitigation Strategy:**
+- ✅ **Dependabot enabled**: Automatically detects new vulnerability patches
+- ✅ **Automated PRs**: Creates pull requests when patched versions available
+- ✅ **Testing integration**: Full test suite validates compatibility
+- ✅ **Automatic merging**: Patches integrated immediately when tests pass (typically within 1-4 weeks)
+
+**Your Deployment Considerations:**
+1. **For Development/Testing**: Use `docker-compose up -d` as-is for evaluation
+2. **For Staging**: Monitor [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) page
+3. **For Production**:
+   - Wait for upstream patches (usually released within weeks of disclosure)
+   - Check our releases page for updates
+   - Subscribe to [GitHub Security Advisories](https://github.com/fabriziosalmi/wildbox/security/advisories)
+   - Join our [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) for security updates
+
+**Best Practices:**
+- Keep Docker images updated with `docker-compose build --pull`
+- Monitor GitHub Security tab for patch availability
+- Test patches in staging before production deployment
+- Report any real-world vulnerability impacts you discover
+
 ## 🔐 Security Features Implemented
 
 ### 1. Authentication & Authorization

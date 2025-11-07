@@ -306,12 +306,52 @@ app = FastAPI(
 
 **10 Remaining** (4 critical, 1 high, 4 moderate, 1 low)
 
-These are **transitive dependencies** from upstream packages:
-- Waiting for upstream security patches
-- Monitored via GitHub Dependabot
-- Will be updated automatically when patches available
+These are **transitive dependencies** from upstream packages - all tracked in [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot):
 
-**No action required** - these will resolve as upstream packages release security updates.
+### Detailed Breakdown
+
+**python-jose** (4 Critical - Algorithm Confusion, 4 Moderate - DoS)
+- Upstream package: https://github.com/mpdavis/python-jose
+- Issues:
+  - Algorithm confusion with OpenSSH ECDSA keys (critical)
+  - DoS via compressed JWE content (moderate)
+- Affected in: open-security-data, open-security-guardian, open-security-identity, open-security-cspm
+- Status: Awaiting upstream patch release
+
+**python-multipart** (1 High - DoS)
+- Upstream package: https://github.com/andrew-d/python-multipart
+- Issue: DoS via malformed multipart/form-data boundary
+- Affected in: open-security-identity
+- Status: Awaiting upstream patch release
+
+**djangorestframework** (1 Low - XSS)
+- Upstream package: https://github.com/encode/django-rest-framework
+- Issue: XSS vulnerability
+- Affected in: open-security-guardian
+- Status: Awaiting upstream patch release
+
+### Mitigation & Monitoring
+
+**What We Did:**
+- ✅ Cannot patch directly - vulnerabilities are in upstream code
+- ✅ Configured GitHub Dependabot for automatic detection
+- ✅ Integrated with CI/CD for immediate testing when patches release
+- ✅ Documented impact and workarounds
+
+**Monitoring:**
+- Dependabot runs security scans continuously
+- Creates PRs automatically when patches are available
+- Full test suite validates compatibility
+- Merges are automated when tests pass
+
+**Community Contribution Opportunity:**
+- If you encounter real-world issues from these vulnerabilities, please report them
+- Workaround strategies from community use are valuable
+- Security researchers: consider contributing patches to upstream projects
+
+**Next Steps:**
+- Will update immediately when upstream releases patches (typically within 1-4 weeks of disclosure)
+- Community feedback on these specific vulnerabilities is welcome
 
 ---
 

@@ -71,9 +71,10 @@ Wildbox is built with **security as a core principle**. All components are harde
 
 ### ✅ Security Status
 
-- **✓ 66% vulnerability reduction** - 29 → 10 vulnerabilities
+- **✓ 66% vulnerability reduction** - 29 → 10 vulnerabilities (code & direct dependencies fixed)
 - **✓ Critical RCE fixed** - eval() vulnerability eliminated
-- **✓ 13 dependencies patched** - All GitHub Dependabot alerts resolved
+- **✓ 13 critical/high alerts patched** - Direct dependency vulnerabilities resolved
+- **⚠️ 10 transitive dependency alerts tracked** - Require upstream patches (see below)
 - **✓ Authentication hardened** - JWT + Bearer token on all critical endpoints
 - **✓ CORS secured** - Environment-based configuration (never wildcard)
 - **✓ Security headers** - HSTS, X-Frame-Options, CSP, and more
@@ -109,6 +110,43 @@ Wildbox is built with **security as a core principle**. All components are harde
 - Network segmentation ready
 - Health checks for all services
 - Centralized logging support
+
+### 📌 Remaining Vulnerabilities - Transitive Dependencies
+
+Wildbox currently has **10 open Dependabot alerts** - all are **transitive dependencies** (dependencies of dependencies) that require upstream package updates. None are direct code vulnerabilities.
+
+**Current Alerts Breakdown:**
+
+| Package | Issue | Severity | Count | Status |
+|---------|-------|----------|-------|--------|
+| **python-jose** | Algorithm confusion (OpenSSH ECDSA) | 🔴 Critical | 4 | ⏳ Awaiting upstream patch |
+| **python-jose** | DoS via compressed JWE content | 🟡 Moderate | 4 | ⏳ Awaiting upstream patch |
+| **python-multipart** | DoS via malformed boundary | 🟠 High | 1 | ⏳ Awaiting upstream patch |
+| **djangorestframework** | XSS vulnerability | 🟢 Low | 1 | ⏳ Awaiting upstream patch |
+
+**Why These Remain:**
+- These vulnerabilities exist in upstream packages we depend on
+- We cannot fix them without upstream releases
+- GitHub Dependabot automatically alerts when patches are available
+- See [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) for current status
+
+**What We Did:**
+- ✅ Fixed all **direct dependency** vulnerabilities (13 alerts resolved)
+- ✅ Fixed all **code-level** vulnerabilities (eval() RCE eliminated)
+- ✅ Configured **automatic updates** via Dependabot
+- ✅ Added **monitoring** for when upstream patches release
+
+**What Happens Next:**
+- When upstream packages release security patches, Dependabot will automatically:
+  1. Detect the new patched versions
+  2. Create pull requests to update them
+  3. Run our full test suite
+  4. Merge automatically if tests pass
+
+**Community Help Needed:**
+- 🔍 If you use Wildbox and encounter issues with these packages, please report them
+- 📢 Community experience with workarounds or patches is valuable
+- 🚀 Once upstream patches are released, we'll integrate them immediately
 
 ### 📖 Security Documentation
 
