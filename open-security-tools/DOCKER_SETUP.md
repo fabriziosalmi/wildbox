@@ -120,4 +120,4 @@ Key configuration options:
    - API Docs: http://localhost:8000/docs
    - Health Check: http://localhost:8000/health
 
-The project is now fully containerized and production-ready! 🎉
+The project is now fully containerized and community-ready! 🎉

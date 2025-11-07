@@ -261,7 +261,7 @@ The service provides `/internal/authorize` endpoint that returns:
 
 ## 📈 What's Next
 
-The Open Security Identity service is now **production-ready** and implements all the requirements from the original specification. It serves as the secure foundation for the entire Wildbox Security Suite.
+The Open Security Identity service is now **community-ready** and implements all the requirements from the original specification. It serves as the secure foundation for the entire Wildbox Security Suite.
 
 ### Recommended Next Steps:
 1. **Deploy to staging** environment for integration testing

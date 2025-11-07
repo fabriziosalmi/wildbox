@@ -2,7 +2,7 @@
 
 ## 📋 Project Summary
 
-The **Open Security Responder** is now fully implemented as a production-ready SOAR (Security Orchestration, Automation and Response) microservice for the Wildbox Security Suite. The implementation follows the 3-week development plan and includes all requested features.
+The **Open Security Responder** is now fully implemented as a community-ready SOAR (Security Orchestration, Automation and Response) microservice for the Wildbox Security Suite. The implementation follows the 3-week development plan and includes all requested features.
 
 ## ✅ Implementation Status
 
@@ -172,7 +172,7 @@ All tests pass successfully:
 
 ## 🔧 Production Deployment
 
-The service is production-ready with:
+The service is community-ready with:
 - Docker containerization
 - Health check endpoints
 - Structured logging

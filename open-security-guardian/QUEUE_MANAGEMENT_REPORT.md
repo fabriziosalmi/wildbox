@@ -231,7 +231,7 @@ CELERY_RESULT_COMPRESSION = 'gzip'
 
 ## Conclusion
 
-The Open Security Guardian now has a robust, production-ready queue management system that provides:
+The Open Security Guardian now has a robust, community-ready queue management system that provides:
 
 - **Scalability**: Handle thousands of concurrent security tasks
 - **Reliability**: Automatic retry, error handling, and recovery

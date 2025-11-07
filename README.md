@@ -230,7 +230,7 @@ docker-compose logs | grep -i "warning\|error\|security"
 
 **Current Status: Early Evaluation Phase**
 
-Wildbox has completed comprehensive security hardening and is ready for community evaluation and feedback. The platform includes all core security components with enterprise-grade controls, but reaches **production maturity through community contributions, bug reports, and real-world usage**.
+Wildbox has completed comprehensive security hardening and is ready for community evaluation and feedback. The platform includes all core security components with enterprise-grade controls, but reaches **community maturity through community contributions, bug reports, and real-world usage**.
 
 ### 🤝 We Need Community Input On:
 
@@ -1229,6 +1229,10 @@ webhooks:
 ---
 
 ## 📖 Documentation
+
+> 🌐 **Complete documentation available online**: Visit **[Wildbox Documentation Site](https://fabriziosalmi.github.io/wildbox)** for the full documentation with organized guides, security reports, and deployment procedures.
+>
+> This README contains the main documentation files. The `/docs` folder provides an organized structure for GitHub Pages hosting.
 
 ### Quick Start & Setup
 

@@ -1,0 +1,91 @@
+# Jekyll Configuration for GitHub Pages
+# Wildbox Security Platform Documentation
+
+# Site metadata
+title: Wildbox Security Platform
+description: "Enterprise-grade security platform with community-driven development"
+author: "Wildbox Community"
+url: "https://fabriziosalmi.github.io/wildbox"
+baseurl: "/wildbox"
+
+# Build settings
+markdown: kramdown
+remote_theme: "mmistakes/minimal-mistakes@4.24.0"
+minimal_mistakes_skin: "dark"
+
+# Plugins
+plugins:
+  - jekyll-feed
+  - jekyll-paginate
+  - jekyll-seo-tag
+  - jekyll-include-cache
+
+# Page metadata
+collections_dir: collections
+permalink: /:path/
+
+# Navigation
+header_pages:
+  - index.md
+
+# Search
+search_enabled: true
+search:
+  rel_url: true
+  full_text_search: false
+
+# Footer
+footer_content: "Wildbox Security Platform &copy; 2024. Community-driven security excellence."
+
+# Collections
+collections:
+  guides:
+    output: true
+    permalink: /:collection/:path/
+  security:
+    output: true
+    permalink: /:collection/:path/
+
+# Defaults
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: "default"
+      author: "Wildbox"
+  - scope:
+      path: "guides"
+    values:
+      layout: "default"
+      category: "Guides"
+  - scope:
+      path: "security"
+    values:
+      layout: "default"
+      category: "Security"
+
+# Exclude files
+exclude:
+  - .git
+  - .gitignore
+  - Gemfile
+  - Gemfile.lock
+  - README.md
+  - LICENSE
+
+# Enable automatic sitemap
+jekyll-sitemap:
+  enabled: true
+
+# SEO
+social:
+  name: "Wildbox Community"
+  links:
+    - "https://github.com/fabriziosalmi/wildbox"
+
+# Google Analytics (optional - add your tracking ID)
+# google_analytics: "UA-XXXXXXXXX-X"
+
+# Additional settings
+timezone: UTC
+encoding: UTF-8

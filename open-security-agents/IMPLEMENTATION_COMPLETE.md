@@ -244,7 +244,7 @@ The service integrates seamlessly with other Wildbox components:
 
 **Open Security Agents v1.0** successfully delivers on its core mission: providing AI-powered threat intelligence enrichment as a service. The combination of GPT-4o's reasoning capabilities with a comprehensive security toolkit creates a powerful force multiplier for security analysts.
 
-The service is production-ready, well-documented, and designed for easy integration into existing security workflows. The AI agent provides the kind of contextual, intelligent analysis that would typically require a senior security analyst, but delivers it consistently and at scale.
+The service is community-ready, well-documented, and designed for easy integration into existing security workflows. The AI agent provides the kind of contextual, intelligent analysis that would typically require a senior security analyst, but delivers it consistently and at scale.
 
 **Key Success Metrics:**
 - ✅ **Complete Architecture**: FastAPI + Celery + LangChain + Redis

@@ -171,7 +171,7 @@ The Wildbox platform demonstrates **good foundational security** with comprehens
 
 **Overall Security Rating: B+ (Good with Critical Issues to Address)**
 
-The platform is **ready for security hardening** and can be made production-ready with the implementation of the recommended fixes, particularly addressing the inappropriate content and validating all test payloads.
+The platform is **ready for security hardening** and can be made community-ready with the implementation of the recommended fixes, particularly addressing the inappropriate content and validating all test payloads.
 
 ---
 **Next Security Review:** July 10, 2025  
