@@ -8,11 +8,11 @@ Complete API reference documentation for all Wildbox microservices with examples
 |---------|--------|-------|
 | **Identity Service** | ✅ Complete | [endpoints.md](identity/endpoints.md) |
 | **Guardian Service** | ✅ Complete | [endpoints.md](guardian/endpoints.md) |
-| **Agents Service** | 🔄 In Progress | Coming soon |
-| **Data Service** | 🔄 In Progress | Coming soon |
-| **Tools Service** | 🔄 In Progress | Coming soon |
-| **Responder Service** | 🔄 In Progress | Coming soon |
-| **CSPM Service** | 🔄 Planned | Coming soon |
+| **Agents Service** | ✅ Complete | [endpoints.md](agents/endpoints.md) |
+| **Data Service** | ✅ Complete | [endpoints.md](data/endpoints.md) |
+| **Tools Service** | ✅ Complete | [endpoints.md](tools/endpoints.md) |
+| **Responder Service** | ✅ Complete | [endpoints.md](responder/endpoints.md) |
+| **CSPM Service** | 📋 Planned | Coming soon |
 
 ## 🚀 Quick Start
 

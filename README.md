@@ -1364,10 +1364,10 @@ We welcome contributions from the security community! In the current evaluation 
 - [ ] Helpful scripts and automation
 - [x] **API Documentation** - Document service endpoints ([Contributing Guide](docs/api/CONTRIBUTING.md))
   - [x] Guardian Service API endpoints and examples
-  - [ ] Agents Service AI analysis endpoints
-  - [ ] Data Service aggregation endpoints
-  - [ ] Tools Service execution endpoints
-  - [ ] Responder Service playbook endpoints
+  - [x] Agents Service AI analysis endpoints
+  - [x] Data Service aggregation endpoints
+  - [x] Tools Service execution endpoints
+  - [x] Responder Service playbook endpoints
   - [ ] CSPM Service cloud security endpoints
 
 **Medium-Level Contributions**
