@@ -1362,6 +1362,13 @@ We welcome contributions from the security community! In the current evaluation 
 - [ ] Additional example configurations
 - [ ] Docker Compose variations for different scenarios
 - [ ] Helpful scripts and automation
+- [ ] **API Documentation** - Document service endpoints ([Contributing Guide](docs/api/CONTRIBUTING.md))
+  - [ ] Guardian Service API endpoints and examples
+  - [ ] Agents Service AI analysis endpoints
+  - [ ] Data Service aggregation endpoints
+  - [ ] Tools Service execution endpoints
+  - [ ] Responder Service playbook endpoints
+  - [ ] CSPM Service cloud security endpoints
 
 **Medium-Level Contributions**
 - [ ] New SOAR playbook examples
@@ -1468,14 +1475,6 @@ Wildbox uses open-source components with the following licenses:
 - Community testing & feedback 🔄 IN PROGRESS
 - Bug fixes & stabilization 🔄 IN PROGRESS
 - Performance optimization 📋 Based on feedback
-- Community-requested features 📋 Planned
-
-### Next Milestones
-
-- **Milestone 1**: 50 GitHub stars & community feedback integration
-- **Milestone 2**: First external security audit results
-- **Milestone 3**: Community-contributed features merged
-- **Milestone 4**: Real-world deployment experiences documented
 
 ---
 
