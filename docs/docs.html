@@ -679,17 +679,17 @@
 
                 <div id="api-docs-section" class="doc-section">
                     <div class="markdown-content">
-                        <h1>API Documentation</h1>
+                        <h1 id="api-documentation">API Documentation</h1>
                         <p>Wildbox provides comprehensive REST APIs for all services. Complete OpenAPI documentation is available below with full endpoint specifications, request/response examples, and authentication details.</p>
 
                         <div class="glass-effect p-6 rounded-lg mb-8">
                             <p class="text-sm text-gray-400"><strong>Note:</strong> To generate fresh API documentation from running services, execute: <code>python3 scripts/generate-api-docs.py</code></p>
                         </div>
 
-                        <h2>Available APIs</h2>
+                        <h2 id="available-apis">Available APIs</h2>
                         <div class="space-y-6">
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">API / Security Tools Service</h3>
+                                <h3 id="api-security-tools-service" class="font-semibold mb-2">API / Security Tools Service</h3>
                                 <p class="text-gray-400 mb-3">Core security tool execution and orchestration platform.</p>
                                 <span class="inline-block px-4 py-2 bg-gray-700 rounded text-sm text-gray-400">
                                     Coming Soon
@@ -697,7 +697,7 @@
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Identity & Authentication Service</h3>
+                                <h3 id="identity-authentication-service" class="font-semibold mb-2">Identity & Authentication Service</h3>
                                 <p class="text-gray-400 mb-3">User management, authentication, JWT tokens, and authorization endpoints.</p>
                                 <span class="inline-block px-4 py-2 bg-gray-700 rounded text-sm text-gray-400">
                                     Coming Soon
@@ -705,7 +705,7 @@
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Data Service</h3>
+                                <h3 id="data-service" class="font-semibold mb-2">Data Service</h3>
                                 <p class="text-gray-400 mb-3">Threat intelligence, IOCs, and security data aggregation.</p>
                                 <span class="inline-block px-4 py-2 bg-gray-700 rounded text-sm text-gray-400">
                                     Coming Soon
@@ -713,7 +713,7 @@
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Guardian Service</h3>
+                                <h3 id="guardian-service" class="font-semibold mb-2">Guardian Service</h3>
                                 <p class="text-gray-400 mb-3">Integration management, queue monitoring, and workflow orchestration.</p>
                                 <span class="inline-block px-4 py-2 bg-gray-700 rounded text-sm text-gray-400">
                                     Coming Soon
@@ -721,7 +721,7 @@
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Responder Service</h3>
+                                <h3 id="responder-service" class="font-semibold mb-2">Responder Service</h3>
                                 <p class="text-gray-400 mb-3">Incident response playbook execution and remediation automation.</p>
                                 <a href="api/responder-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
                                     OpenAPI Documentation
@@ -729,7 +729,7 @@
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Agents Service</h3>
+                                <h3 id="agents-service" class="font-semibold mb-2">Agents Service</h3>
                                 <p class="text-gray-400 mb-3">AI-powered threat analysis and machine learning security intelligence.</p>
                                 <a href="api/agents-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
                                     OpenAPI Documentation
@@ -737,24 +737,24 @@
                             </div>
                         </div>
 
-                        <h2>API Documentation Index</h2>
+                        <h2 id="api-documentation-index">API Documentation Index</h2>
                         <p class="mb-4">View all APIs in a centralized documentation portal:</p>
                         <a href="api/swagger-index.html" class="inline-block px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded text-base font-semibold transition">
                             View Complete API Documentation Index →
                         </a>
 
-                        <h2>Authentication</h2>
+                        <h2 id="authentication">Authentication</h2>
                         <p>All API endpoints require authentication via Bearer token in the Authorization header:</p>
                         <pre><code>Authorization: Bearer {your-jwt-token}</code></pre>
 
-                        <h2>Common Headers</h2>
+                        <h2 id="common-headers">Common Headers</h2>
                         <ul>
                             <li><code>Authorization: Bearer {token}</code> - JWT authentication token</li>
                             <li><code>Content-Type: application/json</code> - Request content type</li>
                             <li><code>X-API-Key: {key}</code> - Alternative API key authentication</li>
                         </ul>
 
-                        <h2>Response Format</h2>
+                        <h2 id="response-format">Response Format</h2>
                         <p>All APIs return JSON responses with consistent structure:</p>
                         <pre><code>{
   "data": { /* response data */ },
@@ -766,10 +766,10 @@
 
                 <div id="api-security-section" class="doc-section">
                     <div class="markdown-content">
-                        <h1>Security Endpoints</h1>
+                        <h1 id="security-endpoints">Security Endpoints</h1>
                         <p>API endpoints for security and compliance operations.</p>
 
-                        <h2>Authentication Endpoints</h2>
+                        <h2 id="authentication-endpoints">Authentication Endpoints</h2>
                         <div class="api-endpoint">
                             <span class="api-method method-post">POST</span>
                             <code>/auth/login</code>
@@ -788,7 +788,7 @@
                             <p class="text-gray-400 mt-2">Refresh JWT token for continued session.</p>
                         </div>
 
-                        <h2>Security Analysis Endpoints</h2>
+                        <h2 id="security-analysis-endpoints">Security Analysis Endpoints</h2>
                         <div class="api-endpoint">
                             <span class="api-method method-post">POST</span>
                             <code>/v1/analyze</code>
@@ -801,7 +801,7 @@
                             <p class="text-gray-400 mt-2">Retrieve security findings and vulnerability assessments.</p>
                         </div>
 
-                        <h2>Integration Endpoints</h2>
+                        <h2 id="integration-endpoints">Integration Endpoints</h2>
                         <div class="api-endpoint">
                             <span class="api-method method-get">GET</span>
                             <code>/v1/integrations</code>
@@ -814,7 +814,7 @@
                             <p class="text-gray-400 mt-2">Execute security scan through specific integration.</p>
                         </div>
 
-                        <h2>Remediation Endpoints</h2>
+                        <h2 id="remediation-endpoints">Remediation Endpoints</h2>
                         <div class="api-endpoint">
                             <span class="api-method method-post">POST</span>
                             <code>/v1/playbooks/{id}/execute</code>
@@ -833,16 +833,16 @@
 
                 <div id="api-integration-section" class="doc-section">
                     <div class="markdown-content">
-                        <h1>Integration API Guide</h1>
+                        <h1 id="integration-api-guide">Integration API Guide</h1>
                         <p>Guide for integrating Wildbox with external security tools and platforms.</p>
 
-                        <h2>Webhook Integration</h2>
+                        <h2 id="webhook-integration">Webhook Integration</h2>
                         <p>Wildbox supports incoming webhooks from external tools for automated alert ingestion and processing.</p>
 
-                        <h2>Service-to-Service Communication</h2>
+                        <h2 id="service-to-service-communication">Service-to-Service Communication</h2>
                         <p>All microservices communicate via internal APIs secured with X-Gateway-Secret headers. See <button onclick="loadDoc('security-policy')" class="text-red-400 hover:underline">Security Policy</button> for authentication details.</p>
 
-                        <h2>Data Export APIs</h2>
+                        <h2 id="data-export-apis">Data Export APIs</h2>
                         <p>Export security data in various formats for integration with external systems:</p>
                         <ul>
                             <li>JSON API for programmatic access</li>
@@ -851,7 +851,7 @@
                             <li>Custom webhook deliveries</li>
                         </ul>
 
-                        <h2>Getting Help with APIs</h2>
+                        <h2 id="getting-help-with-apis">Getting Help with APIs</h2>
                         <p>For API integration support:</p>
                         <ul>
                             <li>Check individual service OpenAPI documentation</li>
@@ -886,27 +886,47 @@
             // Clean up multiple spaces created by emoji removal
             html = html.replace(/  +/g, ' ');
 
+            // Helper function to create clean anchors
+            function createAnchor(text) {
+                const anchor = text
+                    .toLowerCase()
+                    .replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|\p{Emoji}/gu, '') // Remove emoji
+                    .replace(/[^\w\s-]/g, '') // Remove special chars
+                    .trim() // Remove leading/trailing spaces
+                    .replace(/\s+/g, '-') // Replace spaces with hyphens
+                    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+                
+                // Debug log for anchor generation
+                if (text !== anchor && console) {
+                    console.log(`Anchor created: "${text}" → "${anchor}"`);
+                }
+                
+                return anchor;
+            }
+
             // Extract headings for TOC before processing
             const headingRegex = /^(#{1,3}) (.*?)$/gm;
             let match;
             while ((match = headingRegex.exec(markdown)) !== null) {
                 const level = match[1].length;
                 const text = match[2];
-                const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
-                headings.push({ level, text, anchor });
+                const anchor = createAnchor(text);
+                if (anchor) { // Only add if anchor is not empty
+                    headings.push({ level, text, anchor });
+                }
             }
 
             // Headers with anchors
             html = html.replace(/^### (.*?)$/gm, (match, text) => {
-                const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+                const anchor = createAnchor(text);
                 return `<h3 id="${anchor}" class="text-lg font-semibold mt-4 mb-2">${text}</h3>`;
             });
             html = html.replace(/^## (.*?)$/gm, (match, text) => {
-                const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+                const anchor = createAnchor(text);
                 return `<h2 id="${anchor}" class="text-2xl font-bold mt-6 mb-3 text-red-400">${text}</h2>`;
             });
             html = html.replace(/^# (.*?)$/gm, (match, text) => {
-                const anchor = text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
+                const anchor = createAnchor(text);
                 return `<h1 id="${anchor}" class="text-4xl font-bold mb-4">${text}</h1>`;
             });
 
@@ -1081,8 +1101,27 @@
                                 hljs.highlightElement(block);
                             });
 
-                            // Scroll to top
-                            window.scrollTo(0, 0);
+                            // Check if there's a hash in the URL to scroll to
+                            const hash = window.location.hash;
+                            if (hash && hash.length > 1) {
+                                // Wait a bit for content to render
+                                setTimeout(() => {
+                                    const targetId = hash.substring(1);
+                                    const targetElement = document.getElementById(targetId);
+                                    if (targetElement) {
+                                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                        // Highlight the section briefly
+                                        targetElement.style.transition = 'background-color 0.5s ease';
+                                        targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                                        setTimeout(() => {
+                                            targetElement.style.backgroundColor = '';
+                                        }, 2000);
+                                    }
+                                }, 100);
+                            } else {
+                                // Scroll to top if no hash
+                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }
                         } else {
                             content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
                         }
@@ -1091,8 +1130,19 @@
                         content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
                     }
                 } else {
-                    // Static content - just show as-is
-                    window.scrollTo(0, 0);
+                    // Static content - check for hash navigation
+                    const hash = window.location.hash;
+                    if (hash && hash.length > 1) {
+                        setTimeout(() => {
+                            const targetId = hash.substring(1);
+                            const targetElement = document.getElementById(targetId);
+                            if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }, 100);
+                    } else {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }
                 }
             }
             
@@ -1113,13 +1163,47 @@
 
         // Load welcome section by default and add scroll animations
         window.addEventListener('load', () => {
-            // Check for hash in URL for deep linking
+            // Parse URL for section and anchor
             const hash = window.location.hash.substring(1); // Remove #
-            if (hash && docUrls[hash] !== undefined) {
-                loadDoc(hash);
-            } else if (hash && document.getElementById(`${hash}-section`)) {
-                loadDoc(hash);
+            
+            // Check if hash contains both section and anchor (e.g., #quickstart#prerequisites)
+            let section = '';
+            let anchor = '';
+            
+            if (hash.includes('#')) {
+                [section, anchor] = hash.split('#');
+            } else if (hash && (docUrls[hash] !== undefined || document.getElementById(`${hash}-section`))) {
+                // It's a section name
+                section = hash;
+            } else if (hash) {
+                // It's an anchor within current section - try to scroll to it
+                anchor = hash;
+            }
+            
+            // Load section if specified
+            if (section && (docUrls[section] !== undefined || document.getElementById(`${section}-section`))) {
+                loadDoc(section).then(() => {
+                    if (anchor) {
+                        // Scroll to anchor after section loads
+                        setTimeout(() => {
+                            const targetElement = document.getElementById(anchor);
+                            if (targetElement) {
+                                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                        }, 500);
+                    }
+                });
+            } else if (anchor) {
+                // Just scroll to anchor in current (welcome) section
+                document.getElementById('welcome-section').classList.add('active');
+                setTimeout(() => {
+                    const targetElement = document.getElementById(anchor);
+                    if (targetElement) {
+                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                }, 100);
             } else {
+                // No hash - show welcome section
                 document.getElementById('welcome-section').classList.add('active');
             }
             
@@ -1168,12 +1252,23 @@
 
         // Add smooth scroll behavior to all internal links
         document.addEventListener('click', (e) => {
-            if (e.target.tagName === 'A' && e.target.hash) {
+            // Handle anchor links within the page
+            if (e.target.tagName === 'A' && e.target.hash && e.target.getAttribute('href').startsWith('#')) {
+                e.preventDefault();
                 const targetId = e.target.hash.slice(1);
                 const targetElement = document.getElementById(targetId);
                 if (targetElement) {
-                    e.preventDefault();
                     targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    // Update URL hash
+                    history.pushState(null, null, e.target.hash);
+                    // Highlight briefly
+                    targetElement.style.transition = 'background-color 0.5s ease';
+                    targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                    setTimeout(() => {
+                        targetElement.style.backgroundColor = '';
+                    }, 2000);
+                } else {
+                    console.warn('Target element not found:', targetId);
                 }
             }
         });
