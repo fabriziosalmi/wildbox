@@ -1,19 +1,23 @@
 
 name: Ingest Social Media Threat Feeds
+
 on:
   workflow_dispatch:
 
 jobs:
   ingest-social-media-threats:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Create social media threats data directory
         run: mkdir -p datalake/raw/osint/social-media
 
       - name: Search Twitter/X for #threatintel
+        if: secrets.TWITTER_BEARER_TOKEN != ''
         env:
           TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
         run: |
@@ -28,5 +32,9 @@ jobs:
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'actions@github.com'
           git add datalake/raw/osint/social-media/
-          git commit -m "Data Ingestion: Update social media threats ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
-          git push
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Data Ingestion: Update social media threats ($(date +'%Y-%m-%d'))"
+            git push
+          fi
