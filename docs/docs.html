@@ -1130,8 +1130,8 @@
                                     scrollToAnchor(targetAnchor);
                                 }, 200);
                             } else {
-                                // Scroll to top if no hash
-                                window.scrollTo({ top: 0, behavior: 'smooth' });
+                                // Scroll to top of main content area
+                                document.querySelector('main').scrollTo({ top: 0, behavior: 'smooth' });
                             }
                         } else {
                             content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
@@ -1147,7 +1147,8 @@
                             scrollToAnchor(targetAnchor);
                         }, 100);
                     } else {
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        // Scroll to top of main content area
+                        document.querySelector('main').scrollTo({ top: 0, behavior: 'smooth' });
                     }
                 }
             }
