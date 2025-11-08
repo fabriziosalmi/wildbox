@@ -934,8 +934,10 @@
             html = html.replace(/```([a-z]*)\n([\s\S]*?)```/g, (match, lang, code) => {
                 const trimmed = code.trim();
                 const language = lang || 'plaintext';
+                // Escape HTML to prevent XSS
+                const escaped = trimmed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
                 try {
-                    const highlighted = hljs.highlight(trimmed, { language, ignoreIllegals: true }).value;
+                    const highlighted = hljs.highlight(escaped, { language, ignoreIllegals: true }).value;
                     return `<div class="code-wrapper">
                     <button class="copy-button" onclick="copyToClipboard(this)">📋 Copy</button>
                     <pre><code class="hljs language-${language}">${highlighted}</code></pre>
@@ -943,7 +945,7 @@
                 } catch (e) {
                     return `<div class="code-wrapper">
                     <button class="copy-button" onclick="copyToClipboard(this)">📋 Copy</button>
-                    <pre><code>${trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+                    <pre><code class="hljs">${escaped}</code></pre>
                 </div>`;
                 }
             });
@@ -1054,9 +1056,13 @@
         }
 
         // Load documentation
-        async function loadDoc(docName) {
+        async function loadDoc(docName, targetAnchor = null) {
             // Update URL hash for deep linking
-            window.location.hash = docName;
+            if (targetAnchor) {
+                window.location.hash = `${docName}#${targetAnchor}`;
+            } else {
+                window.location.hash = docName;
+            }
             
             // Hide all sections
             document.querySelectorAll('.doc-section').forEach(section => {
@@ -1072,7 +1078,7 @@
             });
             
             // Highlight active nav button
-            const activeButton = document.querySelector(`button[onclick="loadDoc('${docName}')"]`);
+            const activeButton = document.querySelector(`button[onclick*="loadDoc('${docName}')"]`);
             if (activeButton) {
                 activeButton.classList.add('active');
             }
@@ -1086,7 +1092,7 @@
 
                 // Check if we have a URL to fetch, or if it's a static section
                 if (docUrls[docName]) {
-                    content.innerHTML = '<div class="loading">Loading documentation...</div>';
+                    content.innerHTML = '<div class="loading text-gray-400 p-8">Loading documentation...</div>';
 
                     // Fetch markdown
                     try {
@@ -1096,28 +1102,23 @@
                             const html = markdownToHtml(markdown);
                             content.innerHTML = html;
 
-                            // Highlight code blocks
+                            // Highlight code blocks - clear previous highlighting first
                             document.querySelectorAll('pre code').forEach(block => {
-                                hljs.highlightElement(block);
+                                if (block.dataset.highlighted) {
+                                    delete block.dataset.highlighted;
+                                }
+                                try {
+                                    hljs.highlightElement(block);
+                                } catch (e) {
+                                    console.warn('Highlight error:', e);
+                                }
                             });
 
-                            // Check if there's a hash in the URL to scroll to
-                            const hash = window.location.hash;
-                            if (hash && hash.length > 1) {
-                                // Wait a bit for content to render
+                            // Scroll to anchor if specified
+                            if (targetAnchor) {
                                 setTimeout(() => {
-                                    const targetId = hash.substring(1);
-                                    const targetElement = document.getElementById(targetId);
-                                    if (targetElement) {
-                                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                        // Highlight the section briefly
-                                        targetElement.style.transition = 'background-color 0.5s ease';
-                                        targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
-                                        setTimeout(() => {
-                                            targetElement.style.backgroundColor = '';
-                                        }, 2000);
-                                    }
-                                }, 100);
+                                    scrollToAnchor(targetAnchor);
+                                }, 200);
                             } else {
                                 // Scroll to top if no hash
                                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1130,15 +1131,10 @@
                         content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
                     }
                 } else {
-                    // Static content - check for hash navigation
-                    const hash = window.location.hash;
-                    if (hash && hash.length > 1) {
+                    // Static content - check for anchor navigation
+                    if (targetAnchor) {
                         setTimeout(() => {
-                            const targetId = hash.substring(1);
-                            const targetElement = document.getElementById(targetId);
-                            if (targetElement) {
-                                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
+                            scrollToAnchor(targetAnchor);
                         }, 100);
                     } else {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1149,6 +1145,22 @@
             // Auto-close sidebar on mobile after clicking a link
             if (window.innerWidth < 768) {
                 toggleSidebar();
+            }
+        }
+
+        // Helper function to scroll to anchor with visual feedback
+        function scrollToAnchor(anchorId) {
+            const targetElement = document.getElementById(anchorId);
+            if (targetElement) {
+                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Highlight the section briefly
+                targetElement.style.transition = 'background-color 0.5s ease';
+                targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                setTimeout(() => {
+                    targetElement.style.backgroundColor = '';
+                }, 2000);
+            } else {
+                console.warn('Target element not found:', anchorId);
             }
         }
 
@@ -1164,43 +1176,32 @@
         // Load welcome section by default and add scroll animations
         window.addEventListener('load', () => {
             // Parse URL for section and anchor
-            const hash = window.location.hash.substring(1); // Remove #
+            const fullHash = window.location.hash.substring(1); // Remove leading #
             
-            // Check if hash contains both section and anchor (e.g., #quickstart#prerequisites)
             let section = '';
             let anchor = '';
             
-            if (hash.includes('#')) {
-                [section, anchor] = hash.split('#');
-            } else if (hash && (docUrls[hash] !== undefined || document.getElementById(`${hash}-section`))) {
-                // It's a section name
-                section = hash;
-            } else if (hash) {
-                // It's an anchor within current section - try to scroll to it
-                anchor = hash;
+            // Check if hash contains section#anchor format
+            if (fullHash.includes('#')) {
+                const parts = fullHash.split('#');
+                section = parts[0];
+                anchor = parts[1];
+            } else if (fullHash && (docUrls[fullHash] !== undefined || document.getElementById(`${fullHash}-section`))) {
+                // It's just a section name
+                section = fullHash;
+            } else if (fullHash) {
+                // It's just an anchor - try to find it in current section
+                anchor = fullHash;
             }
             
             // Load section if specified
             if (section && (docUrls[section] !== undefined || document.getElementById(`${section}-section`))) {
-                loadDoc(section).then(() => {
-                    if (anchor) {
-                        // Scroll to anchor after section loads
-                        setTimeout(() => {
-                            const targetElement = document.getElementById(anchor);
-                            if (targetElement) {
-                                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            }
-                        }, 500);
-                    }
-                });
+                loadDoc(section, anchor || null);
             } else if (anchor) {
-                // Just scroll to anchor in current (welcome) section
+                // Just scroll to anchor in welcome section
                 document.getElementById('welcome-section').classList.add('active');
                 setTimeout(() => {
-                    const targetElement = document.getElementById(anchor);
-                    if (targetElement) {
-                        targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
+                    scrollToAnchor(anchor);
                 }, 100);
             } else {
                 // No hash - show welcome section
@@ -1235,13 +1236,29 @@
 
         // Handle browser back/forward with hash navigation
         window.addEventListener('hashchange', () => {
-            const hash = window.location.hash.substring(1);
-            if (hash && (docUrls[hash] !== undefined || document.getElementById(`${hash}-section`))) {
-                loadDoc(hash);
-            } else if (!hash) {
+            const fullHash = window.location.hash.substring(1);
+            
+            let section = '';
+            let anchor = '';
+            
+            if (fullHash.includes('#')) {
+                const parts = fullHash.split('#');
+                section = parts[0];
+                anchor = parts[1];
+            } else if (fullHash && (docUrls[fullHash] !== undefined || document.getElementById(`${fullHash}-section`))) {
+                section = fullHash;
+            } else if (fullHash) {
+                anchor = fullHash;
+            }
+            
+            if (section) {
+                loadDoc(section, anchor || null);
+            } else if (anchor) {
+                scrollToAnchor(anchor);
+            } else {
                 // Return to welcome section
-                document.querySelectorAll('.doc-section').forEach(section => {
-                    section.classList.remove('active');
+                document.querySelectorAll('.doc-section').forEach(sec => {
+                    sec.classList.remove('active');
                 });
                 document.querySelectorAll('.nav-button').forEach(btn => {
                     btn.classList.remove('active');
