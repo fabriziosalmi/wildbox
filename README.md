@@ -297,6 +297,21 @@ Wildbox has completed comprehensive security hardening and is ready for communit
 
 ---
 
+## 📈 Data Ingestion Workflows
+
+Wildbox now includes a powerful set of over 30 data ingestion workflows, designed to populate the Wildbox Datalake with a wide array of open-source security intelligence. These workflows are the first step in building a comprehensive, in-house threat intelligence repository.
+
+### Key Features:
+
+- **Manual & Automated Execution**: Currently, all workflows are triggered manually via `workflow_dispatch`, allowing you to refresh data on demand. In the near future, these will be automated to run on a schedule.
+- **Comprehensive Data Coverage**: The workflows cover a vast range of security data, including threat intelligence, vulnerability databases, compliance benchmarks, OSINT, and more.
+- **Ready for Integration**: The collected data is stored in a structured format within the `datalake/raw/` directory, ready to be processed and integrated with the Wildbox Data Service.
+- **Future Enhancements**: We will be publishing scripts and automations to process this raw data, providing aggregated and enriched intelligence, both with and without the use of AI.
+
+For a complete list and documentation of all available workflows, please see the **[Workflow Documentation](.github/workflows/README.md)**.
+
+---
+
 ## 🎯 Platform Overview
 
 Wildbox is a **complete security operations platform** built from the ground up with modularity, scalability, and extensibility at its core. Each component operates as an independent microservice while seamlessly integrating to provide a unified security experience.
