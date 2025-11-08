@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     
     # App configuration
     app_name: str = "Open Security CSPM"
-    app_version: str = "1.0.0"
+    app_version="0.1.5"
     environment: str = Field(default="development", env="ENVIRONMENT")
     debug: bool = Field(default=False, env="DEBUG")
     

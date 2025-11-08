@@ -76,7 +76,7 @@ async def health_check():
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "version": "1.0.0"
+        "version": "0.1.5"
     }
 
 # Statistics endpoint

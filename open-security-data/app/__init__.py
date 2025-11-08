@@ -5,7 +5,7 @@ A comprehensive security data lake platform for collecting, processing,
 and serving threat intelligence from public sources.
 """
 
-__version__ = "1.0.0"
+__version__ = "0.1.5"
 __author__ = "Wildbox Security"
 __email__ = "security@wildbox.dev"
 __description__ = "Security Data Lake Platform"

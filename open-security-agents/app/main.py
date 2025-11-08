@@ -88,7 +88,7 @@ DISABLE_DOCS = ENVIRONMENT == "production"
 app = FastAPI(
     title="Open Security Agents API",
     description="AI-powered threat intelligence enrichment service",
-    version="1.0.0",
+    version="0.1.5",
     docs_url=None if DISABLE_DOCS else "/docs",
     redoc_url=None if DISABLE_DOCS else "/redoc",
     openapi_url=None if DISABLE_DOCS else "/openapi.json",
@@ -156,7 +156,7 @@ async def health_check():
     return HealthResponse(
         status=overall_status,
         timestamp=datetime.now(timezone.utc),
-        version="1.0.0",
+        version="0.1.5",
         services=services
     )
 
