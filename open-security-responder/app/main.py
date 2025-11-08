@@ -71,7 +71,7 @@ DISABLE_DOCS = ENVIRONMENT == "production"
 app = FastAPI(
     title="Open Security Responder API",
     description="SOAR (Security Orchestration, Automation and Response) microservice",
-    version="0.1.5",
+    version="0.1.6",
     docs_url=None if DISABLE_DOCS else "/docs",
     redoc_url=None if DISABLE_DOCS else "/redoc",
     openapi_url=None if DISABLE_DOCS else "/openapi.json",
@@ -134,7 +134,7 @@ async def health_check():
         return HealthCheckResponse(
             status="healthy" if redis_connected else "unhealthy",
             timestamp=datetime.utcnow(),
-            version="0.1.5",
+            version="0.1.6",
             redis_connected=redis_connected,
             playbooks_loaded=playbooks_loaded
         )

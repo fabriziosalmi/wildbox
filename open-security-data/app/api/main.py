@@ -40,9 +40,18 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="Open Security Data API",
-    description="Security data lake API providing threat intelligence and IOCs",
-    version="1.0.0",
+    title="Wildbox Data Service API",
+    description="""
+    Comprehensive threat intelligence and IOC management platform.
+    
+    Features:
+    - Threat Intelligence Feed Management
+    - IOC (Indicators of Compromise) Storage and Search
+    - MITRE ATT&CK Framework Integration
+    - Real-time Threat Analysis
+    - Security Event Correlation
+    """,
+    version="0.1.6",
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc"

@@ -1,9 +1,10 @@
 """
-Open Security Data - Main Application Package
-
-A comprehensive security data lake platform for collecting, processing,
-and serving threat intelligence from public sources.
+Open Security Data Service
+Threat intelligence and IOC management platform
 """
+
+__version__ = "0.1.6"
+__author__ = "Wildbox Security"
 
 __version__ = "0.1.5"
 __author__ = "Wildbox Security"

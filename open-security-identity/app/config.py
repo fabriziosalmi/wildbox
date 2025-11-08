@@ -10,9 +10,9 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     """Application settings with environment variable support."""
     
-    # Application
-    app_name: str = "Open Security Identity"
-    app_version: str = "0.1.5"
+        # Application settings
+    app_name: str = "Wildbox Identity Service"
+    app_version: str = "0.1.6"
     debug: bool = False
     port: int = 8001
     

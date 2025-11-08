@@ -200,7 +200,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Wildbox Security Tools",
         description="A modular security tools platform with dynamic tool discovery",
-        version="0.1.5",
+        version="0.1.6",
         docs_url=None,  # Disable default docs, using custom ones
         redoc_url=None,  # Disable default redoc, using custom ones
         openapi_url="/openapi.json",

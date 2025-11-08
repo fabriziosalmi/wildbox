@@ -220,7 +220,7 @@ REST_FRAMEWORK = {
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Open Security Guardian API',
     'DESCRIPTION': 'Proactive Vulnerability Management Platform',
-    'VERSION': '0.1.5',
+    'VERSION': '0.1.6',
     'SERVE_INCLUDE_SCHEMA': False,
     'CONTACT': {
         'name': 'Wildbox Security',

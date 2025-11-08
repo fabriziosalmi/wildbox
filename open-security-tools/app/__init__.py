@@ -1,3 +1,3 @@
-"""Open Security Tools - A modular security tools API platform."""
+"""Open Security Tools API - Security Tools as a Service"""
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
