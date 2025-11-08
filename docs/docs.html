@@ -16,24 +16,45 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/xml.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%23ef4444'>🛡️</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        * {
+            scroll-behavior: smooth;
+        }
 
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            animation: gradient-shift 3s ease infinite;
+            background-size: 200% 200%;
+        }
+
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
 
         .glass-effect {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .glass-effect:hover {
             background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
         }
 
         .doc-section {
@@ -45,12 +66,67 @@
         }
 
         .nav-button {
-            transition: all 0.3s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+        }
+
+        .nav-button:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateX(4px);
         }
 
         .nav-button.active {
-            background: rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.15);
             border-left: 3px solid #ef4444;
+        }
+
+        .hover-lift {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+                        box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .hover-lift:hover {
+            transform: translateY(-6px);
+            box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.25);
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .pulse-glow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.6); }
+        }
+
+        .feature-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .feature-card:hover::before {
+            left: 100%;
         }
 
         .markdown-content h1, .markdown-content h2, .markdown-content h3,
@@ -74,12 +150,14 @@
         }
 
         .markdown-content pre {
-            background: #1f2937;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
             color: #e5e7eb;
-            padding: 1rem;
-            border-radius: 8px;
+            padding: 1.5rem;
+            border-radius: 12px;
             overflow-x: auto;
-            margin: 1rem 0;
+            margin: 1.5rem 0;
+            border: 1px solid rgba(239, 68, 68, 0.1);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .markdown-content pre code {
@@ -133,9 +211,16 @@
         .api-endpoint {
             background: rgba(239, 68, 68, 0.05);
             border-left: 4px solid #ef4444;
-            padding: 1rem;
-            margin: 1rem 0;
-            border-radius: 4px;
+            padding: 1.25rem;
+            margin: 1.5rem 0;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .api-endpoint:hover {
+            background: rgba(239, 68, 68, 0.08);
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
         }
 
         .api-method {
@@ -157,9 +242,10 @@
         /* Code Block Styles */
         .code-wrapper {
             position: relative;
-            margin: 1rem 0;
-            border-radius: 8px;
+            margin: 1.5rem 0;
+            border-radius: 12px;
             overflow: hidden;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
         }
 
         .code-wrapper > pre {
@@ -169,27 +255,30 @@
 
         .copy-button {
             position: absolute;
-            top: 8px;
-            right: 8px;
-            background: rgba(239, 68, 68, 0.8);
+            top: 10px;
+            right: 10px;
+            background: rgba(239, 68, 68, 0.9);
             color: white;
             border: none;
             padding: 0.5rem 1rem;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 0.85rem;
             font-weight: 600;
-            transition: all 0.2s ease;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 10;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
         }
 
         .copy-button:hover {
-            background: rgba(239, 68, 68, 1);
+            background: rgba(220, 38, 38, 1);
             transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
         }
 
         .copy-button.copied {
-            background: rgba(34, 197, 94, 0.8);
+            background: rgba(34, 197, 94, 0.9);
+            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
         }
 
         .markdown-content pre code {
@@ -227,11 +316,12 @@
 
         /* TOC Styles */
         .toc {
-            background: rgba(239, 68, 68, 0.05);
+            background: rgba(239, 68, 68, 0.08);
             border-left: 4px solid #ef4444;
-            padding: 1rem;
-            margin: 1.5rem 0;
-            border-radius: 4px;
+            padding: 1.5rem;
+            margin: 2rem 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
 
         .toc h3 {
@@ -352,13 +442,52 @@
 
         /* Smooth sidebar transitions */
         #sidebar {
-            transition: transform 0.3s ease-in-out;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3);
+        }
+
+        #sidebar::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        #sidebar::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        #sidebar::-webkit-scrollbar-thumb {
+            background: rgba(239, 68, 68, 0.5);
+            border-radius: 4px;
+        }
+
+        #sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(239, 68, 68, 0.7);
         }
 
         /* Ensure main content takes full width on mobile when sidebar is hidden */
         @media (max-width: 768px) {
             main {
                 width: 100%;
+            }
+        }
+
+        /* Mobile menu overlay animation */
+        #sidebar-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        /* Section transition */
+        .doc-section {
+            animation: slideIn 0.4s ease-out;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
         }
     </style>
@@ -392,10 +521,16 @@
     <!-- Mobile Overlay -->
     <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
 
-    <div class="flex min-h-screen">
+    <div class="flex min-h-screen relative">
+        <!-- Background gradient effect -->
+        <div class="fixed inset-0 pointer-events-none overflow-hidden">
+            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
+            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style="animation-delay: 1s;"></div>
+        </div>
+
         <!-- Sidebar Navigation -->
         <aside id="sidebar" class="fixed md:static inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800 p-6 overflow-y-auto">
-            <h3 class="text-xl font-bold mb-6 text-red-400">Documentation</h3>
+            <h3 class="text-xl font-bold mb-6 gradient-text">Documentation</h3>
 
             <div class="space-y-4">
                 <div class="space-y-2">
@@ -463,51 +598,55 @@
             <div class="max-w-4xl mx-auto p-8">
                 <!-- Welcome Section (default) -->
                 <div id="welcome-section" class="doc-section active">
-                    <div class="mb-12">
-                        <h1 class="text-5xl font-bold mb-4">
+                    <div class="mb-12 animate-fade-in">
+                        <h1 class="text-5xl md:text-6xl font-bold mb-4">
                             <span class="gradient-text">Wildbox Documentation</span>
                         </h1>
-                        <p class="text-xl text-gray-400 mb-8">
+                        <p class="text-xl md:text-2xl text-gray-400 mb-8 leading-relaxed">
                             Complete guides, API reference, and security documentation for the Wildbox Security Platform.
                         </p>
                     </div>
 
                     <div class="grid md:grid-cols-2 gap-6 mb-12">
-                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('quickstart')">
-                            <h3 class="text-xl font-semibold mb-2 text-red-400">Get Started in 5 Minutes</h3>
-                            <p class="text-gray-400">Quickstart guide to deploy Wildbox with Docker Compose and verify services.</p>
+                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('quickstart')">
+                            <div class="text-4xl mb-4">🚀</div>
+                            <h3 class="text-xl font-semibold mb-3 text-red-400">Get Started in 5 Minutes</h3>
+                            <p class="text-gray-400 leading-relaxed">Quickstart guide to deploy Wildbox with Docker Compose and verify services.</p>
                         </div>
 
-                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('security-status')">
-                            <h3 class="text-xl font-semibold mb-2 text-red-400">Security Status</h3>
-                            <p class="text-gray-400">Current security metrics, verification checks, and vulnerability tracking.</p>
+                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('security-status')">
+                            <div class="text-4xl mb-4">🔒</div>
+                            <h3 class="text-xl font-semibold mb-3 text-red-400">Security Status</h3>
+                            <p class="text-gray-400 leading-relaxed">Current security metrics, verification checks, and vulnerability tracking.</p>
                         </div>
 
-                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('api-docs')">
-                            <h3 class="text-xl font-semibold mb-2 text-red-400">API Reference</h3>
-                            <p class="text-gray-400">Complete API documentation with examples for all services and endpoints.</p>
+                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('api-docs')">
+                            <div class="text-4xl mb-4">📚</div>
+                            <h3 class="text-xl font-semibold mb-3 text-red-400">API Reference</h3>
+                            <p class="text-gray-400 leading-relaxed">Complete API documentation with examples for all services and endpoints.</p>
                         </div>
 
-                        <div class="glass-effect p-6 rounded-lg cursor-pointer hover:bg-gray-900 transition" onclick="loadDoc('deployment')">
-                            <h3 class="text-xl font-semibold mb-2 text-red-400">Deployment Guide</h3>
-                            <p class="text-gray-400">Production deployment procedures, security configuration, and operations.</p>
+                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('deployment')">
+                            <div class="text-4xl mb-4">🚢</div>
+                            <h3 class="text-xl font-semibold mb-3 text-red-400">Deployment Guide</h3>
+                            <p class="text-gray-400 leading-relaxed">Production deployment procedures, security configuration, and operations.</p>
                         </div>
                     </div>
 
-                    <div class="glass-effect p-8 rounded-lg">
-                        <h2 class="text-2xl font-bold mb-4">Documentation by Role</h2>
-                        <div class="space-y-4">
-                            <div>
-                                <h4 class="font-semibold text-red-400 mb-2">Developer</h4>
-                                <p class="text-gray-400">Start with <button onclick="loadDoc('quickstart')" class="text-red-400 hover:underline">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-red-400 hover:underline">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-red-400 hover:underline">Credentials Guide</button>.</p>
+                    <div class="glass-effect p-10 rounded-xl hover-lift">
+                        <h2 class="text-3xl font-bold mb-6 gradient-text">Documentation by Role</h2>
+                        <div class="space-y-6">
+                            <div class="border-l-4 border-red-500 pl-4">
+                                <h4 class="font-semibold text-red-400 mb-2 text-lg">👨‍💻 Developer</h4>
+                                <p class="text-gray-400 leading-relaxed">Start with <button onclick="loadDoc('quickstart')" class="text-red-400 hover:text-red-300 hover:underline transition">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-red-400 hover:text-red-300 hover:underline transition">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-red-400 hover:text-red-300 hover:underline transition">Credentials Guide</button>.</p>
                             </div>
-                            <div>
-                                <h4 class="font-semibold text-red-400 mb-2">Security Engineer</h4>
-                                <p class="text-gray-400">Review <button onclick="loadDoc('security-policy')" class="text-red-400 hover:underline">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-red-400 hover:underline">Audit Report</button> for comprehensive security analysis.</p>
+                            <div class="border-l-4 border-red-500 pl-4">
+                                <h4 class="font-semibold text-red-400 mb-2 text-lg">🛡️ Security Engineer</h4>
+                                <p class="text-gray-400 leading-relaxed">Review <button onclick="loadDoc('security-policy')" class="text-red-400 hover:text-red-300 hover:underline transition">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-red-400 hover:text-red-300 hover:underline transition">Audit Report</button> for comprehensive security analysis.</p>
                             </div>
-                            <div>
-                                <h4 class="font-semibold text-red-400 mb-2">System Administrator</h4>
-                                <p class="text-gray-400">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:underline">Deployment Guide</button> for production setup.</p>
+                            <div class="border-l-4 border-red-500 pl-4">
+                                <h4 class="font-semibold text-red-400 mb-2 text-lg">⚙️ System Administrator</h4>
+                                <p class="text-gray-400 leading-relaxed">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:text-red-300 hover:underline transition">Deployment Guide</button> for production setup.</p>
                             </div>
                         </div>
                     </div>
@@ -896,6 +1035,9 @@
 
         // Load documentation
         async function loadDoc(docName) {
+            // Update URL hash for deep linking
+            window.location.hash = docName;
+            
             // Hide all sections
             document.querySelectorAll('.doc-section').forEach(section => {
                 section.classList.remove('active');
@@ -908,7 +1050,12 @@
             document.querySelectorAll('.nav-button').forEach(btn => {
                 btn.classList.remove('active');
             });
-            event.target.closest('.nav-button')?.classList.add('active');
+            
+            // Highlight active nav button
+            const activeButton = document.querySelector(`button[onclick="loadDoc('${docName}')"]`);
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
 
             // Show section
             const sectionId = `${docName}-section`;
@@ -964,9 +1111,71 @@
             overlay.classList.toggle('hidden');
         }
 
-        // Load welcome section by default
+        // Load welcome section by default and add scroll animations
         window.addEventListener('load', () => {
-            document.getElementById('welcome-section').classList.add('active');
+            // Check for hash in URL for deep linking
+            const hash = window.location.hash.substring(1); // Remove #
+            if (hash && docUrls[hash] !== undefined) {
+                loadDoc(hash);
+            } else if (hash && document.getElementById(`${hash}-section`)) {
+                loadDoc(hash);
+            } else {
+                document.getElementById('welcome-section').classList.add('active');
+            }
+            
+            // Animate elements on scroll
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, observerOptions);
+
+            // Observe all cards and sections
+            document.querySelectorAll('.hover-lift, .feature-card, .glass-effect').forEach(el => {
+                if (!el.style.opacity) {
+                    el.style.opacity = '0';
+                    el.style.transform = 'translateY(20px)';
+                    el.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
+                }
+                observer.observe(el);
+            });
+        });
+
+        // Handle browser back/forward with hash navigation
+        window.addEventListener('hashchange', () => {
+            const hash = window.location.hash.substring(1);
+            if (hash && (docUrls[hash] !== undefined || document.getElementById(`${hash}-section`))) {
+                loadDoc(hash);
+            } else if (!hash) {
+                // Return to welcome section
+                document.querySelectorAll('.doc-section').forEach(section => {
+                    section.classList.remove('active');
+                });
+                document.querySelectorAll('.nav-button').forEach(btn => {
+                    btn.classList.remove('active');
+                });
+                document.getElementById('welcome-section').classList.add('active');
+            }
+        });
+
+        // Add smooth scroll behavior to all internal links
+        document.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A' && e.target.hash) {
+                const targetId = e.target.hash.slice(1);
+                const targetElement = document.getElementById(targetId);
+                if (targetElement) {
+                    e.preventDefault();
+                    targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }
         });
     </script>
 </body>
