@@ -471,8 +471,8 @@ Main Files:
 - requirements.txt              - Python dependencies
 
 Documentation:
-- /Users/fab/GitHub/wildbox/API_DOCS.md       - Basic API documentation
-- /Users/fab/GitHub/wildbox/GUARDIAN_API_ENDPOINTS.md - Comprehensive endpoint list
+- /Users/fab/GitHub/wildbox/docs/API_DOCS.md       - Basic API documentation
+- /Users/fab/GitHub/wildbox/docs/GUARDIAN_API_ENDPOINTS.md - Comprehensive endpoint list
 
 ================================================================================
 TESTING & DEVELOPMENT

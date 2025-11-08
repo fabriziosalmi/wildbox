@@ -10,7 +10,7 @@
 This exploration produced three comprehensive documentation files:
 
 ### 1. GUARDIAN_API_ENDPOINTS.md (1,661 lines)
-**File Location**: `/Users/fab/GitHub/wildbox/GUARDIAN_API_ENDPOINTS.md`
+**File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_API_ENDPOINTS.md`
 
 **Contents**:
 - Complete API endpoint documentation organized by category
@@ -28,7 +28,7 @@ This exploration produced three comprehensive documentation files:
 ---
 
 ### 2. GUARDIAN_ENDPOINTS_SUMMARY.txt (522 lines)
-**File Location**: `/Users/fab/GitHub/wildbox/GUARDIAN_ENDPOINTS_SUMMARY.txt`
+**File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_ENDPOINTS_SUMMARY.txt`
 
 **Contents**:
 - Executive summary of API capabilities
@@ -48,7 +48,7 @@ This exploration produced three comprehensive documentation files:
 ---
 
 ### 3. GUARDIAN_QUICK_REFERENCE.md
-**File Location**: `/Users/fab/GitHub/wildbox/GUARDIAN_QUICK_REFERENCE.md`
+**File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_QUICK_REFERENCE.md`
 
 **Contents**:
 - Quick start guide with authentication examples

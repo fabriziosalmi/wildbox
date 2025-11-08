@@ -423,11 +423,11 @@ curl http://localhost:8000/metrics/
 
 ## Support Resources
 
-- **Full API Docs**: `/Users/fab/GitHub/wildbox/GUARDIAN_API_ENDPOINTS.md`
-- **Summary**: `/Users/fab/GitHub/wildbox/GUARDIAN_ENDPOINTS_SUMMARY.txt`
-- **API Documentation**: `/open-security-guardian/API_DOCS.md`
-- **Getting Started**: `/open-security-guardian/GETTING_STARTED.md`
-- **README**: `/open-security-guardian/README.md`
+- **Full API Docs**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_API_ENDPOINTS.md`
+- **Summary**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_ENDPOINTS_SUMMARY.txt`
+- **API Documentation**: `/Users/fab/GitHub/wildbox/docs/guardian/API_DOCS.md`
+- **Getting Started**: `/Users/fab/GitHub/wildbox/docs/guardian/GETTING_STARTED.md`
+- **README**: `/Users/fab/GitHub/wildbox/docs/guardian/README.md`
 
 ---
 
