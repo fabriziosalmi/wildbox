@@ -276,8 +276,10 @@
                 </a>
             </div>
             <div class="hidden md:flex gap-6">
-                <a href="index.html" class="text-gray-300 hover:text-white transition">Home</a>
+                <a href="index.html" class="text-gray-300 hover:text-white transition">Features</a>
+                <a href="index.html#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
                 <a href="docs.html" class="text-red-400 transition">Documentation</a>
+                <a href="index.html#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
                 <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
             </div>
         </div>
@@ -773,35 +775,42 @@
             });
             event.target.closest('.nav-button')?.classList.add('active');
 
-            // Show loading
+            // Show section
             const sectionId = `${docName}-section`;
             const section = document.getElementById(sectionId);
             if (section) {
                 section.classList.add('active');
                 const content = section.querySelector('.markdown-content');
-                content.innerHTML = '<div class="loading">Loading documentation...</div>';
 
-                // Fetch markdown
-                try {
-                    const response = await fetch(docUrls[docName]);
-                    if (response.ok) {
-                        const markdown = await response.text();
-                        const html = markdownToHtml(markdown);
-                        content.innerHTML = html;
+                // Check if we have a URL to fetch, or if it's a static section
+                if (docUrls[docName]) {
+                    content.innerHTML = '<div class="loading">Loading documentation...</div>';
 
-                        // Highlight code blocks
-                        document.querySelectorAll('pre code').forEach(block => {
-                            hljs.highlightElement(block);
-                        });
+                    // Fetch markdown
+                    try {
+                        const response = await fetch(docUrls[docName]);
+                        if (response.ok) {
+                            const markdown = await response.text();
+                            const html = markdownToHtml(markdown);
+                            content.innerHTML = html;
 
-                        // Scroll to top
-                        window.scrollTo(0, 0);
-                    } else {
-                        content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
+                            // Highlight code blocks
+                            document.querySelectorAll('pre code').forEach(block => {
+                                hljs.highlightElement(block);
+                            });
+
+                            // Scroll to top
+                            window.scrollTo(0, 0);
+                        } else {
+                            content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
+                        }
+                    } catch (error) {
+                        console.error('Error loading doc:', error);
+                        content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
                     }
-                } catch (error) {
-                    console.error('Error loading doc:', error);
-                    content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
+                } else {
+                    // Static content - just show as-is
+                    window.scrollTo(0, 0);
                 }
             }
         }
