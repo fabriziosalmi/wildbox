@@ -1,0 +1,28 @@
+
+name: Ingest Dark Web Market Trends (Public Info)
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-dark-web-trends:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create dark web reports data directory
+        run: mkdir -p datalake/raw/osint/dark-web-reports
+
+      - name: Download Recorded Future Blog RSS Feed
+        run: curl -L "https://www.recordedfuture.com/feed" -o "datalake/raw/osint/dark-web-reports/recorded_future_blog.rss"
+
+      - name: Download Flashpoint Blog RSS Feed
+        run: curl -L "https://flashpoint.io/feed/" -o "datalake/raw/osint/dark-web-reports/flashpoint_blog.rss"
+
+      - name: Commit and push dark web reports data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/dark-web-reports/
+          git commit -m "Data Ingestion: Update dark web reports ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

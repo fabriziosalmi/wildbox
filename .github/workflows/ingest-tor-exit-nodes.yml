@@ -1,0 +1,25 @@
+
+name: Ingest TOR Exit Nodes
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-tor-exit-nodes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create network data directory
+        run: mkdir -p datalake/raw/network
+
+      - name: Download TOR Exit Nodes List
+        run: curl -L "https://check.torproject.org/torbulkexitlist" -o "datalake/raw/network/tor-nodes.txt"
+
+      - name: Commit and push TOR exit nodes data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/network/tor-nodes.txt
+          git commit -m "Data Ingestion: Update TOR exit nodes ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

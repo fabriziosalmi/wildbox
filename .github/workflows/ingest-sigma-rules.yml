@@ -1,0 +1,28 @@
+
+name: Ingest SIGMA Rules
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-sigma-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create SIGMA rules data directory
+        run: mkdir -p datalake/raw/signatures/sigma
+
+      - name: Clone SigmaHQ/sigma
+        run: |
+          git clone --depth 1 https://github.com/SigmaHQ/sigma.git /tmp/sigma
+          mkdir -p datalake/raw/signatures/sigma/rules
+          cp -r /tmp/sigma/rules/* datalake/raw/signatures/sigma/rules/
+
+      - name: Commit and push SIGMA rules data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/signatures/sigma/
+          git commit -m "Data Ingestion: Update SIGMA rules ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

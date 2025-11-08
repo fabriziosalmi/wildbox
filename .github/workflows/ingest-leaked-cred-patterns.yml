@@ -1,0 +1,28 @@
+
+name: Ingest Leaked Cloud Credentials Patterns
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-leaked-cred-patterns:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create secret detection data directory
+        run: mkdir -p datalake/raw/signatures/secret-detection
+
+      - name: Clone Gitleaks Rules
+        run: |
+          git clone --depth 1 https://github.com/zricethezav/gitleaks.git /tmp/gitleaks
+          mkdir -p datalake/raw/signatures/secret-detection/gitleaks
+          cp /tmp/gitleaks/config/gitleaks.toml datalake/raw/signatures/secret-detection/gitleaks/gitleaks.toml
+
+      - name: Commit and push secret detection data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/signatures/secret-detection/
+          git commit -m "Data Ingestion: Update secret detection patterns ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

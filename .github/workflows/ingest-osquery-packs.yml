@@ -1,0 +1,28 @@
+
+name: Ingest OSQuery Packs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-osquery-packs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create OSQuery packs data directory
+        run: mkdir -p datalake/raw/endpoint/osquery-packs
+
+      - name: Clone palantir/osquery-configuration
+        run: |
+          git clone --depth 1 https://github.com/palantir/osquery-configuration.git /tmp/osquery-configuration
+          mkdir -p datalake/raw/endpoint/osquery-packs/palantir
+          cp -r /tmp/osquery-configuration/packs/* datalake/raw/endpoint/osquery-packs/palantir/
+
+      - name: Commit and push OSQuery packs data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/endpoint/osquery-packs/
+          git commit -m "Data Ingestion: Update OSQuery packs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

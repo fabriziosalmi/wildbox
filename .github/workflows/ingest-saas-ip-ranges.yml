@@ -1,0 +1,33 @@
+
+name: Ingest SaaS IP Ranges
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-saas-ip-ranges:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create SaaS IP ranges data directory
+        run: mkdir -p datalake/raw/cloud/saas-ips
+
+      - name: Download GitHub IP Ranges
+        run: curl -L "https://api.github.com/meta" -o "datalake/raw/cloud/saas-ips/github_ips.json"
+
+      - name: Download Office 365 IP Ranges
+        run: |
+          # Note: This requires a valid GUID for the latest version. This is a placeholder.
+          curl -L "https://endpoints.office.com/endpoints/worldwide?clientrequestid=$(uuidgen)" -o "datalake/raw/cloud/saas-ips/office365_ips.json"
+
+      - name: Download Salesforce IP Ranges
+        run: curl -L "https://ipranges.salesforce.com/ipranges.json" -o "datalake/raw/cloud/saas-ips/salesforce_ips.json"
+
+      - name: Commit and push SaaS IP ranges data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/cloud/saas-ips/
+          git commit -m "Data Ingestion: Update SaaS IP ranges ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

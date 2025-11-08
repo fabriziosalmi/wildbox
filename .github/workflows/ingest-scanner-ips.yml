@@ -1,0 +1,27 @@
+
+name: Ingest Active Scanners & Honeypots
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-scanner-ips:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create scanner IPs data directory
+        run: mkdir -p datalake/raw/network/scanners
+
+      - name: Download GreyNoise Community IP List
+        run: |
+          # Note: This requires a GREYNOISE_API_KEY secret to be set in the repository
+          curl "https://api.greynoise.io/v3/community/ips" -H "key: ${{ secrets.GREYNOISE_API_KEY }}" -o "datalake/raw/network/scanners/greynoise_community_ips.json"
+
+      - name: Commit and push scanner IPs data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/network/scanners/
+          git commit -m "Data Ingestion: Update scanner IPs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

@@ -1,0 +1,35 @@
+
+name: Ingest Threat Actor IoCs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-threat-actor-iocs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create Threat Actor IoCs data directory
+        run: mkdir -p datalake/raw/threat-actors
+
+      - name: Clone apt-notes
+        run: |
+          git clone --depth 1 https://github.com/apt-notes/apt-notes.git /tmp/apt-notes
+          mkdir -p datalake/raw/threat-actors/apt-notes
+          cp -r /tmp/apt-notes/_iocs/* datalake/raw/threat-actors/apt-notes/
+      
+      - name: Download AlienVault OTX Threat Pulses
+        run: |
+          # Note: This requires an OTX_API_KEY secret to be set in the repository
+          # The free API has limitations.
+          # This is a placeholder for a more robust implementation.
+          curl -L "https://otx.alienvault.com/api/v1/pulses/subscribed?limit=100" -H "X-OTX-API-KEY: ${{ secrets.OTX_API_KEY }}" -o datalake/raw/threat-actors/otx_pulses.json
+
+      - name: Commit and push Threat Actor IoCs data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/threat-actors/
+          git commit -m "Data Ingestion: Update Threat Actor IoCs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

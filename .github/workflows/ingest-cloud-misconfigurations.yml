@@ -1,0 +1,28 @@
+
+name: Ingest Common Cloud Misconfigurations
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-cloud-misconfigurations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create cloud CWE data directory
+        run: mkdir -p datalake/raw/compliance/cloud-cwe
+
+      - name: Clone AquaSecurity cnsec-inspector
+        run: |
+          git clone --depth 1 https://github.com/aquasecurity/cnsec-inspector.git /tmp/cnsec-inspector
+          mkdir -p datalake/raw/compliance/cloud-cwe/cnsec-inspector
+          cp -r /tmp/cnsec-inspector/pkg/runtimes/cloud/aws/rules/* datalake/raw/compliance/cloud-cwe/cnsec-inspector/
+
+      - name: Commit and push cloud CWE data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/compliance/cloud-cwe/
+          git commit -m "Data Ingestion: Update cloud misconfigurations ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

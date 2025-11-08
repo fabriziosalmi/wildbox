@@ -1,0 +1,35 @@
+
+name: Ingest Security Researcher Blogs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-security-blogs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create security blogs data directory
+        run: mkdir -p datalake/raw/osint/blogs
+
+      - name: Download Curated Security Blog RSS Feeds
+        run: |
+          curl -L "https://krebsonsecurity.com/feed/" -o "datalake/raw/osint/blogs/krebsonsecurity.rss"
+          curl -L "https://www.schneier.com/feed/" -o "datalake/raw/osint/blogs/schneier.rss"
+          curl -L "https://www.darkreading.com/rss_simple.asp" -o "datalake/raw/osint/blogs/darkreading.rss"
+          curl -L "https://thehackernews.com/feeds/posts/default" -o "datalake/raw/osint/blogs/thehackernews.rss"
+          curl -L "https://threatpost.com/feed/" -o "datalake/raw/osint/blogs/threatpost.rss"
+          curl -L "https://www.wired.com/feed/category/security/latest/rss" -o "datalake/raw/osint/blogs/wired_security.rss"
+          curl -L "https://www.csoonline.com/feed/" -o "datalake/raw/osint/blogs/csoonline.rss"
+          curl -L "https://www.securityweek.com/feed" -o "datalake/raw/osint/blogs/securityweek.rss"
+          curl -L "https://www.infosecurity-magazine.com/rss/news/" -o "datalake/raw/osint/blogs/infosecurity_magazine.rss"
+          curl -L "https://feeds.feedburner.com/eset/blog" -o "datalake/raw/osint/blogs/eset_blog.rss"
+
+      - name: Commit and push security blogs data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/blogs/
+          git commit -m "Data Ingestion: Update security blogs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

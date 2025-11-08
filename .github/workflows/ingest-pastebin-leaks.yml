@@ -1,0 +1,32 @@
+
+name: Ingest Pastebin Leaks
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-pastebin-leaks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create pastebin leaks data directory
+        run: mkdir -p datalake/raw/osint/pastebin
+
+      - name: Search Pastebin for leaks
+        run: |
+          # Note: This requires a PASTEBIN_API_KEY secret to be set in the repository
+          # This is a placeholder for a more robust implementation.
+          # The official API does not support searching. This uses a public scraping API.
+          curl -L "https://pastebin.com/api/api_post.php" \
+            -d "api_dev_key=${{ secrets.PASTEBIN_API_KEY }}" \
+            -d "api_option=trends" \
+            -o "datalake/raw/osint/pastebin/pastebin_trends.xml"
+
+      - name: Commit and push pastebin leaks data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/pastebin/
+          git commit -m "Data Ingestion: Update Pastebin leaks ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

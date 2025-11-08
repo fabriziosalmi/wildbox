@@ -1,0 +1,25 @@
+
+name: Ingest JA3/JA3S Hashes
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-ja3-hashes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create JA3 hashes data directory
+        run: mkdir -p datalake/raw/network/ja3
+
+      - name: Download JA3/JA3S Hashes from abuse.ch
+        run: curl -L "https://sslbl.abuse.ch/blacklist/ja3_fingerprints.csv" -o "datalake/raw/network/ja3/abuse_ch_ja3_fingerprints.csv"
+
+      - name: Commit and push JA3 hashes data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/network/ja3/
+          git commit -m "Data Ingestion: Update JA3/JA3S hashes ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

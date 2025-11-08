@@ -1,0 +1,32 @@
+
+name: Ingest Social Media Threat Feeds
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-social-media-threats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create social media threats data directory
+        run: mkdir -p datalake/raw/osint/social-media
+
+      - name: Search Twitter/X for #threatintel
+        env:
+          TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+        run: |
+          # Note: This requires a TWITTER_BEARER_TOKEN secret to be set in the repository
+          curl "https://api.twitter.com/2/tweets/search/recent?query=%23threatintel&tweet.fields=created_at,lang,public_metrics,source" -H "Authorization: Bearer $TWITTER_BEARER_TOKEN" -o "datalake/raw/osint/social-media/twitter_threatintel.json"
+
+      - name: Get latest posts from r/netsec
+        run: curl -L "https://www.reddit.com/r/netsec/new.json?limit=100" -H "User-agent: wildbox-ingest" -o "datalake/raw/osint/social-media/reddit_netsec.json"
+
+      - name: Commit and push social media threats data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/social-media/
+          git commit -m "Data Ingestion: Update social media threats ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

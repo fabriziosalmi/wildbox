@@ -1,0 +1,28 @@
+
+name: Ingest Domain Squatting & Phishing Feeds
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-phishing-domains:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create phishing domains data directory
+        run: mkdir -p datalake/raw/phishing
+
+      - name: Download PhishTank Verified Phishes
+        run: curl -L "http://data.phishtank.com/data/online-valid.json" -o "datalake/raw/phishing/phishtank_verified_online.json"
+
+      - name: Download OpenPhish Phishing URLs
+        run: curl -L "https://openphish.com/feed.txt" -o "datalake/raw/phishing/openphish_feed.txt"
+
+      - name: Commit and push phishing domains data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/phishing/
+          git commit -m "Data Ingestion: Update phishing domains ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

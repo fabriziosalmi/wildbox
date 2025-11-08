@@ -1,0 +1,25 @@
+
+name: Ingest Malware Sandbox Reports
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-sandbox-reports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create sandbox reports data directory
+        run: mkdir -p datalake/raw/malware/sandbox-reports
+
+      - name: Download Hatching Triage Public Feed
+        run: curl -L "https://tria.ge/feeds/json/public/" -o "datalake/raw/malware/sandbox-reports/hatching_triage_public_feed.json"
+
+      - name: Commit and push sandbox reports data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/malware/sandbox-reports/
+          git commit -m "Data Ingestion: Update malware sandbox reports ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

@@ -38,3 +38,143 @@ jobs:
           -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
           https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-osint-software-feeds.yml/dispatches \
           -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Sandbox Reports Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-sandbox-reports.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger YARA Rules Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-yara-rules.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger SIGMA Rules Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-sigma-rules.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger OSQuery Packs Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-osquery-packs.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Threat Actor IoCs Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-threat-actor-iocs.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger JA3 Hashes Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-ja3-hashes.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger TOR Exit Nodes Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-tor-exit-nodes.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Public Proxies Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-public-proxies.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Scanner IPs Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-scanner-ips.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Phishing Domains Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-phishing-domains.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger SaaS IP Ranges Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          httpshttps://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-saas-ip-ranges.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Cloud Security Policies Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-cloud-security-policies.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Leaked Cred Patterns Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-leaked-cred-patterns.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Exposed K8s APIs Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-exposed-k8s-apis.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Cloud Misconfigurations Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-cloud-misconfigurations.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Leaked Passwords Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-leaked-passwords.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Social Media Threats Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-social-media-threats.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Dark Web Trends Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-dark-web-trends.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Pastebin Leaks Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-pastebin-leaks.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+      - name: Trigger Security Blogs Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-security-blogs.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'

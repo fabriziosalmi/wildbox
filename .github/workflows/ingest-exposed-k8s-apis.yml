@@ -1,0 +1,27 @@
+
+name: Ingest Publicly Exposed Kubernetes APIs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-exposed-k8s-apis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create exposed k8s data directory
+        run: mkdir -p datalake/raw/cloud/exposed-k8s
+
+      - name: Search for exposed Kubernetes APIs on Shodan
+        run: |
+          # Note: This requires a SHODAN_API_KEY secret to be set in the repository
+          curl -L "https://api.shodan.io/shodan/host/search?key=${{ secrets.SHODAN_API_KEY }}&query=product:\"kubernetes\"" -o "datalake/raw/cloud/exposed-k8s/shodan_exposed_k8s.json"
+
+      - name: Commit and push exposed k8s data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/cloud/exposed-k8s/
+          git commit -m "Data Ingestion: Update exposed Kubernetes APIs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push
