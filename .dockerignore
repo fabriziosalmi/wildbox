@@ -1,0 +1,197 @@
+# Wildbox - Root .dockerignore
+# Excludes files from Docker build context to improve build performance and security
+
+# Git
+.git/
+.gitignore
+.gitattributes
+.github/
+
+# Environment files (security)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.hypothesis/
+.pytest_cache/
+htmlcov/
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.eslintcache
+.next/
+out/
+.nuxt/
+dist/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Documentation (build context optimization)
+*.md
+!README.md
+docs/
+website/
+*.rst
+
+# Docker files (prevent recursion)
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.travis.yml
+.circleci/
+Jenkinsfile
+azure-pipelines.yml
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.bak
+*.swp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+*.tar
+*.gz
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# Security
+*.key
+*.pem
+*.crt
+secrets/
+credentials/
+
+# Development
+.env.local
+.env.development
+.env.test
+.env.production.local
+scripts/dev/
+dev-tools/
+
+# Build artifacts
+build/
+dist/
+out/
+target/
+*.o
+*.a
+*.so
+*.dylib
+
+# Generated files
+*.generated.*
+auto-generated/
+
+# Large data files
+*.csv
+*.json.gz
+*.parquet
+data/
+datasets/
+
+# Media (if not needed)
+*.mp4
+*.avi
+*.mov
+*.wmv
+*.flv
+
+# Monitoring
+.grafana/
+prometheus/

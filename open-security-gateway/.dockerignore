@@ -1,0 +1,19 @@
+# Nginx gateway .dockerignore
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+logs/
+.vscode
+.idea
+*.swp
+*.md
+!README.md
+docs/
+tests/
+Dockerfile*
+docker-compose*
+.dockerignore
+.DS_Store
