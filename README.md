@@ -297,11 +297,6 @@ Wildbox is ready for community evaluation. We need your feedback to improve the 
 - 📋 Extended SOAR automation capabilities
 - 📋 Advanced threat intelligence integration
 
-**Phase 3: Enterprise Hardening**
-- 📋 High-availability and clustering
-- 📋 Compliance certifications (SOC 2, ISO 27001)
-- 📋 Commercial support and SLA options
-
 ---
 
 ## 🤝 Contributing
