@@ -9,6 +9,11 @@ A comprehensive, modular, and scalable open-source security platform designed fo
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://typescriptlang.org)
 
+## As Seen On
+[![Featured on Self-Host Weekly](https://img.shields.io/badge/Featured%20on-Self--Host%20Weekly-green)](https://selfh.st/weekly/2025-11-07/)
+[![Listed on LibHunt](https://img.shields.io/badge/Listed%20on-LibHunt-blue)](https://www.libhunt.com/r/wildbox)
+[![Read the Article on DEV.to](https://img.shields.io/badge/Read%20on-DEV.to-black?logo=dev.to)](https://dev.to/fab23/wildbox-all-in-one-open-security-platform-119h)
+
 ## Screenshot
 
 ![screenshot](screenshot.png)
