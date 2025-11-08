@@ -1,0 +1,25 @@
+
+name: Ingest Cryptojacking & Crypto Scams
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-crypto-threats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create crypto threats data directory
+        run: mkdir -p datalake/raw/crypto-threats
+
+      - name: Download CryptoScamDB Verified Scams
+        run: curl -L "https://api.cryptoscamdb.org/v1/verified" -o "datalake/raw/crypto-threats/cryptoscamdb_verified.json"
+
+      - name: Commit and push crypto threats data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/crypto-threats/
+          git commit -m "Data Ingestion: Update crypto threats ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

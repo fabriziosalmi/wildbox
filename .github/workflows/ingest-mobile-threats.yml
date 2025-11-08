@@ -1,0 +1,27 @@
+
+name: Ingest Mobile Security Feeds (Android & iOS)
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-mobile-threats:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create mobile threats data directory
+        run: mkdir -p datalake/raw/mobile-threats
+
+      - name: Get Android App Trackers from Exodus Privacy
+        run: |
+          # This is an example for a single app. A real implementation would read a list of apps.
+          curl -L "https://reports.exodus-privacy.eu.org/api/reports/1" -o "datalake/raw/mobile-threats/exodus_report_1.json"
+
+      - name: Commit and push mobile threats data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/mobile-threats/
+          git commit -m "Data Ingestion: Update mobile threats ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

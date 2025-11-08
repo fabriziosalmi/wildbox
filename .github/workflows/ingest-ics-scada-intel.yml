@@ -1,0 +1,30 @@
+
+name: Ingest Industrial Control Systems (ICS/SCADA) Intelligence
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-ics-scada-intel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create ICS/SCADA intel data directory
+        run: mkdir -p datalake/raw/ics-scada
+
+      - name: Download CISA ICS Advisories RSS Feed
+        run: curl -L "https://www.cisa.gov/uscert/ics/advisories/advisories.xml" -o "datalake/raw/ics-scada/cisa_ics_advisories.xml"
+
+      - name: Search Shodan for Modbus devices
+        run: |
+          # Note: This requires a SHODAN_API_KEY secret to be set in the repository
+          curl -L "https://api.shodan.io/shodan/host/search?key=${{ secrets.SHODAN_API_KEY }}&query=port:502" -o "datalake/raw/ics-scada/shodan_modbus_devices.json"
+
+      - name: Commit and push ICS/SCADA intel data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/ics-scada/
+          git commit -m "Data Ingestion: Update ICS/SCADA intelligence ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

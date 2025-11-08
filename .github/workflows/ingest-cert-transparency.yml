@@ -1,0 +1,27 @@
+
+name: Ingest SSL Certificate Transparency Logs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-cert-transparency:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create cert transparency data directory
+        run: mkdir -p datalake/raw/osint/cert-transparency
+
+      - name: Get Certificate Transparency Logs from crt.sh
+        run: |
+          # This is an example for a single domain. A real implementation would read a list of domains.
+          curl -L "https://crt.sh/?q=example.com&output=json" -o "datalake/raw/osint/cert-transparency/example.com_certs.json"
+
+      - name: Commit and push cert transparency data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/cert-transparency/
+          git commit -m "Data Ingestion: Update certificate transparency logs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push
