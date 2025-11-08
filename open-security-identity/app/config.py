@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     # Application
     app_name: str = "Open Security Identity"
-    app_version="0.1.5"
+    app_version: str = "0.1.5"
     debug: bool = False
     port: int = 8001
     
