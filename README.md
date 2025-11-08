@@ -140,13 +140,14 @@ cd wildbox
 
 # 2. Create environment file (copy example)
 cp .env.example .env
-# Edit .env and add your configuration (optional for development)
+# IMPORTANT: Edit .env and generate a secure API_KEY and other secrets.
+# Example for API_KEY: openssl rand -hex 32
 
 # 3. Start all services
 docker-compose up -d
 
-# 4. Wait for services to start (check health)
-sleep 10
+# 4. Wait for services to start (can take 2-3 minutes)
+sleep 180
 curl http://localhost:8000/health
 
 # 5. Access dashboard
@@ -155,10 +156,10 @@ curl http://localhost:8000/health
 ```
 
 **For detailed setup instructions**, see:
-- 📖 **[QUICKSTART.md](QUICKSTART.md)** - Complete 5-minute guide with all steps
-- 🔑 **[QUICKSTART_CREDENTIALS.md](QUICKSTART_CREDENTIALS.md)** - Default credentials & API authentication
-- 🛡️ **[SECURITY.md](SECURITY.md)** - Security configuration & best practices
-- 🚀 **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide
+- 📖 **[QUICKSTART.md](docs/guides/quickstart.md)** - Complete 5-minute guide with all steps
+- 🔑 **[QUICKSTART_CREDENTIALS.md](docs/guides/credentials.md)** - Default credentials & API authentication
+- 🛡️ **[SECURITY.md](docs/security/policy.md)** - Security configuration & best practices
+- 🚀 **[DEPLOYMENT.md](docs/guides/deployment.md)** - Production deployment guide
 
 ---
 
@@ -316,7 +317,7 @@ We welcome contributions from the security community! Please see our **[Contribu
 
 For more details, see the following documents:
 - **[QUICKSTART.md](QUICKSTART.md)** - 5-minute rapid deployment guide.
-- **[SECURITY_STATUS.md](SECURITY_STATUS.md)** - Current security status and vulnerability metrics.
+- **[SECURITY_STATUS.md](docs/security/status.md)** - Current security status and vulnerability metrics.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide.
 
 ---
