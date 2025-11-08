@@ -263,6 +263,97 @@
         .toc a:hover {
             border-bottom: 1px solid #f87171;
         }
+
+        /* List Styles */
+        .markdown-content ul {
+            margin: 0.5rem 0 1rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-content ol {
+            margin: 0.5rem 0 1rem 0;
+            padding-left: 1.5rem;
+        }
+
+        .markdown-content li {
+            margin: 0.25rem 0;
+            line-height: 1.6;
+        }
+
+        .markdown-content .list-none {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .markdown-content .list-none li {
+            margin: 0.35rem 0;
+            padding-left: 1.5rem;
+        }
+
+        /* Checkbox Styles */
+        .markdown-content input[type="checkbox"] {
+            margin-right: 0.5rem;
+            cursor: default;
+            accent-color: #ef4444;
+        }
+
+        .markdown-content input[type="checkbox"]:disabled {
+            opacity: 0.8;
+        }
+
+        .markdown-content input[type="checkbox"] + span {
+            line-height: 1.5;
+        }
+
+        /* Bold and Italic Styles */
+        .markdown-content strong {
+            color: #f5f5f5;
+        }
+
+        .markdown-content em {
+            color: #d1d5db;
+        }
+
+        /* Link Styles */
+        .markdown-content a {
+            color: #ef4444;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .markdown-content a:hover {
+            border-bottom: 1px solid #ef4444;
+            text-decoration: underline;
+        }
+
+        /* Blockquote Styles */
+        .markdown-content blockquote {
+            border-left: 4px solid #ef4444;
+            padding-left: 1rem;
+            margin-left: 0;
+            margin-right: 0;
+            color: #9ca3af;
+            font-style: italic;
+        }
+
+        /* Paragraph and Text */
+        .markdown-content p {
+            margin: 0.75rem 0;
+            line-height: 1.7;
+            color: #e5e7eb;
+        }
+
+        .markdown-content code {
+            font-size: 0.9em;
+        }
+
+        /* Horizontal Rule */
+        .markdown-content hr {
+            border: none;
+            border-top: 2px solid rgba(239, 68, 68, 0.2);
+            margin: 2rem 0;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
@@ -640,7 +731,12 @@
             let html = markdown;
             let headings = [];
 
-            // Extract headings for TOC
+            // Remove emojis for professional documentation
+            html = html.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{27BF}]|[\u{1F900}-\u{1F9FF}]|\p{Emoji}/gu, '').trim();
+            // Clean up multiple spaces created by emoji removal
+            html = html.replace(/  +/g, ' ');
+
+            // Extract headings for TOC before processing
             const headingRegex = /^(#{1,3}) (.*?)$/gm;
             let match;
             while ((match = headingRegex.exec(markdown)) !== null) {
@@ -667,23 +763,29 @@
             // Code blocks with language detection and copy button
             html = html.replace(/```([a-z]*)\n([\s\S]*?)```/g, (match, lang, code) => {
                 const trimmed = code.trim();
-                const encodedCode = trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const language = lang || 'plaintext';
-                const highlighted = hljs.highlight(trimmed, { language, ignoreIllegals: true }).value;
-                return `<div class="code-wrapper">
+                try {
+                    const highlighted = hljs.highlight(trimmed, { language, ignoreIllegals: true }).value;
+                    return `<div class="code-wrapper">
                     <button class="copy-button" onclick="copyToClipboard(this)">📋 Copy</button>
                     <pre><code class="hljs language-${language}">${highlighted}</code></pre>
                 </div>`;
+                } catch (e) {
+                    return `<div class="code-wrapper">
+                    <button class="copy-button" onclick="copyToClipboard(this)">📋 Copy</button>
+                    <pre><code>${trimmed.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>
+                </div>`;
+                }
             });
 
             // Tables (basic markdown table support)
-            html = html.replace(/^\|(.+)\n\|[-:\s|]+\n((?:\|.+\n?)*)/gm, (match, headerRow, bodyRows) => {
+            html = html.replace(/\|(.+)\n\|[-:\s|]+\n((?:\|.+\n)*)/gm, (match, headerRow, bodyRows) => {
                 const headers = headerRow.split('|').map(h => h.trim()).filter(h => h);
-                const rows = bodyRows.trim().split('\n').map(r =>
+                const rows = bodyRows.trim().split('\n').filter(r => r.trim()).map(r =>
                     r.split('|').map(c => c.trim()).filter(c => c)
                 );
 
-                let table = '<table><thead><tr>';
+                let table = '<table class="markdown-table"><thead><tr>';
                 headers.forEach(h => table += `<th>${h}</th>`);
                 table += '</tr></thead><tbody>';
                 rows.forEach(row => {
@@ -700,21 +802,42 @@
 
             // Bold
             html = html.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-bold text-gray-100">$1</strong>');
+            html = html.replace(/__([^_]+)__/g, '<strong class="font-bold text-gray-100">$1</strong>');
 
             // Italic
             html = html.replace(/\*([^*\n]+)\*/g, '<em class="italic text-gray-400">$1</em>');
+            html = html.replace(/_([^_\n]+)_/g, '<em class="italic text-gray-400">$1</em>');
 
             // Links
-            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-red-400 hover:underline border-b border-red-400">$1</a>');
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-red-400 hover:underline">$1</a>');
 
-            // Unordered lists
+            // Checkbox lists (before regular lists)
+            html = html.replace(/^\- \[x\] (.*?)$/gm, '<li class="ml-4"><input type="checkbox" checked disabled> <span>$1</span></li>');
+            html = html.replace(/^\- \[ \] (.*?)$/gm, '<li class="ml-4"><input type="checkbox" disabled> <span>$1</span></li>');
+
+            // Group checkbox lists
+            html = html.replace(/(<li class="ml-4"><input[^<]*<\/li>\n)+/g, (match) => {
+                return '<ul class="list-none mb-4">' + match.trim() + '</ul>';
+            });
+
+            // Group unordered lists
             html = html.replace(/^\* (.*?)$/gm, '<li class="ml-4">$1</li>');
             html = html.replace(/^\- (.*?)$/gm, '<li class="ml-4">$1</li>');
-            html = html.replace(/(<li[^>]*>.*?<\/li>)/s, '<ul class="list-disc list-inside mb-4">$1</ul>');
+            html = html.replace(/(<li class="ml-4">[^<]*<\/li>\n)+/g, (match) => {
+                if (!match.includes('<input')) {
+                    return '<ul class="list-disc list-inside mb-4">' + match.trim() + '</ul>';
+                }
+                return match;
+            });
 
-            // Ordered lists
+            // Group ordered lists
             html = html.replace(/^\d+\. (.*?)$/gm, '<li class="ml-4">$1</li>');
-            html = html.replace(/(<li[^>]*>.*?<\/li>)/s, '<ol class="list-decimal list-inside mb-4">$1</ol>');
+            html = html.replace(/(<li class="ml-4">[^<]*<\/li>\n)+/g, (match) => {
+                if (!match.includes('<input') && !match.includes('list-disc')) {
+                    return '<ol class="list-decimal list-inside mb-4">' + match.trim() + '</ol>';
+                }
+                return match;
+            });
 
             // Horizontal rules
             html = html.replace(/^---$/gm, '<hr class="border-gray-700 my-6">');
@@ -722,20 +845,21 @@
             // Block quotes
             html = html.replace(/^> (.*?)$/gm, '<blockquote class="border-l-4 border-red-400 pl-4 text-gray-400 italic">$1</blockquote>');
 
-            // Paragraphs
-            html = html.split('\n\n').map(para => {
-                if (!para.startsWith('<') && para.trim() && !para.match(/^[\||-]/)) {
-                    return `<p class="mb-4 text-gray-300 leading-relaxed">${para}</p>`;
-                }
-                return para;
+            // Paragraphs - be careful not to wrap elements
+            html = html.split('\n').map((line, idx, arr) => {
+                const trimmed = line.trim();
+                if (trimmed === '') return '';
+                if (trimmed.startsWith('<')) return line;
+                if (trimmed.startsWith('|')) return line;
+                return `<p class="mb-4 text-gray-300 leading-relaxed">${line}</p>`;
             }).join('\n');
 
             // Generate Table of Contents if we have headings
             if (headings.length > 0) {
-                let toc = '<div class="toc"><h3>Table of Contents</h3><ul>';
+                let toc = '<div class="toc"><h3>Table of Contents</h3><ul class="toc-list">';
                 headings.forEach(h => {
                     const indent = (h.level - 1) * 20;
-                    toc += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}">${h.text}</a></li>`;
+                    toc += `<li style="margin-left: ${indent}px"><a href="#${h.anchor}" class="toc-link">${h.text}</a></li>`;
                 });
                 toc += '</ul></div>';
                 html = toc + html;
