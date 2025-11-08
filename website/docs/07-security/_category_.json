@@ -1,0 +1,8 @@
+{
+  "label": "Security",
+  "position": 7,
+  "link": {
+    "type": "generated-index",
+    "description": "Security policies, audits, and best practices"
+  }
+}

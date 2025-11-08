@@ -1,0 +1,172 @@
+name: Deploy Documentation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'website/**'
+      - 'docs/**'
+      - '.github/workflows/deploy-docs.yml'
+      - 'open-security-*/app/**'
+      - 'README.md'
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: wildbox_test
+          POSTGRES_USER: wildbox
+          POSTGRES_DB: wildbox
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies (for API services)
+        run: |
+          python -m pip install --upgrade pip
+          # Install dependencies for each service that exposes an API
+          for service in open-security-identity open-security-tools open-security-agents open-security-responder open-security-cspm open-security-data; do
+            if [ -f "$service/requirements.txt" ]; then
+              echo "Installing dependencies for $service..."
+              pip install -r "$service/requirements.txt"
+            fi
+          done
+
+      - name: Start API services in background
+        env:
+          DATABASE_URL: postgresql://wildbox:wildbox_test@localhost:5432/wildbox
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-secret-key-for-ci-only-min-32-chars
+          API_KEY: test-api-key
+        run: |
+          # Start each service in background on different ports
+          # Identity Service
+          if [ -d "open-security-identity" ]; then
+            cd open-security-identity
+            uvicorn app.main:app --host 0.0.0.0 --port 8001 &
+            cd ..
+          fi
+
+          # Tools Service
+          if [ -d "open-security-tools" ]; then
+            cd open-security-tools
+            uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+            cd ..
+          fi
+
+          # Agents Service
+          if [ -d "open-security-agents" ]; then
+            cd open-security-agents
+            uvicorn app.main:app --host 0.0.0.0 --port 8006 &
+            cd ..
+          fi
+
+          # Responder Service
+          if [ -d "open-security-responder" ]; then
+            cd open-security-responder
+            uvicorn app.main:app --host 0.0.0.0 --port 8018 &
+            cd ..
+          fi
+
+          # CSPM Service
+          if [ -d "open-security-cspm" ]; then
+            cd open-security-cspm
+            uvicorn app.main:app --host 0.0.0.0 --port 8019 &
+            cd ..
+          fi
+
+          # Data Service
+          if [ -d "open-security-data" ]; then
+            cd open-security-data
+            uvicorn app.main:app --host 0.0.0.0 --port 8002 &
+            cd ..
+          fi
+
+          echo "Waiting for services to start..."
+          sleep 30
+
+      - name: Generate OpenAPI specifications
+        run: |
+          chmod +x ./scripts/generate-api-specs.sh
+          ./scripts/generate-api-specs.sh || true
+
+      - name: Install Docusaurus dependencies
+        working-directory: ./website
+        run: npm ci
+
+      - name: Generate API documentation from OpenAPI specs
+        working-directory: ./website
+        run: |
+          # Generate API docs if specs exist
+          if [ -d "static/api-specs" ] && [ "$(ls -A static/api-specs/*.openapi.json 2>/dev/null)" ]; then
+            npm run gen-api-docs || echo "API docs generation skipped (no specs available)"
+          else
+            echo "No OpenAPI specs found, skipping API docs generation"
+          fi
+
+      - name: Build Docusaurus website
+        working-directory: ./website
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./website/build
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

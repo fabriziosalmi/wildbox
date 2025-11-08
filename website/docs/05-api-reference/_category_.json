@@ -1,0 +1,8 @@
+{
+  "label": "API Reference",
+  "position": 5,
+  "link": {
+    "type": "generated-index",
+    "description": "Complete API documentation for all Wildbox services"
+  }
+}
