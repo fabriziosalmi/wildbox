@@ -410,9 +410,6 @@
                     <button onclick="loadDoc('deployment')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
                         Deployment Guide
                     </button>
-                    <button onclick="loadDoc('remediation')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
-                        Remediation Checklist
-                    </button>
                 </div>
 
                 <div class="space-y-2">
@@ -494,7 +491,7 @@
                             </div>
                             <div>
                                 <h4 class="font-semibold text-red-400 mb-2">System Administrator</h4>
-                                <p class="text-gray-400">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:underline">Deployment Guide</button> and <button onclick="loadDoc('remediation')" class="text-red-400 hover:underline">Remediation Checklist</button> for production setup.</p>
+                                <p class="text-gray-400">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:underline">Deployment Guide</button> for production setup.</p>
                             </div>
                         </div>
                     </div>
@@ -523,10 +520,6 @@
 
                 <div id="deployment-section" class="doc-section">
                     <div class="markdown-content loading">Loading Deployment Guide...</div>
-                </div>
-
-                <div id="remediation-section" class="doc-section">
-                    <div class="markdown-content loading">Loading Remediation Checklist...</div>
                 </div>
 
                 <div id="api-docs-section" class="doc-section">
@@ -725,8 +718,7 @@
             'security-status': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_STATUS.md',
             'security-policy': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY.md',
             'security-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_AUDIT_REPORT.md',
-            deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/DEPLOYMENT.md',
-            remediation: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_REMEDIATION_CHECKLIST.md'
+            deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/DEPLOYMENT.md'
         };
 
         // Advanced markdown to HTML converter with syntax highlighting

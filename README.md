@@ -1295,11 +1295,6 @@ webhooks:
   - OWASP/CWE mappings
   - For security engineers and auditors
 
-- **[SECURITY_REMEDIATION_CHECKLIST.md](SECURITY_REMEDIATION_CHECKLIST.md)** - Implementation guide
-  - Step-by-step fix procedures
-  - Copy-paste ready code snippets
-  - Testing and verification commands
-
 - **[SECURITY_FINDINGS.json](SECURITY_FINDINGS.json)** - CI/CD Format
   - Machine-readable vulnerability data
   - For automation and build pipelines
@@ -1316,12 +1311,6 @@ webhooks:
   - Monitoring and alerting setup
   - Backup and recovery procedures
   - Troubleshooting guide
-
-- **[SECURITY_REMEDIATION_CHECKLIST.md](SECURITY_REMEDIATION_CHECKLIST.md)** - Implementation guide
-  - Step-by-step fix instructions
-  - Copy-paste ready code snippets
-  - Testing and verification commands
-  - 15 actionable security improvements
 
 ### Architecture & Design
 
