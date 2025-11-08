@@ -63,7 +63,7 @@ aiohttp==3.12.14
 
 # Security utilities
 cryptography==44.0.1
-python-jose[cryptography]==3.3.1
+python-jose[cryptography]==3.5.0
 
 # Logging and monitoring
 structlog==23.2.0

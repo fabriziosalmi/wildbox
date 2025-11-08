@@ -36,7 +36,7 @@ click==8.1.7
 # Security
 cryptography==44.0.1
 passlib[bcrypt]==1.7.4
-python-jose[cryptography]==3.3.1
+python-jose[cryptography]==3.5.0
 
 # Monitoring
 prometheus-client==0.19.0
