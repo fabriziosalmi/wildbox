@@ -46,7 +46,8 @@ async def test_pulse_check_dry_run():
         loaded_modules = 0
         for module_name in test_modules:
             try:
-                                    module_path = Path(__file__).parent / "integration" / f"{module_name}.py"                if module_path.exists():
+                module_path = Path(__file__).parent / "integration" / f"{module_name}.py"
+                if module_path.exists():
                     # Test import
                     import importlib.util
                     spec = importlib.util.spec_from_file_location(module_name, module_path)
