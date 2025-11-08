@@ -20,7 +20,7 @@ Complete API reference documentation for all Wildbox microservices with examples
 
 **Interactive HTML Portal**:
 - Local: [http://localhost/landing-page/api-reference.html](../api-reference.html)
-- GitHub Pages: [https://fabriziosalmi.github.io/wildbox/docs/api-reference.html](../api-reference.html)
+- GitHub Pages: [https://www.wildbox.io/docs/api-reference.html](../api-reference.html)
 
 **Live OpenAPI Endpoints** (during development):
 - Identity Service: [http://localhost:8000/docs](http://localhost:8000/docs)

@@ -5,8 +5,8 @@
 title: Wildbox Security Platform
 description: "Enterprise-grade security platform with community-driven development"
 author: "Wildbox Community"
-url: "https://fabriziosalmi.github.io/wildbox"
-baseurl: "/wildbox"
+url: "https://www.wildbox.io"
+baseurl: ""
 
 # Build settings
 markdown: kramdown

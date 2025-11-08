@@ -26,7 +26,7 @@ npx http-server
 ### Deploy to GitHub Pages
 ```bash
 # The landing page will be served at:
-# https://fabriziosalmi.github.io/wildbox/landing-page/
+# https://www.wildbox.io/landing-page/
 ```
 
 ### Deploy to Custom Domain

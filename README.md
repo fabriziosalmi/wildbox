@@ -1245,7 +1245,7 @@ webhooks:
 
 ## 📖 Documentation
 
-> 🌐 **Complete documentation available online**: Visit **[Wildbox Documentation Site](https://fabriziosalmi.github.io/wildbox)** for the full documentation with organized guides, security reports, and deployment procedures.
+> 🌐 **Complete documentation available online**: Visit **[Wildbox Documentation Site](https://www.wildbox.io)** for the full documentation with organized guides, security reports, and deployment procedures.
 >
 > This README contains the main documentation files. The `/docs` folder provides an organized structure for GitHub Pages hosting.
 
