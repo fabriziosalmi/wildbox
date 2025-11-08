@@ -532,65 +532,68 @@
                 <div id="api-docs-section" class="doc-section">
                     <div class="markdown-content">
                         <h1>API Documentation</h1>
-                        <p>Wildbox provides comprehensive REST APIs for all services. Each microservice exposes OpenAPI documentation.</p>
+                        <p>Wildbox provides comprehensive REST APIs for all services. Complete OpenAPI documentation is available below with full endpoint specifications, request/response examples, and authentication details.</p>
+
+                        <div class="glass-effect p-6 rounded-lg mb-8">
+                            <p class="text-sm text-gray-400"><strong>Note:</strong> To generate fresh API documentation from running services, execute: <code>python3 scripts/generate-api-docs.py</code></p>
+                        </div>
 
                         <h2>Available APIs</h2>
                         <div class="space-y-6">
                             <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">API / Security Tools Service</h3>
+                                <p class="text-gray-400 mb-3">Core security tool execution and orchestration platform.</p>
+                                <a href="api/api-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
                                 <h3 class="font-semibold mb-2">Identity & Authentication Service</h3>
-                                <p class="text-gray-400 mb-3">User management, authentication, and authorization endpoints.</p>
-                                <a href="http://localhost:8000/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
-                                    OpenAPI Docs (Swagger UI)
-                                </a>
-                                <a href="http://localhost:8000/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
-                                    OpenAPI Schema (JSON)
-                                </a>
-                            </div>
-
-                            <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Guardian Service</h3>
-                                <p class="text-gray-400 mb-3">Integration management and queue monitoring.</p>
-                                <a href="http://localhost:8001/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
-                                    OpenAPI Docs (Swagger UI)
-                                </a>
-                                <a href="http://localhost:8001/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
-                                    OpenAPI Schema (JSON)
-                                </a>
-                            </div>
-
-                            <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Agents Service</h3>
-                                <p class="text-gray-400 mb-3">AI-powered threat analysis and intelligence enrichment.</p>
-                                <a href="http://localhost:8002/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
-                                    OpenAPI Docs (Swagger UI)
-                                </a>
-                                <a href="http://localhost:8002/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
-                                    OpenAPI Schema (JSON)
+                                <p class="text-gray-400 mb-3">User management, authentication, JWT tokens, and authorization endpoints.</p>
+                                <a href="api/identity-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
                                 </a>
                             </div>
 
                             <div class="api-endpoint">
                                 <h3 class="font-semibold mb-2">Data Service</h3>
-                                <p class="text-gray-400 mb-3">Security data aggregation and analysis.</p>
-                                <a href="http://localhost:8006/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
-                                    OpenAPI Docs (Swagger UI)
-                                </a>
-                                <a href="http://localhost:8006/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
-                                    OpenAPI Schema (JSON)
+                                <p class="text-gray-400 mb-3">Threat intelligence, IOCs, and security data aggregation.</p>
+                                <a href="api/data-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
                                 </a>
                             </div>
 
                             <div class="api-endpoint">
-                                <h3 class="font-semibold mb-2">Tools Service</h3>
-                                <p class="text-gray-400 mb-3">Security tool execution and orchestration.</p>
-                                <a href="http://localhost:8013/docs" target="_blank" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
-                                    OpenAPI Docs (Swagger UI)
+                                <h3 class="font-semibold mb-2">Guardian Service</h3>
+                                <p class="text-gray-400 mb-3">Integration management, queue monitoring, and workflow orchestration.</p>
+                                <a href="api/guardian-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
                                 </a>
-                                <a href="http://localhost:8013/openapi.json" target="_blank" class="inline-block ml-2 px-4 py-2 border border-red-600 hover:border-red-400 rounded text-sm transition">
-                                    OpenAPI Schema (JSON)
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Responder Service</h3>
+                                <p class="text-gray-400 mb-3">Incident response playbook execution and remediation automation.</p>
+                                <a href="api/responder-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
+                                </a>
+                            </div>
+
+                            <div class="api-endpoint">
+                                <h3 class="font-semibold mb-2">Agents Service</h3>
+                                <p class="text-gray-400 mb-3">AI-powered threat analysis and machine learning security intelligence.</p>
+                                <a href="api/agents-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                    OpenAPI Documentation
                                 </a>
                             </div>
                         </div>
+
+                        <h2>API Documentation Index</h2>
+                        <p class="mb-4">View all APIs in a centralized documentation portal:</p>
+                        <a href="api/swagger-index.html" class="inline-block px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded text-base font-semibold transition">
+                            View Complete API Documentation Index →
+                        </a>
 
                         <h2>Authentication</h2>
                         <p>All API endpoints require authentication via Bearer token in the Authorization header:</p>
