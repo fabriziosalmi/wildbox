@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wildbox API Documentation</title>
+    <meta name="description" content="Complete API documentation for Wildbox Security Platform">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>🛡️</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+            color: #e5e7eb;
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 4rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid rgba(239, 68, 68, 0.2);
+        }
+        h1 {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-weight: 700;
+        }
+        .subtitle {
+            color: #9ca3af;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+        }
+        .api-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+        .api-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: 12px;
+            padding: 2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(10px);
+        }
+        .api-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(239, 68, 68, 0.4);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px rgba(239, 68, 68, 0.1);
+        }
+        .api-card h2 {
+            color: #f87171;
+            margin-bottom: 0.5rem;
+            font-size: 1.3rem;
+            text-transform: capitalize;
+        }
+        .api-card p {
+            color: #d1d5db;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+        .api-link {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            transition: all 0.2s ease;
+            border: none;
+            cursor: pointer;
+        }
+        .api-link:hover {
+            transform: scale(1.05);
+            box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3);
+        }
+        .info-box {
+            background: rgba(239, 68, 68, 0.05);
+            border-left: 4px solid #ef4444;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 2rem;
+        }
+        .info-box strong {
+            color: #f87171;
+        }
+        footer {
+            text-align: center;
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-top: 4rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(239, 68, 68, 0.1);
+        }
+        footer a {
+            color: #f87171;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+        .timestamp {
+            color: #6b7280;
+            font-size: 0.85rem;
+            margin-top: 1rem;
+        }
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+            .api-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Wildbox API Documentation</h1>
+            <p class="subtitle">Complete REST API Reference for all Security Services</p>
+        </header>
+
+        <div class="info-box">
+            <strong>ℹ️ Available Services:</strong> All microservices expose complete OpenAPI 3.0 specifications. Each documentation page includes full endpoint details, request/response examples, authentication requirements, and error codes.
+        </div>
+
+        <div class="api-grid">
+            <div class="api-card">
+                <h2>Agents Service</h2>
+                <p>AI-powered threat analysis, machine learning intelligence enrichment, and autonomous security.</p>
+                <a href="./agents-api.html" class="api-link">View Documentation →</a>
+            </div>
+            <div class="api-card">
+                <h2>Responder Service</h2>
+                <p>Incident response playbook execution, remediation automation, and workflow management.</p>
+                <a href="./responder-api.html" class="api-link">View Documentation →</a>
+            </div>
+        </div>
+
+        <footer>
+            <p>Wildbox Security Platform • <a href="https://github.com/fabriziosalmi/wildbox" target="_blank">GitHub Repository</a></p>
+            <p class="timestamp">Generated: 2025-11-08 08:10:37 UTC</p>
+        </footer>
+    </div>
+</body>
+</html>
