@@ -650,7 +650,7 @@ Repeat for:
 
 ### [ ] 15. Improve Test Password Security
 
-**File**: `verify_authentication_complete.py` (line 581)
+**File**: `tests/verify_authentication_complete.py` (line 581)
 
 Replace:
 ```python

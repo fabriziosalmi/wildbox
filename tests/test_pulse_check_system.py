@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 # Add tests directory to path
-sys.path.insert(0, str(Path(__file__).parent / "tests"))
+sys.path.insert(0, str(Path(__file__).parent))
 
 async def test_pulse_check_dry_run():
     """Test pulse check system in dry run mode"""
@@ -46,8 +46,7 @@ async def test_pulse_check_dry_run():
         loaded_modules = 0
         for module_name in test_modules:
             try:
-                module_path = Path(__file__).parent / "tests" / "integration" / f"{module_name}.py"
-                if module_path.exists():
+                                    module_path = Path(__file__).parent / "integration" / f"{module_name}.py"                if module_path.exists():
                     # Test import
                     import importlib.util
                     spec = importlib.util.spec_from_file_location(module_name, module_path)

@@ -261,7 +261,7 @@
       "severity": "LOW",
       "category": "Testing",
       "title": "Weak Test Passwords",
-      "file": "/Users/fab/GitHub/wildbox/verify_authentication_complete.py",
+      "file": "/Users/fab/GitHub/wildbox/tests/verify_authentication_complete.py",
       "line": 581,
       "vulnerable_code": "password = 'demopassword123'",
       "risk": "Weak authentication in tests",

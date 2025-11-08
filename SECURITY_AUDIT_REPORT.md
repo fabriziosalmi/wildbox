@@ -464,7 +464,7 @@ if os.getenv('ENVIRONMENT') == 'production' and os.getenv('DEBUG') == 'true':
 ---
 
 ### 18. Weak Password Requirements in Demo
-**File**: `/Users/fab/GitHub/wildbox/verify_authentication_complete.py` (Line 581)
+**File**: `/Users/fab/GitHub/wildbox/tests/verify_authentication_complete.py` (Line 581)
 **Severity**: LOW
 **Risk**: Weak Authentication
 

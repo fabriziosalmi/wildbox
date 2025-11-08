@@ -76,7 +76,7 @@ services:
     networks:
       - wildbox
     volumes:
-      - ./test_integration.sh:/test_integration.sh:ro
+      - ./tests/test_integration.sh:/test_integration.sh:ro
     command: tail -f /dev/null  # Keep running for manual testing
     profiles:
       - tools  # Only start with --profile tools
