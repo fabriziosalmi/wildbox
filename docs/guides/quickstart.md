@@ -353,8 +353,8 @@ docker-compose -f docker-compose.yml \
 
 ## 🆘 Support & Troubleshooting
 
-- **Documentation**: [README.md](README.md)
-- **Security Issues**: [SECURITY.md](SECURITY.md)
+- **Documentation**: [README.md](../../README.md)
+- **Security Issues**: [Security Policy](../security/policy.md)
 - **API Docs**: http://localhost:8000/docs (when running)
 - **GitHub Issues**: https://github.com/fabriziosalmi/wildbox/issues
 

@@ -405,8 +405,8 @@ docker-compose restart open-security-tools
 
 For credential-related issues:
 1. Check this file first
-2. Review [QUICKSTART.md](QUICKSTART.md)
-3. Check [README.md](README.md)
+2. Review [Quick Start Guide](quickstart.md)
+3. Check [README.md](../../README.md)
 4. Open an issue on GitHub
 
 ---

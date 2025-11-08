@@ -62,7 +62,7 @@ curl -I https://example.com
 
 ```bash
 # Review security documentation
-cat SECURITY.md
+cat docs/security/policy.md
 cat SECURITY_REMEDIATION_CHECKLIST.md
 
 # Verify no secrets in git
@@ -645,7 +645,7 @@ watch -n 1 docker stats
 
 ## 📞 Support
 
-- **Documentation**: SECURITY.md, QUICKSTART.md
+- **Documentation**: [Security Policy](../security/policy.md), [Quick Start](quickstart.md)
 - **Issues**: https://github.com/fabriziosalmi/wildbox/issues
 - **Security**: fabrizio.salmi@gmail.com
 

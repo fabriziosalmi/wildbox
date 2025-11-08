@@ -121,8 +121,7 @@ graph TD
 - [🎯 Platform Overview](#-platform-overview)
 - [🚀 Components](#-components)
 - [🛠️ Technology Stack](#️-technology-stack)
-- [🐳 Docker Deployment](#-docker-deployment)
-- [🛠️ Development](#️-development)
+- [� Community & Roadmap](#-community--roadmap)
 - [🤝 Contributing](#-contributing)
 - [📖 Documentation](#-documentation)
 - [📄 License](#-license)
@@ -316,9 +315,9 @@ We welcome contributions from the security community! Please see our **[Contribu
 > 🌐 **Complete documentation available online**: Visit **[Wildbox Documentation Site](https://www.wildbox.io)** for the full documentation with organized guides, security reports, and deployment procedures.
 
 For more details, see the following documents:
-- **[QUICKSTART.md](QUICKSTART.md)** - 5-minute rapid deployment guide.
+- **[QUICKSTART.md](docs/guides/quickstart.md)** - 5-minute rapid deployment guide.
 - **[SECURITY_STATUS.md](docs/security/status.md)** - Current security status and vulnerability metrics.
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deployment guide.
+- **[DEPLOYMENT.md](docs/guides/deployment.md)** - Production deployment guide.
 
 ---
 
