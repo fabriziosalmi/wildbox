@@ -1,27 +1,24 @@
 # FastAPI and web framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
 
 # Database and ORM
-sqlalchemy[asyncio]==2.0.23
-asyncpg==0.29.0
-alembic==1.12.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.0
 
-# Authentication and security
-python-jose[cryptography]==3.5.0
-passlib[bcrypt]>=1.7.4
-bcrypt==4.0.1
-python-multipart==0.0.7
-fastapi-users[sqlalchemy]==12.1.3
-fastapi-users-db-sqlalchemy==6.0.1
+# Authentication and user management
+fastapi-users[sqlalchemy]>=14.0.1,<16.0.0
+python-multipart>=0.0.18
+passlib[bcrypt]==1.7.4
 
 # Billing integration
-stripe==10.0.0
+stripe==11.2.0
 
 # Configuration and validation
-pydantic==2.5.0
-pydantic-settings==2.1.0
-email-validator==2.1.0
+pydantic==2.10.3
+pydantic-settings==2.6.1
+email-validator==2.1.2
 
 # HTTP client
 httpx==0.25.2
