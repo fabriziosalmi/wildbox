@@ -1,0 +1,25 @@
+
+name: Ingest Public Storage Lists
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-public-storage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create public storage data directory
+        run: mkdir -p datalake/raw/public-storage
+
+      - name: Download Grayhat Warfare Public Buckets List
+        run: curl -L "https://s3.amazonaws.com/buckets.grayhatwarfare.com/public-buckets.txt" -o "datalake/raw/public-storage/grayhat_warfare_public_buckets.txt"
+
+      - name: Commit and push public storage data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/public-storage/
+          git commit -m "Data Ingestion: Update public storage lists ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

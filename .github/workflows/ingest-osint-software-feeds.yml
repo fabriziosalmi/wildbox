@@ -1,0 +1,40 @@
+
+name: Ingest OSINT Software Feeds
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-osint-software-feeds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create OSINT software data directory
+        run: mkdir -p datalake/raw/osint/software
+
+      - name: Get popular GitHub repositories
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "search/repositories?q=stars:>1000&sort=stars&order=desc&per_page=100" --jq '.items[] | {full_name, description, stargazers_count, language, html_url}' > datalake/raw/osint/software/github_popular_repos.json
+          gh api "search/repositories?q=language:python+stars:>1000&sort=stars&order=desc&per_page=100" --jq '.items[] | {full_name, description, stargazers_count, language, html_url}' > datalake/raw/osint/software/github_popular_python_repos.json
+          gh api "search/repositories?q=language:go+stars:>1000&sort=stars&order=desc&per_page=100" --jq '.items[] | {full_name, description, stargazers_count, language, html_url}' > datalake/raw/osint/software/github_popular_go_repos.json
+          gh api "search/repositories?q=language:javascript+stars:>1000&sort=stars&order=desc&per_page=100" --jq '.items[] | {full_name, description, stargazers_count, language, html_url}' > datalake/raw/osint/software/github_popular_js_repos.json
+
+      - name: Get top pip packages
+        run: |
+          curl -L "https://hugovk.github.io/top-pypi-packages/top-pypi-packages-30-days.json" -o "datalake/raw/osint/software/pip_top_packages.json"
+
+      - name: Get top npm packages
+        run: |
+          curl -L "https://raw.githubusercontent.com/nice-registry/all-the-package-names/master/names.json" -o "datalake/raw/osint/software/npm_all_packages.json"
+
+
+      - name: Commit and push OSINT software data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/osint/software/
+          git commit -m "Data Ingestion: Update OSINT software lists ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

@@ -1,0 +1,31 @@
+
+name: Ingest ATT&CK TTPs
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-attack-ttps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create ATT&CK data directory
+        run: mkdir -p datalake/raw/attack
+
+      - name: Download MITRE ATT&CK Enterprise STIX Data
+        run: curl -L "https://raw.githubusercontent.com/mitre/cti/master/enterprise-attack/enterprise-attack.json" -o "datalake/raw/attack/enterprise-attack.json"
+
+      - name: Download MITRE ATT&CK Mobile STIX Data
+        run: curl -L "https://raw.githubusercontent.com/mitre/cti/master/mobile-attack/mobile-attack.json" -o "datalake/raw/attack/mobile-attack.json"
+
+      - name: Download MITRE ATT&CK ICS STIX Data
+        run: curl -L "https://raw.githubusercontent.com/mitre/cti/master/ics-attack/ics-attack.json" -o "datalake/raw/attack/ics-attack.json"
+
+      - name: Commit and push ATT&CK data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/attack/
+          git commit -m "Data Ingestion: Update ATT&CK TTPs ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

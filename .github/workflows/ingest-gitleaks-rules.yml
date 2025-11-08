@@ -1,0 +1,28 @@
+
+name: Ingest Gitleaks Rules
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-gitleaks-rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create gitleaks rules data directory
+        run: mkdir -p datalake/raw/gitleaks-rules
+
+      - name: Clone Gitleaks Rules
+        run: |
+          git clone --depth 1 https://github.com/zricethezav/gitleaks.git /tmp/gitleaks
+          mkdir -p datalake/raw/gitleaks-rules/
+          cp /tmp/gitleaks/config/gitleaks.toml datalake/raw/gitleaks-rules/gitleaks.toml
+
+      - name: Commit and push gitleaks rules data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/gitleaks-rules/
+          git commit -m "Data Ingestion: Update gitleaks rules ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push

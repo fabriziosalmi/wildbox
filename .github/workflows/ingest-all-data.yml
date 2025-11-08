@@ -1,0 +1,40 @@
+
+name: Ingest All Data
+on:
+  workflow_dispatch:
+
+jobs:
+  trigger-ingestion-workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger CTI Feeds Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-cti-feeds.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+
+      - name: Trigger Vulnerability Feeds Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-vulnerability-feeds.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+
+      - name: Trigger Compliance Benchmarks Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-compliance-benchmarks.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'
+
+      - name: Trigger OSINT Software Feeds Ingestion
+        run: |
+          curl -X POST \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+          https://api.github.com/repos/${{ github.repository }}/actions/workflows/ingest-osint-software-feeds.yml/dispatches \
+          -d '{"ref":"${{ github.ref }}"}'

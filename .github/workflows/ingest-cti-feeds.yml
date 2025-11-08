@@ -1,0 +1,35 @@
+
+name: Ingest CTI Feeds
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-cti-feeds:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create CTI data directory
+        run: mkdir -p datalake/raw/cti
+
+      - name: Download Feodo Tracker IP Blocklist
+        run: curl -L "https://feodotracker.abuse.ch/downloads/ipblocklist.txt" -o "datalake/raw/cti/feodo_ip_blocklist.txt"
+
+      - name: Download SSL Blacklist
+        run: curl -L "https://sslbl.abuse.ch/blacklist/sslipblacklist.csv" -o "datalake/raw/cti/ssl_blacklist.csv"
+
+      - name: Download URLhaus Malicious URLs
+        run: curl -L "https://urlhaus.abuse.ch/downloads/csv_recent/" -o "datalake/raw/cti/urlhaus_malicious_urls.csv"
+
+      - name: Download MalwareBazaar Hashes
+        run: curl -L "https://bazaar.abuse.ch/export/txt/md5/recent/" -o "datalake/raw/cti/malwarebazaar_md5_hashes.txt"
+
+      - name: Commit and push CTI data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/cti/
+          git commit -m "Data Ingestion: Update CTI feeds ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push
+

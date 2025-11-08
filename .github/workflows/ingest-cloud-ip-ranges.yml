@@ -1,0 +1,31 @@
+
+name: Ingest Cloud IP Ranges
+on:
+  workflow_dispatch:
+
+jobs:
+  ingest-cloud-ip-ranges:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Create cloud IP ranges data directory
+        run: mkdir -p datalake/raw/cloud-ip-ranges
+
+      - name: Download AWS IP Ranges
+        run: curl -L "https://ip-ranges.amazonaws.com/ip-ranges.json" -o "datalake/raw/cloud-ip-ranges/aws_ip_ranges.json"
+
+      - name: Download Azure IP Ranges
+        run: curl -L "https://download.microsoft.com/download/7/1/D/71D86715-5596-4529-9B13-DA13A5DE5B63/ServiceTags_Public_$(date +'%Y%m%d').json" -o "datalake/raw/cloud-ip-ranges/azure_ip_ranges.json"
+
+      - name: Download Google Cloud IP Ranges
+        run: curl -L "https://www.gstatic.com/ipranges/goog.json" -o "datalake/raw/cloud-ip-ranges/google_cloud_ip_ranges.json"
+
+      - name: Commit and push cloud IP ranges data
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add datalake/raw/cloud-ip-ranges/
+          git commit -m "Data Ingestion: Update cloud IP ranges ($(date +'%Y-%m-%d'))" || echo "No changes to commit"
+          git push
