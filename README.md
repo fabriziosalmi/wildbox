@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="wildbox.png" alt="Wildbox Logo" width="50%" />
+</div>
+
 # 🛡️ Wildbox: The Open-Source Security Operations Suite
 
 Wildbox is your all-in-one, self-hosted open-source security platform. It unifies threat monitoring, analysis, and automated response in one place, giving you full control over your data and infrastructure.
