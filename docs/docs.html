@@ -349,13 +349,31 @@
             border-top: 2px solid rgba(239, 68, 68, 0.2);
             margin: 2rem 0;
         }
+
+        /* Smooth sidebar transitions */
+        #sidebar {
+            transition: transform 0.3s ease-in-out;
+        }
+
+        /* Ensure main content takes full width on mobile when sidebar is hidden */
+        @media (max-width: 768px) {
+            main {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body class="bg-black text-white">
     <!-- Navigation -->
     <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-4">
+                <!-- Mobile Menu Button -->
+                <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white transition" onclick="toggleSidebar()">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                    </svg>
+                </button>
                 <a href="index.html" class="flex items-center gap-2 hover:opacity-80 transition">
                     <span class="text-2xl">🛡️</span>
                     <span class="text-xl font-bold">Wildbox Docs</span>
@@ -371,9 +389,12 @@
         </div>
     </nav>
 
+    <!-- Mobile Overlay -->
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
+
     <div class="flex min-h-screen">
         <!-- Sidebar Navigation -->
-        <aside class="w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800 p-6 overflow-y-auto">
+        <aside id="sidebar" class="fixed md:static inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800 p-6 overflow-y-auto">
             <h3 class="text-xl font-bold mb-6 text-red-400">Documentation</h3>
 
             <div class="space-y-4">
@@ -438,7 +459,7 @@
         </aside>
 
         <!-- Main Content -->
-        <main class="flex-1 overflow-auto">
+        <main class="flex-1 overflow-auto w-full md:w-auto">
             <div class="max-w-4xl mx-auto p-8">
                 <!-- Welcome Section (default) -->
                 <div id="welcome-section" class="doc-section active">
@@ -708,12 +729,12 @@
     <script>
         // Map of documents to their raw GitHub URLs
         const docUrls = {
-            quickstart: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/QUICKSTART.md',
-            credentials: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/QUICKSTART_CREDENTIALS.md',
-            'security-status': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_STATUS.md',
-            'security-policy': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY.md',
-            'security-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/SECURITY_AUDIT_REPORT.md',
-            deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/DEPLOYMENT.md'
+            quickstart: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/quickstart.md',
+            credentials: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/credentials.md',
+            'security-status': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/status.md',
+            'security-policy': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/policy.md',
+            'security-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/audit-report.md',
+            deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/deployment.md'
         };
 
         // Advanced markdown to HTML converter with syntax highlighting
@@ -927,6 +948,20 @@
                     window.scrollTo(0, 0);
                 }
             }
+            
+            // Auto-close sidebar on mobile after clicking a link
+            if (window.innerWidth < 768) {
+                toggleSidebar();
+            }
+        }
+
+        // Toggle sidebar visibility (mobile)
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            
+            sidebar.classList.toggle('-translate-x-full');
+            overlay.classList.toggle('hidden');
         }
 
         // Load welcome section by default
