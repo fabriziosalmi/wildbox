@@ -3,115 +3,236 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wildbox - Open-Source Security Ops Platform</title>
+    <title>Wildbox - Open-Source Security Operations Platform</title>
     <meta name="description" content="Enterprise-grade security operations in 5 minutes. Open-source SIEM, CSPM, WAF, and threat intelligence in one platform.">
+    <meta name="keywords" content="SIEM, security operations, CSPM, WAF, threat intelligence, open-source security, cybersecurity, SOC">
+    <meta property="og:title" content="Wildbox - Open-Source Security Operations Platform">
+    <meta property="og:description" content="Enterprise-grade security operations in 5 minutes. Open-source, no vendor lock-in.">
+    <meta property="og:type" content="website">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75' fill='%23ef4444'>🛡️</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+        * {
+            scroll-behavior: smooth;
+        }
 
         body {
-            font-family: 'Inter', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+            animation: gradient-shift 3s ease infinite;
+            background-size: 200% 200%;
+        }
+
+        @keyframes gradient-shift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
         }
 
         .glass-effect {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
+        }
+
+        .glass-effect:hover {
             background: rgba(255, 255, 255, 0.05);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
         }
 
         .hover-lift {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+                        box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .hover-lift:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 20px 25px -5px rgba(239, 68, 68, 0.2);
+            transform: translateY(-6px);
+            box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.25);
         }
 
         .code-block {
-            background: #1f2937;
-            border-radius: 8px;
-            padding: 16px;
+            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            border-radius: 12px;
+            padding: 24px;
             font-family: 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             overflow-x: auto;
+            border: 1px solid rgba(239, 68, 68, 0.1);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+
+        .code-block div {
+            line-height: 1.8;
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        .pulse-glow {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.6); }
+        }
+
+        .feature-card {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+            transition: left 0.5s;
+        }
+
+        .feature-card:hover::before {
+            left: 100%;
+        }
+
+        .stat-number {
+            font-feature-settings: 'tnum';
+            font-variant-numeric: tabular-nums;
+        }
+
+        .mobile-menu {
+            transform: translateX(100%);
+            transition: transform 0.3s ease-in-out;
+        }
+
+        .mobile-menu.active {
+            transform: translateX(0);
         }
     </style>
 </head>
 <body class="bg-black text-white">
     <!-- Navigation -->
     <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <div class="flex items-center gap-2">
-                <span class="text-2xl">🛡️</span>
-                <span class="text-xl font-bold">Wildbox</span>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">🛡️</span>
+                    <span class="text-xl font-bold">Wildbox</span>
+                </div>
+                
+                <!-- Desktop Menu -->
+                <div class="hidden md:flex gap-8 items-center">
+                    <a href="#features" class="text-gray-300 hover:text-white transition-colors">Features</a>
+                    <a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a>
+                    <a href="docs.html" class="text-gray-300 hover:text-white transition-colors">Documentation</a>
+                    <a href="#pricing" class="text-gray-300 hover:text-white transition-colors">Pricing</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="text-gray-300 hover:text-white transition-colors">GitHub</a>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold transition-all transform hover:scale-105">Get Started</a>
+                    <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                        </svg>
+                    </button>
+                </div>
             </div>
-            <div class="hidden md:flex gap-8">
-                <a href="#features" class="text-gray-300 hover:text-white transition">Features</a>
-                <a href="#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
-                <a href="docs.html" class="text-gray-300 hover:text-white transition">Documentation</a>
-                <a href="#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
-                <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
+        </div>
+
+        <!-- Mobile Menu -->
+        <div id="mobile-menu" class="mobile-menu fixed top-0 right-0 h-full w-64 bg-gray-900 border-l border-gray-800 md:hidden z-50 p-6">
+            <button id="close-menu" class="absolute top-4 right-4 text-gray-400 hover:text-white">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+            <div class="flex flex-col gap-6 mt-12">
+                <a href="#features" class="text-gray-300 hover:text-white transition-colors">Features</a>
+                <a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a>
+                <a href="docs.html" class="text-gray-300 hover:text-white transition-colors">Documentation</a>
+                <a href="#pricing" class="text-gray-300 hover:text-white transition-colors">Pricing</a>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="text-gray-300 hover:text-white transition-colors">GitHub</a>
             </div>
-            <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold transition">Get Started</a>
         </div>
     </nav>
 
     <!-- Hero Section -->
-    <section class="relative min-h-screen flex items-center justify-center px-4 pt-20">
-        <!-- Background gradient -->
-        <div class="absolute inset-0 overflow-hidden">
-            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
-            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20"></div>
+    <section class="relative min-h-screen flex items-center justify-center px-4 pt-20 overflow-hidden">
+        <!-- Enhanced Background gradient -->
+        <div class="absolute inset-0">
+            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style="animation-delay: 1s;"></div>
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-800 rounded-full mix-blend-multiply filter blur-3xl opacity-10"></div>
         </div>
 
-        <div class="relative z-10 max-w-4xl mx-auto text-center">
-            <div class="mb-6">
-                <span class="inline-block px-4 py-2 bg-red-600/10 border border-red-600/20 rounded-full text-red-400 text-sm font-semibold">
+        <div class="relative z-10 max-w-5xl mx-auto text-center">
+            <div class="mb-8 animate-fade-in">
+                <span class="inline-block px-5 py-2.5 bg-red-600/10 border border-red-600/20 rounded-full text-red-400 text-sm font-semibold pulse-glow">
                     🚀 Enterprise Security in 5 Minutes
                 </span>
             </div>
 
-            <h1 class="text-5xl md:text-7xl font-bold mb-6 leading-tight">
+            <h1 class="text-5xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight animate-fade-in" style="animation-delay: 0.1s;">
                 Your Complete
                 <span class="gradient-text"> Security Operations </span>
                 Platform
             </h1>
 
-            <p class="text-xl text-gray-400 mb-8 max-w-2xl mx-auto leading-relaxed">
-                Open-source SIEM, CSPM, WAF, and threat intelligence. From git clone to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
+            <p class="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto leading-relaxed animate-fade-in" style="animation-delay: 0.2s;">
+                Open-source SIEM, CSPM, WAF, and threat intelligence. From <code class="bg-gray-800 px-2 py-1 rounded text-red-400">git clone</code> to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
             </p>
 
-            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-12">
-                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-lg font-semibold text-lg transition transform hover:scale-105">
+            <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16 animate-fade-in" style="animation-delay: 0.3s;">
+                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-10 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-red-600/50">
                     Start Free →
                 </a>
-                <a href="https://github.com/fabriziosalmi/wildbox" class="border border-gray-600 hover:border-gray-400 px-8 py-4 rounded-lg font-semibold text-lg transition">
-                    View on GitHub
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="border-2 border-gray-600 hover:border-red-500 px-10 py-4 rounded-lg font-semibold text-lg transition-all hover:bg-red-600/10">
+                    <span class="flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        View on GitHub
+                    </span>
                 </a>
             </div>
 
-            <!-- Quick Stats -->
-            <div class="grid md:grid-cols-3 gap-8 mt-16 py-12 border-y border-gray-800">
-                <div>
-                    <div class="text-3xl font-bold text-red-400">11</div>
-                    <p class="text-gray-400">Integrated Services</p>
+            <!-- Enhanced Quick Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 py-12 border-y border-gray-800 animate-fade-in" style="animation-delay: 0.4s;">
+                <div class="group">
+                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">11</div>
+                    <p class="text-gray-400 font-medium">Integrated Services</p>
+                    <p class="text-gray-600 text-sm mt-1">Pre-configured & ready</p>
                 </div>
-                <div>
-                    <div class="text-3xl font-bold text-red-400">55+</div>
-                    <p class="text-gray-400">Security Tools</p>
+                <div class="group">
+                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">55+</div>
+                    <p class="text-gray-400 font-medium">Security Tools</p>
+                    <p class="text-gray-600 text-sm mt-1">Scanners & analyzers</p>
                 </div>
-                <div>
-                    <div class="text-3xl font-bold text-red-400">5min</div>
-                    <p class="text-gray-400">To First Alert</p>
+                <div class="group">
+                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">5min</div>
+                    <p class="text-gray-400 font-medium">To First Alert</p>
+                    <p class="text-gray-600 text-sm mt-1">Fully operational</p>
                 </div>
             </div>
         </div>
@@ -120,35 +241,44 @@
     <!-- Installation Hero -->
     <section id="get-started" class="py-24 px-4 max-w-7xl mx-auto">
         <div class="text-center mb-16">
-            <h2 class="text-4xl md:text-5xl font-bold mb-4">Get Started in 5 Minutes</h2>
-            <p class="text-xl text-gray-400">Copy-paste the commands below to get started.</p>
+            <h2 class="text-4xl md:text-6xl font-bold mb-6">Get Started in 5 Minutes</h2>
+            <p class="text-xl md:text-2xl text-gray-400">Copy, paste, and you're running enterprise security.</p>
         </div>
 
-        <div class="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-lg p-8 hover-lift">
-            <div class="code-block text-green-400">
-                <div>$ git clone https://github.com/fabriziosalmi/wildbox.git</div>
-                <div>$ cd wildbox</div>
-                <div>$ cp .env.example .env</div>
-                <div>$ docker-compose up -d</div>
+        <div class="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 md:p-10 hover-lift mb-12">
+            <div class="flex items-center justify-between mb-4">
+                <span class="text-gray-500 text-sm font-medium">Terminal</span>
+                <button onclick="copyCode()" class="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                    </svg>
+                    Copy
+                </button>
+            </div>
+            <div id="code-content" class="code-block text-green-400">
+                <div><span class="text-gray-500">$</span> git clone https://github.com/fabriziosalmi/wildbox.git</div>
+                <div><span class="text-gray-500">$</span> cd wildbox</div>
+                <div><span class="text-gray-500">$</span> cp .env.example .env</div>
+                <div><span class="text-gray-500">$</span> docker-compose up -d</div>
                 <div class="mt-4 text-gray-500"># Access the dashboard at http://localhost:3000</div>
             </div>
         </div>
 
-        <div class="mt-12 grid md:grid-cols-3 gap-6">
-            <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🔐</div>
-                <h3 class="text-xl font-semibold mb-2">Auto-Secured</h3>
-                <p class="text-gray-400">Generates cryptographic keys, SSL certs, and security headers automatically</p>
+        <div class="grid md:grid-cols-3 gap-6 lg:gap-8">
+            <div class="glass-effect p-8 rounded-xl hover-lift feature-card">
+                <div class="text-4xl mb-4">🔐</div>
+                <h3 class="text-xl font-semibold mb-3">Auto-Secured</h3>
+                <p class="text-gray-400 leading-relaxed">Automatically generates cryptographic keys, SSL certificates, and security headers. Zero manual configuration needed.</p>
             </div>
-            <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🐳</div>
-                <h3 class="text-xl font-semibold mb-2">Docker Native</h3>
-                <p class="text-gray-400">11 services, pre-configured and interconnected. Just works.</p>
+            <div class="glass-effect p-8 rounded-xl hover-lift feature-card">
+                <div class="text-4xl mb-4">🐳</div>
+                <h3 class="text-xl font-semibold mb-3">Docker Native</h3>
+                <p class="text-gray-400 leading-relaxed">11 services orchestrated seamlessly. Pre-configured, interconnected, and production-ready out of the box.</p>
             </div>
-            <div class="glass-effect p-6 rounded-lg hover-lift">
-                <div class="text-3xl mb-3">🚀</div>
-                <h3 class="text-xl font-semibold mb-2">Production Ready</h3>
-                <p class="text-gray-400">Health checks, auto-restart, persistent volumes, monitoring included</p>
+            <div class="glass-effect p-8 rounded-xl hover-lift feature-card">
+                <div class="text-4xl mb-4">🚀</div>
+                <h3 class="text-xl font-semibold mb-3">Production Ready</h3>
+                <p class="text-gray-400 leading-relaxed">Built-in health checks, auto-restart policies, persistent volumes, and comprehensive monitoring included.</p>
             </div>
         </div>
     </section>
@@ -156,81 +286,135 @@
     <!-- Features Section -->
     <section id="features" class="py-24 px-4 bg-gradient-to-b from-transparent via-red-600/5 to-transparent">
         <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-16">
-                <h2 class="text-4xl md:text-5xl font-bold mb-4">Everything You Need for Security Ops</h2>
-                <p class="text-xl text-gray-400">All in one platform. No multi-tool hell.</p>
+            <div class="text-center mb-20">
+                <h2 class="text-4xl md:text-6xl font-bold mb-6">Everything You Need for Security Ops</h2>
+                <p class="text-xl md:text-2xl text-gray-400">All in one platform. No multi-tool complexity.</p>
             </div>
 
-            <div class="grid md:grid-cols-2 gap-8">
+            <div class="grid md:grid-cols-2 gap-6 lg:gap-8">
                 <!-- Feature 1 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">🔍</div>
-                    <h3 class="text-2xl font-semibold mb-3">Threat Intelligence</h3>
-                    <p class="text-gray-400 mb-4">Unified threat data aggregation from 20+ sources. Real-time IOC lookups, malware intelligence, vulnerability feeds.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ CT Log Scanning</li>
-                        <li>✓ Malware Hash Lookup</li>
-                        <li>✓ Social Media OSINT</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">🔍</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">Threat Intelligence</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">Unified threat data aggregation from 20+ sources. Real-time IOC lookups, malware intelligence, and vulnerability feeds all in one place.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>CT Log Scanning & Monitoring</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Malware Hash Lookup & Analysis</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Social Media OSINT Integration</span>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Feature 2 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">☁️</div>
-                    <h3 class="text-2xl font-semibold mb-3">Cloud Security (CSPM)</h3>
-                    <p class="text-gray-400 mb-4">Continuous posture management across AWS, Azure, GCP. 200+ compliance checks automated.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ Multi-cloud scanning</li>
-                        <li>✓ Compliance frameworks</li>
-                        <li>✓ Risk prioritization</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">☁️</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">Cloud Security (CSPM)</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">Continuous security posture management across AWS, Azure, and GCP. 200+ automated compliance checks running 24/7.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Multi-cloud Security Scanning</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Compliance Framework Automation</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Risk-Based Prioritization</span>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Feature 3 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">🔥</div>
-                    <h3 class="text-2xl font-semibold mb-3">Web Application Firewall</h3>
-                    <p class="text-gray-400 mb-4">AI-powered WAF protection. Rate limiting, DDoS mitigation, layer 7 threat detection.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ XSS / SQL Injection prevention</li>
-                        <li>✓ DDoS mitigation</li>
-                        <li>✓ Real-time threat blocking</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">🔥</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">Web Application Firewall</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">AI-powered WAF with advanced protection. Rate limiting, DDoS mitigation, and layer 7 threat detection working together.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>XSS & SQL Injection Prevention</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Intelligent DDoS Mitigation</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Real-time Threat Blocking</span>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Feature 4 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">🤖</div>
-                    <h3 class="text-2xl font-semibold mb-3">AI-Powered Analysis</h3>
-                    <p class="text-gray-400 mb-4">GPT-4 integration for intelligent threat analysis, anomaly detection, and incident correlation.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ Automated threat triage</li>
-                        <li>✓ Anomaly detection</li>
-                        <li>✓ Natural language insights</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">🤖</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">AI-Powered Analysis</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">GPT-4 integration for intelligent threat analysis, automated anomaly detection, and advanced incident correlation.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Automated Threat Triage & Classification</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>ML-Based Anomaly Detection</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Natural Language Security Insights</span>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Feature 5 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">⚡</div>
-                    <h3 class="text-2xl font-semibold mb-3">Incident Response (SOAR)</h3>
-                    <p class="text-gray-400 mb-4">Automated workflows and playbooks. Orchestrate response across your security stack.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ Automated playbooks</li>
-                        <li>✓ Alert enrichment</li>
-                        <li>✓ Case management</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">⚡</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">Incident Response (SOAR)</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">Security orchestration, automation, and response. Automated workflows and playbooks orchestrate your entire security stack.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Automated Response Playbooks</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Alert Enrichment & Correlation</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Integrated Case Management</span>
+                        </li>
                     </ul>
                 </div>
 
                 <!-- Feature 6 -->
-                <div class="glass-effect p-8 rounded-lg hover-lift">
-                    <div class="text-4xl mb-4">📊</div>
-                    <h3 class="text-2xl font-semibold mb-3">Dashboard & Monitoring</h3>
-                    <p class="text-gray-400 mb-4">Real-time security metrics, Prometheus monitoring, custom dashboards, alerting.</p>
-                    <ul class="text-gray-500 space-y-2 text-sm">
-                        <li>✓ Live threat feeds</li>
-                        <li>✓ Grafana dashboards</li>
-                        <li>✓ Custom alerts</li>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <div class="text-5xl mb-5">📊</div>
+                    <h3 class="text-2xl lg:text-3xl font-semibold mb-4">Dashboard & Monitoring</h3>
+                    <p class="text-gray-400 mb-6 leading-relaxed">Real-time security metrics with Prometheus monitoring. Custom dashboards, intelligent alerting, and comprehensive visibility.</p>
+                    <ul class="text-gray-500 space-y-2.5">
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Live Threat Intelligence Feeds</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Customizable Grafana Dashboards</span>
+                        </li>
+                        <li class="flex items-center gap-3">
+                            <span class="text-red-400">✓</span>
+                            <span>Multi-channel Alert Routing</span>
+                        </li>
                     </ul>
                 </div>
             </div>
@@ -239,57 +423,57 @@
 
     <!-- How It Works -->
     <section id="how-it-works" class="py-24 px-4">
-        <div class="max-w-4xl mx-auto">
-            <h2 class="text-4xl font-bold text-center mb-16">How Wildbox Works</h2>
+        <div class="max-w-5xl mx-auto">
+            <h2 class="text-4xl md:text-6xl font-bold text-center mb-20">How Wildbox Works</h2>
 
-            <div class="space-y-8">
-                <div class="flex gap-6">
+            <div class="space-y-10 lg:space-y-12">
+                <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-12 w-12 rounded-lg bg-red-600/20 text-red-400 font-semibold">1</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">1</div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold mb-2">One-Command Installation</h3>
-                        <p class="text-gray-400">Run <span class="bg-gray-800 px-2 py-1 rounded">./setup.sh</span> and get a fully configured, secure security platform in 5 minutes. No manual configuration needed.</p>
+                        <h3 class="text-2xl font-semibold mb-3">One-Command Installation</h3>
+                        <p class="text-gray-400 text-lg leading-relaxed">Run <code class="bg-gray-800 px-3 py-1.5 rounded text-red-400 font-mono">./setup.sh</code> and get a fully configured, enterprise-grade security platform in 5 minutes. Zero manual configuration required.</p>
                     </div>
                 </div>
 
-                <div class="flex gap-6">
+                <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-12 w-12 rounded-lg bg-red-600/20 text-red-400 font-semibold">2</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">2</div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold mb-2">Connect Your Infrastructure</h3>
-                        <p class="text-gray-400">Integrate cloud providers (AWS, Azure, GCP), network devices, or endpoints. Everything flows into a unified data lake.</p>
+                        <h3 class="text-2xl font-semibold mb-3">Connect Your Infrastructure</h3>
+                        <p class="text-gray-400 text-lg leading-relaxed">Seamlessly integrate cloud providers (AWS, Azure, GCP), network devices, endpoints, and applications. Everything flows into a unified data lake for comprehensive visibility.</p>
                     </div>
                 </div>
 
-                <div class="flex gap-6">
+                <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-12 w-12 rounded-lg bg-red-600/20 text-red-400 font-semibold">3</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">3</div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold mb-2">Automated Security Scanning</h3>
-                        <p class="text-gray-400">Run continuous scans for vulnerabilities, misconfigurations, threats. Get real-time threat intelligence and compliance insights.</p>
+                        <h3 class="text-2xl font-semibold mb-3">Automated Security Scanning</h3>
+                        <p class="text-gray-400 text-lg leading-relaxed">Run continuous security scans for vulnerabilities, misconfigurations, and threats. Get real-time threat intelligence feeds and automated compliance insights.</p>
                     </div>
                 </div>
 
-                <div class="flex gap-6">
+                <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-12 w-12 rounded-lg bg-red-600/20 text-red-400 font-semibold">4</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">4</div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold mb-2">Intelligent Response</h3>
-                        <p class="text-gray-400">AI-powered analysis, automated incident response, and security orchestration. Let Wildbox handle the repetitive work.</p>
+                        <h3 class="text-2xl font-semibold mb-3">Intelligent Response</h3>
+                        <p class="text-gray-400 text-lg leading-relaxed">AI-powered threat analysis, automated incident response workflows, and intelligent security orchestration. Let Wildbox handle the repetitive security operations.</p>
                     </div>
                 </div>
 
-                <div class="flex gap-6">
+                <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-12 w-12 rounded-lg bg-red-600/20 text-red-400 font-semibold">5</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">5</div>
                     </div>
                     <div>
-                        <h3 class="text-xl font-semibold mb-2">Open, Extensible, Yours</h3>
-                        <p class="text-gray-400">Modify, extend, integrate. No vendor lock-in. Your security platform, your data, your control.</p>
+                        <h3 class="text-2xl font-semibold mb-3">Open, Extensible, Yours</h3>
+                        <p class="text-gray-400 text-lg leading-relaxed">Modify, extend, and integrate freely. No vendor lock-in, no proprietary formats. Your security platform, your data, your complete control.</p>
                     </div>
                 </div>
             </div>
@@ -298,25 +482,37 @@
 
     <!-- Use Cases -->
     <section class="py-24 px-4 bg-gradient-to-b from-transparent via-red-600/5 to-transparent">
-        <div class="max-w-4xl mx-auto">
-            <h2 class="text-4xl font-bold text-center mb-16">Perfect For</h2>
+        <div class="max-w-6xl mx-auto">
+            <h2 class="text-4xl md:text-6xl font-bold text-center mb-20">Perfect For</h2>
 
-            <div class="grid md:grid-cols-2 gap-8">
-                <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🏢 Organizations</h3>
-                    <p class="text-gray-400">Running their own security ops without expensive SIEM licenses. Companies wanting to avoid vendor lock-in and maintain data sovereignty.</p>
+            <div class="grid md:grid-cols-2 gap-6 lg:gap-8">
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+                        <span class="text-4xl">🏢</span>
+                        <span>Organizations</span>
+                    </h3>
+                    <p class="text-gray-400 text-lg leading-relaxed">Running comprehensive security operations without expensive SIEM licenses. Companies seeking to avoid vendor lock-in while maintaining complete data sovereignty and control.</p>
                 </div>
-                <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🛡️ Security Teams</h3>
-                    <p class="text-gray-400">Security engineers looking for a modular, extensible platform they can customize and integrate with existing tools.</p>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+                        <span class="text-4xl">🛡️</span>
+                        <span>Security Teams</span>
+                    </h3>
+                    <p class="text-gray-400 text-lg leading-relaxed">Security engineers and analysts looking for a modular, extensible platform they can customize and integrate seamlessly with existing security tools and workflows.</p>
                 </div>
-                <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🚀 DevOps / Platform Teams</h3>
-                    <p class="text-gray-400">Running self-hosted infrastructure and needing security visibility without cloud vendor tools.</p>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+                        <span class="text-4xl">🚀</span>
+                        <span>DevOps / Platform Teams</span>
+                    </h3>
+                    <p class="text-gray-400 text-lg leading-relaxed">Managing self-hosted infrastructure and requiring comprehensive security visibility without dependency on proprietary cloud vendor security tools.</p>
                 </div>
-                <div class="glass-effect p-8 rounded-lg">
-                    <h3 class="text-xl font-semibold mb-3">🎓 Security Researchers</h3>
-                    <p class="text-gray-400">Building threat intelligence pipelines, analyzing security data, or prototyping new security concepts.</p>
+                <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
+                    <h3 class="text-2xl font-semibold mb-4 flex items-center gap-3">
+                        <span class="text-4xl">🎓</span>
+                        <span>Security Researchers</span>
+                    </h3>
+                    <p class="text-gray-400 text-lg leading-relaxed">Building threat intelligence pipelines, analyzing security data at scale, or prototyping innovative security concepts and detection mechanisms.</p>
                 </div>
             </div>
         </div>
@@ -325,40 +521,57 @@
     <!-- Pricing -->
     <section id="pricing" class="py-24 px-4">
         <div class="max-w-4xl mx-auto text-center">
-            <h2 class="text-4xl font-bold mb-4">Simple Pricing</h2>
-            <p class="text-xl text-gray-400 mb-12">Open-source and free. No paid tiers. No hidden costs.</p>
+            <h2 class="text-4xl md:text-6xl font-bold mb-6">Simple, Transparent Pricing</h2>
+            <p class="text-xl md:text-2xl text-gray-400 mb-16">Open-source and completely free. No paid tiers. No hidden costs. Forever.</p>
 
-            <div class="glass-effect p-12 rounded-lg max-w-2xl mx-auto hover-lift">
-                <h3 class="text-3xl font-bold mb-4">Wildbox</h3>
-                <div class="text-5xl font-bold gradient-text mb-6">Free</div>
-                <ul class="text-left space-y-3 mb-8 text-gray-400">
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>11 integrated security services</span>
+            <div class="glass-effect p-10 lg:p-14 rounded-2xl max-w-2xl mx-auto hover-lift pulse-glow">
+                <div class="inline-block px-4 py-2 bg-red-600/20 border border-red-600/30 rounded-full text-red-400 text-sm font-semibold mb-6">
+                    Most Popular
+                </div>
+                <h3 class="text-3xl lg:text-4xl font-bold mb-6">Wildbox Community</h3>
+                <div class="text-6xl lg:text-7xl font-bold gradient-text mb-8">$0</div>
+                <p class="text-gray-500 mb-10">Forever free. Forever yours.</p>
+                
+                <ul class="text-left space-y-4 mb-10 text-gray-400">
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">11 integrated security services</span>
                     </li>
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>55+ security scanning tools</span>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">55+ security scanning tools</span>
                     </li>
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>Threat intelligence aggregation</span>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">Threat intelligence aggregation</span>
                     </li>
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>Cloud security (CSPM)</span>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">Cloud security posture management (CSPM)</span>
                     </li>
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>Open-source (MIT License)</span>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">AI-powered security analysis</span>
                     </li>
-                    <li class="flex items-center gap-3">
-                        <span class="text-green-400">✓</span>
-                        <span>No vendor lock-in</span>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">Open-source (MIT License)</span>
+                    </li>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">No vendor lock-in, ever</span>
+                    </li>
+                    <li class="flex items-center gap-4">
+                        <span class="text-green-400 text-xl">✓</span>
+                        <span class="text-lg">Community support & updates</span>
                     </li>
                 </ul>
-                <p class="text-sm text-gray-500 mb-8">Self-hosted on your infrastructure. You control your data.</p>
-                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-8 py-3 rounded-lg font-semibold transition inline-block">
+                
+                <div class="bg-red-600/10 border border-red-600/20 rounded-lg p-4 mb-8">
+                    <p class="text-sm text-gray-400">Self-hosted on your infrastructure. You maintain complete control of your data and security operations.</p>
+                </div>
+                
+                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-10 py-4 rounded-lg font-semibold text-lg transition-all inline-block transform hover:scale-105">
                     Get Started Now
                 </a>
             </div>
@@ -367,75 +580,140 @@
 
     <!-- CTA Section -->
     <section class="py-24 px-4">
-        <div class="max-w-4xl mx-auto text-center">
-            <h2 class="text-4xl font-bold mb-6">Ready to Own Your Security?</h2>
-            <p class="text-xl text-gray-400 mb-8">Three commands. Five minutes. Your security ops running.</p>
+        <div class="max-w-5xl mx-auto text-center">
+            <h2 class="text-4xl md:text-6xl font-bold mb-8">Ready to Own Your Security?</h2>
+            <p class="text-xl md:text-2xl text-gray-400 mb-12 max-w-3xl mx-auto">Three commands. Five minutes. Complete security operations running on your infrastructure.</p>
 
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-                <a href="https://github.com/fabriziosalmi/wildbox" class="bg-red-600 hover:bg-red-700 px-8 py-4 rounded-lg font-semibold text-lg transition">
+            <div class="flex flex-col sm:flex-row gap-6 justify-center mb-16">
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="bg-red-600 hover:bg-red-700 px-10 py-5 rounded-lg font-semibold text-xl transition-all transform hover:scale-105 shadow-lg hover:shadow-red-600/50">
                     Clone from GitHub
                 </a>
-                <a href="docs.html" class="border border-gray-600 hover:border-gray-400 px-8 py-4 rounded-lg font-semibold text-lg transition">
-                    Read Docs
+                <a href="docs.html" class="border-2 border-gray-600 hover:border-red-500 px-10 py-5 rounded-lg font-semibold text-xl transition-all hover:bg-red-600/10">
+                    Read Documentation
                 </a>
+            </div>
+
+            <div class="glass-effect p-8 rounded-xl inline-block">
+                <p class="text-gray-400 mb-3">Join the security community</p>
+                <div class="flex items-center justify-center gap-6">
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+                        </svg>
+                        <span>GitHub</span>
+                    </a>
+                    <span class="text-gray-700">|</span>
+                    <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors">Discussions</a>
+                    <span class="text-gray-700">|</span>
+                    <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors">Issues</a>
+                </div>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-gray-800 py-12 px-4">
-        <div class="max-w-7xl mx-auto grid md:grid-cols-4 gap-8 mb-8">
-            <div>
-                <h4 class="font-semibold mb-4">Wildbox</h4>
-                <p class="text-gray-500 text-sm">Open-source security operations platform. No vendor lock-in.</p>
+    <footer class="border-t border-gray-800 py-16 px-4">
+        <div class="max-w-7xl mx-auto">
+            <div class="grid md:grid-cols-4 gap-12 mb-12">
+                <div>
+                    <div class="flex items-center gap-2 mb-4">
+                        <span class="text-2xl">🛡️</span>
+                        <span class="text-xl font-bold">Wildbox</span>
+                    </div>
+                    <p class="text-gray-500 leading-relaxed">Open-source security operations platform. Enterprise-grade protection without vendor lock-in.</p>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4 text-white">Product</h4>
+                    <ul class="space-y-3 text-gray-500">
+                        <li><a href="#features" class="hover:text-white transition-colors">Features</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">GitHub Repository</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Report Issues</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Community Discussions</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4 text-white">Documentation</h4>
+                    <ul class="space-y-3 text-gray-500">
+                        <li><a href="docs.html" class="hover:text-white transition-colors">Getting Started</a></li>
+                        <li><a href="api-reference.html" class="hover:text-white transition-colors">API Reference</a></li>
+                        <li><a href="api-reference.html" class="hover:text-white transition-colors">API Portal</a></li>
+                        <li><a href="docs.html" class="hover:text-white transition-colors">Architecture Guide</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h4 class="font-semibold mb-4 text-white">Legal</h4>
+                    <ul class="space-y-3 text-gray-500">
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">MIT License</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/security/policy.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Security Policy</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Contributing</a></li>
+                    </ul>
+                </div>
             </div>
-            <div>
-                <h4 class="font-semibold mb-4">Product</h4>
-                <ul class="space-y-2 text-gray-500 text-sm">
-                    <li><a href="https://github.com/fabriziosalmi/wildbox" class="hover:text-white transition">GitHub</a></li>
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/issues" class="hover:text-white transition">Issues</a></li>
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/discussions" class="hover:text-white transition">Discussions</a></li>
-                </ul>
-            </div>
-            <div>
-                <h4 class="font-semibold mb-4">Docs</h4>
-                <ul class="space-y-2 text-gray-500 text-sm">
-                    <li><a href="docs.html" class="hover:text-white transition">Documentation Hub</a></li>
-                    <li><a href="api-reference.html" class="hover:text-white transition">API Reference</a></li>
-                    <li><a href="api-reference.html" class="hover:text-white transition">API Portal</a></li>
-                </ul>
-            </div>
-            <div>
-                <h4 class="font-semibold mb-4">Legal</h4>
-                <ul class="space-y-2 text-gray-500 text-sm">
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/LICENSE" class="hover:text-white transition">MIT License</a></li>
-                    <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/security/policy.md" target="_blank" class="hover:text-white transition">Security Policy</a></li>
-                </ul>
-            </div>
-        </div>
 
-        <div class="border-t border-gray-800 pt-8 text-center text-gray-500 text-sm">
-            <p>© 2025 Wildbox. Built with ❤️ for the security community.</p>
-            <p class="mt-2">Open-source | MIT License | <a href="https://github.com/fabriziosalmi" class="text-red-400 hover:text-red-300">by Fabrizio Salmi</a></p>
+            <div class="border-t border-gray-800 pt-8 text-center text-gray-500">
+                <p class="mb-2">© 2025 Wildbox. Built with ❤️ for the security community.</p>
+                <p>Open-source • MIT License • Created by <a href="https://github.com/fabriziosalmi" target="_blank" rel="noopener noreferrer" class="text-red-400 hover:text-red-300 transition-colors">Fabrizio Salmi</a></p>
+            </div>
         </div>
     </footer>
 
     <script>
+        // Mobile menu toggle
+        const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const closeMenuBtn = document.getElementById('close-menu');
+
+        mobileMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.add('active');
+        });
+
+        closeMenuBtn.addEventListener('click', () => {
+            mobileMenu.classList.remove('active');
+        });
+
+        // Close mobile menu when clicking on a link
+        mobileMenu.querySelectorAll('a').forEach(link => {
+            link.addEventListener('click', () => {
+                mobileMenu.classList.remove('active');
+            });
+        });
+
         // Smooth scrolling
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
-                    target.scrollIntoView({ behavior: 'smooth' });
+                    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
 
-        // Animate on scroll
+        // Copy code functionality
+        function copyCode() {
+            const code = `git clone https://github.com/fabriziosalmi/wildbox.git
+cd wildbox
+cp .env.example .env
+docker-compose up -d`;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                // Show feedback
+                const btn = event.target.closest('button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> Copied!';
+                btn.classList.add('text-green-400');
+                
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('text-green-400');
+                }, 2000);
+            });
+        }
+
+        // Enhanced animate on scroll
         const observerOptions = {
             threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
+            rootMargin: '0px 0px -100px 0px'
         };
 
         const observer = new IntersectionObserver(function(entries) {
@@ -443,15 +721,39 @@
                 if (entry.isIntersecting) {
                     entry.target.style.opacity = '1';
                     entry.target.style.transform = 'translateY(0)';
+                    entry.target.classList.add('animate-fade-in');
                 }
             });
         }, observerOptions);
 
-        document.querySelectorAll('.hover-lift').forEach(el => {
+        // Observe all elements with hover-lift class
+        document.querySelectorAll('.hover-lift, .feature-card').forEach(el => {
             el.style.opacity = '0';
-            el.style.transform = 'translateY(20px)';
-            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            el.style.transform = 'translateY(30px)';
+            el.style.transition = 'opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), transform 0.8s cubic-bezier(0.4, 0, 0.2, 1)';
             observer.observe(el);
+        });
+
+        // Add active state to navigation on scroll
+        const sections = document.querySelectorAll('section[id]');
+        const navLinks = document.querySelectorAll('nav a[href^="#"]');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.scrollY >= (sectionTop - 200)) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navLinks.forEach(link => {
+                link.classList.remove('text-white', 'font-semibold');
+                if (link.getAttribute('href').slice(1) === current) {
+                    link.classList.add('text-white', 'font-semibold');
+                }
+            });
         });
     </script>
 </body>
