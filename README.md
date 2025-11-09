@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="wildbox.png" alt="Wildbox Logo" width="50%" />
+  <img src="wildbox.png" alt="Wildbox Logo" width="256px" height="256px"/>
 </div>
 
 # 🛡️ Wildbox: The Open-Source Security Operations Suite
