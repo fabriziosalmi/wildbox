@@ -141,16 +141,25 @@ graph TD
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 
-# 2. Create environment file (copy example)
+# 2. Create environment file
+# Make a copy of the example environment file.
 cp .env.example .env
-# IMPORTANT: Edit .env and generate a secure API_KEY and other secrets.
+
+# IMPORTANT: For production, edit .env and generate secure secrets.
 # Example for API_KEY: openssl rand -hex 32
 
 # 3. Start all services
+# This will start all core services in detached mode.
 docker-compose up -d
 
-# 4. Wait for services to start (can take 2-3 minutes)
-sleep 180
+# Note: If you get an error about a port being in use, check if another
+# service is running on a port defined in docker-compose.yml (e.g., 8000, 3000).
+
+# 4. Wait for services to become healthy
+# It can take 2-3 minutes. Check the status with:
+docker-compose ps
+# Wait until the 'identity', 'gateway', and 'api' services show a 'healthy' status.
+# Then, verify the API health endpoint:
 curl http://localhost:8000/health
 
 # 5. Access dashboard
@@ -198,10 +207,11 @@ Wildbox is a **complete security operations platform** built from the ground up 
 - **Purpose**: Centralized threat intelligence aggregation and serving
 - **Technology**: FastAPI, PostgreSQL, Elasticsearch, Redis
 
-### ☁️ **open-security-cspm** (not implemented yet)
+### ☁️ **open-security-cspm** (In Development)
 **The Cloud Security Posture Manager**
 
-- **Purpose**: Multi-cloud security posture management and compliance scanning
+- **Purpose**: Multi-cloud security posture management and compliance scanning.
+- **Note**: This service is under active development and is not enabled in the default `docker-compose.yml`.
 - **Technology**: FastAPI, Celery, Redis, Python cloud SDKs
 
 ### 🛡️ **open-security-guardian**
@@ -210,17 +220,24 @@ Wildbox is a **complete security operations platform** built from the ground up 
 - **Purpose**: Comprehensive vulnerability lifecycle management with risk-based prioritization
 - **Technology**: Django, PostgreSQL, Celery, Redis
 
-### 📡 **open-security-sensor**
+### 📡 **open-security-sensor** (In Development)
 **The Endpoint Agent**
 
-- **Purpose**: Lightweight endpoint monitoring and telemetry collection
+- **Purpose**: Lightweight endpoint monitoring and telemetry collection.
+- **Note**: This service is under active development and is not enabled in the default `docker-compose.yml`.
 - **Technology**: osquery, Python, HTTPS
 
 ### ⚡ **open-security-responder**
 **The Automation Engine**
 
-- **Purpose**: SOAR platform for incident response automation
+- **Purpose**: SOAR platform for incident response automation using Python-based logic.
 - **Technology**: FastAPI, Dramatiq, Redis, YAML
+
+### 🤖 **open-security-automations**
+**The Workflow Automation Hub**
+
+- **Purpose**: Visual, node-based workflow automation for connecting services and APIs.
+- **Technology**: n8n, Node.js, Docker
 
 ### 🧠 **open-security-agents**
 **The AI Brain**
