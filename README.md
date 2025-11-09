@@ -1,5 +1,19 @@
 <div align="center">
-  <img src="wildbox.png" alt="Wildbox Logo" width="256px" height="256px"/>
+  <!-- Demo Video -->
+  <a href="https://youtu.be/BjuTF6yJ_JA">
+    <img src="https://img.youtube.com/vi/BjuTF6yJ_JA/maxresdefault.jpg" alt="Wildbox Demo Video" width="700px" style="border-radius: 10px;"/>
+  </a>
+  <br/><br/>
+
+  <!-- Logo -->
+  <img src="wildbox.png" alt="Wildbox Logo" width="150px" height="150px"/>
+
+  <br/><br/>
+
+  <!-- Watch Demo Button -->
+  <a href="https://youtu.be/BjuTF6yJ_JA">
+    <img src="https://img.shields.io/badge/▶️_Watch_Full_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo"/>
+  </a>
 </div>
 
 # 🛡️ Wildbox: The Open-Source Security Operations Suite
