@@ -1,0 +1,99 @@
+# Wildbox Sensor Configuration for Web Attack Detection
+# This configuration enables log forwarding from nginx access logs to the Wildbox Data Lake
+
+# Data Lake Connection
+data_lake:
+  # Update this to match your Wildbox Data Lake endpoint
+  endpoint: "http://localhost:8001/api/v1/ingest"
+
+  # API key for authentication (set via environment variable in production)
+  api_key: "${WILDBOX_API_KEY:-your-api-key-here}"
+
+  # TLS certificate verification
+  tls_verify: true
+
+  # Batch size for sending events
+  batch_size: 100
+
+  # How often to flush events (seconds)
+  flush_interval: 30
+
+# Telemetry Collection Settings
+collection:
+  # Enable/disable different collection types
+  process_events: false
+  network_connections: false
+  file_monitoring: false
+  user_events: false
+  system_inventory: false
+
+  # IMPORTANT: Enable log forwarding for this use case
+  log_forwarding: true
+
+# Log Forwarding Configuration
+log_sources:
+  # Nginx Access Logs
+  - name: nginx_access
+    type: file
+    path: /var/log/nginx/access.log
+    format: nginx
+    enabled: true
+
+  # Nginx Error Logs (optional)
+  - name: nginx_error
+    type: file
+    path: /var/log/nginx/error.log
+    format: syslog
+    enabled: false
+
+  # Apache Access Logs (if using Apache instead)
+  - name: apache_access
+    type: file
+    path: /var/log/apache2/access.log
+    format: apache
+    enabled: false
+
+  # System Authentication Logs (optional - for correlating with attacks)
+  - name: auth
+    type: file
+    path: /var/log/auth.log
+    format: syslog
+    enabled: false
+
+# Performance Tuning
+performance:
+  # Query interval in seconds
+  query_interval: 10
+
+  # Maximum memory usage (MB)
+  max_memory_mb: 128
+
+  # Maximum CPU usage percentage
+  max_cpu_percent: 5
+
+  # Maximum queue size before dropping events
+  max_queue_size: 1000
+
+  # Number of worker threads
+  worker_threads: 2
+
+# Logging Configuration
+logging:
+  level: INFO
+  format: json
+  output: /var/log/security-sensor/sensor.log
+
+# Sensor Identity
+sensor:
+  # Sensor ID (auto-generated if not specified)
+  id: ""
+
+  # Sensor name/description
+  name: "web-server-sensor"
+
+  # Tags for organization
+  tags:
+    - "web-server"
+    - "nginx"
+    - "production"
+    - "attack-detection"

