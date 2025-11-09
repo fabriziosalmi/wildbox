@@ -13,6 +13,7 @@ Wildbox is your all-in-one, self-hosted open-source security platform. It unifie
 [![CodeQL](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql)
 
 ## Featured on
+[![Featured on Product Hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=wildbox&theme=light)](https://www.producthunt.com/posts/wildbox)
 [![Featured on Self-Host Weekly](https://img.shields.io/badge/Featured%20on-Self--Host%20Weekly-green)](https://selfh.st/weekly/2025-11-07/)
 [![Listed on LibHunt](https://img.shields.io/badge/Listed%20on-LibHunt-blue)](https://www.libhunt.com/r/wildbox)
 
