@@ -25,11 +25,12 @@ Wildbox is your all-in-one, self-hosted open-source security platform. It unifie
 [![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://typescriptlang.org)
 [![CodeQL](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql)
+[![Dependabot Updates](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates)
 
 ## Featured on
-[![Featured on Product Hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=wildbox&theme=light)](https://www.producthunt.com/posts/wildbox)
 [![Featured on Self-Host Weekly](https://img.shields.io/badge/Featured%20on-Self--Host%20Weekly-green)](https://selfh.st/weekly/2025-11-07/)
 [![Listed on LibHunt](https://img.shields.io/badge/Listed%20on-LibHunt-blue)](https://www.libhunt.com/r/wildbox)
+[![Featured on Product Hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=wildbox&theme=light)](https://www.producthunt.com/posts/wildbox)
 
 ---
 
