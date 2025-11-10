@@ -89,15 +89,23 @@ def hash_password(password: str, hash_type: str) -> str:
     NOTE: This function intentionally uses weak hashing algorithms (MD5, SHA1)
     for security testing and hash cracking demonstrations only.
     These algorithms should NEVER be used for securing real passwords.
+    
+    This is a penetration testing tool - the "passwords" are test strings
+    being hashed for comparison against known hashes during security audits.
     """
     # Using usedforsecurity=False to indicate these are for testing/cracking purposes only
+    # These suppressions are intentional - this tool demonstrates hash weaknesses
     if hash_type == "md5":
+        # lgtm[py/weak-sensitive-data-hashing]
         return hashlib.md5(password.encode(), usedforsecurity=False).hexdigest()
     elif hash_type == "sha1":
+        # lgtm[py/weak-sensitive-data-hashing]
         return hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest()
     elif hash_type == "sha256":
+        # lgtm[py/weak-sensitive-data-hashing]
         return hashlib.sha256(password.encode(), usedforsecurity=False).hexdigest()
     elif hash_type == "sha512":
+        # lgtm[py/weak-sensitive-data-hashing]
         return hashlib.sha512(password.encode(), usedforsecurity=False).hexdigest()
     else:
         return ""

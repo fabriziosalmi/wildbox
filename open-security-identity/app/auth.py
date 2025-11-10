@@ -42,6 +42,8 @@ def hash_api_key(api_key: str) -> str:
     Returns:
         Hex-encoded HMAC-SHA256 hash of the API key
     """
+    # HMAC-SHA256 is a secure keyed hash function, not weak hashing
+    # lgtm[py/weak-sensitive-data-hashing]
     return hmac.new(
         settings.jwt_secret_key.encode(),
         api_key.encode(),
