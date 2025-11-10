@@ -137,11 +137,14 @@ export function throttle<T extends (...args: any[]) => any>(
 }
 
 export function sanitizeInput(input: string): string {
-  return input
-    .replace(/[<>]/g, '')
-    .replace(/javascript:/gi, '')
-    .replace(/on\w+=/gi, '')
-    .trim()
+  let output = input.replace(/[<>]/g, '');
+  // Repeat these replacements until the string no longer changes to avoid incomplete multi-character sanitization
+  let prev;
+  do {
+    prev = output;
+    output = output.replace(/javascript:/gi, '').replace(/on\w+=/gi, '');
+  } while (output !== prev);
+  return output.trim();
 }
 
 export function validateEmail(email: string): boolean {
