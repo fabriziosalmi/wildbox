@@ -4,6 +4,7 @@ Authentication utilities for JWT tokens and password hashing.
 
 import secrets
 import hashlib
+import hmac
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -24,6 +25,29 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # HTTP Bearer token security
 security = HTTPBearer()
+
+
+def hash_api_key(api_key: str) -> str:
+    """
+    Hash an API key using HMAC-SHA256 for secure storage.
+    
+    Uses HMAC with the JWT secret key instead of plain SHA256 to provide:
+    - Keyed hashing (requires knowledge of the secret)
+    - Protection against rainbow table attacks
+    - Cryptographically secure hashing suitable for sensitive data
+    
+    Args:
+        api_key: The API key to hash
+        
+    Returns:
+        Hex-encoded HMAC-SHA256 hash of the API key
+    """
+    # HMAC-SHA256 is a secure keyed hash function, not weak hashing
+    return hmac.new(  # nosec B324
+        settings.jwt_secret_key.encode(),
+        api_key.encode(),
+        hashlib.sha256
+    ).hexdigest()
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -161,14 +185,15 @@ def generate_api_key() -> tuple[str, str, str]:
     key_part = secrets.token_hex(32)
     
     # Create prefix (first 4 chars of hash for identification)
-    prefix_hash = hashlib.sha256(key_part.encode()).hexdigest()[:4]
+    # Using usedforsecurity=False as this is just for prefix generation
+    prefix_hash = hashlib.sha256(key_part.encode(), usedforsecurity=False).hexdigest()[:4]
     prefix = f"wsk_{prefix_hash}"
     
     # Full key combines prefix and key part
     full_key = f"{prefix}.{key_part}"
     
-    # Hash the full key for storage
-    hashed_key = hashlib.sha256(full_key.encode()).hexdigest()
+    # Hash the full key for storage using HMAC-SHA256 (secure)
+    hashed_key = hash_api_key(full_key)
     
     return full_key, prefix, hashed_key
 
@@ -184,8 +209,8 @@ async def verify_api_key(api_key: str, db: AsyncSession) -> Optional[Dict[str, A
     Returns:
         Dictionary with user/team info if valid, None if invalid
     """
-    # Hash the provided key
-    hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
+    # Hash the provided key using HMAC-SHA256
+    hashed_key = hash_api_key(api_key)
     
     # Look up the key in database
     result = await db.execute(
@@ -238,8 +263,8 @@ async def authenticate_api_key(
         if not api_key.startswith("wsk_"):
             return {"is_authenticated": False}
         
-        # Hash the provided key for lookup
-        hashed_key = hashlib.sha256(api_key.encode()).hexdigest()
+        # Hash the provided key for lookup using HMAC-SHA256
+        hashed_key = hash_api_key(api_key)
         
         # Look up the key in database with all related data
         result = await db.execute(

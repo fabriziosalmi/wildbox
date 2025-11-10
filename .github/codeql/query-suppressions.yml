@@ -1,0 +1,37 @@
+# CodeQL Query Suppressions
+# 
+# This file contains suppression rules for CodeQL findings that are intentional
+# or false positives in security testing tools.
+
+# Hash Cracker Tool - Intentional use of weak hashing for security testing
+- query: py/weak-sensitive-data-hashing
+  paths:
+    - open-security-tools/app/tools/hash_cracker/main.py
+  reason: |
+    This is a penetration testing tool that intentionally uses weak hashing
+    algorithms (MD5, SHA1, SHA256, SHA512) to demonstrate hash cracking.
+    The "passwords" being hashed are test strings for security audits,
+    not real user passwords. Using weak hashing is the purpose of this tool.
+
+# HMAC-SHA256 - Secure keyed hashing (false positive)
+- query: py/weak-sensitive-data-hashing
+  paths:
+    - open-security-identity/app/auth.py
+  lines: [49]
+  reason: |
+    This uses HMAC-SHA256, which is a cryptographically secure keyed hash
+    function. CodeQL may flag the use of SHA256, but HMAC-SHA256 is
+    appropriate for API key hashing and provides:
+    - Keyed hashing (requires secret key)
+    - Protection against rainbow table attacks
+    - Cryptographic security suitable for sensitive data
+
+# Logging API key prefix - Only partial data logged
+- query: py/clear-text-logging-sensitive-data
+  paths:
+    - open-security-tools/app/auth.py
+  lines: [141]
+  reason: |
+    This logs only the first 10 characters of an invalid API key for
+    security monitoring and incident response. This is intentional for
+    detecting brute force attacks while not exposing the full key.

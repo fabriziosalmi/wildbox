@@ -83,15 +83,26 @@ def detect_hash_type(hash_value: str) -> str:
         return "unknown"
 
 def hash_password(password: str, hash_type: str) -> str:
-    """Hash a password using the specified algorithm."""
+    """
+    Hash a password using the specified algorithm.
+    
+    NOTE: This function intentionally uses weak hashing algorithms (MD5, SHA1)
+    for security testing and hash cracking demonstrations only.
+    These algorithms should NEVER be used for securing real passwords.
+    
+    This is a penetration testing tool - the "passwords" are test strings
+    being hashed for comparison against known hashes during security audits.
+    """
+    # Using usedforsecurity=False to indicate these are for testing/cracking purposes only
+    # These suppressions are intentional - this tool demonstrates hash weaknesses
     if hash_type == "md5":
-        return hashlib.md5(password.encode()).hexdigest()
+        return hashlib.md5(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha1":
-        return hashlib.sha1(password.encode()).hexdigest()
+        return hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha256":
-        return hashlib.sha256(password.encode()).hexdigest()
+        return hashlib.sha256(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha512":
-        return hashlib.sha512(password.encode()).hexdigest()
+        return hashlib.sha512(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     else:
         return ""
 
