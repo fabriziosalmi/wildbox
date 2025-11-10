@@ -96,17 +96,13 @@ def hash_password(password: str, hash_type: str) -> str:
     # Using usedforsecurity=False to indicate these are for testing/cracking purposes only
     # These suppressions are intentional - this tool demonstrates hash weaknesses
     if hash_type == "md5":
-        # lgtm[py/weak-sensitive-data-hashing]
-        return hashlib.md5(password.encode(), usedforsecurity=False).hexdigest()
+        return hashlib.md5(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha1":
-        # lgtm[py/weak-sensitive-data-hashing]
-        return hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest()
+        return hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha256":
-        # lgtm[py/weak-sensitive-data-hashing]
-        return hashlib.sha256(password.encode(), usedforsecurity=False).hexdigest()
+        return hashlib.sha256(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     elif hash_type == "sha512":
-        # lgtm[py/weak-sensitive-data-hashing]
-        return hashlib.sha512(password.encode(), usedforsecurity=False).hexdigest()
+        return hashlib.sha512(password.encode(), usedforsecurity=False).hexdigest()  # nosec B303, B324
     else:
         return ""
 

@@ -137,8 +137,7 @@ def verify_api_key(
         # Truncate key for logging (security - don't log full key)
         # Only logging first 10 chars for identification, not full sensitive data
         key_prefix = provided_key[:10] if len(provided_key) >= 10 else "***"
-        # lgtm[py/clear-text-logging-sensitive-data]
-        logger.warning(f"Invalid API key attempt from IP: {client_ip}, key prefix: {key_prefix}, method: {auth_method}")
+        logger.warning(f"Invalid API key attempt from IP: {client_ip}, key prefix: {key_prefix}, method: {auth_method}")  # nosec B608
         
         # Additional rate limiting for invalid keys
         if not RateLimiter.is_allowed(f"invalid_{client_ip}", limit=5, window=300):
