@@ -1,0 +1,23 @@
+name: "CodeQL Configuration"
+
+# Paths to exclude from analysis
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/.next/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/*.min.js'
+  - '**/*.bundle.js'
+  - '**/coverage/**'
+  - '**/playwright-report/**'
+  - '**/test-results/**'
+
+# Paths to include (optional, CodeQL will analyze all by default)
+paths:
+  - 'open-security-dashboard/src/**'
+  - 'open-security-automations/**'
+  - 'website/**'
+
+# Query filters
+queries:
+  - uses: security-and-quality
