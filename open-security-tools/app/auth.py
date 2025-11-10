@@ -134,9 +134,9 @@ def verify_api_key(
     
     # Verify API key
     if provided_key != settings.get_api_key():
-        # Hash the key for logging (security)
-        key_hash = hashlib.sha256(provided_key.encode()).hexdigest()[:10]
-        logger.warning(f"Invalid API key attempt from IP: {client_ip}, key hash: {key_hash}, method: {auth_method}")
+        # Truncate key for logging (security - don't log full key)
+        key_prefix = provided_key[:10] if len(provided_key) >= 10 else "***"
+        logger.warning(f"Invalid API key attempt from IP: {client_ip}, key prefix: {key_prefix}, method: {auth_method}")
         
         # Additional rate limiting for invalid keys
         if not RateLimiter.is_allowed(f"invalid_{client_ip}", limit=5, window=300):
