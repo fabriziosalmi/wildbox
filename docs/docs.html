@@ -42,7 +42,7 @@
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -56,15 +56,15 @@
         }
 
         .glass-effect {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.3s ease;
+            background: rgba(59, 130, 246, 0.05);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
         .glass-effect:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.3);
         }
 
         .doc-section {
@@ -87,8 +87,8 @@
         }
 
         .nav-button.active {
-            background: rgba(239, 68, 68, 0.15);
-            border-left: 3px solid #ef4444;
+            background: rgba(59, 130, 246, 0.2);
+            border-left: 3px solid #3b82f6;
         }
 
         .hover-lift {
@@ -97,8 +97,8 @@
         }
 
         .hover-lift:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.25);
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.35);
         }
 
         .animate-fade-in {
@@ -115,8 +115,14 @@
         }
 
         @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
-            50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.6); }
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.4),
+                           0 0 40px rgba(59, 130, 246, 0.2);
+            }
+            50% { 
+                box-shadow: 0 0 30px rgba(59, 130, 246, 0.6),
+                           0 0 60px rgba(59, 130, 246, 0.3);
+            }
         }
 
         .feature-card {
@@ -131,7 +137,7 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
             transition: left 0.5s;
         }
 
@@ -147,7 +153,7 @@
         }
 
         .markdown-content h1 { font-size: 2rem; }
-        .markdown-content h2 { font-size: 1.5rem; color: #f87171; }
+        .markdown-content h2 { font-size: 1.5rem; color: #60a5fa; }
         .markdown-content h3 { font-size: 1.25rem; }
 
         .markdown-content code {
@@ -160,14 +166,14 @@
         }
 
         .markdown-content pre {
-            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
             color: #e5e7eb;
             padding: 1.5rem;
             border-radius: 12px;
             overflow-x: auto;
             margin: 1.5rem 0;
-            border: 1px solid rgba(239, 68, 68, 0.1);
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
         }
 
         .markdown-content pre code {
@@ -215,11 +221,11 @@
         }
 
         .markdown-content th {
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(59, 130, 246, 0.1);
         }
 
         .api-endpoint {
-            background: rgba(239, 68, 68, 0.05);
+            background: rgba(59, 130, 246, 0.05);
             border-left: 4px solid #ef4444;
             padding: 1.25rem;
             margin: 1.5rem 0;
@@ -228,9 +234,9 @@
         }
 
         .api-endpoint:hover {
-            background: rgba(239, 68, 68, 0.08);
+            background: rgba(59, 130, 246, 0.08);
             transform: translateX(4px);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
         }
 
         .api-method {
@@ -245,7 +251,7 @@
         .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
         .method-post { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
         .method-put { background: rgba(248, 113, 113, 0.2); color: #f87171; }
-        .method-delete { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+        .method-delete { background: rgba(59, 130, 246, 0.2); color: #fca5a5; }
 
         .loading { opacity: 1; }
 
@@ -267,7 +273,7 @@
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(239, 68, 68, 0.9);
+            background: rgba(59, 130, 246, 0.9);
             color: white;
             border: none;
             padding: 0.5rem 1rem;
@@ -277,13 +283,13 @@
             font-weight: 600;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 10;
-            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
         }
 
         .copy-button:hover {
-            background: rgba(220, 38, 38, 1);
+            background: rgba(37, 99, 235, 1);
             transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.5);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
         }
 
         .copy-button.copied {
@@ -307,12 +313,12 @@
         }
 
         .markdown-content th {
-            background: rgba(239, 68, 68, 0.15);
+            background: rgba(59, 130, 246, 0.15);
             color: #f87171;
             font-weight: 600;
             padding: 0.75rem;
             text-align: left;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.3);
         }
 
         .markdown-content td {
@@ -326,7 +332,7 @@
 
         /* TOC Styles */
         .toc {
-            background: rgba(239, 68, 68, 0.08);
+            background: rgba(59, 130, 246, 0.08);
             border-left: 4px solid #ef4444;
             padding: 1.5rem;
             margin: 2rem 0;
@@ -413,7 +419,7 @@
         .markdown-content a {
             color: #ef4444;
             text-decoration: none;
-            border-bottom: 1px solid rgba(239, 68, 68, 0.3);
+            border-bottom: 1px solid rgba(59, 130, 246, 0.3);
             transition: all 0.2s ease;
         }
 
@@ -446,7 +452,7 @@
         /* Horizontal Rule */
         .markdown-content hr {
             border: none;
-            border-top: 2px solid rgba(239, 68, 68, 0.2);
+            border-top: 2px solid rgba(59, 130, 246, 0.2);
             margin: 2rem 0;
         }
 
@@ -465,12 +471,12 @@
         }
 
         #sidebar::-webkit-scrollbar-thumb {
-            background: rgba(239, 68, 68, 0.5);
+            background: rgba(59, 130, 246, 0.5);
             border-radius: 4px;
         }
 
         #sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(239, 68, 68, 0.7);
+            background: rgba(59, 130, 246, 0.7);
         }
 
         /* Ensure main content takes full width on mobile when sidebar is hidden */
@@ -500,11 +506,17 @@
                 transform: translateY(0);
             }
         }
+
+        /* Logo styling - invert colors and remove white background */
+        .logo-inverted {
+            filter: invert(1) brightness(1.2);
+            mix-blend-mode: screen;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
     <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
+    <nav class="sticky top-0 z-50 glass-effect border-b border-blue-900/30">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <div class="flex items-center gap-4">
                 <!-- Mobile Menu Button -->
@@ -514,14 +526,14 @@
                     </svg>
                 </button>
                 <a href="index.html" class="flex items-center gap-2 hover:opacity-80 transition">
-                    <span class="text-2xl">🛡️</span>
+                    <img src="../wildbox.png" alt="Wildbox Logo" class="w-8 h-8 object-contain logo-inverted">
                     <span class="text-xl font-bold">Wildbox Docs</span>
                 </a>
             </div>
             <div class="hidden md:flex gap-6">
                 <a href="index.html" class="text-gray-300 hover:text-white transition">Features</a>
                 <a href="index.html#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
-                <a href="docs.html" class="text-red-400 transition">Documentation</a>
+                <a href="docs.html" class="text-blue-400 transition">Documentation</a>
                 <a href="index.html#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
                 <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
             </div>
@@ -534,8 +546,8 @@
     <div class="flex min-h-screen relative">
         <!-- Background gradient effect -->
         <div class="fixed inset-0 pointer-events-none overflow-hidden">
-            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
-            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style="animation-delay: 1s;"></div>
+            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
+            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style="animation-delay: 1s;"></div>
         </div>
 
         <!-- Sidebar Navigation -->
@@ -589,13 +601,13 @@
                 <div class="pt-6 border-t border-gray-800">
                     <p class="text-xs text-gray-500">Online Resources</p>
                     <div class="mt-2 space-y-2">
-                        <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                        <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" class="block text-sm text-blue-400 hover:text-blue-300">
                             GitHub Repository
                         </a>
-                        <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                        <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="block text-sm text-blue-400 hover:text-blue-300">
                             Report Issues
                         </a>
-                        <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="block text-sm text-red-400 hover:text-red-300">
+                        <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="block text-sm text-blue-400 hover:text-blue-300">
                             Discussions
                         </a>
                     </div>
@@ -620,25 +632,25 @@
                     <div class="grid md:grid-cols-2 gap-6 mb-12">
                         <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('quickstart')">
                             <div class="text-4xl mb-4">🚀</div>
-                            <h3 class="text-xl font-semibold mb-3 text-red-400">Get Started in 5 Minutes</h3>
+                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Get Started in 5 Minutes</h3>
                             <p class="text-gray-400 leading-relaxed">Quickstart guide to deploy Wildbox with Docker Compose and verify services.</p>
                         </div>
 
                         <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('security-status')">
                             <div class="text-4xl mb-4">🔒</div>
-                            <h3 class="text-xl font-semibold mb-3 text-red-400">Security Status</h3>
+                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Security Status</h3>
                             <p class="text-gray-400 leading-relaxed">Current security metrics, verification checks, and vulnerability tracking.</p>
                         </div>
 
                         <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('api-docs')">
                             <div class="text-4xl mb-4">📚</div>
-                            <h3 class="text-xl font-semibold mb-3 text-red-400">API Reference</h3>
+                            <h3 class="text-xl font-semibold mb-3 text-blue-400">API Reference</h3>
                             <p class="text-gray-400 leading-relaxed">Complete API documentation with examples for all services and endpoints.</p>
                         </div>
 
                         <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('deployment')">
                             <div class="text-4xl mb-4">🚢</div>
-                            <h3 class="text-xl font-semibold mb-3 text-red-400">Deployment Guide</h3>
+                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Deployment Guide</h3>
                             <p class="text-gray-400 leading-relaxed">Production deployment procedures, security configuration, and operations.</p>
                         </div>
                     </div>
@@ -647,16 +659,16 @@
                         <h2 class="text-3xl font-bold mb-6 gradient-text">Documentation by Role</h2>
                         <div class="space-y-6">
                             <div class="border-l-4 border-red-500 pl-4">
-                                <h4 class="font-semibold text-red-400 mb-2 text-lg">👨‍💻 Developer</h4>
-                                <p class="text-gray-400 leading-relaxed">Start with <button onclick="loadDoc('quickstart')" class="text-red-400 hover:text-red-300 hover:underline transition">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-red-400 hover:text-red-300 hover:underline transition">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-red-400 hover:text-red-300 hover:underline transition">Credentials Guide</button>.</p>
+                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">👨‍💻 Developer</h4>
+                                <p class="text-gray-400 leading-relaxed">Start with <button onclick="loadDoc('quickstart')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-blue-400 hover:text-blue-300 hover:underline transition">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Credentials Guide</button>.</p>
                             </div>
                             <div class="border-l-4 border-red-500 pl-4">
-                                <h4 class="font-semibold text-red-400 mb-2 text-lg">🛡️ Security Engineer</h4>
-                                <p class="text-gray-400 leading-relaxed">Review <button onclick="loadDoc('security-policy')" class="text-red-400 hover:text-red-300 hover:underline transition">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-red-400 hover:text-red-300 hover:underline transition">Audit Report</button> for comprehensive security analysis.</p>
+                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">🛡️ Security Engineer</h4>
+                                <p class="text-gray-400 leading-relaxed">Review <button onclick="loadDoc('security-policy')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Audit Report</button> for comprehensive security analysis.</p>
                             </div>
                             <div class="border-l-4 border-red-500 pl-4">
-                                <h4 class="font-semibold text-red-400 mb-2 text-lg">⚙️ System Administrator</h4>
-                                <p class="text-gray-400 leading-relaxed">Follow <button onclick="loadDoc('deployment')" class="text-red-400 hover:text-red-300 hover:underline transition">Deployment Guide</button> for production setup.</p>
+                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">⚙️ System Administrator</h4>
+                                <p class="text-gray-400 leading-relaxed">Follow <button onclick="loadDoc('deployment')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Deployment Guide</button> for production setup.</p>
                             </div>
                         </div>
                     </div>
@@ -733,7 +745,7 @@
                             <div class="api-endpoint">
                                 <h3 id="responder-service" class="font-semibold mb-2">Responder Service</h3>
                                 <p class="text-gray-400 mb-3">Incident response playbook execution and remediation automation.</p>
-                                <a href="api/responder-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                <a href="api/responder-api.html" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
                                     OpenAPI Documentation
                                 </a>
                             </div>
@@ -741,7 +753,7 @@
                             <div class="api-endpoint">
                                 <h3 id="agents-service" class="font-semibold mb-2">Agents Service</h3>
                                 <p class="text-gray-400 mb-3">AI-powered threat analysis and machine learning security intelligence.</p>
-                                <a href="api/agents-api.html" class="inline-block px-4 py-2 bg-red-600 hover:bg-red-700 rounded text-sm transition">
+                                <a href="api/agents-api.html" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm transition">
                                     OpenAPI Documentation
                                 </a>
                             </div>
@@ -837,7 +849,7 @@
                             <p class="text-gray-400 mt-2">List available response playbooks.</p>
                         </div>
 
-                        <p class="text-gray-500 text-sm mt-8">For complete API documentation with request/response examples, visit the OpenAPI Swagger UI links in the <button onclick="loadDoc('api-docs')" class="text-red-400 hover:underline">API Documentation</button> section.</p>
+                        <p class="text-gray-500 text-sm mt-8">For complete API documentation with request/response examples, visit the OpenAPI Swagger UI links in the <button onclick="loadDoc('api-docs')" class="text-blue-400 hover:underline">API Documentation</button> section.</p>
                     </div>
                 </div>
 
@@ -850,7 +862,7 @@
                         <p>Wildbox supports incoming webhooks from external tools for automated alert ingestion and processing.</p>
 
                         <h2 id="service-to-service-communication">Service-to-Service Communication</h2>
-                        <p>All microservices communicate via internal APIs secured with X-Gateway-Secret headers. See <button onclick="loadDoc('security-policy')" class="text-red-400 hover:underline">Security Policy</button> for authentication details.</p>
+                        <p>All microservices communicate via internal APIs secured with X-Gateway-Secret headers. See <button onclick="loadDoc('security-policy')" class="text-blue-400 hover:underline">Security Policy</button> for authentication details.</p>
 
                         <h2 id="data-export-apis">Data Export APIs</h2>
                         <p>Export security data in various formats for integration with external systems:</p>
@@ -865,9 +877,9 @@
                         <p>For API integration support:</p>
                         <ul>
                             <li>Check individual service OpenAPI documentation</li>
-                            <li>Review <button onclick="loadDoc('quickstart')" class="text-red-400 hover:underline">Quick Start</button> for example requests</li>
-                            <li>Open <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="text-red-400 hover:underline">GitHub Discussions</a> for questions</li>
-                            <li>Report bugs in <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="text-red-400 hover:underline">GitHub Issues</a></li>
+                            <li>Review <button onclick="loadDoc('quickstart')" class="text-blue-400 hover:underline">Quick Start</button> for example requests</li>
+                            <li>Open <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" class="text-blue-400 hover:underline">GitHub Discussions</a> for questions</li>
+                            <li>Report bugs in <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" class="text-blue-400 hover:underline">GitHub Issues</a></li>
                         </ul>
                     </div>
                 </div>
@@ -933,7 +945,7 @@
             });
             html = html.replace(/^## (.*?)$/gm, (match, text) => {
                 const anchor = createAnchor(text);
-                return `<h2 id="${anchor}" class="text-2xl font-bold mt-6 mb-3 text-red-400">${text}</h2>`;
+                return `<h2 id="${anchor}" class="text-2xl font-bold mt-6 mb-3 text-blue-400">${text}</h2>`;
             });
             html = html.replace(/^# (.*?)$/gm, (match, text) => {
                 const anchor = createAnchor(text);
@@ -991,7 +1003,7 @@
             html = html.replace(/_([^_\n]+)_/g, '<em class="italic text-gray-400">$1</em>');
 
             // Links
-            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-red-400 hover:underline">$1</a>');
+            html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-blue-400 hover:underline">$1</a>');
 
             // Checkbox lists (before regular lists)
             html = html.replace(/^\- \[x\] (.*?)$/gm, '<li class="ml-4"><input type="checkbox" checked disabled> <span>$1</span></li>');
@@ -1025,7 +1037,7 @@
             html = html.replace(/^---$/gm, '<hr class="border-gray-700 my-6">');
 
             // Block quotes
-            html = html.replace(/^> (.*?)$/gm, '<blockquote class="border-l-4 border-red-400 pl-4 text-gray-400 italic">$1</blockquote>');
+            html = html.replace(/^> (.*?)$/gm, '<blockquote class="border-l-4 border-blue-400 pl-4 text-gray-400 italic">$1</blockquote>');
 
             // Paragraphs - be careful not to wrap elements
             html = html.split('\n').map((line, idx, arr) => {
@@ -1134,11 +1146,11 @@
                                 document.querySelector('main').scrollTo({ top: 0, behavior: 'smooth' });
                             }
                         } else {
-                            content.innerHTML = `<p class="text-red-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
+                            content.innerHTML = `<p class="text-blue-400">Error loading documentation. <a href="${docUrls[docName]}" target="_blank" class="underline">View on GitHub</a></p>`;
                         }
                     } catch (error) {
                         console.error('Error loading doc:', error);
-                        content.innerHTML = `<p class="text-red-400">Error loading documentation: ${error.message}</p>`;
+                        content.innerHTML = `<p class="text-blue-400">Error loading documentation: ${error.message}</p>`;
                     }
                 } else {
                     // Static content - check for anchor navigation
@@ -1166,7 +1178,7 @@
                 targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 // Highlight the section briefly
                 targetElement.style.transition = 'background-color 0.5s ease';
-                targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                targetElement.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                 setTimeout(() => {
                     targetElement.style.backgroundColor = '';
                 }, 2000);
@@ -1291,7 +1303,7 @@
                     history.pushState(null, null, e.target.hash);
                     // Highlight briefly
                     targetElement.style.transition = 'background-color 0.5s ease';
-                    targetElement.style.backgroundColor = 'rgba(239, 68, 68, 0.1)';
+                    targetElement.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
                     setTimeout(() => {
                         targetElement.style.backgroundColor = '';
                     }, 2000);

@@ -37,7 +37,7 @@
         }
 
         .gradient-text {
-            background: linear-gradient(135deg, #ef4444 0%, #dc2626 50%, #b91c1c 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -50,16 +50,30 @@
             50% { background-position: 100% 50%; }
         }
 
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #2563eb 100%);
+        }
+
+        .cyber-grid {
+            background-image: 
+                linear-gradient(rgba(59, 130, 246, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59, 130, 246, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
         .glass-effect {
-            background: rgba(255, 255, 255, 0.03);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            transition: all 0.3s ease;
+            background: rgba(59, 130, 246, 0.05);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(59, 130, 246, 0.15);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
         }
 
         .glass-effect:hover {
-            background: rgba(255, 255, 255, 0.05);
-            border-color: rgba(239, 68, 68, 0.3);
+            background: rgba(59, 130, 246, 0.08);
+            border-color: rgba(59, 130, 246, 0.3);
+            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.2), 0 4px 6px -2px rgba(59, 130, 246, 0.1);
+            transform: translateY(-2px);
         }
 
         .hover-lift {
@@ -68,19 +82,19 @@
         }
 
         .hover-lift:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.25);
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.35);
         }
 
         .code-block {
-            background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+            background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
             border-radius: 12px;
             padding: 24px;
             font-family: 'Monaco', 'Courier New', monospace;
             font-size: 14px;
             overflow-x: auto;
-            border: 1px solid rgba(239, 68, 68, 0.1);
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
         }
 
         .code-block div {
@@ -101,8 +115,20 @@
         }
 
         @keyframes pulse {
-            0%, 100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); }
-            50% { box-shadow: 0 0 40px rgba(239, 68, 68, 0.6); }
+            0%, 100% { 
+                box-shadow: 0 0 20px rgba(59, 130, 246, 0.4),
+                           0 0 40px rgba(59, 130, 246, 0.2);
+            }
+            50% { 
+                box-shadow: 0 0 30px rgba(59, 130, 246, 0.6),
+                           0 0 60px rgba(59, 130, 246, 0.3);
+            }
+        }
+
+        /* Logo styling - invert colors and remove white background */
+        .logo-inverted {
+            filter: invert(1) brightness(1.2);
+            mix-blend-mode: screen;
         }
 
         .feature-card {
@@ -117,7 +143,7 @@
             left: -100%;
             width: 100%;
             height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.1), transparent);
+            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
             transition: left 0.5s;
         }
 
@@ -133,24 +159,46 @@
         .mobile-menu {
             transform: translateX(100%);
             transition: transform 0.3s ease-in-out;
+            background: rgba(0, 0, 0, 0.98);
+            backdrop-filter: blur(20px);
         }
 
         .mobile-menu.active {
             transform: translateX(0);
         }
+
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .gradient-text {
+                font-size: 2.5rem;
+                line-height: 1.2;
+            }
+            
+            .glass-effect {
+                backdrop-filter: blur(10px);
+            }
+            
+            .code-block {
+                font-size: 12px;
+                padding: 16px;
+            }
+        }
+
+        /* Smooth scroll padding for fixed nav */
+        html {
+            scroll-padding-top: 80px;
+        }
     </style>
 </head>
 <body class="bg-black text-white">
     <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-effect border-b border-gray-800">
+    <nav class="sticky top-0 z-50 glass-effect border-b border-blue-900/30 cyber-grid">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <div class="flex justify-between items-center">
-                <div class="flex items-center gap-2">
-                    <span class="text-2xl">🛡️</span>
-                    <span class="text-xl font-bold">Wildbox</span>
-                </div>
-                
-                <!-- Desktop Menu -->
+            <div class="flex items-center gap-3">
+                <img src="../wildbox.png" alt="Wildbox Logo" class="w-8 h-8 object-contain logo-inverted">
+                <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">Wildbox</span>
+            </div>                <!-- Desktop Menu -->
                 <div class="hidden md:flex gap-8 items-center">
                     <a href="#features" class="text-gray-300 hover:text-white transition-colors">Features</a>
                     <a href="#how-it-works" class="text-gray-300 hover:text-white transition-colors">How It Works</a>
@@ -160,7 +208,7 @@
                 </div>
                 
                 <div class="flex items-center gap-4">
-                    <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-lg font-semibold transition-all transform hover:scale-105">Get Started</a>
+                    <a href="#get-started" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-6 py-2.5 rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg shadow-blue-900/30">Get Started</a>
                     <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
@@ -188,36 +236,36 @@
     </nav>
 
     <!-- Hero Section -->
-    <section class="relative min-h-screen flex items-center justify-center px-4 pt-20 overflow-hidden">
+    <section class="relative min-h-screen flex items-center justify-center px-4 pt-20 overflow-hidden cyber-grid">
         <!-- Enhanced Background gradient -->
         <div class="absolute inset-0">
-            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
-            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-red-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style="animation-delay: 1s;"></div>
-            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-red-800 rounded-full mix-blend-multiply filter blur-3xl opacity-10"></div>
+            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse"></div>
+            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-pulse" style="animation-delay: 1s;"></div>
+            <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-blue-700 rounded-full mix-blend-multiply filter blur-3xl opacity-10"></div>
         </div>
 
         <div class="relative z-10 max-w-5xl mx-auto text-center">
             <div class="mb-8 animate-fade-in">
-                <span class="inline-block px-5 py-2.5 bg-red-600/10 border border-red-600/20 rounded-full text-red-400 text-sm font-semibold pulse-glow">
+                <span class="inline-block px-5 py-2.5 bg-blue-600/10 border border-blue-500/30 rounded-full text-blue-400 text-sm font-semibold pulse-glow">
                     🚀 Enterprise Security in 5 Minutes
                 </span>
             </div>
 
-            <h1 class="text-5xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight animate-fade-in" style="animation-delay: 0.1s;">
+            <h1 class="text-4xl sm:text-5xl md:text-7xl lg:text-8xl font-bold mb-8 leading-tight animate-fade-in" style="animation-delay: 0.1s;">
                 Your Complete
-                <span class="gradient-text"> Security Operations </span>
+                <span class="gradient-text block mt-2"> Security Operations </span>
                 Platform
             </h1>
 
             <p class="text-xl md:text-2xl text-gray-400 mb-10 max-w-3xl mx-auto leading-relaxed animate-fade-in" style="animation-delay: 0.2s;">
-                Open-source SIEM, CSPM, WAF, and threat intelligence. From <code class="bg-gray-800 px-2 py-1 rounded text-red-400">git clone</code> to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
+                Open-source SIEM, CSPM, WAF, and threat intelligence. From <code class="bg-gray-900/80 px-3 py-1.5 rounded text-blue-400 border border-blue-900/50">git clone</code> to running security scans in just 5 minutes. No vendor lock-in. No complex setup.
             </p>
 
             <div class="flex flex-col sm:flex-row gap-4 justify-center mb-16 animate-fade-in" style="animation-delay: 0.3s;">
-                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-10 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg hover:shadow-red-600/50">
+                <a href="#get-started" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-10 py-4 rounded-lg font-semibold text-lg transition-all transform hover:scale-105 shadow-lg shadow-blue-900/50">
                     Start Free →
                 </a>
-                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="border-2 border-gray-600 hover:border-red-500 px-10 py-4 rounded-lg font-semibold text-lg transition-all hover:bg-red-600/10">
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="border-2 border-blue-600/50 hover:border-blue-500 px-10 py-4 rounded-lg font-semibold text-lg transition-all hover:bg-blue-600/10">
                     <span class="flex items-center justify-center gap-2">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
@@ -228,19 +276,19 @@
             </div>
 
             <!-- Enhanced Quick Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 py-12 border-y border-gray-800 animate-fade-in" style="animation-delay: 0.4s;">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-20 py-12 border-y border-blue-900/30 animate-fade-in" style="animation-delay: 0.4s;">
                 <div class="group">
-                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">11</div>
+                    <div class="text-4xl md:text-5xl font-bold text-blue-400 mb-2 stat-number group-hover:scale-110 transition-transform">11</div>
                     <p class="text-gray-400 font-medium">Integrated Services</p>
                     <p class="text-gray-600 text-sm mt-1">Pre-configured & ready</p>
                 </div>
                 <div class="group">
-                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">55+</div>
+                    <div class="text-4xl md:text-5xl font-bold text-blue-400 mb-2 stat-number group-hover:scale-110 transition-transform">55+</div>
                     <p class="text-gray-400 font-medium">Security Tools</p>
                     <p class="text-gray-600 text-sm mt-1">Scanners & analyzers</p>
                 </div>
                 <div class="group">
-                    <div class="text-4xl md:text-5xl font-bold text-red-400 mb-2 stat-number group-hover:scale-110 transition-transform">5min</div>
+                    <div class="text-4xl md:text-5xl font-bold text-blue-400 mb-2 stat-number group-hover:scale-110 transition-transform">5min</div>
                     <p class="text-gray-400 font-medium">To First Alert</p>
                     <p class="text-gray-600 text-sm mt-1">Fully operational</p>
                 </div>
@@ -249,16 +297,16 @@
     </section>
 
     <!-- Installation Hero -->
-    <section id="get-started" class="py-24 px-4 max-w-7xl mx-auto">
-        <div class="text-center mb-16">
-            <h2 class="text-4xl md:text-6xl font-bold mb-6">Get Started in 5 Minutes</h2>
-            <p class="text-xl md:text-2xl text-gray-400">Copy, paste, and you're running enterprise security.</p>
+    <section id="get-started" class="py-20 md:py-24 px-4 max-w-7xl mx-auto">
+        <div class="text-center mb-12 md:mb-16">
+            <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 md:mb-6">Get Started in 5 Minutes</h2>
+            <p class="text-lg sm:text-xl md:text-2xl text-gray-400 px-4">Copy, paste, and you're running enterprise security.</p>
         </div>
 
-        <div class="bg-gradient-to-br from-gray-900 to-black border border-gray-800 rounded-xl p-8 md:p-10 hover-lift mb-12">
+        <div class="bg-gradient-to-br from-gray-900 to-black border border-blue-900/30 rounded-xl p-8 md:p-10 hover-lift mb-12 shadow-xl shadow-blue-900/20">
             <div class="flex items-center justify-between mb-4">
                 <span class="text-gray-500 text-sm font-medium">Terminal</span>
-                <button onclick="copyCode()" class="text-gray-400 hover:text-white transition-colors text-sm flex items-center gap-2">
+                <button onclick="copyCode()" class="text-gray-400 hover:text-blue-400 transition-colors text-sm flex items-center gap-2">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
                     </svg>
@@ -294,11 +342,11 @@
     </section>
 
     <!-- Features Section -->
-    <section id="features" class="py-24 px-4 bg-gradient-to-b from-transparent via-red-600/5 to-transparent">
+    <section id="features" class="py-20 md:py-24 px-4 bg-gradient-to-b from-transparent via-blue-950/20 to-transparent">
         <div class="max-w-7xl mx-auto">
-            <div class="text-center mb-20">
-                <h2 class="text-4xl md:text-6xl font-bold mb-6">Everything You Need for Security Ops</h2>
-                <p class="text-xl md:text-2xl text-gray-400">All in one platform. No multi-tool complexity.</p>
+            <div class="text-center mb-16 md:mb-20">
+                <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 md:mb-6">Everything You Need for Security Ops</h2>
+                <p class="text-lg sm:text-xl md:text-2xl text-gray-400 px-4">All in one platform. No multi-tool complexity.</p>
             </div>
 
             <div class="grid md:grid-cols-2 gap-6 lg:gap-8">
@@ -309,15 +357,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">Unified threat data aggregation from 20+ sources. Real-time IOC lookups, malware intelligence, and vulnerability feeds all in one place.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>CT Log Scanning & Monitoring</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Malware Hash Lookup & Analysis</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Social Media OSINT Integration</span>
                         </li>
                     </ul>
@@ -330,15 +378,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">Continuous security posture management across AWS, Azure, and GCP. 200+ automated compliance checks running 24/7.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Multi-cloud Security Scanning</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Compliance Framework Automation</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Risk-Based Prioritization</span>
                         </li>
                     </ul>
@@ -351,15 +399,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">AI-powered WAF with advanced protection. Rate limiting, DDoS mitigation, and layer 7 threat detection working together.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>XSS & SQL Injection Prevention</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Intelligent DDoS Mitigation</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Real-time Threat Blocking</span>
                         </li>
                     </ul>
@@ -372,15 +420,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">GPT-4 integration for intelligent threat analysis, automated anomaly detection, and advanced incident correlation.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Automated Threat Triage & Classification</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>ML-Based Anomaly Detection</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Natural Language Security Insights</span>
                         </li>
                     </ul>
@@ -393,15 +441,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">Security orchestration, automation, and response. Automated workflows and playbooks orchestrate your entire security stack.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Automated Response Playbooks</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Alert Enrichment & Correlation</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Integrated Case Management</span>
                         </li>
                     </ul>
@@ -414,15 +462,15 @@
                     <p class="text-gray-400 mb-6 leading-relaxed">Real-time security metrics with Prometheus monitoring. Custom dashboards, intelligent alerting, and comprehensive visibility.</p>
                     <ul class="text-gray-500 space-y-2.5">
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Live Threat Intelligence Feeds</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Customizable Grafana Dashboards</span>
                         </li>
                         <li class="flex items-center gap-3">
-                            <span class="text-red-400">✓</span>
+                            <span class="text-blue-400">✓</span>
                             <span>Multi-channel Alert Routing</span>
                         </li>
                     </ul>
@@ -432,24 +480,24 @@
     </section>
 
     <!-- How It Works -->
-    <section id="how-it-works" class="py-24 px-4">
+    <section id="how-it-works" class="py-20 md:py-24 px-4">
         <div class="max-w-5xl mx-auto">
-            <h2 class="text-4xl md:text-6xl font-bold text-center mb-20">How Wildbox Works</h2>
+            <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold text-center mb-12 md:mb-20">How Wildbox Works</h2>
 
             <div class="space-y-10 lg:space-y-12">
                 <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">1</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-600/20 text-blue-400 font-bold text-lg group-hover:bg-blue-600 group-hover:text-white transition-all">1</div>
                     </div>
                     <div>
                         <h3 class="text-2xl font-semibold mb-3">One-Command Installation</h3>
-                        <p class="text-gray-400 text-lg leading-relaxed">Run <code class="bg-gray-800 px-3 py-1.5 rounded text-red-400 font-mono">./setup.sh</code> and get a fully configured, enterprise-grade security platform in 5 minutes. Zero manual configuration required.</p>
+                        <p class="text-gray-400 text-lg leading-relaxed">Run <code class="bg-gray-900/80 px-3 py-1.5 rounded text-blue-400 font-mono border border-blue-900/50">./setup.sh</code> and get a fully configured, enterprise-grade security platform in 5 minutes. Zero manual configuration required.</p>
                     </div>
                 </div>
 
                 <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">2</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-600/20 text-blue-400 font-bold text-lg group-hover:bg-blue-600 group-hover:text-white transition-all">2</div>
                     </div>
                     <div>
                         <h3 class="text-2xl font-semibold mb-3">Connect Your Infrastructure</h3>
@@ -459,7 +507,7 @@
 
                 <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">3</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-600/20 text-blue-400 font-bold text-lg group-hover:bg-blue-600 group-hover:text-white transition-all">3</div>
                     </div>
                     <div>
                         <h3 class="text-2xl font-semibold mb-3">Automated Security Scanning</h3>
@@ -469,7 +517,7 @@
 
                 <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">4</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-600/20 text-blue-400 font-bold text-lg group-hover:bg-blue-600 group-hover:text-white transition-all">4</div>
                     </div>
                     <div>
                         <h3 class="text-2xl font-semibold mb-3">Intelligent Response</h3>
@@ -479,7 +527,7 @@
 
                 <div class="flex gap-6 lg:gap-8 group">
                     <div class="flex-shrink-0">
-                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-red-600/20 text-red-400 font-bold text-lg group-hover:bg-red-600 group-hover:text-white transition-all">5</div>
+                        <div class="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-600/20 text-blue-400 font-bold text-lg group-hover:bg-blue-600 group-hover:text-white transition-all">5</div>
                     </div>
                     <div>
                         <h3 class="text-2xl font-semibold mb-3">Open, Extensible, Yours</h3>
@@ -491,9 +539,9 @@
     </section>
 
     <!-- Use Cases -->
-    <section class="py-24 px-4 bg-gradient-to-b from-transparent via-red-600/5 to-transparent">
+    <section class="py-20 md:py-24 px-4 bg-gradient-to-b from-transparent via-blue-950/20 to-transparent">
         <div class="max-w-6xl mx-auto">
-            <h2 class="text-4xl md:text-6xl font-bold text-center mb-20">Perfect For</h2>
+            <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold text-center mb-12 md:mb-20">Perfect For</h2>
 
             <div class="grid md:grid-cols-2 gap-6 lg:gap-8">
                 <div class="glass-effect p-8 lg:p-10 rounded-xl hover-lift feature-card">
@@ -529,140 +577,198 @@
     </section>
 
     <!-- Pricing -->
-    <section id="pricing" class="py-24 px-4">
-        <div class="max-w-4xl mx-auto text-center">
-            <h2 class="text-4xl md:text-6xl font-bold mb-6">Simple, Transparent Pricing</h2>
-            <p class="text-xl md:text-2xl text-gray-400 mb-16">Open-source and completely free. No paid tiers. No hidden costs. Forever.</p>
+    <section id="pricing" class="py-20 md:py-24 px-4">
+        <div class="max-w-6xl mx-auto text-center">
+            <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold mb-4 md:mb-6">Simple, Transparent Pricing</h2>
+            <p class="text-lg sm:text-xl md:text-2xl text-gray-400 mb-12 md:mb-16 px-4">Open-source and completely free. Custom enterprise solutions available.</p>
 
-            <div class="glass-effect p-10 lg:p-14 rounded-2xl max-w-2xl mx-auto hover-lift pulse-glow">
-                <div class="inline-block px-4 py-2 bg-red-600/20 border border-red-600/30 rounded-full text-red-400 text-sm font-semibold mb-6">
-                    Most Popular
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                <!-- Community (Free) Tier -->
+                <div class="glass-effect p-10 lg:p-14 rounded-2xl hover-lift pulse-glow">
+                    <div class="inline-block px-4 py-2 bg-blue-600/20 border border-blue-500/30 rounded-full text-blue-400 text-sm font-semibold mb-6">
+                        Most Popular
+                    </div>
+                    <h3 class="text-3xl lg:text-4xl font-bold mb-6">Wildbox Community</h3>
+                    <div class="text-6xl lg:text-7xl font-bold gradient-text mb-8">$0</div>
+                    <p class="text-gray-500 mb-10">Forever free. Forever yours.</p>
+                    
+                    <ul class="text-left space-y-4 mb-10 text-gray-400">
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">11 integrated security services</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">55+ security scanning tools</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">Threat intelligence aggregation</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">Cloud security posture management (CSPM)</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">AI-powered security analysis</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">Open-source (MIT License)</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">No vendor lock-in, ever</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-green-400 text-xl">✓</span>
+                            <span class="text-lg">Community support & updates</span>
+                        </li>
+                    </ul>
+                    
+                    <div class="bg-blue-600/10 border border-blue-500/20 rounded-lg p-4 mb-8">
+                        <p class="text-sm text-gray-400">Self-hosted on your infrastructure. You maintain complete control of your data and security operations.</p>
+                    </div>
+                    
+                    <a href="#get-started" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-10 py-4 rounded-lg font-semibold text-lg transition-all inline-block transform hover:scale-105 shadow-lg shadow-blue-900/30">
+                        Get Started Now
+                    </a>
                 </div>
-                <h3 class="text-3xl lg:text-4xl font-bold mb-6">Wildbox Community</h3>
-                <div class="text-6xl lg:text-7xl font-bold gradient-text mb-8">$0</div>
-                <p class="text-gray-500 mb-10">Forever free. Forever yours.</p>
-                
-                <ul class="text-left space-y-4 mb-10 text-gray-400">
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">11 integrated security services</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">55+ security scanning tools</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">Threat intelligence aggregation</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">Cloud security posture management (CSPM)</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">AI-powered security analysis</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">Open-source (MIT License)</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">No vendor lock-in, ever</span>
-                    </li>
-                    <li class="flex items-center gap-4">
-                        <span class="text-green-400 text-xl">✓</span>
-                        <span class="text-lg">Community support & updates</span>
-                    </li>
-                </ul>
-                
-                <div class="bg-red-600/10 border border-red-600/20 rounded-lg p-4 mb-8">
-                    <p class="text-sm text-gray-400">Self-hosted on your infrastructure. You maintain complete control of your data and security operations.</p>
+
+                <!-- Custom Enterprise Tier -->
+                <div class="glass-effect p-10 lg:p-14 rounded-2xl hover-lift border-2 border-cyan-500/20">
+                    <div class="inline-block px-4 py-2 bg-cyan-600/20 border border-cyan-500/30 rounded-full text-cyan-400 text-sm font-semibold mb-6">
+                        Enterprise
+                    </div>
+                    <h3 class="text-3xl lg:text-4xl font-bold mb-6">Wildbox Custom</h3>
+                    <div class="text-5xl lg:text-6xl font-bold mb-8">
+                        <span class="bg-gradient-to-r from-cyan-400 to-blue-600 bg-clip-text text-transparent">Contact</span>
+                    </div>
+                    <p class="text-gray-500 mb-10">Tailored solutions for your organization</p>
+                    
+                    <ul class="text-left space-y-4 mb-10 text-gray-400">
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Everything in Community</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Custom integrations & workflows</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Dedicated support & training</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Custom feature development</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">SLA agreements</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Architecture consulting</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Priority bug fixes & patches</span>
+                        </li>
+                        <li class="flex items-center gap-4">
+                            <span class="text-cyan-400 text-xl">✓</span>
+                            <span class="text-lg">Compliance assistance</span>
+                        </li>
+                    </ul>
+                    
+                    <div class="bg-cyan-600/10 border border-cyan-500/20 rounded-lg p-4 mb-8">
+                        <p class="text-sm text-gray-400">Let's build a customized security solution that perfectly fits your infrastructure and requirements.</p>
+                    </div>
+                    
+                    <a href="mailto:fabrizio.salmi@gmail.com?subject=Wildbox%20Custom%20Enterprise%20Inquiry" class="bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-700 hover:to-blue-800 px-10 py-4 rounded-lg font-semibold text-lg transition-all inline-block transform hover:scale-105 shadow-lg shadow-cyan-900/30">
+                        Contact Us
+                    </a>
                 </div>
-                
-                <a href="#get-started" class="bg-red-600 hover:bg-red-700 px-10 py-4 rounded-lg font-semibold text-lg transition-all inline-block transform hover:scale-105">
-                    Get Started Now
-                </a>
             </div>
         </div>
     </section>
 
     <!-- CTA Section -->
-    <section class="py-24 px-4">
+    <section class="py-20 md:py-24 px-4">
         <div class="max-w-5xl mx-auto text-center">
-            <h2 class="text-4xl md:text-6xl font-bold mb-8">Ready to Own Your Security?</h2>
-            <p class="text-xl md:text-2xl text-gray-400 mb-12 max-w-3xl mx-auto">Three commands. Five minutes. Complete security operations running on your infrastructure.</p>
+            <h2 class="text-3xl sm:text-4xl md:text-6xl font-bold mb-6 md:mb-8 px-4">Ready to Own Your Security?</h2>
+            <p class="text-lg sm:text-xl md:text-2xl text-gray-400 mb-10 md:mb-12 max-w-3xl mx-auto px-4">Three commands. Five minutes. Complete security operations running on your infrastructure.</p>
 
             <div class="flex flex-col sm:flex-row gap-6 justify-center mb-16">
-                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="bg-red-600 hover:bg-red-700 px-10 py-5 rounded-lg font-semibold text-xl transition-all transform hover:scale-105 shadow-lg hover:shadow-red-600/50">
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 px-10 py-5 rounded-lg font-semibold text-xl transition-all transform hover:scale-105 shadow-lg shadow-blue-900/50">
                     Clone from GitHub
                 </a>
-                <a href="docs.html" class="border-2 border-gray-600 hover:border-red-500 px-10 py-5 rounded-lg font-semibold text-xl transition-all hover:bg-red-600/10">
+                <a href="docs.html" class="border-2 border-blue-600/50 hover:border-blue-500 px-10 py-5 rounded-lg font-semibold text-xl transition-all hover:bg-blue-600/10">
                     Read Documentation
                 </a>
             </div>
 
             <div class="glass-effect p-8 rounded-xl inline-block">
                 <p class="text-gray-400 mb-3">Join the security community</p>
-                <div class="flex items-center justify-center gap-6">
-                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors flex items-center gap-2">
+                <div class="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-blue-400 transition-colors flex items-center gap-2">
                         <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
                         </svg>
                         <span>GitHub</span>
                     </a>
-                    <span class="text-gray-700">|</span>
-                    <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors">Discussions</a>
-                    <span class="text-gray-700">|</span>
-                    <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-white transition-colors">Issues</a>
+                    <span class="text-gray-700 hidden md:inline">|</span>
+                    <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-blue-400 transition-colors">Discussions</a>
+                    <span class="text-gray-700 hidden md:inline">|</span>
+                    <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-blue-400 transition-colors">Issues</a>
                 </div>
             </div>
         </div>
     </section>
 
     <!-- Footer -->
-    <footer class="border-t border-gray-800 py-16 px-4">
+    <footer class="border-t border-blue-900/30 py-16 px-4 bg-gradient-to-b from-transparent to-blue-950/10">
         <div class="max-w-7xl mx-auto">
             <div class="grid md:grid-cols-4 gap-12 mb-12">
                 <div>
-                    <div class="flex items-center gap-2 mb-4">
-                        <span class="text-2xl">🛡️</span>
-                        <span class="text-xl font-bold">Wildbox</span>
+                    <div class="flex items-center gap-3 mb-4">
+                        <img src="../wildbox.png" alt="Wildbox Logo" class="w-8 h-8 object-contain logo-inverted">
+                        <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">Wildbox</span>
                     </div>
                     <p class="text-gray-500 leading-relaxed">Open-source security operations platform. Enterprise-grade protection without vendor lock-in.</p>
                 </div>
                 <div>
                     <h4 class="font-semibold mb-4 text-white">Product</h4>
                     <ul class="space-y-3 text-gray-500">
-                        <li><a href="#features" class="hover:text-white transition-colors">Features</a></li>
-                        <li><a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">GitHub Repository</a></li>
-                        <li><a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Report Issues</a></li>
-                        <li><a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Community Discussions</a></li>
+                        <li><a href="#features" class="hover:text-blue-400 transition-colors">Features</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">GitHub Repository</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">Report Issues</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">Community Discussions</a></li>
                     </ul>
                 </div>
                 <div>
                     <h4 class="font-semibold mb-4 text-white">Documentation</h4>
                     <ul class="space-y-3 text-gray-500">
-                        <li><a href="docs.html" class="hover:text-white transition-colors">Getting Started</a></li>
-                        <li><a href="api-reference.html" class="hover:text-white transition-colors">API Reference</a></li>
-                        <li><a href="api-reference.html" class="hover:text-white transition-colors">API Portal</a></li>
-                        <li><a href="docs.html" class="hover:text-white transition-colors">Architecture Guide</a></li>
+                        <li><a href="docs.html" class="hover:text-blue-400 transition-colors">Getting Started</a></li>
+                        <li><a href="api-reference.html" class="hover:text-blue-400 transition-colors">API Reference</a></li>
+                        <li><a href="api-reference.html" class="hover:text-blue-400 transition-colors">API Portal</a></li>
+                        <li><a href="docs.html" class="hover:text-blue-400 transition-colors">Architecture Guide</a></li>
                     </ul>
                 </div>
                 <div>
                     <h4 class="font-semibold mb-4 text-white">Legal</h4>
                     <ul class="space-y-3 text-gray-500">
-                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">MIT License</a></li>
-                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/security/policy.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Security Policy</a></li>
-                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" class="hover:text-white transition-colors">Contributing</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">MIT License</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/security/policy.md" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">Security Policy</a></li>
+                        <li><a href="https://github.com/fabriziosalmi/wildbox/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer" class="hover:text-blue-400 transition-colors">Contributing</a></li>
                     </ul>
                 </div>
             </div>
 
-            <div class="border-t border-gray-800 pt-8 text-center text-gray-500">
+            <div class="border-t border-blue-900/30 pt-8 text-center text-gray-500">
                 <p class="mb-2">© 2025 Wildbox. Built with ❤️ for the security community.</p>
-                <p>Open-source • MIT License • Created by <a href="https://github.com/fabriziosalmi" target="_blank" rel="noopener noreferrer" class="text-red-400 hover:text-red-300 transition-colors">Fabrizio Salmi</a></p>
+                <p>Open-source • MIT License • Created by <a href="https://github.com/fabriziosalmi" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 transition-colors">Fabrizio Salmi</a></p>
             </div>
         </div>
     </footer>
