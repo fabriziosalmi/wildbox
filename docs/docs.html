@@ -333,7 +333,7 @@
         /* TOC Styles */
         .toc {
             background: rgba(59, 130, 246, 0.08);
-            border-left: 4px solid #ef4444;
+            border-left: 4px solid #3b82f6;
             padding: 1.5rem;
             margin: 2rem 0;
             border-radius: 8px;
@@ -342,7 +342,7 @@
 
         .toc h3 {
             margin: 0 0 0.5rem 0;
-            color: #f87171;
+            color: #60a5fa;
         }
 
         .toc ul {
@@ -355,14 +355,14 @@
         }
 
         .toc a {
-            color: #f87171;
+            color: #60a5fa;
             text-decoration: none;
             border-bottom: 1px solid transparent;
             transition: all 0.2s ease;
         }
 
         .toc a:hover {
-            border-bottom: 1px solid #f87171;
+            border-bottom: 1px solid #60a5fa;
         }
 
         /* List Styles */
@@ -658,15 +658,15 @@
                     <div class="glass-effect p-10 rounded-xl hover-lift">
                         <h2 class="text-3xl font-bold mb-6 gradient-text">Documentation by Role</h2>
                         <div class="space-y-6">
-                            <div class="border-l-4 border-red-500 pl-4">
+                            <div class="border-l-4 border-blue-500 pl-4">
                                 <h4 class="font-semibold text-blue-400 mb-2 text-lg">👨‍💻 Developer</h4>
                                 <p class="text-gray-400 leading-relaxed">Start with <button onclick="loadDoc('quickstart')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-blue-400 hover:text-blue-300 hover:underline transition">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Credentials Guide</button>.</p>
                             </div>
-                            <div class="border-l-4 border-red-500 pl-4">
+                            <div class="border-l-4 border-blue-500 pl-4">
                                 <h4 class="font-semibold text-blue-400 mb-2 text-lg">🛡️ Security Engineer</h4>
                                 <p class="text-gray-400 leading-relaxed">Review <button onclick="loadDoc('security-policy')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Audit Report</button> for comprehensive security analysis.</p>
                             </div>
-                            <div class="border-l-4 border-red-500 pl-4">
+                            <div class="border-l-4 border-blue-500 pl-4">
                                 <h4 class="font-semibold text-blue-400 mb-2 text-lg">⚙️ System Administrator</h4>
                                 <p class="text-gray-400 leading-relaxed">Follow <button onclick="loadDoc('deployment')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Deployment Guide</button> for production setup.</p>
                             </div>
@@ -1124,6 +1124,9 @@
                             const html = markdownToHtml(markdown);
                             content.innerHTML = html;
 
+                            // Wait for DOM to update before highlighting and scrolling
+                            await new Promise(resolve => requestAnimationFrame(resolve));
+
                             // Highlight code blocks - clear previous highlighting first
                             document.querySelectorAll('pre code').forEach(block => {
                                 if (block.dataset.highlighted) {
@@ -1138,9 +1141,13 @@
 
                             // Scroll to anchor if specified
                             if (targetAnchor) {
-                                setTimeout(() => {
-                                    scrollToAnchor(targetAnchor);
-                                }, 200);
+                                console.log('Target anchor requested:', targetAnchor);
+                                // Use requestAnimationFrame to ensure DOM is fully rendered
+                                requestAnimationFrame(() => {
+                                    requestAnimationFrame(() => {
+                                        scrollToAnchor(targetAnchor);
+                                    });
+                                });
                             } else {
                                 // Scroll to top of main content area
                                 document.querySelector('main').scrollTo({ top: 0, behavior: 'smooth' });
@@ -1173,17 +1180,45 @@
 
         // Helper function to scroll to anchor with visual feedback
         function scrollToAnchor(anchorId) {
-            const targetElement = document.getElementById(anchorId);
-            if (targetElement) {
-                targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                // Highlight the section briefly
-                targetElement.style.transition = 'background-color 0.5s ease';
-                targetElement.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
-                setTimeout(() => {
-                    targetElement.style.backgroundColor = '';
-                }, 2000);
+            console.log('Attempting to scroll to anchor:', anchorId);
+            
+            // Try to find the element
+            let targetElement = document.getElementById(anchorId);
+            
+            // If not found, try a few more times (for async content loading)
+            if (!targetElement) {
+                let attempts = 0;
+                const maxAttempts = 5;
+                const retryInterval = setInterval(() => {
+                    attempts++;
+                    console.log(`Retry attempt ${attempts} for anchor:`, anchorId);
+                    targetElement = document.getElementById(anchorId);
+                    
+                    if (targetElement || attempts >= maxAttempts) {
+                        clearInterval(retryInterval);
+                        
+                        if (targetElement) {
+                            console.log('Target element found on retry:', targetElement);
+                            performScroll(targetElement);
+                        } else {
+                            console.warn('Target element not found after retries:', anchorId);
+                            console.log('Available anchors:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+                        }
+                    }
+                }, 200);
             } else {
-                console.warn('Target element not found:', anchorId);
+                console.log('Target element found immediately:', targetElement);
+                performScroll(targetElement);
+            }
+            
+            function performScroll(element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                // Highlight the section briefly
+                element.style.transition = 'background-color 0.5s ease';
+                element.style.backgroundColor = 'rgba(59, 130, 246, 0.1)';
+                setTimeout(() => {
+                    element.style.backgroundColor = '';
+                }, 2000);
             }
         }
 
@@ -1204,21 +1239,24 @@
             let section = '';
             let anchor = '';
             
-            // Check if hash contains section#anchor format
+            // Check if hash contains section#anchor format (e.g., #quickstart#installation)
             if (fullHash.includes('#')) {
                 const parts = fullHash.split('#');
                 section = parts[0];
                 anchor = parts[1];
-            } else if (fullHash && (docUrls[fullHash] !== undefined || document.getElementById(`${fullHash}-section`))) {
-                // It's just a section name
-                section = fullHash;
             } else if (fullHash) {
-                // It's just an anchor - try to find it in current section
-                anchor = fullHash;
+                // Single hash value - check if it's a known section first
+                if (docUrls[fullHash] !== undefined || document.getElementById(`${fullHash}-section`)) {
+                    // It's a section name
+                    section = fullHash;
+                } else {
+                    // It's an anchor in the welcome section
+                    anchor = fullHash;
+                }
             }
             
             // Load section if specified
-            if (section && (docUrls[section] !== undefined || document.getElementById(`${section}-section`))) {
+            if (section) {
                 loadDoc(section, anchor || null);
             } else if (anchor) {
                 // Just scroll to anchor in welcome section
