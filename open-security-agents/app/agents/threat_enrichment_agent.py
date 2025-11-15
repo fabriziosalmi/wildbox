@@ -35,12 +35,19 @@ class ThreatEnrichmentAgent:
     
     def _initialize_llm(self) -> ChatOpenAI:
         """Initialize the OpenAI LLM"""
-        return ChatOpenAI(
-            model=settings.openai_model,
-            temperature=settings.openai_temperature,
-            openai_api_key=settings.openai_api_key,
-            streaming=False
-        )
+        llm_kwargs = {
+            "model": settings.openai_model,
+            "temperature": settings.openai_temperature,
+            "openai_api_key": settings.openai_api_key,
+            "streaming": False
+        }
+        
+        # Support for local LLM endpoints (e.g., LM Studio)
+        if settings.openai_base_url:
+            llm_kwargs["base_url"] = settings.openai_base_url
+            logger.info(f"Using custom OpenAI base URL: {settings.openai_base_url}")
+        
+        return ChatOpenAI(**llm_kwargs)
     
     def _create_agent(self) -> AgentExecutor:
         """Create the LangChain agent with tools and prompt"""
