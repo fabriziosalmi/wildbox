@@ -16,6 +16,18 @@ logger = logging.getLogger(__name__)
 class WildboxAPIClient:
     """Client for interacting with Wildbox microservices"""
     
+    # Mapping of internal tool names to actual API endpoints
+    # Format: "internal_name": ("api_endpoint", {"param_mapping": "actual_param"})
+    TOOL_ENDPOINT_MAP = {
+        "whois_lookup": ("whois_lookup", {"target": "domain"}),
+        "dns_lookup": ("dns_enumerator", {"domain": "domain"}),
+        "geolocation_lookup": ("ip_geolocation", {"ip": "ip_address"}),
+        "network_port_scanner": ("network_port_scanner", {"target": "target"}),
+        "reputation_check": ("threat_intelligence_aggregator", {"ioc": "ioc_value"}),
+        "hash_lookup": ("malware_hash_checker", {"hash": "hash"}),
+        "url_analyzer": ("url_analyzer", {"url": "url"}),
+    }
+    
     def __init__(self):
         self.api_url = settings.wildbox_api_url
         self.data_url = settings.wildbox_data_url
@@ -36,27 +48,43 @@ class WildboxAPIClient:
         Execute a security tool via Open Security API
         
         Args:
-            tool_name: Name of the tool to run
-            params: Parameters for the tool
+            tool_name: Name of the tool to run (internal name)
+            params: Parameters for the tool (using internal param names)
             
         Returns:
             Tool execution results
         """
         try:
-            url = f"{self.api_url}/api/v1/tools/{tool_name}/run"
+            # Get endpoint mapping
+            if tool_name not in self.TOOL_ENDPOINT_MAP:
+                logger.warning(f"No endpoint mapping for tool '{tool_name}', using default")
+                endpoint_name = tool_name
+                param_mapping = {}
+            else:
+                endpoint_name, param_mapping = self.TOOL_ENDPOINT_MAP[tool_name]
+            
+            # Transform parameters according to mapping
+            transformed_params = {}
+            for internal_param, value in params.items():
+                # Use mapped parameter name if available, otherwise keep original
+                actual_param = param_mapping.get(internal_param, internal_param)
+                transformed_params[actual_param] = value
+            
+            # Construct correct API URL (no /run suffix, /api/tools/ base path)
+            url = f"{self.api_url}/api/tools/{endpoint_name}"
             
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                logger.debug(f"Running tool '{tool_name}' with params: {params}")
+                logger.debug(f"Running tool '{endpoint_name}' at {url} with params: {transformed_params}")
                 
                 response = await client.post(
                     url,
-                    json={"parameters": params},
+                    json=transformed_params,  # Send params directly, not wrapped
                     headers=self.headers
                 )
                 response.raise_for_status()
                 
                 result = response.json()
-                logger.debug(f"Tool '{tool_name}' completed successfully")
+                logger.debug(f"Tool '{endpoint_name}' completed successfully")
                 return result
                 
         except httpx.HTTPError as e:
