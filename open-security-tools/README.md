@@ -442,6 +442,206 @@ curl -X GET "http://127.0.0.1:8000/api/tools/sample_tool/info" \
   -H "Authorization: Bearer wildbox-security-api-key-2025"
 ```
 
+## ⚡ Asynchronous Tool Execution
+
+For long-running security tools (e.g., port scanners, vulnerability assessments), Wildbox provides **asynchronous task execution** using Celery and Redis. This allows tools to run in the background without blocking the API.
+
+### Why Async Execution?
+
+- **Non-blocking API**: Get immediate response with a task ID instead of waiting for tool completion
+- **Scalability**: Execute multiple tools concurrently without tying up API workers
+- **Reliability**: Tasks survive server restarts and can be retried on failure
+- **Monitoring**: Track task progress and retrieve results at any time
+
+### Performance Comparison
+
+| Execution Mode | Response Time | Use Case |
+|----------------|---------------|----------|
+| **Synchronous** | 500-2000ms | Quick lookups (WHOIS, DNS) |
+| **Asynchronous** | 15-20ms | Long scans (port scanning, vulnerability assessments) |
+
+**Speedup: ~30x faster API response** for background-compatible tools.
+
+### Architecture
+
+```
+Client → FastAPI (submit task) → Redis Queue → Celery Worker (execute tool) → Redis (store result)
+         ↓ (18ms response)                      ↓ (runs in background)
+         task_id                                 ↓
+                                                Result stored
+         
+Client → FastAPI (check status) → Redis → Retrieve result
+```
+
+### Step 1: Submit a Task
+
+Submit a tool for asynchronous execution using the `/async` endpoint:
+
+```bash
+curl -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
+  -H "X-API-Key: wildbox-security-api-key-2025" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "domain": "cloudflare.com"
+  }'
+```
+
+**Response (immediate, ~18ms):**
+```json
+{
+  "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
+  "status": "accepted",
+  "message": "Task queued for execution"
+}
+```
+
+### Step 2: Check Task Status
+
+Query the task status and result using the task ID:
+
+```bash
+curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
+  -H "X-API-Key: wildbox-security-api-key-2025"
+```
+
+**Response while task is running:**
+```json
+{
+  "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
+  "state": "PENDING",
+  "status": "pending",
+  "message": "Task is waiting to be executed"
+}
+```
+
+**Response when task is completed:**
+```json
+{
+  "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
+  "state": "SUCCESS",
+  "status": "completed",
+  "duration": 0.338,
+  "result": {
+    "tool_name": "whois_lookup",
+    "execution_time": 0.338,
+    "domain": "cloudflare.com",
+    "success": true,
+    "registrar": "Cloudflare, Inc.",
+    "creation_date": "2009-02-17",
+    "expiration_date": "2028-02-17",
+    "name_servers": ["ns1.cloudflare.com", "ns2.cloudflare.com"]
+  }
+}
+```
+
+**Response if task failed:**
+```json
+{
+  "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
+  "state": "FAILURE",
+  "status": "failed",
+  "error": "DNS resolution failed: [Errno -2] Name or service not known"
+}
+```
+
+### Step 3: Cancel a Running Task (Optional)
+
+Cancel a task that is still pending or running:
+
+```bash
+curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
+  -H "X-API-Key: wildbox-security-api-key-2025"
+```
+
+**Response:**
+```json
+{
+  "status": "cancelled",
+  "message": "Task cancellation requested"
+}
+```
+
+**Note:** Tasks already completed cannot be cancelled.
+
+### Complete Workflow Example
+
+```bash
+# 1. Submit WHOIS lookup task
+TASK_ID=$(curl -s -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
+  -H "X-API-Key: wildbox-security-api-key-2025" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "microsoft.com"}' | jq -r '.task_id')
+
+echo "Task submitted: $TASK_ID"
+
+# 2. Wait briefly for execution
+sleep 2
+
+# 3. Retrieve result
+curl -X GET "http://127.0.0.1:8000/api/tasks/$TASK_ID" \
+  -H "X-API-Key: wildbox-security-api-key-2025" | jq
+```
+
+### Task States
+
+| State | Description | Next Action |
+|-------|-------------|-------------|
+| `PENDING` | Task queued, not yet started | Wait and poll again |
+| `STARTED` | Task is currently executing | Wait and poll again |
+| `SUCCESS` | Task completed successfully | Retrieve result from `result` field |
+| `FAILURE` | Task failed with error | Check `error` field for details |
+| `RETRY` | Task failed, retrying | Wait for final state |
+| `REVOKED` | Task was cancelled | No further action |
+
+### Monitoring Tasks
+
+Access the Celery Flower monitoring UI to view all running tasks:
+
+```bash
+# Flower is available at:
+http://127.0.0.1:5555
+```
+
+**Features:**
+- Real-time task monitoring
+- Worker status and performance metrics
+- Task history and logs
+- Task rate graphs
+
+### Which Tools Support Async?
+
+**All 55 security tools** support asynchronous execution. Recommended async usage for:
+
+- **Port scanners** (network_port_scanner, service_version_scanner)
+- **Vulnerability assessments** (sql_injection_scanner, xss_scanner)
+- **Long-running scans** (directory_fuzzer, subdomain_enumerator)
+
+Quick tools like WHOIS lookups can use either sync or async depending on your architecture preferences.
+
+### Configuration
+
+Async execution is configured via environment variables:
+
+```bash
+# Redis connection (task broker and result backend)
+REDIS_URL=redis://wildbox-redis:6379/2
+
+# Celery worker settings
+CELERY_WORKER_CONCURRENCY=4           # Parallel task execution
+CELERY_TASK_TIME_LIMIT=600            # Hard timeout (10 minutes)
+CELERY_TASK_SOFT_TIME_LIMIT=570       # Soft timeout (9.5 minutes)
+CELERY_WORKER_MAX_TASKS_PER_CHILD=50  # Worker restart after N tasks
+```
+
+### Best Practices
+
+1. **Use async for long-running tools** (>1 second execution time)
+2. **Poll task status** at reasonable intervals (every 500ms to 2 seconds)
+3. **Set appropriate timeouts** based on tool execution expectations
+4. **Handle all task states** in your client code (PENDING, SUCCESS, FAILURE)
+5. **Clean up completed tasks** by deleting results you no longer need
+6. **Monitor Flower** for worker health and task queue depth
+
 ## 🔧 Adding New Security Tools
 
 To add a new security tool, create a new directory in `app/tools/` with the following structure:
