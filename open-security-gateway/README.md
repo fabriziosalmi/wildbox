@@ -23,17 +23,28 @@ The gateway acts as a reverse proxy and security enforcer, implementing:
 - Docker and Docker Compose
 - Make (optional, for convenience commands)
 
-### 1. Start the Gateway
+### 1. Configure Environment
 
 ```bash
 # Clone and navigate to the gateway directory
 cd open-security-gateway
 
+# Copy environment template
+cp .env.example .env
+
+# IMPORTANT: Edit .env and set GATEWAY_INTERNAL_SECRET
+# Generate a secure secret: openssl rand -hex 32
+nano .env
+```
+
+### 2. Start the Gateway
+
+```bash
 # Generate SSL certificates and start services
 make start
 ```
 
-### 2. Configure Local DNS
+### 3. Configure Local DNS
 
 Add these entries to your `/etc/hosts` file:
 
@@ -43,7 +54,7 @@ Add these entries to your `/etc/hosts` file:
 127.0.0.1 dashboard.wildbox.local
 ```
 
-### 3. Verify Installation
+### 4. Verify Installation
 
 ```bash
 # Check health
@@ -140,10 +151,30 @@ The gateway enforces feature access based on subscription plans:
 
 ### Environment Variables
 
+Copy `.env.example` to `.env` and customize the values:
+
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
+
+#### Required Variables
+
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WILDBOX_ENV` | `development` | Environment mode |
-| `GATEWAY_LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
+| `GATEWAY_INTERNAL_SECRET` | ⚠️ **REQUIRED** | Secret for authenticating internal service requests. Generate with `openssl rand -hex 32` |
+| `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | URL of the identity service for authentication |
+
+#### Optional Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WILDBOX_ENV` | `development` | Environment mode (`development`, `staging`, `production`) |
+| `GATEWAY_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+| `AUTH_CACHE_TTL` | `300` | Authentication cache TTL in seconds (recommended: 300) |
+| `GATEWAY_DEBUG` | `false` | Enable debug mode (⚠️ Never enable in production!) |
+
+⚠️ **SECURITY WARNING**: Always change `GATEWAY_INTERNAL_SECRET` in production! Never use default values.
 
 ### Backend Service URLs
 
