@@ -247,26 +247,36 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
     """
     start_time = datetime.utcnow()
     
-    # Initialize execution result
-    execution_result = PlaybookExecutionResult(
-        run_id=run_id,
-        playbook_id=playbook_id,
-        playbook_name="",
-        status=ExecutionStatus.RUNNING,
-        start_time=start_time,
-        trigger_data=trigger_data,
-        context={"trigger": trigger_data}
-    )
-    
     try:
-        # Get the playbook
+        # Get the playbook - reload to ensure worker has fresh copy
         try:
+            # Ensure playbook_parser has loaded playbooks in this worker process
+            if not playbook_parser.playbooks:
+                playbook_parser.load_playbooks()
             playbook = playbook_parser.get_playbook(playbook_id)
-            execution_result.playbook_name = playbook.name
         except KeyError:
             raise WorkflowExecutionError(f"Playbook '{playbook_id}' not found")
         
-        # Save initial state
+        # Load existing state from Redis (created in start_execution)
+        execution_result = workflow_engine.get_execution_state(run_id)
+        
+        if not execution_result:
+            # Fallback: create new state if not found (shouldn't happen)
+            execution_result = PlaybookExecutionResult(
+                run_id=run_id,
+                playbook_id=playbook_id,
+                playbook_name=playbook.name,
+                status=ExecutionStatus.RUNNING,
+                start_time=start_time,
+                trigger_data=trigger_data,
+                context={"trigger": trigger_data}
+            )
+        else:
+            # Update status to RUNNING
+            execution_result.status = ExecutionStatus.RUNNING
+            execution_result.playbook_name = playbook.name
+        
+        # Save updated state (QUEUED -> RUNNING transition)
         workflow_engine.save_execution_state(run_id, execution_result)
         workflow_engine.add_log(run_id, f"Starting execution of playbook '{playbook.name}'")
         
@@ -375,6 +385,8 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         execution_result.end_time = datetime.utcnow()
         execution_result.duration_seconds = (execution_result.end_time - execution_result.start_time).total_seconds()
         
+        # FIX: Persist completed state to Redis
+        workflow_engine.save_execution_state(run_id, execution_result)
         workflow_engine.add_log(
             run_id, 
             f"Playbook execution completed successfully in {execution_result.duration_seconds:.2f}s"
@@ -382,17 +394,32 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         
     except Exception as e:
         # Handle execution failure
+        # Ensure we have an execution_result even if error occurred early
+        if 'execution_result' not in locals():
+            execution_result = PlaybookExecutionResult(
+                run_id=run_id,
+                playbook_id=playbook_id,
+                playbook_name="Unknown",
+                status=ExecutionStatus.FAILED,
+                start_time=start_time,
+                trigger_data=trigger_data,
+                context={"trigger": trigger_data}
+            )
+        
         execution_result.status = ExecutionStatus.FAILED
         execution_result.end_time = datetime.utcnow()
         execution_result.duration_seconds = (execution_result.end_time - execution_result.start_time).total_seconds()
         execution_result.error = str(e)
         
+        # FIX: Persist failed state to Redis
+        workflow_engine.save_execution_state(run_id, execution_result)
         workflow_engine.add_log(run_id, f"Playbook execution failed: {str(e)}", level="ERROR")
         logger.error(f"Playbook execution {run_id} failed: {e}")
     
     finally:
-        # Save final state
-        workflow_engine.save_execution_state(run_id, execution_result)
+        # Final state save (defensive - already saved in try/except blocks)
+        if 'execution_result' in locals():
+            workflow_engine.save_execution_state(run_id, execution_result)
     
     return execution_result.dict()
 
@@ -456,12 +483,25 @@ def start_execution(playbook_id: str, trigger_data: Dict[str, Any] = None) -> st
     """
     # Validate playbook exists
     try:
-        playbook_parser.get_playbook(playbook_id)
+        playbook = playbook_parser.get_playbook(playbook_id)
     except KeyError:
         raise WorkflowExecutionError(f"Playbook '{playbook_id}' not found")
     
     # Generate unique run ID
     run_id = str(uuid.uuid4())
+    
+    # FIX: Persist initial state to Redis BEFORE enqueueing
+    initial_state = PlaybookExecutionResult(
+        run_id=run_id,
+        playbook_id=playbook_id,
+        playbook_name=playbook.name,
+        status=ExecutionStatus.QUEUED,
+        start_time=datetime.utcnow(),
+        trigger_data=trigger_data or {},
+        context={"trigger": trigger_data or {}}
+    )
+    workflow_engine.save_execution_state(run_id, initial_state)
+    workflow_engine.add_log(run_id, f"Playbook '{playbook.name}' queued for execution")
     
     # Start execution
     execute_playbook_actor.send(run_id, playbook_id, trigger_data or {})

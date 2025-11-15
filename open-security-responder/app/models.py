@@ -106,6 +106,7 @@ class Playbook(BaseModel):
 
 class ExecutionStatus(str, Enum):
     """Possible execution states"""
+    QUEUED = "queued"      # Added for state persistence fix
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"

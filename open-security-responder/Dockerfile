@@ -32,6 +32,10 @@ RUN mkdir -p /app/playbooks /app/logs
 # Create non-root user
 RUN adduser --disabled-password --gecos '' responder \
     && chown -R responder:responder /app
+
+# Make entrypoint script executable
+RUN chmod +x /app/scripts/entrypoint.sh
+
 USER responder
 
 # Expose port
@@ -41,5 +45,5 @@ EXPOSE 8018
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8018/health || exit 1
 
-# Default command
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8018"]
+# Use entrypoint script to start both Dramatiq worker and uvicorn
+CMD ["/app/scripts/entrypoint.sh"]
