@@ -3,13 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
 from app.auth import verify_api_key
-from app.secure_execution_manager import SecureToolExecutionManager
+from app.execution_manager import ToolExecutionManager
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
-# Initialize the secure execution manager
-secure_execution_manager = SecureToolExecutionManager()
+# Initialize the execution manager
+execution_manager = ToolExecutionManager()
 
 # Create the main API router
 router = APIRouter(prefix="/api", tags=["Security Tools"])
@@ -108,14 +108,31 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
     input_schema_class = None
     output_schema_class = None
     
+    # Import BaseModel for isinstance check
+    from pydantic import BaseModel
+    
     for attr_name in dir(schemas_module):
-        attr = getattr(schemas_module, attr_name)
-        if (hasattr(attr, '__bases__') and 
-            any(base.__name__ == 'BaseModel' for base in attr.__bases__)):
-            if 'Input' in attr.__name__ or 'Request' in attr.__name__:
-                input_schema_class = attr
-            elif 'Output' in attr.__name__ or 'Response' in attr.__name__:
-                output_schema_class = attr
+        try:
+            attr = getattr(schemas_module, attr_name)
+            # Check if it's a Pydantic BaseModel subclass (not the base class itself)
+            if (isinstance(attr, type) and 
+                issubclass(attr, BaseModel) and 
+                attr is not BaseModel):
+                attr_name_lower = attr.__name__.lower()
+                # Prioritize tool-specific schemas
+                if 'input' in attr_name_lower or 'request' in attr_name_lower:
+                    # Skip base classes
+                    if attr.__name__ not in ('BaseToolInput',):
+                        input_schema_class = attr
+                elif 'output' in attr_name_lower or 'response' in attr_name_lower:
+                    # Skip base classes
+                    if attr.__name__ not in ('BaseToolOutput',):
+                        output_schema_class = attr
+        except (TypeError, AttributeError):
+            # Skip non-class attributes
+            continue
+    
+    logger.info(f"Tool {tool_name}: Found Input={input_schema_class.__name__ if input_schema_class else None}, Output={output_schema_class.__name__ if output_schema_class else None}")
     
     if not input_schema_class or not output_schema_class:
         logger.error(f"Could not find input/output schemas for tool: {tool_name}")
@@ -154,8 +171,8 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         })
         
         try:
-            # Execute tool with the secure execution manager
-            execution_result = await secure_execution_manager.execute_tool_secure(
+            # Execute tool with the execution manager
+            execution_result = await execution_manager.execute_tool(
                 tool_func=execute_func,
                 input_data=validated_input,
                 tool_name=tool_name,
@@ -169,7 +186,23 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                     "duration": execution_result.duration,
                     "request_id": getattr(request.state, 'request_id', 'unknown')
                 })
-                return execution_result.result
+                
+                # Enrich result with tool metadata
+                result_data = execution_result.result
+                if hasattr(result_data, 'model_dump'):
+                    # Pydantic model - update fields
+                    result_dict = result_data.model_dump()
+                    result_dict['tool_name'] = tool_name
+                    result_dict['execution_time'] = execution_result.duration
+                    return output_schema_class(**result_dict)
+                elif isinstance(result_data, dict):
+                    # Dict - add metadata
+                    result_data['tool_name'] = tool_name
+                    result_data['execution_time'] = execution_result.duration
+                    return output_schema_class(**result_data)
+                else:
+                    # Unknown type, return as is
+                    return result_data
             elif execution_result.status.value == "timeout":
                 raise HTTPException(
                     status_code=status.HTTP_408_REQUEST_TIMEOUT,

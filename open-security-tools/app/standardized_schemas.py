@@ -48,9 +48,9 @@ class BaseToolInput(BaseModel):
 class BaseToolOutput(BaseModel):
     """Base output schema that all tools should inherit from."""
     success: bool = Field(..., description="Whether the tool execution was successful")
-    tool_name: str = Field(..., description="Name of the executed tool")
+    tool_name: str = Field(default="unknown", description="Name of the executed tool")
     tool_version: str = Field(default="1.0.0", description="Version of the tool")
-    execution_time: float = Field(..., description="Execution time in seconds")
+    execution_time: float = Field(default=0.0, description="Execution time in seconds")
     timestamp: datetime = Field(default_factory=datetime.utcnow, description="Execution timestamp")
     target: Optional[str] = Field(None, description="Target that was analyzed")
     summary: Optional[str] = Field(None, description="Brief summary of results")

@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+import inspect
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -98,8 +99,17 @@ class ToolExecutionManager:
             status = ExecutionStatus.FAILED  # Default status
             
             try:
-                # Create the execution task
-                task = asyncio.create_task(tool_func(input_data))
+                # Handle both sync and async tool functions
+                if inspect.iscoroutinefunction(tool_func):
+                    # Async function - create task directly
+                    task = asyncio.create_task(tool_func(input_data))
+                else:
+                    # Sync function - wrap in async and run in executor
+                    async def run_sync():
+                        loop = asyncio.get_event_loop()
+                        return await loop.run_in_executor(None, tool_func, input_data)
+                    task = asyncio.create_task(run_sync())
+                
                 self._active_executions[execution_id] = task
                 
                 # Execute with timeout
