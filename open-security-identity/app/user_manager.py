@@ -14,11 +14,44 @@ from fastapi_users.authentication import (
 )
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
+import jwt
 
 from .database import get_db
 from .models import User, Team, TeamMembership, Subscription, TeamRole, SubscriptionPlan, SubscriptionStatus
 from .config import settings
 from .billing import billing_service
+
+
+# Custom JWT Strategy with debug logging
+class DebugJWTStrategy(JWTStrategy):
+    async def read_token(self, token: Optional[str], user_manager) -> Optional[uuid.UUID]:
+        """Override to add debug logging for token validation."""
+        print(f"\n[DEBUG] ========== TOKEN VALIDATION ATTEMPT ==========")
+        print(f"[DEBUG] Token received: {token[:50] if token else 'None'}... (truncated)")
+        print(f"[DEBUG] Secret being used: {self.secret[:20]}... (truncated)")
+
+        try:
+            # Manually decode to see what's inside
+            if token:
+                decoded = jwt.decode(token, self.secret, algorithms=["HS256"])
+                print(f"[DEBUG] Token successfully decoded!")
+                print(f"[DEBUG] Token payload: {decoded}")
+
+            # Call parent implementation
+            result = await super().read_token(token, user_manager)
+            print(f"[DEBUG] Token validation result: {result}")
+            print(f"[DEBUG] ===============================================\n")
+            return result
+
+        except jwt.ExpiredSignatureError as e:
+            print(f"[DEBUG] ❌ Token expired: {e}")
+            raise
+        except jwt.InvalidTokenError as e:
+            print(f"[DEBUG] ❌ Invalid token: {e}")
+            raise
+        except Exception as e:
+            print(f"[DEBUG] ❌ Unexpected error during token validation: {type(e).__name__}: {e}")
+            raise
 
 
 # 1. Database Adapter
@@ -31,11 +64,23 @@ bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
 # 3. JWT Strategy (come vengono creati e letti i token)
-def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(
+def get_jwt_strategy() -> DebugJWTStrategy:
+    """
+    Creates a new JWT strategy instance for each request.
+    This function is called by FastAPI Users as a dependency.
+    """
+    # DEBUG: Log the JWT secret being used
+    print(f"[DEBUG] ========== JWT STRATEGY CREATED ==========")
+    print(f"[DEBUG] Secret (first 20 chars): {settings.jwt_secret_key[:20]}...")
+    print(f"[DEBUG] Algorithm: HS256")
+    print(f"[DEBUG] Lifetime: {settings.jwt_access_token_expire_minutes * 60} seconds")
+    print(f"[DEBUG] ============================================")
+    
+    strategy = DebugJWTStrategy(
         secret=settings.jwt_secret_key,
         lifetime_seconds=settings.jwt_access_token_expire_minutes * 60
     )
+    return strategy
 
 
 # 4. Authentication Backend
