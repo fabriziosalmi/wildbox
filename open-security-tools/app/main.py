@@ -28,6 +28,7 @@ from app.exceptions import (
     starlette_http_exception_handler
 )
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
+from app.api.async_router import router as async_router
 from app.web.router import router as web_router
 from app.web.router import DISCOVERED_TOOLS as web_discovered_tools
 from app.execution_manager import execution_manager
@@ -245,6 +246,7 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(api_router)
+    app.include_router(async_router)  # Async execution endpoints
     app.include_router(web_router)
     
     # Mount static files

@@ -60,6 +60,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - REDIS_URL=redis://wildbox-redis:6379/2
+    depends_on:
+      - wildbox-redis
     networks:
       - wildbox
     healthcheck:
@@ -67,6 +70,49 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # Celery Worker for Async Tool Execution
+  tools-worker:
+    build:
+      context: ./open-security-tools
+      dockerfile: Dockerfile
+    container_name: open-security-tools-worker
+    restart: unless-stopped
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=4 --max-tasks-per-child=50 -I app.tasks
+    environment:
+      - API_KEY=${API_KEY}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=DEBUG
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - REDIS_URL=redis://wildbox-redis:6379/2
+    depends_on:
+      - wildbox-redis
+      - api
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Flower - Celery Monitoring UI (optional, for development)
+  tools-flower:
+    build:
+      context: ./open-security-tools
+      dockerfile: Dockerfile
+    container_name: open-security-tools-flower
+    restart: unless-stopped
+    command: celery -A app.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    environment:
+      - REDIS_URL=redis://wildbox-redis:6379/2
+    depends_on:
+      - wildbox-redis
+      - tools-worker
+    networks:
+      - wildbox
 
   # Data Service (Threat Intelligence & IOCs)
   data:
