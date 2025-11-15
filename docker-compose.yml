@@ -395,6 +395,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-development-only}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}  # e.g., http://host.docker.internal:1234/v1
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}  # e.g., qwen2.5-coder-3b-instruct-mlx
+      - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
@@ -402,6 +403,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
       - wildbox-redis
+      - api
     networks:
       - wildbox
     healthcheck:
@@ -410,26 +412,8 @@ services:
       timeout: 10s
       retries: 3
 
-  # Agents Celery Worker (AI Processing Tasks)
-  agents-worker:
-    build:
-      context: ./open-security-agents
-      dockerfile: Dockerfile
-    container_name: open-security-agents-worker
-    restart: unless-stopped
-    command: celery -A app.worker worker --loglevel=info --concurrency=4
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-development-only}
-      - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
-      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
-      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
-      - DEBUG=${DEBUG:-false}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-    depends_on:
-      - wildbox-redis
-    networks:
-      - wildbox
-
+  # NOTE: Agents worker is now started by the entrypoint.sh script
+  # in the main agents container, so no separate worker container needed.
 
 
   # ============================================================================
