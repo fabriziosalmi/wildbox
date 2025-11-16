@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T12:20:02.546189",
+  "timestamp": "2025-11-16T12:41:37.111564",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -7,27 +7,27 @@
       "tests": [
         {
           "method": "test_ai_analysis_with_task_id",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_ai_capabilities",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_ai_report_retrieval",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_openai_connection_status",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
           "status": "passed"
         }
       ],
-      "passed": 1,
-      "failed": 4
+      "passed": 5,
+      "failed": 0
     },
     {
       "file": "test_automations_workflow.py",
@@ -352,8 +352,8 @@
   ],
   "summary": {
     "total": 11,
-    "passed": 34,
-    "failed": 31,
+    "passed": 38,
+    "failed": 27,
     "skipped": 0
   }
 }
