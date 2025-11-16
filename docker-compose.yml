@@ -127,7 +127,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:CHANGE-THIS-DB-PASSWORD@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/data}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
     command: python -m app.scheduler.main
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/data}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -287,7 +287,7 @@ services:
     ports:
       - "8013:8013"
     environment:
-      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/guardian}
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/guardian}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/1}
@@ -320,7 +320,7 @@ services:
     ports:
       - "8018:8018"
     environment:
-      - DATABASE_URL=${RESPONDER_DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/responder}
+      - DATABASE_URL=${RESPONDER_DATABASE_URL:-postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/responder}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
