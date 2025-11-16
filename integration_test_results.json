@@ -1,0 +1,414 @@
+{
+  "timestamp": "2025-11-16T01:52:01.044405",
+  "tests": [
+    {
+      "file": "test_agents_ai.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_ai_analysis_with_task_id",
+          "status": "failed"
+        },
+        {
+          "method": "test_ai_capabilities",
+          "status": "failed"
+        },
+        {
+          "method": "test_ai_report_retrieval",
+          "status": "failed"
+        },
+        {
+          "method": "test_openai_connection_status",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "passed"
+        }
+      ],
+      "passed": 1,
+      "failed": 5
+    },
+    {
+      "file": "test_automations_workflow.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_automation_health_status",
+          "status": "failed"
+        },
+        {
+          "method": "test_n8n_ui_access",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "failed"
+        },
+        {
+          "method": "test_webhook_execution",
+          "status": "failed"
+        },
+        {
+          "method": "test_workflow_management_api",
+          "status": "failed"
+        }
+      ],
+      "passed": 0,
+      "failed": 6
+    },
+    {
+      "file": "test_cspm_compliance.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_cloud_scanning_business_plus",
+          "status": "failed"
+        },
+        {
+          "method": "test_compliance_frameworks",
+          "status": "failed"
+        },
+        {
+          "method": "test_executive_dashboard_summary",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_scan_history",
+          "status": "failed"
+        },
+        {
+          "method": "test_service_health",
+          "status": "failed"
+        },
+        {
+          "method": "test_team_scoped_findings",
+          "status": "failed"
+        }
+      ],
+      "passed": 0,
+      "failed": 7
+    },
+    {
+      "file": "test_dashboard_frontend.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_data_population",
+          "status": "failed"
+        },
+        {
+          "method": "test_navigation_without_errors",
+          "status": "failed"
+        },
+        {
+          "method": "test_page_loading_with_widgets",
+          "status": "failed"
+        },
+        {
+          "method": "test_responsive_design",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "failed"
+        },
+        {
+          "method": "test_static_assets_loading",
+          "status": "failed"
+        }
+      ],
+      "passed": 0,
+      "failed": 7
+    },
+    {
+      "file": "test_data_integration.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_data_api_performance",
+          "status": "passed"
+        },
+        {
+          "method": "test_data_retrieval_scoping",
+          "status": "failed"
+        },
+        {
+          "method": "test_ioc_lookup_json_structure",
+          "status": "passed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "passed"
+        },
+        {
+          "method": "test_team_scoped_data_insertion",
+          "status": "failed"
+        },
+        {
+          "method": "test_threat_intel_feeds",
+          "status": "failed"
+        }
+      ],
+      "passed": 3,
+      "failed": 4
+    },
+    {
+      "file": "test_gateway_security.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_circuit_breaker",
+          "status": "failed"
+        },
+        {
+          "method": "test_gateway_health",
+          "status": "failed"
+        },
+        {
+          "method": "test_http_method_restrictions",
+          "status": "passed"
+        },
+        {
+          "method": "test_passthrough_headers",
+          "status": "failed"
+        },
+        {
+          "method": "test_rate_limiting",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_routing_with_authentication",
+          "status": "failed"
+        },
+        {
+          "method": "test_security_headers",
+          "status": "failed"
+        }
+      ],
+      "passed": 1,
+      "failed": 7
+    },
+    {
+      "file": "test_guardian_monitoring.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_asset_creation_authorization",
+          "status": "passed"
+        },
+        {
+          "method": "test_assets_database_access",
+          "status": "passed"
+        },
+        {
+          "method": "test_celery_task_trigger",
+          "status": "passed"
+        },
+        {
+          "method": "test_monitoring_dashboard_access",
+          "status": "passed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "passed"
+        },
+        {
+          "method": "test_vulnerabilities_database_access",
+          "status": "passed"
+        }
+      ],
+      "passed": 6,
+      "failed": 1
+    },
+    {
+      "file": "test_identity_comprehensive.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_api_key_management",
+          "status": "failed"
+        },
+        {
+          "method": "test_authenticated_profile",
+          "status": "failed"
+        },
+        {
+          "method": "test_billing_plan_management",
+          "status": "failed"
+        },
+        {
+          "method": "test_logout_session_invalidation",
+          "status": "failed"
+        },
+        {
+          "method": "test_rbac_access_control",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "passed"
+        },
+        {
+          "method": "test_user_login_jwt",
+          "status": "failed"
+        },
+        {
+          "method": "test_user_registration",
+          "status": "failed"
+        }
+      ],
+      "passed": 1,
+      "failed": 8
+    },
+    {
+      "file": "test_responder_metrics.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_execution_status_monitoring",
+          "status": "failed"
+        },
+        {
+          "method": "test_metrics_endpoint",
+          "status": "failed"
+        },
+        {
+          "method": "test_playbook_execution",
+          "status": "failed"
+        },
+        {
+          "method": "test_playbooks_list",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "failed"
+        }
+      ],
+      "passed": 0,
+      "failed": 6
+    },
+    {
+      "file": "test_sensor_telemetry.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_osquery_process_status",
+          "status": "failed"
+        },
+        {
+          "method": "test_remote_configuration_retrieval",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_sensor_registration",
+          "status": "failed"
+        },
+        {
+          "method": "test_service_health",
+          "status": "failed"
+        },
+        {
+          "method": "test_telemetry_submission",
+          "status": "failed"
+        }
+      ],
+      "passed": 0,
+      "failed": 6
+    },
+    {
+      "file": "test_tools_execution.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_multiple_tool_execution",
+          "status": "passed"
+        },
+        {
+          "method": "test_plan_based_protection",
+          "status": "failed"
+        },
+        {
+          "method": "test_results",
+          "status": "error",
+          "error": "'list' object is not callable"
+        },
+        {
+          "method": "test_service_health",
+          "status": "passed"
+        },
+        {
+          "method": "test_simple_tool_execution",
+          "status": "failed"
+        },
+        {
+          "method": "test_timeout_management",
+          "status": "passed"
+        },
+        {
+          "method": "test_tools_list",
+          "status": "failed"
+        }
+      ],
+      "passed": 3,
+      "failed": 4
+    }
+  ],
+  "summary": {
+    "total": 11,
+    "passed": 15,
+    "failed": 61,
+    "skipped": 0
+  }
+}
