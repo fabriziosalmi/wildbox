@@ -9,7 +9,7 @@ import uvicorn
 
 from .config import settings
 from .database import get_db
-from .api_v1.endpoints import users, api_keys, billing, analytics
+from .api_v1.endpoints import users, api_keys, billing, analytics, user_api_keys
 from .internal import router as internal_router
 from .webhooks import router as webhooks_router
 
@@ -96,6 +96,13 @@ app.include_router(
     api_keys.router,
     prefix=f"{settings.api_v1_prefix}/teams",
     tags=["api-keys"]
+)
+
+# User-friendly API keys endpoints (without team_id in path)
+app.include_router(
+    user_api_keys.router,
+    prefix=settings.api_v1_prefix,
+    tags=["user-api-keys"]
 )
 
 app.include_router(

@@ -33,7 +33,12 @@ class DebugJWTStrategy(JWTStrategy):
         try:
             # Manually decode to see what's inside
             if token:
-                decoded = jwt.decode(token, self.secret, algorithms=["HS256"])
+                decoded = jwt.decode(
+                    token,
+                    self.secret,
+                    algorithms=["HS256"],
+                    audience=self.token_audience
+                )
                 print(f"[DEBUG] Token successfully decoded!")
                 print(f"[DEBUG] Token payload: {decoded}")
 
@@ -78,7 +83,8 @@ def get_jwt_strategy() -> DebugJWTStrategy:
     
     strategy = DebugJWTStrategy(
         secret=settings.jwt_secret_key,
-        lifetime_seconds=settings.jwt_access_token_expire_minutes * 60
+        lifetime_seconds=settings.jwt_access_token_expire_minutes * 60,
+        token_audience=["fastapi-users:auth"]  # Required for token validation
     )
     return strategy
 

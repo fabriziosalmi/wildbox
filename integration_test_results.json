@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T08:30:50.361947",
+  "timestamp": "2025-11-16T09:33:00.128163",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -227,7 +227,7 @@
       "tests": [
         {
           "method": "test_api_key_management",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_authenticated_profile",
@@ -258,8 +258,8 @@
           "status": "failed"
         }
       ],
-      "passed": 5,
-      "failed": 3
+      "passed": 6,
+      "failed": 2
     },
     {
       "file": "test_responder_metrics.py",
@@ -352,8 +352,8 @@
   ],
   "summary": {
     "total": 11,
-    "passed": 33,
-    "failed": 32,
+    "passed": 34,
+    "failed": 31,
     "skipped": 0
   }
 }
