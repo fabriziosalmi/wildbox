@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, status, Depends, Header
+from fastapi import FastAPI, HTTPException, BackgroundTasks, status, Depends
 from fastapi.responses import JSONResponse
 import redis
 
@@ -22,6 +22,7 @@ from .config import settings
 from .playbook_parser import playbook_parser
 from .workflow_engine import start_execution, workflow_engine
 from .connectors.base import connector_registry
+from .auth import get_current_user, GatewayUser
 
 # Configure logging
 logging.basicConfig(
@@ -167,36 +168,16 @@ async def list_playbooks():
 async def execute_playbook(
     playbook_id: str,
     request: PlaybookExecutionRequest = PlaybookExecutionRequest(),
-    authorization: str = Header(None)
+    current_user: GatewayUser = Depends(get_current_user)
 ):
     """
     Execute a playbook.
 
-    Requires Bearer token authentication. Include header:
-        Authorization: Bearer <token>
+    Authentication handled by gateway via X-Wildbox-* headers.
+    Legacy Bearer token support maintained during migration.
     """
-    # Authenticate request
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract token from "Bearer <token>" format
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use: Authorization: Bearer <token>",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
-    # Token validation would occur here with the identity service
-    # For now, we accept any valid Bearer token format
-
-    logger.info(f"Authenticated request to execute playbook: {playbook_id}")
+    logger.info(f"🔐 Authenticated request to execute playbook: {playbook_id} (User: {current_user.user_id}, Team: {current_user.team_id})")
+    
     try:
         # Validate playbook exists
         try:
