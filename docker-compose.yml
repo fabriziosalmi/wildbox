@@ -338,32 +338,32 @@ services:
 
 
   # ============================================================================
-  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
+  # REANIMATED - Operation Phoenix
   # CSPM Service (Cloud Security Posture Management) - 314 files, requires intensive testing
   # ============================================================================
-  # cspm:
-  #   build:
-  #     context: ./open-security-cspm
-  #     dockerfile: Dockerfile
-  #   container_name: open-security-cspm
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8019:8019"
-  #   environment:
-  #     - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
-  #     - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
-  #     - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
-  #     - DEBUG=${DEBUG:-false}
-  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
-  #   depends_on:
-  #     - wildbox-redis
-  #   networks:
-  #     - wildbox
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
+  cspm:
+    build:
+      context: ./open-security-cspm
+      dockerfile: Dockerfile
+    container_name: open-security-cspm
+    restart: unless-stopped
+    ports:
+      - "8019:8019"
+    environment:
+      - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
+      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
+      - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - wildbox-redis
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # CSPM Celery Worker (Background Tasks)
   # cspm-worker:
@@ -452,38 +452,38 @@ services:
 
 
   # ============================================================================
-  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
+  # REANIMATED - Operation Phoenix
   # Sensor Service (System Monitoring) - Development at 50%
   # ============================================================================
-  # sensor:
-  #   build:
-  #     context: ./open-security-sensor
-  #     dockerfile: Dockerfile
-  #   container_name: open-security-sensor
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8004:8004"
-  #   environment:
-  #     - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
-  #     - PYTHONPATH=/app
-  #     - DEBUG=${DEBUG:-false}
-  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
-  #   volumes:
-  #     - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
-  #     - sensor_logs:/var/log/security-sensor
-  #     - sensor_data:/var/lib/security-sensor
-  #     # Host monitoring (required for system telemetry)
-  #     - /proc:/host/proc:ro
-  #     - /sys:/host/sys:ro
-  #     - /etc:/host/etc:ro
-  #     - /var/run/docker.sock:/var/run/docker.sock:ro
-  #   networks:
-  #     - wildbox
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
+  sensor:
+    build:
+      context: ./open-security-sensor
+      dockerfile: Dockerfile
+    container_name: open-security-sensor
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
+      - PYTHONPATH=/app
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
+      - sensor_logs:/var/log/security-sensor
+      - sensor_data:/var/lib/security-sensor
+      # Host monitoring (required for system telemetry)
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /etc:/host/etc:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Automations Service (n8n workflow automation)
   automations:
@@ -522,6 +522,6 @@ volumes:
   wildbox_redis_data:
   guardian_logs:
   llm_cache:
-  # Volumes for excluded services (v1.0 Roadmap Future)
-  # sensor_logs:
-  # sensor_data:
+  # Volumes for reanimated services (Operation Phoenix)
+  sensor_logs:
+  sensor_data:

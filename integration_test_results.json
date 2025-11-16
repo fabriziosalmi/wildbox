@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T13:23:27.794846",
+  "timestamp": "2025-11-16T13:39:41.073209",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -63,7 +63,7 @@
       "tests": [
         {
           "method": "test_cloud_scanning_business_plus",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_compliance_frameworks",
@@ -75,19 +75,19 @@
         },
         {
           "method": "test_scan_history",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_team_scoped_findings",
           "status": "failed"
         }
       ],
-      "passed": 0,
-      "failed": 6
+      "passed": 3,
+      "failed": 3
     },
     {
       "file": "test_dashboard_frontend.py",
@@ -179,11 +179,11 @@
         },
         {
           "method": "test_rbac_user_forbidden_admin_endpoint",
-          "status": "passed"
+          "status": "failed"
         }
       ],
-      "passed": 6,
-      "failed": 0
+      "passed": 5,
+      "failed": 1
     },
     {
       "file": "test_gateway_security.py",
@@ -259,11 +259,11 @@
       "tests": [
         {
           "method": "test_api_key_management",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_authenticated_profile",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_billing_plan_management",
@@ -271,11 +271,11 @@
         },
         {
           "method": "test_logout_session_invalidation",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_rbac_access_control",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_service_health",
@@ -283,15 +283,15 @@
         },
         {
           "method": "test_user_login_jwt",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_user_registration",
           "status": "passed"
         }
       ],
-      "passed": 8,
-      "failed": 0
+      "passed": 3,
+      "failed": 5
     },
     {
       "file": "test_responder_metrics.py",
@@ -331,7 +331,7 @@
         },
         {
           "method": "test_remote_configuration_retrieval",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_sensor_registration",
@@ -339,15 +339,15 @@
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_telemetry_submission",
           "status": "failed"
         }
       ],
-      "passed": 0,
-      "failed": 5
+      "passed": 2,
+      "failed": 3
     },
     {
       "file": "test_tools_execution.py",
@@ -355,7 +355,7 @@
       "tests": [
         {
           "method": "test_multiple_tool_execution",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_plan_based_protection",
@@ -367,25 +367,25 @@
         },
         {
           "method": "test_simple_tool_execution",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_timeout_management",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_tools_list",
-          "status": "passed"
+          "status": "failed"
         }
       ],
-      "passed": 6,
-      "failed": 0
+      "passed": 2,
+      "failed": 4
     }
   ],
   "summary": {
     "total": 12,
-    "passed": 53,
-    "failed": 18,
+    "passed": 48,
+    "failed": 23,
     "skipped": 0
   }
 }
