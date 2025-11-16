@@ -1,18 +1,23 @@
 # 🚀 Wildbox Security Platform - Quick Start Guide
 
-**Last Updated:** August 26, 2025  
-**Status:** Fully Operational ✅  
+**Last Updated:** 16 Novembre 2025
+**Status:** Core Services Operational ✅ | CSPM & Sensor in Development ⚙️
 **Platform:** macOS, Linux, Windows (with Docker)
 
 ## ✨ What's Working Now
 
-✅ **All 11 Core Services Running**  
-✅ **55+ Security Tools Available**  
-✅ **Real-time Threat Intelligence**  
-✅ **Cloud Security Scanning (200+ checks)**  
-✅ **AI-Powered Analysis**  
-✅ **Modern Web Dashboard**  
-✅ **Comprehensive API Documentation**  
+✅ **9 Core Services Production-Ready**
+✅ **55+ Security Tools Available**
+✅ **Real-time Threat Intelligence**
+✅ **AI-Powered Analysis (Local LLM + OpenAI)**
+✅ **Vulnerability Management**
+✅ **SOAR Automation Playbooks**
+✅ **Modern Web Dashboard**
+✅ **Comprehensive API Documentation**
+
+⚙️ **In Development**: Cloud Security Posture Management (CSPM), Endpoint Sensor
+
+> **Note**: This guide covers the production-ready services. CSPM and Sensor are in active development and may require additional configuration.  
 
 ---
 

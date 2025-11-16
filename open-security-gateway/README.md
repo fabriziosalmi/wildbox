@@ -180,15 +180,18 @@ cp .env.example .env
 
 Backend services are automatically discovered via Docker networking:
 
-- `open-security-identity:8000`
-- `open-security-data:8001`
-- `open-security-cspm:8002`
-- `open-security-guardian:8003`
-- `open-security-responder:8004`
-- `open-security-agents:8006`
-- `open-security-sensor:8006`
-- `open-security-dashboard:3000`
-- `open-security-automations:5678`
+| Service | Internal URL | Port |
+|---------|-------------|------|
+| Identity | `open-security-identity:8001` | 8001 |
+| Tools | `open-security-tools:8000` | 8000 |
+| Data | `open-security-data:8002` | 8002 |
+| Guardian | `open-security-guardian:8013` | 8013 |
+| Responder | `open-security-responder:8018` | 8018 |
+| Agents | `open-security-agents:8006` | 8006 |
+| Dashboard | `open-security-dashboard:3000` | 3000 |
+| Automations (n8n) | `open-security-automations:5678` | 5678 |
+
+> **Note**: Services in development (CSPM, Sensor) may use different ports. Check `docker-compose.yml` for current configuration.
 
 ## 📋 Available Commands
 

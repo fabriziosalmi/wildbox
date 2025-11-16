@@ -79,17 +79,21 @@ See [LLM_SETUP.md](LLM_SETUP.md) for detailed configuration guide.
 
 ### LLM Options
 
-| Option | Speed | Quality | Cost | Use Case |
-|--------|-------|---------|------|----------|
-| **Local vLLM (GPU)** | ⭐⭐⭐ | ⭐⭐⭐ | Free | Development, low-volume |
-| **Local vLLM (CPU)** | ⭐ | ⭐⭐⭐ | Free | Testing only |
-| **OpenAI GPT-4o** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $0.01-0.05 | Production, high-priority |
+| Option | Model | Speed | Quality | Cost | Use Case |
+|--------|-------|-------|---------|------|----------|
+| **Local vLLM (GPU)** | Qwen2.5-0.5B-Instruct | ⭐⭐⭐ | ⭐⭐⭐ | Free | Development, low-volume |
+| **Local vLLM (CPU)** | Qwen2.5-0.5B-Instruct | ⭐ | ⭐⭐⭐ | Free | Testing only |
+| **OpenAI GPT-4o** | gpt-4o | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $0.01-0.05 | Production, high-priority |
+
+> **Note on Model Names**: The local LLM uses `Qwen/Qwen2.5-0.5B-Instruct` from HuggingFace, but is served via API as `qwen3-0.6b` for compatibility.
 
 ### Environment Variables
 
 - `OPENAI_API_KEY`: API key (use "wildbox-local-llm" for local vLLM)
 - `OPENAI_BASE_URL`: LLM endpoint (default: `http://llm:8000/v1` for local)
-- `OPENAI_MODEL`: Model name (default: `qwen3-0.6b` for local)
+- `OPENAI_MODEL`: Model name for API calls
+  - Local vLLM: `qwen3-0.6b` (served name for Qwen2.5-0.5B-Instruct)
+  - OpenAI: `gpt-4o` or `gpt-4-turbo`
 - `REDIS_URL`: Redis connection URL
 - `WILDBOX_API_URL`: Open Security API base URL
 - `DEBUG`: Enable debug mode

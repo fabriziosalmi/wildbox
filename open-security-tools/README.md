@@ -1,11 +1,9 @@
 # Wildbox Security Tools
 
-A robust and ex# Manual setup
-git clone <repository-url>
-cd open-security-tools
+**Status**: Production Ready ✅
+**Last Updated**: 16 Novembre 2025
 
-# Copy and configure environment
-cp .env.example .envle open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by simply adding them to the `tools` directory.
+A robust and extensible open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by simply adding them to the `tools` directory.
 
 ## 🚀 Features
 

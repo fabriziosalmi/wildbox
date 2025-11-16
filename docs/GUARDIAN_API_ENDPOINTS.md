@@ -4,7 +4,11 @@
 
 The Open Security Guardian is a Django-based REST API for vulnerability management, compliance tracking, asset inventory, and security reporting. This document provides a complete inventory of all HTTP endpoints organized by category.
 
-**Base URL:** `http://localhost:8000/api/v1/`
+> **Base URL**: `http://localhost:8013/api/v1/`
+>
+> **Authentication**: All endpoints require authentication via API Key or JWT token
+>
+> **Guardian Service Port**: 8013 (NOT 8000 which is the Gateway)
 
 ---
 
@@ -1562,8 +1566,8 @@ List endpoints support pagination:
 ```json
 {
     "count": 1000,
-    "next": "http://localhost:8000/api/v1/assets/?page=3",
-    "previous": "http://localhost:8000/api/v1/assets/?page=1",
+    "next": "http://localhost:8013/api/v1/assets/?page=3",
+    "previous": "http://localhost:8013/api/v1/assets/?page=1",
     "results": []
 }
 ```
