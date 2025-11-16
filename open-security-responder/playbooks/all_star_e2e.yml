@@ -1,0 +1,167 @@
+---
+playbook_id: "all_star_e2e"
+name: "🌟 All-Star Cross-Service Integration Test"
+description: |
+  Comprehensive end-to-end test validating gateway trust propagation across
+  all Wildbox microservices: Gateway → Responder → Agents → Tools → Guardian.
+  
+  This playbook demonstrates:
+  - AI-powered IOC analysis (Agents service)
+  - Security tool execution (Tools service)  
+  - Intelligent vulnerability creation (Guardian service)
+  - Cross-service authentication via gateway headers
+  
+  Success criteria: 
+  - AI analysis completes with verdict
+  - Tools scan executes successfully
+  - Guardian vulnerability created only for malicious IPs
+
+version: "1.0"
+author: "Wildbox Security Team"
+tags: ["integration", "e2e", "gateway-auth", "all-star"]
+
+trigger:
+  type: "api"
+  description: "Manual execution via API with IP address"
+  required_parameters:
+    - ip
+
+steps:
+  # Step 1: Validate IP format
+  - id: "validate_ip"
+    name: "Validate IP Address"
+    action: "system.validate"
+    description: "Ensure IP address is properly formatted"
+    params:
+      type: "ipv4"
+      value: "{{ trigger.ip }}"
+    timeout: 5
+    
+  # Step 2: AI-Powered IOC Analysis (Agents Service)
+  - id: "ai_analysis"
+    name: "🤖 AI-Powered Threat Analysis"
+    action: "wildbox.analyze_ioc"
+    description: "Use AI to analyze IP reputation and threat level"
+    params:
+      ioc_type: "ipv4"
+      ioc_value: "{{ trigger.ip }}"
+      context:
+        source: "all_star_e2e_test"
+        requester: "responder_playbook"
+        timestamp: "{{ system.timestamp }}"
+    timeout: 60
+    on_failure: "continue"
+    
+  # Step 3: Port Scan (Tools Service)
+  - id: "nmap_scan"
+    name: "🔍 Network Port Scan"
+    action: "wildbox.run_tool"
+    description: "Scan common ports to identify exposed services"
+    params:
+      tool_name: "nmap"
+      params:
+        target: "{{ trigger.ip }}"
+        ports: "80,443,22,21,3389,8080"
+        scan_type: "tcp_connect"
+    timeout: 120
+    on_failure: "continue"
+    
+  # Step 4: WHOIS Lookup (Tools Service)
+  - id: "whois_lookup"
+    name: "📋 WHOIS Information"
+    action: "wildbox.run_tool"
+    description: "Gather domain registration and ownership details"
+    params:
+      tool_name: "whois"
+      params:
+        target: "{{ trigger.ip }}"
+    timeout: 30
+    on_failure: "continue"
+    
+  # Step 5: Threat Assessment
+  - id: "threat_assessment"
+    name: "⚖️ Aggregate Threat Assessment"
+    action: "system.evaluate"
+    description: "Calculate overall threat score based on all findings"
+    params:
+      condition:
+        ai_verdict: "{{ steps.ai_analysis.result.verdict }}"
+        ai_confidence: "{{ steps.ai_analysis.result.confidence }}"
+        open_ports_count: "{{ steps.nmap_scan.result.open_ports | length }}"
+      scoring:
+        critical_if:
+          - "ai_verdict == 'Malicious' and ai_confidence > 0.8"
+          - "open_ports_count > 10"
+        high_if:
+          - "ai_verdict == 'Suspicious' and ai_confidence > 0.6"
+          - "open_ports_count > 5"
+        medium_if:
+          - "ai_verdict == 'Suspicious'"
+          - "open_ports_count > 2"
+        low_if:
+          - "ai_verdict == 'Benign'"
+    timeout: 10
+    
+  # Step 6: Conditional Vulnerability Creation (Guardian Service)
+  - id: "create_finding"
+    name: "🚨 Create Security Vulnerability"
+    action: "wildbox.create_vulnerability"
+    description: "Create vulnerability in Guardian if threat detected"
+    condition: "{{ steps.threat_assessment.result.severity != 'low' }}"
+    params:
+      title: "All-Star Test: Potential Threat from {{ trigger.ip }}"
+      description: |
+        Cross-service integration test detected potential security threat.
+        
+        **AI Analysis:**
+        - Verdict: {{ steps.ai_analysis.result.verdict }}
+        - Confidence: {{ steps.ai_analysis.result.confidence }}
+        - Task ID: {{ steps.ai_analysis.result.task_id }}
+        
+        **Network Scan:**
+        - Open Ports: {{ steps.nmap_scan.result.open_ports | join(', ') }}
+        - Services: {{ steps.nmap_scan.result.services | join(', ') }}
+        
+        **WHOIS Info:**
+        - Organization: {{ steps.whois_lookup.result.organization }}
+        - Country: {{ steps.whois_lookup.result.country }}
+        
+        **Overall Assessment:**
+        - Severity: {{ steps.threat_assessment.result.severity }}
+        - Risk Score: {{ steps.threat_assessment.result.score }}/100
+      severity: "{{ steps.threat_assessment.result.severity }}"
+      asset_name: "{{ trigger.ip }}"
+      cve_id: "TEST-E2E-{{ system.timestamp }}"
+    timeout: 30
+    on_failure: "continue"
+    
+  # Step 7: Final Report
+  - id: "generate_report"
+    name: "📊 Generate Test Report"
+    action: "system.create_report"
+    description: "Compile comprehensive test results"
+    params:
+      template: "all_star_summary"
+      include_steps:
+        - validate_ip
+        - ai_analysis
+        - nmap_scan
+        - whois_lookup
+        - threat_assessment
+        - create_finding
+      format: "json"
+    timeout: 10
+
+output:
+  format: "json"
+  fields:
+    - test_ip: "{{ trigger.ip }}"
+    - ai_verdict: "{{ steps.ai_analysis.result.verdict }}"
+    - ai_confidence: "{{ steps.ai_analysis.result.confidence }}"
+    - threat_score: "{{ steps.threat_assessment.result.score }}"
+    - severity: "{{ steps.threat_assessment.result.severity }}"
+    - vulnerability_created: "{{ steps.create_finding.executed }}"
+    - vulnerability_id: "{{ steps.create_finding.result.id }}"
+    - services_tested: ["gateway", "responder", "agents", "tools", "guardian"]
+    - total_duration: "{{ execution.duration }}"
+    - status: "{{ execution.status }}"

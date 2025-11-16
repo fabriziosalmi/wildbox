@@ -41,6 +41,11 @@ class Settings(BaseSettings):
         env="WILDBOX_SENSOR_URL",
         description="Open Security Sensor service URL"
     )
+    wildbox_agents_url: str = Field(
+        default="http://localhost:8006",
+        env="WILDBOX_AGENTS_URL",
+        description="Open Security Agents AI service URL"
+    )
     
     # API configuration
     api_host: str = Field(default="0.0.0.0", env="API_HOST")

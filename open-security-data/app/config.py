@@ -27,9 +27,9 @@ LOGS_DIR.mkdir(exist_ok=True)
 @dataclass
 class DatabaseConfig:
     """Database configuration"""
-    url: str = os.getenv("DATABASE_URL", "postgresql://secdata:secdata@localhost:5432/securitydata")
+    url: str = os.getenv("DATABASE_URL", "postgresql://postgres:SecureWildboxDB2024!@postgres:5432/data")
     pool_size: int = int(os.getenv("DB_POOL_SIZE", "20"))
-    max_overflow: int = int(os.getenv("DB_MAX_OVERFLOW", "10"))
+    max_overflow: int = int(os.getenv("DB_POOL_OVERFLOW", "10"))
     pool_timeout: int = int(os.getenv("DB_POOL_TIMEOUT", "30"))
     echo: bool = os.getenv("DB_ECHO", "false").lower() == "true"
 

@@ -127,7 +127,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:CHANGE-THIS-DB-PASSWORD@postgres:5432/data}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}

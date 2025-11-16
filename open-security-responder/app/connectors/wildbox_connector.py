@@ -21,7 +21,8 @@ class WildboxConnector(BaseConnector):
             "api_url": settings.wildbox_api_url,
             "data_url": settings.wildbox_data_url,
             "guardian_url": settings.wildbox_guardian_url,
-            "sensor_url": settings.wildbox_sensor_url
+            "sensor_url": settings.wildbox_sensor_url,
+            "agents_url": settings.wildbox_agents_url
         })
         
         # Initialize HTTP client
@@ -37,6 +38,8 @@ class WildboxConnector(BaseConnector):
             "isolate_endpoint": "Isolate an endpoint via Open Security Sensor",
             "get_vulnerabilities": "Get vulnerability data from Guardian",
             "create_ticket": "Create a security ticket in Guardian",
+            "create_vulnerability": "Create a vulnerability in Guardian",
+            "analyze_ioc": "Analyze an IOC using AI-powered Agents service",
             "get_asset_info": "Get asset information from Data service"
         }
     
@@ -293,6 +296,92 @@ class WildboxConnector(BaseConnector):
             raise ConnectorError(error_msg)
         except Exception as e:
             error_msg = f"Failed to get asset info for '{asset_id}': {str(e)}"
+            self.logger.error(error_msg)
+            raise ConnectorError(error_msg)
+    
+    def analyze_ioc(self, ioc_type: str, ioc_value: str, context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Analyze an IOC using AI-powered Agents service
+        
+        Args:
+            ioc_type: Type of IOC (ip, domain, url, hash, email)
+            ioc_value: The IOC value to analyze
+            context: Additional context for the analysis
+            
+        Returns:
+            AI analysis results with verdict, confidence, and report
+        """
+        try:
+            url = f"{self.config['agents_url']}/v1/analyze"
+            payload = {
+                "ioc_type": ioc_type,
+                "ioc_value": ioc_value,
+                "context": context or {},
+                "source": "responder"
+            }
+            
+            self.logger.info(f"Requesting AI analysis for {ioc_type}: {ioc_value}")
+            response = self.client.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            self.logger.info(f"AI analysis completed with task_id: {result.get('task_id')}")
+            return result
+            
+        except httpx.HTTPError as e:
+            error_msg = f"HTTP error requesting AI analysis for '{ioc_value}': {str(e)}"
+            self.logger.error(error_msg)
+            raise ConnectorError(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to request AI analysis for '{ioc_value}': {str(e)}"
+            self.logger.error(error_msg)
+            raise ConnectorError(error_msg)
+    
+    def create_vulnerability(self, title: str, description: str, severity: str, 
+                           asset_name: str = None, cve_id: str = None) -> Dict[str, Any]:
+        """
+        Create a vulnerability in Guardian service
+        
+        Args:
+            title: Vulnerability title
+            description: Detailed description
+            severity: Severity level (critical, high, medium, low)
+            asset_name: Affected asset name
+            cve_id: CVE identifier if applicable
+            
+        Returns:
+            Created vulnerability information
+        """
+        try:
+            url = f"{self.config['guardian_url']}/api/v1/vulnerabilities/"
+            payload = {
+                "title": title,
+                "description": description,
+                "severity": severity,
+                "asset_name": asset_name or "unknown",
+                "asset_type": "server",
+                "status": "open",
+                "priority": "p1" if severity in ["critical", "high"] else "p2",
+                "source": "responder"
+            }
+            
+            if cve_id:
+                payload["cve_id"] = cve_id
+            
+            self.logger.info(f"Creating vulnerability in Guardian: {title}")
+            response = self.client.post(url, json=payload)
+            response.raise_for_status()
+            
+            result = response.json()
+            self.logger.info(f"Created vulnerability with ID: {result.get('id')}")
+            return result
+            
+        except httpx.HTTPError as e:
+            error_msg = f"HTTP error creating vulnerability: {str(e)}"
+            self.logger.error(error_msg)
+            raise ConnectorError(error_msg)
+        except Exception as e:
+            error_msg = f"Failed to create vulnerability: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
     
