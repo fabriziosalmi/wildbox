@@ -563,6 +563,9 @@
                     <button onclick="loadDoc('credentials')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
                         Credentials & Auth
                     </button>
+                    <button onclick="loadDoc('ollama')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        🤖 Ollama LLM Setup
+                    </button>
                 </div>
 
                 <div class="space-y-2">
@@ -574,7 +577,10 @@
                         Security Policy
                     </button>
                     <button onclick="loadDoc('security-audit')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
-                        Audit Report
+                        Platform Audit Report
+                    </button>
+                    <button onclick="loadDoc('tools-service-audit')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
+                        🆕 Tools Service Audit
                     </button>
                 </div>
 
@@ -892,9 +898,11 @@
         const docUrls = {
             quickstart: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/quickstart.md',
             credentials: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/credentials.md',
+            ollama: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/ollama-llm.md',
             'security-status': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/status.md',
             'security-policy': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/policy.md',
             'security-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/audit-report.md',
+            'tools-service-audit': 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/security/tools-service-audit.md',
             deployment: 'https://raw.githubusercontent.com/fabriziosalmi/wildbox/main/docs/guides/deployment.md'
         };
 
@@ -917,19 +925,15 @@
                     .trim() // Remove leading/trailing spaces
                     .replace(/\s+/g, '-') // Replace spaces with hyphens
                     .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-                
-                // Debug log for anchor generation
-                if (text !== anchor && console) {
-                    console.log(`Anchor created: "${text}" → "${anchor}"`);
-                }
-                
+
                 return anchor;
             }
 
-            // Extract headings for TOC before processing
+            // Extract headings for TOC AFTER emoji removal
+            // Use the cleaned HTML version instead of original markdown
             const headingRegex = /^(#{1,3}) (.*?)$/gm;
             let match;
-            while ((match = headingRegex.exec(markdown)) !== null) {
+            while ((match = headingRegex.exec(html)) !== null) {
                 const level = match[1].length;
                 const text = match[2];
                 const anchor = createAnchor(text);

@@ -1,28 +1,35 @@
-# 📚 Wildbox Security Platform - Documentation
+#  Wildbox Security Platform - Documentation
 
 Welcome to the Wildbox Security Platform documentation. This site contains comprehensive guides and resources for deploying, securing, and using the platform.
 
 > **Interactive Documentation Available**: [Open the Interactive Documentation Portal](docs.html) for a guided experience with integrated API reference and dynamic markdown rendering.
 
-## 🚀 Getting Started
+##  Getting Started
 
 - **[Quickstart Guide](guides/quickstart.md)** - Deploy Wildbox in 5 minutes with Docker Compose
 - **[Credentials Reference](guides/credentials.md)** - Default credentials and authentication setup
 - **[Deployment Guide](guides/deployment.md)** - Detailed production deployment procedures
 
-## 🔐 Security
+##  Security
 
-The Wildbox Security Platform has completed comprehensive security hardening. Learn about our security status, policies, and best practices:
+The Wildbox Security Platform has completed comprehensive security hardening, including dedicated security audits for critical services.
 
 ### Quick Links
-- **[Security Status](security/status.md)** ⭐ - Current security status and verification results
+- **[Security Status](security/status.md)**  - Current security status and verification results
 - **[Security Policy](security/policy.md)** - Complete security requirements and best practices
-- **[Security Audit Report](security/audit-report.md)** - Technical deep-dive into all security issues and fixes
+- **[Platform Security Audit](security/audit-report.md)** - Platform-wide security analysis and fixes
+- **[Tools Service Security Audit](security/tools-service-audit.md)**  - Command injection protection audit (8.5/10, 0 vulnerabilities)
 - **[Security Improvements Summary](security/improvements-summary.md)** - Executive overview of security enhancements
 - **[Remediation Checklist](security/remediation-checklist.md)** - Step-by-step implementation procedures
 - **[Security Findings (JSON)](security/findings.json)** - Machine-readable format for CI/CD integration
 
-## 📋 Documentation Sections
+### Latest Security Achievements
+-  **Tools Service**: Command injection protection verified (Nov 2025)
+-  **55 Security Tools**: All audited and production-ready
+-  **Gateway Hardening**: HTTP→HTTPS redirect enforced
+-  **Database Security**: Password standardization across services
+
+##  Documentation Sections
 
 ### Guides
 - **[Quickstart](guides/quickstart.md)** - Get up and running quickly
@@ -37,7 +44,7 @@ The Wildbox Security Platform has completed comprehensive security hardening. Le
 - **[Remediation Guide](security/remediation-checklist.md)** - Implementation procedures
 - **[Findings (JSON)](security/findings.json)** - Machine-readable findings
 
-## 🎯 Choose Your Path
+##  Choose Your Path
 
 ### 👤 I'm a Developer
 1. Start with [Quickstart Guide](guides/quickstart.md)
@@ -49,7 +56,7 @@ The Wildbox Security Platform has completed comprehensive security hardening. Le
 2. Review [Security Status](security/status.md)
 3. Implement [Remediation Checklist](security/remediation-checklist.md)
 
-### 🔒 I'm a Security Officer
+###  I'm a Security Officer
 1. Check [Security Status](security/status.md) for current metrics
 2. Review [Security Policy](security/policy.md) for compliance
 3. Analyze [Audit Report](security/audit-report.md) for details
@@ -62,32 +69,45 @@ The Wildbox Security Platform has completed comprehensive security hardening. Le
 
 ## 🌟 Key Features
 
-✅ **Enterprise-Grade Security**
+ **Enterprise-Grade Security**
 - JWT authentication with HS256
 - bcrypt password hashing (12+ rounds)
 - Bearer token validation on all critical endpoints
 - Comprehensive security headers
 - Restricted CORS configuration
+- Command injection protection (verified)
 
-✅ **Comprehensive Documentation**
-- Security audit reports
+ **AI-Powered Security Analysis** 
+- **Local LLM Integration**: Ollama container with OpenAI-compatible API
+- **Privacy-First**: All AI analysis runs locally, no data sent to external services
+- **Threat Intelligence**: AI-enhanced security insights and recommendations
+- **Security Automation**: Intelligent playbook execution and decision support
+
+ **Comprehensive Security Tooling**
+- **55+ Security Tools**: Network scanning, OSINT, cryptography, web security
+- **API-First Architecture**: RESTful API with OpenAPI documentation
+- **Async Execution**: Background task processing with Celery + Redis
+- **Production-Ready**: Security-audited and hardened
+
+ **Comprehensive Documentation**
+- Security audit reports (platform + services)
 - Deployment procedures
 - Credential management guides
 - Policy and best practices
 
-✅ **Community-Driven Development**
-- Early Evaluation Phase
+ **Community-Driven Development**
+- Beta Phase (Security-Hardened)
 - Open to community feedback
 - Active development and improvements
 - Transparent security status
 
-## 📞 Support & Feedback
+##  Support & Feedback
 
 - **Issues**: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
 - **Security Reports**: fabrizio.salmi@gmail.com
 
-## 🔄 What's in the Repo?
+##  What's in the Repo?
 
 **Main Documentation** (at repository root)
 - `README.md` - Main project overview
@@ -100,19 +120,30 @@ The Wildbox Security Platform has completed comprehensive security hardening. Le
 - `/docs/guides/` - Deployment and configuration guides
 - `/docs/index.md` - This documentation home page
 
-## 📈 Community Maturity
+##  Community Maturity
 
-Wildbox is in the **Early Evaluation Phase** and reaches **community maturity through**:
-- ✅ Security hardening (completed)
-- 🤝 Community feedback and testing
-- 🐛 Bug reports and issue tracking
+Wildbox is in the **Beta Phase (Security-Hardened)** and reaches **community maturity through**:
+-  Platform security hardening (completed)
+-  Tools service security audit (8.5/10, 0 vulnerabilities)
+-  AI/LLM integration (local Ollama deployment)
+- 🤝 Community feedback and beta testing
+-  Bug reports and issue tracking
 - 💡 Feature requests and improvements
-- 📝 Real-world deployment experiences
+-  Real-world deployment experiences
 
 Help us build a mature, trusted security platform!
 
+##  What's New in v0.2.0
+
+- ** Tools Service Security Audit**: Command injection protection verified
+- ** Local LLM Integration**: Ollama container with OpenAI-compatible API
+- ** 55+ Security Tools**: Production-ready with async execution
+- ** Gateway Hardening**: HTTP→HTTPS redirect enforced
+- ** Enhanced Documentation**: Security audit reports and guides
+
 ---
 
-**Last Updated**: November 7, 2024
-**Status**: Early Evaluation Phase - Ready for Community Evaluation
-**Security Level**: 66% vulnerability reduction achieved
+**Last Updated**: November 16, 2025
+**Status**: Beta Phase - Security-Hardened
+**Tools Service Security**: 8.5/10 (0 command injection vulnerabilities)
+**Platform Security**: Gateway hardened, database standardized

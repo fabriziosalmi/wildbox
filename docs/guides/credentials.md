@@ -1,10 +1,10 @@
-# 🔐 Wildbox Default Credentials & Setup
+#  Wildbox Default Credentials & Setup
 
-**⚠️ WARNING**: Default credentials are for development only. Change them immediately for any non-development environment.
+**⚠ WARNING**: Default credentials are for development only. Change them immediately for any non-development environment.
 
 ---
 
-## 📋 Default Credentials
+##  Default Credentials
 
 ### Dashboard & Web UI
 | Service | URL | Username | Password | Notes |
@@ -31,7 +31,7 @@
 
 ---
 
-## 🔧 Environment Variable Template
+##  Environment Variable Template
 
 Create a `.env` file in the project root:
 
@@ -174,7 +174,7 @@ curl -X GET http://localhost:8000/v1/tools \
 
 ---
 
-## 🔐 Secure Your Deployment
+##  Secure Your Deployment
 
 ### 1. Change Default Passwords Immediately
 
@@ -295,7 +295,7 @@ for user in users:
 
 ---
 
-## 🔄 Token Management
+##  Token Management
 
 ### JWT Token Structure
 
@@ -334,7 +334,7 @@ curl -X POST http://localhost:8001/logout \
 
 ## 🚨 Security Best Practices
 
-### ✅ DO:
+###  DO:
 - ✓ Change all default credentials before production use
 - ✓ Use strong passwords (min 16 characters, mix of cases/numbers/symbols)
 - ✓ Store API keys securely (use secrets manager)
@@ -401,7 +401,7 @@ docker-compose restart open-security-tools
 
 ---
 
-## 📞 Support
+##  Support
 
 For credential-related issues:
 1. Check this file first

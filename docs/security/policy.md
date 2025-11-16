@@ -1,11 +1,11 @@
-# 🛡️ Wildbox Security Policy & Best Practices
+#  Wildbox Security Policy & Best Practices
 
 **Last Updated**: November 7, 2024
-**Status**: ✅ Secure Foundation Established - Ready for Community Evaluation
+**Status**:  Secure Foundation Established - Ready for Community Evaluation
 **Version**: 2.0
 **Maturity**: Early Evaluation Phase
 
-## 📋 Quick Navigation
+##  Quick Navigation
 
 - [Critical Security Requirements](#critical-security-requirements)
 - [Security Fixes Implemented](#security-fixes-implemented)
@@ -22,7 +22,7 @@
 
 **NEVER deploy Wildbox to production without completing ALL security requirements below!**
 
-### ✅ Recent Security Improvements (2024)
+###  Recent Security Improvements (2024)
 
 - ✓ Fixed critical eval() RCE vulnerability
 - ✓ Resolved 13 Dependabot security alerts
@@ -203,10 +203,10 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 - See [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) for real-time status
 
 **Mitigation Strategy:**
-- ✅ **Dependabot enabled**: Automatically detects new vulnerability patches
-- ✅ **Automated PRs**: Creates pull requests when patched versions available
-- ✅ **Testing integration**: Full test suite validates compatibility
-- ✅ **Automatic merging**: Patches integrated immediately when tests pass (typically within 1-4 weeks)
+-  **Dependabot enabled**: Automatically detects new vulnerability patches
+-  **Automated PRs**: Creates pull requests when patched versions available
+-  **Testing integration**: Full test suite validates compatibility
+-  **Automatic merging**: Patches integrated immediately when tests pass (typically within 1-4 weeks)
 
 **Your Deployment Considerations:**
 1. **For Development/Testing**: Use `docker-compose up -d` as-is for evaluation
@@ -223,38 +223,38 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 - Test patches in staging before production deployment
 - Report any real-world vulnerability impacts you discover
 
-## 🔐 Security Features Implemented
+##  Security Features Implemented
 
 ### 1. Authentication & Authorization
-- ✅ JWT tokens with HS256 encryption (minimum 32-char secret)
-- ✅ bcrypt password hashing (12+ rounds)
-- ✅ Bearer token authentication on all protected endpoints
-- ✅ API key support for service-to-service communication
-- ✅ Role-based access control (RBAC)
-- ✅ Token expiration and refresh mechanisms
+-  JWT tokens with HS256 encryption (minimum 32-char secret)
+-  bcrypt password hashing (12+ rounds)
+-  Bearer token authentication on all protected endpoints
+-  API key support for service-to-service communication
+-  Role-based access control (RBAC)
+-  Token expiration and refresh mechanisms
 
 ### 2. API Security
-- ✅ Restricted CORS (environment-configured, never wildcard)
-- ✅ Security headers: HSTS, X-Frame-Options, X-Content-Type-Options, CSP
-- ✅ Input validation on all endpoints
-- ✅ Parameterized queries (no SQL injection)
-- ✅ XXE protection (defusedxml)
-- ✅ Rate limiting ready (slowapi)
+-  Restricted CORS (environment-configured, never wildcard)
+-  Security headers: HSTS, X-Frame-Options, X-Content-Type-Options, CSP
+-  Input validation on all endpoints
+-  Parameterized queries (no SQL injection)
+-  XXE protection (defusedxml)
+-  Rate limiting ready (slowapi)
 
 ### 3. Code Security
-- ✅ No eval() calls (secure JSON serialization)
-- ✅ No hardcoded secrets in code
-- ✅ No plaintext password logging
-- ✅ Secure random generation for tokens/keys
-- ✅ Error handling without exposing internals
+-  No eval() calls (secure JSON serialization)
+-  No hardcoded secrets in code
+-  No plaintext password logging
+-  Secure random generation for tokens/keys
+-  Error handling without exposing internals
 
 ### 4. Infrastructure Security
-- ✅ Secrets required (no defaults in docker-compose)
-- ✅ Environment-based configuration
-- ✅ TLS/SSL support
-- ✅ Network segmentation
-- ✅ Health checks configured
-- ✅ Monitoring hooks ready
+-  Secrets required (no defaults in docker-compose)
+-  Environment-based configuration
+-  TLS/SSL support
+-  Network segmentation
+-  Health checks configured
+-  Monitoring hooks ready
 
 ---
 
@@ -275,7 +275,7 @@ We value security researchers! Valid vulnerability reports receive:
 - **Medium**: Recognition
 - **Low**: Acknowledgment
 
-## 📚 Additional Resources
+##  Additional Resources
 
 - [OWASP Security Guidelines](https://owasp.org/www-project-top-ten/)
 - [Docker Security Best Practices](https://docs.docker.com/engine/security/)
@@ -291,7 +291,7 @@ We value security researchers! Valid vulnerability reports receive:
 
 ---
 
-## 📋 Version History
+##  Version History
 
 ### 2.0 (November 7, 2024)
 - Fixed critical eval() RCE vulnerability

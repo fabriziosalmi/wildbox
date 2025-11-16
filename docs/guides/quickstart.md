@@ -1,4 +1,4 @@
-# 🚀 Wildbox Quick Start Guide
+#  Wildbox Quick Start Guide
 
 **Get Wildbox running in 5 minutes**
 
@@ -33,7 +33,7 @@ cd wildbox
 
 ---
 
-## ⚙️ 2. Configure Environment
+##  2. Configure Environment
 
 Create environment files for each service:
 
@@ -106,7 +106,7 @@ docker-compose up -d open-security-identity open-security-tools
 
 ---
 
-## ✅ 4. Verify Installation
+##  4. Verify Installation
 
 Once services are running, verify they're healthy:
 
@@ -169,7 +169,7 @@ hashed = pwd_context.hash('new-password-here')
 
 ---
 
-## 🛠️ 7. Common Tasks
+##  7. Common Tasks
 
 ### View Service Logs
 ```bash
@@ -220,7 +220,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/v1/analyze \
 
 ---
 
-## 📊 8. Monitoring & Health Checks
+##  8. Monitoring & Health Checks
 
 ### Dashboard Status
 ```bash
@@ -251,7 +251,7 @@ docker system df
 
 ---
 
-## 🐛 9. Troubleshooting
+##  9. Troubleshooting
 
 ### Services Won't Start
 ```bash
@@ -309,7 +309,7 @@ docker-compose down
 
 ---
 
-## 📚 10. Next Steps
+##  10. Next Steps
 
 After successful deployment:
 
@@ -322,7 +322,7 @@ After successful deployment:
 
 ---
 
-## 🚀 11. Production Deployment
+##  11. Production Deployment
 
 For production use:
 
@@ -360,7 +360,7 @@ docker-compose -f docker-compose.yml \
 
 ---
 
-## 📝 Quick Reference
+##  Quick Reference
 
 | Command | Purpose |
 |---------|---------|
@@ -374,6 +374,6 @@ docker-compose -f docker-compose.yml \
 
 ---
 
-**Happy Securing! 🛡️**
+**Happy Securing! **
 
 For questions or issues, refer to the comprehensive [README.md](README.md) or open an issue on GitHub.
