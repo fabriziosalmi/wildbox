@@ -28,26 +28,28 @@ class ResponderMetricsTester:
     async def test_service_health(self) -> bool:
         """Test responder service health"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/health", timeout=10)
+            # Responder service uses /health, not /api/v1/health
+            response = requests.get(f"{self.base_url}/health", timeout=10)
             passed = response.status_code == 200
-            
+
             if passed:
                 health_data = response.json()
-                details = f"Status: {health_data.get('status', 'unknown')}"
+                details = f"Status: {health_data.get('status', 'unknown')}, Playbooks: {health_data.get('playbooks_loaded', 0)}"
             else:
                 details = f"HTTP {response.status_code}"
-                
+
             self.log_test_result("Responder Service Health", passed, details)
             return passed
-            
+
         except Exception as e:
             self.log_test_result("Responder Service Health", False, f"Error: {str(e)}")
             return False
-            
+
     async def test_playbooks_list(self) -> bool:
         """Test listing available playbooks"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/playbooks", timeout=10)
+            # Responder service uses /playbooks, not /api/v1/playbooks
+            response = requests.get(f"{self.base_url}/playbooks", timeout=10)
             
             if response.status_code == 200:
                 playbooks = response.json()
@@ -75,7 +77,8 @@ class ResponderMetricsTester:
     async def test_metrics_endpoint(self) -> bool:
         """Test NEW metrics endpoint with success_rate"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/metrics", timeout=10)
+            # Responder service uses /metrics, not /api/v1/metrics
+            response = requests.get(f"{self.base_url}/metrics", timeout=10)
             
             if response.status_code == 200:
                 metrics = response.json()
@@ -123,8 +126,9 @@ class ResponderMetricsTester:
                 }
             }
             
+            # Responder service uses /playbooks/execute, not /api/v1/playbooks/execute
             response = requests.post(
-                f"{self.base_url}/api/v1/playbooks/execute",
+                f"{self.base_url}/playbooks/execute",
                 json=test_execution,
                 timeout=15
             )
@@ -160,11 +164,11 @@ class ResponderMetricsTester:
     async def test_execution_status_monitoring(self) -> bool:
         """Test execution status monitoring"""
         try:
-            # Test status monitoring endpoints
+            # Test status monitoring endpoints (without /api/v1 prefix)
             status_endpoints = [
-                "/api/v1/executions",
-                "/api/v1/executions/status",
-                "/api/v1/playbooks/status"
+                "/executions",
+                "/executions/status",
+                "/playbooks/status"
             ]
             
             accessible_endpoints = 0

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T02:05:16.663270",
+  "timestamp": "2025-11-16T08:30:50.361947",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -231,7 +231,7 @@
         },
         {
           "method": "test_authenticated_profile",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_billing_plan_management",
@@ -239,11 +239,11 @@
         },
         {
           "method": "test_logout_session_invalidation",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_rbac_access_control",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
@@ -251,15 +251,15 @@
         },
         {
           "method": "test_user_login_jwt",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_user_registration",
           "status": "failed"
         }
       ],
-      "passed": 1,
-      "failed": 7
+      "passed": 5,
+      "failed": 3
     },
     {
       "file": "test_responder_metrics.py",
@@ -283,11 +283,11 @@
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         }
       ],
-      "passed": 0,
-      "failed": 5
+      "passed": 1,
+      "failed": 4
     },
     {
       "file": "test_sensor_telemetry.py",
@@ -352,8 +352,8 @@
   ],
   "summary": {
     "total": 11,
-    "passed": 28,
-    "failed": 37,
+    "passed": 33,
+    "failed": 32,
     "skipped": 0
   }
 }
