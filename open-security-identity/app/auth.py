@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import jwt
 from jwt.exceptions import InvalidTokenError
 from passlib.context import CryptContext
-from fastapi import HTTPException, Depends, status
+from fastapi import HTTPException, Depends, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -172,6 +172,78 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
             detail="Inactive user"
         )
     return current_user
+
+
+async def get_current_user_from_api_key(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    FastAPI dependency to get the current user from an API key header.
+    
+    This provides an alternative authentication method to JWT tokens,
+    allowing users to authenticate API requests using API keys.
+    
+    Args:
+        x_api_key: API key from X-API-Key header
+        db: Database session
+        
+    Returns:
+        User object associated with the API key
+        
+    Raises:
+        HTTPException: If API key is invalid, expired, or missing
+    """
+    if not x_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key required",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Validate API key format
+    if not x_api_key.startswith("wsk_"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid API key format",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Hash the provided key
+    hashed_key = hash_api_key(x_api_key)
+    
+    # Look up the API key with related user data
+    result = await db.execute(
+        select(ApiKey, User)
+        .join(User, ApiKey.user_id == User.id)
+        .where(ApiKey.hashed_key == hashed_key)
+        .where(ApiKey.is_active == True)
+        .where(User.is_active == True)
+    )
+    
+    row = result.first()
+    if not row:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or inactive API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    api_key_obj, user = row
+    
+    # Check if key is expired
+    if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key expired",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    
+    # Update last used timestamp (fire and forget)
+    api_key_obj.last_used_at = datetime.utcnow()
+    await db.commit()
+    
+    return user
 
 
 def generate_api_key() -> tuple[str, str, str]:
