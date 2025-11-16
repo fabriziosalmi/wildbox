@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T13:17:28.119895",
+  "timestamp": "2025-11-16T13:23:27.794846",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -95,7 +95,7 @@
       "tests": [
         {
           "method": "test_data_population",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_navigation_without_errors",
@@ -118,8 +118,8 @@
           "status": "passed"
         }
       ],
-      "passed": 5,
-      "failed": 1
+      "passed": 6,
+      "failed": 0
     },
     {
       "file": "test_data_integration.py",
@@ -267,7 +267,7 @@
         },
         {
           "method": "test_billing_plan_management",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_logout_session_invalidation",
@@ -287,11 +287,11 @@
         },
         {
           "method": "test_user_registration",
-          "status": "failed"
+          "status": "passed"
         }
       ],
-      "passed": 6,
-      "failed": 2
+      "passed": 8,
+      "failed": 0
     },
     {
       "file": "test_responder_metrics.py",
@@ -355,11 +355,11 @@
       "tests": [
         {
           "method": "test_multiple_tool_execution",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_plan_based_protection",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
@@ -371,21 +371,21 @@
         },
         {
           "method": "test_timeout_management",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_tools_list",
           "status": "passed"
         }
       ],
-      "passed": 3,
-      "failed": 3
+      "passed": 6,
+      "failed": 0
     }
   ],
   "summary": {
     "total": 12,
-    "passed": 47,
-    "failed": 24,
+    "passed": 53,
+    "failed": 18,
     "skipped": 0
   }
 }
