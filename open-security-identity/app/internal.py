@@ -49,6 +49,11 @@ async def authorize_request(
     Returns:
         Authorization response with user info, permissions, and rate limits
     """
+    # Debug logging at endpoint entry
+    print(f"[AUTH-DEBUG] ========== AUTHORIZE REQUEST ==========")
+    print(f"[AUTH-DEBUG] Token type: {request_data.token_type}")
+    print(f"[AUTH-DEBUG] Token preview: {request_data.token[:30] if request_data.token else 'NONE'}...")
+    
     # TODO: Validate x_gateway_secret in production
     
     try:
@@ -104,9 +109,13 @@ async def authorize_request(
                     detail="Invalid API key format"
                 )
             
-            # Use existing API key validation
-            import hashlib
-            hashed_key = hashlib.sha256(request_data.token.encode()).hexdigest()
+            # Use same hash function as API key generation (HMAC-SHA256)
+            from .auth import hash_api_key
+            hashed_key = hash_api_key(request_data.token)
+            
+            # Debug logging
+            print(f"[AUTH-DEBUG] Looking for API key with hash: {hashed_key[:20]}...")
+            print(f"[AUTH-DEBUG] Full token received: {request_data.token[:30]}...")
             
             result = await db.execute(
                 select(ApiKey, User, Team, TeamMembership, Subscription)
@@ -124,11 +133,16 @@ async def authorize_request(
             )
             
             row = result.first()
+            print(f"[AUTH-DEBUG] Query result exists: {row is not None}")
+            
             if not row:
+                print(f"[AUTH-DEBUG] API key NOT FOUND in database")
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid or inactive API key"
                 )
+            
+            print(f"[AUTH-DEBUG] API key FOUND! User ID: {row[1].id if len(row) > 1 else 'N/A'}")
             
             api_key_obj, user, team, membership, subscription = row
             

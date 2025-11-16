@@ -21,7 +21,8 @@ RUN mkdir -p /etc/nginx/lua \
 # Install lua-resty-http directly without luarocks due to manifest issues
 RUN cd /usr/local/openresty/lualib/resty \
     && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http.lua \
-    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_headers.lua
+    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_headers.lua \
+    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_connect.lua
 
 # Copy configuration files
 COPY nginx/ /etc/nginx/

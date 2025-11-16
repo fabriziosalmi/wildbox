@@ -23,6 +23,19 @@ local RATE_LIMITS = {
 -- Get gateway configuration from environment variables
 local function get_config()
     local config_cache = ngx.shared.config_cache
+    
+    -- Handle case where shared dict is not available
+    if not config_cache then
+        utils.log("error", "config_cache shared dictionary not available")
+        -- Return default config without caching
+        return {
+            identity_service_url = os.getenv("IDENTITY_SERVICE_URL") or "http://open-security-identity:8001",
+            gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or "",
+            cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL,
+            debug_mode = os.getenv("GATEWAY_DEBUG") == "true"
+        }
+    end
+    
     local config_json = config_cache:get("gateway_config")
     
     if not config_json then
