@@ -14,11 +14,11 @@ class DataIntegrationTester:
     
     def __init__(self, base_url: str = "http://localhost:8002"):
         self.base_url = base_url
-        self.test_results = []
+        self.results = []
         
     def log_test_result(self, test_name: str, passed: bool, details: str = ""):
         """Log individual test result"""
-        self.test_results.append({
+        self.results.append({
             "name": test_name,
             "passed": passed,
             "details": details,
@@ -294,6 +294,6 @@ async def run_tests() -> Dict[str, Any]:
     
     return {
         "success": all_passed,
-        "tests": tester.test_results,
+        "tests": tester.results,
         "summary": f"{success_count}/{len(tests)} tests passed"
     }
