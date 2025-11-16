@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T01:52:01.044405",
+  "timestamp": "2025-11-16T02:02:41.325885",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -22,17 +22,12 @@
           "status": "failed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_service_health",
           "status": "passed"
         }
       ],
       "passed": 1,
-      "failed": 5
+      "failed": 4
     },
     {
       "file": "test_automations_workflow.py",
@@ -40,32 +35,27 @@
       "tests": [
         {
           "method": "test_automation_health_status",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_n8n_ui_access",
-          "status": "failed"
-        },
-        {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_webhook_execution",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_workflow_management_api",
-          "status": "failed"
+          "status": "passed"
         }
       ],
-      "passed": 0,
-      "failed": 6
+      "passed": 5,
+      "failed": 0
     },
     {
       "file": "test_cspm_compliance.py",
@@ -84,11 +74,6 @@
           "status": "failed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_scan_history",
           "status": "failed"
         },
@@ -102,7 +87,7 @@
         }
       ],
       "passed": 0,
-      "failed": 7
+      "failed": 6
     },
     {
       "file": "test_dashboard_frontend.py",
@@ -114,32 +99,27 @@
         },
         {
           "method": "test_navigation_without_errors",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_page_loading_with_widgets",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_responsive_design",
-          "status": "failed"
-        },
-        {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_static_assets_loading",
-          "status": "failed"
+          "status": "passed"
         }
       ],
-      "passed": 0,
-      "failed": 7
+      "passed": 5,
+      "failed": 1
     },
     {
       "file": "test_data_integration.py",
@@ -158,11 +138,6 @@
           "status": "passed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_service_health",
           "status": "passed"
         },
@@ -176,7 +151,7 @@
         }
       ],
       "passed": 3,
-      "failed": 4
+      "failed": 3
     },
     {
       "file": "test_gateway_security.py",
@@ -184,11 +159,11 @@
       "tests": [
         {
           "method": "test_circuit_breaker",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_gateway_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_http_method_restrictions",
@@ -203,21 +178,16 @@
           "status": "failed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_routing_with_authentication",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_security_headers",
           "status": "failed"
         }
       ],
-      "passed": 1,
-      "failed": 7
+      "passed": 4,
+      "failed": 3
     },
     {
       "file": "test_guardian_monitoring.py",
@@ -240,11 +210,6 @@
           "status": "passed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_service_health",
           "status": "passed"
         },
@@ -254,7 +219,7 @@
         }
       ],
       "passed": 6,
-      "failed": 1
+      "failed": 0
     },
     {
       "file": "test_identity_comprehensive.py",
@@ -281,11 +246,6 @@
           "status": "failed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_service_health",
           "status": "passed"
         },
@@ -299,7 +259,7 @@
         }
       ],
       "passed": 1,
-      "failed": 8
+      "failed": 7
     },
     {
       "file": "test_responder_metrics.py",
@@ -322,17 +282,12 @@
           "status": "failed"
         },
         {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
-        },
-        {
           "method": "test_service_health",
           "status": "failed"
         }
       ],
       "passed": 0,
-      "failed": 6
+      "failed": 5
     },
     {
       "file": "test_sensor_telemetry.py",
@@ -345,11 +300,6 @@
         {
           "method": "test_remote_configuration_retrieval",
           "status": "failed"
-        },
-        {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
         },
         {
           "method": "test_sensor_registration",
@@ -365,7 +315,7 @@
         }
       ],
       "passed": 0,
-      "failed": 6
+      "failed": 5
     },
     {
       "file": "test_tools_execution.py",
@@ -378,11 +328,6 @@
         {
           "method": "test_plan_based_protection",
           "status": "failed"
-        },
-        {
-          "method": "test_results",
-          "status": "error",
-          "error": "'list' object is not callable"
         },
         {
           "method": "test_service_health",
@@ -402,13 +347,13 @@
         }
       ],
       "passed": 3,
-      "failed": 4
+      "failed": 3
     }
   ],
   "summary": {
     "total": 11,
-    "passed": 15,
-    "failed": 61,
+    "passed": 28,
+    "failed": 37,
     "skipped": 0
   }
 }
