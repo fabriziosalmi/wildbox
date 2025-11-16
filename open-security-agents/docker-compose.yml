@@ -22,6 +22,45 @@ services:
       timeout: 10s
       retries: 5
 
+  # vLLM OpenAI-compatible API with Qwen3-0.6B
+  # Provides local LLM inference with OpenAI API compatibility
+  llm:
+    image: vllm/vllm-openai:latest
+    container_name: wildbox-llm
+    ports:
+      - "8080:8000"
+    environment:
+      # Model configuration
+      - MODEL_NAME=Qwen/Qwen2.5-0.5B-Instruct
+      # vLLM performance settings
+      - MAX_MODEL_LEN=4096
+      - GPU_MEMORY_UTILIZATION=0.9
+      - TRUST_REMOTE_CODE=true
+    command: >
+      --model Qwen/Qwen2.5-0.5B-Instruct
+      --served-model-name qwen3-0.6b
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 4096
+      --trust-remote-code
+      --dtype auto
+      --api-key wildbox-local-llm
+    volumes:
+      - llm_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   agents-api:
     build: .
     command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
@@ -44,9 +83,14 @@ services:
       - WILDBOX_DATA_URL=http://localhost:8001
       - WILDBOX_GUARDIAN_URL=http://localhost:8013
       - WILDBOX_RESPONDER_URL=http://localhost:8018
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Local LLM configuration (containerized vLLM)
+      - OPENAI_API_KEY=wildbox-local-llm
+      - OPENAI_BASE_URL=http://llm:8000/v1
+      - OPENAI_MODEL=qwen3-0.6b
     depends_on:
       redis:
+        condition: service_healthy
+      llm:
         condition: service_healthy
 
   celery-worker:
@@ -88,6 +132,8 @@ services:
 
 volumes:
   redis_data:
+  celery_logs:
+  llm_cache:
 
 networks:
   default:

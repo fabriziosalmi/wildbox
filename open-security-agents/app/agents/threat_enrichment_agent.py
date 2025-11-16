@@ -42,7 +42,7 @@ class ThreatEnrichmentAgent:
             "streaming": False
         }
         
-        # Support for local LLM endpoints (e.g., LM Studio)
+        # Support for local LLM endpoints (e.g., vLLM container)
         if settings.openai_base_url:
             llm_kwargs["base_url"] = settings.openai_base_url
             logger.info(f"Using custom OpenAI base URL: {settings.openai_base_url}")
@@ -190,51 +190,58 @@ Begin your investigation by thinking through your approach, then systematically 
         This uses a second LLM call to create a properly formatted report.
         """
         
-        # Prompt for structured report generation
-        report_prompt = f"""Based on the following threat intelligence investigation, create a structured analysis report.
+        # Simplified prompt for small LLM models
+        report_prompt = f"""Analyze this IOC: {ioc['type']} = {ioc['value']}
 
-ORIGINAL IOC: {ioc['type']} - {ioc['value']}
-TOOLS USED: {', '.join(tools_used)}
-ANALYSIS DURATION: {duration:.1f} seconds
+Investigation result: {raw_analysis[:500]}
 
-RAW INVESTIGATION OUTPUT:
-{raw_analysis}
+Rate this IOC (respond ONLY with one word):
+- Malicious (confirmed threat)
+- Suspicious (potential threat)  
+- Benign (safe/legitimate)
+- Informational (neutral/unknown)
 
-Create a JSON response with the following structure:
-{{
-    "verdict": "Malicious|Suspicious|Benign|Informational",
-    "confidence": 0.0-1.0,
-    "executive_summary": "2-3 sentence summary",
-    "evidence": [
-        {{
-            "source": "tool_name",
-            "finding": "specific finding",
-            "severity": "low|medium|high|critical"
-        }}
-    ],
-    "recommended_actions": ["action1", "action2"],
-    "full_report_markdown": "Complete markdown report with sections"
-}}
-
-GUIDELINES:
-- Base verdict on actual findings, not speculation
-- Confidence should reflect certainty of assessment
-- Evidence should cite specific tool outputs
-- Recommended actions should be practical and specific
-- Full report should be professional and comprehensive in Markdown format
-
-Respond ONLY with valid JSON."""
+Verdict:"""
 
         try:
-            # Use a simpler LLM call for report generation
+            # Use a simpler LLM call for verdict only
             response = await self.llm.ainvoke([
-                SystemMessage(content="You are a cybersecurity analyst creating structured threat reports. Respond only with valid JSON."),
+                SystemMessage(content="You are a security analyst. Respond with only ONE word: Malicious, Suspicious, Benign, or Informational."),
                 ("human", report_prompt)
             ])
             
-            # Parse the JSON response
+            # Extract verdict from response
             import json
-            structured_data = json.loads(response.content)
+            import re
+            
+            verdict_text = response.content.strip()
+            # Extract first word that matches a valid verdict
+            verdict_match = re.search(r'\b(Malicious|Suspicious|Benign|Informational)\b', verdict_text, re.IGNORECASE)
+            verdict = verdict_match.group(1).capitalize() if verdict_match else "Informational"
+            
+            # Generate simple structured data without relying on LLM JSON output
+            structured_data = {
+                "verdict": verdict,
+                "confidence": 0.7 if len(tools_used) > 0 else 0.5,
+                "executive_summary": f"Analysis completed using {len(tools_used)} security tools. Verdict: {verdict}",
+                "evidence": [],
+                "recommended_actions": [],
+                "full_report_markdown": raw_analysis
+            }
+            
+            # Extract evidence from tool data
+            for tool_name, tool_result in tool_data.items():
+                if isinstance(tool_result, str):
+                    try:
+                        tool_json = json.loads(tool_result)
+                        if tool_json.get("success"):
+                            structured_data["evidence"].append({
+                                "source": tool_name,
+                                "finding": f"Tool executed successfully",
+                                "severity": "low"
+                            })
+                    except:
+                        pass
             
             # Build final result
             result = {

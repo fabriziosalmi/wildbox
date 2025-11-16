@@ -4,6 +4,7 @@ Wildbox API Client for accessing other microservices
 Provides authenticated access to the Wildbox security toolkit.
 """
 
+import asyncio
 import logging
 from typing import Dict, Any, Optional
 import httpx
@@ -73,19 +74,38 @@ class WildboxAPIClient:
             # Construct correct API URL (no /run suffix, /api/tools/ base path)
             url = f"{self.api_url}/api/tools/{endpoint_name}"
             
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                logger.debug(f"Running tool '{endpoint_name}' at {url} with params: {transformed_params}")
-                
-                response = await client.post(
-                    url,
-                    json=transformed_params,  # Send params directly, not wrapped
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                
-                result = response.json()
-                logger.debug(f"Tool '{endpoint_name}' completed successfully")
-                return result
+            # Retry logic with exponential backoff for rate limits
+            max_retries = 3
+            retry_delay = 1.0  # Start with 1 second
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    async with httpx.AsyncClient(timeout=self.timeout) as client:
+                        logger.debug(f"Running tool '{endpoint_name}' at {url} (attempt {attempt + 1}/{max_retries + 1})")
+                        
+                        response = await client.post(
+                            url,
+                            json=transformed_params,  # Send params directly, not wrapped
+                            headers=self.headers
+                        )
+                        
+                        # Handle rate limiting with exponential backoff
+                        if response.status_code == 429 and attempt < max_retries:
+                            logger.warning(f"Rate limited on tool '{endpoint_name}', retrying in {retry_delay}s")
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        
+                        response.raise_for_status()
+                        
+                        result = response.json()
+                        logger.debug(f"Tool '{endpoint_name}' completed successfully")
+                        return result
+                        
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 429 and attempt < max_retries:
+                        continue
+                    raise
                 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error running tool '{tool_name}': {e}")

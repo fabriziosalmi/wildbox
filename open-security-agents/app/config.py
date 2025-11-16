@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_model: str = "gpt-4o"
     openai_temperature: float = 0.1
-    openai_base_url: Optional[str] = None  # Override for local LLM (e.g., LM Studio)
+    openai_base_url: Optional[str] = None  # Override for local LLM (e.g., vLLM container)
     
     # Redis Configuration
     redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")

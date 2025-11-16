@@ -1,0 +1,33 @@
+# Open Security Agents - CPU-only Configuration
+# 
+# Use this configuration for systems without GPU support.
+# Performance will be slower but functional for development and testing.
+#
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up
+
+version: '3.8'
+
+services:
+  # vLLM CPU-only override (no GPU requirements)
+  llm:
+    image: vllm/vllm-openai:latest
+    container_name: wildbox-llm-cpu
+    environment:
+      - MODEL_NAME=Qwen/Qwen2.5-0.5B-Instruct
+      - MAX_MODEL_LEN=2048
+      - TRUST_REMOTE_CODE=true
+    command: >
+      --model Qwen/Qwen2.5-0.5B-Instruct
+      --served-model-name qwen3-0.6b
+      --host 0.0.0.0
+      --port 8000
+      --max-model-len 2048
+      --trust-remote-code
+      --dtype float32
+      --api-key wildbox-local-llm
+      --device cpu
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G

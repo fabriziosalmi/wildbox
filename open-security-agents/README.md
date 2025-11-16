@@ -6,6 +6,8 @@ AI-powered threat intelligence enrichment service for the Wildbox security platf
 
 Open Security Agents provides "Threat Enrichment as a Service" through an AI-driven analysis engine. The service uses Large Language Models (LLMs) to automatically investigate Indicators of Compromise (IOCs) and generate comprehensive threat intelligence reports.
 
+**Now includes containerized local LLM support!** Run AI analysis without external API dependencies using vLLM and Qwen2.5-0.5B-Instruct.
+
 ## Architecture
 
 ```
@@ -17,82 +19,79 @@ Open Security Agents provides "Threat Enrichment as a Service" through an AI-dri
          │                       │                       │
          ▼                       ▼                       ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Models    │    │   Redis         │    │   Wildbox       │
-│   (Pydantic)    │    │   Result Store  │    │   Tool Belt     │
-│                 │    │                 │    │                 │
+│   API Models    │    │   Redis         │    │   vLLM API      │
+│   (Pydantic)    │    │   Result Store  │    │   Qwen2.5-0.5B  │
+│                 │    │                 │    │   (Local LLM)   │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
+                                                       │
+                                              ┌─────────────────┐
+                                              │   Wildbox       │
+                                              │   Tool Belt     │
+                                              │   (55+ tools)   │
+                                              └─────────────────┘
 ```
 
 ## Features
 
-- **AI-Powered Analysis**: Uses GPT-4o to perform intelligent threat analysis
+- **AI-Powered Analysis**: Uses LLM reasoning to perform intelligent threat analysis
+- **Local LLM Support**: Run without external API costs using containerized vLLM + Qwen2.5
 - **Asynchronous Processing**: Long-running analysis tasks handled via Celery
 - **Multi-IOC Support**: Analyzes IPs, domains, URLs, hashes, and more
-- **Tool Integration**: Leverages the entire Wildbox security toolkit
+- **Tool Integration**: Leverages the entire Wildbox security toolkit (55+ tools)
 - **Markdown Reports**: Generates human-readable intelligence reports
+- **Flexible Deployment**: Use local LLM (free) or OpenAI API (higher quality)
 
 ## Quick Start
 
-### Docker (Recommended)
+### Docker with Local LLM (Recommended)
 
 ```bash
-# Start all services
+# Start all services including local LLM
 docker-compose up -d
 
+# Wait for LLM model download (first run only, ~1GB)
+docker-compose logs -f llm
+
 # Check service health
-curl http://localhost:8004/health
+curl http://localhost:8006/health
+
+# Test LLM endpoint
+curl http://localhost:8080/health
 ```
 
-### Development
+**Note:** GPU recommended for best performance. See [LLM_SETUP.md](LLM_SETUP.md) for CPU-only configuration.
+
+### Docker with OpenAI API
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
+# Set OpenAI API key
+export OPENAI_API_KEY="sk-your-key-here"
+export OPENAI_BASE_URL=""  # Empty = use OpenAI
+export OPENAI_MODEL="gpt-4o"
 
-# Set environment variables
-cp .env.example .env
-# Edit .env with your API keys
-
-# Start Redis
-redis-server
-
-# Start Celery worker
-celery -A app.worker worker --loglevel=info
-
-# Start API server
-uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
-```
-
-## API Usage
-
-### Analyze an IOC
-
-```bash
-# Submit analysis request
-curl -X POST http://localhost:8004/v1/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"ioc": {"type": "ipv4", "value": "8.8.8.8"}}'
-
-# Response: {"task_id": "abc-123", "status": "pending", ...}
-```
-
-### Check Analysis Status
-
-```bash
-# Get task status
-curl http://localhost:8004/v1/analyze/abc-123
-
-# When complete, returns full analysis report
+# Start services (LLM container not needed)
+docker-compose up -d agents redis
 ```
 
 ## Configuration
 
-Environment variables:
+See [LLM_SETUP.md](LLM_SETUP.md) for detailed configuration guide.
 
-- `OPENAI_API_KEY`: OpenAI API key for GPT-4o
+### LLM Options
+
+| Option | Speed | Quality | Cost | Use Case |
+|--------|-------|---------|------|----------|
+| **Local vLLM (GPU)** | ⭐⭐⭐ | ⭐⭐⭐ | Free | Development, low-volume |
+| **Local vLLM (CPU)** | ⭐ | ⭐⭐⭐ | Free | Testing only |
+| **OpenAI GPT-4o** | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $0.01-0.05 | Production, high-priority |
+
+### Environment Variables
+
+- `OPENAI_API_KEY`: API key (use "wildbox-local-llm" for local vLLM)
+- `OPENAI_BASE_URL`: LLM endpoint (default: `http://llm:8000/v1` for local)
+- `OPENAI_MODEL`: Model name (default: `qwen3-0.6b` for local)
 - `REDIS_URL`: Redis connection URL
 - `WILDBOX_API_URL`: Open Security API base URL
-- `WILDBOX_DATA_URL`: Open Security Data base URL
 - `DEBUG`: Enable debug mode
 
 ## Supported IOC Types

@@ -61,6 +61,9 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - REDIS_URL=redis://wildbox-redis:6379/2
+      # Increased rate limits for AI agent service
+      - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
     depends_on:
       - wildbox-redis
     networks:
@@ -380,7 +383,35 @@ services:
   #   networks:
   #     - wildbox
 
-
+  # Ollama Service (Local LLM API)
+  # Provides OpenAI-compatible API for AI agents using Qwen2.5:0.5b
+  # Much lighter than vLLM (~2GB image + ~300MB model)
+  llm:
+    image: ollama/ollama:latest
+    container_name: wildbox-llm
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_ORIGINS=*
+    volumes:
+      - llm_cache:/root/.ollama
+    # Uncomment for GPU support (requires nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   # Agents Service (Security Agents)
   agents:
@@ -392,10 +423,13 @@ services:
     ports:
       - "8006:8006"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-sk-test-dummy-key-for-development-only}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}  # e.g., http://host.docker.internal:1234/v1
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o}  # e.g., qwen2.5-coder-3b-instruct-mlx
+      # Local LLM configuration (Ollama with OpenAI compatibility)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://llm:11434/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:0.5b}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
+      # Authentication for tools service (must match API_KEY in tools service)
+      - INTERNAL_API_KEY=${API_KEY:-replace-this-with-a-secure-random-string-32-chars-long}
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
@@ -404,6 +438,7 @@ services:
     depends_on:
       - wildbox-redis
       - api
+      - llm
     networks:
       - wildbox
     healthcheck:
@@ -486,6 +521,7 @@ volumes:
   postgres_data:
   wildbox_redis_data:
   guardian_logs:
+  llm_cache:
   # Volumes for excluded services (v1.0 Roadmap Future)
   # sensor_logs:
   # sensor_data:
