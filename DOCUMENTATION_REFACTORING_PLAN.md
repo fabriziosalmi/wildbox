@@ -123,11 +123,12 @@ curl http://localhost:8013/health/
 
 ---
 
-### TASK 1.3: [FIX] open-security-gateway/README.md - Backend Service Ports
+### TASK 1.3: [FIX] open-security-gateway/README.md - Backend Service Ports ✅
 
 **Priorità**: CRITICAL 🔴
 **File**: `/Users/fab/GitHub/wildbox/open-security-gateway/README.md`
 **Righe**: 181-191
+**Status**: ✅ COMPLETATO il 16 Novembre 2025
 
 **Problema:**
 Backend service URLs mapping ha numerazione porta errata. Esempio:
@@ -154,9 +155,15 @@ Backend service URLs mapping ha numerazione porta errata. Esempio:
 3. Aggiornare tutte le occorrenze nel file
 
 **Accettazione:**
-- [ ] Tabella backend services è accurata
-- [ ] Port numbers corrispondono a docker-compose.yml
-- [ ] Routing configuration riflette porte corrette
+- [x] Tabella backend services è accurata
+- [x] Port numbers corrispondono a docker-compose.yml
+- [x] Routing configuration riflette porte corrette
+
+**Implementazione:**
+- Sostituita lista con tabella formattata
+- Aggiunti servizi mancanti (Tools)
+- Corrette TUTTE le porte (identity 8001, data 8002, guardian 8013, responder 8018)
+- Aggiunta nota sui servizi in development
 
 **Comando di verifica:**
 ```bash
@@ -166,11 +173,12 @@ grep -B 2 "ports:" docker-compose.yml | grep -E "(identity|gateway|tools|data|gu
 
 ---
 
-### TASK 1.4: [FIX] open-security-agents/README.md - Model Naming Inconsistency
+### TASK 1.4: [FIX] open-security-agents/README.md - Model Naming Inconsistency ✅
 
 **Priorità**: CRITICAL 🔴
 **File**: `/Users/fab/GitHub/wildbox/open-security-agents/README.md`
 **Righe**: Multiple
+**Status**: ✅ COMPLETATO il 16 Novembre 2025
 
 **Problema:**
 Il file usa "qwen3-0.6b" ma il commit recente (068f44a) riferisce "Qwen2.5-0.5B".
@@ -192,9 +200,17 @@ Il file usa "qwen3-0.6b" ma il commit recente (068f44a) riferisce "Qwen2.5-0.5B"
    ```
 
 **Accettazione:**
-- [ ] Nome modello è consistente in tutto il file
-- [ ] Nome corrisponde a codice effettivo
-- [ ] Docker-compose usa stesso nome modello
+- [x] Nome modello è consistente in tutto il file
+- [x] Nome corrisponde a codice effettivo
+- [x] Docker-compose usa stesso nome modello
+
+**Implementazione:**
+- Aggiunta colonna "Model" alla tabella LLM options
+- Chiarita distinzione tra:
+  - Modello HuggingFace: `Qwen/Qwen2.5-0.5B-Instruct`
+  - Nome servito via API: `qwen3-0.6b` (compatibility)
+- Aggiunta nota esplicativa sulla nomenclatura
+- Aggiornata documentazione variabile OPENAI_MODEL
 
 **Cross-reference:**
 - Verificare anche `/Users/fab/GitHub/wildbox/open-security-agents/MIGRATION_LM_STUDIO_TO_VLLM.md`
@@ -202,11 +218,12 @@ Il file usa "qwen3-0.6b" ma il commit recente (068f44a) riferisce "Qwen2.5-0.5B"
 
 ---
 
-### TASK 1.5: [UPDATE] SETUP_GUIDE.md - Fix Data e Status
+### TASK 1.5: [UPDATE] SETUP_GUIDE.md - Fix Data e Status ✅
 
 **Priorità**: HIGH 🟠
 **File**: `/Users/fab/GitHub/wildbox/SETUP_GUIDE.md`
 **Righe**: 3-4
+**Status**: ✅ COMPLETATO il 16 Novembre 2025
 
 **Problema:**
 1. Data "August 26, 2025" è futura e crea confusione
@@ -226,9 +243,16 @@ Il file usa "qwen3-0.6b" ma il commit recente (068f44a) riferisce "Qwen2.5-0.5B"
    ```
 
 **Accettazione:**
-- [ ] Data è accurata
-- [ ] Status riflette realtà (non misleading)
-- [ ] Nota sullo stato servizi è chiara
+- [x] Data è accurata
+- [x] Status riflette realtà (non misleading)
+- [x] Nota sullo stato servizi è chiara
+
+**Implementazione:**
+- Corretto data: "August 26, 2025" → "16 Novembre 2025"
+- Aggiornato status per riflettere servizi production-ready vs in development
+- Aggiunto conteggio accurato: "9 Core Services Production-Ready"
+- Aggiunta nota prominente su CSPM & Sensor in development
+- Aggiornate features list per riflettere capabilities attuali (Local LLM + OpenAI)
 
 ---
 
