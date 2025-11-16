@@ -21,6 +21,7 @@ from app.config import get_config
 from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun, TelemetryEvent, SensorMetadata
 from app.utils.database import get_db_session, create_tables
 from app.schemas.api import *
+from app.auth import get_current_user, GatewayUser
 
 logger = logging.getLogger(__name__)
 config = get_config()
@@ -138,9 +139,12 @@ async def search_indicators(
     active_only: bool = Query(True, description="Show only active indicators"),
     limit: int = Query(100, ge=1, le=10000, description="Maximum results to return"),
     offset: int = Query(0, ge=0, description="Offset for pagination"),
+    current_user: GatewayUser = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Search security indicators"""
+    """Search security indicators - Authentication handled by gateway via X-Wildbox-* headers"""
+    
+    logger.info(f"🔐 Authenticated request to search indicators (User: {current_user.user_id}, Team: {current_user.team_id})")
     
     query = db.query(Indicator)
     
