@@ -24,17 +24,25 @@ services:
       - ./open-security-tools/app:/app/app:ro
 
   # ============================================================================
-  # EXCLUDED FROM v1.0 - ROADMAP FUTURE
-  # Data Service with development CORS
+  # Data Service - ACTIVE for Phase 1 Infrastructure Stabilization
   # ============================================================================
-  # data:
-  #   environment:
-  #     - CORS_ENABLED=true
-  #     - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
-  #     - DEBUG=true
-  #     - LOG_LEVEL=DEBUG
-  #   volumes:
-  #     - ./open-security-data/app:/app/app:ro
+  data:
+    environment:
+      - CORS_ENABLED=true
+      - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      # CRITICAL: Force correct PostgreSQL password from .env
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:SecureWildboxDB2024!@postgres:5432/data}
+    volumes:
+      - ./open-security-data/app:/app/app:ro
+
+  data-scheduler:
+    environment:
+      # CRITICAL: Align with Data service and .env password
+      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:SecureWildboxDB2024!@postgres:5432/data}
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
 
   # Dashboard with development settings (if running in Docker)
   dashboard:

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T12:41:37.111564",
+  "timestamp": "2025-11-16T13:17:28.119895",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -127,7 +127,7 @@
       "tests": [
         {
           "method": "test_data_api_performance",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_data_retrieval_scoping",
@@ -135,11 +135,11 @@
         },
         {
           "method": "test_ioc_lookup_json_structure",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_team_scoped_data_insertion",
@@ -150,8 +150,40 @@
           "status": "failed"
         }
       ],
-      "passed": 0,
-      "failed": 6
+      "passed": 3,
+      "failed": 3
+    },
+    {
+      "file": "test_gateway_hardening.py",
+      "status": "completed",
+      "tests": [
+        {
+          "method": "test_error_handling_service_failure",
+          "status": "passed"
+        },
+        {
+          "method": "test_malicious_ip_vulnerability_creation",
+          "status": "passed"
+        },
+        {
+          "method": "test_rate_limit_headers",
+          "status": "passed"
+        },
+        {
+          "method": "test_rate_limiting_burst_protection",
+          "status": "passed"
+        },
+        {
+          "method": "test_rbac_role_header_propagation",
+          "status": "passed"
+        },
+        {
+          "method": "test_rbac_user_forbidden_admin_endpoint",
+          "status": "passed"
+        }
+      ],
+      "passed": 6,
+      "failed": 0
     },
     {
       "file": "test_gateway_security.py",
@@ -351,9 +383,9 @@
     }
   ],
   "summary": {
-    "total": 11,
-    "passed": 38,
-    "failed": 27,
+    "total": 12,
+    "passed": 47,
+    "failed": 24,
     "skipped": 0
   }
 }
