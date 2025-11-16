@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, status, Header
+from fastapi import FastAPI, HTTPException, status, Header, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -27,6 +27,7 @@ from .schemas import (
 )
 from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
+from .auth import get_current_user, GatewayUser
 
 # Configure logging
 logging.basicConfig(
@@ -211,37 +212,19 @@ async def get_stats():
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
 async def analyze_ioc(
     request: AnalysisTaskRequest,
-    authorization: str = Header(None)
+    user: GatewayUser = Depends(get_current_user)
 ):
     """
     Submit an IOC for AI-powered threat analysis.
 
-    Requires Bearer token authentication. Include header:
-        Authorization: Bearer <token>
+    Authentication via gateway (X-Wildbox-* headers) or legacy Bearer token.
 
     This endpoint accepts an IOC and starts an asynchronous analysis task.
     The analysis is performed by an AI agent that uses various security tools
     to investigate the IOC and generate a comprehensive threat intelligence report.
     """
-    # Authenticate request
-    if not authorization:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract token from "Bearer <token>" format
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0].lower() != "bearer":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Use: Authorization: Bearer <token>",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    token = parts[1]
-    logger.info(f"Authenticated request to analyze IOC: {request.ioc.type}:{request.ioc.value}")
+    logger.info(f"[AUTH] Authenticated user {user.user_id} (team: {user.team_id}, plan: {user.plan}) analyzing IOC: {request.ioc.type}:{request.ioc.value}")
+    
     try:
         # Generate unique task ID
         task_id = str(uuid.uuid4())
