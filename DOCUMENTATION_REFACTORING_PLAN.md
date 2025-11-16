@@ -50,11 +50,12 @@ Questo piano organizza **20+ azioni correttive** identificate durante l'audit de
 
 ## SPRINT 1: FIX IMMEDIATI (URGENTE - 1-2 giorni)
 
-### TASK 1.1: [FIX] open-security-tools/README.md - File Corruption
+### TASK 1.1: [FIX] open-security-tools/README.md - File Corruption ✅
 
 **Priorità**: CRITICAL 🔴
 **File**: `/Users/fab/GitHub/wildbox/open-security-tools/README.md`
 **Righe**: 1-8
+**Status**: ✅ COMPLETATO il 16 Novembre 2025
 
 **Problema:**
 Il file presenta contenuto corrotto/malformato all'inizio che rende la lettura iniziale impossibile.
@@ -72,17 +73,23 @@ Il file presenta contenuto corrotto/malformato all'inizio che rende la lettura i
 4. Verificare che il resto del file non sia compromesso
 
 **Accettazione:**
-- [ ] File si apre correttamente in tutti i markdown viewers
-- [ ] Prima sezione è leggibile e ben formattata
-- [ ] Nessun carattere strano o encoding issues
+- [x] File si apre correttamente in tutti i markdown viewers
+- [x] Prima sezione è leggibile e ben formattata
+- [x] Nessun carattere strano o encoding issues
+
+**Implementazione:**
+- Rimosso contenuto corrotto righe 2-7
+- Aggiunto header standard con status e data
+- File ora inizia con `# Wildbox Security Tools` seguito da metadata pulito
 
 ---
 
-### TASK 1.2: [FIX] docs/GUARDIAN_API_ENDPOINTS.md - Base URL Error
+### TASK 1.2: [FIX] docs/GUARDIAN_API_ENDPOINTS.md - Base URL Error ✅
 
 **Priorità**: CRITICAL 🔴
 **File**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_API_ENDPOINTS.md`
 **Riga**: 7
+**Status**: ✅ COMPLETATO il 16 Novembre 2025
 
 **Problema:**
 Base URL documentato è `http://localhost:8000/` ma Guardian service usa porta **8013**.
@@ -98,9 +105,15 @@ Base URL documentato è `http://localhost:8000/` ma Guardian service usa porta *
    ```
 
 **Accettazione:**
-- [ ] Tutti gli URL nel file usano porta 8013
-- [ ] Esempi curl sono testabili e funzionanti
-- [ ] Base URL è prominentemente documentato
+- [x] Tutti gli URL nel file usano porta 8013
+- [x] Esempi curl sono testabili e funzionanti
+- [x] Base URL è prominentemente documentato
+
+**Implementazione:**
+- Corretto Base URL principale (riga 7)
+- Aggiunta nota prominente con distinzione Gateway (8000) vs Guardian (8013)
+- Fixate pagination URLs (righe 1569-1570)
+- Totale: 3 occorrenze corrette
 
 **Comando di test:**
 ```bash
