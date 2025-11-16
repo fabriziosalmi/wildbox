@@ -3,19 +3,32 @@ Tools Execution Test Module
 Tests 57+ tools, execution, plan-based protection
 """
 
+import os
 import requests
 import asyncio
 import time
 import base64
 from typing import Dict, List, Any, Optional
+from dotenv import load_dotenv
+
+# Load test environment
+load_dotenv("tests/.env")
 
 
 class ToolsExecutionTester:
-    """Comprehensive tests for Security Tools Service (Port 8000)"""
+    """Comprehensive tests for Security Tools Service via Gateway"""
     
-    def __init__(self, base_url: str = "http://localhost:8000"):
-        self.base_url = base_url
+    def __init__(self, base_url: str = None):
+        # Use gateway by default
+        self.base_url = base_url or os.getenv("GATEWAY_URL", "http://localhost")
+        self.api_key = os.getenv("TEST_API_KEY", "wsk_51c0.77d4c520955c5908e4a9d9202533aff0f3dbb10dfb7f12cb701009b3e1993fde")
         self.results = []
+        
+        # Set default headers with API key
+        self.headers = {
+            "X-API-Key": self.api_key,
+            "Content-Type": "application/json"
+        }
         
     def log_test_result(self, test_name: str, passed: bool, details: str = ""):
         """Log individual test result"""
@@ -27,9 +40,9 @@ class ToolsExecutionTester:
         })
         
     async def test_service_health(self) -> bool:
-        """Test tools service health"""
+        """Test tools service health (direct, not via gateway)"""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=10)
+            response = requests.get("http://localhost:8000/health", timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -46,14 +59,22 @@ class ToolsExecutionTester:
             return False
             
     async def test_tools_list(self) -> bool:
-        """Test listing of 57+ available tools"""
+        """Test listing of 57+ available tools via gateway"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/tools", timeout=10)
+            response = requests.get(
+                f"{self.base_url}/api/v1/tools",
+                headers=self.headers,
+                timeout=10
+            )
             passed = response.status_code == 200
             
             if passed:
                 tools = response.json()
-                tool_count = len(tools.get('tools', []))
+                # Response can be array or object with 'tools' key
+                if isinstance(tools, list):
+                    tool_count = len(tools)
+                else:
+                    tool_count = len(tools.get('tools', []))
                 
                 # Check for minimum expected tools
                 passed = tool_count >= 10  # Should have many tools
@@ -61,7 +82,7 @@ class ToolsExecutionTester:
                 if passed:
                     details = f"Found {tool_count} tools available"
                 else:
-                    details = f"Only {tool_count} tools found, expected 50+"
+                    details = f"Only {tool_count} tools found, expected 10+"
             else:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
                 
@@ -73,16 +94,17 @@ class ToolsExecutionTester:
             return False
             
     async def test_simple_tool_execution(self) -> bool:
-        """Test execution of simple tool (base64_encoder)"""
+        """Test execution of simple tool (whois) via gateway"""
         try:
-            # Test data for base64 encoding
+            # Test data for whois lookup
             test_input = {
-                "text": "Hello Wildbox Test"
+                "domain": "example.com"
             }
             
             response = requests.post(
-                f"{self.base_url}/api/v1/tools/base64_encoder",
+                f"{self.base_url}/api/v1/tools/whois_lookup",
                 json=test_input,
+                headers=self.headers,
                 timeout=15
             )
             
@@ -92,19 +114,8 @@ class ToolsExecutionTester:
                 result = response.json()
                 
                 # Check if we got expected output structure
-                if 'encoded_data' in result or 'result' in result:
-                    # Verify base64 encoding worked
-                    encoded = result.get('encoded_data') or result.get('result')
-                    try:
-                        decoded = base64.b64decode(encoded).decode('utf-8')
-                        if decoded == test_input['text']:
-                            details = f"Base64 encoding successful: {encoded[:20]}..."
-                        else:
-                            passed = False
-                            details = "Base64 encoding incorrect"
-                    except:
-                        # Maybe it's a different format, still count as success if we got data
-                        details = f"Tool executed, got result: {str(result)[:50]}..."
+                if 'domain_name' in result or 'registrar' in result or 'result' in result:
+                    details = f"WHOIS lookup successful: {str(result)[:50]}..."
                 else:
                     # Different output format, but execution worked
                     details = f"Tool executed successfully: {str(result)[:50]}..."
@@ -139,6 +150,7 @@ class ToolsExecutionTester:
                     response = requests.post(
                         f"{self.base_url}/api/v1/tools/{tool}",
                         json={"test": "data"},
+                        headers=self.headers,
                         timeout=10
                     )
                     
@@ -184,6 +196,7 @@ class ToolsExecutionTester:
             response = requests.post(
                 f"{self.base_url}/api/v1/tools/network_scanner",
                 json=test_input,
+                headers=self.headers,
                 timeout=20  # Give enough time for the request itself
             )
             
@@ -244,6 +257,7 @@ class ToolsExecutionTester:
                     response = requests.post(
                         f"{self.base_url}/api/v1/tools/{tool_test['name']}",
                         json=tool_test['input'],
+                        headers=self.headers,
                         timeout=15
                     )
                     

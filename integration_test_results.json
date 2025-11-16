@@ -1,5 +1,5 @@
 {
-  "timestamp": "2025-11-16T09:33:00.128163",
+  "timestamp": "2025-11-16T12:20:02.546189",
   "tests": [
     {
       "file": "test_agents_ai.py",
@@ -127,7 +127,7 @@
       "tests": [
         {
           "method": "test_data_api_performance",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_data_retrieval_scoping",
@@ -135,11 +135,11 @@
         },
         {
           "method": "test_ioc_lookup_json_structure",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_service_health",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_team_scoped_data_insertion",
@@ -150,8 +150,8 @@
           "status": "failed"
         }
       ],
-      "passed": 3,
-      "failed": 3
+      "passed": 0,
+      "failed": 6
     },
     {
       "file": "test_gateway_security.py",
@@ -179,15 +179,15 @@
         },
         {
           "method": "test_routing_with_authentication",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_security_headers",
           "status": "failed"
         }
       ],
-      "passed": 4,
-      "failed": 3
+      "passed": 3,
+      "failed": 4
     },
     {
       "file": "test_guardian_monitoring.py",
@@ -267,27 +267,27 @@
       "tests": [
         {
           "method": "test_execution_status_monitoring",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_metrics_endpoint",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_playbook_execution",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_playbooks_list",
-          "status": "failed"
+          "status": "passed"
         },
         {
           "method": "test_service_health",
           "status": "passed"
         }
       ],
-      "passed": 1,
-      "failed": 4
+      "passed": 5,
+      "failed": 0
     },
     {
       "file": "test_sensor_telemetry.py",
@@ -323,7 +323,7 @@
       "tests": [
         {
           "method": "test_multiple_tool_execution",
-          "status": "passed"
+          "status": "failed"
         },
         {
           "method": "test_plan_based_protection",
@@ -335,15 +335,15 @@
         },
         {
           "method": "test_simple_tool_execution",
-          "status": "failed"
-        },
-        {
-          "method": "test_timeout_management",
           "status": "passed"
         },
         {
-          "method": "test_tools_list",
+          "method": "test_timeout_management",
           "status": "failed"
+        },
+        {
+          "method": "test_tools_list",
+          "status": "passed"
         }
       ],
       "passed": 3,
