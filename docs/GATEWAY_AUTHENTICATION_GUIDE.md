@@ -13,6 +13,21 @@ All Wildbox backend services use a **trust-based authentication pattern** where 
                Auth            User Info        Headers
 ```
 
+### Dual-Mode Authentication (Tools Service)
+
+The Tools service supports **two authentication modes** for flexibility during development and testing:
+
+**Production Mode (Recommended):**
+- Requests go through API Gateway (`http://localhost/api/v1/tools/...`)
+- Gateway validates credentials and injects `X-Wildbox-*` headers
+- Backend trusts gateway headers
+
+**Legacy/Development Mode:**
+- Direct service access (`http://localhost:8000/api/tools/...`)
+- Client provides `X-API-Key` header directly
+- Service validates API key locally
+- ⚠️ **Use only for development/testing** - not recommended for production
+
 ## Security Model
 
 ### Principles
