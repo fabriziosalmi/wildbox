@@ -408,7 +408,7 @@ class OsqueryManager:
             
             # Check if tables exist by running a simple query
             for table in tables:
-                test_query = f"SELECT COUNT(*) FROM {table} LIMIT 1;"
+                test_query = f"SELECT COUNT(*) FROM `{table}` LIMIT 1;"
                 result = subprocess.run(
                     ['osqueryi', '--json', test_query],
                     capture_output=True,

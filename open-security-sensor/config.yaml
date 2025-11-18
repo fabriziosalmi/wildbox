@@ -3,7 +3,7 @@
 # Data Lake Connection
 data_lake:
   endpoint: "http://open-security-data:8002/api/v1/ingest"  # Connect to internal data service
-  api_key: "sensor-api-key-2025"
+  api_key: "your-sensor-api-key-here"
   tls_verify: false  # Disable for internal HTTP communication
   batch_size: 50
   flush_interval: 30

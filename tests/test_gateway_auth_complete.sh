@@ -10,7 +10,7 @@ echo "======================================="
 
 # Configuration
 GATEWAY_URL="http://localhost:80"
-API_KEY="UrZMId_lkb_-9TcWSicVPCVNqSvnwr8e2VS9iXTAfxw"
+API_KEY="your-test-api-key-here"
 TEST_EMAIL="gateway-ui-test@example.com"
 TEST_PASSWORD="testpassword123"
 TEST_NAME="Gateway UI Test User"

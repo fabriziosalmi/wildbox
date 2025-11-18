@@ -12,8 +12,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # API Keys
-GUARDIAN_API_KEY="wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263"
-TOOLS_API_KEY="wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90"
+GUARDIAN_API_KEY="your-guardian-api-key"
+TOOLS_API_KEY="your-tools-api-key"
 
 # Test counters
 TOTAL_TESTS=0

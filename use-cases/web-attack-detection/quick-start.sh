@@ -97,7 +97,7 @@ cat > /tmp/wildbox-test-config.yaml <<EOF
 # Test Configuration for Web Attack Detection
 data_lake:
   endpoint: "http://localhost:8001/api/v1/ingest"
-  api_key: "test-key-123"
+  api_key: "your-test-api-key-here"
   tls_verify: false
   batch_size: 50
   flush_interval: 10

@@ -7,7 +7,7 @@
 const axios = require('axios');
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost';
-const API_KEY = process.env.API_KEY || 'UrZMId_lkb_-9TcWSicVPCVNqSvnwr8e2VS9iXTAfxw';
+const API_KEY = process.env.API_KEY || 'your-test-api-key-here';
 
 // Test data
 const TEST_EMAIL = 'test-dashboard@example.com';

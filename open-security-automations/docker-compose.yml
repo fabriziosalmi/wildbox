@@ -37,7 +37,7 @@ services:
       
       # Wildbox Integration Environment Variables
       - WILDBOX_API_GATEWAY_URL=${WILDBOX_API_GATEWAY_URL:-http://wildbox-gateway:8000}
-      - WILDBOX_API_KEY=${WILDBOX_API_KEY:-wildbox-security-api-key-2025}
+      - WILDBOX_API_KEY=${WILDBOX_API_KEY:-}
       
       # External Service Configuration
       - SUPPORT_EMAIL_HOST=${SUPPORT_EMAIL_HOST:-}

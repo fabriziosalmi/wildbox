@@ -1,8 +1,9 @@
 import hmac
 import hashlib
+import os
 
-# Your test API key
-api_key = 'wsk_51c0.77d4c520955c5908e4a9d9202533aff0f3dbb10dfb7f12cb701009b3e1993fde'
+# Your test API key - loaded from environment variable
+api_key = os.getenv('TEST_API_KEY', 'wsk_51c0.77d4c520955c5908e4a9d9202533aff0f3dbb10dfb7f12cb701009b3e1993fde')
 
 # Real JWT secret from Identity service
 jwt_secret = 'generate-a-secure-random-jwt-secret-key-here'
