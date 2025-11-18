@@ -9,7 +9,6 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     gnupg \
-    software-properties-common \
     && rm -rf /var/lib/apt/lists/*
 
 # Install osquery - detect architecture and install accordingly
