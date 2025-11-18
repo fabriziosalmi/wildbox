@@ -7,7 +7,8 @@ Defines the data structures for IOC analysis requests and responses.
 from datetime import datetime
 from enum import Enum
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+import re
 
 
 class IOCType(str, Enum):
@@ -21,11 +22,32 @@ class IOCType(str, Enum):
     SHA256 = "sha256"
     EMAIL = "email"
 
+# Regex patterns for IOC validation
+IOC_REGEX_PATTERNS = {
+    IOCType.IPV4: r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$",
+    IOCType.IPV6: r"^[0-9a-fA-F:]{2,40}$", # Simplified, more complex regex exists
+    IOCType.DOMAIN: r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}$",
+    IOCType.URL: r"^(https?|ftp):\/\/[^\s/$.?#].[^\s]*$",
+    IOCType.MD5: r"^[a-f0-9]{32}$",
+    IOCType.SHA1: r"^[a-f0-9]{40}$",
+    IOCType.SHA256: r"^[a-f0-9]{64}$",
+    IOCType.EMAIL: r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+}
+
 
 class IOCInput(BaseModel):
     """Input IOC for analysis"""
     type: IOCType = Field(..., description="Type of IOC")
     value: str = Field(..., description="IOC value to analyze")
+    
+    @validator('value')
+    def validate_ioc_value(cls, v, values):
+        ioc_type = values.get('type')
+        if ioc_type and ioc_type in IOC_REGEX_PATTERNS:
+            pattern = IOC_REGEX_PATTERNS[ioc_type]
+            if not re.match(pattern, v):
+                raise ValueError(f"Invalid format for {ioc_type.value} IOC: '{v}'")
+        return v
     
     class Config:
         schema_extra = {

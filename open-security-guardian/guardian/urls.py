@@ -25,11 +25,6 @@ urlpatterns = [
     # Metrics endpoint (Prometheus)
     path('metrics/', MetricsView.as_view(), name='metrics'),
     
-    # API documentation
-    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
-    path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
-    
     # API endpoints
     path('api/v1/assets/', include('apps.assets.urls')),
     path('api/v1/vulnerabilities/', include('apps.vulnerabilities.urls')),
@@ -40,8 +35,14 @@ urlpatterns = [
     path('api/v1/reports/', include('apps.reporting.urls')),
 ]
 
-# Serve media files in development
+# Serve media files and API docs in development
 if settings.DEBUG:
+    urlpatterns += [
+        # API documentation
+        path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+        path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    ]
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     
     # Debug toolbar

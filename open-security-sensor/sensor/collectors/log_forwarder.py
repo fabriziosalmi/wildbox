@@ -274,8 +274,9 @@ class LogForwarder:
             try:
                 # PowerShell command to get latest events
                 cmd = [
-                    'powershell', '-Command',
-                    f'Get-EventLog -LogName {log_name} -Newest 10 | ConvertTo-Json'
+                    'powershell',
+                    '-Command',
+                    'Get-EventLog -LogName', log_name, '-Newest', '10', '|', 'ConvertTo-Json'
                 ]
                 
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
