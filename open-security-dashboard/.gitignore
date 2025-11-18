@@ -63,7 +63,7 @@ coverage/
 .prettiercache
 
 # Package manager
-package-lock.json
+# package-lock.json  # Required for npm ci - must be committed
 yarn.lock
 pnpm-lock.yaml
 
