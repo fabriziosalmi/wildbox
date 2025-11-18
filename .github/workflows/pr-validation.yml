@@ -22,7 +22,7 @@ jobs:
             echo "ERROR: docker-compose.yml is missing!"
             exit 1
           fi
-          docker-compose config --quiet
+          docker compose config --quiet
           echo "✓ docker-compose.yml is valid"
 
   # Check for critical files
@@ -155,7 +155,7 @@ jobs:
 
       - name: Build and start services
         run: |
-          docker-compose up -d --build
+          docker compose up -d --build
           sleep 30  # Wait for services to start
 
       - name: Check services health
@@ -167,10 +167,10 @@ jobs:
           elapsed=0
 
           while [ $elapsed -lt $timeout ]; do
-            unhealthy=$(docker-compose ps | grep -v "Up (healthy)" | grep -c "Up" || echo "0")
+            unhealthy=$(docker compose ps | grep -v "Up (healthy)" | grep -c "Up" || echo "0")
             if [ "$unhealthy" -eq "0" ]; then
               echo "✓ All services are healthy"
-              docker-compose ps
+              docker compose ps
               break
             fi
             echo "Waiting for services to become healthy... ($elapsed/$timeout seconds)"
@@ -180,8 +180,8 @@ jobs:
 
           if [ $elapsed -ge $timeout ]; then
             echo "ERROR: Services failed to become healthy"
-            docker-compose ps
-            docker-compose logs
+            docker compose ps
+            docker compose logs
             exit 1
           fi
 
@@ -196,8 +196,8 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker-compose down -v
-          docker-compose ps
+          docker compose down -v
+          docker compose ps
 
   # Summary job
   pr-validation-summary:
