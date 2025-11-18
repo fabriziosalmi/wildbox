@@ -403,22 +403,34 @@ class OsqueryManager:
             # Extract table names from the query
             import re
             # Simple regex to find table names after FROM/JOIN
-            table_pattern = r'(?:FROM|JOIN)\s+(\w+)'
-            tables = re.findall(table_pattern, query, re.IGNORECASE)
+            table_pattern = r'(?:FROM|JOIN)\s+(`?(\w+)`?)'
+            found_tables = re.findall(table_pattern, query, re.IGNORECASE)
             
-            # Check if tables exist by running a simple query
-            for table in tables:
-                test_query = f"SELECT COUNT(*) FROM `{table}` LIMIT 1;"
-                result = subprocess.run(
-                    ['osqueryi', '--json', test_query],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
-                )
-                if result.returncode != 0:
-                    if "no such table" in result.stderr.lower():
-                        logger.warning(f"Table '{table}' not available on this platform")
-                        return False
+            # Get a list of all valid osquery tables
+            valid_tables_query = "SELECT name FROM osquery_tables;"
+            result = subprocess.run(
+                ['osqueryi', '--json', valid_tables_query],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.returncode != 0:
+                logger.error(f"Failed to get osquery_tables: {result.stderr}")
+                return False
+            
+            try:
+                osquery_tables = json.loads(result.stdout)
+                valid_table_names = {table['name'] for table in osquery_tables}
+            except json.JSONDecodeError:
+                logger.error("Failed to parse osquery_tables results.")
+                return False
+
+            # Check if all tables in the query are valid
+            for _, table_name in found_tables:
+                if table_name not in valid_table_names:
+                    logger.warning(f"Table '{table_name}' not available or invalid.")
+                    return False
                     
             return True
         except Exception as e:

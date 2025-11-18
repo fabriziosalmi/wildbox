@@ -1,0 +1,185 @@
+name: PR Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+    types: [opened, synchronize, reopened]
+
+jobs:
+  # Validate docker-compose configuration
+  validate-docker:
+    name: Validate Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml
+        run: |
+          if [ ! -f docker-compose.yml ]; then
+            echo "ERROR: docker-compose.yml is missing!"
+            exit 1
+          fi
+          docker compose config --quiet
+          echo "✓ docker-compose.yml is valid"
+
+  # Check for critical files
+  validate-structure:
+    name: Validate Project Structure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for critical service files
+        run: |
+          MISSING_FILES=()
+
+          # List of critical files that must exist
+          CRITICAL_FILES=(
+            "docker-compose.yml"
+            "open-security-agents/app/main.py"
+            "open-security-cspm/app/main.py"
+            "open-security-data/app/api/main.py"
+            "open-security-guardian/guardian/settings.py"
+            "open-security-identity/app/main.py"
+            "open-security-responder/app/main.py"
+            "open-security-sensor/sensor/api/local_api.py"
+            "open-security-tools/app/tools/hash_generator/main.py"
+          )
+
+          for file in "${CRITICAL_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              MISSING_FILES+=("$file")
+            fi
+          done
+
+          if [ ${#MISSING_FILES[@]} -gt 0 ]; then
+            echo "ERROR: The following critical files are missing:"
+            printf '%s\n' "${MISSING_FILES[@]}"
+            exit 1
+          fi
+
+          echo "✓ All critical service files exist"
+
+  # Security checks
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy security scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'  # Don't fail on vulnerabilities yet
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Check for hardcoded secrets
+        run: |
+          # Check for common secret patterns (basic check)
+          echo "Checking for hardcoded secrets..."
+
+          # Skip .env files as they're examples
+          git ls-files | grep -v "\.env\." | xargs grep -niE "password\s*=\s*['\"][^'\"]{3,}['\"]" || true
+          git ls-files | grep -v "\.env\." | xargs grep -niE "api[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
+          git ls-files | grep -v "\.env\." | xargs grep -niE "secret[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
+
+          echo "✓ Basic secret scan complete (review output above)"
+
+  # Python linting and type checking
+  python-quality:
+    name: Python Code Quality
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - open-security-agents
+          - open-security-cspm
+          - open-security-data
+          - open-security-identity
+          - open-security-responder
+          - open-security-sensor
+          - open-security-tools
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/**/requirements*.txt', matrix.service)) }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          cd ${{ matrix.service }}
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install flake8 mypy pylint
+
+      - name: Run flake8
+        run: |
+          cd ${{ matrix.service }}
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+  # Integration test - Disabled (requires full environment setup with secrets)
+  # TODO: Re-enable with proper CI environment configuration
+  # integration-test:
+  #   name: Integration Tests
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v4
+  #
+  #     - name: Build and start services
+  #       run: |
+  #         docker compose up -d --build
+  #         sleep 30
+  #
+  #     - name: Check services health
+  #       run: |
+  #         echo "Integration tests disabled - requires environment setup"
+
+  # Summary job
+  pr-validation-summary:
+    name: PR Validation Summary
+    runs-on: ubuntu-latest
+    needs:
+      - validate-docker
+      - validate-structure
+      - security-scan
+      - python-quality
+    if: always()
+    steps:
+      - name: Check validation results
+        run: |
+          if [ "${{ needs.validate-docker.result }}" != "success" ] || \
+             [ "${{ needs.validate-structure.result }}" != "success" ] || \
+             [ "${{ needs.python-quality.result }}" != "success" ]; then
+            echo "❌ PR validation failed. Please fix the issues above."
+            exit 1
+          fi
+          echo "✅ All PR validations passed!"

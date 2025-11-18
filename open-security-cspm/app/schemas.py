@@ -108,6 +108,26 @@ class ScanResponse(BaseModel):
         }
 
 
+class ScanMetadata(BaseModel):
+    """Metadata stored in Redis for a scan."""
+    scan_id: str
+    provider: str
+    account_id: str
+    account_name: Optional[str] = None
+    status: str
+    started_at: datetime
+    requested_by: str
+    team_id: str
+    completed_at: Optional[datetime] = None
+    cancelled_at: Optional[datetime] = None
+    
+    @validator('started_at', 'completed_at', 'cancelled_at', pre=True)
+    def parse_datetime_from_isoformat(cls, v):
+        if isinstance(v, str):
+            return datetime.fromisoformat(v)
+        return v
+
+
 class ScanStatusResponse(BaseModel):
     """Response for scan status check."""
     

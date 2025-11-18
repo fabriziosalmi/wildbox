@@ -19,7 +19,7 @@ async def demo_auth_functions():
     # Password hashing
     password = "mysecretpassword"
     hashed = get_password_hash(password)
-    print(f"Password: {password}")
+
     print(f"Hash: {hashed[:50]}...")
     
     # API key generation

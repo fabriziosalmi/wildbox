@@ -15,6 +15,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status, Header, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+# Initialize Limiter
+limiter = Limiter(key_func=get_remote_address)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -96,6 +102,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 # Add Security Headers Middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -115,7 +124,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 
 # Setup CORS with environment-aware configuration
-CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",")
 CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS]
 
 app.add_middleware(
@@ -210,6 +219,7 @@ async def get_stats():
 
 
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
+@limiter.limit("5/minute")
 async def analyze_ioc(
     request: AnalysisTaskRequest,
     user: GatewayUser = Depends(get_current_user)

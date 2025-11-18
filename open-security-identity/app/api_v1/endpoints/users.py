@@ -12,11 +12,12 @@ from sqlalchemy.orm import selectinload
 from ...database import get_db
 from ...models import User, Team, TeamMembership, Subscription, TeamRole, SubscriptionPlan, SubscriptionStatus, ApiKey
 from ...schemas import (
-    UserResponse, UserWithTeams, 
+    UserResponse, UserWithTeams,
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
     UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
 )
 from ...user_manager import current_superuser, current_active_user, get_user_manager, UserManager
+from ...auth import verify_password, get_password_hash
 from ...config import settings
 
 router = APIRouter()

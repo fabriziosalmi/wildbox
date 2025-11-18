@@ -298,13 +298,21 @@ async def verify_api_key(api_key: str, db: AsyncSession) -> Optional[Dict[str, A
     
     row = result.first()
     if not row:
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or inactive API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
     
     api_key_obj, user, team, membership = row
     
     # Check if key is expired
     if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
-        return None
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key expired",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
     
     # Update last used timestamp
     api_key_obj.last_used_at = datetime.utcnow()

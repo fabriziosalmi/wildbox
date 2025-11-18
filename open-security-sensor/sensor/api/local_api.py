@@ -9,6 +9,7 @@ This API allows administrators to:
 - Monitor performance
 """
 
+import os
 import asyncio
 import json
 import logging
@@ -120,9 +121,10 @@ class LocalAPI:
         # Control endpoints
         self.app.router.add_post('/api/v1/test-connection', self._test_connection_handler)
         
-        # Static documentation
-        self.app.router.add_get('/', self._api_docs_handler)
-        self.app.router.add_get('/docs', self._api_docs_handler)
+        # Static documentation (only in development)
+        if os.getenv("ENVIRONMENT", "development") != "production":
+            self.app.router.add_get('/', self._api_docs_handler)
+            self.app.router.add_get('/docs', self._api_docs_handler)
     
     def _require_auth(self, handler):
         """Decorator to require API key authentication"""
