@@ -9,7 +9,7 @@ alembic==1.14.0
 
 # Authentication and user management
 fastapi-users[sqlalchemy]==15.0.1
-python-multipart==0.0.18
+python-multipart==0.0.20
 passlib[bcrypt]==1.7.4
 
 # Billing integration
