@@ -83,6 +83,31 @@ def cspm_url() -> str:
     return os.getenv("CSPM_SERVICE_URL", "http://localhost:8019")
 
 
+@pytest.fixture(scope="session")
+def service_urls() -> dict:
+    """Get service URLs from environment (compatibility fixture)"""
+    return {
+        "identity": os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001"),
+        "tools": os.getenv("TOOLS_SERVICE_URL", "http://localhost:8000"),
+        "data": os.getenv("DATA_SERVICE_URL", "http://localhost:8002"),
+        "guardian": os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013"),
+        "responder": os.getenv("RESPONDER_SERVICE_URL", "http://localhost:8018"),
+        "agents": os.getenv("AGENTS_SERVICE_URL", "http://localhost:8006"),
+        "cspm": os.getenv("CSPM_SERVICE_URL", "http://localhost:8019"),
+        "gateway": os.getenv("GATEWAY_SERVICE_URL", "http://localhost:80"),
+    }
+
+
+@pytest.fixture(scope="session")
+def test_credentials() -> dict:
+    """Get test credentials from environment (compatibility fixture)"""
+    return {
+        "admin_email": os.getenv("TEST_ADMIN_EMAIL", "admin@wildbox.io"),
+        "admin_password": os.getenv("TEST_ADMIN_PASSWORD", "CHANGE-THIS-PASSWORD"),
+        "api_key": os.getenv("TEST_API_KEY", "test-api-key-for-ci-only"),
+    }
+
+
 # ============================================================================
 # Authentication Configuration
 # ============================================================================
@@ -244,18 +269,16 @@ def sample_api_test_data():
 # Cleanup Fixtures
 # ============================================================================
 
-@pytest.fixture(autouse=True)
-def reset_client_state(http_client: httpx.AsyncClient):
+@pytest.fixture
+def reset_client_state():
     """
-    Reset HTTP client state between tests
+    Placeholder fixture for test cleanup
     
-    Clears any custom headers or auth that individual tests may have set,
-    ensuring a clean state for the next test.
+    Note: HTTP client cleanup is handled by the session-scoped client's
+    context manager. This fixture exists for backwards compatibility.
     """
     yield
-    # Reset headers to default after each test
-    http_client.headers.clear()
-    http_client.cookies.clear()
+    # Cleanup handled by async context manager
 
 
 # ============================================================================
