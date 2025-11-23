@@ -24,7 +24,7 @@ cryptography==44.0.1
 python-jose[cryptography]==3.5.0
 
 # HTTP Clients & Integrations
-requests>=2.32.3,<3.0.0
+requests==2.32.3
 httpx==0.25.2
 pydantic==2.8.2
 python-dotenv==1.0.0
@@ -48,7 +48,7 @@ servicenow-api==0.20.68
 prometheus-client==0.19.0
 structlog==23.2.0
 sentry-sdk==1.45.1
-psutil>=5.9.6
+psutil==6.1.1
 
 # Utilities
 python-magic==0.4.27
