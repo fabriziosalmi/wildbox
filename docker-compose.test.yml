@@ -14,8 +14,14 @@ services:
       - POSTGRES_PASSWORD=test_password
       - REDIS_HOST=redis-test
       - REDIS_PORT=6379
-      - GATEWAY_URL=http://gateway-test
-      - IDENTITY_URL=http://identity-test:8001
+      - GATEWAY_SERVICE_URL=http://gateway-test
+      - IDENTITY_SERVICE_URL=http://identity-test:8001
+      - TOOLS_SERVICE_URL=http://tools-test:8000
+      - DATA_SERVICE_URL=http://data-test:8002
+      - GUARDIAN_SERVICE_URL=http://guardian-test:8013
+      - RESPONDER_SERVICE_URL=http://responder-test:8018
+      - AGENTS_SERVICE_URL=http://agents-test:8006
+      - CSPM_SERVICE_URL=http://cspm-test:8019
       - PYTHONUNBUFFERED=1
     depends_on:
       postgres-test:

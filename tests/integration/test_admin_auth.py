@@ -10,7 +10,7 @@ import os
 @pytest.fixture
 def identity_base_url():
     """Get identity service URL from environment"""
-    return os.getenv("IDENTITY_URL", "http://identity-test:8001")
+    return os.getenv("IDENTITY_SERVICE_URL", "http://identity-test:8001")
 
 
 @pytest.fixture
