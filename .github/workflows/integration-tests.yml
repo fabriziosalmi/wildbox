@@ -135,21 +135,14 @@ jobs:
         run: |
           # Give services a few seconds to bind to ports
           sleep 10
-          
-          # Debug: Try curl directly to see what's happening
-          echo "Testing identity endpoint..."
-          curl -v http://localhost:8001/health || echo "Identity health check failed"
-          
-          echo "Testing tools endpoint..."
-          curl -v http://localhost:8000/health || echo "Tools health check failed"
-          
           chmod +x scripts/wait-for-services.sh
           ./scripts/wait-for-services.sh
         timeout-minutes: 5
         env:
           # Only check services actually started in CI (identity and tools)
           SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health"
-          VERBOSE: "true"
+          # Skip optional services in CI (they don't exist in this environment)
+          OPTIONAL_SERVICES: ""
 
       - name: Run Integration Tests
         run: |
@@ -158,7 +151,8 @@ jobs:
             --tb=short \
             --maxfail=3 \
             -m "not slow" \
-            --junit-xml=pytest-results.xml
+            --junit-xml=pytest-results.xml \
+            -c pytest.ini
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
