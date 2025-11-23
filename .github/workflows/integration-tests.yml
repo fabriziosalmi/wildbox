@@ -186,8 +186,8 @@ jobs:
 
       - name: Run Security Validation Script
         run: |
-          chmod +x security_validation_v2.sh
-          ./security_validation_v2.sh
+          chmod +x scripts/shell-scripts/security_validation_v2.sh
+          ./scripts/shell-scripts/security_validation_v2.sh
 
       - name: Check for hardcoded secrets
         run: |
