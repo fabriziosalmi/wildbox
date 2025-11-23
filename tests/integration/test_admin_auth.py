@@ -31,14 +31,15 @@ class TestAdminAuthentication:
         """Test admin login using form-urlencoded (OAuth2 format)"""
         async with AsyncClient(base_url=identity_base_url) as client:
             response = await client.post(
-                "/api/v1/auth/jwt/login",
-                data=admin_credentials,  # Form data
+                "/api/v1/auth/login",
+                data=admin_credentials,  # Form data (OAuth2PasswordRequestForm)
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
         
-        # Might be 404 if endpoint changed or 200 if working
-        assert response.status_code in [200, 404, 422], \
-            f"Unexpected status code: {response.status_code}"
+        # Should return 400/401 for invalid credentials (user doesn't exist in test DB)
+        # or 200 if credentials happen to be valid
+        assert response.status_code in [200, 400, 401], \
+            f"Login endpoint returned unexpected status: {response.status_code}"
         
         if response.status_code == 200:
             data = response.json()
