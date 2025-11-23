@@ -1,0 +1,116 @@
+#!/bin/bash
+# Pre-commit hook to prevent secrets from being committed
+# Install: Copy this file to .git/hooks/pre-commit and make executable
+# chmod +x .git/hooks/pre-commit
+
+# Colors for output
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo "🔒 Running security checks..."
+
+# Check 1: Prevent committing .env files
+echo "Checking for .env files..."
+if git diff --cached --name-only | grep -E "\.env$|\.env\.local|\.env\.production|\.env\.development"; then
+  echo -e "${RED}ERROR: Attempted to commit .env file!${NC}"
+  echo "Files:"
+  git diff --cached --name-only | grep -E "\.env$|\.env\.local|\.env\.production|\.env\.development"
+  echo ""
+  echo "These files should NEVER be committed."
+  echo "Remove them from staging:"
+  echo "  git reset HEAD <file>"
+  echo ""
+  echo "Add them to .gitignore if not already present."
+  exit 1
+fi
+
+# Check 2: Scan for potential secrets in staged changes
+echo "Scanning for potential secrets..."
+SECRETS_FOUND=false
+
+# Common secret patterns
+if git diff --cached | grep -iE "(SECRET|PASSWORD|API_KEY|TOKEN|PRIVATE_KEY).*=.*['\"][a-zA-Z0-9_\-]{16,}['\"]"; then
+  SECRETS_FOUND=true
+fi
+
+# JWT tokens (starting with ey)
+if git diff --cached | grep -E "ey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}"; then
+  SECRETS_FOUND=true
+fi
+
+# AWS keys
+if git diff --cached | grep -E "AKIA[0-9A-Z]{16}"; then
+  SECRETS_FOUND=true
+fi
+
+# Private keys
+if git diff --cached | grep -E "-----BEGIN (RSA |DSA |EC )?PRIVATE KEY-----"; then
+  SECRETS_FOUND=true
+fi
+
+# Database connection strings with passwords
+if git diff --cached | grep -E "postgresql://[^:]+:[^@]{8,}@|mysql://[^:]+:[^@]{8,}@"; then
+  SECRETS_FOUND=true
+fi
+
+# Stripe keys
+if git diff --cached | grep -E "(sk|pk)_(test|live)_[a-zA-Z0-9]{24,}"; then
+  SECRETS_FOUND=true
+fi
+
+if [ "$SECRETS_FOUND" = true ]; then
+  echo -e "${YELLOW}WARNING: Potential secrets detected in staged changes!${NC}"
+  echo ""
+  echo "Suspicious patterns found:"
+  git diff --cached | grep -iE "(SECRET|PASSWORD|API_KEY|TOKEN|PRIVATE_KEY).*=|ey[A-Za-z0-9_-]{10,}|AKIA[0-9A-Z]{16}|-----BEGIN.*PRIVATE KEY-----|postgresql://[^:]+:[^@]+@|sk_(test|live)_" --color=always | head -20
+  echo ""
+  echo "If these are legitimate test values or examples, you can proceed."
+  echo "If these are real secrets, DO NOT COMMIT THEM!"
+  echo ""
+  read -p "Continue anyway? (type 'yes' to proceed): " confirm
+  if [ "$confirm" != "yes" ]; then
+    echo "Commit aborted."
+    exit 1
+  fi
+fi
+
+# Check 3: Ensure .env.example doesn't contain real secrets
+echo "Checking .env.example files..."
+if git diff --cached --name-only | grep -E "\.env\.example"; then
+  # Check for patterns that look like real secrets (not placeholders)
+  if git diff --cached | grep -E "\.env\.example" | grep -viE "(your-|generate-|change-this|example|placeholder|xxx|000|test)" | grep -iE "(SECRET|PASSWORD|KEY).*=.*[a-zA-Z0-9]{32,}"; then
+    echo -e "${RED}ERROR: .env.example appears to contain real secrets!${NC}"
+    echo ""
+    echo ".env.example should only contain placeholder values like:"
+    echo "  JWT_SECRET_KEY=generate-a-secure-random-jwt-secret-key-here"
+    echo "  DATABASE_PASSWORD=your-secure-password-here"
+    echo ""
+    echo "Real secrets detected:"
+    git diff --cached | grep -E "\.env\.example" | grep -iE "(SECRET|PASSWORD|KEY).*=" --color=always
+    echo ""
+    exit 1
+  fi
+fi
+
+# Check 4: Warn if docker-compose files have hardcoded secrets
+echo "Checking docker-compose files..."
+if git diff --cached --name-only | grep -E "docker-compose.*\.yml"; then
+  if git diff --cached | grep -E "docker-compose" | grep -E "(SECRET|PASSWORD|KEY):.*[a-zA-Z0-9]{16,}" | grep -vE "\$\{|:-"; then
+    echo -e "${YELLOW}WARNING: docker-compose file may contain hardcoded secrets!${NC}"
+    echo ""
+    echo "Use environment variable substitution instead:"
+    echo "  NEXTAUTH_SECRET:\${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}"
+    echo ""
+    echo "Suspicious lines:"
+    git diff --cached | grep -E "docker-compose" | grep -E "(SECRET|PASSWORD|KEY):.*[a-zA-Z0-9]{16,}" | grep -vE "\$\{|:-" --color=always
+    echo ""
+    read -p "Continue anyway? (type 'yes' to proceed): " confirm
+    if [ "$confirm" != "yes" ]; then
+      exit 1
+    fi
+  fi
+fi
+
+echo "✅ Security checks passed!"
+exit 0

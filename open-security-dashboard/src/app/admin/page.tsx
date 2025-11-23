@@ -96,14 +96,14 @@ export default function AdminPage() {
 
   // Check if user is superuser
   useEffect(() => {
-    if (!user?.is_superuser && user?.email !== 'superadmin@wildbox.com') {
+    if (!user?.is_superuser) {
       router.push('/dashboard')
       return
     }
   }, [user, router])
 
   useEffect(() => {
-    if (user?.is_superuser || user?.email === 'superadmin@wildbox.com') {
+    if (user?.is_superuser) {
       fetchUsers()
       fetchSystemStats()
       fetchSystemHealth()
@@ -136,9 +136,10 @@ export default function AdminPage() {
       if (databaseStatus === 'healthy') servicesOnline++
       if (redisStatus === 'connected') servicesOnline++
 
-      // Calculate approximate metrics
-      const avgResponseTime = servicesOnline > 0 ? 142 : 0 // ms
-      const errorRate = servicesOnline === totalServices ? 0.2 : 5.0 // percentage
+      // Calculate metrics from actual health check data
+      // TODO: Implement real response time tracking from service health endpoints
+      const avgResponseTime = 0 // Real metrics not yet implemented
+      const errorRate = servicesOnline === totalServices ? 0 : ((totalServices - servicesOnline) / totalServices * 100)
 
       setSystemHealth({
         avgResponseTime,
@@ -329,7 +330,7 @@ export default function AdminPage() {
         console.error('Failed to check if user can be deleted:', error)
         
         // If the can-delete endpoint fails (404), assume we need force delete for superusers/team owners
-        const isSuperuser = targetUser?.is_superuser && userEmail !== 'superadmin@wildbox.com'
+        const isSuperuser = targetUser?.is_superuser
         const hasTeamOwnership = targetUser?.team_memberships?.some((m: any) => m.role === 'owner') || false
         
         if (isSuperuser || hasTeamOwnership) {
@@ -857,7 +858,7 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleUserStatus(user.id, user.is_active)}
-                            disabled={user.is_superuser && user.email === 'superadmin@wildbox.com'}
+                            disabled={false}
                           >
                             {user.is_active ? (
                               <>
@@ -885,7 +886,7 @@ export default function AdminPage() {
                             </Button>
                           )}
                           
-                          {user.is_superuser && user.email !== 'superadmin@wildbox.com' && (
+                          {user.is_superuser && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -902,12 +903,9 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id, user.email)}
-                            disabled={user.email === 'superadmin@wildbox.com'}
                             className="text-red-600 hover:text-red-700"
                             title={
-                              user.email === 'superadmin@wildbox.com'
-                                ? "Cannot delete the primary superadmin account" 
-                                : user.is_superuser
+                              user.is_superuser
                                 ? "Superuser account - requires force deletion confirmation"
                                 : isTeamOwner(user)
                                 ? `User owns ${getOwnedTeamsCount(user)} team(s). As superadmin, you can force delete to automatically handle team ownership.`
