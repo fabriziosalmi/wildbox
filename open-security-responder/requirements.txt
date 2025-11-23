@@ -10,7 +10,7 @@ redis==5.2.1
 
 # Data validation and settings
 pydantic==2.10.3
-pydantic-settings==2.6.1
+pydantic-settings==2.10.1
 
 # Template engine for playbook input parsing
 jinja2==3.1.6

@@ -1,9 +1,15 @@
 FROM openresty/openresty:alpine
 
 # Install dependencies
-RUN apk add --no-cache curl && \
+RUN apk add --no-cache curl wget && \
     mkdir -p /var/cache/nginx/wildbox_cache /var/log/nginx && \
     chmod 755 /var/cache/nginx/wildbox_cache /var/log/nginx
+
+# Install lua-resty-http (required by auth_handler.lua)
+RUN cd /usr/local/openresty/lualib/resty \
+    && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http.lua \
+    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_headers.lua \
+    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_connect.lua
 
 # Copy Lua scripts
 COPY nginx/lua /usr/local/openresty/lualib/
