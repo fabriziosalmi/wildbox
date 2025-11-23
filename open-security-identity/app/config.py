@@ -24,10 +24,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
     
-    # Stripe Configuration
-    stripe_secret_key: str = Field(..., description="Stripe secret key")
-    stripe_publishable_key: str = Field(..., description="Stripe publishable key")
-    stripe_webhook_secret: str = Field(..., description="Stripe webhook secret")
+    # Stripe Configuration (Optional - only required if using subscription features)
+    stripe_secret_key: Optional[str] = Field(None, description="Stripe secret key")
+    stripe_publishable_key: Optional[str] = Field(None, description="Stripe publishable key")
+    stripe_webhook_secret: Optional[str] = Field(None, description="Stripe webhook secret")
     
     # API Configuration
     api_v1_prefix: str = "/api/v1"

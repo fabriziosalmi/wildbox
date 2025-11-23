@@ -74,8 +74,8 @@ export default function AdminPage() {
     apiRequestsToday: 0
   })
   const [systemHealth, setSystemHealth] = useState({
-    avgResponseTime: 0,
-    errorRate: 0,
+    avgResponseTime: null as number | null,
+    errorRate: null as number | null,
     servicesOnline: 0,
     totalServices: 4,
     gatewayStatus: 'unknown',
@@ -96,14 +96,14 @@ export default function AdminPage() {
 
   // Check if user is superuser
   useEffect(() => {
-    if (!user?.is_superuser && user?.email !== 'superadmin@wildbox.com') {
+    if (!user?.is_superuser) {
       router.push('/dashboard')
       return
     }
   }, [user, router])
 
   useEffect(() => {
-    if (user?.is_superuser || user?.email === 'superadmin@wildbox.com') {
+    if (user?.is_superuser) {
       fetchUsers()
       fetchSystemStats()
       fetchSystemHealth()
@@ -117,7 +117,7 @@ export default function AdminPage() {
         // Check identity service health
         identityClient.get('/api/v1/identity/health').catch(() => null),
         // Check gateway status (if accessible)
-        fetch('http://localhost/health').then(r => r.json()).catch(() => null),
+        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`).then(r => r.json()).catch(() => null),
         // Check data service health
         dataClient.get(getDataPath('/health')).catch(() => null)
       ])
@@ -136,9 +136,10 @@ export default function AdminPage() {
       if (databaseStatus === 'healthy') servicesOnline++
       if (redisStatus === 'connected') servicesOnline++
 
-      // Calculate approximate metrics
-      const avgResponseTime = servicesOnline > 0 ? 142 : 0 // ms
-      const errorRate = servicesOnline === totalServices ? 0.2 : 5.0 // percentage
+      // Metrics require Prometheus integration (Phase 3 of remediation plan)
+      // Display null until real metrics infrastructure is implemented
+      const avgResponseTime = null
+      const errorRate = null
 
       setSystemHealth({
         avgResponseTime,
@@ -154,8 +155,8 @@ export default function AdminPage() {
       console.error('Failed to fetch system health:', error)
       // Set default values if health check fails
       setSystemHealth({
-        avgResponseTime: 0,
-        errorRate: 100,
+        avgResponseTime: null,
+        errorRate: null,
         servicesOnline: 0,
         totalServices: 4,
         gatewayStatus: 'unknown',
@@ -230,7 +231,8 @@ export default function AdminPage() {
       // Debug: Try direct fetch to bypass any ApiClient issues
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
       
-      const response = await fetch('http://localhost/api/v1/identity/admin/users?limit=100', {
+      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+      const response = await fetch(`${gatewayUrl}/api/v1/identity/admin/users?limit=100`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -329,7 +331,7 @@ export default function AdminPage() {
         console.error('Failed to check if user can be deleted:', error)
         
         // If the can-delete endpoint fails (404), assume we need force delete for superusers/team owners
-        const isSuperuser = targetUser?.is_superuser && userEmail !== 'superadmin@wildbox.com'
+        const isSuperuser = targetUser?.is_superuser
         const hasTeamOwnership = targetUser?.team_memberships?.some((m: any) => m.role === 'owner') || false
         
         if (isSuperuser || hasTeamOwnership) {
@@ -520,7 +522,8 @@ export default function AdminPage() {
       // Get auth token from cookies
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
       
-      const response = await fetch('http://localhost/api/v1/identity/auth/register', {
+      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+      const response = await fetch(`${gatewayUrl}/api/v1/identity/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -545,7 +548,8 @@ export default function AdminPage() {
         
         // Update superuser status if needed
         if (createUserForm.is_superuser) {
-          const superuserResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/role`, {
+          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+          const superuserResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -563,7 +567,8 @@ export default function AdminPage() {
         
         // Update active status if needed
         if (!createUserForm.is_active) {
-          const statusResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
+          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+          const statusResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -857,7 +862,7 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleToggleUserStatus(user.id, user.is_active)}
-                            disabled={user.is_superuser && user.email === 'superadmin@wildbox.com'}
+                            disabled={false}
                           >
                             {user.is_active ? (
                               <>
@@ -885,7 +890,7 @@ export default function AdminPage() {
                             </Button>
                           )}
                           
-                          {user.is_superuser && user.email !== 'superadmin@wildbox.com' && (
+                          {user.is_superuser && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -902,12 +907,9 @@ export default function AdminPage() {
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id, user.email)}
-                            disabled={user.email === 'superadmin@wildbox.com'}
                             className="text-red-600 hover:text-red-700"
                             title={
-                              user.email === 'superadmin@wildbox.com'
-                                ? "Cannot delete the primary superadmin account" 
-                                : user.is_superuser
+                              user.is_superuser
                                 ? "Superuser account - requires force deletion confirmation"
                                 : isTeamOwner(user)
                                 ? `User owns ${getOwnedTeamsCount(user)} team(s). As superadmin, you can force delete to automatically handle team ownership.`
@@ -1117,12 +1119,14 @@ export default function AdminPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Avg Response Time</span>
-                  <span className="font-medium">{systemHealth.avgResponseTime}ms</span>
+                  <span className="font-medium text-muted-foreground">
+                    {systemHealth.avgResponseTime !== null ? `${systemHealth.avgResponseTime}ms` : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Error Rate</span>
-                  <span className={`font-medium ${systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {systemHealth.errorRate}%
+                  <span className={`font-medium ${systemHealth.errorRate !== null ? (systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                    {systemHealth.errorRate !== null ? `${systemHealth.errorRate.toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
               </div>

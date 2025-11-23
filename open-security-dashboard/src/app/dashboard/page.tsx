@@ -58,9 +58,9 @@ interface DashboardMetrics {
   }
   systemHealth: {
     status: 'operational' | 'degraded' | 'down'
-    uptime: number
-    responseTime: number
-    errorRate: number
+    uptime: number | null
+    responseTime: number | null
+    errorRate: number | null
   }
 }
 
@@ -169,11 +169,13 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       trendsChange: 3.1
     }
 
+    // System health metrics require Prometheus integration
+    // Temporarily using basic status from service availability
     const systemHealth = {
       status: 'operational' as const,
-      uptime: 99.97,
-      responseTime: 142,
-      errorRate: 0.03
+      uptime: null,  // Requires Prometheus
+      responseTime: null,  // Requires Prometheus
+      errorRate: null  // Requires Prometheus
     }
 
     return {
@@ -225,9 +227,9 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       },
       systemHealth: {
         status: 'down',
-        uptime: 0,
-        responseTime: 0,
-        errorRate: 100
+        uptime: null,
+        responseTime: null,
+        errorRate: null
       }
     }
   }
@@ -546,20 +548,20 @@ export default function DashboardPage() {
           <CardContent>
             <div className="grid gap-4 md:grid-cols-4">
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {enrichedMetrics.systemHealth.uptime}%
+                <div className="text-2xl font-bold text-muted-foreground">
+                  {enrichedMetrics.systemHealth.uptime !== null ? `${enrichedMetrics.systemHealth.uptime}%` : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Uptime</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold">
-                  {enrichedMetrics.systemHealth.responseTime}ms
+                <div className="text-2xl font-bold text-muted-foreground">
+                  {enrichedMetrics.systemHealth.responseTime !== null ? `${enrichedMetrics.systemHealth.responseTime}ms` : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Response Time</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl font-bold text-green-600">
-                  {enrichedMetrics.systemHealth.errorRate}%
+                <div className="text-2xl font-bold text-muted-foreground">
+                  {enrichedMetrics.systemHealth.errorRate !== null ? `${enrichedMetrics.systemHealth.errorRate}%` : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Error Rate</div>
               </div>

@@ -13,22 +13,47 @@ from urllib.parse import urljoin, urlparse, parse_qs
 logger = logging.getLogger(__name__)
 import yaml
 
+# Import wordlist management
+try:
+    from ..wordlists import load_wordlist, list_available_wordlists
+except ImportError:
+    # Fallback if wordlists module not available
+    logger.warning("Wordlists module not found, using minimal fallback")
+    def load_wordlist(name: str = "api_common"):
+        return ["/api/v1", "/api/v2", "/api", "/rest", "/graphql",
+                "/users", "/login", "/auth", "/token", "/admin"]
+    def list_available_wordlists():
+        return []
+
 def validate_auth_value(auth_value: str) -> str:
-    """Validate and sanitize authentication value"""
+    """Validate and sanitize authentication value using allowlist approach"""
     if not auth_value:
         return ""
     
-    # Remove any potential injection characters and limit length
-    # Keep only alphanumeric, common token chars, and basic special chars
+    # ALLOWLIST approach: Only permit known-safe characters
+    # Allowed: alphanumeric, hyphens, underscores, dots, tildes (URL-safe Base64)
+    # Plus colon for Basic auth, equals for padding
     import re
-    cleaned_value = re.sub(r'[^\w\-\._~:/?#[\]@!$&\'()*+,;=%]', '', auth_value.strip())
+    
+    # Define strict allowlist for different auth types
+    # Base64 charset: A-Za-z0-9+/= (standard) or A-Za-z0-9-_= (URL-safe)
+    # JWT: alphanumeric, hyphen, underscore, dot (header.payload.signature)
+    # API keys: typically alphanumeric with hyphen/underscore
+    allowed_pattern = r'^[A-Za-z0-9\-_.=:+/]+$'
+    
+    auth_value = auth_value.strip()
+    
+    # Validate against allowlist
+    if not re.match(allowed_pattern, auth_value):
+        logger.warning("Authentication value contains disallowed characters - rejecting")
+        raise ValueError("Authentication value contains invalid characters. Allowed: A-Z, a-z, 0-9, -, _, ., =, :, +, /")
     
     # Limit length to prevent oversized tokens
-    if len(cleaned_value) > 1000:
-        cleaned_value = cleaned_value[:1000]
-        logger.warning("Authentication value truncated due to excessive length")
+    if len(auth_value) > 1000:
+        logger.warning("Authentication value exceeds maximum length (1000 characters)")
+        raise ValueError("Authentication value too long (max 1000 characters)")
     
-    return cleaned_value
+    return auth_value
 
 from schemas import (
     APISecurityTesterInput,
@@ -76,7 +101,8 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             data.api_base_url,
             data.api_specification,
             headers,
-            data.max_requests // 4
+            data.max_requests // 4,
+            data.wordlist  # Use wordlist from input
         )
         
         # Run security tests based on selected categories
@@ -143,39 +169,107 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             execution_time=time.time() - start_time
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        # Return error results
+    except ValueError as e:
+        # Input validation errors - return error with clear message
+        logger.error(f"Input validation error: {e}")
         return APISecurityTesterOutput(
             api_base_url=data.api_base_url,
             test_timestamp=datetime.utcnow().isoformat(),
             test_depth=data.test_depth,
             total_endpoints_tested=0,
-            total_vulnerabilities=1,
-            critical_vulnerabilities=1,
+            total_vulnerabilities=0,
+            critical_vulnerabilities=0,
             high_vulnerabilities=0,
             medium_vulnerabilities=0,
             low_vulnerabilities=0,
-            vulnerabilities=[APIVulnerability(
-                severity="Critical",
-                category="Testing Error",
-                title="API Testing Failed",
-                description=f"Failed to test API: {str(e)}",
-                endpoint=data.api_base_url,
-                method="N/A",
-                request_details={},
-                response_details={},
-                remediation="Check API accessibility and authentication"
-            )],
+            vulnerabilities=[],
             endpoints_discovered=[],
-            security_tests=[],
+            security_tests=[SecurityTest(
+                test_name="Input Validation",
+                category="Configuration Error",
+                status="failed",
+                severity="N/A",
+                details=f"Invalid input: {str(e)}",
+                evidence=None,
+                recommendation="Fix input parameters and retry"
+            )],
             owasp_api_top10_compliance={},
             security_score=0.0,
-            risk_rating="Critical",
-            recommendations=["Verify API endpoint and credentials"],
+            risk_rating="Unknown",
+            recommendations=[f"Fix input validation error: {str(e)}"],
+            execution_time=time.time() - start_time
+        )
+    except (ConnectionError, TimeoutError) as e:
+        # Infrastructure failures - report as infrastructure issue, NOT security finding
+        logger.error(f"Infrastructure error during API testing: {e}")
+        return APISecurityTesterOutput(
+            api_base_url=data.api_base_url,
+            test_timestamp=datetime.utcnow().isoformat(),
+            test_depth=data.test_depth,
+            total_endpoints_tested=0,
+            total_vulnerabilities=0,
+            critical_vulnerabilities=0,
+            high_vulnerabilities=0,
+            medium_vulnerabilities=0,
+            low_vulnerabilities=0,
+            vulnerabilities=[],
+            endpoints_discovered=[],
+            security_tests=[SecurityTest(
+                test_name="Infrastructure Check",
+                category="Infrastructure Error",
+                status="failed",
+                severity="N/A",
+                details=f"Cannot reach API: {str(e)}",
+                evidence=None,
+                recommendation="Verify API endpoint is accessible and network connectivity"
+            )],
+            owasp_api_top10_compliance={},
+            security_score=0.0,
+            risk_rating="Unknown",
+            recommendations=[
+                "Verify API endpoint URL is correct",
+                "Check network connectivity to API",
+                "Ensure firewall allows outbound connections",
+                "Verify API is online and responsive"
+            ],
+            execution_time=time.time() - start_time
+        )
+    except (KeyError, TypeError) as e:
+        # Data structure errors - likely API response format issue
+        logger.error(f"Data parsing error: {e}")
+        return APISecurityTesterOutput(
+            api_base_url=data.api_base_url,
+            test_timestamp=datetime.utcnow().isoformat(),
+            test_depth=data.test_depth,
+            total_endpoints_tested=0,
+            total_vulnerabilities=0,
+            critical_vulnerabilities=0,
+            high_vulnerabilities=0,
+            medium_vulnerabilities=0,
+            low_vulnerabilities=0,
+            vulnerabilities=[],
+            endpoints_discovered=[],
+            security_tests=[SecurityTest(
+                test_name="Response Parsing",
+                category="Data Error",
+                status="failed",
+                severity="N/A",
+                details=f"Failed to parse API response: {str(e)}",
+                evidence=None,
+                recommendation="API may return unexpected response format"
+            )],
+            owasp_api_top10_compliance={},
+            security_score=0.0,
+            risk_rating="Unknown",
+            recommendations=[
+                "Check API specification matches actual responses",
+                "Verify API returns valid JSON/XML format",
+                "Review API documentation for expected response structure"
+            ],
             execution_time=time.time() - start_time
         )
 
-async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers: Dict, max_requests: int) -> List[APIEndpoint]:
+async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers: Dict, max_requests: int, wordlist_name: str = "api_common") -> List[APIEndpoint]:
     """Discover API endpoints through various methods"""
     endpoints = []
     
@@ -184,21 +278,24 @@ async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers
         spec_endpoints = await parse_api_specification(api_spec, base_url)
         endpoints.extend(spec_endpoints)
     
-    # Common API endpoint discovery
-    common_paths = [
-        "/api/v1", "/api/v2", "/api", "/rest", "/graphql",
-        "/users", "/user", "/login", "/auth", "/token",
-        "/products", "/orders", "/admin", "/health", "/status"
-    ]
+    # Load wordlist for endpoint discovery
+    common_paths = load_wordlist(wordlist_name)
+    logger.info(f"Using {len(common_paths)} paths from '{wordlist_name}' wordlist for discovery")
     
-    for path in common_paths[:max_requests]:
+    # Limit to max_requests to respect rate limiting
+    paths_to_test = common_paths[:max_requests]
+    logger.info(f"Testing {len(paths_to_test)} paths (limited by max_requests={max_requests})")
+    
+    for path in paths_to_test:
         try:
             endpoint_info = await probe_endpoint(base_url, path, headers)
             if endpoint_info:
                 endpoints.append(endpoint_info)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to probe {path}: {e}")
             continue
     
+    logger.info(f"Discovered {len(endpoints)} endpoints from {len(paths_to_test)} probes")
     return endpoints
 
 async def parse_api_specification(spec_url_or_content: str, base_url: str) -> List[APIEndpoint]:

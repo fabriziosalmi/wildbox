@@ -2,7 +2,8 @@
 # Main Makefile for orchestrating all services
 
 .PHONY: help setup install dev test clean docker-build docker-up docker-down logs health \
-	setup-dev setup-prod deploy start stop restart status security-check update backup
+	setup-dev setup-prod deploy start stop restart status security-check update backup \
+	generate-secrets validate-secrets
 
 # Colors for output
 BLUE := \033[0;34m
@@ -67,6 +68,8 @@ setup-dev:
 	else \
 		echo "$(GREEN)✓ .env already exists$(NC)"; \
 	fi
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@echo "$(GREEN)✓ Environment file ready$(NC)"
 
 # Production setup
@@ -77,12 +80,8 @@ setup-prod:
 		echo "Please create .env with production values"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Checking security requirements...$(NC)"
-	@grep -q "JWT_SECRET_KEY=your-secret-key-here" .env && \
-		echo "$(RED)ERROR: Default JWT_SECRET_KEY detected!$(NC)" && exit 1 || true
-	@grep -q "DATABASE_URL=postgresql://postgres:postgres" .env && \
-		echo "$(RED)ERROR: Default database password detected!$(NC)" && exit 1 || true
-	@echo "$(GREEN)✓ Security check passed$(NC)"
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@echo "$(GREEN)✓ Production setup ready$(NC)"
 
 # Install dependencies for all services
@@ -125,6 +124,8 @@ docker-build:
 # Start all Docker services
 docker-up:
 	@echo "$(BLUE)Starting all Docker services...$(NC)"
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@docker-compose up -d
 	@echo "$(YELLOW)Waiting for services to be ready...$(NC)"
 	@sleep 10
@@ -277,5 +278,19 @@ rebuild:
 	@echo "$(BLUE)Rebuilding and restarting services...$(NC)"
 	@docker-compose down
 	@docker-compose build
+	@docker-compose up -d
+	@echo "$(GREEN)✓ Rebuild complete$(NC)"
+
+# Generate secure secrets
+generate-secrets:
+	@echo "$(BLUE)Generating secure random secrets...$(NC)"
+	@python3 scripts/generate_secrets.py
+	@echo "$(GREEN)✓ Secrets generated$(NC)"
+
+# Validate secrets in .env file
+validate-secrets:
+	@echo "$(BLUE)Validating .env secrets...$(NC)"
+	@python3 scripts/validate_secrets.py
+	@echo "$(GREEN)✓ Validation complete$(NC)"
 	@docker-compose up -d
 	@echo "$(GREEN)✓ Services rebuilt and restarted$(NC)"
