@@ -13,6 +13,7 @@ aiofiles==24.1.0
 # DNS enumeration dependencies
 dnspython==2.7.0
 aiodns==3.2.0
+python-whois==0.9.4
 
 # Port scanning dependencies
 python-nmap==0.7.1
