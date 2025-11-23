@@ -7,7 +7,7 @@ uvicorn[standard]==0.32.1
 pydantic==2.10.3
 pydantic-settings==2.6.1
 python-dotenv==1.0.1
-Jinja2==3.1.4
+Jinja2==3.1.6
 aiofiles==24.1.0
 
 # DNS enumeration dependencies
@@ -19,12 +19,12 @@ python-whois==0.9.4
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies
-aiohttp==3.11.10
+aiohttp==3.12.14
 beautifulsoup4==4.12.3
-requests==2.32.3
+requests==2.32.4
 
 # SSL/TLS analysis dependencies
-cryptography==44.0.0
+cryptography==44.0.1
 pyOpenSSL==24.3.0
 
 # Additional security and performance
