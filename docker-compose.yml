@@ -248,6 +248,14 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE-THIS-DB-PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-identity}
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 256M
     ports:
       - "5432:5432"
     volumes:
@@ -266,6 +274,14 @@ services:
     container_name: wildbox-redis
     restart: unless-stopped
     command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --databases 16
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     volumes:
       - wildbox_redis_data:/data
     networks:
@@ -396,6 +412,14 @@ services:
       - OLLAMA_ORIGINS=*
     volumes:
       - llm_cache:/root/.ollama
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
     # Uncomment for GPU support (requires nvidia-docker)
     # deploy:
     #   resources:
@@ -506,6 +530,14 @@ services:
       - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
       - N8N_SECURE_COOKIE=false
       - N8N_METRICS=true
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     volumes:
       - ./open-security-automations/n8n-data:/home/node/.n8n
       - /var/run/docker.sock:/var/run/docker.sock
