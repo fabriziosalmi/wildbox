@@ -26,12 +26,19 @@ POLL_INTERVAL=5  # Check every 5 seconds
 VERBOSE=${VERBOSE:-false}
 
 # Service definitions: name:host:port:path
-SERVICES=(
-  "gateway:localhost:80:/health"
-  "identity:localhost:8001:/health"
-  "api:localhost:8000:/health"
-  "data:localhost:8002:/health"
-)
+# Can be overridden via SERVICES environment variable (space-separated list)
+if [ -z "$SERVICES" ]; then
+  # Default services for full Docker Compose stack
+  SERVICES=(
+    "gateway:localhost:80:/health"
+    "identity:localhost:8001:/health"
+    "api:localhost:8000:/health"
+    "data:localhost:8002:/health"
+  )
+else
+  # Parse SERVICES env variable into array (space-separated)
+  IFS=' ' read -r -a SERVICES <<< "$SERVICES"
+fi
 
 # Optional services (warn but don't fail)
 OPTIONAL_SERVICES=(
