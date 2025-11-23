@@ -142,6 +142,7 @@ def discover_tools() -> Dict[str, Any]:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
+    app.state.start_time = time.time()
     logger.info("Wildbox Security API starting up...")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
@@ -260,17 +261,87 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["System"])
     async def health_check():
         """Enhanced health check endpoint."""
-        active_executions = execution_manager.get_active_executions()
-        return {
-            "status": "healthy",
-            "version": "1.0.0",
-            "environment": settings.environment,
-            "tools_count": len(discovered_tools),
-            "available_tools": list(discovered_tools.keys()),
-            "active_executions": len(active_executions),
-            "max_concurrent_tools": settings.max_concurrent_tools,
-            "default_timeout": settings.tool_timeout
-        }
+        start_time = time.time()
+        try:
+            active_executions = execution_manager.get_active_executions()
+            response_time_ms = (time.time() - start_time) * 1000
+            
+            return {
+                "status": "healthy",
+                "service": "tools",
+                "version": "1.0.0",
+                "timestamp": time.time(),
+                "response_time_ms": round(response_time_ms, 2),
+                "environment": settings.environment,
+                "tools_count": len(discovered_tools),
+                "available_tools": list(discovered_tools.keys()),
+                "active_executions": len(active_executions),
+                "max_concurrent_tools": settings.max_concurrent_tools,
+                "default_timeout": settings.tool_timeout
+            }
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
+            response_time_ms = (time.time() - start_time) * 1000
+            return {
+                "status": "degraded",
+                "service": "tools",
+                "version": "1.0.0",
+                "timestamp": time.time(),
+                "response_time_ms": round(response_time_ms, 2),
+                "error": str(e)
+            }
+    
+    # Metrics endpoint for observability
+    @app.get("/metrics", tags=["System"])
+    async def get_metrics():
+        """
+        Get operational metrics for the tools service.
+        Returns tool execution statistics and system health metrics.
+        """
+        start_time = time.time()
+        try:
+            active_executions = execution_manager.get_active_executions()
+            
+            # Get execution statistics
+            total_executions = 0
+            successful_executions = 0
+            failed_executions = 0
+            
+            # Get tool usage statistics from execution manager if available
+            if hasattr(execution_manager, 'get_execution_stats'):
+                stats = execution_manager.get_execution_stats()
+                total_executions = stats.get('total', 0)
+                successful_executions = stats.get('successful', 0)
+                failed_executions = stats.get('failed', 0)
+            
+            return {
+                "service": "tools",
+                "version": "1.0.0",
+                "timestamp": time.time(),
+                "uptime_seconds": time.time() - app.state.start_time if hasattr(app.state, 'start_time') else 0,
+                "metrics": {
+                    "tools_total": len(discovered_tools),
+                    "tools_available": len(discovered_tools),
+                    "executions_active": len(active_executions),
+                    "executions_total": total_executions,
+                    "executions_successful": successful_executions,
+                    "executions_failed": failed_executions,
+                    "max_concurrent": settings.max_concurrent_tools,
+                    "default_timeout_seconds": settings.tool_timeout,
+                    "rate_limit_requests": settings.rate_limit_requests,
+                    "rate_limit_window_seconds": settings.rate_limit_window
+                },
+                "tools": list(discovered_tools.keys())
+            }
+        except Exception as e:
+            logger.error(f"Error collecting metrics: {e}")
+            return {
+                "service": "tools",
+                "version": "1.0.0",
+                "timestamp": time.time(),
+                "error": "Failed to collect metrics",
+                "details": str(e)
+            }
     
     # System information endpoint
     @app.get("/api/system/info", tags=["System"])
