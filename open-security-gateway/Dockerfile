@@ -18,11 +18,12 @@ RUN mkdir -p /etc/nginx/lua \
     && mkdir -p /var/cache/nginx \
     && mkdir -p /etc/ssl/wildbox
 
-# Install lua-resty-http directly without luarocks due to manifest issues
+# Install lua-resty-http from official release (v0.17.2)
+# Using pinned version for stability instead of master branch
 RUN cd /usr/local/openresty/lualib/resty \
-    && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http.lua \
-    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_headers.lua \
-    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/master/lib/resty/http_connect.lua
+    && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http.lua \
+    && wget -O http_headers.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_headers.lua \
+    && wget -O http_connect.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http_connect.lua
 
 # Copy configuration files
 COPY nginx/ /etc/nginx/
