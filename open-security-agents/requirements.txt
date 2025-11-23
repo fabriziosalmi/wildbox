@@ -13,7 +13,7 @@ redis==5.2.1
 # Pinned versions for reproducible builds and security
 langchain==0.3.13
 langchain-openai==0.2.14
-langchain-community==0.3.13
+langchain-community==0.3.31
 
 # HTTP Client
 httpx==0.28.1
