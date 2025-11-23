@@ -5,7 +5,7 @@ Pytest configuration and shared fixtures for Wildbox integration tests
 import os
 import pytest
 import time
-from typing import Dict, Any
+from typing import Dict
 
 
 def pytest_configure(config):
