@@ -23,7 +23,7 @@ services:
       redis-test:
         condition: service_healthy
       identity-test:
-        condition: service_started
+        condition: service_healthy
     volumes:
       - ./tests:/app/tests:ro
       - ./tests/reports:/app/reports
