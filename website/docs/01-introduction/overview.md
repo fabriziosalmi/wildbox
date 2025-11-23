@@ -13,29 +13,29 @@ Wildbox is a comprehensive, modular, and scalable open-source security platform 
 
 ## Key Highlights
 
-- 🛡️ **Comprehensive Security Suite** - All-in-one platform for security operations
-- 🔧 **Modular Architecture** - Use only what you need, scale what you use
-- 🚀 **Easy Deployment** - Get started in 5 minutes with Docker Compose
-- 🤖 **AI-Powered Analysis** - Leverage GPT-4 for intelligent threat analysis
-- ☁️ **Multi-Cloud Support** - Secure AWS, Azure, and GCP environments
-- 📊 **Real-time Monitoring** - Comprehensive dashboards and alerting
-- 🔐 **Enterprise-Grade Security** - Built with security-first principles
-- 🌐 **Open Source** - MIT licensed, community-driven
+- **Comprehensive Security Suite** - All-in-one platform for security operations
+- **Modular Architecture** - Use only what you need, scale what you use
+- **Easy Deployment** - Get started in 5 minutes with Docker Compose
+- **AI-Powered Analysis** - Leverage GPT-4 for intelligent threat analysis
+- **Multi-Cloud Support** - Secure AWS, Azure, and GCP environments
+- **Real-time Monitoring** - Comprehensive dashboards and alerting
+- **Enterprise-Grade Security** - Built with security-first principles
+- **Open Source** - MIT licensed, community-driven
 
 ## Platform Components
 
 Wildbox consists of several integrated microservices:
 
-- **🚪 Security Gateway** - Intelligent API gateway with authentication and rate limiting
-- **🔐 Identity Service** - Centralized authentication, authorization, and subscription management
-- **🔧 Security Tools** - 50+ integrated security tools with unified API
-- **📊 Data Lake** - Threat intelligence aggregation from 50+ sources
-- **☁️ CSPM** - Cloud security posture management for AWS, Azure, GCP
-- **🛡️ Guardian** - Vulnerability lifecycle management and compliance
-- **📡 Sensor** - Lightweight endpoint monitoring agents
-- **⚡ Responder** - SOAR platform for automated incident response
-- **🧠 AI Agents** - GPT-4 powered security analysis and automation
-- **🖥️ Dashboard** - Unified web interface for all services
+- **Security Gateway** - Intelligent API gateway with authentication and rate limiting
+- **Identity Service** - Centralized authentication, authorization, and subscription management
+- **Security Tools** - 50+ integrated security tools with unified API
+- **Data Lake** - Threat intelligence aggregation from 50+ sources
+- **CSPM** - Cloud security posture management for AWS, Azure, GCP
+- **Guardian** - Vulnerability lifecycle management and compliance
+- **Sensor** - Lightweight endpoint monitoring agents
+- **Responder** - SOAR platform for automated incident response
+- **AI Agents** - GPT-4 powered security analysis and automation
+- **Dashboard** - Unified web interface for all services
 
 ## Technology Stack
 
@@ -62,7 +62,7 @@ Wildbox consists of several integrated microservices:
   <div className="col col--6">
     <div className="card">
       <div className="card__header">
-        <h3>🚀 Get Started</h3>
+        <h3>Get Started</h3>
       </div>
       <div className="card__body">
         <p>Get Wildbox up and running in 5 minutes</p>
@@ -76,7 +76,7 @@ Wildbox consists of several integrated microservices:
   <div className="col col--6">
     <div className="card">
       <div className="card__header">
-        <h3>🏗️ Architecture</h3>
+        <h3>Architecture</h3>
       </div>
       <div className="card__body">
         <p>Learn about Wildbox's architecture and design</p>
@@ -92,7 +92,7 @@ Wildbox consists of several integrated microservices:
   <div className="col col--6">
     <div className="card">
       <div className="card__header">
-        <h3>📚 Components</h3>
+        <h3>Components</h3>
       </div>
       <div className="card__body">
         <p>Detailed documentation for each component</p>
@@ -106,7 +106,7 @@ Wildbox consists of several integrated microservices:
   <div className="col col--6">
     <div className="card">
       <div className="card__header">
-        <h3>🔌 API Reference</h3>
+        <h3>API Reference</h3>
       </div>
       <div className="card__body">
         <p>Complete API documentation for all services</p>
@@ -122,10 +122,10 @@ Wildbox consists of several integrated microservices:
 
 Wildbox is in **Early Evaluation Phase** and we welcome community feedback!
 
-- 💬 [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) - Ask questions and share ideas
-- 🐛 [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues) - Report bugs and request features
-- 📖 [Contributing Guide](/docs/contributing/guidelines) - Learn how to contribute
-- 🔒 [Security Policy](/docs/security/policy) - Report security issues
+- [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) - Ask questions and share ideas
+- [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues) - Report bugs and request features
+- [Contributing Guide](/docs/contributing/guidelines) - Learn how to contribute
+- [Security Policy](/docs/security/policy) - Report security issues
 
 ## License
 

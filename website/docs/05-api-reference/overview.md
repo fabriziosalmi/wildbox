@@ -8,7 +8,7 @@ Wildbox provides comprehensive RESTful APIs for all its services. All APIs follo
 
 ## Available APIs
 
-### 🔐 Identity Service API
+### Identity Service API
 
 Authentication, authorization, user management, team management, and subscription billing.
 
@@ -33,7 +33,7 @@ curl -X POST http://localhost:8001/api/v1/auth/register \
   }'
 ```
 
-### 🔧 Tools API
+### Tools API
 
 Unified API for 50+ security tools with dynamic discovery and execution.
 
@@ -58,7 +58,7 @@ curl -X POST http://localhost:8000/api/v1/tools/whois/execute \
   -d '{"domain": "example.com"}'
 ```
 
-### 📊 Data Lake API
+### Data Lake API
 
 Threat intelligence aggregation, IOC lookup, and enrichment from 50+ sources.
 
@@ -78,7 +78,7 @@ curl http://localhost:8002/api/v1/iocs/search?type=ip&value=1.1.1.1 \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-### 🧠 AI Agents API
+### AI Agents API
 
 GPT-4 powered security analysis, report generation, and automated insights.
 
@@ -103,7 +103,7 @@ curl -X POST http://localhost:8006/api/v1/analyze \
   }'
 ```
 
-### ⚡ Responder API
+### Responder API
 
 SOAR platform for incident response automation and playbook execution.
 
@@ -129,7 +129,7 @@ curl -X POST http://localhost:8018/api/v1/playbooks/1/execute \
   -d '{"params": {"target": "192.168.1.100"}}'
 ```
 
-### ☁️ CSPM API
+### CSPM API
 
 Multi-cloud security posture management and compliance scanning.
 
@@ -288,6 +288,6 @@ curl http://localhost:8000/api/v1/tools \
 
 ## Support
 
-- 📖 [Full API Documentation](/docs/api-reference)
-- 💬 [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
-- 🐛 [Report Issues](https://github.com/fabriziosalmi/wildbox/issues)
+- [Full API Documentation](/docs/api-reference)
+- [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
+- [Report Issues](https://github.com/fabriziosalmi/wildbox/issues)

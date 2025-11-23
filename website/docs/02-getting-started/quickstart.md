@@ -168,11 +168,11 @@ curl -X POST http://localhost:8000/api/v1/tools/whois/execute \
 
 Now that Wildbox is running:
 
-1. 📖 **[Explore Components](../components/overview)** - Learn about each service
-2. 🏗️ **[Understand Architecture](../architecture/overview)** - See how it all fits together
-3. 🔌 **[Browse API Reference](../api-reference/overview)** - Integrate with your tools
-4. 🛡️ **[Review Security Guide](../security/policy)** - Harden your deployment
-5. 🚀 **[Production Deployment](./deployment)** - Deploy to production
+1. **[Explore Components](../components/overview)** - Learn about each service
+2. **[Understand Architecture](../architecture/overview)** - See how it all fits together
+3. **[Browse API Reference](../api-reference/overview)** - Integrate with your tools
+4. **[Review Security Guide](../security/policy)** - Harden your deployment
+5. **[Production Deployment](./deployment)** - Deploy to production
 
 ## Troubleshooting
 
@@ -213,10 +213,10 @@ docker-compose exec identity python manage.py reset-auth
 
 ## Getting Help
 
-- 💬 [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) - Ask questions
-- 🐛 [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues) - Report bugs
-- 📧 [Email Support](mailto:fabrizio.salmi@gmail.com) - Security issues only
+- [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) - Ask questions
+- [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues) - Report bugs
+- [Email Support](mailto:fabrizio.salmi@gmail.com) - Security issues only
 
 ---
 
-**🎉 Congratulations!** Wildbox is now running. Happy hunting! 🛡️
+**Congratulations!** Wildbox is now running. Happy hunting!
