@@ -8,7 +8,7 @@ asyncpg==0.30.0
 alembic==1.14.0
 
 # Authentication and user management
-fastapi-users[sqlalchemy]==14.1.0
+fastapi-users[sqlalchemy]==15.0.1
 python-multipart==0.0.18
 passlib[bcrypt]==1.7.4
 
