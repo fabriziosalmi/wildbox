@@ -103,24 +103,24 @@ def validate_secret(name: str, value: str) -> Tuple[bool, List[str]]:
     
     # Check if empty
     if not value:
-        errors.append(f"'{name}' is empty")
+        errors.append("Secret is empty or not set")
         return False, errors
     
     # Check minimum length
     min_length = MIN_LENGTHS.get(name, 16)
     if len(value) < min_length:
-        errors.append(f"'{name}' is too short (minimum {min_length} characters, got {len(value)})")
+        errors.append(f"Secret is too short (minimum {min_length} characters, got {len(value)})")
     
     # Check for insecure patterns
     value_lower = value.lower()
     for pattern in INSECURE_PATTERNS:
         if pattern.lower() in value_lower:
-            errors.append(f"'{name}' contains insecure pattern: '{pattern}'")
+            errors.append(f"Secret contains insecure pattern: '{pattern}'")
             break  # One pattern match is enough to flag it
     
     # Additional validation for API_KEY format
     if name == 'API_KEY' and not re.match(r'^wsk_[a-z0-9]+\.[a-f0-9]{64}$', value):
-        errors.append(f"'{name}' does not match expected format: wsk_<prefix>.<64-char-hex>")
+        errors.append("API key does not match expected format: wsk_<prefix>.<64-char-hex>")
     
     return len(errors) == 0, errors
 

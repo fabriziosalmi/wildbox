@@ -86,6 +86,7 @@ def main():
     print("\n🔐 Generating secure random secrets...\n")
     
     # Generate all secrets
+    # CodeQL[py/clear-text-storage-sensitive-data] - Intentional: This script generates secrets, must store temporarily
     secrets_map = {
         'JWT_SECRET_KEY': generate_hex(32),
         'POSTGRES_PASSWORD': generate_base64(32),
