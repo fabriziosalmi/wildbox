@@ -13,7 +13,7 @@ services:
       - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8004
       - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8018
       - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8006
-      - NEXTAUTH_SECRET=your-production-secret
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXTAUTH_URL=http://localhost:3000
     networks:
       - wildbox-network

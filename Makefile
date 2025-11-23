@@ -165,13 +165,21 @@ health:
 # Run tests for all services
 test:
 	@echo "$(BLUE)Running tests for all services...$(NC)"
-	@for dir in open-security-*/; do \
+	@failed=0; \
+	for dir in open-security-*/; do \
 		if [ -f "$$dir/Makefile" ] && grep -q "^test:" "$$dir/Makefile"; then \
 			echo "$(YELLOW)Testing $$dir...$(NC)"; \
-			$(MAKE) -C $$dir test || true; \
+			if ! $(MAKE) -C $$dir test; then \
+				echo "$(RED)✗ Tests failed in $$dir$(NC)"; \
+				failed=1; \
+			fi; \
 		fi; \
-	done
-	@echo "$(GREEN)✓ Tests complete$(NC)"
+	done; \
+	if [ $$failed -eq 1 ]; then \
+		echo "$(RED)✗ Some tests failed$(NC)"; \
+		exit 1; \
+	fi
+	@echo "$(GREEN)✓ All tests passed$(NC)"
 
 # Clean temporary files
 clean:
@@ -207,12 +215,20 @@ security-check:
 	@echo "$(BLUE)Running security checks...$(NC)"
 	@echo ""
 	@echo "$(YELLOW)Checking for vulnerable dependencies...$(NC)"
-	@for dir in open-security-*/; do \
+	@failed=0; \
+	for dir in open-security-*/; do \
 		if [ -f "$$dir/requirements.txt" ]; then \
 			echo "Checking $$dir..."; \
-			cd $$dir && pip-audit -r requirements.txt || true && cd ..; \
+			if ! (cd $$dir && pip-audit -r requirements.txt); then \
+				echo "$(RED)✗ Vulnerabilities found in $$dir$(NC)"; \
+				failed=1; \
+			fi; \
 		fi; \
-	done
+	done; \
+	if [ $$failed -eq 1 ]; then \
+		echo "$(RED)⚠️  Security vulnerabilities detected$(NC)"; \
+		exit 1; \
+	fi
 	@echo ""
 	@echo "$(YELLOW)Checking Docker image vulnerabilities...$(NC)"
 	@command -v trivy >/dev/null 2>&1 && trivy image --severity HIGH,CRITICAL wildbox || \

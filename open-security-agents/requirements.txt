@@ -1,27 +1,27 @@
 # Open Security Agents - AI-Powered Threat Intelligence
 # Core API Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+pydantic-settings==2.6.1
 
 # Task Queue
-celery[redis]==5.3.4
-redis>=4.5.0,<5.0.0
+celery[redis]==5.4.0
+redis==5.2.1
 
 # AI/LLM Framework
 # Pinned versions for reproducible builds and security
-langchain>=0.1.0,<1.0.0
-langchain-openai>=0.0.1,<1.0.0
-langchain-community>=0.0.1,<1.0.0
+langchain==0.3.13
+langchain-openai==0.2.14
+langchain-community==0.3.13
 
 # HTTP Client
-httpx==0.25.2
+httpx==0.28.1
 
 # Environment
-python-dotenv==1.0.0
+python-dotenv==1.0.1
 
 # Development
-pytest==7.4.3
-pytest-asyncio==0.21.1
-black==24.3.0
+pytest==8.3.4
+pytest-asyncio==0.24.0
+black==24.10.0

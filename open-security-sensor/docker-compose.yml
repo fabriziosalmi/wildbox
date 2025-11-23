@@ -87,7 +87,7 @@ services:
 
   # Optional: Prometheus for metrics
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.55.1
     container_name: sensor-prometheus
     restart: unless-stopped
     
@@ -114,12 +114,12 @@ services:
 
   # Optional: Grafana for visualization
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.4.0
     container_name: sensor-grafana
     restart: unless-stopped
     
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
       - GF_USERS_ALLOW_SIGN_UP=false
     
     volumes:

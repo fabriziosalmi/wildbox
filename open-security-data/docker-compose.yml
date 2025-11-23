@@ -115,10 +115,10 @@ services:
 
   # Grafana for Monitoring (Optional)
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.4.0
     container_name: securitydata-grafana
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     ports:
       - "3000:3000"
     volumes:
@@ -129,7 +129,7 @@ services:
 
   # Prometheus for Metrics (Optional)
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.55.1
     container_name: securitydata-prometheus
     ports:
       - "9090:9090"

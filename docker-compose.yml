@@ -387,7 +387,7 @@ services:
   # Provides OpenAI-compatible API for AI agents using Qwen2.5:0.5b
   # Much lighter than vLLM (~2GB image + ~300MB model)
   llm:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.4.7
     container_name: wildbox-llm
     restart: unless-stopped
     ports:
@@ -487,15 +487,15 @@ services:
 
   # Automations Service (n8n workflow automation)
   automations:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:1.74.0
     container_name: open-security-automations
     restart: unless-stopped
     ports:
       - "5678:5678"
     environment:
       - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=wildbox_n8n_2025
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
