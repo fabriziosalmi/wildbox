@@ -11,9 +11,10 @@ on:
 
 env:
   # Test environment secrets (safe defaults for CI)
-  # Note: API_KEY must be 32+ characters to pass validation
-  JWT_SECRET_KEY: test-jwt-secret-for-ci-only-not-for-production-use-very-long-key
-  API_KEY: test-api-key-for-ci-environments-minimum-32-characters-required-here
+  # Note: API_KEY must be 32+ characters and cannot contain weak patterns
+  # (test, key, password, secret, admin, demo, 123, abc, default, wildbox, api-key)
+  JWT_SECRET_KEY: ae3f8b1c9d2e7f4a6c5d8e9f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b
+  API_KEY: 907bb9126816d312e8db8035bd8aea898630b401aba56c2fbd0f59705e289906
   POSTGRES_PASSWORD: test-postgres-password-ci
   DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@postgres:5432/identity
   REDIS_URL: redis://redis:6379/0
@@ -112,7 +113,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@localhost:5432/identity
           REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: test-jwt-secret-for-ci-only-not-for-production-use-very-long-key
+          JWT_SECRET_KEY: ae3f8b1c9d2e7f4a6c5d8e9f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b
           CREATE_INITIAL_ADMIN: "false"
 
       - name: Install Tools Service Dependencies
@@ -127,7 +128,7 @@ jobs:
           TOOLS_PID=$!
           echo "TOOLS_PID=$TOOLS_PID" >> $GITHUB_ENV
         env:
-          API_KEY: test-api-key-for-ci-environments-minimum-32-characters-required-here
+          API_KEY: 907bb9126816d312e8db8035bd8aea898630b401aba56c2fbd0f59705e289906
           REDIS_URL: redis://localhost:6379/2
 
       - name: Wait for all services to be healthy
@@ -150,7 +151,7 @@ jobs:
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
-          TEST_API_KEY: test-api-key-for-ci-environments-minimum-32-characters-required-here
+          TEST_API_KEY: 907bb9126816d312e8db8035bd8aea898630b401aba56c2fbd0f59705e289906
         timeout-minutes: 10
 
       - name: Upload Test Results
