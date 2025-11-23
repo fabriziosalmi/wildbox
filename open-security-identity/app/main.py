@@ -218,20 +218,21 @@ async def health_check():
 @app.get("/metrics")
 async def get_metrics():
     """Metrics endpoint for Prometheus/monitoring."""
-    from .database import get_db
-    from sqlalchemy import text, select, func
-    from .models import User, Team, APIKey
     import time
     
-    metrics = {
-        "service": settings.app_name,
-        "version": settings.app_version,
-        "timestamp": time.time(),
-        "uptime_seconds": int(time.time() - app.state.start_time) if hasattr(app.state, 'start_time') else 0,
-        "metrics": {}
-    }
-    
     try:
+        from .database import get_db
+        from sqlalchemy import text, select, func
+        from .models import User, Team, APIKey
+        
+        metrics = {
+            "service": settings.app_name,
+            "version": settings.app_version,
+            "timestamp": time.time(),
+            "uptime_seconds": int(time.time() - app.state.start_time) if hasattr(app.state, 'start_time') else 0,
+            "metrics": {}
+        }
+        
         db_gen = get_db()
         db = await db_gen.__anext__()
         
@@ -250,13 +251,20 @@ async def get_metrics():
         metrics["metrics"]["api_keys_active"] = api_key_count.scalar()
         
         await db.close()
+        
     except Exception as e:
-        # Catch all exceptions including SQLAlchemy errors
+        # Catch all exceptions including SQLAlchemy errors and settings issues
         # Return default values when database is unavailable
-        metrics["metrics"]["error"] = str(type(e).__name__)
-        metrics["metrics"]["users_total"] = 0
-        metrics["metrics"]["teams_total"] = 0
-        metrics["metrics"]["api_keys_active"] = 0
+        metrics = {
+            "service": "identity",
+            "timestamp": time.time(),
+            "metrics": {
+                "error": str(type(e).__name__),
+                "users_total": 0,
+                "teams_total": 0,
+                "api_keys_active": 0
+            }
+        }
     
     return metrics
 
