@@ -74,7 +74,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error executing tool '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to execute tool '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -115,7 +115,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error adding '{ioc}' to blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to add '{ioc}' to blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -151,7 +151,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error querying threat intel for '{query}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to query threat intel for '{query}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -188,7 +188,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error isolating endpoint '{agent_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to isolate endpoint '{agent_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -225,7 +225,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error querying vulnerabilities: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to query vulnerabilities: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -264,7 +264,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error creating ticket: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to create ticket: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -294,7 +294,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error getting asset info for '{asset_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to get asset info for '{asset_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -332,7 +332,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error requesting AI analysis for '{ioc_value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to request AI analysis for '{ioc_value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -380,7 +380,7 @@ class WildboxConnector(BaseConnector):
             error_msg = f"HTTP error creating vulnerability: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to create vulnerability: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)

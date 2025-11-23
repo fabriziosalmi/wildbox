@@ -125,7 +125,7 @@ class SystemConnector(BaseConnector):
                 "details": result.get("details", {}),
                 "error": result.get("error")
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return {
                 "valid": False,
                 "value": value,
@@ -166,7 +166,7 @@ class SystemConnector(BaseConnector):
                 "type": type,
                 **result
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return {
                 "success": False,
                 "type": type,
@@ -200,7 +200,7 @@ class SystemConnector(BaseConnector):
                 if not result:
                     overall_result = False
                     
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 results[name] = False
                 results[f"{name}_error"] = str(e)
                 overall_result = False
@@ -325,7 +325,7 @@ class SystemConnector(BaseConnector):
                     "has_query": bool(parsed.query)
                 }
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return {"valid": False, "error": str(e)}
     
     def _validate_email(self, value: str) -> Dict[str, Any]:

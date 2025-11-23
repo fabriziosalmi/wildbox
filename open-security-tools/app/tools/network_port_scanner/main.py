@@ -101,7 +101,7 @@ async def resolve_hostname(target: str) -> str:
         ip = await loop.run_in_executor(None, socket.gethostbyname, target)
         return ip
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to resolve hostname {target}: {str(e)}")
         raise
 
@@ -192,7 +192,7 @@ async def detect_service(ip: str, port: int, protocol: str = "tcp") -> Tuple[Opt
                     service_name = parsed['service']
                 if parsed['version']:
                     version = parsed['version']
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.debug(f"Banner grab failed for {ip}:{port}: {e}")
     
     return service_name, version, banner
@@ -247,7 +247,7 @@ async def grab_banner(ip: str, port: int, timeout: int = 5) -> Optional[str]:
             if response:
                 return response.decode('utf-8', errors='ignore').strip()
     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.debug(f"Banner grab error for {ip}:{port}: {e}")
     
     return None
@@ -613,7 +613,7 @@ async def execute_tool(request: NetworkPortScannerInput) -> NetworkPortScannerOu
             message=f"Scan completed: {len(open_ports)} open ports found"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         scan_duration = time.time() - start_time
         logger.error(f"Error in port scanner: {str(e)}")
         

@@ -153,7 +153,7 @@ async def execute_tool(data: MobileSecurityAnalyzerInput) -> MobileSecurityAnaly
             execution_time=time.time() - start_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return MobileSecurityAnalyzerOutput(
             platform=data.platform,
             analysis_timestamp=datetime.utcnow().isoformat(),
@@ -189,7 +189,7 @@ async def download_app_file(url: str) -> Optional[bytes]:
             async with session.get(url, timeout=60) as response:
                 if response.status == 200:
                     return await response.read()
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error downloading APK from {url}: {e}")
         pass
     return None
@@ -215,7 +215,7 @@ def extract_app_metadata(app_data: bytes, platform: str) -> Optional[AppMetadata
             return extract_android_metadata(app_data)
         elif platform.lower() == "ios":
             return extract_ios_metadata(app_data)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error extracting app metadata: {e}")
         pass
     return None
@@ -243,7 +243,7 @@ def extract_android_metadata(apk_data: bytes) -> Optional[AppMetadata]:
                     "android.permission.READ_CONTACTS"
                 ]
             )
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error extracting Android metadata: {e}")
         return None
 
@@ -270,7 +270,7 @@ def extract_ios_metadata(ipa_data: bytes) -> Optional[AppMetadata]:
                     file_size=len(ipa_data),
                     permissions=["NSLocationWhenInUseUsageDescription", "NSCameraUsageDescription"]
                 )
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error extracting iOS metadata: {e}")
         return None
 
@@ -358,7 +358,7 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
                     custom_ca_allowed = b'trust-anchors' not in network_config
                 except (KeyError, zipfile.BadZipFile) as e:
                     logger.debug(f"Network security config not found or invalid: {e}")
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.error(f"Unexpected error reading network security config: {e}")
                 
                 # Search for cleartext URLs in all files
@@ -380,7 +380,7 @@ def analyze_network_security(app_data: bytes, platform: str) -> Optional[Network
             custom_ca_allowed=custom_ca_allowed,
             cleartext_endpoints=list(set(cleartext_endpoints))[:10]  # Limit to 10 examples
         )
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error analyzing network security: {e}")
         return None
 
@@ -424,7 +424,7 @@ def analyze_data_storage_security(app_data: bytes, platform: str) -> List[Securi
                         except (UnicodeDecodeError, Exception) as e:
                             logger.error(f"Error analyzing file {file_path} for storage vulnerabilities: {e}")
                             continue
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error analyzing storage vulnerabilities: {e}")
         pass
     
@@ -480,7 +480,7 @@ def analyze_code_quality(app_data: bytes, platform: str) -> List[SecurityVulnera
                         except (UnicodeDecodeError, Exception) as e:
                             logger.error(f"Error analyzing file {file_path} for code quality issues: {e}")
                             continue
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error analyzing code quality vulnerabilities: {e}")
         pass
     
@@ -565,7 +565,7 @@ def extract_assets(app_data: bytes, platform: str) -> List[ExtractedAsset]:
                         except (UnicodeDecodeError, Exception) as e:
                             logger.error(f"Error extracting assets from file {file_path}: {e}")
                             continue
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error extracting assets: {e}")
         pass
     

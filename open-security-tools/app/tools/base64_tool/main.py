@@ -103,7 +103,7 @@ class Base64Tool:
                 'valid': True
             }
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Encoding failed: {str(e)}")
     
     def decode(
@@ -167,7 +167,7 @@ class Base64Tool:
                 'content_type': content_type
             }
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Decoding failed: {str(e)}")
     
     def _clean_base64_input(self, data: str) -> str:
@@ -311,7 +311,7 @@ async def execute_tool(params: Base64ToolInput) -> Base64ToolOutput:
         else:
             raise ValueError(f"Unknown operation: {params.operation}")
             
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return Base64ToolOutput(
             success=False,
             operation=params.operation,

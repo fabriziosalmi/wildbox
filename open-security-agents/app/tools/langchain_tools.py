@@ -30,7 +30,7 @@ async def port_scan_tool(ip_address: str) -> str:
     try:
         result = await wildbox_client.port_scan(ip_address)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Port scan tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -51,7 +51,7 @@ async def whois_lookup_tool(target: str) -> str:
     try:
         result = await wildbox_client.whois_lookup(target)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"WHOIS lookup tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -73,7 +73,7 @@ async def reputation_check_tool(ioc_value: str, sources: str = "virustotal,abuse
         source_list = [s.strip() for s in sources.split(",")]
         result = await wildbox_client.get_reputation(ioc_value, source_list)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Reputation check tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -94,7 +94,7 @@ async def dns_lookup_tool(domain: str, record_type: str = "A") -> str:
     try:
         result = await wildbox_client.dns_lookup(domain, record_type)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"DNS lookup tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -116,7 +116,7 @@ async def url_analysis_tool(url: str, take_screenshot: str = "true") -> str:
         screenshot = take_screenshot.lower() == "true"
         result = await wildbox_client.url_analysis(url, screenshot)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"URL analysis tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -136,7 +136,7 @@ async def hash_lookup_tool(hash_value: str) -> str:
     try:
         result = await wildbox_client.hash_lookup(hash_value)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Hash lookup tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -156,7 +156,7 @@ async def geolocation_lookup_tool(ip_address: str) -> str:
     try:
         result = await wildbox_client.geolocation_lookup(ip_address)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Geolocation lookup tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -177,7 +177,7 @@ async def threat_intel_query_tool(ioc_value: str, ioc_type: str = "") -> str:
     try:
         result = await wildbox_client.query_data_lake(ioc_value, ioc_type if ioc_type else None)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Threat intel query tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
@@ -197,7 +197,7 @@ async def vulnerability_search_tool(query: str) -> str:
     try:
         result = await wildbox_client.check_vulnerability_db(query)
         return json.dumps(result, indent=2)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Vulnerability search tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 

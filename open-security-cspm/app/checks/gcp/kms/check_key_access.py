@@ -65,7 +65,7 @@ class CheckKMSKeyAccess(BaseCheck):
                 }
             ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error in kms key access check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

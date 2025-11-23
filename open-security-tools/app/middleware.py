@@ -56,7 +56,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             
             return response
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             duration = time.time() - start_time
             logger.error(
                 "HTTP request failed",

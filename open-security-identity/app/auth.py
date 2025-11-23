@@ -393,7 +393,7 @@ async def authenticate_api_key(
             "rate_limits": rate_limits
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         print(f"Authentication error: {str(e)}")
         return {"is_authenticated": False}
 

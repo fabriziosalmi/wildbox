@@ -34,7 +34,7 @@ class CheckRunner:
         for provider in providers:
             try:
                 self._load_provider_checks(provider)
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.error(f"Failed to load checks for provider {provider}: {e}")
     
     def _load_provider_checks(self, provider: str):
@@ -56,7 +56,7 @@ class CheckRunner:
                     check_registry.register(check_instance)
                     self.loaded_checks[provider_enum].append(check_instance)
                     logger.info(f"Loaded check: {check_instance.metadata.check_id}")
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.error(f"Failed to instantiate check {check_class.__name__}: {e}")
                     
         except ImportError as e:
@@ -92,7 +92,7 @@ class CheckRunner:
                         # If it's a module, search for check classes
                         check_classes.extend(self._find_check_classes(submodule, provider, path_prefix))
                         
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.error(f"Failed to load submodule {modname}: {e}")
         
         return check_classes
@@ -154,7 +154,7 @@ class CheckRunner:
                 f"{report.failed_checks} failed, {report.error_checks} errors"
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Scan failed: {e}")
             report.status = "failed"
             report.completed_at = datetime.utcnow()
@@ -229,7 +229,7 @@ class CheckRunner:
             
             logger.debug(f"Check {check_id}{region_str} completed with {len(results)} results")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             # Create error result
             error_result = CheckResult(
                 check_id=check_id,

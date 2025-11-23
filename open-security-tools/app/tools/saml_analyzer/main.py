@@ -46,7 +46,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
         # Decode SAML response
         try:
             saml_xml = base64.b64decode(data.saml_response).decode('utf-8')
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             findings.append(SAMLFinding(
                 severity="Critical",
                 category="Format",
@@ -128,7 +128,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
             execution_time=time.time() - start_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         findings.append(SAMLFinding(
             severity="Critical",
             category="Error",
@@ -255,7 +255,7 @@ def check_validity_conditions(not_before, not_after, findings):
                 recommendation="Limit SAML response validity to minimize replay risk"
             ))
             
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         findings.append(SAMLFinding(
             severity="Low",
             category="Validation",

@@ -100,7 +100,7 @@ class MetadataExtractor:
                 'raw_metadata': raw_metadata
             }
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Metadata extraction failed: {str(e)}")
     
     async def _download_file(self, url: str, timeout: int) -> tuple:
@@ -416,7 +416,7 @@ async def execute_tool(params: MetadataExtractorInput) -> MetadataExtractorOutpu
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return MetadataExtractorOutput(
             success=False,
             file_info=FileInfo(

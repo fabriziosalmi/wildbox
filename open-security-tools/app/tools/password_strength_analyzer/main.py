@@ -460,7 +460,7 @@ async def execute_tool(input_data: PasswordStrengthInput) -> PasswordStrengthOut
             meets_standards=meets_standards
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return PasswordStrengthOutput(
             success=False,
             password_length=len(input_data.password) if input_data.password else 0,

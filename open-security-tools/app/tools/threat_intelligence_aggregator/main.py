@@ -109,7 +109,7 @@ class ThreatIntelligenceAggregator:
                     else:
                         return None
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             print(f"VirusTotal API error: {e}")
             return None
     
@@ -170,7 +170,7 @@ class ThreatIntelligenceAggregator:
                         data = await response.json()
                         return self._parse_alienvault_response(data, indicator)
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             print(f"AlienVault API error: {e}")
             return None
     
@@ -216,7 +216,7 @@ class ThreatIntelligenceAggregator:
                         data = await response.json()
                         return self._parse_threatcrowd_response(data, indicator)
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             print(f"ThreatCrowd API error: {e}")
             return None
     

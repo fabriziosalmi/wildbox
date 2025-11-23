@@ -179,7 +179,7 @@ class ComplianceChecker:
                 assessment_summary=summary
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return self._create_error_response(input_data, str(e))
     
     async def _assess_compliance_requirements(self, input_data: ComplianceCheckerInput) -> List[ComplianceRequirement]:

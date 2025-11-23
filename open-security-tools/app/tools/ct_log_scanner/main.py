@@ -515,7 +515,7 @@ async def execute_tool(request: CTLogScannerInput) -> CTLogScannerOutput:
             message=f"Found {len(certificates)} certificates for domain {request.domain}"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error in CT log scanner: {str(e)}")
         return CTLogScannerOutput(
             domain=request.domain,

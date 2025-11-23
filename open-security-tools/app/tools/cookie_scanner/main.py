@@ -77,7 +77,7 @@ class CookieSecurityScanner:
         except aiohttp.ClientError as e:
             logger.error(f"Client error scanning cookies for {url}: {e}")
             results["error"] = f"Client error: {str(e)}"
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error scanning cookies for {url}: {e}")
             results["error"] = f"Unexpected error: {str(e)}"
         
@@ -139,7 +139,7 @@ class CookieSecurityScanner:
             
             return cookie_info
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error parsing cookie header: {e}")
             return None
     
@@ -278,7 +278,7 @@ async def scan_cookies(request: CookieScannerInput) -> CookieScannerOutput:
             message="Cookie security scan completed successfully"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Cookie scan failed: {e}")
         return CookieScannerOutput(
             success=False,

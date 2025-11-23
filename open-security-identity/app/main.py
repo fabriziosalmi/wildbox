@@ -38,19 +38,39 @@ app.add_middleware(
 # Middleware per aggiungere la sessione DB alla request (NECESSARIO per on_after_register)
 @app.middleware("http")
 async def db_session_middleware(request: Request, call_next):
+    """Database session middleware with proper error handling."""
+    from sqlalchemy.exc import SQLAlchemyError, OperationalError
+    import logging
+    
+    logger = logging.getLogger(__name__)
     response = Response("Internal server error", status_code=500)
+    
     try:
         db_gen = get_db()
         request.state.db = await db_gen.__anext__()
         response = await call_next(request)
-    except Exception as e:
-        print(f"Database middleware error: {e}")
-        # Fallisce gracefully
+    except OperationalError as e:
+        logger.error(f"Database connection error: {e}")
+        request.state.db = None
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Database temporarily unavailable"}
+        )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error in middleware: {e}")
+        request.state.db = None
+        response = await call_next(request)
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        logger.error(f"Unexpected middleware error: {type(e).__name__}: {e}")
         request.state.db = None
         response = await call_next(request)
     finally:
         if hasattr(request.state, 'db') and request.state.db:
-            await request.state.db.close()
+            try:
+                await request.state.db.close()
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+                logger.warning(f"Error closing database session: {e}")
+    
     return response
 
 # FastAPI Users routers (sostituiscono auth.router)
@@ -147,28 +167,101 @@ async def health_check():
     from .database import get_db
     from sqlalchemy.ext.asyncio import AsyncSession
     from sqlalchemy import text
-    import asyncio
+    from sqlalchemy.exc import SQLAlchemyError, OperationalError
+    import time
     
     health_status = {
         "status": "healthy",
         "service": settings.app_name,
         "version": settings.app_version,
+        "timestamp": time.time(),
         "checks": {}
     }
     
-    # Database health check
+    # Database health check with specific error handling
+    db_start = time.time()
     try:
-        # Get database session and test connection
         db_gen = get_db()
         db: AsyncSession = await db_gen.__anext__()
         result = await db.execute(text("SELECT 1"))
         await db.close()
-        health_status["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
-    except Exception as e:
+        db_time = (time.time() - db_start) * 1000
+        health_status["checks"]["database"] = {
+            "status": "healthy", 
+            "response_time_ms": round(db_time, 2)
+        }
+    except OperationalError as e:
         health_status["status"] = "unhealthy"
-        health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+        health_status["checks"]["database"] = {
+            "status": "unhealthy", 
+            "error": "Database connection failed",
+            "details": str(e)
+        }
+    except SQLAlchemyError as e:
+        health_status["status"] = "degraded"
+        health_status["checks"]["database"] = {
+            "status": "degraded",
+            "error": "Database query error",
+            "details": str(e)
+        }
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = {
+            "status": "unhealthy",
+            "error": "Unexpected database error",
+            "details": str(type(e).__name__)
+        }
     
     return health_status
+
+
+@app.get("/metrics")
+async def get_metrics():
+    """Metrics endpoint for Prometheus/monitoring."""
+    from .database import get_db
+    from sqlalchemy import text, select, func
+    from .models import User, Team, APIKey
+    import time
+    
+    metrics = {
+        "service": settings.app_name,
+        "version": settings.app_version,
+        "timestamp": time.time(),
+        "uptime_seconds": int(time.time() - app.state.start_time) if hasattr(app.state, 'start_time') else 0,
+        "metrics": {}
+    }
+    
+    try:
+        db_gen = get_db()
+        db = await db_gen.__anext__()
+        
+        # Get user count
+        user_count = await db.execute(select(func.count()).select_from(User))
+        metrics["metrics"]["users_total"] = user_count.scalar()
+        
+        # Get team count
+        team_count = await db.execute(select(func.count()).select_from(Team))
+        metrics["metrics"]["teams_total"] = team_count.scalar()
+        
+        # Get active API keys
+        api_key_count = await db.execute(
+            select(func.count()).select_from(APIKey).where(APIKey.is_active == True)
+        )
+        metrics["metrics"]["api_keys_active"] = api_key_count.scalar()
+        
+        await db.close()
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        metrics["metrics"]["error"] = str(type(e).__name__)
+    
+    return metrics
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize application state on startup."""
+    import time
+    app.state.start_time = time.time()
+
 
 
 @app.exception_handler(404)

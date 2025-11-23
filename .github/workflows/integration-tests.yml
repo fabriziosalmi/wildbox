@@ -1,0 +1,213 @@
+name: Integration Tests
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Test environment secrets (safe defaults for CI)
+  JWT_SECRET_KEY: test-jwt-secret-for-ci-only-not-for-production
+  API_KEY: test-api-key-for-ci-only-not-for-production
+  POSTGRES_PASSWORD: test-postgres-password-ci
+  DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@postgres:5432/identity
+  REDIS_URL: redis://redis:6379/0
+  GATEWAY_INTERNAL_SECRET: test-gateway-secret-ci
+  N8N_BASIC_AUTH_USER: admin
+  N8N_BASIC_AUTH_PASSWORD: test-n8n-password-ci
+  GRAFANA_ADMIN_PASSWORD: test-grafana-password-ci
+  NEXTAUTH_SECRET: test-nextauth-secret-ci
+
+jobs:
+  integration-tests:
+    name: Run Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-postgres-password-ci
+          POSTGRES_DB: identity
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r tests/requirements.txt
+
+      - name: Wait for services
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
+            sleep 2
+          done
+          
+          echo "Waiting for Redis..."
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6379 ping; then
+              echo "Redis is ready"
+              break
+            fi
+            echo "Waiting for Redis... ($i/30)"
+            sleep 2
+          done
+
+      - name: Install Identity Service Dependencies
+        run: |
+          cd open-security-identity
+          pip install -r requirements.txt
+
+      - name: Run Identity Service Database Migrations
+        run: |
+          cd open-security-identity
+          alembic upgrade head
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@localhost:5432/identity
+
+      - name: Start Identity Service
+        run: |
+          cd open-security-identity
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 &
+          IDENTITY_PID=$!
+          echo "IDENTITY_PID=$IDENTITY_PID" >> $GITHUB_ENV
+          
+          # Wait for service to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8001/health; then
+              echo "Identity service is ready"
+              break
+            fi
+            echo "Waiting for Identity service... ($i/30)"
+            sleep 2
+          done
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@localhost:5432/identity
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: test-jwt-secret-for-ci-only
+          CREATE_INITIAL_ADMIN: "false"
+
+      - name: Install Tools Service Dependencies
+        run: |
+          cd open-security-tools
+          pip install -r requirements.txt
+
+      - name: Start Tools Service
+        run: |
+          cd open-security-tools
+          python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          TOOLS_PID=$!
+          echo "TOOLS_PID=$TOOLS_PID" >> $GITHUB_ENV
+          
+          # Wait for service to be ready
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/health; then
+              echo "Tools service is ready"
+              break
+            fi
+            echo "Waiting for Tools service... ($i/30)"
+            sleep 2
+          done
+        env:
+          API_KEY: test-api-key-for-ci-only
+          REDIS_URL: redis://localhost:6379/2
+
+      - name: Run Integration Tests
+        run: |
+          pytest tests/integration/ -v --tb=short
+        env:
+          IDENTITY_SERVICE_URL: http://localhost:8001
+          TOOLS_SERVICE_URL: http://localhost:8000
+          TEST_API_KEY: test-api-key-for-ci-only
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            tests/integration/reports/
+            pytest-results.xml
+          retention-days: 30
+
+      - name: Stop Services
+        if: always()
+        run: |
+          if [ ! -z "$IDENTITY_PID" ]; then kill $IDENTITY_PID || true; fi
+          if [ ! -z "$TOOLS_PID" ]; then kill $TOOLS_PID || true; fi
+
+  security-validation:
+    name: Security Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Security Validation Script
+        run: |
+          chmod +x security_validation_v2.sh
+          ./security_validation_v2.sh
+
+      - name: Check for hardcoded secrets
+        run: |
+          # Fail if any hardcoded passwords found
+          if grep -r "PASSWORD=.*[^$]" docker-compose.yml open-security-*/docker-compose.yml | grep -v "\${" | grep -v "^#"; then
+            echo "❌ Hardcoded secrets detected!"
+            exit 1
+          fi
+          echo "✅ No hardcoded secrets found"
+
+      - name: Check for unpinned dependencies
+        run: |
+          # Check for :latest Docker tags
+          if grep -r "image:.*:latest" docker-compose.yml open-security-*/docker-compose.yml | grep -v "^#"; then
+            echo "❌ Unpinned Docker images detected!"
+            exit 1
+          fi
+          echo "✅ All Docker images pinned"
+
+      - name: Upload Validation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-validation-report
+          path: security-validation-results.txt
+          retention-days: 30

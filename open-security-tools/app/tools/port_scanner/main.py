@@ -138,7 +138,7 @@ async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
         
         return PortScannerOutput(target=input_data.target, results=open_ports)
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Port scan failed: {e}")
         return PortScannerOutput(target=input_data.target, results=[])
 

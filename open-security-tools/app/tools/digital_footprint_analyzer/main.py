@@ -107,7 +107,7 @@ async def execute_tool(data: DigitalFootprintAnalyzerInput) -> DigitalFootprintA
             execution_time=time.time() - start_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         osint_findings.append(OSINTFinding(
             category="Error",
             title="Analysis Failed",

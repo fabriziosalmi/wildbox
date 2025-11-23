@@ -60,7 +60,7 @@ class AuthorizationManager:
                         self.user_permissions[user_id] = [OperationType(p) for p in perms]
                     logger.info(f"Loaded permissions for {len(self.user_permissions)} users")
         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to load authorization configuration: {e}")
     
     def is_target_authorized(self, target: str, operation: OperationType) -> bool:
@@ -84,7 +84,7 @@ class AuthorizationManager:
             
             return False
         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Authorization check failed for {target}: {e}")
             return False
     
@@ -162,7 +162,7 @@ class AuthorizationManager:
             # Log successful authorization
             logger.info(f"Authorization granted: user={user_id}, target={target}, operation={operation.value}, tool={tool_name}")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Authorization denied: user={user_id}, target={target}, operation={operation.value}, reason={str(e)}")
             raise
     

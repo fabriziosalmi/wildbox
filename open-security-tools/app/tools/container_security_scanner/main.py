@@ -131,7 +131,7 @@ class ContainerSecurityScanner:
                 scan_summary=summary
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return ContainerSecurityScannerOutput(
                 image_analyzed=input_data.image_name or "error",
                 scan_timestamp=datetime.now(),

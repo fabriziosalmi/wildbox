@@ -119,7 +119,7 @@ class CheckRootMFAEnabled(BaseCheck):
                     }
                 )
             )
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             results.append(
                 self.create_result(
                     resource_id="unknown",

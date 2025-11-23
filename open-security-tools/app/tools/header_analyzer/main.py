@@ -147,7 +147,7 @@ class HeaderSecurityAnalyzer:
             raise Exception(f"Request timeout for {url}")
         except aiohttp.ClientError as e:
             raise Exception(f"Network error: {str(e)}")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Analysis failed: {str(e)}")
     
     def _analyze_security_headers(self, headers: Dict[str, str]) -> Dict[str, Any]:
@@ -357,7 +357,7 @@ async def execute_tool(params: HeaderAnalyzerInput) -> HeaderAnalyzerOutput:
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return HeaderAnalyzerOutput(
             success=False,
             url=params.url,

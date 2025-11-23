@@ -209,7 +209,7 @@ async def get_system_analytics(
             }
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate analytics: {str(e)}"
@@ -283,7 +283,7 @@ async def get_user_activity_metrics(
             "top_teams": top_teams
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate user activity metrics: {str(e)}"
@@ -348,7 +348,7 @@ async def get_usage_summary(
             }
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to generate usage summary: {str(e)}"

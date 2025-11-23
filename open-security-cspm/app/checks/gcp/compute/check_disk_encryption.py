@@ -142,7 +142,7 @@ class CheckDiskEncryption(BaseCheck):
                             remediation="Configure customer-managed encryption for this disk"
                         ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking GCP Compute Engine disk encryption: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

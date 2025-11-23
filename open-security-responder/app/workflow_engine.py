@@ -223,7 +223,7 @@ class WorkflowEngine:
             template_str = f"{{% if {condition} %}}true{{% else %}}false{{% endif %}}"
             result = self.render_template(template_str, context)
             return result == "true"
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Condition evaluation failed: {e}")
             return False
 
@@ -334,7 +334,7 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                         rendered_input
                     )
                     
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     # If connector execution fails, fall back to simulation for testing
                     workflow_engine.add_log(
                         run_id, 
@@ -363,7 +363,7 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                     f"Step '{step.name}' completed successfully in {step_result.duration_seconds:.2f}s"
                 )
                 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 # Handle step failure
                 step_result.status = ExecutionStatus.FAILED
                 step_result.end_time = datetime.utcnow()
@@ -392,7 +392,7 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
             f"Playbook execution completed successfully in {execution_result.duration_seconds:.2f}s"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         # Handle execution failure
         # Ensure we have an execution_result even if error occurred early
         if 'execution_result' not in locals():

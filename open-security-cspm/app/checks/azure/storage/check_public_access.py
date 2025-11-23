@@ -164,7 +164,7 @@ class CheckStorageAccountPublicAccess(BaseCheck):
                         details=account_details
                     ))
                     
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking Azure Storage Accounts: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

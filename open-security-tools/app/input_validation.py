@@ -222,7 +222,7 @@ async def validate_request_input(request: Request, call_next):
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Input validation middleware error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

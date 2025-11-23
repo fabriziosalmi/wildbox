@@ -29,7 +29,7 @@ def load_jwt_secrets() -> List[str]:
         else:
             logger.warning("JWT secrets file not configured or not found. Brute force disabled.")
             return []
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to load JWT secrets: {e}")
         return []
 

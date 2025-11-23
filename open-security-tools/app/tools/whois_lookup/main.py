@@ -69,7 +69,7 @@ def query_whois_server(domain: str, server: str, timeout: int) -> str:
         sock.close()
         return response.decode('utf-8', errors='ignore')
     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         raise Exception(f"Failed to query WHOIS server {server}: {str(e)}")
 
 def parse_date(date_str: str) -> Optional[datetime]:
@@ -282,7 +282,7 @@ def execute_tool(input_data: WHOISLookupInput) -> WHOISLookupOutput:
             days_until_expiry=days_until_expiry
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return WHOISLookupOutput(
             timestamp=timestamp,
             domain=domain,

@@ -117,7 +117,7 @@ def run_threat_enrichment_task(self, task_id: str, ioc: Dict[str, Any]) -> Dict[
         finally:
             loop.close()
     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error in threat enrichment task {task_id}: {e}")
         
         # Update Redis with failure
@@ -174,7 +174,7 @@ def health_check_task() -> Dict[str, Any]:
             "agent": agent_status
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return {
             "status": "unhealthy",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -210,7 +210,7 @@ def cleanup_expired_tasks() -> Dict[str, Any]:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return {
             "status": "failed",
             "error": str(e),

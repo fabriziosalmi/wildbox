@@ -93,7 +93,7 @@ class EmailSecurityAnalyzer:
                 'sender_ip': sender_ip,
                 'received_headers': received_headers
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Failed to parse email headers: {str(e)}")
     
     def analyze_spf(self, sender_domain: str, sender_ip: Optional[str]) -> SPFAnalysis:
@@ -134,7 +134,7 @@ class EmailSecurityAnalyzer:
                 if "redirect=" in spf_record and ("include:" in spf_record or "a" in spf_record):
                     issues.append("SPF record contains both redirect and other mechanisms")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             issues.append(f"SPF lookup failed: {str(e)}")
         
         return SPFAnalysis(
@@ -237,7 +237,7 @@ class EmailSecurityAnalyzer:
             if dmarc_policy == "none" and not issues:
                 issues.append("DMARC policy is set to 'none' (monitoring only)")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             issues.append(f"DMARC lookup failed: {str(e)}")
             spf_aligned = False
             dkim_aligned = False
@@ -651,7 +651,7 @@ async def execute_tool(input_data: EmailSecurityInput) -> EmailSecurityOutput:
             analysis_timestamp=datetime.now(timezone.utc)
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return EmailSecurityOutput(
             success=False,
             sender_email="",

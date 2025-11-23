@@ -1,9 +1,10 @@
 #!/bin/bash
 # Wildbox Security Validation Script
 # Post-Audit Compliance Checker
-# Version: 2.0
+# Version: 2.1
 
-set -e
+# Don't exit on error - we want to run all checks and report at the end
+set +e
 
 # Colors
 RED='\033[0;31m'
@@ -40,12 +41,17 @@ else
     ((FAILED++))
 fi
 
-# Check for committed .env files
-if [ -f ".env" ] && git ls-files --error-unmatch .env >/dev/null 2>&1; then
-    echo -e "  ${RED}✗ .env file is tracked by git (should be in .gitignore)${NC}"
-    ((FAILED++))
+# Check for committed .env files (git ls-files returns 0 if tracked, non-zero if not)
+if [ -f ".env" ]; then
+    if git ls-files --error-unmatch .env >/dev/null 2>&1; then
+        echo -e "  ${RED}✗ .env file is tracked by git (should be in .gitignore)${NC}"
+        ((FAILED++))
+    else
+        echo -e "  ${GREEN}✓ .env file not committed to version control${NC}"
+        ((PASSED++))
+    fi
 else
-    echo -e "  ${GREEN}✓ .env file not committed to version control${NC}"
+    echo -e "  ${GREEN}✓ No .env file present${NC}"
     ((PASSED++))
 fi
 

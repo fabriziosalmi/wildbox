@@ -195,7 +195,7 @@ def execute_tool(input_data: SSLAnalyzerInput) -> SSLAnalyzerOutput:
                     recommendations=recommendations
                 )
                 
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         # Return basic output with error information
         return SSLAnalyzerOutput(
             target=input_data.target,

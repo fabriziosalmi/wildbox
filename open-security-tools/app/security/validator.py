@@ -103,7 +103,7 @@ class SecurityValidator:
             
             return url
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Invalid URL format: {str(e)}")
     
     @classmethod

@@ -62,7 +62,7 @@ async def handle_stripe_webhook(
             # Log unknown event type but don't fail
             print(f"Unhandled webhook event type: {event_type}")
     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         print(f"Error processing webhook {event_type}: {str(e)}")
         raise HTTPException(status_code=500, detail="Webhook processing failed")
     

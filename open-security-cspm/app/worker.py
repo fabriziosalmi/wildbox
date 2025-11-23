@@ -217,7 +217,7 @@ def run_cspm_scan_task(
             "metadata": scan_config.get("metadata", {})
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         error_msg = str(e)
         error_traceback = traceback.format_exc()
         
@@ -267,7 +267,7 @@ def get_available_checks_task(provider: Optional[str] = None) -> List[Dict[str, 
     try:
         provider_enum = CloudProvider(provider) if provider else None
         return check_runner.get_available_checks(provider_enum)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get available checks: {e}")
         raise
 

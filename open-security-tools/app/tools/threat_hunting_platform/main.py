@@ -85,7 +85,7 @@ class ThreatHuntingPlatform:
             
             return processed_results
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             # Fallback to minimal safe results if SIEM unavailable
             return HuntResults(
                 total_events=0,

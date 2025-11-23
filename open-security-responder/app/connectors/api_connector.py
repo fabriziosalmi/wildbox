@@ -75,7 +75,7 @@ class ApiConnector(BaseConnector):
             error_msg = f"HTTP error executing tool '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to execute tool '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -106,7 +106,7 @@ class ApiConnector(BaseConnector):
             error_msg = f"HTTP error listing tools: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to list tools: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -139,7 +139,7 @@ class ApiConnector(BaseConnector):
             error_msg = f"HTTP error getting tool info for '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to get tool info for '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -169,7 +169,7 @@ class ApiConnector(BaseConnector):
             error_msg = f"HTTP error cancelling execution '{execution_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to cancel execution '{execution_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -198,7 +198,7 @@ class ApiConnector(BaseConnector):
             error_msg = f"HTTP error getting execution status for '{execution_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to get execution status for '{execution_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)

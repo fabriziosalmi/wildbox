@@ -164,7 +164,7 @@ def execute_tool_async(
             'task_id': task_id
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         duration = time.time() - start_time
         error_msg = str(e)
         
@@ -246,7 +246,7 @@ def _load_tool_module(tool_name: str):
         
         return main_module
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to load tool module {tool_name}: {e}")
         return None
 

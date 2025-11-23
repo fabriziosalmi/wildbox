@@ -125,7 +125,7 @@ class URLVoidCollector(HTTPCollector):
                             'domain': domain,
                             'response': data
                         }
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.error(f"Error checking domain {domain}: {e}")
                     continue
     
@@ -275,7 +275,7 @@ class MalwareBazaarCollector(HTTPCollector):
                     for item in data.get('data', []):
                         yield item
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error collecting from MalwareBazaar: {e}")
             raise
     
@@ -341,7 +341,7 @@ class ThreatFoxCollector(HTTPCollector):
                     for item in data.get('data', []):
                         yield item
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error collecting from ThreatFox: {e}")
             raise
     

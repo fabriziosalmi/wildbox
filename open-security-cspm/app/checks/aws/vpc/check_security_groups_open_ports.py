@@ -199,7 +199,7 @@ class CheckSecurityGroupsOpenPorts(BaseCheck):
                     details={'error': str(e)}
                 ))
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking security groups in {region}: {e}")
             results.append(self.create_result(
                 resource_id=f"security-groups-{region}",

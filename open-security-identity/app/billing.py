@@ -62,7 +62,7 @@ class StripeBillingService:
             raise HTTPException(status_code=503, detail="Unable to connect to Stripe")
         except stripe.error.StripeError as e:
             raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise HTTPException(status_code=500, detail=f"Unexpected error creating customer: {str(e)}")
     
     async def create_checkout_session(

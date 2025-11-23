@@ -61,7 +61,7 @@ class CheckECSTaskRoleAssigned(BaseCheck):
                 details={'note': 'This check needs to be implemented'}
             ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error in ecs task role assigned check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

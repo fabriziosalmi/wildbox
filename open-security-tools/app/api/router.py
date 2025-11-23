@@ -157,7 +157,7 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         # Validate input data using the schema
         try:
             validated_input = input_schema_class(**input_data)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Input validation failed for {tool_name}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -216,7 +216,7 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 
         except HTTPException:
             raise
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Tool execution failed: {tool_name}", extra={
                 "tool": tool_name,
                 "error": str(e),

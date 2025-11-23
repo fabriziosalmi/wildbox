@@ -259,7 +259,7 @@ async def execute_tool(params: HashGeneratorInput) -> HashGeneratorOutput:
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return HashGeneratorOutput(
             success=False,
             input_text=params.input_text,

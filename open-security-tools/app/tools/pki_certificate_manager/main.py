@@ -83,7 +83,7 @@ class PKICertificateManager:
                 compliance_status=compliance_status
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             # Return error response
             return PKICertificateManagerOutput(
                 certificate_info=self._create_error_cert_info(),

@@ -71,7 +71,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error adding '{value}' to blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to add '{value}' to blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -102,7 +102,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error removing '{value}' from blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to remove '{value}' from blacklist: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -153,7 +153,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error checking blacklist for '{value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to check blacklist for '{value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -192,7 +192,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error querying IOCs: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to query IOCs: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -235,7 +235,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error adding IOC '{value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to add IOC '{value}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -270,7 +270,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error getting threat feed: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to get threat feed: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -310,7 +310,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error updating reputation for '{entity}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to update reputation for '{entity}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -348,7 +348,7 @@ class DataConnector(BaseConnector):
             error_msg = f"HTTP error getting asset inventory: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             error_msg = f"Failed to get asset inventory: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)

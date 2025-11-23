@@ -117,7 +117,7 @@ async def execute_tool(data: CloudSecurityAnalyzerInput) -> CloudSecurityAnalyze
             execution_time=time.time() - start_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return CloudSecurityAnalyzerOutput(
             cloud_provider=data.cloud_provider,
             analysis_timestamp=datetime.utcnow().isoformat(),

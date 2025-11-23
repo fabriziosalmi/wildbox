@@ -86,7 +86,7 @@ class DNSSecurityChecker:
                 'recommendations': recommendations
             }
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"DNS security check failed: {str(e)}")
     
     async def _get_dns_records(self, domain: str) -> Dict[str, List[DNSRecord]]:
@@ -152,7 +152,7 @@ class DNSSecurityChecker:
                 details="No DNSKEY or DS records found"
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return SecurityCheck(
                 check_name="DNSSEC",
                 passed=False,
@@ -274,7 +274,7 @@ class DNSSecurityChecker:
                 message="No DMARC record found",
                 details="Domain lacks DMARC email authentication policy"
             )
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return SecurityCheck(
                 check_name="DMARC",
                 passed=False,
@@ -531,7 +531,7 @@ async def execute_tool(params: DNSSecurityInput) -> DNSSecurityOutput:
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return DNSSecurityOutput(
             success=False,
             domain=params.domain,

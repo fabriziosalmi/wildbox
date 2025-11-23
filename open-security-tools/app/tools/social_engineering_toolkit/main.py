@@ -440,7 +440,7 @@ async def execute_tool(request: SocialEngineeringToolkitInput) -> SocialEngineer
             message="Social engineering analysis completed successfully"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error in social engineering toolkit: {str(e)}")
         return SocialEngineeringToolkitOutput(
             target=request.target,

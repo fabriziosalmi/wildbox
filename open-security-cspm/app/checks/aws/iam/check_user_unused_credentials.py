@@ -192,7 +192,7 @@ class CheckUnusedUserCredentials(BaseCheck):
                 message=f"Failed to check unused user credentials: {error_code}",
                 details={'error': str(e)}
             ))
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Unexpected error in unused user credentials check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

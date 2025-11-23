@@ -185,7 +185,7 @@ class CheckVMNetworkSecurityGroups(BaseCheck):
                         remediation=f"Attach Network Security Groups to unprotected network interfaces: {', '.join(nics_without_nsg)}"
                     ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking Azure VM Network Security Groups: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

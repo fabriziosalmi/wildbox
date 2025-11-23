@@ -65,7 +65,7 @@ class CheckServiceBusDuplicateDetection(BaseCheck):
                 }
             ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error in service bus duplicate detection check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

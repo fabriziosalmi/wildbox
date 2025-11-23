@@ -126,7 +126,7 @@ class CheckPublicCloudStorageBuckets(BaseCheck):
                         details=bucket_details
                     ))
                     
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking GCP Cloud Storage buckets: {e}")
             results.append(self.create_result(
                 resource_id="unknown",
