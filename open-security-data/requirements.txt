@@ -72,7 +72,7 @@ nltk==3.9
 
 # Optional: Geolocation
 geoip2==4.8.0
-maxminddb>=2.5.1
+maxminddb==2.6.2
 
 # Optional: DNS resolution
 dnspython==2.6.1
@@ -81,7 +81,7 @@ dnspython==2.6.1
 python-whois==0.8.0
 
 # Optional: Certificate parsing
-pyopenssl>=24.0.0
+pyopenssl==24.3.0
 
 # Optional: ASN lookups
 pyasn==1.6.2

@@ -25,7 +25,7 @@ services:
   # vLLM OpenAI-compatible API with Qwen3-0.6B
   # Provides local LLM inference with OpenAI API compatibility
   llm:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.6.6
     container_name: wildbox-llm
     ports:
       - "8080:8000"
