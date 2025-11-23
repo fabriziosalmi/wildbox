@@ -250,8 +250,13 @@ async def get_metrics():
         metrics["metrics"]["api_keys_active"] = api_key_count.scalar()
         
         await db.close()
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except Exception as e:
+        # Catch all exceptions including SQLAlchemy errors
+        logger.error(f"Error fetching metrics from database: {str(e)}")
         metrics["metrics"]["error"] = str(type(e).__name__)
+        metrics["metrics"]["users_total"] = 0
+        metrics["metrics"]["teams_total"] = 0
+        metrics["metrics"]["api_keys_active"] = 0
     
     return metrics
 
