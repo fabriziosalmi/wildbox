@@ -108,16 +108,6 @@ jobs:
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8001 &
           IDENTITY_PID=$!
           echo "IDENTITY_PID=$IDENTITY_PID" >> $GITHUB_ENV
-          
-          # Wait for service to be ready
-          for i in {1..30}; do
-            if curl -f http://localhost:8001/health; then
-              echo "Identity service is ready"
-              break
-            fi
-            echo "Waiting for Identity service... ($i/30)"
-            sleep 2
-          done
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:test-postgres-password-ci@localhost:5432/identity
           REDIS_URL: redis://localhost:6379/0
@@ -135,27 +125,31 @@ jobs:
           python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 &
           TOOLS_PID=$!
           echo "TOOLS_PID=$TOOLS_PID" >> $GITHUB_ENV
-          
-          # Wait for service to be ready
-          for i in {1..30}; do
-            if curl -f http://localhost:8000/health; then
-              echo "Tools service is ready"
-              break
-            fi
-            echo "Waiting for Tools service... ($i/30)"
-            sleep 2
-          done
         env:
           API_KEY: test-api-key-for-ci-only
           REDIS_URL: redis://localhost:6379/2
 
+      - name: Wait for all services to be healthy
+        run: |
+          chmod +x scripts/wait-for-services.sh
+          # Override service URLs for CI environment
+          export SERVICES="identity:localhost:8001:/health api:localhost:8000:/health"
+          ./scripts/wait-for-services.sh
+        timeout-minutes: 5
+
       - name: Run Integration Tests
         run: |
-          pytest tests/integration/ -v --tb=short
+          pytest tests/integration/ \
+            -v \
+            --tb=short \
+            --maxfail=3 \
+            -m "not slow" \
+            --junit-xml=pytest-results.xml
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
           TEST_API_KEY: test-api-key-for-ci-only
+        timeout-minutes: 10
 
       - name: Upload Test Results
         if: always()
