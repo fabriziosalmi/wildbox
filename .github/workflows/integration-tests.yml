@@ -151,7 +151,8 @@ jobs:
             --tb=short \
             --maxfail=3 \
             -m "not slow" \
-            --junit-xml=pytest-results.xml
+            --junit-xml=pytest-results.xml \
+            -c pytest.ini
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
