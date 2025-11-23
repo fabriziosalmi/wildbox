@@ -141,6 +141,8 @@ jobs:
         env:
           # Only check services actually started in CI (identity and tools)
           SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health"
+          # Skip optional services in CI (they don't exist in this environment)
+          OPTIONAL_SERVICES: ""
 
       - name: Run Integration Tests
         run: |

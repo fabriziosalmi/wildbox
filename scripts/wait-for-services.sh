@@ -41,12 +41,24 @@ else
 fi
 
 # Optional services (warn but don't fail)
-OPTIONAL_SERVICES=(
-  "guardian:localhost:8003:/health"
-  "responder:localhost:8018:/health"
-  "agents:localhost:8006:/health"
-  "cspm:localhost:8019:/health"
-)
+# Can be overridden via OPTIONAL_SERVICES environment variable
+if [ -z "$OPTIONAL_SERVICES" ]; then
+  # Default optional services for full Docker Compose stack
+  OPTIONAL_SERVICES=(
+    "guardian:localhost:8003:/health"
+    "responder:localhost:8018:/health"
+    "agents:localhost:8006:/health"
+    "cspm:localhost:8019:/health"
+  )
+else
+  # Parse OPTIONAL_SERVICES env variable into array (space-separated)
+  # Empty string means no optional services
+  if [ "$OPTIONAL_SERVICES" = "" ]; then
+    OPTIONAL_SERVICES=()
+  else
+    IFS=' ' read -r -a OPTIONAL_SERVICES <<< "$OPTIONAL_SERVICES"
+  fi
+fi
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${BLUE}🔍 Wildbox Service Health Checker${NC}"
