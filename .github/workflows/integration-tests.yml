@@ -132,10 +132,11 @@ jobs:
       - name: Wait for all services to be healthy
         run: |
           chmod +x scripts/wait-for-services.sh
-          # Override service URLs for CI environment
-          export SERVICES="identity:localhost:8001:/health api:localhost:8000:/health"
           ./scripts/wait-for-services.sh
         timeout-minutes: 5
+        env:
+          # Only check services actually started in CI (identity and tools)
+          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health"
 
       - name: Run Integration Tests
         run: |
