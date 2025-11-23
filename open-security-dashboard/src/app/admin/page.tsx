@@ -117,7 +117,7 @@ export default function AdminPage() {
         // Check identity service health
         identityClient.get('/api/v1/identity/health').catch(() => null),
         // Check gateway status (if accessible)
-        fetch('http://localhost/health').then(r => r.json()).catch(() => null),
+        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`).then(r => r.json()).catch(() => null),
         // Check data service health
         dataClient.get(getDataPath('/health')).catch(() => null)
       ])
@@ -231,7 +231,8 @@ export default function AdminPage() {
       // Debug: Try direct fetch to bypass any ApiClient issues
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
       
-      const response = await fetch('http://localhost/api/v1/identity/admin/users?limit=100', {
+      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+      const response = await fetch(`${gatewayUrl}/api/v1/identity/admin/users?limit=100`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -521,7 +522,8 @@ export default function AdminPage() {
       // Get auth token from cookies
       const token = document.cookie.split('; ').find(row => row.startsWith('auth_token='))?.split('=')[1]
       
-      const response = await fetch('http://localhost/api/v1/identity/auth/register', {
+      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+      const response = await fetch(`${gatewayUrl}/api/v1/identity/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -546,7 +548,8 @@ export default function AdminPage() {
         
         // Update superuser status if needed
         if (createUserForm.is_superuser) {
-          const superuserResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/role`, {
+          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+          const superuserResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',
@@ -564,7 +567,8 @@ export default function AdminPage() {
         
         // Update active status if needed
         if (!createUserForm.is_active) {
-          const statusResponse = await fetch(`http://localhost/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
+          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
+          const statusResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
             method: 'PATCH',
             headers: {
               'Content-Type': 'application/json',

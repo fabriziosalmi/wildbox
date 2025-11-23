@@ -67,6 +67,8 @@ setup-dev:
 	else \
 		echo "$(GREEN)✓ .env already exists$(NC)"; \
 	fi
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@echo "$(GREEN)✓ Environment file ready$(NC)"
 
 # Production setup
@@ -77,12 +79,8 @@ setup-prod:
 		echo "Please create .env with production values"; \
 		exit 1; \
 	fi
-	@echo "$(YELLOW)Checking security requirements...$(NC)"
-	@grep -q "JWT_SECRET_KEY=your-secret-key-here" .env && \
-		echo "$(RED)ERROR: Default JWT_SECRET_KEY detected!$(NC)" && exit 1 || true
-	@grep -q "DATABASE_URL=postgresql://postgres:postgres" .env && \
-		echo "$(RED)ERROR: Default database password detected!$(NC)" && exit 1 || true
-	@echo "$(GREEN)✓ Security check passed$(NC)"
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@echo "$(GREEN)✓ Production setup ready$(NC)"
 
 # Install dependencies for all services
@@ -125,6 +123,8 @@ docker-build:
 # Start all Docker services
 docker-up:
 	@echo "$(BLUE)Starting all Docker services...$(NC)"
+	@echo "$(YELLOW)Validating .env configuration...$(NC)"
+	@./validate_env.sh || exit 1
 	@docker-compose up -d
 	@echo "$(YELLOW)Waiting for services to be ready...$(NC)"
 	@sleep 10
