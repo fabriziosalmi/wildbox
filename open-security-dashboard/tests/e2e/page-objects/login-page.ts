@@ -13,7 +13,7 @@ export class LoginPage {
     this.emailInput = page.locator('#email');
     this.passwordInput = page.locator('#password');
     this.loginButton = page.getByRole('button', { name: /sign in/i });
-    this.errorMessage = page.locator('.text-red-600, .text-red-400, [role="alert"], .bg-red-50');
+    this.errorMessage = page.locator('p.text-red-600, p.text-red-400').first();
     this.forgotPasswordLink = page.getByText(/forgot password/i);
   }
 
@@ -27,11 +27,17 @@ export class LoginPage {
     await this.passwordInput.fill(password);
     await this.loginButton.click();
     
-    // Wait for navigation or error message
-    await Promise.race([
-      this.page.waitForURL(/dashboard|admin/, { timeout: 15000 }),
-      this.errorMessage.waitFor({ timeout: 5000 })
-    ]);
+    // Wait for navigation or error message (with longer timeout for network)
+    try {
+      await this.page.waitForURL(/dashboard|admin/, { timeout: 20000 });
+    } catch {
+      // If navigation fails, check if there's an error message
+      // If no error message appears within timeout, the test will fail appropriately
+      await this.errorMessage.waitFor({ timeout: 3000 }).catch(() => {
+        // No error message visible - likely a network/backend issue
+        throw new Error('Login failed: No redirect to dashboard and no error message displayed');
+      });
+    }
   }
 
   async isLoggedIn(): Promise<boolean> {
