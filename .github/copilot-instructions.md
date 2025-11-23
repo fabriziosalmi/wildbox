@@ -244,7 +244,7 @@ npx playwright show-report    # View results
 
 ### Health Check Script
 
-**Use before testing**: `./comprehensive_health_check.sh`
+**Use before testing**: `./scripts/shell-scripts/comprehensive_health_check.sh`
 
 Validates:
 - All containers running
@@ -312,8 +312,8 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 
 ### Infrastructure
 - `docker-compose.yml`: Service orchestration & dependencies
-- `comprehensive_health_check.sh`: Health validation & auto-fix
-- `system_monitor.sh`: Performance & resource monitoring
+- `scripts/shell-scripts/comprehensive_health_check.sh`: Health validation & auto-fix
+- `scripts/shell-scripts/system_monitor.sh`: Performance & resource monitoring
 
 ## ⚠️ Security Best Practices
 

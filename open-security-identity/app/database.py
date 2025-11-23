@@ -8,9 +8,14 @@ from sqlalchemy.orm import sessionmaker
 
 from .config import settings
 
+# Convert DATABASE_URL to async format for asyncpg
+database_url = settings.database_url
+if database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
 # Create async engine
 engine = create_async_engine(
-    settings.database_url,
+    database_url,
     echo=settings.debug,
     pool_pre_ping=True,
     pool_recycle=300,

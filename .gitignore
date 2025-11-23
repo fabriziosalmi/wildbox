@@ -75,7 +75,18 @@ website/blog/2021-08-01-mdx-blog-post.mdx
 open-security-automations/n8n-data/crash.journal
 *.pyc
 **/__pycache__/
-GITHUB_SECRETS_READY.md
 
+# Temporary data and debug files (moved to scripts/temp-data/)
+scripts/temp-data/
+scripts/debug/
+archive/
+
+# Generated test results
+integration_test_output.log
+integration_test_results.json
+playwright-results.json
+test_results_post_gateway.txt
+commit_wildbox.txt
 cookies.txt
 headers.txt
+structure_simplified.txt

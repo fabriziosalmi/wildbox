@@ -1,0 +1,91 @@
+# Pre-commit Configuration
+# Install: pip install pre-commit && pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.md$'
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: ['--unsafe']
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-json
+      - id: check-merge-conflict
+      - id: detect-private-key
+        exclude: 'tests/fixtures/'
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  # Python: Black formatter
+  - repo: https://github.com/psf/black
+    rev: 23.12.1
+    hooks:
+      - id: black
+        language_version: python3.11
+        files: '\.py$'
+        exclude: '^(\.venv|venv|open-security-.*/venv)/'
+
+  # Python: Import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        args: ['--profile', 'black']
+        files: '\.py$'
+        exclude: '^(\.venv|venv|open-security-.*/venv)/'
+
+  # Python: Flake8 linting
+  - repo: https://github.com/PyCQA/flake8
+    rev: 6.1.0
+    hooks:
+      - id: flake8
+        args:
+          - '--max-line-length=120'
+          - '--ignore=E203,W503,E501'
+          - '--exclude=venv,.venv,__pycache__,migrations'
+        files: '\.py$'
+        exclude: '^(\.venv|venv|open-security-.*/migrations)/'
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: 'package-lock\.json|\.env\.example|requirements\.txt'
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: ['--severity=warning']
+        files: '\.sh$'
+
+  # Custom checks
+  - repo: local
+    hooks:
+      - id: prevent-debug-statements
+        name: Prevent debug statements
+        entry: bash -c 'grep -nE "(console\.log|print\()" "$@" && exit 1 || exit 0' --
+        language: system
+        files: '\.(py|js|ts|jsx|tsx)$'
+        exclude: '(tests/|test_.*\.py$|\.test\.(ts|tsx|js|jsx)$)'
+
+# Global excludes
+exclude: |
+  (?x)^(
+    .*\.egg-info/.*|
+    .*/__pycache__/.*|
+    .*/\.venv.*/.*|
+    .*/venv/.*|
+    .*/node_modules/.*|
+    .*/\.next/.*|
+    .*/migrations/.*|
+    .*-lock\.json
+  )$

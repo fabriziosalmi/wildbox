@@ -224,16 +224,23 @@ class SecurityAutomationOrchestrator:
         import importlib
         import sys
         import os
+        from fastapi import HTTPException
+        
+        # Validate tool name against whitelist
+        if tool_name not in self.available_tools:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Tool '{tool_name}' not authorized. Available tools: {', '.join(self.available_tools)}"
+            )
+        
+        # Validate parameters for security
+        if not self._validate_tool_parameters(tool_name, parameters):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or unsafe parameters detected"
+            )
         
         try:
-            # Validate tool name against whitelist
-            if tool_name not in self.available_tools:
-                return {"success": False, "error": f"Tool {tool_name} not authorized"}
-            
-            # Validate parameters for security
-            if not self._validate_tool_parameters(tool_name, parameters):
-                return {"success": False, "error": "Invalid or unsafe parameters"}
-            
             # Dynamic import of the tool module
             tool_module_path = f"app.tools.{tool_name}.main"
             
@@ -243,24 +250,46 @@ class SecurityAutomationOrchestrator:
                 tool_module = sys.modules[tool_module_path]
             
             # Execute the tool's main function
-            if hasattr(tool_module, 'execute_tool'):
-                # Create proper input schema for the tool
-                tool_input = self._create_tool_input(tool_name, parameters)
-                result = await tool_module.execute_tool(tool_input)
-                
-                return {
-                    "success": True,
-                    "result": result,
-                    "tool_name": tool_name,
-                    "execution_time": datetime.now().isoformat()
-                }
-            else:
-                return {"success": False, "error": f"Tool {tool_name} missing execute_tool function"}
+            if not hasattr(tool_module, 'execute_tool'):
+                raise HTTPException(
+                    status_code=501,
+                    detail=f"Tool '{tool_name}' missing execute_tool function"
+                )
+            
+            # Create proper input schema for the tool
+            tool_input = self._create_tool_input(tool_name, parameters)
+            result = await tool_module.execute_tool(tool_input)
+            
+            return {
+                "success": True,
+                "result": result,
+                "tool_name": tool_name,
+                "execution_time": datetime.now().isoformat()
+            }
                 
         except ImportError as e:
-            return {"success": False, "error": f"Failed to import tool {tool_name}: {str(e)}"}
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            return {"success": False, "error": f"Tool execution failed: {str(e)}"}
+            raise HTTPException(
+                status_code=404,
+                detail=f"Tool '{tool_name}' not found: {str(e)}"
+            )
+        except (ValueError, KeyError, TypeError) as e:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Tool execution failed due to invalid input: {str(e)}"
+            )
+        except (ConnectionError, TimeoutError) as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Tool execution failed due to service unavailability: {str(e)}"
+            )
+        except Exception as e:
+            # Log unexpected errors and re-raise as 500
+            import logging
+            logging.error(f"Unexpected error executing tool {tool_name}: {str(e)}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Internal error executing tool: {type(e).__name__}"
+            )
     
     def _validate_tool_parameters(self, tool_name: str, parameters: Dict[str, Any]) -> bool:
         """Validate tool parameters for security"""

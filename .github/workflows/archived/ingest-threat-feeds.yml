@@ -1,0 +1,187 @@
+name: Ingest Threat Intelligence Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      feed_type:
+        description: 'Select threat feed to ingest'
+        required: true
+        type: choice
+        options:
+          - all
+          - threat-actor-iocs
+          - sigma-rules
+          - leaked-passwords
+          - vulnerability-feeds
+          - phishing-domains
+          - malware-samples
+          - tor-exit-nodes
+          - cloud-ip-ranges
+          - osint-software
+          - compliance-benchmarks
+          - sandbox-reports
+          - cert-transparency
+          - social-media-threats
+          - public-storage
+          - security-blogs
+          - osquery-packs
+          - mobile-threats
+          - cloud-misconfigurations
+          - cloud-security-policies
+          - dark-web-trends
+          - leaked-cred-patterns
+  
+  schedule:
+    # Run daily at 2 AM UTC for all feeds
+    - cron: '0 2 * * *'
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        feed: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.feed_type == 'all' && fromJSON('["threat-actor-iocs", "sigma-rules", "vulnerability-feeds", "phishing-domains", "tor-exit-nodes", "cloud-ip-ranges", "osquery-packs"]') || fromJSON(format('["{0}"]', github.event.inputs.feed_type))) || fromJSON('["threat-actor-iocs", "sigma-rules", "vulnerability-feeds"]') }}
+      fail-fast: false
+      max-parallel: 3
+    
+    name: Ingest ${{ matrix.feed }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests pyyaml
+      
+      - name: Configure feed parameters
+        id: config
+        run: |
+          case "${{ matrix.feed }}" in
+            "threat-actor-iocs")
+              echo "data_dir=datalake/raw/threat-actors" >> $GITHUB_OUTPUT
+              echo "source_url=https://github.com/apt-notes/apt-notes.git" >> $GITHUB_OUTPUT
+              echo "source_type=git" >> $GITHUB_OUTPUT
+              ;;
+            "sigma-rules")
+              echo "data_dir=datalake/raw/signatures/sigma" >> $GITHUB_OUTPUT
+              echo "source_url=https://github.com/SigmaHQ/sigma.git" >> $GITHUB_OUTPUT
+              echo "source_type=git" >> $GITHUB_OUTPUT
+              ;;
+            "vulnerability-feeds")
+              echo "data_dir=datalake/raw/vulnerabilities" >> $GITHUB_OUTPUT
+              echo "source_url=https://nvd.nist.gov/feeds/json/cve/1.1" >> $GITHUB_OUTPUT
+              echo "source_type=api" >> $GITHUB_OUTPUT
+              ;;
+            "phishing-domains")
+              echo "data_dir=datalake/raw/threats/phishing" >> $GITHUB_OUTPUT
+              echo "source_url=https://openphish.com/feed.txt" >> $GITHUB_OUTPUT
+              echo "source_type=url" >> $GITHUB_OUTPUT
+              ;;
+            "tor-exit-nodes")
+              echo "data_dir=datalake/raw/infrastructure/tor" >> $GITHUB_OUTPUT
+              echo "source_url=https://check.torproject.org/exit-addresses" >> $GITHUB_OUTPUT
+              echo "source_type=url" >> $GITHUB_OUTPUT
+              ;;
+            "cloud-ip-ranges")
+              echo "data_dir=datalake/raw/infrastructure/cloud" >> $GITHUB_OUTPUT
+              echo "source_url=https://ip-ranges.amazonaws.com/ip-ranges.json" >> $GITHUB_OUTPUT
+              echo "source_type=url" >> $GITHUB_OUTPUT
+              ;;
+            "osquery-packs")
+              echo "data_dir=datalake/raw/signatures/osquery" >> $GITHUB_OUTPUT
+              echo "source_url=https://github.com/osquery/osquery.git" >> $GITHUB_OUTPUT
+              echo "source_type=git" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "❌ Unknown feed type: ${{ matrix.feed }}"
+              exit 1
+              ;;
+          esac
+      
+      - name: Create data directory
+        run: mkdir -p "${{ steps.config.outputs.data_dir }}"
+      
+      - name: Ingest from Git repository
+        if: steps.config.outputs.source_type == 'git'
+        run: |
+          git clone --depth 1 "${{ steps.config.outputs.source_url }}" /tmp/source
+          rsync -av --exclude='.git' /tmp/source/ "${{ steps.config.outputs.data_dir }}/"
+          rm -rf /tmp/source
+      
+      - name: Ingest from URL
+        if: steps.config.outputs.source_type == 'url'
+        run: |
+          filename="${{ steps.config.outputs.source_url##*/}}"
+          curl -fsSL "${{ steps.config.outputs.source_url }}" -o "${{ steps.config.outputs.data_dir }}/$filename"
+      
+      - name: Ingest from API
+        if: steps.config.outputs.source_type == 'api'
+        run: |
+          # Implement API-specific logic here
+          echo "API ingestion for ${{ matrix.feed }} - implement as needed"
+      
+      - name: Generate metadata
+        run: |
+          cat > "${{ steps.config.outputs.data_dir }}/metadata.json" <<EOF
+          {
+            "feed_type": "${{ matrix.feed }}",
+            "ingestion_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "source_url": "${{ steps.config.outputs.source_url }}",
+            "workflow_run": "${{ github.run_id }}",
+            "git_sha": "${{ github.sha }}"
+          }
+          EOF
+      
+      - name: Commit and push data
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          if [[ -n $(git status --porcelain) ]]; then
+            git add "${{ steps.config.outputs.data_dir }}/"
+            git commit -m "chore(data): Update ${{ matrix.feed }} ($(date -u +%Y-%m-%d))"
+            git push
+          else
+            echo "ℹ️  No changes detected for ${{ matrix.feed }}"
+          fi
+      
+      - name: Upload ingestion report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ingestion-report-${{ matrix.feed }}
+          path: ${{ steps.config.outputs.data_dir }}/metadata.json
+          retention-days: 7
+
+  summary:
+    needs: ingest
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+      
+      - name: Generate summary
+        run: |
+          echo "## 📊 Threat Intelligence Ingestion Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Run:** ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -d "reports" ]; then
+            echo "### Feeds Processed" >> $GITHUB_STEP_SUMMARY
+            find reports/ -name "metadata.json" -exec sh -c 'echo "- $(jq -r .feed_type $1)" >> $GITHUB_STEP_SUMMARY' _ {} \;
+          fi

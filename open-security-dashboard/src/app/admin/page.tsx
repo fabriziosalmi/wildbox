@@ -136,8 +136,8 @@ export default function AdminPage() {
       if (databaseStatus === 'healthy') servicesOnline++
       if (redisStatus === 'connected') servicesOnline++
 
-      // Metrics require Prometheus integration (Phase 3 of remediation plan)
-      // Display null until real metrics infrastructure is implemented
+      // Metrics require Prometheus integration
+      // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
       const avgResponseTime = null
       const errorRate = null
 

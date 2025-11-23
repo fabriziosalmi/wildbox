@@ -170,12 +170,12 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     // System health metrics require Prometheus integration
-    // Temporarily using basic status from service availability
+    // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
     const systemHealth = {
       status: 'operational' as const,
-      uptime: null,  // Requires Prometheus
-      responseTime: null,  // Requires Prometheus
-      errorRate: null  // Requires Prometheus
+      uptime: null,  // TODO: Implement Prometheus scraper
+      responseTime: null,  // TODO: Implement Prometheus scraper
+      errorRate: null  // TODO: Implement Prometheus scraper
     }
 
     return {

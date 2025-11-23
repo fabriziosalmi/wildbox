@@ -1,0 +1,119 @@
+version: '3.8'
+
+services:
+  # Test runner container
+  test-runner:
+    build:
+      context: ./tests
+      dockerfile: Dockerfile.test
+    environment:
+      - POSTGRES_HOST=postgres-test
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=wildbox_test
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=test_password
+      - REDIS_HOST=redis-test
+      - REDIS_PORT=6379
+      - GATEWAY_URL=http://gateway-test
+      - IDENTITY_URL=http://identity-test:8001
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+      identity-test:
+        condition: service_started
+    volumes:
+      - ./tests:/app/tests:ro
+      - ./tests/reports:/app/reports
+    networks:
+      - test-network
+    command:
+      - "sh"
+      - "-c"
+      - "sleep 5 && pytest tests/integration/ -v --junitxml=reports/junit.xml --html=reports/report.html --self-contained-html --color=yes"
+
+  # Test database
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: wildbox_test
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: test_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+    tmpfs:
+      - /var/lib/postgresql/data  # In-memory for speed
+
+  # Test Redis
+  redis-test:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Identity service for integration tests
+  identity-test:
+    build: ./open-security-identity
+    environment:
+      DATABASE_URL: postgresql://postgres:test_password@postgres-test:5432/wildbox_test
+      REDIS_URL: redis://redis-test:6379/0
+      JWT_SECRET_KEY: test-secret-key-do-not-use-in-production-change-this-now
+      GATEWAY_INTERNAL_SECRET: test-gateway-secret-change-this
+      LOG_LEVEL: DEBUG
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    command: >
+      sh -c "
+        alembic upgrade head &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8001
+      "
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+
+  # Gateway for E2E tests
+  gateway-test:
+    build:
+      context: ./open-security-gateway
+      dockerfile: Dockerfile.test
+    environment:
+      IDENTITY_SERVICE_URL: http://identity-test:8001
+      REDIS_URL: redis://redis-test:6379/5
+    depends_on:
+      identity-test:
+        condition: service_healthy
+      redis-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    ports:
+      - "8080:80"  # Expose for debugging
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+networks:
+  test-network:
+    driver: bridge

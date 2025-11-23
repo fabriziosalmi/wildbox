@@ -1,0 +1,23 @@
+FROM openresty/openresty:alpine
+
+# Install dependencies
+RUN apk add --no-cache curl && \
+    mkdir -p /var/cache/nginx/wildbox_cache /var/log/nginx && \
+    chmod 755 /var/cache/nginx/wildbox_cache /var/log/nginx
+
+# Copy Lua scripts
+COPY nginx/lua /usr/local/openresty/lualib/
+
+# Copy test configuration
+COPY nginx/conf.d/wildbox_gateway_test.conf /etc/nginx/conf.d/default.conf
+
+# Copy main nginx config
+COPY nginx/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost/health || exit 1
+
+EXPOSE 80
+
+CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
