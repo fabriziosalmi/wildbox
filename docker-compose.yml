@@ -229,7 +229,7 @@ services:
       # EXCLUDED FROM v1.0: - NEXT_PUBLIC_CSPM_API_URL=http://localhost:80/api/v1/cspm
       # Internal URLs for server-side requests within Docker network
       - INTERNAL_GATEWAY_URL=http://open-security-gateway:80
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?NEXTAUTH_SECRET environment variable is required}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
       - NEXTAUTH_URL=http://localhost:3000
     networks:
       wildbox:
