@@ -98,8 +98,9 @@ def test_tools_with_valid_api_key(service_urls: Dict[str, str], test_credentials
     """Test tools service with valid API key"""
     headers = {"X-API-Key": test_credentials["api_key"]}
     
+    # Tools service uses /api prefix not /api/v1
     response = requests.get(
-        f"{service_urls['tools']}/api/v1/tools",
+        f"{service_urls['tools']}/api/tools",
         headers=headers,
         timeout=10
     )

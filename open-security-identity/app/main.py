@@ -252,7 +252,7 @@ async def get_metrics():
         await db.close()
     except Exception as e:
         # Catch all exceptions including SQLAlchemy errors
-        logger.error(f"Error fetching metrics from database: {str(e)}")
+        # Return default values when database is unavailable
         metrics["metrics"]["error"] = str(type(e).__name__)
         metrics["metrics"]["users_total"] = 0
         metrics["metrics"]["teams_total"] = 0
