@@ -72,7 +72,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true, // Always reuse in CI since docker-compose starts services
     timeout: 120 * 1000, // 2 minutes
   },
 });

@@ -4,8 +4,8 @@ services:
   # Test runner container
   test-runner:
     build:
-      context: ./tests
-      dockerfile: Dockerfile.test
+      context: .
+      dockerfile: tests/Dockerfile.test
     environment:
       - POSTGRES_HOST=postgres-test
       - POSTGRES_PORT=5432
