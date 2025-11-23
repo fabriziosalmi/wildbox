@@ -20,11 +20,11 @@ django-celery-results==2.5.1
 
 # Security & Authentication
 django-oauth-toolkit==3.0.1
-cryptography==44.0.1
+cryptography==46.0.3
 python-jose[cryptography]==3.5.0
 
 # HTTP Clients & Integrations
-requests==2.32.3
+requests==2.32.4
 httpx==0.25.2
 pydantic==2.8.2
 python-dotenv==1.0.0
