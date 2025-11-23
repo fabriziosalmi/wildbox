@@ -186,12 +186,6 @@ docker-compose --profile full up -d
 
 ## Migration Strategy
 
-### Option A: Big Bang (Not Recommended)
-
-1. Build consolidated service
-2. Switch all at once
-3. High risk, all-or-nothing
-
 ### Option B: Strangler Fig (Recommended)
 
 1. **Week 1-2:** Create wildbox-api with identity + gateway
@@ -354,67 +348,7 @@ docker-compose --profile active up -d
 
 **Total Duration:** 11 weeks (~3 months)
 
----
-
-## Decision Points
-
-**Before Starting:**
-
-- [ ] Team consensus on consolidation approach
-- [ ] Resource allocation (dedicated time for migration)
-- [ ] Success criteria defined and agreed
-- [ ] Rollback plan tested
-
-**Go/No-Go Criteria:**
-
-**GO** if:
-- Performance tests show 30%+ latency improvement
-- Resource usage reduced by 50%+
-- No major bugs in integration testing
-- Team confident in rollback plan
-
-**NO-GO** if:
-- Performance degrades vs current architecture
-- Resource usage increases
-- Major bugs discovered in testing
-- Complexity increases significantly
 
 ---
 
-## Alternative Approaches Considered
 
-### 1. Keep Microservices, Optimize Each
-
-**Pros:** Less disruption, incremental improvement  
-**Cons:** Doesn't solve fundamental overhead problem
-
-### 2. Serverless Architecture (AWS Lambda, etc.)
-
-**Pros:** Zero infrastructure management, auto-scaling  
-**Cons:** Vendor lock-in, cold starts, cost at scale
-
-### 3. Single Python Script
-
-**Pros:** Maximum simplicity  
-**Cons:** No modularity, poor testability, deployment issues
-
-### 4. Modular Monolith (CHOSEN)
-
-**Pros:** Balance of modularity and simplicity, proven pattern  
-**Cons:** Requires careful module design, shared database
-
----
-
-## References
-
-- **Brutal Rep Auditor v2.3:** Identified microservices as "architectural vanity"
-- **Martin Fowler - Monolith First:** https://martinfowler.com/bliki/MonolithFirst.html
-- **Shopify Migration:** Modular monolith for 1M+ merchants
-- **GitLab Architecture:** Consolidated 10+ services into modular monolith
-
----
-
-**Document Status:** PLANNING  
-**Next Review:** After critical security fixes complete  
-**Owner:** Architecture Team  
-**Classification:** INTERNAL

@@ -75,3 +75,4 @@ website/blog/2021-08-01-mdx-blog-post.mdx
 open-security-automations/n8n-data/crash.journal
 *.pyc
 **/__pycache__/
+GITHUB_SECRETS_READY.md
