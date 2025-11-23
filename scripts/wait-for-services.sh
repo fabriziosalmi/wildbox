@@ -42,22 +42,21 @@ fi
 
 # Optional services (warn but don't fail)
 # Can be overridden via OPTIONAL_SERVICES environment variable
-if [ -z "$OPTIONAL_SERVICES" ]; then
-  # Default optional services for full Docker Compose stack
+# Check if variable is set (even if empty) using parameter expansion
+if [ -z "${OPTIONAL_SERVICES+x}" ]; then
+  # Variable is unset - use default optional services for full Docker Compose stack
   OPTIONAL_SERVICES=(
     "guardian:localhost:8003:/health"
     "responder:localhost:8018:/health"
     "agents:localhost:8006:/health"
     "cspm:localhost:8019:/health"
   )
+elif [ -z "$OPTIONAL_SERVICES" ]; then
+  # Variable is set but empty - no optional services
+  OPTIONAL_SERVICES=()
 else
-  # Parse OPTIONAL_SERVICES env variable into array (space-separated)
-  # Empty string means no optional services
-  if [ "$OPTIONAL_SERVICES" = "" ]; then
-    OPTIONAL_SERVICES=()
-  else
-    IFS=' ' read -r -a OPTIONAL_SERVICES <<< "$OPTIONAL_SERVICES"
-  fi
+  # Variable is set and non-empty - parse into array (space-separated)
+  IFS=' ' read -r -a OPTIONAL_SERVICES <<< "$OPTIONAL_SERVICES"
 fi
 
 echo -e "${BLUE}═══════════════════════════════════════════════════════════${NC}"
