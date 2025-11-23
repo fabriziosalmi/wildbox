@@ -306,7 +306,7 @@ def register_common_tools():
         
         logger.info("Common tool schemas registered successfully")
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to register common tools: {e}")
 
 

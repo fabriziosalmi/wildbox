@@ -179,7 +179,7 @@ class NetworkScanner:
                 response_time=None,
                 error=f"OS error: {e}"
             )
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Unexpected error pinging {ip}: {e}")
             return HostInfo(
                 ip_address=ip,
@@ -202,7 +202,7 @@ class NetworkScanner:
         except (socket.herror, socket.gaierror, OSError, asyncio.TimeoutError):
             # These are expected for many IPs
             return None
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.debug(f"Unexpected error resolving hostname for {ip}: {e}")
             return None
     
@@ -243,7 +243,7 @@ class NetworkScanner:
                 except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
                     # These are expected for closed ports
                     return None
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.debug(f"Unexpected error scanning port {port} on {ip}: {e}")
                     return None
         
@@ -259,7 +259,7 @@ class NetworkScanner:
                 elif isinstance(result, Exception):
                     logger.debug(f"Port scan exception: {result}")
         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error during port scanning of {ip}: {e}")
             host_info.error = f"Port scan error: {e}"
         
@@ -458,7 +458,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
                 error="Scan operation timed out"
             )
         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             # Unexpected errors
             metrics.counter("network_scanner.error").increment()
             error_info = ToolExceptionHandler.handle_generic_error(e, "network_scanner")

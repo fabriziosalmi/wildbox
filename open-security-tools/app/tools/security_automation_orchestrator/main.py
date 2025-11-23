@@ -200,7 +200,7 @@ class SecurityAutomationOrchestrator:
                 step.status = "failed"
                 step.error_message = f"Tool {step.tool_name} not available"
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             step.status = "failed"
             step.error_message = str(e)
         
@@ -259,7 +259,7 @@ class SecurityAutomationOrchestrator:
                 
         except ImportError as e:
             return {"success": False, "error": f"Failed to import tool {tool_name}: {str(e)}"}
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return {"success": False, "error": f"Tool execution failed: {str(e)}"}
     
     def _validate_tool_parameters(self, tool_name: str, parameters: Dict[str, Any]) -> bool:

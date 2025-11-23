@@ -112,7 +112,7 @@ async def get_current_user(
                     plan=x_wildbox_plan or "free",
                     role=x_wildbox_role or "member"
                 )
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.error(f"[AUTH-ERROR] Invalid gateway headers: {e}")
                 raise HTTPException(
                     status_code=400,
@@ -132,7 +132,7 @@ async def get_current_user(
                 plan="enterprise",  # Legacy tokens get full access during migration
                 role="admin"
             )
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"[AUTH-ERROR] Legacy auth failed: {e}")
             raise HTTPException(status_code=401, detail="Authentication failed")
     

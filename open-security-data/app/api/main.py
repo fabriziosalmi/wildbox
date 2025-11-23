@@ -660,14 +660,14 @@ async def ingest_telemetry_batch(
             db.add(telemetry_event)
             events_ingested += 1
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             errors.append(f"Event {i}: {str(e)}")
             logger.error(f"Failed to ingest event {i} in batch {batch_id}: {e}")
     
     try:
         db.commit()
         logger.info(f"Ingested batch {batch_id}: {events_ingested}/{len(batch.events)} events")
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         db.rollback()
         error_msg = f"Failed to commit batch {batch_id}: {str(e)}"
         errors.append(error_msg)

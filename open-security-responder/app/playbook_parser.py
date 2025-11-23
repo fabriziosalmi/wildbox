@@ -69,7 +69,7 @@ class PlaybookParser:
                 playbooks[playbook.playbook_id] = playbook
                 logger.info(f"Loaded playbook '{playbook.playbook_id}' from {yaml_file}")
                 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 error_msg = f"Failed to load playbook from {yaml_file}: {str(e)}"
                 logger.error(error_msg)
                 errors.append(error_msg)
@@ -99,7 +99,7 @@ class PlaybookParser:
                 raw_data = yaml.safe_load(f)
         except yaml.YAMLError as e:
             raise PlaybookParseError(f"Invalid YAML syntax: {str(e)}")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise PlaybookParseError(f"Failed to read file: {str(e)}")
         
         if not isinstance(raw_data, dict):

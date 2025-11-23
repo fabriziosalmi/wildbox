@@ -125,7 +125,7 @@ class CheckUserInlinePolicies(BaseCheck):
                 message=f"Failed to check user inline policies: {error_code}",
                 details={'error': str(e)}
             ))
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Unexpected error in user inline policies check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

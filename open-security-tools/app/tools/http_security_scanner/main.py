@@ -105,7 +105,7 @@ class HttpSecurityScanner:
                 # Convert headers to dict (case-insensitive)
                 headers = {k.lower(): v for k, v in response.headers.items()}
                 return headers, response.status, str(response.url)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error fetching headers from {url}: {e}")
             raise
 
@@ -324,7 +324,7 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
                 findings=findings
             )
             
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"HTTP security scan failed: {e}")
         duration = (datetime.now() - start_time).total_seconds()
         

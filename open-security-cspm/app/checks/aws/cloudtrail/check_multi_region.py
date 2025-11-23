@@ -97,7 +97,7 @@ class CheckCloudTrailMultiRegion(BaseCheck):
                     # Check if trail is actively logging
                     status_response = cloudtrail_client.get_trail_status(Name=trail_arn)
                     is_logging = status_response.get('IsLogging', False)
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.warning(f"Could not get status for trail {trail_name}: {e}")
                 
                 trail_details = {
@@ -151,7 +151,7 @@ class CheckCloudTrailMultiRegion(BaseCheck):
                     remediation="Configure at least one CloudTrail trail with multi-region enabled and ensure it's actively logging"
                 ))
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking CloudTrail configuration: {e}")
             results.append(self.create_result(
                 resource_id="account",

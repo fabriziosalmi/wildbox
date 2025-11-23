@@ -168,7 +168,7 @@ def _get_trending_metrics(redis_client, provider: str, account_id: str, days: in
         
         return list(reversed(trending_data))  # Return chronological order
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error getting trending metrics: {e}")
         return []
 

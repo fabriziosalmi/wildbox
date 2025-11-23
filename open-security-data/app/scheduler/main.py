@@ -135,7 +135,7 @@ class CollectionScheduler:
                 if current_time.minute % 10 == 0:
                     await self._reload_sources()
                 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.error(f"Error in scheduler loop: {e}", exc_info=True)
                 await asyncio.sleep(60)  # Wait before retrying
     
@@ -192,7 +192,7 @@ class CollectionScheduler:
             task.last_error = "Collection timeout"
             await self._handle_collection_error(source, "Collection timeout")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Collection error for source {source.name}: {e}", exc_info=True)
             task.last_error = str(e)
             await self._handle_collection_error(source, str(e))
@@ -256,7 +256,7 @@ class CollectionScheduler:
             finally:
                 db.close()
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error reloading sources: {e}", exc_info=True)
     
     def get_status(self) -> Dict[str, any]:

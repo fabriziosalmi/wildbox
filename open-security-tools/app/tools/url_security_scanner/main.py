@@ -115,7 +115,7 @@ class URLSecurityScanner:
                 fragment=parsed.fragment,
                 port=parsed.port
             )
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Failed to parse URL: {str(e)}")
     
     def analyze_security(self, url: str, components: URLComponents) -> SecurityAnalysis:
@@ -242,11 +242,11 @@ class URLSecurityScanner:
                     except asyncio.TimeoutError:
                         security_issues.append("Timeout during redirect analysis")
                         break
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         security_issues.append(f"Error following redirect: {str(e)}")
                         break
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             security_issues.append(f"Failed to analyze redirects: {str(e)}")
         
         # Check for suspicious redirect patterns
@@ -494,7 +494,7 @@ async def execute_tool(input_data: URLSecurityInput) -> URLSecurityOutput:
             analysis_timestamp=analysis_timestamp
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return URLSecurityOutput(
             success=False,
             original_url=input_data.url,

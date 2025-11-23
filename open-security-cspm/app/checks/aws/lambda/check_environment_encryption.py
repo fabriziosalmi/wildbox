@@ -141,7 +141,7 @@ class CheckLambdaEnvironmentEncryption(BaseCheck):
                                 remediation="Configure customer-managed KMS key encryption for environment variables"
                             ))
                             
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         logger.error(f"Error checking Lambda function {function_name}: {e}")
                         results.append(self.create_result(
                             resource_id=function_name,
@@ -153,7 +153,7 @@ class CheckLambdaEnvironmentEncryption(BaseCheck):
                             details={'error': str(e)}
                         ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error listing Lambda functions in region {region}: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

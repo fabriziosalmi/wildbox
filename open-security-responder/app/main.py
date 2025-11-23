@@ -54,7 +54,7 @@ async def lifespan(app: FastAPI):
         
         logger.info("Open Security Responder started successfully")
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to start application: {e}")
         raise
     
@@ -139,7 +139,7 @@ async def health_check():
             redis_connected=redis_connected,
             playbooks_loaded=playbooks_loaded
         )
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Health check failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -156,7 +156,7 @@ async def list_playbooks():
             playbooks=playbooks_list,
             total=len(playbooks_list)
         )
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to list playbooks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -205,7 +205,7 @@ async def execute_playbook(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to execute playbook {playbook_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -229,7 +229,7 @@ async def get_execution_status(run_id: str):
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get execution status for {run_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -247,7 +247,7 @@ async def reload_playbooks():
             "total_loaded": len(playbooks),
             "playbooks": list(playbooks.keys())
         }
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to reload playbooks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -264,7 +264,7 @@ async def list_connectors():
             "connectors": connectors,
             "total": len(connectors)
         }
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to list connectors: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -304,7 +304,7 @@ async def cancel_execution(run_id: str):
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to cancel execution {run_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

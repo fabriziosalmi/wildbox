@@ -33,7 +33,7 @@ class SecureCredentialManager:
             new_key = Fernet.generate_key()
             keyring.set_password("wildbox-security-api", "encryption_key", new_key.decode())
             return new_key
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.warning(f"Keyring unavailable, using environment variable: {e}")
             # Fallback to environment variable
             env_key = os.getenv('ENCRYPTION_KEY')

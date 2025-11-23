@@ -74,7 +74,7 @@ class JWTDecoder:
         
         try:
             return base64.b64decode(data)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Invalid base64url encoding: {str(e)}")
     
     def decode_jwt_part(self, part: str) -> Dict[str, Any]:
@@ -83,7 +83,7 @@ class JWTDecoder:
             decoded_bytes = self.base64url_decode(part)
             decoded_str = decoded_bytes.decode('utf-8')
             return json.loads(decoded_str)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Failed to decode JWT part: {str(e)}")
     
     def parse_timestamp(self, timestamp: int) -> datetime:
@@ -297,14 +297,14 @@ class JWTDecoder:
         try:
             header_data = self.decode_jwt_part(header_part)
             header = self.analyze_header(header_data)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Failed to decode JWT header: {str(e)}")
         
         # Decode payload
         try:
             payload_data = self.decode_jwt_part(payload_part)
             payload = self.analyze_payload(payload_data)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise ValueError(f"Failed to decode JWT payload: {str(e)}")
         
         # Analyze security
@@ -363,7 +363,7 @@ async def execute_tool(input_data: JWTDecoderInput) -> JWTDecoderOutput:
             parts_count=len(parts)
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return JWTDecoderOutput(
             success=False,
             is_valid_jwt=False,

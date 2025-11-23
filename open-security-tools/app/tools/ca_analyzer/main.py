@@ -89,7 +89,7 @@ class CAAnalyzer:
                         return [peer_cert[0].public_bytes(encoding=ssl.Encoding.DER)]
             
             return []
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Failed to retrieve certificate chain: {str(e)}")
     
     def parse_certificate(self, cert_der: bytes) -> Dict[str, Any]:
@@ -151,7 +151,7 @@ class CAAnalyzer:
                 'fingerprint_sha1': sha1_fingerprint,
                 'cert_object': cert
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Failed to parse certificate: {str(e)}")
     
     def analyze_certificate_chain(self, chain_data: List[Dict[str, Any]]) -> CertificateChainAnalysis:
@@ -455,7 +455,7 @@ async def execute_tool(input_data: CAAnalyzerInput) -> CAAnalyzerOutput:
             analysis_timestamp=datetime.now(timezone.utc)
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return CAAnalyzerOutput(
             success=False,
             target=input_data.target,

@@ -108,7 +108,7 @@ class CheckLogFileValidation(BaseCheck):
                 message=f"Error checking CloudTrail log file validation: {error_code}",
                 details={'error': str(e)}
             ))
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             results.append(self.create_result(
                 resource_id="unknown",
                 resource_type="CloudTrail",

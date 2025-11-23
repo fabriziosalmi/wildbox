@@ -109,15 +109,26 @@ async def health_check():
                 "api": "healthy"
             }
         )
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Health check connection error: {e}")
+        return schemas.HealthCheckResponse(
+            status="degraded",
+            timestamp=datetime.utcnow(),
+            version=settings.app_version,
+            checks={
+                "api": "degraded",
+                "error": "Service connection issue"
+            }
+        )
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        logger.error(f"Health check unexpected error: {type(e).__name__}: {e}")
         return schemas.HealthCheckResponse(
             status="unhealthy",
             timestamp=datetime.utcnow(),
             version=settings.app_version,
             checks={
                 "api": "unhealthy",
-                "error": str(e)
+                "error": str(type(e).__name__)
             }
         )
 
@@ -196,11 +207,17 @@ async def start_scan(
             )
         )
         
-    except Exception as e:
-        logger.error(f"Failed to start scan: {e}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Task queue connection error starting scan: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start scan: {str(e)}"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task queue temporarily unavailable"
+        )
+    except ValueError as e:
+        logger.error(f"Invalid scan configuration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid scan configuration: {str(e)}"
         )
 
 
@@ -271,11 +288,17 @@ async def get_scan_status(
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Failed to get scan status: {e}")
+    except (ConnectionError, KeyError) as e:
+        logger.error(f"Failed to get scan status for {scan_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Scan not found"
+        )
+    except ValueError as e:
+        logger.error(f"Invalid scan data for {scan_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get scan status: {str(e)}"
+            detail="Scan data integrity error"
         )
 
 
@@ -329,7 +352,7 @@ async def get_scan_report(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get scan report: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -368,7 +391,7 @@ async def list_checks(
             categories=categories
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to list checks: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -435,7 +458,7 @@ async def get_compliance_report(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to generate compliance report: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -485,7 +508,7 @@ async def cancel_scan(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to cancel scan: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -544,7 +567,7 @@ async def get_dashboard_summary(
             trending_metrics=trending_metrics
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get dashboard summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -584,7 +607,7 @@ async def get_executive_summary(
                                 "metadata": metadata,
                                 "results": results
                             })
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.warning(f"Error processing scan metadata: {e}")
                 continue
         
@@ -610,7 +633,7 @@ async def get_executive_summary(
             }
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get executive summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -649,7 +672,7 @@ async def get_remediation_roadmap(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get remediation roadmap: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -710,7 +733,7 @@ async def start_batch_scans(
             started_at=datetime.utcnow()
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to start batch scans: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -779,7 +802,7 @@ async def get_compliance_summary(
             "last_updated": datetime.utcnow().isoformat()
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get compliance summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -898,7 +921,7 @@ async def get_compliance_findings(
             "has_more": (offset + limit) < total_count
         }
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get compliance findings: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

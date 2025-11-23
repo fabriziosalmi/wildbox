@@ -106,7 +106,7 @@ class CheckBucketMFADelete(BaseCheck):
                             details={'error': str(e)}
                         ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Unexpected error in S3 bucket MFA Delete check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

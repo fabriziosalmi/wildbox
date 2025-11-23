@@ -64,7 +64,7 @@ class IoTSecurityScanner:
                     {"username": "admin", "password": "admin"},
                     {"username": "admin", "password": ""}
                 ]
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to load IoT credentials: {e}")
             return []
     
@@ -109,7 +109,7 @@ class IoTSecurityScanner:
                 recommendations=self._generate_recommendations(devices, vulnerabilities)
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return IoTSecurityScannerOutput(
                 devices_found=[],
                 vulnerabilities=[],

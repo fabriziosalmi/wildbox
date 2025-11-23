@@ -93,7 +93,7 @@ class CheckKMSKeyRotation(BaseCheck):
                         try:
                             rotation_response = kms_client.get_key_rotation_status(KeyId=key_id)
                             rotation_enabled = rotation_response.get('KeyRotationEnabled', False)
-                        except Exception as e:
+                        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                             # Some key types don't support rotation
                             if 'is not valid for this operation' in str(e):
                                 # Skip asymmetric keys and HMAC keys
@@ -137,7 +137,7 @@ class CheckKMSKeyRotation(BaseCheck):
                                 remediation="Enable automatic key rotation for this customer-managed KMS key"
                             ))
                             
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         logger.error(f"Error checking key {key_id}: {e}")
                         results.append(self.create_result(
                             resource_id=key_id,
@@ -148,7 +148,7 @@ class CheckKMSKeyRotation(BaseCheck):
                             details={'error': str(e)}
                         ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error listing KMS keys in region {region}: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

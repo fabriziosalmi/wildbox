@@ -174,7 +174,7 @@ def test_xss_payload(url: str, method: str, param_name: str, payload: str, xss_t
             confidence=confidence
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         response_time = time.time() - start_time
         return XSSResult(
             parameter=param_name,

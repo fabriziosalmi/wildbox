@@ -149,7 +149,7 @@ class CheckKeyPermissions(BaseCheck):
                 message=f"Error listing KMS keys: {error_code}",
                 details={'error': str(e)}
             ))
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             results.append(self.create_result(
                 resource_id="unknown",
                 resource_type="KMSKey",

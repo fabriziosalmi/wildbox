@@ -110,7 +110,7 @@ class WildboxAPIClient:
         except httpx.HTTPError as e:
             logger.error(f"HTTP error running tool '{tool_name}': {e}")
             return {"error": f"HTTP error: {str(e)}", "success": False}
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error running tool '{tool_name}': {e}")
             return {"error": str(e), "success": False}
     
@@ -152,7 +152,7 @@ class WildboxAPIClient:
         except httpx.HTTPError as e:
             logger.error(f"HTTP error querying data lake for '{ioc_value}': {e}")
             return {"error": f"HTTP error: {str(e)}", "success": False}
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error querying data lake for '{ioc_value}': {e}")
             return {"error": str(e), "success": False}
     
@@ -175,7 +175,7 @@ class WildboxAPIClient:
             
             return await self.run_tool("reputation_check", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error getting reputation for '{ioc_value}': {e}")
             return {"error": str(e), "success": False}
     
@@ -199,7 +199,7 @@ class WildboxAPIClient:
             
             return await self.run_tool("network_port_scanner", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error port scanning '{ip_address}': {e}")
             return {"error": str(e), "success": False}
     
@@ -217,7 +217,7 @@ class WildboxAPIClient:
             params = {"target": target}
             return await self.run_tool("whois_lookup", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error doing WHOIS lookup for '{target}': {e}")
             return {"error": str(e), "success": False}
     
@@ -240,7 +240,7 @@ class WildboxAPIClient:
             
             return await self.run_tool("dns_lookup", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error doing DNS lookup for '{domain}': {e}")
             return {"error": str(e), "success": False}
     
@@ -264,7 +264,7 @@ class WildboxAPIClient:
             
             return await self.run_tool("url_analyzer", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error analyzing URL '{url}': {e}")
             return {"error": str(e), "success": False}
     
@@ -282,7 +282,7 @@ class WildboxAPIClient:
             params = {"hash": hash_value}
             return await self.run_tool("hash_lookup", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error looking up hash '{hash_value}': {e}")
             return {"error": str(e), "success": False}
     
@@ -300,7 +300,7 @@ class WildboxAPIClient:
             params = {"ip": ip_address}
             return await self.run_tool("geolocation_lookup", params)
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error getting geolocation for '{ip_address}': {e}")
             return {"error": str(e), "success": False}
     
@@ -327,7 +327,7 @@ class WildboxAPIClient:
                 response.raise_for_status()
                 return response.json()
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking vulnerability DB for '{query}': {e}")
             return {"error": str(e), "success": False}
     
@@ -359,7 +359,7 @@ class WildboxAPIClient:
                     else:
                         health_status[service_name] = f"unhealthy ({response.status_code})"
                         
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 health_status[service_name] = f"error ({str(e)})"
         
         return health_status

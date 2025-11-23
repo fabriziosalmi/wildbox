@@ -64,7 +64,7 @@ class SecurityIntegration:
                     
                     return result
                     
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     if self.strict_mode:
                         raise
                     logger.warning(f"Security check failed for {tool_name}, continuing without security: {e}")
@@ -102,7 +102,7 @@ class SecurityIntegration:
                     tool_name=tool_name
                 )
         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Security control failed for {tool_name}: {e}")
             if self.strict_mode:
                 raise
@@ -112,7 +112,7 @@ class SecurityIntegration:
         if self.security_enabled and self.credential_manager:
             try:
                 return self.credential_manager.get_api_key(service)
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.warning(f"Secure credential retrieval failed for {service}: {e}")
         
         # Fallback to environment variables
@@ -140,7 +140,7 @@ class SecurityIntegration:
             if isinstance(input_data, str):
                 return self.validator.validate_string(input_data, field_name=field_name)
             return input_data
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.warning(f"Input validation failed for {field_name}: {e}")
             if self.strict_mode:
                 raise

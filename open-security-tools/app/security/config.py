@@ -40,7 +40,7 @@ class SecurityConfig:
             self.security_headers = self.load_security_headers()
             self.tool_permissions = self.load_tool_permissions()
             logger.info("Security configuration loaded successfully")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to load security configuration: {e}")
             raise
     

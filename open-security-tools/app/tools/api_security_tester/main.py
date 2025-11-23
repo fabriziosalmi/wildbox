@@ -143,7 +143,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             execution_time=time.time() - start_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         # Return error results
         return APISecurityTesterOutput(
             api_base_url=data.api_base_url,
@@ -386,7 +386,7 @@ async def test_broken_object_level_authorization(base_url: str, endpoints: List[
                     test.findings.append(f"Connection error testing {test_id}: {str(e)}")
                 except asyncio.TimeoutError:
                     test.findings.append(f"Timeout testing {test_id}")
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     logger.error(f"Unexpected error testing object access {test_id}: {e}")
                     test.findings.append(f"Error testing {test_id}: {str(e)}")
                 
@@ -983,7 +983,7 @@ async def test_injection_vulnerabilities(base_url, endpoints, headers, include_f
                         if delay:
                             await asyncio.sleep(delay)
                     
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         # Log error but continue testing
                         continue
     

@@ -309,7 +309,7 @@ async def search_all_platforms(username: str, platforms: List[str], deep_search:
                 profile = await searcher.search_profile(username, deep_search)
                 if profile:
                     profiles_found.append(profile)
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.warning(f"Error searching {platform}: {str(e)}")
     
     return profiles_found
@@ -541,7 +541,7 @@ async def execute_tool(request: SocialMediaOSINTInput) -> SocialMediaOSINTOutput
             message=f"Found {len(profiles_found)} profiles across {len(request.platforms)} platforms"
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error in social media OSINT: {str(e)}")
         return SocialMediaOSINTOutput(
             username=request.username,

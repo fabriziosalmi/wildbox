@@ -86,7 +86,7 @@ async def check_security_headers(url: str, rate_limiter: RateLimiter = None) -> 
                         recommendation=recommendation
                     ))
                     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error checking security headers: {e}")
         
     return security_headers
@@ -183,7 +183,7 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                     logger.error(f"Error testing information disclosure on {test_url}: {e}")
                     pass
                     
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error during vulnerability scanning: {e}")
         
     return vulnerabilities

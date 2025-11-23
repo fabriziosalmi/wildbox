@@ -215,7 +215,7 @@ async def attempt_zone_transfer(domain: str, name_servers: List[str], timeout: i
                 error=None
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             result = ZoneTransferResult(
                 server=ns,
                 successful=False,
@@ -330,7 +330,7 @@ async def execute_tool(input_data: DNSEnumeratorInput) -> DNSEnumeratorOutput:
             recommendations=recommendations
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         end_time = datetime.now()
         duration = (end_time - start_time).total_seconds()
         

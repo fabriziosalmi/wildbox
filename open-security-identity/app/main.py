@@ -60,7 +60,7 @@ async def db_session_middleware(request: Request, call_next):
         logger.error(f"Database error in middleware: {e}")
         request.state.db = None
         response = await call_next(request)
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Unexpected middleware error: {type(e).__name__}: {e}")
         request.state.db = None
         response = await call_next(request)
@@ -68,7 +68,7 @@ async def db_session_middleware(request: Request, call_next):
         if hasattr(request.state, 'db') and request.state.db:
             try:
                 await request.state.db.close()
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.warning(f"Error closing database session: {e}")
     
     return response
@@ -204,7 +204,7 @@ async def health_check():
             "error": "Database query error",
             "details": str(e)
         }
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         health_status["status"] = "unhealthy"
         health_status["checks"]["database"] = {
             "status": "unhealthy",
@@ -250,7 +250,7 @@ async def get_metrics():
         metrics["metrics"]["api_keys_active"] = api_key_count.scalar()
         
         await db.close()
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         metrics["metrics"]["error"] = str(type(e).__name__)
     
     return metrics

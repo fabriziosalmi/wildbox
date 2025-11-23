@@ -130,7 +130,7 @@ def discover_tools() -> Dict[str, Any]:
             tools[tool_name] = main_module
             logger.info(f"Successfully loaded tool: {tool_name}")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to load tool {tool_name}: {str(e)}")
             continue
     
@@ -178,7 +178,7 @@ async def lifespan(app: FastAPI):
             logger.error("CRITICAL: Weak API key detected in production environment!")
             raise ValueError("Insecure API key in production")
             
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"API key validation failed: {e}")
         if settings.is_production():
             raise e
@@ -279,7 +279,7 @@ def create_app() -> FastAPI:
                 "max_concurrent_tools": settings.max_concurrent_tools,
                 "default_timeout": settings.tool_timeout
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Health check error: {e}")
             response_time_ms = (time.time() - start_time) * 1000
             return {
@@ -333,7 +333,7 @@ def create_app() -> FastAPI:
                 },
                 "tools": list(discovered_tools.keys())
             }
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error collecting metrics: {e}")
             return {
                 "service": "tools",
@@ -477,7 +477,7 @@ def create_app() -> FastAPI:
                         }
                         total_response_time += response_time
                         
-                except Exception as e:
+                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                     health_status[service_name] = {
                         "status": "down",
                         "error": str(e)

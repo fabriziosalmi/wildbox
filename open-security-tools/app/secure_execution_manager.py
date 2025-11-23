@@ -221,7 +221,7 @@ class SecureToolExecutionManager:
                         result.status = ExecutionStatus.FAILED
                         result.error = f"Failed to parse tool output: {str(e)}"
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.exception(f"Tool execution failed for {tool_name}")
             result.status = ExecutionStatus.FAILED
             result.error = f"Execution error: {str(e)}"
@@ -298,7 +298,7 @@ class SecureToolExecutionManager:
                 error = f"Tool execution exceeded {limits.max_execution_time} seconds"
                 security_violations.append("execution_timeout")
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             status = ExecutionStatus.FAILED
             error = f"Process execution failed: {str(e)}"
             security_violations.append("process_execution_failure")
@@ -327,7 +327,7 @@ class SecureToolExecutionManager:
             # Limit file descriptors
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.warning(f"Failed to set resource limits: {e}")
     
     def _create_execution_script(self,
@@ -369,7 +369,7 @@ def main():
         
         print("Tool execution completed successfully")
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         error_result = {{
             "error": str(e),
             "error_type": type(e).__name__,

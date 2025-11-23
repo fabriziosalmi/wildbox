@@ -187,7 +187,7 @@ def test_file_upload(url: str, file_param: str, test_name: str, test_file: Dict,
             risk_level=risk_level
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return FileUploadResult(
             test_type=test_name,
             filename=test_file["filename"],

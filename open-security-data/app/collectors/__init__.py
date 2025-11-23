@@ -144,7 +144,7 @@ class BaseCollector(ABC):
                         
                         result.items_collected += 1
                         
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         logger.error(f"Error processing item from {self.source.name}: {e}")
                         result.items_failed += 1
                         continue
@@ -161,7 +161,7 @@ class BaseCollector(ABC):
             result.error_message = "Collection timed out"
             logger.error(f"Collection timeout for source: {self.source.name}")
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             result.status = CollectionStatus.FAILED
             result.error_message = str(e)
             result.error_details = {"exception_type": type(e).__name__}
@@ -239,7 +239,7 @@ class BaseCollector(ABC):
                 db_session.add(indicator)
                 return 'new'
                 
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error storing indicator: {e}")
             db_session.rollback()
             raise
@@ -356,7 +356,7 @@ class RSSCollector(BaseCollector):
                         'raw_entry': entry
                     }
                     
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error collecting RSS from {url}: {e}")
             raise
 

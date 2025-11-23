@@ -154,7 +154,7 @@ class CheckSecureTransferRequired(BaseCheck):
                         remediation="; ".join(recommendations)
                     ))
                     
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking Azure Storage secure transfer: {e}")
             results.append(self.create_result(
                 resource_id="unknown",

@@ -138,7 +138,7 @@ async def fetch_contract_info(address: str, blockchain: str, api_key: Optional[s
         else:
             return None
             
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         print(f"Error fetching contract info: {e}")
         return None
 
@@ -184,7 +184,7 @@ async def fetch_etherscan_contract_info(address: str, blockchain: str, api_key: 
                                     wei_balance = int(balance_data['result'])
                                     eth_balance = wei_balance / 10**18
                                     balance = f"{eth_balance:.6f} ETH"
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         pass
                     
                     return {
@@ -234,7 +234,7 @@ async def fetch_polygonscan_contract_info(address: str, api_key: str) -> Optiona
                                     wei_balance = int(balance_data['result'])
                                     matic_balance = wei_balance / 10**18
                                     balance = f"{matic_balance:.6f} MATIC"
-                    except Exception as e:
+                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                         pass
                     
                     return {

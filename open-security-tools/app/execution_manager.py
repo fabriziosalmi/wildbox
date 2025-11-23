@@ -190,7 +190,7 @@ class ToolExecutionManager:
                     end_time=end_time
                 )
                 
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 end_time = time.time()
                 duration = end_time - start_time
                 status = ExecutionStatus.FAILED

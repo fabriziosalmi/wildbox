@@ -65,7 +65,7 @@ class CheckBatchCertificateEncryption(BaseCheck):
                 }
             ))
                         
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error in batch certificate encryption check: {str(e)}")
             results.append(CheckResult(
                 check_id=self.get_metadata().check_id,

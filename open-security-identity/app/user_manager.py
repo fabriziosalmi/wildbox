@@ -54,7 +54,7 @@ class DebugJWTStrategy(JWTStrategy):
         except jwt.InvalidTokenError as e:
             print(f"[DEBUG] ❌ Invalid token: {e}")
             raise
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             print(f"[DEBUG] ❌ Unexpected error during token validation: {type(e).__name__}: {e}")
             raise
 
@@ -128,7 +128,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
             stripe_customer_id = await billing_service.create_customer(user)
             user.stripe_customer_id = stripe_customer_id
             db.add(user)
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             print(f"Warning: Failed to create Stripe customer for {user.email}: {e}")
 
         # Crea team con l'utente come owner

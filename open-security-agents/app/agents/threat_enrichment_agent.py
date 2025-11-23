@@ -158,7 +158,7 @@ Begin your investigation by thinking through your approach, then systematically 
             logger.info(f"Completed analysis of {ioc['value']} in {duration:.1f}s")
             return structured_result
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error analyzing IOC {ioc['value']}: {e}")
             duration = (datetime.now(timezone.utc) - start_time).total_seconds()
             
@@ -260,7 +260,7 @@ Verdict:"""
             
             return result
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error generating structured report: {e}")
             
             # Fallback to basic structured result

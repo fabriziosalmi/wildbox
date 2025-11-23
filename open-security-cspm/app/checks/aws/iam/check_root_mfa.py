@@ -95,7 +95,7 @@ class CheckRootMFAEnabled(BaseCheck):
                     remediation="Enable MFA for the root account"
                 ))
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Error checking root account MFA: {e}")
             results.append(self.create_result(
                 resource_id="root-account-mfa",

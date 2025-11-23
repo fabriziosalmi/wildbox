@@ -173,7 +173,7 @@ class DatabaseSecurityAnalyzer:
                 scan_summary=summary
             )
             
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             return self._create_error_response(input_data, str(e))
     
     async def _test_connection(self, input_data: DatabaseSecurityAnalyzerInput) -> bool:

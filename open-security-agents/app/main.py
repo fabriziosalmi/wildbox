@@ -72,12 +72,14 @@ async def lifespan(app: FastAPI):
         try:
             celery_app.control.inspect().ping()
             logger.info("Celery connection established")
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
             logger.warning(f"Celery connection failed: {e}")
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            logger.warning(f"Unexpected Celery error: {type(e).__name__}: {e}")
         
         logger.info("Open Security Agents started successfully")
         
-    except Exception as e:
+    except (ImportError, RuntimeError) as e:
         logger.error(f"Failed to start application: {e}")
         raise
     
@@ -210,11 +212,17 @@ async def get_stats():
             uptime_seconds=uptime
         )
         
-    except Exception as e:
-        logger.error(f"Error getting stats: {e}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Database connection error in stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database temporarily unavailable"
+        )
+    except ValueError as e:
+        logger.error(f"Invalid data in stats: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve statistics"
+            detail="Data integrity error"
         )
 
 
@@ -280,11 +288,17 @@ async def analyze_ioc(
             result_url=f"/v1/analyze/{task_id}"
         )
         
-    except Exception as e:
-        logger.error(f"Error submitting analysis task: {e}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Task queue connection error: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit analysis task"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task queue temporarily unavailable"
+        )
+    except ValueError as e:
+        logger.error(f"Invalid task data: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid analysis request"
         )
 
 
@@ -351,7 +365,7 @@ async def get_analysis_result(task_id: str):
         
     except HTTPException:
         raise
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error getting analysis result for task {task_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -380,11 +394,17 @@ async def cancel_analysis(task_id: str):
         
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error cancelling task {task_id}: {e}")
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Task queue connection error cancelling {task_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to cancel task"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Task queue temporarily unavailable"
+        )
+    except KeyError as e:
+        logger.error(f"Invalid task data for {task_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found or invalid"
         )
 
 

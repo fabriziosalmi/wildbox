@@ -122,7 +122,7 @@ def test_sql_injection(url: str, method: str, param_name: str, param_value: str,
             response_time=response_time
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         response_time = time.time() - start_time
         return SQLInjectionResult(
             parameter=param_name,

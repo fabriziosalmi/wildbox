@@ -173,7 +173,7 @@ class URLShortenerAnalyzer:
                 
         except asyncio.TimeoutError:
             raise Exception(f"Request timeout for {url}")
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             raise Exception(f"Analysis failed: {str(e)}")
     
     def _detect_shortener_service(self, url: str) -> Optional[str]:
@@ -289,7 +289,7 @@ async def execute_tool(params: URLShortenerInput) -> URLShortenerOutput:
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return URLShortenerOutput(
             success=False,
             original_url=str(params.shortened_url),

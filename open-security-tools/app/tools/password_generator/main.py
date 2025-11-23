@@ -331,7 +331,7 @@ async def execute_tool(params: PasswordGeneratorInput) -> PasswordGeneratorOutpu
             error=None
         )
         
-    except Exception as e:
+    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return PasswordGeneratorOutput(
             success=False,
             passwords=[],

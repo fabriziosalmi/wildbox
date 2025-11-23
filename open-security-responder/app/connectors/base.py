@@ -68,7 +68,7 @@ class BaseConnector(ABC):
             result = method(**params)
             self.logger.info(f"Action '{action}' completed successfully")
             return result
-        except Exception as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             self.logger.error(f"Action '{action}' failed: {str(e)}")
             raise ConnectorError(f"Action '{action}' failed: {str(e)}")
     
