@@ -288,7 +288,7 @@ def create_app() -> FastAPI:
                 "version": "1.0.0",
                 "timestamp": time.time(),
                 "response_time_ms": round(response_time_ms, 2),
-                "error": str(e)
+                "error": "An internal error occurred"
             }
     
     # Metrics endpoint for observability
