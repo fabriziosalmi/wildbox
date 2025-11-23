@@ -76,3 +76,6 @@ open-security-automations/n8n-data/crash.journal
 *.pyc
 **/__pycache__/
 GITHUB_SECRETS_READY.md
+
+cookies.txt
+headers.txt
