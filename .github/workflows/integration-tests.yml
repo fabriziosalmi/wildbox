@@ -83,8 +83,9 @@ jobs:
           done
           
           echo "Waiting for Redis..."
+          # Use nc (netcat) instead of redis-cli which isn't available in runner
           for i in {1..30}; do
-            if redis-cli -h localhost -p 6379 ping; then
+            if nc -z localhost 6379; then
               echo "Redis is ready"
               break
             fi
