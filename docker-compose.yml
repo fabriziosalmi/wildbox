@@ -127,7 +127,7 @@ services:
     ports:
       - "8002:8002"
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
@@ -150,7 +150,7 @@ services:
     restart: unless-stopped
     command: python -m app.scheduler.main
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/data}
+      - DATABASE_URL=${DATA_DATABASE_URL}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -246,7 +246,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE-THIS-DB-PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-identity}
     deploy:
       resources:
@@ -303,7 +303,7 @@ services:
     ports:
       - "8013:8013"
     environment:
-      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/guardian}
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/1}
@@ -336,7 +336,7 @@ services:
     ports:
       - "8018:8018"
     environment:
-      - DATABASE_URL=${RESPONDER_DATABASE_URL:-postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/responder}
+      - DATABASE_URL=${RESPONDER_DATABASE_URL}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -448,12 +448,12 @@ services:
       - "8006:8006"
     environment:
       # Local LLM configuration (Ollama with OpenAI compatibility)
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://llm:11434/v1}
       - OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:0.5b}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       # Authentication for tools service (must match API_KEY in tools service)
-      - INTERNAL_API_KEY=${API_KEY:-replace-this-with-a-secure-random-string-32-chars-long}
+      - INTERNAL_API_KEY=${API_KEY}
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
