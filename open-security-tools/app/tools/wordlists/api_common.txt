@@ -1,0 +1,250 @@
+# API Discovery Wordlist - Curated from SecLists
+# Source: https://github.com/danielmiessler/SecLists
+# Category: Common API endpoints and paths
+# Last Updated: November 2025
+
+# Core API Paths
+/api
+/api/v1
+/api/v2
+/api/v3
+/rest
+/rest/v1
+/rest/v2
+/graphql
+/graph
+/query
+
+# Authentication & Authorization
+/auth
+/authentication
+/login
+/signin
+/signup
+/register
+/oauth
+/oauth2
+/token
+/tokens
+/refresh
+/logout
+/verify
+/authorize
+/callback
+
+# User Management
+/users
+/user
+/profile
+/account
+/accounts
+/settings
+/preferences
+/me
+
+# Admin & Management
+/admin
+/administrator
+/dashboard
+/console
+/manage
+/management
+/config
+/configuration
+
+# Health & Monitoring
+/status
+/health
+/healthz
+/ping
+/metrics
+/actuator
+/actuator/health
+/actuator/info
+/actuator/metrics
+/readiness
+/liveness
+
+# Documentation
+/swagger
+/swagger.json
+/swagger-ui
+/openapi
+/openapi.json
+/api-docs
+/docs
+/documentation
+/redoc
+
+# E-Commerce & Products
+/products
+/product
+/items
+/item
+/catalog
+/categories
+/category
+/inventory
+
+# Orders & Transactions
+/orders
+/order
+/cart
+/checkout
+/payment
+/payments
+/transactions
+/transaction
+/billing
+/invoice
+/invoices
+
+# Customer Data
+/customers
+/customer
+/contacts
+/contact
+
+# Search & Discovery
+/search
+/find
+/query
+/lookup
+
+# File Operations
+/upload
+/download
+/files
+/file
+/attachments
+/attachment
+/media
+/assets
+/images
+/image
+/videos
+/video
+/documents
+/document
+
+# Data Management
+/data
+/export
+/import
+/backup
+/restore
+/sync
+
+# Reporting & Analytics
+/reports
+/report
+/analytics
+/stats
+/statistics
+/metrics
+
+# Logging & Audit
+/logs
+/log
+/audit
+/events
+/event
+/activity
+
+# Webhooks & Integrations
+/webhooks
+/webhook
+/integrations
+/integration
+/callbacks
+/notify
+/notifications
+/notification
+
+# Communication
+/messages
+/message
+/chat
+/email
+/sms
+/send
+
+# Content Management
+/comments
+/comment
+/posts
+/post
+/articles
+/article
+/pages
+/page
+/content
+
+# Security Endpoints
+/security
+/permissions
+/roles
+/role
+/groups
+/group
+/access
+
+# Testing & Debug (often exposed by mistake)
+/test
+/testing
+/debug
+/dev
+/development
+/staging
+/internal
+/private
+
+# Common Frameworks
+/api/swagger
+/api/health
+/api/status
+/api/docs
+/.well-known
+/.well-known/openid-configuration
+/actuator/env
+/actuator/configprops
+/actuator/beans
+
+# Mobile/App Specific
+/mobile
+/app
+/ios
+/android
+/device
+/devices
+
+# Social Features
+/feed
+/timeline
+/follow
+/followers
+/following
+/likes
+/share
+
+# Scheduling & Calendar
+/calendar
+/schedule
+/appointments
+/appointment
+/events
+/booking
+
+# Location Services
+/location
+/locations
+/map
+/maps
+/geocode
+
+# Tags & Metadata
+/tags
+/tag
+/metadata
+/labels
+/label

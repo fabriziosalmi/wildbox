@@ -12,6 +12,7 @@ class APISecurityTesterInput(BaseToolInput):
     test_depth: str = Field(default="standard", description="Test depth (quick, standard, comprehensive)")
     include_fuzzing: bool = Field(default=True, description="Include fuzzing tests")
     max_requests: int = Field(default=100, description="Maximum number of requests to send")
+    wordlist: str = Field(default="api_common", description="Wordlist to use for endpoint discovery (api_common, etc.)")
     request_delay: float = Field(default=1.0, description="Delay between requests in seconds")
     custom_headers: Optional[Dict[str, str]] = Field(default=None, description="Custom headers to include")
 

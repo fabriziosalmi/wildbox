@@ -13,6 +13,18 @@ from urllib.parse import urljoin, urlparse, parse_qs
 logger = logging.getLogger(__name__)
 import yaml
 
+# Import wordlist management
+try:
+    from ..wordlists import load_wordlist, list_available_wordlists
+except ImportError:
+    # Fallback if wordlists module not available
+    logger.warning("Wordlists module not found, using minimal fallback")
+    def load_wordlist(name: str = "api_common"):
+        return ["/api/v1", "/api/v2", "/api", "/rest", "/graphql",
+                "/users", "/login", "/auth", "/token", "/admin"]
+    def list_available_wordlists():
+        return []
+
 def validate_auth_value(auth_value: str) -> str:
     """Validate and sanitize authentication value using allowlist approach"""
     if not auth_value:
@@ -89,7 +101,8 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             data.api_base_url,
             data.api_specification,
             headers,
-            data.max_requests // 4
+            data.max_requests // 4,
+            data.wordlist  # Use wordlist from input
         )
         
         # Run security tests based on selected categories
@@ -256,7 +269,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             execution_time=time.time() - start_time
         )
 
-async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers: Dict, max_requests: int) -> List[APIEndpoint]:
+async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers: Dict, max_requests: int, wordlist_name: str = "api_common") -> List[APIEndpoint]:
     """Discover API endpoints through various methods"""
     endpoints = []
     
@@ -265,21 +278,24 @@ async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers
         spec_endpoints = await parse_api_specification(api_spec, base_url)
         endpoints.extend(spec_endpoints)
     
-    # Common API endpoint discovery
-    common_paths = [
-        "/api/v1", "/api/v2", "/api", "/rest", "/graphql",
-        "/users", "/user", "/login", "/auth", "/token",
-        "/products", "/orders", "/admin", "/health", "/status"
-    ]
+    # Load wordlist for endpoint discovery
+    common_paths = load_wordlist(wordlist_name)
+    logger.info(f"Using {len(common_paths)} paths from '{wordlist_name}' wordlist for discovery")
     
-    for path in common_paths[:max_requests]:
+    # Limit to max_requests to respect rate limiting
+    paths_to_test = common_paths[:max_requests]
+    logger.info(f"Testing {len(paths_to_test)} paths (limited by max_requests={max_requests})")
+    
+    for path in paths_to_test:
         try:
             endpoint_info = await probe_endpoint(base_url, path, headers)
             if endpoint_info:
                 endpoints.append(endpoint_info)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Failed to probe {path}: {e}")
             continue
     
+    logger.info(f"Discovered {len(endpoints)} endpoints from {len(paths_to_test)} probes")
     return endpoints
 
 async def parse_api_specification(spec_url_or_content: str, base_url: str) -> List[APIEndpoint]:

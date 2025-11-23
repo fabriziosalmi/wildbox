@@ -74,8 +74,8 @@ export default function AdminPage() {
     apiRequestsToday: 0
   })
   const [systemHealth, setSystemHealth] = useState({
-    avgResponseTime: 0,
-    errorRate: 0,
+    avgResponseTime: null as number | null,
+    errorRate: null as number | null,
     servicesOnline: 0,
     totalServices: 4,
     gatewayStatus: 'unknown',
@@ -136,10 +136,10 @@ export default function AdminPage() {
       if (databaseStatus === 'healthy') servicesOnline++
       if (redisStatus === 'connected') servicesOnline++
 
-      // Calculate metrics from actual health check data
-      // TODO: Implement real response time tracking from service health endpoints
-      const avgResponseTime = 0 // Real metrics not yet implemented
-      const errorRate = servicesOnline === totalServices ? 0 : ((totalServices - servicesOnline) / totalServices * 100)
+      // Metrics require Prometheus integration (Phase 3 of remediation plan)
+      // Display null until real metrics infrastructure is implemented
+      const avgResponseTime = null
+      const errorRate = null
 
       setSystemHealth({
         avgResponseTime,
@@ -155,8 +155,8 @@ export default function AdminPage() {
       console.error('Failed to fetch system health:', error)
       // Set default values if health check fails
       setSystemHealth({
-        avgResponseTime: 0,
-        errorRate: 100,
+        avgResponseTime: null,
+        errorRate: null,
         servicesOnline: 0,
         totalServices: 4,
         gatewayStatus: 'unknown',
@@ -1119,12 +1119,14 @@ export default function AdminPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Avg Response Time</span>
-                  <span className="font-medium">{systemHealth.avgResponseTime}ms</span>
+                  <span className="font-medium text-muted-foreground">
+                    {systemHealth.avgResponseTime !== null ? `${systemHealth.avgResponseTime}ms` : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Error Rate</span>
-                  <span className={`font-medium ${systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600'}`}>
-                    {systemHealth.errorRate}%
+                  <span className={`font-medium ${systemHealth.errorRate !== null ? (systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+                    {systemHealth.errorRate !== null ? `${systemHealth.errorRate.toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
               </div>
