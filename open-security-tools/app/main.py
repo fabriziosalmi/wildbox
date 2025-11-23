@@ -130,7 +130,7 @@ def discover_tools() -> Dict[str, Any]:
             tools[tool_name] = main_module
             logger.info(f"Successfully loaded tool: {tool_name}")
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError, ModuleNotFoundError, ImportError) as e:
             logger.error(f"Failed to load tool {tool_name}: {str(e)}")
             continue
     
