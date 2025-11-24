@@ -108,7 +108,7 @@ markers =
     slow: Tests that take >30 seconds
     flaky: Tests with known stability issues
     critical: Must-pass tests for deployment
-    smoke: Quick sanity checks
+    smoke: Quick validity checks
     integration: Full end-to-end tests
     requires_gateway: Needs gateway service
     requires_database: Needs postgres

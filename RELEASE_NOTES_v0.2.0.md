@@ -126,7 +126,7 @@ This release represents a significant milestone in security hardening and docume
 
 ## 📦 Migration Guide
 
-No migration steps required for existing installations. Simply pull the latest changes and restart services:
+No migration steps required for existing installations. Pull the latest changes and restart services:
 
 ```bash
 git pull origin main

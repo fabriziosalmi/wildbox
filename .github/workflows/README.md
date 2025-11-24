@@ -4,7 +4,7 @@
 
 This directory contains the GitHub Actions workflows responsible for populating the Wildbox Datalake. These workflows are designed to be run manually (workflow_dispatch) to gather fresh, open-source security intelligence on demand. They form the foundation of Wildbox's threat intelligence and analysis capabilities.
 
-The master workflow, ingest-all-data.yml, can be used to trigger all other ingestion workflows sequentially.
+The main workflow, ingest-all-data.yml, can be used to trigger all other ingestion workflows sequentially.
 
 ## Workflow Catalog
 

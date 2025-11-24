@@ -3,7 +3,7 @@
 **Status**: Production Ready ✅
 **Last Updated**: 16 Novembre 2025
 
-A robust and extensible open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by simply adding them to the `tools` directory.
+A robust and extensible open security API platform built with Python and FastAPI. This modular system allows for easy integration of new security tools by adding them to the `tools` directory.
 
 ## 🚀 Features
 

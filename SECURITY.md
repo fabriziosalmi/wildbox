@@ -1,39 +1,59 @@
 # Security Policy
 
 **Wildbox Security Platform**  
-**Version:** 2.0  
-**Last Updated:** November 23, 2025
+**Version:** 2.1  
+**Last Updated:** 2025-11-24
 
 ---
 
 ## 🔒 Reporting a Vulnerability
 
-We take security seriously. If you discover a vulnerability in Wildbox, please report it responsibly.
+We take security seriously. If you discover a vulnerability in Wildbox, please report it responsibly through our private disclosure process.
 
-### Reporting Process
+### How to Report
 
-1. **Email:** security@wildbox.dev
-2. **Subject:** `[SECURITY] Brief description of issue`
-3. **Include:**
-   - Description of the vulnerability
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if available)
+**Email**: security@wildbox.dev
+
+**Subject Format**: `[SECURITY] <Brief Description>`
+
+**Required Information**:
+1. **Vulnerability Description**: Clear explanation of the security issue
+2. **Affected Components**: Which services/files are impacted
+3. **Reproduction Steps**: Detailed steps to reproduce the vulnerability
+4. **Proof of Concept**: Code snippet or configuration demonstrating the issue
+5. **Impact Assessment**: Potential security impact and attack scenarios
+6. **Suggested Fix**: (Optional) Your proposed remediation
+
+**What NOT to do**:
+- ❌ Do not open public GitHub issues for security vulnerabilities
+- ❌ Do not discuss vulnerabilities in public channels (Discord, Twitter, etc.)
+- ❌ Do not exploit vulnerabilities beyond verification
+- ❌ Do not access or modify data that isn't yours
 
 ### Response Timeline
 
-- **Initial Response:** Within 48 hours
-- **Status Update:** Within 7 days
-- **Fix Timeline:** Based on severity (see below)
+| Timeframe | Action |
+|-----------|--------|
+| **48 hours** | Initial acknowledgment of your report |
+| **7 days** | Detailed status update and severity assessment |
+| **14-90 days** | Fix development and testing (based on severity) |
+| **After fix** | Public disclosure coordinated with reporter |
 
-### Severity Levels
+### Severity Classification
 
-| Severity | Examples | Fix Timeline |
-|----------|----------|--------------|
-| **Critical** | Authentication bypass, RCE, hardcoded secrets | 24-48 hours |
-| **High** | XSS, SQL injection, privilege escalation | 3-7 days |
-| **Medium** | Information disclosure, CSRF | 14 days |
-| **Low** | Minor information leaks, UI issues | 30 days |
+| Severity | Response Time | Examples |
+|----------|---------------|----------|
+| **Critical** | 24-48 hours | Authentication bypass, Remote Code Execution, Hardcoded secrets in production code |
+| **High** | 3-7 days | SQL Injection, XSS, Privilege escalation, Insecure defaults exposing sensitive data |
+| **Medium** | 14 days | CSRF, Information disclosure, Missing security headers, Weak cryptography |
+| **Low** | 30 days | Minor information leaks, UI-only issues, Non-exploitable edge cases |
+
+### Recognition
+
+Security researchers who responsibly disclose vulnerabilities will be:
+- Credited in our SECURITY.md Hall of Fame (with permission)
+- Mentioned in release notes for the fix
+- Eligible for swag/recognition (for significant findings)
 
 ---
 
@@ -45,9 +65,33 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 
 **Never use default secrets in production.**
 
+Generate secure secrets for all services:
+
 ```bash
-# Generate secure secrets
-openssl rand -hex 32 > .secrets/jwt_secret
+# Generate JWT secret (256-bit recommended)
+openssl rand -hex 32
+
+# Generate database password (strong passphrase)
+openssl rand -base64 32
+
+# Generate API keys
+openssl rand -hex 32
+```
+
+Update your `.env` file:
+
+```bash
+# REQUIRED: Change these from defaults
+JWT_SECRET_KEY=<generated-secret-here>
+DATABASE_PASSWORD=<generated-password-here>
+GATEWAY_INTERNAL_SECRET=<generated-secret-here>
+
+# Optional: External service keys
+OPENAI_API_KEY=sk-<your-openai-key>
+STRIPE_SECRET_KEY=sk_live_<your-stripe-key>
+```
+
+**Never commit `.env` files to version control!**
 openssl rand -base64 24 > .secrets/n8n_password
 openssl rand -base64 32 > .secrets/db_password
 ```

@@ -4,7 +4,7 @@
 
 **Problem**: Docker build failing with 404 errors when downloading lua-resty-http from GitHub.
 
-**Root Cause**: Using unstable `master` branch URLs that can change or become unavailable.
+**Root Cause**: Using unstable `main` branch URLs that can change or become unavailable.
 
 **Solution**: Pinned to stable release `v0.17.2` (latest as of Feb 2024).
 

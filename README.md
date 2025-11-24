@@ -148,46 +148,67 @@ graph TD
 
 ---
 
-## ⚡ Quick Start (5 minutes)
+## ⚡ Quick Start
 
-**Get Wildbox running in 5 minutes with Docker Compose!**
+**Get Wildbox running with Docker Compose!**
+
+### Prerequisites
+- Docker >= 20.10
+- Docker Compose >= 2.0
+- 8GB RAM minimum (16GB recommended)
+- Linux, macOS, or Windows with WSL2
+
+### Installation Steps
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 
-# 2. Create environment file
-# Make a copy of the example environment file.
+# 2. Create environment file from template
 cp .env.example .env
 
-# IMPORTANT: For production, edit .env and generate secure secrets.
-# Example for API_KEY: openssl rand -hex 32
+# 3. Generate secure secrets for production
+# CRITICAL: Replace default secrets before deploying to production
+openssl rand -hex 32  # Use output for JWT_SECRET_KEY
+openssl rand -hex 32  # Use output for DATABASE_PASSWORD
+# Update .env file with generated secrets
 
-# 3. Start all services
-# This will start all core services in detached mode.
+# 4. Start all services
 docker-compose up -d
 
-# Note: If you get an error about a port being in use, check if another
-# service is running on a port defined in docker-compose.yml (e.g., 8000, 3000).
+# 5. Wait for services to initialize (2-3 minutes)
+# Watch logs to monitor startup progress
+docker-compose logs -f gateway identity
 
-# 4. Wait for services to become healthy
-# It can take 2-3 minutes. Check the status with:
-docker-compose ps
-# Wait until the 'identity', 'gateway', and 'api' services show a 'healthy' status.
-# Then, verify the API health endpoint:
-curl http://localhost:8000/health
+# 6. Verify health status
+curl http://localhost/health  # Gateway health
+curl http://localhost:8001/health  # Identity service health
 
-# 5. Access dashboard
-# Frontend: http://localhost:3000
-# API Docs: http://localhost:8000/docs
+# 7. Access the platform
+# Dashboard: http://localhost:3000
+# API Documentation: http://localhost:8000/docs
+# Gateway: http://localhost
 ```
 
-**For detailed setup instructions**, see:
-- 📖 **[QUICKSTART.md](docs/guides/quickstart.md)** - Complete 5-minute guide with all steps
-- 🔑 **[QUICKSTART_CREDENTIALS.md](docs/guides/credentials.md)** - Default credentials & API authentication
-- 🛡️ **[SECURITY.md](docs/security/policy.md)** - Security configuration & best practices
-- 🚀 **[DEPLOYMENT.md](docs/guides/deployment.md)** - Production deployment guide
+### Default Credentials
+- **Email**: `admin@wildbox.security`
+- **Password**: `CHANGE-THIS-PASSWORD`
+
+**⚠️ SECURITY WARNING**: Change default credentials immediately after first login!
+
+### Next Steps
+1. Review **[Security Best Practices](SECURITY.md)**
+2. Configure **[Environment Variables](docs/guides/environment.md)**
+3. Read **[Deployment Guide](docs/guides/deployment.md)** for production setup
+4. Explore **[API Documentation](docs/api/)** to integrate with your tools
+
+### Troubleshooting
+If services fail to start:
+- Check Docker logs: `docker-compose logs <service-name>`
+- Verify port availability: `netstat -tuln | grep -E '(8000|8001|3000|5432|6379)'`
+- Ensure sufficient disk space: `df -h`
+- See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for common issues
 
 ---
 
