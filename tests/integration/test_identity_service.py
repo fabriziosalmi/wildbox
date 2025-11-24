@@ -54,7 +54,6 @@ class TestAuthenticationFlow:
         assert response.status_code in [401, 404], \
             f"Expected 401/404 for unauthenticated access, got {response.status_code}"
 
-    @pytest.mark.skip(reason="Registration endpoint returns 500 in test environment")
     async def test_complete_login_flow(self, identity_base_url):
         """Test full authentication flow: register → login → access protected resource"""
         async with AsyncClient(base_url=identity_base_url) as client:
@@ -114,11 +113,10 @@ class TestAPIKeyManagement:
                 return response.json()["access_token"]
             return None
 
-    @pytest.mark.skip(reason="API key endpoint not available in test environment")
     async def test_api_key_generation(self, identity_base_url, admin_token):
         """Test generating API key (replaces test_api_keys.py)"""
         if not admin_token:
-            pytest.skip("Admin login failed - check credentials")
+            pytest.fail("Admin login failed - check credentials in test environment")
         
         headers = {"Authorization": f"Bearer {admin_token}"}
         
@@ -138,11 +136,10 @@ class TestAPIKeyManagement:
         assert data["api_key"].startswith("wsk_")
         assert len(data["api_key"]) == 72  # wsk_ + 4 chars + . + 64 chars
 
-    @pytest.mark.skip(reason="API key endpoint not available in test environment")
     async def test_api_key_validation(self, identity_base_url, admin_token):
         """Test that generated API keys can be used for authentication"""
         if not admin_token:
-            pytest.skip("Admin login failed")
+            pytest.fail("Admin login failed - check credentials in test environment")
         
         # Generate API key
         headers = {"Authorization": f"Bearer {admin_token}"}

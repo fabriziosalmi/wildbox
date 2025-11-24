@@ -65,9 +65,9 @@ def admin_token(service_urls: Dict[str, str], test_credentials: Dict[str, str]) 
             token = response.json().get("access_token")
             return token
     except Exception as e:
-        pytest.skip(f"Could not get admin token: {e}")
+        pytest.fail(f"Could not get admin token: {e}")
 
-    pytest.skip("Admin authentication failed")
+    pytest.fail("Admin authentication failed - verify credentials in test environment")
 
 
 @pytest.fixture(scope="function")
@@ -129,7 +129,7 @@ def wait_for_services(service_urls: Dict[str, str]):
                 time.sleep(2)
 
         if not ready:
-            pytest.skip(f"{service_name} service not available")
+            pytest.fail(f"{service_name} service not available - ensure docker-compose.test.yml is running")
 
 
 @pytest.fixture(autouse=True)

@@ -354,8 +354,7 @@ services:
 
 
   # ============================================================================
-  # REANIMATED - Operation Phoenix
-  # CSPM Service (Cloud Security Posture Management) - 314 files, requires intensive testing
+  # CSPM Service (Cloud Security Posture Management)
   # ============================================================================
   cspm:
     build:
@@ -476,8 +475,7 @@ services:
 
 
   # ============================================================================
-  # REANIMATED - Operation Phoenix
-  # Sensor Service (System Monitoring) - Development at 50%
+  # Sensor Service (System Monitoring)
   # ============================================================================
   sensor:
     build:
@@ -554,6 +552,6 @@ volumes:
   wildbox_redis_data:
   guardian_logs:
   llm_cache:
-  # Volumes for reanimated services (Operation Phoenix)
+  # Service-specific volumes
   sensor_logs:
   sensor_data:

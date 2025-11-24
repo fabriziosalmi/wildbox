@@ -69,7 +69,7 @@ The Wildbox Security Platform has completed comprehensive security hardening, in
 
 ## 🌟 Key Features
 
- **Enterprise-Grade Security**
+### **Production-Ready Security**
 - JWT authentication with HS256
 - bcrypt password hashing (12+ rounds)
 - Bearer token validation on all critical endpoints

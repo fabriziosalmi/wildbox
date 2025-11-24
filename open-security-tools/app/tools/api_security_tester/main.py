@@ -16,12 +16,18 @@ import yaml
 # Import wordlist management
 try:
     from ..wordlists import load_wordlist, list_available_wordlists
+    WORDLIST_AVAILABLE = True
 except ImportError:
-    # Fallback if wordlists module not available
-    logger.warning("Wordlists module not found, using minimal fallback")
+    # Fail gracefully if wordlists module not available
+    logger.error("CRITICAL: Wordlists module not found. API security testing requires proper wordlist configuration.")
+    WORDLIST_AVAILABLE = False
+    
     def load_wordlist(name: str = "api_common"):
-        return ["/api/v1", "/api/v2", "/api", "/rest", "/graphql",
-                "/users", "/login", "/auth", "/token", "/admin"]
+        raise RuntimeError(
+            "Wordlist module unavailable. Install wordlist dependencies or configure wordlist path. "
+            "See docs/TESTING_STRATEGY.md for setup instructions."
+        )
+    
     def list_available_wordlists():
         return []
 

@@ -53,14 +53,16 @@ def test_identity_metrics(service_urls: Dict[str, str]):
 
 @pytest.mark.integration
 @pytest.mark.smoke
-@pytest.mark.skip(reason="Tools service not included in test docker-compose")
 def test_tools_health(service_urls: Dict[str, str]):
     """Test tools service health endpoint"""
-    response = requests.get(f"{service_urls['tools']}/health", timeout=10)
-    assert response.status_code == 200
-    
-    data = response.json()
-    assert data.get("status") in ["healthy", "degraded"]
+    try:
+        response = requests.get(f"{service_urls['tools']}/health", timeout=10)
+        assert response.status_code == 200
+        
+        data = response.json()
+        assert data.get("status") in ["healthy", "degraded"]
+    except requests.exceptions.ConnectionError:
+        pytest.fail("Tools service is not available. Ensure it's running in docker-compose.test.yml")
 
 
 @pytest.mark.integration
@@ -80,37 +82,41 @@ def test_identity_authentication_required(service_urls: Dict[str, str]):
 
 @pytest.mark.integration
 @pytest.mark.security
-@pytest.mark.skip(reason="Tools service not included in test docker-compose")
 def test_tools_api_key_required(service_urls: Dict[str, str]):
     """Test that tools service requires API key"""
-    # Try to access tools without API key
-    # Tools service uses /api prefix not /api/v1
-    response = requests.get(
-        f"{service_urls['tools']}/api/tools",
-        timeout=10
-    )
-    
-    # Should return 401 or 403
-    assert response.status_code in [401, 403]
+    try:
+        # Try to access tools without API key
+        # Tools service uses /api prefix not /api/v1
+        response = requests.get(
+            f"{service_urls['tools']}/api/tools",
+            timeout=10
+        )
+        
+        # Should return 401 or 403
+        assert response.status_code in [401, 403]
+    except requests.exceptions.ConnectionError:
+        pytest.fail("Tools service is not available. Ensure it's running in docker-compose.test.yml")
 
 
 @pytest.mark.integration
 @pytest.mark.security
-@pytest.mark.skip(reason="Tools service not included in test docker-compose")
 def test_tools_with_valid_api_key(service_urls, test_credentials):
     """Test tools service with valid API key"""
-    headers = {"X-API-Key": test_credentials["api_key"]}
-    
-    # Tools service uses /api prefix not /api/v1
-    response = requests.get(
-        f"{service_urls['tools']}/api/tools",
-        headers=headers,
-        timeout=10
-    )
-    
-    # Should be successful, unauthorized, or validation error
-    # 422 can occur if API key format doesn't match service expectations
-    assert response.status_code in [200, 401, 403, 422]
+    try:
+        headers = {"X-API-Key": test_credentials["api_key"]}
+        
+        # Tools service uses /api prefix not /api/v1
+        response = requests.get(
+            f"{service_urls['tools']}/api/tools",
+            headers=headers,
+            timeout=10
+        )
+        
+        # Should be successful, unauthorized, or validation error
+        # 422 can occur if API key format doesn't match service expectations
+        assert response.status_code in [200, 401, 403, 422]
+    except requests.exceptions.ConnectionError:
+        pytest.fail("Tools service is not available. Ensure it's running in docker-compose.test.yml")
 
 
 @pytest.mark.integration
