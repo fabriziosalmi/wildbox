@@ -966,14 +966,14 @@ name: "URL Analysis and Response"
 steps_count: 8
 trigger_type: "api"
 
-Purpose: Analyze suspicious URLs and auto-blacklist
+Purpose: Analyze suspicious URLs and auto-denylist
 Actions:
   - system.validate (URL validation)
   - api.run_tool (url_scan)
   - api.run_tool (virustotal check)
   - data.lookup_ioc (threat intel check)
   - system.evaluate (maliciousness assessment)
-  - wildbox.create_blacklist_entry (auto-block)
+  - wildbox.create_denylist_entry (auto-block)
   - wildbox.notify (security team alert)
   - system.create_report
   

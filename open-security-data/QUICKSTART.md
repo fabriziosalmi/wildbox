@@ -105,7 +105,7 @@ Edit your `.env` file or source configurations:
 
 ```bash
 # AbuseIPDB
-python manage.py sources enable "AbuseIPDB Blacklist"
+python manage.py sources enable "AbuseIPDB Denylist"
 
 # URLVoid (configure domains to check)
 # Edit source config via database or API

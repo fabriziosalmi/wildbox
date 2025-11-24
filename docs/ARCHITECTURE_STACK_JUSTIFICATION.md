@@ -81,7 +81,7 @@
 **Why Redis?**
 - **Performance**: 100k+ ops/sec in-memory
 - **Celery broker**: Task queue requires Redis or RabbitMQ
-- **Session storage**: TTL-based expiry (JWT blacklisting, API rate limits)
+- **Session storage**: TTL-based expiry (JWT denylisting, API rate limits)
 - **Gateway cache**: Auth validation results cached (5-minute TTL reduces DB load)
 - **Atomic operations**: INCR for rate limiting (thread-safe without locks)
 

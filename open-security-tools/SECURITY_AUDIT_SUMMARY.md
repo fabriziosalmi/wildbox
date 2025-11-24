@@ -55,7 +55,7 @@ The security audit of the Wildbox platform identified **multiple security vulner
 ### 4. Rate Limiting Configuration
 - Created `config/rate_limiting.json` for request throttling
 - Separate limits for authentication, API calls, and tool execution
-- IP whitelisting capabilities
+- IP allowlisting capabilities
 
 ### 5. Exception Handling Fixes
 - Fixed bare exception handlers in blockchain analyzer

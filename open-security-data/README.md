@@ -6,7 +6,7 @@ A comprehensive security data lake platform that automatically collects, process
 
 Open Security Data is designed to build and maintain a centralized repository of security information including:
 
-- **Blacklists**: IP addresses, domains, URLs flagged as malicious
+- **Denylists**: IP addresses, domains, URLs flagged as malicious
 - **Threat Intelligence**: IOCs, malware signatures, attack patterns
 - **Vulnerability Data**: CVE information, exploit databases
 - **Certificate Intelligence**: SSL/TLS certificate transparency logs
@@ -141,7 +141,7 @@ ARCHIVE_AFTER_DAYS=90
 
 | Source | Type | Data | Update Frequency |
 |--------|------|------|------------------|
-| Malware Domain List | Blacklist | Domains | Daily |
+| Malware Domain List | Denylist | Domains | Daily |
 | Spamhaus | IP/Domain | Blocklists | Hourly |
 | URLVoid | URL | Reputation | On-demand |
 | VirusTotal | Hash/URL/IP | Intelligence | On-demand |

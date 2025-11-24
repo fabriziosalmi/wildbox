@@ -103,9 +103,9 @@ The **Open Security Responder** is now fully implemented as a community-ready SO
 - `get_execution_status`: Check execution status
 
 ### Data Connector (8 actions)
-- `add_to_blacklist`: Add IOCs to blacklist
-- `remove_from_blacklist`: Remove IOCs from blacklist
-- `check_blacklist`: Check if IOC is blacklisted
+- `add_to_denylist`: Add IOCs to denylist
+- `remove_from_denylist`: Remove IOCs from denylist
+- `check_denylist`: Check if IOC is denylisted
 - `query_iocs`: Search IOC database
 - `add_ioc`: Add new IOCs
 - `get_threat_feed`: Get threat intelligence
@@ -114,7 +114,7 @@ The **Open Security Responder** is now fully implemented as a community-ready SO
 
 ### Wildbox Connector (7 actions)
 - `run_tool`: Execute tools via Open Security API
-- `add_to_blacklist`: Add IOCs via Open Security Data
+- `add_to_denylist`: Add IOCs via Open Security Data
 - `query_threat_intel`: Query threat intelligence
 - `isolate_endpoint`: Isolate endpoints via Sensor
 - `get_vulnerabilities`: Get vulnerabilities from Guardian
@@ -145,7 +145,7 @@ Advanced URL security analysis:
 - Checks reputation across multiple sources
 - Extracts and analyzes domain
 - Makes automated threat verdict
-- Adds malicious URLs to blacklist
+- Adds malicious URLs to denylist
 - Sends security team notifications
 
 ## 🧪 Testing Results

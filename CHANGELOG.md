@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Replaced all instances of "blacklist/whitelist" with "denylist/allowlist" across documentation
+- Replaced "auto-blacklist" with "auto-denylist" in responder service documentation
+- Replaced "JWT blacklisting" with "JWT denylisting" in architecture documentation
+- Removed "Quick Start (5 minutes)" timing claim - replaced with objective "Quick Start" header
+- Added descriptive alt text to screenshot image in README
+- Fixed broken documentation links in README (QUICKSTART.md → SETUP_GUIDE.md)
+
+### Fixed
+- Corrected documentation cross-references to point to actual files
+- Improved image accessibility with descriptive alt text
+
 ## [0.3.2] - 2025-11-24
 
 ### Added

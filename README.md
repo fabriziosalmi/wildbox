@@ -131,17 +131,17 @@ graph TD
 
 ## Screenshot
 
-![screenshot](screenshot.png)
+![Wildbox Dashboard showing threat intelligence feed, vulnerability management interface, and security metrics](screenshot.png)
 
 ---
 
 ## 📋 Table of Contents
 
-- [⚡ Quick Start (5 minutes)](#-quick-start-5-minutes)
+- [⚡ Quick Start](#-quick-start)
 - [🎯 Platform Overview](#-platform-overview)
 - [🚀 Components](#-components)
 - [🛠️ Technology Stack](#️-technology-stack)
-- [� Community & Roadmap](#-community--roadmap)
+- [🌟 Community & Roadmap](#-community--roadmap)
 - [🤝 Contributing](#-contributing)
 - [📖 Documentation](#-documentation)
 - [📄 License](#-license)
@@ -368,9 +368,9 @@ We welcome contributions from the security community! Please see our **[Contribu
 > 🌐 **Complete documentation available online**: Visit **[Wildbox Documentation Site](https://www.wildbox.io)** for the full documentation with organized guides, security reports, and deployment procedures.
 
 For more details, see the following documents:
-- **[QUICKSTART.md](docs/guides/quickstart.md)** - 5-minute rapid deployment guide.
-- **[SECURITY_STATUS.md](docs/security/status.md)** - Current security status and vulnerability metrics.
-- **[DEPLOYMENT.md](docs/guides/deployment.md)** - Production deployment guide.
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Comprehensive deployment guide
+- **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 
 ---
 

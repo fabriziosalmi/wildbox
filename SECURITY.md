@@ -162,7 +162,7 @@ postgres:
 - Rotate `JWT_SECRET_KEY` regularly (every 90 days)
 - Use strong signing algorithms (RS256 for production)
 - Set appropriate token expiration (15 min access, 7 day refresh)
-- Implement token revocation (Redis blacklist)
+- Implement token revocation (Redis denylist)
 
 **API Key Management:**
 - Generate cryptographically secure API keys
