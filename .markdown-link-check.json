@@ -1,0 +1,32 @@
+{
+  "ignorePatterns": [
+    {
+      "pattern": "^(https?://localhost|http://127\\.0\\.0\\.1)"
+    },
+    {
+      "pattern": "^https://github\\.com/.*#L\\d+"
+    },
+    {
+      "pattern": "^https://www\\.youtube\\.com/watch"
+    }
+  ],
+  "replacementPatterns": [
+    {
+      "pattern": "^/",
+      "replacement": "{{BASEURL}}/"
+    }
+  ],
+  "httpHeaders": [
+    {
+      "urls": ["https://github.com"],
+      "headers": {
+        "Accept": "text/html"
+      }
+    }
+  ],
+  "timeout": "10s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "5s",
+  "aliveStatusCodes": [200, 206, 301, 302, 307, 308]
+}
