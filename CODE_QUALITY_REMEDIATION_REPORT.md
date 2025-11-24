@@ -245,7 +245,7 @@ cspm:
 
 **Example**:
 ```diff
-- Enterprise-grade security operations in 5 minutes
+- Enterprise-grade security operations with simple Docker Compose deployment
 + Open-source security operations platform with SIEM, CSPM, WAF, and threat intelligence
 ```
 

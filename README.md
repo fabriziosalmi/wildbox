@@ -49,11 +49,11 @@ With Wildbox, you can:
 | Icon | Feature | Description |
 | :---: | :--- | :--- |
 | 🚪 | **Intelligent API Gateway** | A single, secure entry point with rate-limiting and centralized authentication. |
-| 🔐 | **Identity Management** | Manage users, teams, and access with RBAC and JWT. |
-| ☁️ | **Cloud Security (CSPM)** | Scan AWS, Azure, and GCP for misconfigurations and compliance. |
-| 🛡️ | **Vulnerability Management** | Scan, prioritize, and manage the lifecycle of vulnerabilities. |
-| ⚡ | **Automated Response (SOAR)** | Execute YAML-based playbooks to automate incident response. |
-| 🧠 | **AI Analysis** | Leverage LLMs to analyze threats and generate reports. |
+| 🔐 | **Identity Management** | Manage users, teams, and access with RBAC (Role-Based Access Control) and JWT (JSON Web Tokens). |
+| ☁️ | **Cloud Security (CSPM)** | CSPM (Cloud Security Posture Management): Scan AWS, Azure, and GCP for misconfigurations and compliance. |
+| 🛡️ | **Vulnerability Management** | Scan, prioritize, and manage the lifecycle of vulnerabilities (CVE tracking). |
+| ⚡ | **Automated Response (SOAR)** | SOAR (Security Orchestration, Automation, and Response): Execute YAML-based playbooks to automate incident response. |
+| 🧠 | **AI Analysis** | Leverage LLMs (Large Language Models) to analyze threats and generate reports. |
 
 ## 🏗️ Architecture
 

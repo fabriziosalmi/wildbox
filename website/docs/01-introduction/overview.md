@@ -9,13 +9,13 @@ slug: /
 
 Wildbox is a comprehensive, modular, and scalable open-source security platform designed for modern cybersecurity operations. It provides production-ready security tools, threat intelligence, cloud security posture management (CSPM), vulnerability management, endpoint monitoring, automated response, and AI-powered analysis through a unified architecture with intelligent API gateway.
 
-![Wildbox Platform](/img/screenshot.png)
+![Wildbox Dashboard showing security platform overview with threat intelligence, vulnerability management, and endpoint monitoring interfaces](/img/screenshot.png)
 
 ## Key Highlights
 
 - **Comprehensive Security Suite** - All-in-one platform for security operations
 - **Modular Architecture** - Use only what you need, scale what you use
-- **Easy Deployment** - Get started in 5 minutes with Docker Compose
+- **Easy Deployment** - Get started quickly with Docker Compose
 - **AI-Powered Analysis** - Leverage GPT-4 for intelligent threat analysis
 - **Multi-Cloud Support** - Secure AWS, Azure, and GCP environments
 - **Real-time Monitoring** - Comprehensive dashboards and alerting

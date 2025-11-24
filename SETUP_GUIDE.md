@@ -21,7 +21,7 @@
 
 ---
 
-## 🏃‍♂️ Quick Start (5 minutes)
+## 🏃‍♂️ Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
@@ -279,7 +279,7 @@ docker-compose restart gateway
 
 **🎉 Congratulations! Your Wildbox Security Platform is fully operational.**
 
-**Total Setup Time:** ~5 minutes  
+**Total Setup Time:** Approximately 2-3 minutes (depending on Docker image caching)  
 **Services Running:** 11/11 ✅  
 **Security Tools:** 55+ available ✅  
 **Platform Status:** Production Ready ✅  

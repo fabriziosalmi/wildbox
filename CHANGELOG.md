@@ -12,12 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Replaced "auto-blacklist" with "auto-denylist" in responder service documentation
 - Replaced "JWT blacklisting" with "JWT denylisting" in architecture documentation
 - Removed "Quick Start (5 minutes)" timing claim - replaced with objective "Quick Start" header
+- Removed optimistic setup time claims from SETUP_GUIDE.md (5 minutes → realistic 2-3 minutes)
+- Removed "5 minutes" claim from website overview documentation
 - Added descriptive alt text to screenshot image in README
+- Added descriptive alt text to website documentation images
 - Fixed broken documentation links in README (QUICKSTART.md → SETUP_GUIDE.md)
+- Defined acronyms on first use in README Features table (RBAC, JWT, CSPM, SOAR, LLM, CVE)
 
 ### Fixed
 - Corrected documentation cross-references to point to actual files
 - Improved image accessibility with descriptive alt text
+- Replaced optimistic timing claims with realistic estimates
 
 ## [0.3.2] - 2025-11-24
 
