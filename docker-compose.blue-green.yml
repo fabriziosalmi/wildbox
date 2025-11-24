@@ -1,0 +1,201 @@
+# Blue/Green deployment infrastructure for zero-downtime deployments
+#
+# Enables:
+# - Zero-downtime deployments
+# - Instant rollback on failure
+# - Load balancer traffic switching
+# - Health check validation before switch
+#
+# Based on AWS ELB and Netflix patterns
+#
+# Usage:
+#   ./scripts/blue_green_deploy.sh identity v0.3.0
+#   ./scripts/blue_green_health.sh
+#   ./scripts/blue_green_rollback.sh identity
+
+version: '3.8'
+
+# Blue/Green deployment configuration
+# 
+# Architecture:
+# - HAProxy load balancer on port 80/443
+# - Blue environment: Current production (ports 8100-8119)
+# - Green environment: New version staging (ports 8200-8219)
+# - Zero-downtime switch via HAProxy config reload
+#
+# Deployment flow:
+# 1. Deploy to green environment (parallel to blue)
+# 2. Run health checks on green
+# 3. Switch HAProxy to green
+# 4. Monitor for errors
+# 5. Keep blue running for rollback
+# 6. After validation, scale down blue
+
+services:
+  # ===== LOAD BALANCER =====
+  haproxy:
+    image: haproxy:2.8-alpine
+    container_name: wildbox-haproxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8404:8404"  # Stats dashboard
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy/certs:/etc/ssl/certs:ro
+    networks:
+      - wildbox-network
+    depends_on:
+      - identity-blue
+      - identity-green
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===== BLUE ENVIRONMENT (Current Production) =====
+  identity-blue:
+    build:
+      context: ./open-security-identity
+      dockerfile: Dockerfile
+    container_name: wildbox-identity-blue
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/identity
+      - REDIS_URL=redis://wildbox-redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=blue
+      - VERSION=0.2.0
+    ports:
+      - "8101:8001"  # Blue on 8101
+    networks:
+      - wildbox-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  guardian-blue:
+    build:
+      context: ./open-security-guardian
+      dockerfile: Dockerfile
+    container_name: wildbox-guardian-blue
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/guardian
+      - REDIS_URL=redis://wildbox-redis:6379/1
+      - ENVIRONMENT=blue
+      - VERSION=0.2.0
+    ports:
+      - "8113:8013"  # Blue on 8113
+    networks:
+      - wildbox-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ===== GREEN ENVIRONMENT (New Version Staging) =====
+  identity-green:
+    build:
+      context: ./open-security-identity
+      dockerfile: Dockerfile
+      args:
+        - VERSION=0.3.0  # New version
+    container_name: wildbox-identity-green
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/identity
+      - REDIS_URL=redis://wildbox-redis:6379/0
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ENVIRONMENT=green
+      - VERSION=0.3.0
+    ports:
+      - "8201:8001"  # Green on 8201
+    networks:
+      - wildbox-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    # Initially scaled to 0 (deploy on-demand)
+    deploy:
+      replicas: 0
+
+  guardian-green:
+    build:
+      context: ./open-security-guardian
+      dockerfile: Dockerfile
+      args:
+        - VERSION=0.3.0
+    container_name: wildbox-guardian-green
+    environment:
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/guardian
+      - REDIS_URL=redis://wildbox-redis:6379/1
+      - ENVIRONMENT=green
+      - VERSION=0.3.0
+    ports:
+      - "8213:8013"  # Green on 8213
+    networks:
+      - wildbox-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    deploy:
+      replicas: 0
+
+  # ===== SHARED INFRASTRUCTURE =====
+  postgres:
+    image: postgres:15-alpine
+    container_name: wildbox-postgres
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - wildbox-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  wildbox-redis:
+    image: redis:7-alpine
+    container_name: wildbox-redis
+    networks:
+      - wildbox-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  wildbox-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
