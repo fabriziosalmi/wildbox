@@ -358,5 +358,5 @@ We appreciate responsible disclosure from security researchers. Contributors who
 ---
 
 **Last Security Audit:** November 23, 2025 (Brutal Rep Auditor)  
-**Remediation Status:** Critical issues resolved (see AUDIT_REMEDIATION_REPORT.md)  
+**Remediation Status:** Critical issues resolved  
 **Next Audit:** Q1 2026
