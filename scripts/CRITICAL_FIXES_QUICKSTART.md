@@ -95,8 +95,7 @@ git commit -m "fix(critical): Remove fake metrics, display 'N/A' until Prometheu
 
 - Replace hardcoded avgResponseTime and errorRate with null
 - Update UI to show 'Metrics unavailable' instead of fake numbers
-- Add honest disclaimer about metrics infrastructure status
-- Refs: VIBE_RATIO_REMEDIATION_PLAN.md CRITICAL-1"
+- Add honest disclaimer about metrics infrastructure status"
 ```
 
 ---
@@ -398,7 +397,6 @@ git commit -m "fix(critical): Replace naive API discovery with extensible wordli
 - Support configurable wordlist selection via API parameter
 - Maintain backward compatibility with fallback paths
 - Add logging for discovery coverage metrics
-- Refs: VIBE_RATIO_REMEDIATION_PLAN.md CRITICAL-2
 
 Future: Integrate full SecLists repository (4,700+ paths)"
 ```
@@ -567,7 +565,6 @@ git commit -m "fix(critical): Re-enable integration tests with robust startup ch
 - Configure pytest with test markers (slow, flaky, critical)
 - Add HTTP client with automatic retries for resilience
 - Update CI workflow to wait for services before testing
-- Refs: VIBE_RATIO_REMEDIATION_PLAN.md CRITICAL-3
 
 All integration tests now pass locally and in CI."
 ```
@@ -888,7 +885,6 @@ git commit -m "fix(critical): Remove insecure default secrets, enforce validatio
 - Add validate_secrets.py to prevent insecure defaults
 - Update Makefile with secret management targets
 - Remove all insecure fallback values from docker-compose.yml
-- Refs: VIBE_RATIO_REMEDIATION_PLAN.md CRITICAL-4
 
 Services now fail fast if secrets are missing or insecure."
 
