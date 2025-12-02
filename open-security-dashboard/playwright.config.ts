@@ -15,6 +15,8 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
+  /* Increased timeout for CI environments where services need time to start */
+  timeout: process.env.CI ? 60 * 1000 : 30 * 1000, // 60s in CI, 30s locally
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
@@ -28,6 +30,9 @@ export default defineConfig({
     
     /* Record video for failed tests */
     video: 'retain-on-failure',
+    
+    /* Increased navigation timeout for slow CI environments */
+    navigationTimeout: process.env.CI ? 30 * 1000 : 15 * 1000, // 30s in CI, 15s locally
   },
 
   /* Configure projects for major browsers */

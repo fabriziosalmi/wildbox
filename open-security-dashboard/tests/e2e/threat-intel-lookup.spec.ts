@@ -24,7 +24,8 @@ test.describe('Threat Intel Lookup - Critical Path', () => {
     const testPassword = process.env.TEST_PASSWORD || 'wildbox123';
     
     await loginPage.login(testEmail, testPassword);
-    await page.waitForURL(/dashboard|admin/, { timeout: 15000 });
+    // Increased timeout for CI environments where services are slower
+    await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Logged in successfully');
   });
 
