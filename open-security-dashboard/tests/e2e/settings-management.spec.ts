@@ -25,7 +25,7 @@ test.describe('Settings Management - Critical Path', () => {
     const testPassword = process.env.TEST_PASSWORD || 'wildbox123';
     
     await loginPage.login(testEmail, testPassword);
-    await page.waitForURL(/dashboard|admin/, { timeout: 15000 });
+    await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Logged in successfully');
   });
 

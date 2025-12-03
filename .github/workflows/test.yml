@@ -123,7 +123,18 @@ jobs:
       - name: Start services
         run: |
           docker compose up -d
-          sleep 30  # Wait for services to be ready
+          echo "Waiting for services to initialize..."
+          sleep 60  # Wait for services to be ready
+          
+          # Wait for dashboard to be ready
+          echo "Checking dashboard health..."
+          timeout 120 bash -c 'until curl -s http://localhost:3000 > /dev/null; do echo "Waiting for dashboard..."; sleep 5; done' || echo "Dashboard may not be ready"
+          
+          # Wait for identity service
+          echo "Checking identity service..."
+          timeout 60 bash -c 'until curl -s http://localhost:8001/health > /dev/null; do echo "Waiting for identity..."; sleep 5; done' || echo "Identity may not be ready"
+          
+          echo "Services should be ready for testing"
       
       - name: Run Playwright tests
         run: |

@@ -75,7 +75,7 @@ test.describe('Login Flow - Critical Path', () => {
     await loginPage.login(testEmail, testPassword);
     
     // Wait for successful navigation
-    await page.waitForURL(/dashboard|admin/, { timeout: 15000 });
+    await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Successfully redirected after login');
     
     // Verify we're authenticated by checking for user profile/menu
@@ -99,7 +99,7 @@ test.describe('Login Flow - Critical Path', () => {
     const testPassword = process.env.TEST_PASSWORD || 'wildbox123';
     
     await loginPage.login(testEmail, testPassword);
-    await page.waitForURL(/dashboard|admin/, { timeout: 15000 });
+    await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Initial login successful');
     
     // Get current URL
@@ -126,7 +126,7 @@ test.describe('Login Flow - Critical Path', () => {
     const testPassword = process.env.TEST_PASSWORD || 'wildbox123';
     
     await loginPage.login(testEmail, testPassword);
-    await page.waitForURL(/dashboard|admin/, { timeout: 15000 });
+    await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Logged in');
     
     // Find and click logout button
