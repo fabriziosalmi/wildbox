@@ -23,7 +23,7 @@ beautifulsoup4==4.13.4
 requests==2.32.4
 
 # SSL/TLS analysis dependencies - Latest secure
-cryptography==45.0.4
+cryptography==44.0.1
 pyOpenSSL==25.1.0
 
 # Additional security and performance - Latest secure

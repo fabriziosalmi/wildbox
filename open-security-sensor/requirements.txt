@@ -19,7 +19,7 @@ watchdog==6.0.0
 structlog==24.4.0
 
 # Security
-cryptography==44.0.0
+cryptography==44.0.1
 certifi==2024.12.14
 
 # Development dependencies (optional)

@@ -20,7 +20,7 @@ django-celery-results==2.5.1
 
 # Security & Authentication
 django-oauth-toolkit==3.0.1
-cryptography==44.0.0
+cryptography==44.0.1
 python-jose[cryptography]==3.5.0
 
 # HTTP Clients & Integrations
