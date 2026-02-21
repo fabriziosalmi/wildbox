@@ -120,11 +120,43 @@ jobs:
           cd open-security-dashboard
           npx playwright install --with-deps chromium
       
+      - name: Create CI environment file
+        run: |
+          cat > .env << 'EOF'
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD=postgres
+          POSTGRES_DB=identity
+          DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/identity
+          DATA_DATABASE_URL=postgresql://postgres:postgres@postgres:5432/data
+          GUARDIAN_DATABASE_URL=postgresql://postgres:postgres@postgres:5432/guardian
+          RESPONDER_DATABASE_URL=postgresql://postgres:postgres@postgres:5432/responder
+          REDIS_URL=redis://wildbox-redis:6379/0
+          JWT_SECRET_KEY=ci-test-jwt-secret-key-not-for-production
+          NEXTAUTH_SECRET=ci-test-nextauth-secret-not-for-production
+          INITIAL_ADMIN_EMAIL=superadmin@wildbox.com
+          INITIAL_ADMIN_PASSWORD=wildbox123
+          CREATE_INITIAL_ADMIN=true
+          GATEWAY_INTERNAL_SECRET=ci-test-gateway-secret-not-for-production
+          API_KEY=ci-test-api-key-not-for-production
+          OPENAI_API_KEY=sk-test-not-a-real-key
+          EOF
+      
       - name: Start services
         run: |
+          # Start infrastructure services first
+          docker compose up -d postgres wildbox-redis
+          echo "Waiting for PostgreSQL to be ready..."
+          sleep 20
+          
+          # Create additional databases needed by services
+          docker exec wildbox-postgres psql -U postgres -c "CREATE DATABASE data;" || true
+          docker exec wildbox-postgres psql -U postgres -c "CREATE DATABASE guardian;" || true
+          docker exec wildbox-postgres psql -U postgres -c "CREATE DATABASE responder;" || true
+          
+          # Now start all remaining services
           docker compose up -d
           echo "Waiting for services to initialize..."
-          sleep 60  # Wait for services to be ready
+          sleep 60
           
           # Wait for dashboard to be ready
           echo "Checking dashboard health..."
@@ -133,6 +165,10 @@ jobs:
           # Wait for identity service
           echo "Checking identity service..."
           timeout 60 bash -c 'until curl -s http://localhost:8001/health > /dev/null; do echo "Waiting for identity..."; sleep 5; done' || echo "Identity may not be ready"
+          
+          # Wait for gateway
+          echo "Checking gateway..."
+          timeout 60 bash -c 'until curl -s http://localhost/health > /dev/null; do echo "Waiting for gateway..."; sleep 5; done' || echo "Gateway may not be ready"
           
           echo "Services should be ready for testing"
       
