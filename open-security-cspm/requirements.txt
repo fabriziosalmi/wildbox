@@ -59,10 +59,10 @@ pyyaml==6.0.1
 
 # HTTP clients
 httpx==0.25.2
-aiohttp==3.12.14
+aiohttp==3.13.3
 
 # Security utilities
-cryptography==44.0.1
+cryptography==46.0.5
 python-jose[cryptography]==3.5.0
 
 # Logging and monitoring

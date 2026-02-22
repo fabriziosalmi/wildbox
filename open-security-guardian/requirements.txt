@@ -20,7 +20,7 @@ django-celery-results==2.5.1
 
 # Security & Authentication
 django-oauth-toolkit==3.0.1
-cryptography==44.0.0
+cryptography==46.0.5
 python-jose[cryptography]==3.5.0
 
 # HTTP Clients & Integrations
@@ -56,7 +56,7 @@ validators==0.20.0
 ipaddress==1.0.23
 netaddr==0.8.0
 PyYAML==6.0.1
-Pillow==11.1.0
+Pillow==12.1.1
 
 # Testing
 pytest==7.4.0

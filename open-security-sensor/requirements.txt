@@ -2,7 +2,7 @@
 
 # Core dependencies
 asyncio-mqtt==0.16.2
-aiohttp==3.13.2
+aiohttp==3.13.3
 aiohttp-cors==0.7.0
 PyYAML==6.0.2
 psutil==6.1.1
@@ -19,7 +19,7 @@ watchdog==6.0.0
 structlog==24.4.0
 
 # Security
-cryptography==44.0.0
+cryptography==46.0.5
 certifi==2024.12.14
 
 # Development dependencies (optional)

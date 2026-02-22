@@ -25,7 +25,7 @@ email-validator>=2.1.0,<3.0.0
 httpx>=0.25.0,<0.26.0
 
 # Security - constrain cryptography for compatibility
-cryptography>=44.0.0,<45.0.0
+cryptography>=44.0.0,<47.0.0
 
 # Testing
 pytest>=7.4.0,<8.0.0

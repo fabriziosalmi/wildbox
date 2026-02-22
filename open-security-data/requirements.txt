@@ -10,7 +10,7 @@ psycopg2-binary==2.9.9
 alembic==1.12.1
 
 # Async HTTP client
-aiohttp==3.12.14
+aiohttp==3.13.3
 aiofiles==23.2.0
 
 # Data processing
@@ -34,7 +34,7 @@ pytz==2023.3
 click==8.1.7
 
 # Security
-cryptography==44.0.1
+cryptography==46.0.5
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.5.0
 
@@ -68,7 +68,7 @@ scikit-learn==1.5.0
 
 # Optional: Natural language processing for IOC extraction
 spacy==3.7.2
-nltk==3.9
+nltk==3.9.2
 
 # Optional: Geolocation
 geoip2==4.8.0
