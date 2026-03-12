@@ -23,7 +23,7 @@ python-dotenv==1.0.1
 faker==33.1.0
 
 # Code quality
-black==24.10.0
+black==26.3.1
 flake8==7.1.1
 mypy==1.13.0
 pylint==3.3.2
