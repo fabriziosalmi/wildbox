@@ -51,7 +51,7 @@ pytest-cov==4.1.0
 httpx==0.25.2
 
 # Development
-black==24.3.0
+black==26.3.1
 flake8==6.1.0
 mypy==1.7.1
 pre-commit==3.6.0
@@ -68,7 +68,7 @@ scikit-learn==1.5.0
 
 # Optional: Natural language processing for IOC extraction
 spacy==3.7.2
-nltk==3.9.2
+nltk==3.9.3
 
 # Optional: Geolocation
 geoip2==4.8.0
@@ -81,7 +81,7 @@ dnspython==2.6.1
 python-whois==0.8.0
 
 # Optional: Certificate parsing
-pyopenssl==24.3.0
+pyopenssl==26.0.0
 
 # Optional: ASN lookups
 pyasn==1.6.2
