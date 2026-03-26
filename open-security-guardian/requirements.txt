@@ -24,7 +24,7 @@ cryptography==46.0.5
 python-jose[cryptography]==3.5.0
 
 # HTTP Clients & Integrations
-requests==2.32.5
+requests==2.33.0
 httpx==0.25.2
 pydantic==2.8.2
 python-dotenv==1.0.0
@@ -66,7 +66,7 @@ factory-boy==3.3.0
 freezegun==1.2.2
 
 # Development
-black==24.3.0
+black==26.3.1
 isort==5.12.0
 flake8==6.0.0
 pre-commit==3.3.3
