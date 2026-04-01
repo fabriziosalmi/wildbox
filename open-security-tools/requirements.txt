@@ -19,13 +19,13 @@ python-whois==0.9.4
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies
-aiohttp==3.13.3
+aiohttp==3.13.4
 beautifulsoup4==4.12.3
-requests==2.32.5
+requests==2.33.0
 
 # SSL/TLS analysis dependencies
-cryptography==46.0.5
-pyOpenSSL==24.3.0
+cryptography==46.0.6
+pyOpenSSL==26.0.0
 
 # Additional security and performance
 slowapi==0.1.9

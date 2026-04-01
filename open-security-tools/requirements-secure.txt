@@ -18,13 +18,13 @@ aiodns==3.5.0
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies - Latest secure
-aiohttp==3.13.3
+aiohttp==3.13.4
 beautifulsoup4==4.13.4
-requests==2.32.4
+requests==2.33.0
 
 # SSL/TLS analysis dependencies - Latest secure
-cryptography==46.0.5
-pyOpenSSL==25.1.0
+cryptography==46.0.6
+pyOpenSSL==26.0.0
 
 # Additional security and performance - Latest secure
 slowapi==0.1.9
