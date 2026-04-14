@@ -10,7 +10,7 @@ psycopg2-binary==2.9.9
 alembic==1.12.1
 
 # Async HTTP client
-aiohttp==3.13.3
+aiohttp==3.13.4
 aiofiles==23.2.0
 
 # Data processing
@@ -34,7 +34,7 @@ pytz==2023.3
 click==8.1.7
 
 # Security
-cryptography==46.0.5
+cryptography==46.0.7
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.5.0
 
@@ -45,7 +45,7 @@ prometheus-client==0.19.0
 structlog==23.2.0
 
 # Testing
-pytest==7.4.3
+pytest==9.0.3
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 httpx==0.25.2
@@ -68,7 +68,7 @@ scikit-learn==1.5.0
 
 # Optional: Natural language processing for IOC extraction
 spacy==3.7.2
-nltk==3.9.2
+nltk==3.9.4
 
 # Optional: Geolocation
 geoip2==4.8.0
@@ -81,7 +81,7 @@ dnspython==2.6.1
 python-whois==0.8.0
 
 # Optional: Certificate parsing
-pyopenssl==24.3.0
+pyopenssl==26.0.0
 
 # Optional: ASN lookups
 pyasn==1.6.2
