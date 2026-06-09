@@ -17,7 +17,7 @@ httpx==0.27.2
 aiohttp==3.13.3
 
 # Environment management
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 
 # Test data generation
 faker==33.1.0
