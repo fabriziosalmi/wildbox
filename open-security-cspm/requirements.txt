@@ -59,10 +59,10 @@ pyyaml==6.0.1
 
 # HTTP clients
 httpx==0.25.2
-aiohttp==3.13.3
+aiohttp==3.14.0
 
 # Security utilities
-cryptography==46.0.5
+cryptography==46.0.7
 python-jose[cryptography]==3.5.0
 
 # Logging and monitoring
@@ -74,5 +74,5 @@ gunicorn==23.0.0
 
 # Utilities
 python-dateutil==2.8.2
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 click==8.1.7
