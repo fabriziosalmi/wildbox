@@ -59,7 +59,7 @@ pyyaml==6.0.1
 
 # HTTP clients
 httpx==0.25.2
-aiohttp==3.14.0
+aiohttp==3.14.1
 
 # Security utilities
 cryptography==46.0.7
