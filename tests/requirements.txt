@@ -14,7 +14,7 @@ requests==2.33.0
 httpx==0.27.2
 
 # Async testing support
-aiohttp==3.14.0
+aiohttp==3.14.1
 
 # Environment management
 python-dotenv==1.2.2
