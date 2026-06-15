@@ -19,7 +19,7 @@ python-whois==0.9.4
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies
-aiohttp==3.14.0
+aiohttp==3.14.1
 beautifulsoup4==4.12.3
 requests==2.33.0
 
