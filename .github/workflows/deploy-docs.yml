@@ -31,9 +31,12 @@ jobs:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_USER: wildbox
           POSTGRES_DB: wildbox
+          # Allow startup even when the secret is empty (e.g. fork PRs from the
+          # fabgpt bot, which never receive repo secrets). Ephemeral CI DB only.
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -81,7 +84,7 @@ jobs:
 
       - name: Start API services in background
         env:
-          DATABASE_URL: postgresql://wildbox:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/wildbox
+          DATABASE_URL: postgresql://wildbox:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/wildbox
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
           API_KEY: ${{ secrets.CI_API_KEY }}

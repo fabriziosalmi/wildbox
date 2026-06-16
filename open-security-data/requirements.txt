@@ -81,7 +81,7 @@ dnspython==2.6.1
 python-whois==0.8.0
 
 # Optional: Certificate parsing
-pyopenssl==24.3.0
+pyOpenSSL==25.3.0
 
 # Optional: ASN lookups
 pyasn==1.6.2

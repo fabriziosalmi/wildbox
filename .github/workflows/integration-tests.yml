@@ -15,8 +15,8 @@ env:
   # For initial setup, generate random values with: openssl rand -hex 32
   JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
   API_KEY: ${{ secrets.CI_API_KEY }}
-  POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
-  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.CI_POSTGRES_PASSWORD }}@postgres:5432/identity
+  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/identity
   REDIS_URL: redis://redis:6379/0
   GATEWAY_INTERNAL_SECRET: ${{ secrets.CI_GATEWAY_INTERNAL_SECRET }}
   N8N_BASIC_AUTH_USER: admin
@@ -35,8 +35,11 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: identity
+          # Allow startup even when the secret is empty (e.g. fork PRs from the
+          # fabgpt bot, which never receive repo secrets). Ephemeral CI DB only.
+          POSTGRES_HOST_AUTH_METHOD: trust
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -103,7 +106,7 @@ jobs:
           cd open-security-identity
           alembic upgrade head
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/identity
+          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/identity
 
       - name: Start Identity Service
         run: |
@@ -112,7 +115,7 @@ jobs:
           IDENTITY_PID=$!
           echo "IDENTITY_PID=$IDENTITY_PID" >> $GITHUB_ENV
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/identity
+          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/identity
           REDIS_URL: redis://localhost:6379/0
           JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
           CREATE_INITIAL_ADMIN: "false"
