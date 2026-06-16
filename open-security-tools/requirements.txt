@@ -25,7 +25,7 @@ requests==2.33.0
 
 # SSL/TLS analysis dependencies
 cryptography==46.0.5
-pyOpenSSL==25.3.0
+pyOpenSSL==26.0.0
 
 # Additional security and performance
 slowapi==0.1.9
