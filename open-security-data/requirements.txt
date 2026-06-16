@@ -34,7 +34,7 @@ pytz==2023.3
 click==8.1.7
 
 # Security
-cryptography==46.0.5
+cryptography==48.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.5.0
 
@@ -80,8 +80,6 @@ dnspython==2.6.1
 # Optional: WHOIS lookups
 python-whois==0.8.0
 
-# Optional: Certificate parsing
-pyOpenSSL==26.0.0
 
 # Optional: ASN lookups
 pyasn==1.6.2
