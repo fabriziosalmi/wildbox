@@ -73,11 +73,13 @@ export default defineConfig({
     // },
   ],
 
-  /* Run your local dev server before starting the tests */
+  /* Playwright manages the dashboard server itself.
+     In CI we build first (see workflow) and serve the production build;
+     locally we use the dev server and reuse one if it's already running. */
   webServer: {
-    command: 'npm run dev',
+    command: process.env.CI ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
-    reuseExistingServer: true, // Always reuse in CI since docker-compose starts services
+    reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000, // 2 minutes
   },
 });

@@ -1,3 +1,10 @@
+# NOTE: This 8-service stack is a LOCAL integration harness only — it is no
+# longer run in CI (the never-passing `Integration Tests` job in test.yml was
+# consolidated into .github/workflows/integration-tests.yml, the maintained
+# integration layer). It currently has known config drift (e.g. several
+# services read the standard DATABASE_URL but are fed *_DATABASE_URL here;
+# guardian also needs SECRET_KEY and ALLOWED_HOSTS) and will not come up fully
+# as-is. See the tracking issue before relying on it locally.
 version: '3.8'
 
 services:

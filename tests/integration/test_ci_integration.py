@@ -24,12 +24,24 @@ def test_identity_health(service_urls: Dict[str, str]):
 @pytest.mark.integration
 @pytest.mark.smoke
 def test_identity_metrics(service_urls: Dict[str, str]):
-    """Test identity service metrics endpoint"""
-    response = requests.get(f"{service_urls['identity']}/metrics", timeout=10)
+    """Test identity service metrics endpoint (gateway-secret protected)."""
+    import os
+    # /metrics exposes user/team counts, so it is gated behind the gateway
+    # secret. Authenticate with the same secret the service was started with.
+    gateway_secret = os.environ.get("GATEWAY_INTERNAL_SECRET", "")
+    if not gateway_secret:
+        pytest.skip("GATEWAY_INTERNAL_SECRET not set (e.g. fork PR without secrets)")
+    response = requests.get(
+        f"{service_urls['identity']}/metrics",
+        headers={"X-Gateway-Secret": gateway_secret},
+        timeout=10,
+    )
     assert response.status_code == 200
-    
+
     data = response.json()
-    assert data.get("service") == "identity"
+    # Success path reports the human app name; the DB-unavailable fallback
+    # reports the "identity" slug — accept either.
+    assert "identity" in data.get("service", "").lower()
     assert "metrics" in data
     assert "timestamp" in data
     
