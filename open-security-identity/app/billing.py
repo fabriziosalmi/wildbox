@@ -33,7 +33,7 @@ class StripeBillingService:
             }
         }
     
-    async def create_customer(self, user: User) -> str:
+    async def create_customer(self, user: User) -> Optional[str]:
         """
         Create a Stripe customer for the user.
         
@@ -46,6 +46,13 @@ class StripeBillingService:
         Raises:
             HTTPException: If Stripe operation fails
         """
+        # Billing is optional. When Stripe is not configured (a self-hosted
+        # instance without billing, or CI), skip customer creation rather than
+        # failing user registration — callers treat a None customer id as "free
+        # tier, no billing".
+        if not settings.stripe_secret_key:
+            return None
+
         try:
             customer = stripe.Customer.create(
                 email=user.email,
