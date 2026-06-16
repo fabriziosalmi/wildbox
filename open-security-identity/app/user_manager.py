@@ -78,14 +78,17 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
             logger.warning("No database session found in request state")
             return
             
-        db: AsyncSession = request.state.db
+        # Use fastapi-users' own session — the one `user` is attached to.
+        # request.state.db is a *separate* session (set by db_session_middleware);
+        # adding the already-attached `user` to it raises InvalidRequestError.
+        db: AsyncSession = self.user_db.session
 
         # Crea Stripe customer
         try:
             stripe_customer_id = await billing_service.create_customer(user)
-            user.stripe_customer_id = stripe_customer_id
-            db.add(user)
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            if stripe_customer_id:
+                user.stripe_customer_id = stripe_customer_id
+        except Exception as e:  # noqa: BLE001 - billing must never block signup
             logger.warning(f"Failed to create Stripe customer for {user.email}: {e}")
 
         # Crea team con l'utente come owner
