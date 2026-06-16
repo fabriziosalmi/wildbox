@@ -25,7 +25,7 @@ export class AdminPage {
 
   async goto() {
     await this.page.goto('/admin');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async waitForAdminPageLoad() {

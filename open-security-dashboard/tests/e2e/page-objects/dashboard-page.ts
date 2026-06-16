@@ -17,7 +17,7 @@ export class DashboardPage {
 
   async goto() {
     await this.page.goto('/dashboard');
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForLoadState('domcontentloaded');
   }
 
   async waitForDashboardLoad() {
@@ -38,7 +38,7 @@ export class DashboardPage {
         const link = this.page.locator(selector).first();
         if (await link.isVisible({ timeout: 2000 })) {
           await link.click();
-          await this.page.waitForLoadState('networkidle');
+          await this.page.waitForLoadState('domcontentloaded');
           return;
         }
       } catch {
@@ -52,7 +52,7 @@ export class DashboardPage {
       const text = await item.textContent();
       if (text && text.toLowerCase().includes(pageName.toLowerCase())) {
         await item.click();
-        await this.page.waitForLoadState('networkidle');
+        await this.page.waitForLoadState('domcontentloaded');
         return;
       }
     }

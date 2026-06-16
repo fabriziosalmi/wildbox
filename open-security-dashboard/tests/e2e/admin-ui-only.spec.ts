@@ -65,7 +65,7 @@ test.describe('Admin UI Testing (Without Backend)', () => {
 
     // Go directly to admin page (will be redirected to login if no auth)
     await page.goto('/admin');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Check if we're redirected to login or if we access dashboard directly
     if (page.url().includes('/auth/login')) {
@@ -84,7 +84,7 @@ test.describe('Admin UI Testing (Without Backend)', () => {
 
     // Go directly to dashboard page
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
+    await page.waitForLoadState('domcontentloaded');
 
     // Should be redirected to login page if not authenticated
     if (page.url().includes('/auth/login')) {
