@@ -13,16 +13,16 @@ env:
   # SECURITY: All secrets sourced from GitHub Secrets.
   # Configure these in repo Settings > Secrets and variables > Actions.
   # For initial setup, generate random values with: openssl rand -hex 32
-  JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
-  API_KEY: ${{ secrets.CI_API_KEY }}
+  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+  API_KEY: ${{ secrets.API_KEY }}
   POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
   DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD }}@postgres:5432/identity
   REDIS_URL: redis://redis:6379/0
-  GATEWAY_INTERNAL_SECRET: ${{ secrets.CI_GATEWAY_INTERNAL_SECRET }}
+  GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET }}
   N8N_BASIC_AUTH_USER: admin
-  N8N_BASIC_AUTH_PASSWORD: ${{ secrets.CI_N8N_PASSWORD }}
-  GRAFANA_ADMIN_PASSWORD: ${{ secrets.CI_GRAFANA_PASSWORD }}
-  NEXTAUTH_SECRET: ${{ secrets.CI_NEXTAUTH_SECRET }}
+  N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD }}
+  GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+  NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
 
 jobs:
   integration-tests:
@@ -117,7 +117,7 @@ jobs:
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/identity
           REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
           CREATE_INITIAL_ADMIN: "false"
 
       - name: Install Tools Service Dependencies
@@ -132,7 +132,7 @@ jobs:
           TOOLS_PID=$!
           echo "TOOLS_PID=$TOOLS_PID" >> $GITHUB_ENV
         env:
-          API_KEY: ${{ secrets.CI_API_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
           REDIS_URL: redis://localhost:6379/2
 
       - name: Wait for all services to be healthy
@@ -160,7 +160,7 @@ jobs:
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
-          TEST_API_KEY: ${{ secrets.CI_API_KEY }}
+          TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
 
       - name: Upload Test Results

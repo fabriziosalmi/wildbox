@@ -86,8 +86,8 @@ jobs:
         env:
           DATABASE_URL: postgresql://wildbox:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/wildbox
           REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ${{ secrets.CI_JWT_SECRET_KEY }}
-          API_KEY: ${{ secrets.CI_API_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          API_KEY: ${{ secrets.API_KEY }}
         run: |
           # Start each service in background on different ports
           # Identity Service
