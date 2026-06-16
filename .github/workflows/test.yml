@@ -56,46 +56,6 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  integration-tests:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build test infrastructure
-        run: |
-          docker compose -f docker-compose.test.yml build
-      
-      - name: Run integration tests
-        run: |
-          docker compose -f docker-compose.test.yml up --abort-on-container-exit --exit-code-from test-runner
-      
-      - name: Collect test results
-        if: always()
-        run: |
-          mkdir -p test-results
-          cp tests/reports/junit.xml test-results/ || true
-          cp tests/reports/report.html test-results/ || true
-      
-      - name: Publish test results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        if: always()
-        with:
-          files: test-results/junit.xml
-          check_name: Integration Test Results
-      
-      - name: Upload HTML report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: integration-test-report
-          path: test-results/report.html
-          retention-days: 30
-
   e2e-tests:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
@@ -252,7 +212,7 @@ jobs:
     name: Build Docker Images
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [unit-tests, integration-tests, e2e-tests]
+    needs: [unit-tests, e2e-tests]   # docker-compose integration job consolidated into integration-tests.yml
     
     strategy:
       matrix:
