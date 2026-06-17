@@ -29,24 +29,14 @@ class ApiClient {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
       (config) => {
-        // Check if this is a request to the Guardian service (still uses legacy API key auth)
-        const isGuardianAPI = this.baseURL.includes('/api/v1/guardian') || this.baseURL.includes('localhost:8013') || this.baseURL.includes(':8013')
-        
-        if (isGuardianAPI) {
-          // Use API key for Guardian service (legacy auth)
-          const guardianApiKey = process.env.NEXT_PUBLIC_GUARDIAN_API_KEY
-          if (guardianApiKey) {
-            config.headers['X-API-Key'] = guardianApiKey
-          }
-        } else {
-          // Use JWT token for all other services (identity, data, tools, responder, etc.)
-          // Gateway validates the JWT and forwards requests with X-Wildbox-* headers
-          const token = Cookies.get('auth_token')
-          if (token) {
-            config.headers.Authorization = `Bearer ${token}`
-          }
+        // All services (incl. Guardian) authenticate via the gateway with the
+        // user's JWT; the gateway validates it and forwards X-Wildbox-* headers.
+        // Guardian no longer uses a browser-exposed API key (#113).
+        const token = Cookies.get('auth_token')
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`
         }
-        
+
         return config
       },
       (error) => {

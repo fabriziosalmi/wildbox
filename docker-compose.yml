@@ -30,6 +30,9 @@ services:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      # Shared secret the gateway presents to /internal/authorize. Without it
+      # identity returns "Service misconfigured" and ALL gateway auth fails.
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - CREATE_INITIAL_ADMIN=${CREATE_INITIAL_ADMIN:-true}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
@@ -189,7 +192,9 @@ services:
     volumes:
       - ./open-security-gateway/nginx:/etc/nginx:ro
       - ./open-security-gateway/logs:/var/log/nginx
-      - ./open-security-gateway/ssl:/etc/ssl/wildbox:ro
+      # writable so the entrypoint can generate a self-signed dev cert if none
+      # is provided (mount real certs here in production)
+      - ./open-security-gateway/ssl:/etc/ssl/wildbox
     environment:
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - WILDBOX_ENV=${WILDBOX_ENV:-development}
@@ -276,6 +281,9 @@ services:
     #   - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Provision the separate Guardian database on first init (Guardian is a
+      # Django service with its own tables; identity is FastAPI).
+      - ./scripts/init-guardian-db.sql:/docker-entrypoint-initdb.d/10-init-guardian-db.sql:ro
     networks:
       - wildbox
     healthcheck:
@@ -321,6 +329,7 @@ services:
     ports:
       - "8013:8013"
     environment:
+      - SECRET_KEY=${GUARDIAN_SECRET_KEY}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
