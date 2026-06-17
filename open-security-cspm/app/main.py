@@ -589,7 +589,7 @@ async def get_dashboard_summary(
         total_skipped = sum(s["summary"].get("skipped", 0) for s in team_scans)
         
         # Get trending metrics
-        trending_metrics = _get_trending_metrics(current_user["team_id"])
+        trending_metrics = _get_trending_metrics(redis_client, "all", current_user["team_id"])
         
         return schemas.DashboardSummaryResponse(
             total_scans=total_scans,
