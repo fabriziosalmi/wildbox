@@ -81,7 +81,7 @@ if config.api.cors_enabled:
         allow_origins=config.api.cors_origins,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Wildbox-User-ID", "X-Wildbox-Team-ID", "X-Wildbox-Plan", "X-Wildbox-Role"],
+        allow_headers=["Authorization", "Content-Type", "X-Wildbox-User-ID", "X-Wildbox-Team-ID", "X-Wildbox-Role"],
     )
 
 # UUID validation regex for path parameters

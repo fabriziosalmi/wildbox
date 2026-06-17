@@ -5,11 +5,10 @@ import { MainLayout } from '@/components/main-layout'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import { 
-  User, 
-  CreditCard, 
-  Key, 
-  Users, 
+import {
+  User,
+  Key,
+  Users,
   Shield,
   Settings as SettingsIcon
 } from 'lucide-react'
@@ -20,12 +19,6 @@ const settingsNavigation = [
     href: '/settings/profile',
     icon: User,
     description: 'Manage your account details',
-  },
-  {
-    name: 'Billing',
-    href: '/settings/billing',
-    icon: CreditCard,
-    description: 'Subscription and billing',
   },
   {
     name: 'API Keys',

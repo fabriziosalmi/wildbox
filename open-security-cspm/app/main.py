@@ -98,7 +98,6 @@ async def get_current_user(request: Request):
     return {
         "user_id": user_id,
         "team_id": team_id,
-        "plan": request.headers.get("X-Wildbox-Plan", "free"),
         "role": request.headers.get("X-Wildbox-Role", "member")
     }
 

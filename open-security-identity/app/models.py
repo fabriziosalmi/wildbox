@@ -1,7 +1,7 @@
 """
 Database models for Open Security Identity service.
 
-Defines User, Team, TeamMembership, Subscription, and ApiKey models
+Defines User, Team, TeamMembership, and ApiKey models
 with proper relationships and constraints.
 """
 
@@ -28,22 +28,6 @@ class TeamRole(str, Enum):
     OWNER = "owner"
     ADMIN = "admin"
     MEMBER = "member"
-
-
-class SubscriptionPlan(str, Enum):
-    """Available subscription plans."""
-    FREE = "free"
-    PRO = "pro"
-    BUSINESS = "business"
-
-
-class SubscriptionStatus(str, Enum):
-    """Subscription status values."""
-    ACTIVE = "active"
-    TRIALING = "trialing"
-    PAST_DUE = "past_due"
-    CANCELED = "canceled"
-    UNPAID = "unpaid"
 
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
@@ -88,7 +72,6 @@ class Team(Base):
     # Relationships
     owner = relationship("User", back_populates="owned_teams")
     memberships = relationship("TeamMembership", back_populates="team", cascade="all, delete-orphan")
-    subscription = relationship("Subscription", back_populates="team", uselist=False, cascade="all, delete-orphan")
     api_keys = relationship("ApiKey", back_populates="team", cascade="all, delete-orphan")
     
     def __repr__(self):
@@ -116,36 +99,6 @@ class TeamMembership(Base):
     
     def __repr__(self):
         return f"<TeamMembership user={self.user_id} team={self.team_id} role={self.role}>"
-
-
-class Subscription(Base):
-    """Subscription model for team billing."""
-    
-    __tablename__ = "subscriptions"
-    
-    # Primary identification
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    
-    # Team relationship (one-to-one)
-    team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), unique=True, nullable=False)
-    
-    
-    # Subscription details
-    plan_id = Column(String(50), nullable=False, default=SubscriptionPlan.FREE.value)
-    status = Column(String(50), nullable=False, default=SubscriptionStatus.ACTIVE.value)
-    
-    # Billing period
-    current_period_end = Column(DateTime(timezone=True), nullable=True)
-    
-    # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
-    # Relationships
-    team = relationship("Team", back_populates="subscription")
-    
-    def __repr__(self):
-        return f"<Subscription team={self.team_id} plan={self.plan_id} status={self.status}>"
 
 
 class ApiKey(Base):

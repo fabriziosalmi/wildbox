@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from ...database import get_db
-from ...models import User, Team, TeamMembership, Subscription, TeamRole, SubscriptionPlan, SubscriptionStatus, ApiKey
+from ...models import User, Team, TeamMembership, TeamRole, ApiKey
 from ...schemas import (
     UserResponse, UserWithTeams,
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
@@ -62,7 +62,7 @@ async def list_all_users(
     
     # Build query with relationships to get team and subscription data
     query = select(User).options(
-        selectinload(User.team_memberships).selectinload(TeamMembership.team).selectinload(Team.subscription)
+        selectinload(User.team_memberships).selectinload(TeamMembership.team)
     )
     
     if email_filter:
@@ -90,7 +90,7 @@ async def list_all_users(
             "team_memberships": []
         }
         
-        # Add team memberships with subscription data
+        # Add team memberships
         for membership in user.team_memberships:
             membership_data = {
                 "user_id": str(membership.user_id),
@@ -99,15 +99,7 @@ async def list_all_users(
                 "role": membership.role if isinstance(membership.role, str) else membership.role.value,
                 "joined_at": membership.joined_at.isoformat()
             }
-            
-            # Add subscription information if available
-            if membership.team.subscription:
-                membership_data["subscription"] = {
-                    "plan_id": membership.team.subscription.plan_id,
-                    "status": membership.team.subscription.status,
-                    "current_period_end": membership.team.subscription.current_period_end.isoformat() if membership.team.subscription.current_period_end else None
-                }
-            
+
             user_data["team_memberships"].append(membership_data)
         
         user_responses.append(user_data)

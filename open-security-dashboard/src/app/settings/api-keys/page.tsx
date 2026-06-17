@@ -46,8 +46,6 @@ const availableScopes = [
   { id: 'reports:write', name: 'Reports Write', description: 'Create and modify reports' },
   { id: 'team:read', name: 'Team Read', description: 'Read team information' },
   { id: 'team:manage', name: 'Team Manage', description: 'Manage team members and settings' },
-  { id: 'billing:read', name: 'Billing Read', description: 'Read billing information' },
-  { id: 'billing:manage', name: 'Billing Manage', description: 'Manage billing and subscriptions' },
 ]
 
 export default function ApiKeysPage() {
@@ -291,7 +289,7 @@ export default function ApiKeysPage() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: ['admin', 'tools:admin', 'data:delete', 'team:manage', 'billing:manage'] }))}
+                    onClick={() => setCreateForm(prev => ({ ...prev, scopes: ['admin', 'tools:admin', 'data:delete', 'team:manage'] }))}
                   >
                     Admin
                   </Button>

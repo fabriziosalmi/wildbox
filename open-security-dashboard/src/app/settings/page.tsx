@@ -4,11 +4,10 @@ import { useAuth } from '@/components/auth-provider'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import { 
-  User, 
-  CreditCard, 
-  Key, 
-  Users, 
+import {
+  User,
+  Key,
+  Users,
   Shield,
   ArrowRight,
   Settings
@@ -21,13 +20,6 @@ const settingsCards = [
     icon: User,
     href: '/settings/profile',
     color: 'from-blue-500 to-blue-600',
-  },
-  {
-    title: 'Billing',
-    description: 'View subscription details and manage billing',
-    icon: CreditCard,
-    href: '/settings/billing',
-    color: 'from-green-500 to-green-600',
   },
   {
     title: 'API Keys',
@@ -75,18 +67,6 @@ export default function SettingsPage() {
               <div className="font-semibold text-foreground">
                 {user?.is_active ? 'Active' : 'Inactive'}
               </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-blue-600 rounded-lg flex items-center justify-center">
-              <CreditCard className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <div className="text-sm text-muted-foreground">Plan</div>
-              <div className="font-semibold text-foreground">Free</div>
             </div>
           </div>
         </Card>

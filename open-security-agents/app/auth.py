@@ -16,7 +16,7 @@ from pydantic import BaseModel, UUID4
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-security-shared'))
 
 try:
-    from gateway_auth import get_user_from_gateway_headers as _get_gateway_user, GatewayUser as _GatewayUser, require_role, require_plan
+    from gateway_auth import get_user_from_gateway_headers as _get_gateway_user, GatewayUser as _GatewayUser, require_role
     GATEWAY_AUTH_AVAILABLE = True
     GatewayUser = _GatewayUser
 except ImportError:
@@ -28,7 +28,6 @@ except ImportError:
         """Fallback user model when shared gateway_auth is not available"""
         user_id: UUID4
         team_id: UUID4
-        plan: str = "free"
         role: str = "member"
         
         class Config:
@@ -43,7 +42,6 @@ logger = logging.getLogger(__name__)
 async def get_current_user(
     x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
     x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
-    x_wildbox_plan: Optional[str] = Header(None, alias="X-Wildbox-Plan"),
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
 ) -> GatewayUser:
     """
@@ -52,7 +50,7 @@ async def get_current_user(
     Authenticates via X-Wildbox-* headers injected by the API gateway.
 
     Returns:
-        GatewayUser object with user_id, team_id, plan, role
+        GatewayUser object with user_id, team_id, role
 
     Raises:
         HTTPException 401: No authentication provided
@@ -64,7 +62,6 @@ async def get_current_user(
             return await _get_gateway_user(
                 x_wildbox_user_id=x_wildbox_user_id,
                 x_wildbox_team_id=x_wildbox_team_id,
-                x_wildbox_plan=x_wildbox_plan,
                 x_wildbox_role=x_wildbox_role
             )
         else:
@@ -73,7 +70,6 @@ async def get_current_user(
                 return GatewayUser(
                     user_id=x_wildbox_user_id,
                     team_id=x_wildbox_team_id,
-                    plan=x_wildbox_plan or "free",
                     role=x_wildbox_role or "member"
                 )
             except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
@@ -98,4 +94,4 @@ __all__ = [
 
 # Re-export gateway auth helpers if available
 if GATEWAY_AUTH_AVAILABLE:
-    __all__.extend(["require_role", "require_plan"])
+    __all__.extend(["require_role"])

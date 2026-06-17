@@ -612,7 +612,7 @@ try {
                 <h4 className="font-semibold mb-2">Gateway Benefits</h4>
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Unified authentication across all services</li>
-                  <li>• Rate limiting and plan enforcement</li>
+                  <li>• Rate limiting</li>
                   <li>• SSL termination and security headers</li>
                   <li>• Request/response logging and monitoring</li>
                   <li>• Load balancing and failover</li>
@@ -623,7 +623,6 @@ try {
                 <ul className="text-sm space-y-1 text-muted-foreground">
                   <li>• Include Bearer token in Authorization header</li>
                   <li>• Tokens are validated against identity service</li>
-                  <li>• Plan restrictions are enforced automatically</li>
                   <li>• Rate limits are applied per user/team</li>
                 </ul>
               </div>

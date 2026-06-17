@@ -13,12 +13,10 @@ local TIMEOUT_SECONDS = 5
 local CIRCUIT_BREAKER_THRESHOLD = 10
 local CIRCUIT_BREAKER_TIMEOUT = 60
 
--- Rate limits per plan (requests per hour) - Blueprint specified limits
-local RATE_LIMITS = {
-    free = 1000,      -- 1,000/hour
-    personal = 100000, -- 100,000/hour  
-    business = 1000000 -- 1,000,000/hour
-}
+-- Flat per-team rate limit (requests per hour). Plan-based tiers were removed
+-- with billing/subscriptions; this is abuse protection on top of the per-IP
+-- limit_req zones in nginx.conf.
+local RATE_LIMIT_PER_HOUR = 1000000
 
 -- Get gateway configuration from environment variables
 local function get_config()
@@ -172,7 +170,6 @@ local function validate_token_with_identity(token, token_type, config)
         utils.log("debug", "Token validation successful", {
             user_id = auth_data.user_id,
             team_id = auth_data.team_id,
-            plan = auth_data.plan,
             duration_ms = duration
         })
         
@@ -248,16 +245,15 @@ end
 
 -- Enhanced rate limiting with sliding window (Blueprint requirement)
 local function apply_rate_limiting(auth_data)
-    local plan = auth_data.plan or "free"
     local team_id = auth_data.team_id
-    local limit_per_hour = RATE_LIMITS[plan] or RATE_LIMITS.free
-    
+    local limit_per_hour = RATE_LIMIT_PER_HOUR
+
     -- Convert to requests per second for sliding window
     local limit_per_second = limit_per_hour / 3600
     local window_size = 60 -- 1 minute sliding window
-    
+
     local rate_cache = ngx.shared.rate_limit_cache
-    local key = "rate:" .. team_id .. ":" .. plan
+    local key = "rate:" .. team_id
     local now = ngx.time()
     
     -- Get current request timestamps
@@ -289,7 +285,6 @@ local function apply_rate_limiting(auth_data)
     if requests_in_window > max_requests then
         utils.log("warn", "Rate limit exceeded", {
             team_id = team_id,
-            plan = plan,
             current_requests = requests_in_window,
             limit = max_requests,
             window_size = window_size
@@ -304,7 +299,7 @@ local function apply_rate_limiting(auth_data)
         
         ngx.say(utils.json_encode({
             error = "rate_limit_exceeded",
-            message = "Rate limit exceeded for plan: " .. plan,
+            message = "Rate limit exceeded",
             limit_per_hour = limit_per_hour,
             retry_after_seconds = window_size
         }))
@@ -329,17 +324,14 @@ local function set_auth_headers(auth_data)
 
     ngx.var.wildbox_user_id = auth_data.user_id or ""
     ngx.var.wildbox_team_id = auth_data.team_id or ""
-    ngx.var.wildbox_plan = auth_data.plan or "free"
     ngx.var.wildbox_role = auth_data.role or "user"
 
     -- Set headers for backend services (from validated auth_data only)
     ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
     ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
-    ngx.req.set_header("X-Wildbox-Plan", auth_data.plan)
     ngx.req.set_header("X-Wildbox-Role", auth_data.role)
-    
+
     -- Response headers for client
-    ngx.header["X-Wildbox-Plan"] = auth_data.plan
     ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
 end
 
@@ -432,7 +424,6 @@ function _M.authenticate()
     utils.log("debug", "Authorization completed", {
         user_id = auth_data.user_id,
         team_id = auth_data.team_id,
-        plan = auth_data.plan,
         cache_hit = auth_data.cache_hit,
         duration_ms = request_time
     })

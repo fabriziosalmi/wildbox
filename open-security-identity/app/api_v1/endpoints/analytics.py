@@ -10,7 +10,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 
 from ...database import get_db
-from ...models import User, Team, TeamMembership, ApiKey, Subscription, TeamRole
+from ...models import User, Team, TeamMembership, ApiKey, TeamRole
 from ...user_manager import current_active_user
 from ...schemas import UserResponse
 
@@ -73,11 +73,10 @@ async def get_system_analytics(
         total_teams = await db.execute(select(func.count(Team.id)))
         total_teams = total_teams.scalar() or 0
         
-        # Active teams (teams with active subscriptions)
+        # Active teams (teams that have at least one member)
         active_teams = await db.execute(
             select(func.count(Team.id.distinct())).select_from(Team)
-            .join(Subscription, Team.id == Subscription.team_id)
-            .filter(Subscription.status == 'active')
+            .join(TeamMembership, Team.id == TeamMembership.team_id)
         )
         active_teams = active_teams.scalar() or 0
         
@@ -100,20 +99,6 @@ async def get_system_analytics(
             )
         )
         api_keys_used_today = api_keys_used_today.scalar() or 0
-        
-        # Subscription Analytics
-        subscription_stats = await db.execute(
-            select(
-                Subscription.plan_id,
-                func.count(Subscription.id).label('count')
-            ).filter(
-                Subscription.status == 'active'
-            ).group_by(Subscription.plan_id)
-        )
-        
-        plan_distribution = {}
-        for plan, count in subscription_stats:
-            plan_distribution[plan] = count
         
         # Growth metrics (compare with previous period)
         prev_period_start = start_date - timedelta(days=days)
@@ -188,12 +173,6 @@ async def get_system_analytics(
                 "keys_used_today": api_keys_used_today,
                 "estimated_requests_today": estimated_api_requests_today,
                 "estimated_requests_week": estimated_api_requests_week
-            },
-            
-            # Subscription metrics
-            "subscriptions": {
-                "plan_distribution": plan_distribution,
-                "total_active": sum(plan_distribution.values())
             },
             
             # Role distribution

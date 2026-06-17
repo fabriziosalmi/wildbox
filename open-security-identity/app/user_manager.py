@@ -19,7 +19,7 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
-from .models import User, Team, TeamMembership, Subscription, TeamRole, SubscriptionPlan, SubscriptionStatus
+from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
 
 
@@ -68,7 +68,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """
         Logica da eseguire dopo la registrazione di un utente.
-        Qui creiamo il Team e la Subscription (piano free).
+        Qui creiamo il Team e la membership (owner).
         """
         logger.info(f"User {user.email} has registered. Running post-registration logic.")
         
@@ -98,17 +98,9 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         )
         db.add(membership)
 
-        # Crea free subscription
-        subscription = Subscription(
-            team_id=team.id,
-            plan_id=SubscriptionPlan.FREE,
-            status=SubscriptionStatus.ACTIVE
-        )
-        db.add(subscription)
-        
         # Commit delle modifiche
         await db.commit()
-        logger.info(f"Team, membership, and subscription created for user {user.email}.")
+        logger.info(f"Team and membership (owner) created for user {user.email}.")
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

@@ -42,18 +42,12 @@ interface AdminUserData {
   is_superuser: boolean
   created_at: string
   updated_at: string
-  stripe_customer_id?: string
   team_memberships?: Array<{
     user_id: string
     team_id: string
     team_name: string
     role: string
     joined_at: string
-    subscription?: {
-      plan_id: string
-      status: string
-      current_period_end?: string
-    }
   }>
 }
 
@@ -619,29 +613,6 @@ export default function AdminPage() {
     })
   }
 
-  const getUserSubscriptionPlan = (user: AdminUserData): string => {
-    // Check all team memberships for subscription plans
-    if (user.team_memberships && user.team_memberships.length > 0) {
-      for (const membership of user.team_memberships) {
-        if (membership.subscription) {
-          return membership.subscription.plan_id.charAt(0).toUpperCase() + membership.subscription.plan_id.slice(1)
-        }
-      }
-    }
-    return 'Free' // Default plan
-  }
-
-  const getUserSubscriptionStatus = (user: AdminUserData): string => {
-    if (user.team_memberships && user.team_memberships.length > 0) {
-      for (const membership of user.team_memberships) {
-        if (membership.subscription) {
-          return membership.subscription.status.charAt(0).toUpperCase() + membership.subscription.status.slice(1)
-        }
-      }
-    }
-    return 'Active' // Default status
-  }
-
   // Helper function to check if user owns any teams
   const isTeamOwner = (user: AdminUserData) => {
     return user.team_memberships?.some(membership => membership.role === 'owner') || false
@@ -782,7 +753,6 @@ export default function AdminPage() {
                   <tr className="border-b">
                     <th className="text-left p-3 font-medium">User</th>
                     <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-left p-3 font-medium">Plan</th>
                     <th className="text-left p-3 font-medium">Teams</th>
                     <th className="text-left p-3 font-medium">Created</th>
                     <th className="text-left p-3 font-medium">Actions</th>
@@ -811,19 +781,6 @@ export default function AdminPage() {
                         <Badge variant={user.is_active ? "default" : "secondary"}>
                           {user.is_active ? "Active" : "Inactive"}
                         </Badge>
-                      </td>
-                      <td className="p-3">
-                        <div className="space-y-1">
-                          <Badge 
-                            variant={getUserSubscriptionPlan(user) === 'Free' ? "secondary" : "default"}
-                            className="text-xs"
-                          >
-                            {getUserSubscriptionPlan(user)}
-                          </Badge>
-                          <div className="text-xs text-muted-foreground">
-                            {getUserSubscriptionStatus(user)}
-                          </div>
-                        </div>
                       </td>
                       <td className="p-3">
                         <div className="space-y-1">

@@ -32,7 +32,6 @@ except ImportError:
         """User model populated from gateway-injected headers"""
         user_id: UUID = Field(..., description="User's unique identifier")
         team_id: UUID = Field(..., description="User's team identifier")
-        plan: str = Field(default="free", description="Subscription plan (free, pro, business, enterprise)")
         role: str = Field(default="member", description="User role (owner, admin, member)")
         
         class Config:
@@ -44,7 +43,6 @@ logger = logging.getLogger(__name__)
 async def get_current_user(
     x_wildbox_user_id: Optional[str] = Header(None),
     x_wildbox_team_id: Optional[str] = Header(None),
-    x_wildbox_plan: Optional[str] = Header(None),
     x_wildbox_role: Optional[str] = Header(None),
 ) -> GatewayUser:
     """
@@ -53,7 +51,6 @@ async def get_current_user(
     Args:
         x_wildbox_user_id: User ID injected by gateway
         x_wildbox_team_id: Team ID injected by gateway
-        x_wildbox_plan: Subscription plan injected by gateway
         x_wildbox_role: User role injected by gateway
 
     Returns:
@@ -75,11 +72,10 @@ async def get_current_user(
             user = GatewayUser(
                 user_id=user_id,
                 team_id=team_id,
-                plan=x_wildbox_plan or "free",
                 role=x_wildbox_role or "member"
             )
             
-            logger.info(f"🔐 Gateway auth successful - User: {user_id}, Team: {team_id}, Plan: {user.plan}")
+            logger.info(f"🔐 Gateway auth successful - User: {user_id}, Team: {team_id}")
             return user
             
         except ValueError as e:
@@ -98,34 +94,7 @@ async def get_current_user(
     )
 
 
-# Dependency factories for plan-based and role-based access control
-
-def require_plan(*allowed_plans: str):
-    """
-    Dependency factory for plan-based access control.
-    
-    Usage:
-        @app.get("/premium-feature")
-        async def premium_feature(user: GatewayUser = Depends(require_plan("pro", "business", "enterprise"))):
-            # Only users with pro, business, or enterprise plans can access
-            pass
-    
-    Args:
-        *allowed_plans: Variable number of allowed plan names
-    
-    Returns:
-        Dependency function that validates user's plan
-    """
-    async def _check_plan(user: GatewayUser = Depends(get_current_user)) -> GatewayUser:
-        if user.plan not in allowed_plans:
-            logger.warning(f"⚠️ Plan restriction violation - User plan: {user.plan}, Required: {allowed_plans}")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"This feature requires one of these plans: {', '.join(allowed_plans)}"
-            )
-        return user
-    
-    return _check_plan
+# Dependency factory for role-based access control
 
 
 def require_role(*allowed_roles: str):

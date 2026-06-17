@@ -88,40 +88,6 @@ function _M.generate_auth_cache_key(token, token_type)
     return "auth:" .. token_type .. ":" .. hash
 end
 
--- Check if a plan allows access to a specific feature
-function _M.plan_allows_feature(plan, feature)
-    local plan_features = {
-        free = {
-            "dashboard", "basic_monitoring", "data_feeds"
-        },
-        personal = {
-            "dashboard", "basic_monitoring", "data_feeds", 
-            "cspm", "guardian", "sensor"
-        },
-        business = {
-            "dashboard", "basic_monitoring", "data_feeds",
-            "cspm", "guardian", "sensor", "responder", "automations"
-        },
-        enterprise = {
-            "dashboard", "basic_monitoring", "data_feeds",
-            "cspm", "guardian", "sensor", "responder", "automations", "agents"
-        }
-    }
-    
-    local features = plan_features[plan]
-    if not features then
-        return false
-    end
-    
-    for _, allowed_feature in ipairs(features) do
-        if allowed_feature == feature then
-            return true
-        end
-    end
-    
-    return false
-end
-
 -- Clean sensitive headers before forwarding to backend
 function _M.http_request(method, url, options)
     local httpc = http:new()
@@ -185,7 +151,6 @@ function _M.set_debug_headers(auth_data)
     if ngx.var.gateway_debug == "true" then
         ngx.header["X-Debug-User-ID"] = auth_data.user_id
         ngx.header["X-Debug-Team-ID"] = auth_data.team_id
-        ngx.header["X-Debug-Plan"] = auth_data.plan
         ngx.header["X-Debug-Cache-Hit"] = auth_data.cache_hit and "true" or "false"
     end
 end
@@ -199,7 +164,6 @@ function _M.clean_request_headers()
     -- Remove any existing Wildbox headers (prevent spoofing)
     ngx.req.clear_header("X-Wildbox-User-ID")
     ngx.req.clear_header("X-Wildbox-Team-ID")
-    ngx.req.clear_header("X-Wildbox-Plan")
     ngx.req.clear_header("X-Wildbox-Role")
 end
 
