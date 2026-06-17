@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .database import get_db
 from .models import User, Team, TeamMembership, Subscription, TeamRole, SubscriptionPlan, SubscriptionStatus
 from .config import settings
-from .billing import billing_service
 
 
 # 1. Database Adapter
@@ -69,7 +68,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         """
         Logica da eseguire dopo la registrazione di un utente.
-        Qui creiamo il Team, la Subscription e il customer su Stripe.
+        Qui creiamo il Team e la Subscription (piano free).
         """
         logger.info(f"User {user.email} has registered. Running post-registration logic.")
         
@@ -82,14 +81,6 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         # request.state.db is a *separate* session (set by db_session_middleware);
         # adding the already-attached `user` to it raises InvalidRequestError.
         db: AsyncSession = self.user_db.session
-
-        # Crea Stripe customer
-        try:
-            stripe_customer_id = await billing_service.create_customer(user)
-            if stripe_customer_id:
-                user.stripe_customer_id = stripe_customer_id
-        except Exception as e:  # noqa: BLE001 - billing must never block signup
-            logger.warning(f"Failed to create Stripe customer for {user.email}: {e}")
 
         # Crea team con l'utente come owner
         team = Team(

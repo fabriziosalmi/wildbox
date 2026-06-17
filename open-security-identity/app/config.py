@@ -31,10 +31,6 @@ class Settings(BaseSettings):
     max_failed_login_attempts: int = 5
     account_lockout_minutes: int = 15
     
-    # Stripe Configuration (Optional - only required if using subscription features)
-    stripe_secret_key: Optional[str] = Field(None, description="Stripe secret key")
-    stripe_publishable_key: Optional[str] = Field(None, description="Stripe publishable key")
-    stripe_webhook_secret: Optional[str] = Field(None, description="Stripe webhook secret")
     
     # API Configuration
     api_v1_prefix: str = "/api/v1"
@@ -49,8 +45,6 @@ class Settings(BaseSettings):
     cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_allow_headers: list[str] = ["Content-Type", "Authorization", "X-API-Key", "X-Requested-With"]
     
-    # Frontend URLs (for Stripe redirects)
-    frontend_url: str = "http://localhost:3000"
     
     class Config:
         env_file = ".env"

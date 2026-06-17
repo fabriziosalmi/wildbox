@@ -30,7 +30,6 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     """Schema for reading user data (responses)."""
     created_at: datetime
     updated_at: datetime
-    stripe_customer_id: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -70,7 +69,6 @@ class UserResponse(UserBase):
     is_superuser: bool
     created_at: datetime
     updated_at: datetime
-    stripe_customer_id: Optional[str] = None
     
     class Config:
         from_attributes = True
@@ -115,7 +113,6 @@ class TeamMembershipResponse(BaseModel):
 class SubscriptionResponse(BaseModel):
     id: UUID
     team_id: UUID
-    stripe_subscription_id: Optional[str] = None
     plan_id: SubscriptionPlan
     status: SubscriptionStatus
     current_period_end: Optional[datetime] = None
@@ -161,21 +158,6 @@ class TokenPayload(BaseModel):
     sub: Optional[str] = None
     team_id: Optional[str] = None
     role: Optional[str] = None
-
-
-# Billing schemas
-class CreateCheckoutSessionRequest(BaseModel):
-    plan_id: SubscriptionPlan
-    success_url: Optional[str] = None
-    cancel_url: Optional[str] = None
-
-
-class CheckoutSessionResponse(BaseModel):
-    checkout_url: str
-
-
-class CustomerPortalResponse(BaseModel):
-    portal_url: str
 
 
 # Authorization response for internal API
