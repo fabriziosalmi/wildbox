@@ -246,7 +246,9 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
-      - NODE_ENV=${NODE_ENV:-production}
+      # This stack runs the Next.js dev server (Dockerfile.dev -> next dev),
+      # so NODE_ENV must be development; production here breaks dev-mode CSP/HMR.
+      - NODE_ENV=${NODE_ENV:-development}
       - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-false}
       - NEXT_PUBLIC_USE_GATEWAY=true
       - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080

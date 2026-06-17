@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700;800;900&family=JetBrains+Mono:wght@100;200;300;400;500;600;700;800&display=swap');
+/* Inter + JetBrains Mono are loaded (self-hosted) via next/font/google in
+   src/app/layout.tsx — no external Google Fonts request needed, and it avoids
+   the CSP style-src/font-src violation an @import here would cause. */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
