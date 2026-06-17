@@ -353,27 +353,20 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                 except TemplateRenderError as e:
                     raise WorkflowExecutionError(f"Failed to render input for step '{step.name}': {e}")
                 
-                # Execute the action using the connector registry
-                try:
-                    connector_name, action_name = step.action.split('.', 1)
-                    workflow_engine.add_log(
-                        run_id, 
-                        f"Executing action '{action_name}' on connector '{connector_name}' with input: {json.dumps(rendered_input, indent=2)}"
-                    )
-                    
-                    action_result = connector_registry.execute_action(
-                        connector_name, 
-                        action_name, 
-                        rendered_input
-                    )
-                    
-                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    # If connector execution fails, fall back to simulation for testing
-                    workflow_engine.add_log(
-                        run_id, 
-                        f"Connector execution failed, using simulation: {str(e)}"
-                    )
-                    action_result = _simulate_action_execution(step.action, rendered_input)
+                # Execute the action via the connector registry. A connector
+                # failure must surface as a FAILED step (handled by the outer
+                # except below) — never substitute fabricated "success" data.
+                connector_name, action_name = step.action.split('.', 1)
+                workflow_engine.add_log(
+                    run_id,
+                    f"Executing action '{action_name}' on connector '{connector_name}' with input: {json.dumps(rendered_input, indent=2)}"
+                )
+
+                action_result = connector_registry.execute_action(
+                    connector_name,
+                    action_name,
+                    rendered_input
+                )
                 
                 # Update step result
                 step_result.status = ExecutionStatus.COMPLETED
@@ -455,49 +448,6 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
             workflow_engine.save_execution_state(run_id, execution_result)
     
     return execution_result.dict()
-
-
-def _simulate_action_execution(action: str, input_params: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Simulate action execution for testing purposes
-    This will be replaced with actual connector calls in week 2
-    """
-    import time
-    import random
-    
-    # Simulate processing time
-    time.sleep(random.uniform(0.1, 0.5))
-    
-    # Return simulated results based on action type
-    if "scan" in action.lower():
-        return {
-            "scan_results": {
-                "open_ports": [22, 80, 443],
-                "services": ["ssh", "http", "https"],
-                "status": "completed"
-            }
-        }
-    elif "whois" in action.lower():
-        return {
-            "whois_info": {
-                "registrar": "Example Registrar",
-                "creation_date": "2020-01-01",
-                "expiration_date": "2025-01-01",
-                "status": "active"
-            }
-        }
-    elif "reputation" in action.lower():
-        return {
-            "reputation_score": random.randint(1, 10),
-            "verdict": "clean" if random.random() > 0.3 else "suspicious",
-            "sources": ["VirusTotal", "AbuseIPDB"]
-        }
-    else:
-        return {
-            "message": f"Action '{action}' executed successfully",
-            "input_received": input_params,
-            "timestamp": datetime.utcnow().isoformat()
-        }
 
 
 def start_execution(playbook_id: str, trigger_data: Dict[str, Any] = None) -> str:
