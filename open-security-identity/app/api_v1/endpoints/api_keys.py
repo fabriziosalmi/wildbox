@@ -86,6 +86,7 @@ async def create_api_key(
         user_id=current_user.id,
         team_id=team.id,
         name=key_data.name,
+        scopes=key_data.scopes,
         expires_at=key_data.expires_at
     )
     
@@ -100,6 +101,7 @@ async def create_api_key(
         user_id=api_key.user_id,
         team_id=api_key.team_id,
         name=api_key.name,
+        scopes=api_key.scopes,
         is_active=api_key.is_active,
         expires_at=api_key.expires_at,
         last_used_at=api_key.last_used_at,

@@ -100,13 +100,15 @@ async def authorize_request(
 
             user, team, membership = row
 
-            # Build authorization response
+            # Build authorization response. Bearer (interactive) auth is not
+            # scope-limited — scopes=None means unrestricted at the gateway.
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),
                 team_id=str(team.id),
                 role=membership.role,
-                permissions=_get_permissions_for_role(membership.role)
+                permissions=_get_permissions_for_role(membership.role),
+                scopes=None
             )
             
         elif request_data.token_type == "api_key":
@@ -156,12 +158,15 @@ async def authorize_request(
             api_key_obj.last_used_at = datetime.utcnow()
             await db.commit()
 
+            # API keys carry least-privilege scopes. NULL (legacy key created
+            # before scoping) => unrestricted; a list is enforced at the gateway.
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),
                 team_id=str(team.id),
                 role=membership.role,
-                permissions=_get_permissions_for_role(membership.role)
+                permissions=_get_permissions_for_role(membership.role),
+                scopes=api_key_obj.scopes
             )
         else:
             raise HTTPException(

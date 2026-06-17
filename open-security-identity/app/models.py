@@ -11,8 +11,8 @@ from enum import Enum
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, String, Text, 
-    UniqueConstraint, Index
+    Boolean, Column, DateTime, ForeignKey, String, Text,
+    UniqueConstraint, Index, JSON
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
@@ -120,6 +120,11 @@ class ApiKey(Base):
     # Metadata
     name = Column(String(255), nullable=False)  # User-provided description
     is_active = Column(Boolean, default=True, nullable=False)
+    # Least-privilege scopes granted to this key (subset of the role's perms).
+    # NULL = legacy key created before scoping existed → unrestricted (back-compat);
+    # a list (incl. empty) = enforce: the gateway maps each request to a required
+    # scope and rejects keys that don't hold it.
+    scopes = Column(JSON, nullable=True)
     
     # Expiration and usage tracking
     expires_at = Column(DateTime(timezone=True), nullable=True)
