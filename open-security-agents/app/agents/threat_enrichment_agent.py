@@ -5,19 +5,54 @@ This is the core AI agent that conducts intelligent threat analysis of IOCs.
 It uses a combination of LLM reasoning and security tools to generate comprehensive reports.
 """
 
+import json
 import logging
+import re
 import sys
 import os
 from datetime import datetime, timezone
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Literal
 
 from langchain_anthropic import ChatAnthropic
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema.messages import SystemMessage
+from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..tools.langchain_tools import ALL_TOOLS
+
+
+class _ReportEvidence(BaseModel):
+    """A single evidence item the model must ground in a tool output."""
+    source: str = Field(description="The tool the finding came from (e.g. whois_lookup)")
+    finding: str = Field(description="A specific, factual finding taken from that tool's output")
+    severity: Literal["low", "medium", "high", "critical"] = Field(
+        description="Severity of this individual finding"
+    )
+
+
+class _StructuredReport(BaseModel):
+    """Schema Claude fills via structured output — the real threat report."""
+    verdict: Literal["Malicious", "Suspicious", "Benign", "Informational"] = Field(
+        description="Overall threat assessment of the indicator"
+    )
+    confidence: float = Field(
+        ge=0.0, le=1.0,
+        description="How conclusive the evidence is, 0.0-1.0. Low when tools failed "
+                    "or findings were inconclusive; high only when corroborated.",
+    )
+    executive_summary: str = Field(
+        description="2-4 sentences: what was found and why it leads to the verdict"
+    )
+    evidence: List[_ReportEvidence] = Field(
+        default_factory=list,
+        description="Concrete findings from the tool outputs that justify the verdict",
+    )
+    recommended_actions: List[str] = Field(
+        default_factory=list,
+        description="Concrete next steps for a SOC analyst, derived from the findings",
+    )
 
 # Circuit breaker for Anthropic API resilience
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'open-security-shared'))
@@ -203,104 +238,121 @@ Begin your investigation by thinking through your approach, then systematically 
         duration: float
     ) -> Dict[str, Any]:
         """
-        Generate a structured report from the raw agent analysis
-        
-        This uses a second LLM call to create a properly formatted report.
+        Turn the agent's investigation into a structured threat report.
+
+        Uses Claude structured output so the verdict, confidence, evidence and
+        recommended actions are derived from the actual tool findings — not
+        hardcoded. (Previously these were stubbed for a tiny local model.)
         """
-        
-        # Simplified prompt for small LLM models
-        report_prompt = f"""Analyze this IOC: {ioc['type']} = {ioc['value']}
+        tool_findings = self._summarize_tool_outputs(tool_data)
 
-Investigation result: {raw_analysis[:500]}
-
-Rate this IOC (respond ONLY with one word):
-- Malicious (confirmed threat)
-- Suspicious (potential threat)  
-- Benign (safe/legitimate)
-- Informational (neutral/unknown)
-
-Verdict:"""
+        report_prompt = (
+            f"Indicator under investigation: {ioc.get('type')} = {ioc.get('value')}\n\n"
+            f"Investigation notes from the analyst agent:\n{raw_analysis[:4000]}\n\n"
+            f"Raw tool outputs:\n{tool_findings}\n\n"
+            "Produce the structured threat report. Base the verdict, confidence and "
+            "every piece of evidence ONLY on the investigation notes and tool outputs "
+            "above — never invent findings. Confidence must reflect how conclusive the "
+            "evidence is (low when tools failed or were inconclusive, high only when "
+            "multiple sources corroborate). Each evidence item must name the specific "
+            "tool (source) and state the concrete finding. Recommended actions must be "
+            "concrete next steps for a SOC analyst."
+        )
 
         try:
-            # Use a simpler LLM call for verdict only
-            response = await self.llm.ainvoke([
-                SystemMessage(content="You are a security analyst. Respond with only ONE word: Malicious, Suspicious, Benign, or Informational."),
-                ("human", report_prompt)
+            structured_llm = self.llm.with_structured_output(_StructuredReport)
+            report: _StructuredReport = await structured_llm.ainvoke([
+                SystemMessage(content=(
+                    "You are a senior cybersecurity threat intelligence analyst. "
+                    "Produce precise, evidence-grounded threat reports."
+                )),
+                ("human", report_prompt),
             ])
-            
-            # Extract verdict from response
-            import json
-            import re
-            
-            verdict_text = response.content.strip()
-            # Extract first word that matches a valid verdict
-            verdict_match = re.search(r'\b(Malicious|Suspicious|Benign|Informational)\b', verdict_text, re.IGNORECASE)
-            verdict = verdict_match.group(1).capitalize() if verdict_match else "Informational"
-            
-            # Generate simple structured data without relying on LLM JSON output
-            structured_data = {
-                "verdict": verdict,
-                "confidence": 0.7 if len(tools_used) > 0 else 0.5,
-                "executive_summary": f"Analysis completed using {len(tools_used)} security tools. Verdict: {verdict}",
-                "evidence": [],
-                "recommended_actions": [],
-                "full_report_markdown": raw_analysis
-            }
-            
-            # Extract evidence from tool data
-            for tool_name, tool_result in tool_data.items():
-                if isinstance(tool_result, str):
-                    try:
-                        tool_json = json.loads(tool_result)
-                        if tool_json.get("success"):
-                            structured_data["evidence"].append({
-                                "source": tool_name,
-                                "finding": f"Tool executed successfully",
-                                "severity": "low"
-                            })
-                    except (json.JSONDecodeError, ValueError, KeyError):
-                        pass
-            
-            # Build final result
-            result = {
+
+            evidence = [e.model_dump() for e in report.evidence]
+            return {
                 "task_id": None,  # Will be set by caller
                 "ioc": ioc,
-                "verdict": structured_data.get("verdict", "Informational"),
-                "confidence": float(structured_data.get("confidence", 0.5)),
-                "executive_summary": structured_data.get("executive_summary", "Analysis completed"),
-                "evidence": structured_data.get("evidence", []),
-                "recommended_actions": structured_data.get("recommended_actions", []),
-                "full_report": structured_data.get("full_report_markdown", raw_analysis),
+                "verdict": report.verdict,
+                "confidence": float(report.confidence),
+                "executive_summary": report.executive_summary,
+                "evidence": evidence,
+                "recommended_actions": report.recommended_actions,
+                "full_report": self._render_markdown(
+                    ioc, report.verdict, report.confidence, report.executive_summary,
+                    evidence, report.recommended_actions, tools_used, raw_analysis,
+                ),
                 "raw_data": tool_data,
                 "analysis_duration": duration,
-                "tools_used": tools_used
+                "tools_used": tools_used,
             }
-            
-            return result
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error generating structured report: {e}")
-            
-            # Fallback to basic structured result
+
+        except Exception as e:
+            # Structured output is best-effort; on failure fall back to a verdict
+            # parsed from the agent's own narrative rather than a fixed value.
+            logger.error(f"Structured report generation failed, using fallback: {e}")
+            verdict = self._verdict_from_text(raw_analysis)
             return {
                 "task_id": None,
                 "ioc": ioc,
-                "verdict": "Informational",
-                "confidence": 0.5,
-                "executive_summary": "Analysis completed but report generation failed",
+                "verdict": verdict,
+                "confidence": 0.3,  # low — structured analysis did not complete
+                "executive_summary": (
+                    f"Investigation ran {len(tools_used)} tool(s); structured report "
+                    f"generation failed, verdict inferred from the analyst narrative."
+                ),
                 "evidence": [
-                    {
-                        "source": "agent_analysis",
-                        "finding": "Raw analysis completed successfully",
-                        "severity": "low"
-                    }
+                    {"source": t, "finding": "Tool was executed during the investigation.",
+                     "severity": "low"}
+                    for t in tools_used
                 ],
-                "recommended_actions": ["Review raw analysis output"],
-                "full_report": f"# Threat Analysis Report\n\n## Executive Summary\nAnalysis completed with {len(tools_used)} tools.\n\n## Raw Analysis\n{raw_analysis}",
+                "recommended_actions": ["Re-run the analysis", "Review the raw investigation notes"],
+                "full_report": (
+                    f"# Threat Analysis Report\n\n## Executive Summary\n"
+                    f"Analysis ran with {len(tools_used)} tool(s) (structured report failed).\n\n"
+                    f"## Raw Analysis\n{raw_analysis}"
+                ),
                 "raw_data": tool_data,
                 "analysis_duration": duration,
-                "tools_used": tools_used
+                "tools_used": tools_used,
             }
+
+    @staticmethod
+    def _summarize_tool_outputs(tool_data: Dict[str, Any], per_tool_limit: int = 1500) -> str:
+        """Render the raw tool outputs into a compact, bounded text block for the model."""
+        if not tool_data:
+            return "(no tools produced output)"
+        parts = []
+        for tool_name, tool_result in tool_data.items():
+            text = tool_result if isinstance(tool_result, str) else json.dumps(tool_result, default=str)
+            parts.append(f"### {tool_name}\n{text[:per_tool_limit]}")
+        return "\n\n".join(parts)
+
+    @staticmethod
+    def _verdict_from_text(text: str) -> str:
+        """Best-effort verdict extraction from free text (fallback only)."""
+        m = re.search(r'\b(Malicious|Suspicious|Benign|Informational)\b', text or "", re.IGNORECASE)
+        return m.group(1).capitalize() if m else "Informational"
+
+    @staticmethod
+    def _render_markdown(ioc, verdict, confidence, summary, evidence, actions, tools_used, raw_analysis) -> str:
+        """Render the structured report as a human-readable markdown document."""
+        lines = [
+            f"# Threat Analysis Report",
+            f"\n**Indicator:** `{ioc.get('value')}` ({ioc.get('type')})",
+            f"**Verdict:** {verdict}  •  **Confidence:** {confidence:.0%}",
+            f"\n## Executive Summary\n{summary}",
+        ]
+        if evidence:
+            lines.append("\n## Evidence")
+            for e in evidence:
+                lines.append(f"- **[{e['severity']}] {e['source']}** — {e['finding']}")
+        if actions:
+            lines.append("\n## Recommended Actions")
+            lines.extend(f"- {a}" for a in actions)
+        lines.append(f"\n## Tools Used\n{', '.join(tools_used) if tools_used else 'none'}")
+        lines.append(f"\n## Analyst Notes\n{raw_analysis}")
+        return "\n".join(lines)
 
 
 # Lazily-built agent instance: constructing it builds the LLM + agent graph
