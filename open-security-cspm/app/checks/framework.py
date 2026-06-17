@@ -49,6 +49,11 @@ class CheckResult(BaseModel):
     compliance_frameworks: List[str] = Field(default_factory=list)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+    @staticmethod
+    def get_current_timestamp() -> str:
+        """ISO-8601 timestamp string for embedding in check evidence/details."""
+        return datetime.utcnow().isoformat()
+
 
 class CheckMetadata(BaseModel):
     """Metadata for a security check."""
