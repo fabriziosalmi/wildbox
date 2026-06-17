@@ -217,6 +217,10 @@ services:
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
+      # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
+      # (only relevant when the optional "automations" profile is enabled).
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
     networks:
       - wildbox
     depends_on:
@@ -225,7 +229,6 @@ services:
       - guardian
       - responder
       - agents
-      - automations
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -537,10 +540,14 @@ services:
       timeout: 10s
       retries: 3
 
-  # Automations Service (n8n workflow automation)
+  # Automations Service (n8n workflow automation) — OPTIONAL.
+  # Off by default; enable with `docker compose --profile automations up -d`.
+  # Nothing else hard-depends on it; the gateway resolves it dynamically and the
+  # /api/v1/automations/ route simply 502s until this profile is started.
   automations:
     image: n8nio/n8n:1.74.0
     container_name: open-security-automations
+    profiles: ["automations"]
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
