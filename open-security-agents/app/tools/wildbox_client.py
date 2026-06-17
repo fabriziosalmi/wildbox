@@ -35,7 +35,12 @@ class WildboxAPIClient:
         self.guardian_url = settings.wildbox_guardian_url
         self.responder_url = settings.wildbox_responder_url
         self.api_key = settings.internal_api_key
-        
+        if not self.api_key:
+            logger.warning(
+                "INTERNAL_API_KEY is not set — internal tool calls will go out "
+                "without an X-API-Key and be rejected by the backend services."
+            )
+
         # HTTP client configuration
         self.timeout = httpx.Timeout(30.0, connect=10.0)
         self.headers = {
@@ -56,13 +61,16 @@ class WildboxAPIClient:
             Tool execution results
         """
         try:
-            # Get endpoint mapping
-            if tool_name not in self.TOOL_ENDPOINT_MAP:
-                logger.warning(f"No endpoint mapping for tool '{tool_name}', using default")
-                endpoint_name = tool_name
-                param_mapping = {}
-            else:
-                endpoint_name, param_mapping = self.TOOL_ENDPOINT_MAP[tool_name]
+            # SSRF protection: only call explicitly-allowlisted tool endpoints.
+            # An LLM-chosen (or prompt-injected) tool_name must never become a
+            # raw URL path component — f"{api_url}/api/tools/{tool_name}" would
+            # otherwise let a crafted IOC steer the agent to arbitrary internal
+            # paths. Reject anything not in the fixed endpoint map.
+            mapping = self.TOOL_ENDPOINT_MAP.get(tool_name)
+            if mapping is None:
+                logger.warning(f"Rejected unmapped tool '{tool_name}' (not in allowlist)")
+                return {"error": f"Unknown tool: {tool_name}", "success": False}
+            endpoint_name, param_mapping = mapping
             
             # Transform parameters according to mapping
             transformed_params = {}
