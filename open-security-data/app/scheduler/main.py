@@ -16,7 +16,7 @@ from sqlalchemy import and_
 
 from app.config import get_config
 from app.models import Source, CollectionRun
-from app.utils.database import get_db_session
+from app.utils.database import get_db_session, create_tables
 from app.collectors import CollectorRegistry
 # Import collectors to register them
 import app.collectors.sources  # noqa: F401
@@ -44,7 +44,13 @@ class CollectionScheduler:
         """Start the scheduler"""
         logger.info("Starting collection scheduler")
         self.running = True
-        
+
+        # Ensure the schema exists before querying. The scheduler shares the data
+        # service's database but can start before the API has run create_tables(),
+        # which otherwise causes a transient "relation sources does not exist" on
+        # a cold start. create_tables() is idempotent.
+        create_tables()
+
         # Load sources and create initial schedule
         await self._load_sources()
         
