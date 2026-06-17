@@ -316,6 +316,96 @@ local function apply_rate_limiting(auth_data)
     ngx.header["X-RateLimit-Reset"] = tostring(now + window_size)
 end
 
+-- Map a request (path + method) to the API-key scope it requires.
+-- Reads are cheaper than writes; deletes/automation management are privileged.
+local function required_scope_for_request(uri, method)
+    local is_read = (method == "GET" or method == "HEAD" or method == "OPTIONS")
+
+    -- Security tools and AI agents: running them is "execute".
+    if uri:find("^/api/tools/") or uri:find("^/api/v1/tools/")
+       or uri:find("^/api/v1/agents/") then
+        return is_read and "tools:read" or "tools:execute"
+    end
+    -- Automation (n8n) workflow management is administrative.
+    if uri:find("^/api/v1/automations/") then
+        return "tools:admin"
+    end
+    -- Guardian: vulnerability/asset/compliance data.
+    if uri:find("^/api/v1/guardian/") then
+        if is_read then return "data:read" end
+        if method == "DELETE" then return "data:delete" end
+        return "data:write"
+    end
+    -- Any other authenticated API path: generic read vs write.
+    return is_read and "read" or "write"
+end
+
+-- Does the set of granted scopes satisfy the required one?
+-- Hierarchy: "admin" > "write" > "read"; "<res>:admin" > "<res>:write|execute"
+-- > "<res>:read"; generic scopes satisfy resource scopes of equal-or-lower level.
+local function scopes_satisfy(granted, required)
+    local set = {}
+    for _, s in ipairs(granted) do set[s] = true end
+
+    if set[required] then return true end
+    if set["admin"] then return true end  -- global admin satisfies everything
+
+    local res, action = required:match("^(.-):(.+)$")
+    if not res then
+        -- Generic scope (read|write).
+        if required == "read" then
+            return (set["read"] or set["write"]) == true
+        elseif required == "write" then
+            return set["write"] == true
+        end
+        return false
+    end
+
+    -- Resource-scoped requirement. Resource admin satisfies any action.
+    if set[res .. ":admin"] then return true end
+    if action == "read" then
+        return (set[res .. ":read"] or set[res .. ":write"] or set[res .. ":execute"]
+                or set["read"] or set["write"]) == true
+    elseif action == "write" or action == "execute" then
+        return (set[res .. ":write"] or set[res .. ":execute"] or set["write"]) == true
+    elseif action == "delete" then
+        return set[res .. ":delete"] == true  -- needs explicit delete (or res admin, above)
+    end
+    return false
+end
+
+-- Enforce API-key scopes. No-op for interactive/JWT auth and legacy keys, whose
+-- scopes are null (cjson.null / not a table) → unrestricted.
+local function enforce_scopes(auth_data)
+    local scopes = auth_data.scopes
+    if type(scopes) ~= "table" then
+        return  -- unrestricted (bearer/JWT, or legacy key without scopes)
+    end
+
+    local required = required_scope_for_request(ngx.var.uri, ngx.var.request_method)
+    if scopes_satisfy(scopes, required) then
+        return
+    end
+
+    utils.log("warn", "API key missing required scope", {
+        required = required,
+        path = ngx.var.uri,
+        method = ngx.var.request_method
+    })
+    ngx.status = ngx.HTTP_FORBIDDEN
+    ngx.header.content_type = "application/json"
+    ngx.say(utils.json_encode({
+        error = "insufficient_scope",
+        message = "This API key is not authorized for this operation.",
+        required_scope = required
+    }))
+    ngx.exit(ngx.HTTP_FORBIDDEN)
+end
+
+-- Exported so regex locations that authenticate inline (e.g. /api/v1/agents/)
+-- can reuse the same scope enforcement.
+_M.enforce_scopes = enforce_scopes
+
 -- Set authentication headers for backend services
 local function set_auth_headers(auth_data)
     -- SECURITY: Strip ALL client-supplied auth headers BEFORE setting validated ones.
@@ -414,9 +504,12 @@ function _M.authenticate()
         set_cached_auth_data(cache_key, auth_data, config)
     end
     
+    -- Enforce API-key least-privilege scopes (no-op for interactive/JWT auth)
+    enforce_scopes(auth_data)
+
     -- Apply rate limiting
     apply_rate_limiting(auth_data)
-    
+
     -- Set authentication headers for backend services
     set_auth_headers(auth_data)
     

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .models import TeamRole
 
@@ -19,7 +19,7 @@ import uuid
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from fastapi_users import schemas
 
 from .models import TeamRole
@@ -106,8 +106,36 @@ class TeamMembershipResponse(BaseModel):
 
 
 # API Key schemas
+
+# Canonical scope vocabulary (must match the dashboard's availableScopes).
+# A key may only be granted scopes from this set; the gateway maps each request
+# to a required scope and rejects keys that don't hold an equal-or-greater one.
+VALID_API_KEY_SCOPES = frozenset({
+    "read", "write", "admin",
+    "tools:read", "tools:execute", "tools:admin",
+    "data:read", "data:write", "data:delete",
+    "reports:read", "reports:write",
+    "team:read", "team:manage",
+})
+
+
 class ApiKeyCreate(ApiKeyBase):
     expires_at: Optional[datetime] = None
+    # Optional for back-compat: omitted/None => unrestricted (legacy behaviour).
+    # A list restricts the key to those scopes (enforced at the gateway).
+    scopes: Optional[List[str]] = None
+
+    @field_validator("scopes")
+    @classmethod
+    def _validate_scopes(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        unknown = sorted(set(v) - VALID_API_KEY_SCOPES)
+        if unknown:
+            raise ValueError(f"Unknown API key scope(s): {', '.join(unknown)}")
+        # De-duplicate while preserving order.
+        seen: set[str] = set()
+        return [s for s in v if not (s in seen or seen.add(s))]
 
 
 class ApiKeyResponse(ApiKeyBase):
@@ -116,10 +144,11 @@ class ApiKeyResponse(ApiKeyBase):
     user_id: UUID
     team_id: UUID
     is_active: bool
+    scopes: Optional[List[str]] = None
     expires_at: Optional[datetime] = None
     last_used_at: Optional[datetime] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -149,6 +178,9 @@ class AuthorizationResponse(BaseModel):
     team_id: Optional[str] = None
     role: Optional[str] = None
     permissions: List[str] = []
+    # API-key scopes for least-privilege enforcement at the gateway.
+    # None => unrestricted (interactive/JWT auth, or a legacy key with no scopes).
+    scopes: Optional[List[str]] = None
 
 
 # Update forward references
