@@ -251,7 +251,11 @@ services:
       - NODE_ENV=${NODE_ENV:-development}
       - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-false}
       - NEXT_PUBLIC_USE_GATEWAY=true
-      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:8080
+      # Must match the origin the dashboard is opened from. The gateway is
+      # HTTPS-only (80/8080 redirect to 443), so browser API calls go to
+      # https://localhost — same-origin, no CORS. (http://localhost:8080 caused
+      # cross-origin XHR to be blocked.)
+      - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-https://localhost}
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
       - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:80/api/v1/identity
       - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
