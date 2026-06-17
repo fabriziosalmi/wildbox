@@ -121,10 +121,11 @@ async def list_user_api_keys(
     # Get user's primary team
     team = await get_user_primary_team(current_user, db)
 
-    # Get all API keys for the team
+    # Get the team's active API keys. Revoked keys are soft-deleted
+    # (is_active=False) and are inert, so they're excluded from the listing.
     result = await db.execute(
         select(ApiKey)
-        .where(ApiKey.team_id == team.id)
+        .where(ApiKey.team_id == team.id, ApiKey.is_active == True)
         .order_by(ApiKey.created_at.desc())
     )
     api_keys = result.scalars().all()
