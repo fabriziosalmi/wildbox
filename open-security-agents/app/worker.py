@@ -13,7 +13,7 @@ from celery import Celery
 import redis
 
 from .config import settings
-from .agents.threat_enrichment_agent import threat_enrichment_agent
+from .agents.threat_enrichment_agent import get_threat_enrichment_agent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -94,7 +94,7 @@ def run_threat_enrichment_task(self, task_id: str, ioc: Dict[str, Any]) -> Dict[
             
             # Execute the analysis
             result = loop.run_until_complete(
-                threat_enrichment_agent.analyze_ioc(ioc)
+                get_threat_enrichment_agent().analyze_ioc(ioc)
             )
             
             # Set the task_id in the result
@@ -164,7 +164,7 @@ def health_check_task() -> Dict[str, Any]:
         redis_client.ping()
         
         # Test AI agent initialization
-        agent_status = "healthy" if threat_enrichment_agent else "unhealthy"
+        agent_status = "healthy" if settings.openai_api_key else "unhealthy"
         
         return {
             "status": "healthy",

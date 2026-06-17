@@ -17,8 +17,9 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     
-    # OpenAI Configuration
-    openai_api_key: str
+    # OpenAI Configuration (optional — the worker imports without it; analysis
+    # tasks fail gracefully when it's missing instead of crash-looping at boot)
+    openai_api_key: Optional[str] = None
     openai_model: str = "gpt-4o"
     openai_temperature: float = 0.1
     openai_base_url: Optional[str] = None  # Override for local LLM (e.g., vLLM container)

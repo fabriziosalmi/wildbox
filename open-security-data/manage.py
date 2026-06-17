@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_config
 from app.models import Source, Base
-from app.utils.database import engine, get_db_session, create_tables, drop_tables
+from app.utils.database import get_db_session, create_tables, drop_tables
 from app.collectors.sources import (
     MalwareDomainListCollector, PhishTankCollector, FeodoTrackerCollector,
     ThreatFoxCollector, MalwareBazaarCollector
