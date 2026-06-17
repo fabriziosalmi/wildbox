@@ -50,13 +50,9 @@ export const metadata: Metadata = {
     maximumScale: 1,
   },
   icons: {
-    icon: [
-      { url: '/favicon.ico', sizes: 'any' },
-      { url: '/icon.svg', type: 'image/svg+xml' },
-    ],
-    apple: [
-      { url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-    ],
+    // Only the SVG is shipped (public/icon.svg). An explicit icon link makes
+    // browsers use it instead of auto-requesting a (missing) /favicon.ico.
+    icon: [{ url: '/icon.svg', type: 'image/svg+xml' }],
   },
 }
 
@@ -66,7 +62,9 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+    // suppressHydrationWarning: the theme provider sets the light/dark class on
+    // <html> on the client, which legitimately differs from the server render.
+    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
       <body className="min-h-screen bg-background font-sans antialiased">
         <Providers>
           {children}
