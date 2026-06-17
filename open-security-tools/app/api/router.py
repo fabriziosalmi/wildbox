@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
 from app.auth import verify_api_key
 from app.execution_manager import ToolExecutionManager
+from app.input_validation import InputSanitizer
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -163,7 +164,18 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="Input validation failed"
             )
-        
+
+        # SSRF guard: refuse to let a tool connect to private/internal/cloud-metadata
+        # targets, regardless of whether the individual tool validates its own input.
+        try:
+            InputSanitizer.validate_request_urls(validated_input)
+        except ValueError as e:
+            logger.warning(f"Blocked SSRF target for {tool_name}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e)
+            )
+
         logger.info(f"Executing tool: {tool_name}", extra={
             "tool": tool_name,
             "input": validated_input.model_dump(),

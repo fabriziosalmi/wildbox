@@ -97,7 +97,12 @@ def execute_tool_async(
         
         # Validate and convert input
         validated_input = input_schema_class(**input_data)
-        
+
+        # SSRF guard (same policy as the synchronous API path): block tool
+        # targets that resolve to private/internal/cloud-metadata hosts.
+        from app.input_validation import InputSanitizer
+        InputSanitizer.validate_request_urls(validated_input)
+
         # Execute the tool (handle both sync and async)
         import inspect
         if inspect.iscoroutinefunction(execute_func):
