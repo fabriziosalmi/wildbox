@@ -31,7 +31,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY . .
 
 # Create directories for media and static files
-RUN mkdir -p /app/media /app/staticfiles
+RUN mkdir -p /app/media /app/staticfiles \
+    && chmod +x scripts/docker-entrypoint.sh
 
 # Create non-root user
 RUN adduser --disabled-password --gecos '' guardian \
@@ -44,6 +45,9 @@ EXPOSE 8013
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8013/health/ || exit 1
+
+# Apply migrations on startup, then run the CMD.
+ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
 
 # Default command
 CMD ["gunicorn", "--bind", "0.0.0.0:8013", "--workers", "3", "--timeout", "120", "guardian.wsgi:application"]
