@@ -164,7 +164,7 @@ def health_check_task() -> Dict[str, Any]:
         redis_client.ping()
         
         # Test AI agent initialization
-        agent_status = "healthy" if settings.openai_api_key else "unhealthy"
+        agent_status = "healthy" if settings.anthropic_api_key else "unhealthy"
         
         return {
             "status": "healthy",

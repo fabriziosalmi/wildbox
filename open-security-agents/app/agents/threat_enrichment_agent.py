@@ -11,26 +11,26 @@ import os
 from datetime import datetime, timezone
 from typing import Dict, Any, List
 
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_openai_tools_agent, AgentExecutor
+from langchain_anthropic import ChatAnthropic
+from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.schema.messages import SystemMessage
 
 from ..config import settings
 from ..tools.langchain_tools import ALL_TOOLS
 
-# Circuit breaker for OpenAI API resilience
+# Circuit breaker for Anthropic API resilience
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'open-security-shared'))
 try:
     from circuit_breaker import CircuitBreaker, CircuitBreakerError
-    OPENAI_BREAKER = CircuitBreaker(
-        name="openai_agent",
+    LLM_BREAKER = CircuitBreaker(
+        name="anthropic_agent",
         failure_threshold=3,
         timeout=120,
         recovery_timeout=60,
     )
 except ImportError:
-    OPENAI_BREAKER = None
+    LLM_BREAKER = None
     CircuitBreakerError = Exception
 
 logger = logging.getLogger(__name__)
@@ -40,30 +40,24 @@ class ThreatEnrichmentAgent:
     """
     AI-powered threat enrichment agent
     
-    This agent uses GPT-4o and security tools to analyze IOCs and generate
+    This agent uses Claude and security tools to analyze IOCs and generate
     comprehensive threat intelligence reports.
     """
-    
+
     def __init__(self):
         self.llm = self._initialize_llm()
         self.tools = ALL_TOOLS
         self.agent_executor = self._create_agent()
-    
-    def _initialize_llm(self) -> ChatOpenAI:
-        """Initialize the OpenAI LLM"""
-        llm_kwargs = {
-            "model": settings.openai_model,
-            "temperature": settings.openai_temperature,
-            "openai_api_key": settings.openai_api_key,
-            "streaming": False
-        }
-        
-        # Support for local LLM endpoints (e.g., vLLM container)
-        if settings.openai_base_url:
-            llm_kwargs["base_url"] = settings.openai_base_url
-            logger.info(f"Using custom OpenAI base URL: {settings.openai_base_url}")
-        
-        return ChatOpenAI(**llm_kwargs)
+
+    def _initialize_llm(self) -> ChatAnthropic:
+        """Initialize the Claude (Anthropic) LLM"""
+        return ChatAnthropic(
+            model=settings.anthropic_model,
+            temperature=settings.anthropic_temperature,
+            max_tokens=settings.anthropic_max_tokens,
+            anthropic_api_key=settings.anthropic_api_key,
+            streaming=False,
+        )
     
     def _create_agent(self) -> AgentExecutor:
         """Create the LangChain agent with tools and prompt"""
@@ -106,8 +100,8 @@ Begin your investigation by thinking through your approach, then systematically 
             MessagesPlaceholder(variable_name="agent_scratchpad")
         ])
         
-        # Create the agent
-        agent = create_openai_tools_agent(
+        # Create the agent (provider-agnostic tool-calling agent — works with Claude)
+        agent = create_tool_calling_agent(
             llm=self.llm,
             tools=self.tools,
             prompt=prompt
@@ -147,8 +141,8 @@ Begin your investigation by thinking through your approach, then systematically 
             input_text = f"Please investigate this {ioc_type} IOC: {ioc_value}"
             
             # Execute the agent (protected by circuit breaker)
-            if OPENAI_BREAKER is not None:
-                result = await OPENAI_BREAKER.call(
+            if LLM_BREAKER is not None:
+                result = await LLM_BREAKER.call(
                     self.agent_executor.ainvoke, {"input": input_text}
                 )
             else:
@@ -310,7 +304,7 @@ Verdict:"""
 
 
 # Lazily-built agent instance: constructing it builds the LLM + agent graph
-# (which needs OPENAI_API_KEY), so defer until first use. This lets the worker
+# (which needs ANTHROPIC_API_KEY), so defer until first use. This lets the worker
 # import without the key set instead of crash-looping at import.
 _agent_instance = None
 

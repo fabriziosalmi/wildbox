@@ -457,44 +457,6 @@ services:
   #   networks:
   #     - wildbox
 
-  # Ollama Service (Local LLM API)
-  # Provides OpenAI-compatible API for AI agents using Qwen2.5:0.5b
-  # Much lighter than vLLM (~2GB image + ~300MB model)
-  llm:
-    image: ollama/ollama:0.4.7
-    container_name: wildbox-llm
-    restart: unless-stopped
-    # SECURITY: Ollama only accessible within Docker network, not exposed to host
-    environment:
-      - OLLAMA_ORIGINS=http://open-security-agents:8006
-    volumes:
-      - llm_cache:/root/.ollama
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 4G
-        reservations:
-          cpus: '1.0'
-          memory: 2G
-    # Uncomment for GPU support (requires nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
-    networks:
-      - wildbox
-    healthcheck:
-      # The ollama image ships no curl/wget; use its own CLI as a liveness probe.
-      test: ["CMD-SHELL", "ollama list || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-
   # Agents Service (Security Agents)
   agents:
     build:
@@ -507,10 +469,10 @@ services:
     ports:
       - "8006:8006"
     environment:
-      # Local LLM configuration (Ollama with OpenAI compatibility)
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://llm:11434/v1}
-      - OPENAI_MODEL=${OPENAI_MODEL:-qwen2.5:0.5b}
+      # Claude (Anthropic) — analysis is optional; the service starts without a
+      # key and analysis tasks fail gracefully until one is set.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       # Authentication for tools service (must match API_KEY in tools service)
       - INTERNAL_API_KEY=${API_KEY}
@@ -522,7 +484,6 @@ services:
     depends_on:
       - wildbox-redis
       - api
-      - llm
     networks:
       - wildbox
     healthcheck:
@@ -617,7 +578,6 @@ volumes:
   postgres_data:
   wildbox_redis_data:
   guardian_logs:
-  llm_cache:
   # Service-specific volumes
   sensor_logs:
   sensor_data:

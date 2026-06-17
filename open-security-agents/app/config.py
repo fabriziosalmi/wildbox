@@ -17,12 +17,12 @@ class Settings(BaseSettings):
     debug: bool = False
     log_level: str = "INFO"
     
-    # OpenAI Configuration (optional — the worker imports without it; analysis
-    # tasks fail gracefully when it's missing instead of crash-looping at boot)
-    openai_api_key: Optional[str] = None
-    openai_model: str = "gpt-4o"
-    openai_temperature: float = 0.1
-    openai_base_url: Optional[str] = None  # Override for local LLM (e.g., vLLM container)
+    # Anthropic / Claude Configuration (optional — the worker imports without it;
+    # analysis tasks fail gracefully when it's missing instead of crash-looping)
+    anthropic_api_key: Optional[str] = None
+    anthropic_model: str = "claude-opus-4-8"
+    anthropic_temperature: float = 0.1
+    anthropic_max_tokens: int = 4096
     
     # Redis Configuration
     redis_url: str = Field(default="redis://localhost:6379/0", env="REDIS_URL")
