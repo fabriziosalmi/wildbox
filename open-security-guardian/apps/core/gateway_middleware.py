@@ -50,21 +50,20 @@ class GatewayUser:
     in views and serializers, populated from gateway authentication headers.
     """
     
-    def __init__(self, user_id, team_id, plan="free", role="member"):
+    def __init__(self, user_id, team_id, role="member"):
         self.id = user_id
         self.pk = user_id  # Django REST framework compatibility
         self.user_id = user_id
         self.team_id = team_id
-        self.plan = plan
         self.role = role
         self.is_authenticated = True
         self.is_active = True
         self.is_anonymous = False
         self.is_staff = (role in ["owner", "admin"])
         self.is_superuser = (role == "owner")
-    
+
     def __str__(self):
-        return f"GatewayUser(user_id={self.user_id}, team_id={self.team_id}, plan={self.plan}, role={self.role})"
+        return f"GatewayUser(user_id={self.user_id}, team_id={self.team_id}, role={self.role})"
     
     def __repr__(self):
         return self.__str__()
@@ -124,18 +123,16 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                 user_id = uuid.UUID(user_id_header)
                 team_id = uuid.UUID(team_id_header)
                 
-                # Extract plan and role
-                plan = request.META.get('HTTP_X_WILDBOX_PLAN', 'free')
+                # Extract role
                 role = request.META.get('HTTP_X_WILDBOX_ROLE', 'member')
-                
+
                 # Create GatewayUser object
                 request.gateway_user = GatewayUser(
                     user_id=str(user_id),
                     team_id=str(team_id),
-                    plan=plan,
                     role=role
                 )
-                
+
                 # request.user must be a real auth.User so that created_by /
                 # assigned_to FKs (integer PK) can be persisted; the rich
                 # gateway attributes remain on request.gateway_user.
@@ -143,7 +140,7 @@ class GatewayAuthMiddleware(MiddlewareMixin):
 
                 logger.info(
                     f"[GATEWAY-AUTH] Authenticated user {user_id} from gateway headers "
-                    f"(team: {team_id}, plan: {plan}, role: {role})"
+                    f"(team: {team_id}, role: {role})"
                 )
                 
                 return None
@@ -185,7 +182,6 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                 request.gateway_user = GatewayUser(
                     user_id=str(key_obj.user.id),
                     team_id=str(getattr(key_obj, 'team_id', '00000000-0000-0000-0000-000000000001')),
-                    plan='enterprise',
                     role='admin'
                 )
                 # key_obj.user is already a real auth.User row — use it directly
@@ -242,37 +238,6 @@ def require_gateway_auth(view_func):
             }, status=403)
         return view_func(request, *args, **kwargs)
     return wrapper
-
-
-def require_plan(*required_plans):
-    """
-    Decorator to check if user has required subscription plan.
-    
-    Usage:
-        @require_plan('pro', 'business', 'enterprise')
-        def premium_view(request):
-            ...
-    """
-    def decorator(view_func):
-        def wrapper(request, *args, **kwargs):
-            if not hasattr(request, 'gateway_user'):
-                return JsonResponse({
-                    'error': 'authentication_required',
-                    'message': 'Authentication required',
-                    'code': 'NO_AUTH'
-                }, status=401)
-            
-            if request.gateway_user.plan not in required_plans:
-                return JsonResponse({
-                    'error': 'plan_upgrade_required',
-                    'message': f'This feature requires one of these plans: {", ".join(required_plans)}',
-                    'code': 'PLAN_UPGRADE_REQUIRED',
-                    'current_plan': request.gateway_user.plan
-                }, status=402)
-            
-            return view_func(request, *args, **kwargs)
-        return wrapper
-    return decorator
 
 
 def require_role(*required_roles):

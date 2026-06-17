@@ -330,12 +330,6 @@ export default function TeamPage() {
             <div className="text-muted-foreground">Created</div>
             <div className="font-medium">{formatDate(teamData.team.created_at)}</div>
           </div>
-          <div>
-            <div className="text-muted-foreground">Plan</div>
-            <div className="font-medium capitalize">
-              {teamData.team.subscription?.plan_id || 'Free'}
-            </div>
-          </div>
         </div>
       </Card>
 
@@ -512,7 +506,6 @@ export default function TeamPage() {
               </div>
               <ul className="text-muted-foreground space-y-1">
                 <li>• Full team management</li>
-                <li>• Billing and subscription</li>
                 <li>• Add/remove members</li>
                 <li>• Change member roles</li>
                 <li>• Delete team</li>

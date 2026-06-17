@@ -25,10 +25,9 @@ except ImportError:
     
     # Fallback if shared module not available
     class _FallbackGatewayUser:
-        def __init__(self, user_id: str, team_id: str, plan: str = "free", role: str = "member"):
+        def __init__(self, user_id: str, team_id: str, role: str = "member"):
             self.user_id = user_id
             self.team_id = team_id
-            self.plan = plan
             self.role = role
     
     GatewayUser = _FallbackGatewayUser
@@ -42,7 +41,6 @@ logger = get_logger(__name__)
 async def get_current_user(
     x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
     x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
-    x_wildbox_plan: Optional[str] = Header(None, alias="X-Wildbox-Plan"),
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     request: Request = None
@@ -57,7 +55,6 @@ async def get_current_user(
     Args:
         x_wildbox_user_id: User ID from gateway
         x_wildbox_team_id: Team ID from gateway
-        x_wildbox_plan: Subscription plan from gateway
         x_wildbox_role: User role from gateway
         x_api_key: Direct API key (fallback)
         request: FastAPI request object
@@ -78,7 +75,6 @@ async def get_current_user(
             return await get_user_from_gateway_headers(
                 x_wildbox_user_id=x_wildbox_user_id,
                 x_wildbox_team_id=x_wildbox_team_id,
-                x_wildbox_plan=x_wildbox_plan,
                 x_wildbox_role=x_wildbox_role
             )
         else:
@@ -87,7 +83,6 @@ async def get_current_user(
             return GatewayUser(
                 user_id=x_wildbox_user_id,
                 team_id=x_wildbox_team_id,
-                plan=x_wildbox_plan or "free",
                 role=x_wildbox_role or "member"
             )
     
@@ -106,7 +101,6 @@ async def get_current_user(
         return GatewayUser(
             user_id="00000000-0000-0000-0000-000000000000",  # System user
             team_id="00000000-0000-0000-0000-000000000000",  # System team
-            plan="free",
             role="admin"
         )
     

@@ -10,7 +10,7 @@ Architecture:
 The gateway validates authentication and injects these headers:
     - X-Wildbox-User-ID: UUID of authenticated user
     - X-Wildbox-Team-ID: UUID of user's team
-    - X-Wildbox-Plan: Subscription plan (free, pro, business)
+
     - X-Wildbox-Role: User's role in team (owner, admin, member)
 
 Security Model:
@@ -26,7 +26,7 @@ Usage:
         domain: str,
         user: GatewayUser = Depends(get_user_from_gateway_headers)
     ):
-        # user.user_id, user.team_id, user.plan, user.role are available
+        # user.user_id, user.team_id, user.role are available
         return {"domain": domain, "user_id": user.user_id}
 """
 
@@ -47,7 +47,6 @@ class GatewayUser(BaseModel):
     """
     user_id: UUID4
     team_id: UUID4
-    plan: str = "free"
     role: str = "member"
     
     class Config:
@@ -57,7 +56,6 @@ class GatewayUser(BaseModel):
 async def get_user_from_gateway_headers(
     x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
     x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
-    x_wildbox_plan: Optional[str] = Header(None, alias="X-Wildbox-Plan"),
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
 ) -> GatewayUser:
     """
@@ -75,7 +73,6 @@ async def get_user_from_gateway_headers(
     Args:
         x_wildbox_user_id: User UUID injected by gateway
         x_wildbox_team_id: Team UUID injected by gateway
-        x_wildbox_plan: Subscription plan injected by gateway
         x_wildbox_role: User's role in team injected by gateway
         
     Returns:
@@ -129,21 +126,7 @@ async def get_user_from_gateway_headers(
         )
     
     # Default values for optional fields
-    plan = x_wildbox_plan or "free"
     role = x_wildbox_role or "member"
-    
-    # Validate plan
-    valid_plans = {"free", "pro", "business", "enterprise"}
-    if plan not in valid_plans:
-        logger.error(f"Invalid subscription plan in gateway headers: {plan!r}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": "Invalid authentication headers",
-                "message": "Gateway provided invalid subscription plan",
-                "code": "INVALID_GATEWAY_HEADERS"
-            }
-        )
 
     # Validate role
     valid_roles = {"owner", "admin", "member", "viewer"}
@@ -158,12 +141,11 @@ async def get_user_from_gateway_headers(
             }
         )
     
-    logger.debug(f"Gateway auth successful: user={user_id}, team={team_id}, plan={plan}, role={role}")
-    
+    logger.debug(f"Gateway auth successful: user={user_id}, team={team_id}, role={role}")
+
     return GatewayUser(
         user_id=user_id,
         team_id=team_id,
-        plan=plan,
         role=role
     )
 
@@ -206,41 +188,3 @@ def require_role(*required_roles: str):
                 }
             )
     return role_checker
-
-
-def require_plan(*required_plans: str):
-    """
-    Dependency factory for plan-based access control.
-    
-    Creates a dependency that checks if the user's team has one of the required plans.
-    
-    Args:
-        *required_plans: One or more plan names that are allowed
-        
-    Returns:
-        Dependency function that validates plan
-        
-    Example:
-        ```python
-        @router.post("/api/tools/advanced-scan")
-        async def advanced_scan(
-            target: str,
-            user: GatewayUser = Depends(get_user_from_gateway_headers),
-            _: None = Depends(require_plan("pro", "business", "enterprise"))
-        ):
-            # Only pro+ users can use advanced scan
-            pass
-        ```
-    """
-    async def plan_checker(user: GatewayUser = Depends(get_user_from_gateway_headers)) -> None:
-        if user.plan not in required_plans:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail={
-                    "error": "Plan upgrade required",
-                    "message": f"This feature requires one of these plans: {', '.join(required_plans)}",
-                    "code": "PLAN_UPGRADE_REQUIRED",
-                    "current_plan": user.plan
-                }
-            )
-    return plan_checker

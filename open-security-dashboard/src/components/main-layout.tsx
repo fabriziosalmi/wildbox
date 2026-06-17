@@ -111,7 +111,6 @@ const baseNavigation: NavigationItem[] = [
     description: 'Account and configuration',
     children: [
       { name: 'Profile', href: '/settings/profile' },
-      { name: 'Billing', href: '/settings/billing' },
       { name: 'API Keys', href: '/settings/api-keys' },
       { name: 'Team', href: '/settings/team' },
     ],

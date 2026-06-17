@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
-from .models import TeamRole, SubscriptionPlan, SubscriptionStatus
+from .models import TeamRole
 
 
 """
@@ -22,7 +22,7 @@ from typing import List, Optional
 from pydantic import BaseModel, EmailStr, Field
 from fastapi_users import schemas
 
-from .models import TeamRole, SubscriptionPlan, SubscriptionStatus
+from .models import TeamRole
 
 
 # FastAPI Users schemas
@@ -93,10 +93,6 @@ class TeamResponse(TeamBase):
         from_attributes = True
 
 
-class TeamWithSubscription(TeamResponse):
-    subscription: Optional['SubscriptionResponse'] = None
-
-
 # Team membership schemas
 class TeamMembershipResponse(BaseModel):
     user_id: UUID
@@ -104,21 +100,7 @@ class TeamMembershipResponse(BaseModel):
     role: TeamRole
     joined_at: datetime
     team: TeamResponse
-    
-    class Config:
-        from_attributes = True
 
-
-# Subscription schemas
-class SubscriptionResponse(BaseModel):
-    id: UUID
-    team_id: UUID
-    plan_id: SubscriptionPlan
-    status: SubscriptionStatus
-    current_period_end: Optional[datetime] = None
-    created_at: datetime
-    updated_at: datetime
-    
     class Config:
         from_attributes = True
 
@@ -166,14 +148,11 @@ class AuthorizationResponse(BaseModel):
     user_id: Optional[str] = None
     team_id: Optional[str] = None
     role: Optional[str] = None
-    plan: Optional[str] = None
     permissions: List[str] = []
-    rate_limits: dict = {}
 
 
 # Update forward references
 UserWithTeams.model_rebuild()
-TeamWithSubscription.model_rebuild()
 
 # Additional schemas for extended user management
 class UserProfileUpdate(BaseModel):
@@ -214,8 +193,6 @@ class TeamMembershipInfo(BaseModel):
     team_id: str
     team_name: str
     my_role: str
-    subscription_plan: str
-    subscription_status: str
     joined_at: datetime
 
 

@@ -6,7 +6,6 @@ export interface User {
   is_superuser: boolean
   created_at: string
   updated_at: string
-  stripe_customer_id?: string
   team_memberships?: TeamMembership[]
   // Legacy fields for backward compatibility
   name?: string
@@ -24,7 +23,6 @@ export interface Team {
   owner_id: string
   created_at: string
   updated_at: string
-  subscription?: Subscription
 }
 
 export interface TeamMembership {
@@ -33,17 +31,6 @@ export interface TeamMembership {
   role: 'owner' | 'admin' | 'member'
   joined_at: string
   team: Team
-}
-
-export interface Subscription {
-  id: string
-  team_id: string
-  stripe_subscription_id?: string
-  plan_id: 'free' | 'pro' | 'business'
-  status: 'active' | 'canceled' | 'past_due' | 'incomplete'
-  current_period_end?: string
-  created_at: string
-  updated_at: string
 }
 
 export interface ApiKey {

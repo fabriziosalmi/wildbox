@@ -10,9 +10,9 @@ from typing import Optional
 from pydantic import BaseModel
 
 from .database import get_db
-from .models import User, Team, TeamMembership, ApiKey, Subscription
+from .models import User, Team, TeamMembership, ApiKey
 from .schemas import AuthorizationResponse
-from .auth import authenticate_api_key, verify_access_token
+from .auth import verify_access_token
 from .config import settings
 from datetime import datetime
 import hmac
@@ -82,37 +82,31 @@ async def authorize_request(
                     detail="Invalid token payload"
                 )
             
-            # Get user with team and subscription info
+            # Get user with team info
             result = await db.execute(
-                select(User, Team, TeamMembership, Subscription)
+                select(User, Team, TeamMembership)
                 .join(TeamMembership, TeamMembership.user_id == User.id)
                 .join(Team, TeamMembership.team_id == Team.id)
-                .outerjoin(Subscription, Subscription.team_id == Team.id)
                 .where(User.id == user_id)
                 .where(User.is_active == True)
             )
-            
+
             row = result.first()
             if not row:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="User not found or inactive"
                 )
-            
-            user, team, membership, subscription = row
-            
-            # Get subscription plan
-            plan = subscription.plan_id if subscription else "free"
-            
+
+            user, team, membership = row
+
             # Build authorization response
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),
                 team_id=str(team.id),
                 role=membership.role,
-                plan=plan,
-                permissions=_get_permissions_for_plan_and_role(plan, membership.role),
-                rate_limits=_get_rate_limits_for_plan(plan)
+                permissions=_get_permissions_for_role(membership.role)
             )
             
         elif request_data.token_type == "api_key":
@@ -128,20 +122,19 @@ async def authorize_request(
             hashed_key = hash_api_key(request_data.token)
             
             result = await db.execute(
-                select(ApiKey, User, Team, TeamMembership, Subscription)
+                select(ApiKey, User, Team, TeamMembership)
                 .join(User, ApiKey.user_id == User.id)
                 .join(Team, ApiKey.team_id == Team.id)
                 .join(TeamMembership,
                       (TeamMembership.user_id == User.id) &
                       (TeamMembership.team_id == Team.id))
-                .outerjoin(Subscription, Subscription.team_id == Team.id)
                 .where(
                     ApiKey.hashed_key == hashed_key,
                     ApiKey.is_active == True,
                     User.is_active == True
                 )
             )
-            
+
             row = result.first()
 
             if not row:
@@ -149,8 +142,8 @@ async def authorize_request(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid or inactive API key"
                 )
-            
-            api_key_obj, user, team, membership, subscription = row
+
+            api_key_obj, user, team, membership = row
             
             # Check if key is expired
             if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
@@ -162,18 +155,13 @@ async def authorize_request(
             # Update last used timestamp
             api_key_obj.last_used_at = datetime.utcnow()
             await db.commit()
-            
-            # Get subscription plan
-            plan = subscription.plan_id if subscription else "free"
-            
+
             return AuthorizationResponse(
                 is_authenticated=True,
                 user_id=str(user.id),
                 team_id=str(team.id),
                 role=membership.role,
-                plan=plan,
-                permissions=_get_permissions_for_plan_and_role(plan, membership.role),
-                rate_limits=_get_rate_limits_for_plan(plan)
+                permissions=_get_permissions_for_role(membership.role)
             )
         else:
             raise HTTPException(
@@ -190,30 +178,15 @@ async def authorize_request(
         )
 
 
-def _get_permissions_for_plan_and_role(plan: str, role: str) -> list[str]:
-    """Get permissions based on subscription plan and team role."""
-    base_permissions = ["tool:basic"]
-    
-    if plan == "pro":
-        base_permissions.extend(["tool:advanced", "feed:basic", "cspm:basic"])
-    elif plan == "business":
-        base_permissions.extend([
-            "tool:advanced", "tool:premium", "feed:premium",
-            "cspm:advanced", "api:unlimited"
-        ])
-    
+def _get_permissions_for_role(role: str) -> list[str]:
+    """Get permissions for a team role.
+
+    With billing/subscriptions removed there are no plan tiers: every
+    authenticated user gets the full feature set; owners/admins additionally
+    get team and key management.
+    """
+    permissions = ["tool:basic", "tool:advanced", "feed", "cspm"]
     if role in ["owner", "admin"]:
-        base_permissions.extend(["team:manage", "billing:manage", "keys:manage"])
-    
-    return list(set(base_permissions))
-
-
-def _get_rate_limits_for_plan(plan: str) -> dict[str, str]:
-    """Get rate limits based on subscription plan."""
-    limits = {
-        "free": {"default": "100/hour", "api": "50/hour"},
-        "pro": {"default": "1000/hour", "api": "500/hour"},
-        "business": {"default": "10000/hour", "api": "unlimited"}
-    }
-    return limits.get(plan, {"default": "10/hour", "api": "5/hour"})
+        permissions.extend(["team:manage", "keys:manage"])
+    return permissions
 
