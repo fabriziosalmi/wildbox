@@ -309,5 +309,14 @@ Verdict:"""
             }
 
 
-# Global agent instance
-threat_enrichment_agent = ThreatEnrichmentAgent()
+# Lazily-built agent instance: constructing it builds the LLM + agent graph
+# (which needs OPENAI_API_KEY), so defer until first use. This lets the worker
+# import without the key set instead of crash-looping at import.
+_agent_instance = None
+
+
+def get_threat_enrichment_agent() -> ThreatEnrichmentAgent:
+    global _agent_instance
+    if _agent_instance is None:
+        _agent_instance = ThreatEnrichmentAgent()
+    return _agent_instance

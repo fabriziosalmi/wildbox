@@ -38,7 +38,7 @@ services:
     environment:
       - DEBUG=${DEBUG:-false}
       # For standalone development (uses local Redis)
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       # For integration with main stack, use:
       # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
@@ -59,7 +59,7 @@ services:
     environment:
       - DEBUG=${DEBUG:-false}
       # For standalone development (uses local Redis)
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@redis:6379/0
       # For integration with main stack, use:
       # - REDIS_URL=redis://wildbox-redis:6379/2
       - WILDBOX_API_URL=http://localhost:8000
