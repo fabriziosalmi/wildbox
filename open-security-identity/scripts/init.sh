@@ -62,9 +62,23 @@ import asyncio
 import os
 import sys
 from app.database import get_db
-from app.models import User
+from app.models import User, Team, TeamMembership
 from app.user_manager import get_user_manager, get_user_db
 from sqlalchemy import select
+
+async def ensure_default_team(db, user):
+    # The gateway's /internal/authorize inner-joins team membership, so an admin
+    # with no team can log in but every authenticated API call 401s. Give the
+    # initial admin a default team (owner) so a fresh stack is usable.
+    res = await db.execute(select(TeamMembership).where(TeamMembership.user_id == user.id))
+    if res.scalars().first():
+        return
+    team = Team(name='Default', owner_id=user.id)
+    db.add(team)
+    await db.flush()
+    db.add(TeamMembership(user_id=user.id, team_id=team.id, role='owner'))
+    await db.commit()
+    print(f'✅ Ensured default team (owner) for {user.email}')
 
 async def create_initial_superuser():
     admin_email = os.getenv('INITIAL_ADMIN_EMAIL', 'admin@wildbox.security')
@@ -87,6 +101,7 @@ async def create_initial_superuser():
         
         if existing_admin:
             print(f'ℹ️  Admin user {admin_email} already exists, skipping creation.')
+            await ensure_default_team(db, existing_admin)
             await db.close()
             return
         
@@ -107,7 +122,8 @@ async def create_initial_superuser():
         admin_user.is_verified = True
         db.add(admin_user)
         await db.commit()
-        
+        await ensure_default_team(db, admin_user)
+
         print(f'✅ Created initial admin user: {admin_email}')
         print(f'🔑 Password: {admin_password}')
         print('⚠️  Please change the default password after first login!')
