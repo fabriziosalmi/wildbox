@@ -59,8 +59,6 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     
-    # Stripe integration
-    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True, index=True)
     
     # Relationships (aggiornate con sintassi moderna)
     team_memberships: Mapped[list["TeamMembership"]] = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
@@ -131,8 +129,6 @@ class Subscription(Base):
     # Team relationship (one-to-one)
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), unique=True, nullable=False)
     
-    # Stripe integration
-    stripe_subscription_id = Column(String(255), unique=True, nullable=True, index=True)
     
     # Subscription details
     plan_id = Column(String(50), nullable=False, default=SubscriptionPlan.FREE.value)

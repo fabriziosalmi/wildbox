@@ -9,9 +9,8 @@ import uvicorn
 
 from .config import settings
 from .database import get_db
-from .api_v1.endpoints import users, api_keys, billing, analytics, user_api_keys
+from .api_v1.endpoints import users, api_keys, analytics, user_api_keys
 from .internal import router as internal_router
-from .webhooks import router as webhooks_router
 
 # Import fastapi-users components
 from .user_manager import auth_backend, fastapi_users
@@ -21,7 +20,7 @@ from .schemas import UserRead, UserCreate, UserUpdate
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
-    description="Identity, authentication, authorization, and billing service for Wildbox Security Suite",
+    description="Identity, authentication, and authorization service for Wildbox Security Suite",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -126,12 +125,6 @@ app.include_router(
 )
 
 app.include_router(
-    billing.router,
-    prefix=f"{settings.api_v1_prefix}/billing",
-    tags=["billing"]
-)
-
-app.include_router(
     analytics.router,
     prefix=f"{settings.api_v1_prefix}/analytics",
     tags=["analytics"]
@@ -141,12 +134,6 @@ app.include_router(
     internal_router,
     prefix=settings.internal_api_prefix,
     tags=["internal"]
-)
-
-app.include_router(
-    webhooks_router,
-    prefix="/webhooks",
-    tags=["webhooks"]
 )
 
 

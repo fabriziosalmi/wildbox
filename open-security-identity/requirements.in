@@ -13,8 +13,6 @@ fastapi-users[sqlalchemy]>=15.0.0,<16.0.0
 python-multipart>=0.0.22,<0.1.0
 passlib[bcrypt]>=1.7.4,<1.8.0
 
-# Billing integration
-stripe>=11.2.0,<12.0.0
 
 # Configuration and validation
 pydantic>=2.10.0,<3.0.0

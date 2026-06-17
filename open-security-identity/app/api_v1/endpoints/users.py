@@ -87,7 +87,6 @@ async def list_all_users(
             "is_superuser": user.is_superuser,
             "created_at": user.created_at.isoformat(),
             "updated_at": user.updated_at.isoformat(),
-            "stripe_customer_id": user.stripe_customer_id,
             "team_memberships": []
         }
         

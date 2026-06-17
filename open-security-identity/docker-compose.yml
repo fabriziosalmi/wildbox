@@ -19,9 +19,6 @@ services:
       - DATABASE_URL=${DATABASE_URL:?DATABASE_URL environment variable is required}
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY environment variable is required}
-      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
-      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY:-}
       # Auto-migration settings
       - CREATE_INITIAL_ADMIN=true
       - INITIAL_ADMIN_EMAIL=admin@wildbox.security
