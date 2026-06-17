@@ -14,6 +14,8 @@ from datetime import datetime
 import time
 import re
 
+from app.input_validation import InputSanitizer  # SSRF guard
+
 try:
     from schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 except ImportError:
@@ -88,6 +90,8 @@ class URLShortenerAnalyzer:
         custom_timeout = aiohttp.ClientTimeout(total=timeout)
         
         try:
+            # SSRF protection: reject private/internal/cloud-metadata targets.
+            InputSanitizer.validate_url(current_url)
             async with aiohttp.ClientSession(
                 timeout=custom_timeout,
                 connector=connector
