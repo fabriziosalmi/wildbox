@@ -12,7 +12,9 @@ Security Model:
 - All requests MUST pass through the gateway; direct access is rejected
 """
 
+import hmac
 import logging
+import os
 from typing import Optional
 from uuid import UUID
 
@@ -40,10 +42,26 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _verify_gateway_origin(provided_secret: Optional[str]) -> None:
+    """Reject forged X-Wildbox-* headers: only the gateway holds the shared
+    secret. The service port is reachable directly, so without this a client
+    could forge identity headers. Enforced when the secret is configured."""
+    expected = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if not expected:
+        logger.warning("GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
+        return
+    if not provided_secret or not hmac.compare_digest(provided_secret, expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Direct access is not permitted; requests must traverse the gateway.",
+        )
+
+
 async def get_current_user(
     x_wildbox_user_id: Optional[str] = Header(None),
     x_wildbox_team_id: Optional[str] = Header(None),
     x_wildbox_role: Optional[str] = Header(None),
+    x_gateway_secret: Optional[str] = Header(None, alias="X-Gateway-Secret"),
 ) -> GatewayUser:
     """
     Get current user from gateway-injected headers.
@@ -63,6 +81,7 @@ async def get_current_user(
     
     # Priority 1: Check for gateway headers
     if x_wildbox_user_id and x_wildbox_team_id:
+        _verify_gateway_origin(x_gateway_secret)
         try:
             # Validate UUIDs
             user_id = UUID(x_wildbox_user_id)

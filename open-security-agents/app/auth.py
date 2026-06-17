@@ -39,10 +39,24 @@ from fastapi import Header, HTTPException, Depends
 logger = logging.getLogger(__name__)
 
 
+def _verify_gateway_origin(provided_secret: Optional[str]) -> None:
+    """Reject forged X-Wildbox-* headers: only the gateway holds the shared
+    secret. The service port is reachable directly, so without this a client
+    could forge identity headers. Enforced when the secret is configured."""
+    import hmac
+    expected = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if not expected:
+        logger.warning("GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
+        return
+    if not provided_secret or not hmac.compare_digest(provided_secret, expected):
+        raise HTTPException(status_code=403, detail="Direct access is not permitted; requests must traverse the gateway.")
+
+
 async def get_current_user(
     x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
     x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
+    x_gateway_secret: Optional[str] = Header(None, alias="X-Gateway-Secret"),
 ) -> GatewayUser:
     """
     Primary authentication dependency for Agents service.
@@ -57,6 +71,7 @@ async def get_current_user(
     """
     # Priority 1: Gateway headers (production mode)
     if x_wildbox_user_id and x_wildbox_team_id:
+        _verify_gateway_origin(x_gateway_secret)
         if GATEWAY_AUTH_AVAILABLE:
             # Use shared gateway auth module
             return await _get_gateway_user(
