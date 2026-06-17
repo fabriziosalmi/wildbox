@@ -717,8 +717,8 @@ async def get_my_activity_log(
             {
                 "team_id": str(m.team_id),
                 "team_name": m.team.name,
-                "role": m.role.value,
-                "joined_at": m.created_at
+                "role": m.role,
+                "joined_at": m.joined_at
             }
             for m in memberships.scalars()
         ],
@@ -781,7 +781,7 @@ async def create_my_api_key(
     team_membership = await db.execute(
         select(TeamMembership)
         .where(TeamMembership.user_id == current_user.id)
-        .order_by(TeamMembership.created_at.asc())
+        .order_by(TeamMembership.joined_at.asc())
     )
     primary_membership = team_membership.scalar_one_or_none()
     
@@ -878,7 +878,7 @@ async def get_team_members(
         select(TeamMembership)
         .options(selectinload(TeamMembership.user))
         .where(TeamMembership.team_id == team_id)
-        .order_by(TeamMembership.created_at.asc())
+        .order_by(TeamMembership.joined_at.asc())
     )
     
     members = []
@@ -886,8 +886,8 @@ async def get_team_members(
         members.append({
             "user_id": str(membership.user_id),
             "team_id": str(membership.team_id),
-            "role": membership.role.value,
-            "joined_at": membership.created_at.isoformat(),
+            "role": membership.role,
+            "joined_at": membership.joined_at.isoformat(),
             "user": {
                 "id": str(membership.user.id),
                 "email": membership.user.email,
