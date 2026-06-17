@@ -175,8 +175,12 @@ export const getAuthPath = (endpoint: string): string => {
   if (useGateway) {
     // When using gateway with identityClient, transform paths correctly
     // Gateway routes: /auth/ -> identity:/api/v1/auth/ and /auth/users/ -> identity:/api/v1/users/
+    // NOTE: do NOT special-case login to '/auth/login' — the gateway routes
+    // '/auth/login' to the dashboard (the login *page*), so the JWT login POST
+    // would hit the SPA and never reach identity. Let it become
+    // '/auth/jwt/login', which the gateway routes to identity's
+    // /api/v1/auth/jwt/login.
     return endpoint
-      .replace('/api/v1/auth/jwt/login', '/auth/login')  // Special case for login endpoint
       .replace('/api/v1/auth/jwt', '/auth/jwt')
       .replace('/api/v1/auth', '/auth')
       .replace('/api/v1/users', '/auth/users')
