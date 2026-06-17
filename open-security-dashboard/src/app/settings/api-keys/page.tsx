@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAuth } from '@/components/auth-provider'
-import { identityClient } from '@/lib/api-client'
+import { identityClient, getIdentityPath } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -72,7 +72,7 @@ export default function ApiKeysPage() {
   const fetchApiKeys = async () => {
     try {
       setIsLoading(true)
-      const keys = await identityClient.get('/api/v1/users/me/api-keys')
+      const keys = await identityClient.get(getIdentityPath('/api/v1/api-keys'))
       setApiKeys(keys)
     } catch (error: any) {
       console.error('Failed to fetch API keys:', error)
@@ -118,7 +118,7 @@ export default function ApiKeysPage() {
         createData.expires_at = createForm.expires_at
       }
 
-      const newKey = await identityClient.post('/api/v1/users/me/api-keys', createData)
+      const newKey = await identityClient.post(getIdentityPath('/api/v1/api-keys'), createData)
       
       setApiKeys(prev => [newKey, ...prev])
       setCreateForm({ name: '', scopes: [], expires_at: '' })
@@ -139,14 +139,14 @@ export default function ApiKeysPage() {
     }
   }
 
-  const handleDeleteApiKey = async (keyId: string) => {
+  const handleDeleteApiKey = async (keyPrefix: string) => {
     if (!confirm('Are you sure you want to delete this API key? This action cannot be undone.')) {
       return
     }
 
     try {
-      await identityClient.delete(`/api/v1/users/me/api-keys/${keyId}`)
-      setApiKeys(prev => prev.filter(key => key.id !== keyId))
+      await identityClient.delete(getIdentityPath(`/api/v1/api-keys/${keyPrefix}`))
+      setApiKeys(prev => prev.filter(key => key.prefix !== keyPrefix))
       
       toast({
         title: "Success",
@@ -396,7 +396,7 @@ export default function ApiKeysPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleDeleteApiKey(apiKey.id)}
+                  onClick={() => handleDeleteApiKey(apiKey.prefix)}
                   className="text-red-600 hover:text-red-700"
                 >
                   <Trash2 className="w-4 h-4" />
