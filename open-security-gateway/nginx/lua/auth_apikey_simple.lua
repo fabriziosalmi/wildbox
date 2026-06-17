@@ -83,7 +83,6 @@ local auth_data = cjson.decode(res.body)
 
 ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
 ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
-ngx.req.set_header("X-Wildbox-Plan", auth_data.plan or "free")
 ngx.req.set_header("X-Wildbox-Role", auth_data.role or "user")
 
 ngx.log(ngx.INFO, "API key authenticated for user: ", auth_data.user_id, " team: ", auth_data.team_id)
