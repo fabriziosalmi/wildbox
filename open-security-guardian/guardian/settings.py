@@ -192,7 +192,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        # Gateway-injected identity (no CSRF — there is no browser session).
+        # SessionAuthentication was removed: it enforced CSRF and rejected
+        # every gateway-authenticated write with "CSRF Failed".
+        'apps.core.authentication.GatewayHeaderAuthentication',
         'apps.core.authentication.APIKeyAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [

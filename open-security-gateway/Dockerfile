@@ -45,5 +45,8 @@ EXPOSE 80 443
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:80/health || exit 1
 
-# Start OpenResty
-CMD ["/usr/local/openresty/bin/openresty", "-g", "daemon off;"]
+# Start OpenResty via the entrypoint, which loads /etc/nginx/nginx.conf
+# (the stock openresty default config does NOT load our rate-limit zones,
+# lua_shared_dicts or env exports, so auth_handler.lua would fail) and ensures
+# a TLS cert exists.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

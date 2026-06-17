@@ -99,7 +99,16 @@ def verify_access_token(token: str) -> Dict[str, Any]:
         HTTPException: If token is invalid or expired
     """
     try:
-        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        # fastapi-users' JWTStrategy issues access tokens with this audience
+        # (token_audience=["fastapi-users:auth"]). PyJWT requires the same
+        # audience here or it raises InvalidAudienceError — which previously
+        # made /internal/authorize reject every gateway-forwarded JWT.
+        payload = jwt.decode(
+            token,
+            settings.jwt_secret_key,
+            algorithms=[settings.jwt_algorithm],
+            audience="fastapi-users:auth",
+        )
         return payload
     except InvalidTokenError:
         raise HTTPException(
