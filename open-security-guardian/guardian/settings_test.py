@@ -1,0 +1,18 @@
+"""Test settings for the Guardian service.
+
+Sets safe defaults for the environment variables ``guardian.settings`` requires
+at import time, then re-exports everything. This keeps the unit suite
+self-contained: in-memory SQLite, no external Postgres / Redis / broker.
+
+Used by ``pytest.ini`` (``DJANGO_SETTINGS_MODULE = guardian.settings_test``).
+"""
+import os
+
+os.environ.setdefault("SECRET_KEY", "test-secret-key-do-not-use-in-prod")
+os.environ.setdefault("DATABASE_URL", "sqlite://:memory:")
+os.environ.setdefault("CELERY_BROKER_URL", "memory://")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("ALLOWED_HOSTS", "*")
+os.environ.setdefault("DJANGO_DEBUG", "True")
+
+from guardian.settings import *  # noqa: F401,F403,E402

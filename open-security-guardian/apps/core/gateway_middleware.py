@@ -8,12 +8,38 @@ the gateway which validates credentials and injects these trusted headers.
 
 import logging
 import uuid
+from django.contrib.auth.models import User
 from django.utils.deprecation import MiddlewareMixin
 from django.http import JsonResponse
 from django.conf import settings
 
 
 logger = logging.getLogger(__name__)
+
+
+def _mirror_db_user(user_id, role):
+    """Return the local ``auth.User`` mirror for an identity-service user.
+
+    Guardian's models FK to ``django.contrib.auth.User`` (an *integer* PK),
+    but the gateway authenticates against the identity service, whose users
+    are UUIDs. A ``GatewayUser`` (UUID pk, not a DB row) cannot be persisted
+    into those FKs, so ``created_by=request.user`` raised on every write and
+    every mutating endpoint returned 500.
+
+    We mirror the identity user into ``auth_user`` keyed by its UUID (stored
+    in ``username``); display name / email stay owned by identity and are not
+    synced here. The role is reflected on the *in-memory* instance only (never
+    persisted) so ``has_perm`` keeps the previous ``GatewayUser`` semantics:
+    owner/admin are privileged, members are not.
+    """
+    user, _ = User.objects.get_or_create(
+        username=str(user_id),
+        defaults={'is_active': True},
+    )
+    privileged = role in ('owner', 'admin')
+    user.is_staff = privileged
+    user.is_superuser = privileged
+    return user
 
 
 class GatewayUser:
@@ -110,9 +136,11 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                     role=role
                 )
                 
-                # Also set as request.user for Django compatibility
-                request.user = request.gateway_user
-                
+                # request.user must be a real auth.User so that created_by /
+                # assigned_to FKs (integer PK) can be persisted; the rich
+                # gateway attributes remain on request.gateway_user.
+                request.user = _mirror_db_user(str(user_id), role)
+
                 logger.info(
                     f"[GATEWAY-AUTH] Authenticated user {user_id} from gateway headers "
                     f"(team: {team_id}, plan: {plan}, role: {role})"
@@ -153,14 +181,20 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                         'message': 'The provided API key has expired'
                     }, status=401)
                 
-                # Create GatewayUser from API key
+                # Legacy keys get full access during migration.
                 request.gateway_user = GatewayUser(
                     user_id=str(key_obj.user.id),
                     team_id=str(getattr(key_obj, 'team_id', '00000000-0000-0000-0000-000000000001')),
-                    plan='enterprise',  # Legacy keys get full access during migration
+                    plan='enterprise',
                     role='admin'
                 )
-                request.user = request.gateway_user
+                # key_obj.user is already a real auth.User row — use it directly
+                # (privileged in-memory to match the legacy admin role) so writes
+                # persist instead of 500ing.
+                db_user = key_obj.user
+                db_user.is_staff = True
+                db_user.is_superuser = True
+                request.user = db_user
                 request.api_key = key_obj  # Keep for backward compatibility
                 
                 return None
