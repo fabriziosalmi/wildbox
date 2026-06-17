@@ -160,6 +160,23 @@ class InputSanitizer:
 
         return url
 
+    # Tool-input fields that carry a URL the tool will connect to (SSRF surface).
+    URL_REQUEST_FIELDS = ("target_url", "url")
+
+    @classmethod
+    def validate_request_urls(cls, input_obj) -> None:
+        """SSRF guard for tool inputs.
+
+        Validate any URL-bearing field on a validated tool-input object so a tool
+        cannot be pointed at private/internal/cloud-metadata hosts. Only http(s)
+        values are checked (non-URL fields are left untouched for the tool to
+        handle). Raises ValueError if a target resolves to a blocked host.
+        """
+        for field in cls.URL_REQUEST_FIELDS:
+            value = getattr(input_obj, field, None)
+            if isinstance(value, str) and re.match(r'^https?://', value.strip(), re.IGNORECASE):
+                cls.validate_url(value)
+
     @classmethod
     def validate_ip(cls, ip_str: str) -> str:
         """Validate an IP address. Blocks private/internal ranges."""
