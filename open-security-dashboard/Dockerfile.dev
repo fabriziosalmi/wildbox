@@ -9,6 +9,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
+# Pre-create the .next dir so the anonymous volume mounted there (see compose)
+# inherits nextjs ownership; otherwise Docker creates it root-owned and the dev
+# server hits EACCES writing /app/.next/package.json.
+RUN mkdir -p /app/.next
+
 # Run as non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nextjs -u 1001 -G nodejs && \

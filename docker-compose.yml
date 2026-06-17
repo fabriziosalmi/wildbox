@@ -64,7 +64,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
-      - REDIS_URL=redis://wildbox-redis:6379/2
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
       # Increased rate limits for AI agent service
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
@@ -93,7 +93,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=DEBUG
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - REDIS_URL=redis://wildbox-redis:6379/2
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
     depends_on:
       - wildbox-redis
       - api
@@ -118,12 +118,22 @@ services:
     ports:
       - "127.0.0.1:5555:5555"
     environment:
-      - REDIS_URL=redis://wildbox-redis:6379/2
+      # app.config.Settings requires API_KEY (shared with api/tools-worker);
+      # without it flower crashes on startup with "api_key Field required".
+      - API_KEY=${API_KEY}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
     depends_on:
       - wildbox-redis
       - tools-worker
     networks:
       - wildbox
+    # Override the image's HEALTHCHECK (curl :8000/health) — flower serves its
+    # own UI + /healthcheck on 5555.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5555/healthcheck || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Data Service (Threat Intelligence & IOCs)
   data:
@@ -171,7 +181,9 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'python -m app.scheduler.main' || exit 1"]
+      # The data image has no procps (pgrep/ps); the scheduler is PID 1, so
+      # check its cmdline directly.
+      test: ["CMD-SHELL", "grep -q scheduler /proc/1/cmdline || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -257,6 +269,13 @@ services:
     depends_on:
       - gateway
       - identity
+    # node is always present in the image; use it (no curl in node:18-alpine).
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # PostgreSQL Database (Identity Service)
   postgres:
@@ -281,9 +300,9 @@ services:
     #   - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Provision the separate Guardian database on first init (Guardian is a
-      # Django service with its own tables; identity is FastAPI).
-      - ./scripts/init-guardian-db.sql:/docker-entrypoint-initdb.d/10-init-guardian-db.sql:ro
+      # Provision per-service databases on first init (guardian, data; identity
+      # uses POSTGRES_DB). See scripts/init-databases.sql.
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/10-init-databases.sql:ro
     networks:
       - wildbox
     healthcheck:
@@ -331,9 +350,9 @@ services:
     environment:
       - SECRET_KEY=${GUARDIAN_SECRET_KEY}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL}
-      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://wildbox-redis:6379/1}
-      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://wildbox-redis:6379/1}
-      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/1}
+      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
+      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
+      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE=/app/logs/guardian.log
@@ -366,7 +385,7 @@ services:
       - "8018:8018"
     environment:
       - DATABASE_URL=${RESPONDER_DATABASE_URL}
-      - REDIS_URL=${RESPONDER_REDIS_URL:-redis://wildbox-redis:6379/2}
+      - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -396,9 +415,12 @@ services:
     ports:
       - "8019:8019"
     environment:
-      - REDIS_URL=${CSPM_REDIS_URL:-redis://wildbox-redis:6379/3}
-      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://wildbox-redis:6379/3}
-      - CELERY_RESULT_BACKEND=${CSMP_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/3}
+      # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
+      # on startup with a pydantic "secret_key Field required" error.
+      - SECRET_KEY=${CSPM_SECRET_KEY}
+      - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
+      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
+      - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -420,9 +442,9 @@ services:
   #   restart: unless-stopped
   #   command: celery -A app.worker worker --loglevel=info --concurrency=4
   #   environment:
-  #     - REDIS_URL=redis://wildbox-redis:6379/3
-  #     - CELERY_BROKER_URL=redis://wildbox-redis:6379/3
-  #     - CELERY_RESULT_BACKEND=redis://wildbox-redis:6379/3
+  #     - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
+  #     - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
+  #     - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
   #     - LOG_LEVEL=INFO
   #   depends_on:
   #     - wildbox-redis
@@ -460,7 +482,8 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      # The ollama image ships no curl/wget; use its own CLI as a liveness probe.
+      test: ["CMD-SHELL", "ollama list || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -485,9 +508,9 @@ services:
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       # Authentication for tools service (must match API_KEY in tools service)
       - INTERNAL_API_KEY=${API_KEY}
-      - REDIS_URL=${AGENTS_REDIS_URL:-redis://wildbox-redis:6379/4}
-      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://wildbox-redis:6379/4}
-      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://wildbox-redis:6379/4}
+      - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
+      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
+      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -577,7 +600,9 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5678/healthz"]
+      # The n8n image has no curl and its BusyBox wget is unreliable here; use
+      # node (always present) to probe the /healthz liveness endpoint.
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:5678/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
       interval: 30s
       timeout: 10s
       retries: 3
