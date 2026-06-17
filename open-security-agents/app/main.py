@@ -62,11 +62,11 @@ async def lifespan(app: FastAPI):
         redis_client.ping()
         logger.info("Redis connection established")
         
-        # Test OpenAI API key
-        if not settings.openai_api_key or settings.openai_api_key == "your_openai_api_key_here":
-            logger.warning("OpenAI API key not configured - AI analysis will fail")
+        # Test Anthropic API key
+        if not settings.anthropic_api_key or settings.anthropic_api_key == "your_anthropic_api_key_here":
+            logger.warning("Anthropic API key not configured - AI analysis will fail")
         else:
-            logger.info("OpenAI API key configured")
+            logger.info("Anthropic API key configured")
         
         # Test Celery connection
         try:
@@ -157,11 +157,11 @@ async def health_check():
     except Exception:
         services["celery"] = "unhealthy"
     
-    # Check OpenAI
-    if settings.openai_api_key and settings.openai_api_key != "your_openai_api_key_here":
-        services["openai"] = "configured"
+    # Check Anthropic
+    if settings.anthropic_api_key and settings.anthropic_api_key != "your_anthropic_api_key_here":
+        services["anthropic"] = "configured"
     else:
-        services["openai"] = "not_configured"
+        services["anthropic"] = "not_configured"
     
     overall_status = "healthy" if all(s in ["healthy", "configured"] for s in services.values()) else "unhealthy"
     
