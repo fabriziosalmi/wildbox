@@ -42,7 +42,7 @@ local function get_config()
         -- Build config from environment variables (Blueprint security requirement)
         local config = {
             identity_service_url = os.getenv("IDENTITY_SERVICE_URL") or "http://open-security-identity:8001",
-            gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or ngx.log(ngx.ERR, "GATEWAY_INTERNAL_SECRET not set"),
+            gateway_secret = os.getenv("GATEWAY_INTERNAL_SECRET") or "",
             cache_ttl = tonumber(os.getenv("AUTH_CACHE_TTL")) or CACHE_TTL,
             debug_mode = os.getenv("GATEWAY_DEBUG") == "true"
         }

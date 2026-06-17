@@ -28,7 +28,7 @@ services:
       - WILDBOX_ENV=${WILDBOX_ENV:-development}
       - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
       # Authentication service configuration (Blueprint Phase 1 requirements)
-      - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8000}
+      - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8001}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET:?Set GATEWAY_INTERNAL_SECRET in .env}
       - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
