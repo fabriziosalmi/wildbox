@@ -3,7 +3,9 @@ FastAPI main application for Open Security CSPM
 """
 
 import asyncio
+import hmac
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 import uuid
@@ -94,6 +96,18 @@ async def get_current_user(request: Request):
             detail="Authentication required. Access via gateway with X-Wildbox-* headers.",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+    # Proof-of-origin: only the gateway (holding the shared secret) may assert
+    # identity via X-Wildbox-* headers. The service port is reachable directly,
+    # so without this a client could forge them. Enforced when configured.
+    _expected = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if _expected:
+        _provided = request.headers.get("X-Gateway-Secret", "")
+        if not hmac.compare_digest(_provided, _expected):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Direct access is not permitted; requests must traverse the gateway.",
+            )
 
     return {
         "user_id": user_id,
@@ -995,7 +1009,7 @@ async def http_exception_handler(request, exc):
             error="HTTPException",
             message=str(exc.detail),
             details={"status_code": exc.status_code}
-        ).model_dump()
+        ).model_dump(mode="json")
     )
 
 
@@ -1007,7 +1021,7 @@ async def value_error_handler(request, exc):
         content=schemas.ErrorResponse(
             error="ValidationError",
             message="Validation error"
-        ).model_dump()
+        ).model_dump(mode="json")
     )
 
 

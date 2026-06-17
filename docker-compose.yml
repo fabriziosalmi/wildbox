@@ -68,6 +68,7 @@ services:
       # Increased rate limits for AI agent service
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
     depends_on:
       - wildbox-redis
     networks:
@@ -151,6 +152,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
     depends_on:
       - postgres
     networks:
@@ -355,6 +357,7 @@ services:
       - "8013:8013"
     environment:
       - SECRET_KEY=${GUARDIAN_SECRET_KEY}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
@@ -391,6 +394,7 @@ services:
       - "8018:8018"
     environment:
       - DATABASE_URL=${RESPONDER_DATABASE_URL}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -424,6 +428,7 @@ services:
       # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
       # on startup with a pydantic "secret_key Field required" error.
       - SECRET_KEY=${CSPM_SECRET_KEY}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
       - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
       - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
@@ -472,6 +477,7 @@ services:
       # Claude (Anthropic) — analysis is optional; the service starts without a
       # key and analysis tasks fail gracefully until one is set.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       # Authentication for tools service (must match API_KEY in tools service)

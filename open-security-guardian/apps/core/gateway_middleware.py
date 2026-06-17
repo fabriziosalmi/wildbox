@@ -6,7 +6,9 @@ after successful authentication. In production, all traffic MUST go through
 the gateway which validates credentials and injects these trusted headers.
 """
 
+import hmac
 import logging
+import os
 import uuid
 from django.contrib.auth.models import User
 from django.utils.deprecation import MiddlewareMixin
@@ -116,8 +118,25 @@ class GatewayAuthMiddleware(MiddlewareMixin):
         # Priority 1: Gateway headers (production mode)
         user_id_header = request.META.get('HTTP_X_WILDBOX_USER_ID')
         team_id_header = request.META.get('HTTP_X_WILDBOX_TEAM_ID')
-        
+
         if user_id_header and team_id_header:
+            # Proof-of-origin: X-Wildbox-* headers are only trustworthy when the
+            # request carries the shared gateway secret. The service port is
+            # reachable directly, so without this a client could forge
+            # X-Wildbox-User-ID/Role and authenticate as anyone. Enforced when the
+            # secret is configured.
+            gw_secret = os.getenv('GATEWAY_INTERNAL_SECRET')
+            if gw_secret:
+                provided = request.META.get('HTTP_X_GATEWAY_SECRET', '')
+                if not hmac.compare_digest(provided, gw_secret):
+                    logger.warning("[GATEWAY-AUTH] Rejected X-Wildbox-* headers without a valid gateway secret")
+                    return JsonResponse({
+                        'error': 'forbidden',
+                        'message': 'Direct access is not permitted; requests must traverse the gateway.',
+                        'code': 'GATEWAY_SECRET_REQUIRED',
+                    }, status=403)
+            else:
+                logger.warning("[GATEWAY-AUTH] GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
             try:
                 # Validate UUIDs
                 user_id = uuid.UUID(user_id_header)

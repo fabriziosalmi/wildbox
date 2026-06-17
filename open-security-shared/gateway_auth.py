@@ -30,6 +30,8 @@ Usage:
         return {"domain": domain, "user_id": user.user_id}
 """
 
+import hmac
+import os
 from typing import Optional
 from fastapi import Header, HTTPException, status, Depends
 from pydantic import BaseModel, UUID4
@@ -57,6 +59,7 @@ async def get_user_from_gateway_headers(
     x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
     x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
+    x_gateway_secret: Optional[str] = Header(None, alias="X-Gateway-Secret"),
 ) -> GatewayUser:
     """
     FastAPI dependency that extracts and validates user info from gateway headers.
@@ -109,6 +112,25 @@ async def get_user_from_gateway_headers(
                 "code": "GATEWAY_AUTH_REQUIRED"
             }
         )
+
+    # Proof-of-origin: the X-Wildbox-* headers are only trustworthy when the
+    # request also carries the shared gateway secret (which the gateway stamps
+    # on every proxied request and clients cannot supply). Without this, a
+    # request reaching the service directly with forged headers would be trusted.
+    expected_secret = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if expected_secret:
+        if not x_gateway_secret or not hmac.compare_digest(x_gateway_secret, expected_secret):
+            logger.warning("Rejected gateway headers without a valid X-Gateway-Secret")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "error": "Gateway authentication required",
+                    "message": "Direct access is not permitted; requests must traverse the gateway.",
+                    "code": "GATEWAY_SECRET_REQUIRED",
+                },
+            )
+    else:
+        logger.warning("GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
     
     # Validate UUIDs
     try:
