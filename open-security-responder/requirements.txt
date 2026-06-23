@@ -10,7 +10,7 @@ redis==5.2.1
 
 # Data validation and settings
 pydantic==2.10.3
-pydantic-settings==2.10.1
+pydantic-settings==2.14.2
 
 # Template engine for playbook input parsing
 jinja2==3.1.6
@@ -22,7 +22,7 @@ pyyaml==6.0.2
 httpx==0.28.1
 
 # Development dependencies
-pytest==8.3.4
+pytest==9.0.3
 pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 
