@@ -193,7 +193,7 @@ curl http://localhost:8001/health
 
 ### Next Steps
 1. Review **[Security Best Practices](SECURITY.md)**
-2. Configure **[Environment Variables](docs/guides/environment.md)**
+2. Configure **[Environment Variables](docs/guides/credentials.md)**
 3. Read **[Deployment Guide](docs/guides/deployment.md)** for production setup
 4. Explore **[API Documentation](docs/api/)**
 
