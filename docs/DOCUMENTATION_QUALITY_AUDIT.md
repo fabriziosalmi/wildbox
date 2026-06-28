@@ -75,7 +75,7 @@ jobs:
 
 **Current**:
 ```markdown
-![](wildbox.png)
+![ ](wildbox.png)
 ```
 
 **Required**:

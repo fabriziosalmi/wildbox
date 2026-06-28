@@ -148,7 +148,7 @@ docker-compose up
 
 **Always Include Alt Text**:
 ```markdown
-❌ ![](diagram.png)
+❌ ![ ](diagram.png)
 ✅ ![Architecture diagram showing 11 microservices connected via API gateway](diagram.png)
 ```
 

@@ -1,7 +1,7 @@
 <div align="center">
   <!-- Demo Video -->
   <a href="https://youtu.be/BjuTF6yJ_JA">
-    <img src="https://img.youtube.com/vi/BjuTF6yJ_JA/maxresdefault.jpg" alt="Wildbox Demo Video" width="700px" style="border-radius: 10px;"/>
+    <img src="https://img.youtube.com/vi/BjuTF6yJ_JA/hqdefault.jpg" alt="Wildbox Demo Video" width="700px" style="border-radius: 10px;"/>
   </a>
   <br/><br/>
 
