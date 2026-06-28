@@ -13,8 +13,9 @@ from collections import defaultdict
 class TestInventoryMapper:
     """Mappa tutti i test nel repository Wildbox"""
     
-    def __init__(self, repo_path: str = "/Users/fab/GitHub/wildbox"):
-        self.repo_path = Path(repo_path)
+    def __init__(self, repo_path: str | None = None):
+        # Default to the repo root (the parent of tests/, where this file lives)
+        self.repo_path = Path(repo_path) if repo_path else Path(__file__).resolve().parents[1]
         self.inventory = {
             "python_tests": [],
             "typescript_tests": [],
