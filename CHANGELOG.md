@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-06-28
+
+### Changed
+- Documentation-quality CI: run link checking on Node 22 (Node 18 broke on the now-ESM `marked`), expand the cspell dictionary, and fix the empty-alt examples so the Spell Check, Link Validation, and Image Alt Text gates pass.
+
+### Removed
+- Stopped tracking generated artifacts (`.coverage`, `tests/reports/junit.xml`, Playwright `test-results/`).
+- Removed committed status-report docs (`*_COMPLETE.md`, `*_IN_PROGRESS.md`, …) and one-off migration scripts.
+
+### Fixed
+- Removed a hardcoded developer path from the tool audit/integration scripts so they run on any checkout.
+- Fixed the dead YouTube thumbnail link in the README (`maxresdefault` → `hqdefault`).
+
 ## [0.5.5] - 2026-02-22
 
 ### Security
