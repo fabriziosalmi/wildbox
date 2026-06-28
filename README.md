@@ -300,7 +300,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 
 ## Roadmap
 
-**Current version: v0.5.5 (Security-Hardened)**
+**Current version: v0.5.6 (Security-Hardened)**
 
 **Phase 1: Stabilization** - Done
 - Core security controls, documentation, CI/CD
