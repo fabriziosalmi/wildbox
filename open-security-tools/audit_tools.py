@@ -12,8 +12,12 @@ from pathlib import Path
 from typing import Dict, Any, List
 import logging
 
+# Resolve paths relative to this file so the script is portable
+BASE_DIR = Path(__file__).resolve().parent
+REPO_ROOT = BASE_DIR.parent
+
 # Add the app directory to Python path
-sys.path.insert(0, '/Users/fab/GitHub/wildbox/open-security-tools')
+sys.path.insert(0, str(BASE_DIR))
 
 from app.standardized_schemas import tool_validator, BaseToolInput, BaseToolOutput
 
@@ -23,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 def discover_tools() -> List[str]:
     """Discover all available tools."""
-    tools_dir = Path('/Users/fab/GitHub/wildbox/open-security-tools/app/tools')
+    tools_dir = BASE_DIR / 'app' / 'tools'
     tools = []
     
     for tool_dir in tools_dir.iterdir():
@@ -51,7 +55,7 @@ def audit_tool_schemas(tool_name: str) -> Dict[str, Any]:
     
     try:
         # Check if files exist
-        tool_path = Path(f'/Users/fab/GitHub/wildbox/open-security-tools/app/tools/{tool_name}')
+        tool_path = BASE_DIR / 'app' / 'tools' / tool_name
         schemas_file = tool_path / 'schemas.py'
         main_file = tool_path / 'main.py'
         
@@ -223,7 +227,7 @@ def main():
     report = generate_audit_report(audit_results)
     
     # Save detailed report
-    with open('/Users/fab/GitHub/wildbox/TOOL_COMPLIANCE_AUDIT.json', 'w') as f:
+    with open(REPO_ROOT / 'TOOL_COMPLIANCE_AUDIT.json', 'w') as f:
         json.dump(report, f, indent=2)
     
     # Print summary

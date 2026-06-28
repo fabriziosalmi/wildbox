@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 # Add the app directory to Python path
-sys.path.insert(0, '/Users/fab/GitHub/wildbox/open-security-tools')
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from app.secure_execution_manager import SecureToolExecutionManager
 from app.standardized_schemas import BaseToolInput, BaseToolOutput
