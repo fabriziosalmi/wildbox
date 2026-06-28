@@ -100,3 +100,8 @@ structure_simplified.txt
 *.backup.*
 *.backup-*
 open-security-tools/security_fixes_backup_*/
+
+# Coverage and Playwright artifacts (generated; never commit)
+.coverage
+tests/reports/junit.xml
+open-security-dashboard/test-results/
