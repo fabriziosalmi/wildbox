@@ -36,13 +36,13 @@ git clone <your-repo-url>
 cd wildbox
 
 # Start all services
-docker-compose up -d
+docker compose up -d
 
 # Wait for services to initialize (2-3 minutes)
 sleep 180
 
 # Run health check
-./comprehensive_health_check.sh
+make health
 ```
 
 ### 2. Access the Platform
@@ -77,7 +77,7 @@ curl "http://localhost:8002/api/v1/stats"
 | **Guardian** | 8013 | Vulnerability Management | ✅ Running |
 | **Sensor** | 8004 | Endpoint Monitoring | ✅ Running |
 | **Responder** | 8018 | Incident Response | ✅ Running |
-| **AI Agents** | 8006 | GPT-4 Analysis | ✅ Running |
+| **AI Agents** | 8006 | Claude (Anthropic) Analysis | ✅ Running |
 | **CSPM** | 8019 | Cloud Security | ✅ Running |
 | **Automations** | 5678 | n8n Workflows | ✅ Running |
 | **Gateway** | 80/443 | API Gateway | ✅ Running |
@@ -119,15 +119,15 @@ curl "http://localhost:8002/api/v1/stats"
 
 ```bash
 # Comprehensive health check
-./comprehensive_health_check.sh
+make health
 
 # Enhanced system monitor
-./system_monitor.sh
+docker compose ps
 
 # Check specific components
-./system_monitor.sh performance
-./system_monitor.sh security
-./system_monitor.sh resources
+docker stats
+make health
+docker stats
 ```
 
 ### Real-time Monitoring
@@ -137,10 +137,10 @@ curl "http://localhost:8002/api/v1/stats"
 docker stats
 
 # Service logs
-docker-compose logs -f [service-name]
+docker compose logs -f [service-name]
 
 # Live system health
-watch -n 5 ./comprehensive_health_check.sh services
+watch -n 5 docker compose ps
 ```
 
 ---
@@ -149,8 +149,8 @@ watch -n 5 ./comprehensive_health_check.sh services
 
 ### Default Credentials (⚠️ Change in Production!)
 
-- **Admin Email:** admin@wildbox.security
-- **Admin Password:** ChangeMeInProduction123!
+- **Admin Email:** the `INITIAL_ADMIN_EMAIL` you set in `.env`
+- **Admin Password:** the `INITIAL_ADMIN_PASSWORD` you set in `.env`
 - **n8n Admin:** admin / wildbox_n8n_2025
 
 ### API Authentication
@@ -159,7 +159,7 @@ watch -n 5 ./comprehensive_health_check.sh services
 # Get JWT token
 curl -X POST http://localhost:8001/auth/jwt/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@wildbox.security&password=ChangeMeInProduction123!"
+  -d "username=$INITIAL_ADMIN_EMAIL&password=$INITIAL_ADMIN_PASSWORD"
 
 # Use API key for tools
 curl -H "Authorization: Bearer <your-jwt-token>" \
@@ -176,27 +176,27 @@ curl -H "Authorization: Bearer <your-jwt-token>" \
 
 ```bash
 # Check logs
-docker-compose logs [service-name]
+docker compose logs [service-name]
 
 # Restart specific service
-docker-compose restart [service-name]
+docker compose restart [service-name]
 
 # Rebuild if needed
-docker-compose up -d --build [service-name]
+docker compose up -d --build [service-name]
 ```
 
 #### Database Issues
 
 ```bash
 # Check PostgreSQL
-docker-compose exec postgres pg_isready -U postgres
+docker compose exec postgres pg_isready -U postgres
 
 # Check Redis
-docker-compose exec wildbox-redis redis-cli ping
+docker compose exec wildbox-redis redis-cli ping
 
 # Reset databases (⚠️ Destructive)
-docker-compose down -v
-docker-compose up -d postgres wildbox-redis
+docker compose down -v
+docker compose up -d postgres wildbox-redis
 ```
 
 #### Performance Issues
@@ -206,10 +206,10 @@ docker-compose up -d postgres wildbox-redis
 docker stats
 
 # Monitor system health
-./system_monitor.sh resources
+docker stats
 
 # Optimize containers
-./system_monitor.sh optimize
+docker system prune
 ```
 
 ---
@@ -239,10 +239,10 @@ nano .env
 
 ```bash
 # Generate SSL certificates
-./scripts/setup-ssl.sh --domain your-domain.com
+# Configure TLS on the gateway (see docker-compose.prod.yml and haproxy/)
 
 # Enable HTTPS in gateway
-docker-compose restart gateway
+docker compose restart gateway
 ```
 
 ---
@@ -269,8 +269,8 @@ docker-compose restart gateway
 
 ### Getting Help
 
-1. Check logs: `docker-compose logs [service]`
-2. Run diagnostics: `./system_monitor.sh`
+1. Check logs: `docker compose logs [service]`
+2. Run diagnostics: `make health` and `docker compose ps`
 3. Review documentation in `/docs`
 4. Check GitHub issues
 
@@ -290,7 +290,7 @@ docker-compose restart gateway
 1. **Explore the Dashboard** - http://localhost:3000
 2. **Test Security Tools** - http://localhost:8000/docs
 3. **Configure Automations** - http://localhost:5678
-4. **Set up Monitoring** - Run `./system_monitor.sh`
+4. **Set up Monitoring** - Configure Prometheus/Grafana (see docker-compose.prod.yml)
 
 ### Advanced Usage
 

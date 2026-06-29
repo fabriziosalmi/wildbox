@@ -69,20 +69,11 @@ AGENTS_API_KEY=dev-agents-key
 SENSOR_API_KEY=dev-sensor-key
 
 # ============================================
-# OPENAI CONFIGURATION (OPTIONAL)
+# AI / LLM CONFIGURATION (OPTIONAL)
 # ============================================
-# Set to enable AI-powered features
-OPENAI_API_KEY=sk-your-actual-openai-key-or-leave-empty
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_TEMPERATURE=0.7
-
-# ============================================
-# STRIPE INTEGRATION (OPTIONAL)
-# ============================================
-# Leave empty or set to test keys for development
-STRIPE_SECRET_KEY=sk_test_your_stripe_test_key
-STRIPE_PUBLIC_KEY=pk_test_your_stripe_test_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
+# Claude (Anthropic). Leave empty to disable AI analysis.
+ANTHROPIC_API_KEY=
+# ANTHROPIC_MODEL=claude-opus-4-8
 
 # ============================================
 # APPLICATION SETTINGS
@@ -114,8 +105,8 @@ CELERY_WORKER_CONCURRENCY=4
 ### Admin User (Initial Setup)
 
 ```yaml
-Email: admin@wildbox.local
-Password: (generated during first run)
+Email: ${INITIAL_ADMIN_EMAIL}      # set in your .env before first start
+Password: ${INITIAL_ADMIN_PASSWORD}  # set in your .env before first start
 Role: Administrator
 ```
 
@@ -135,9 +126,9 @@ Role: Analyst
 
 ```bash
 # Request authentication token
-curl -X POST http://localhost:8001/token \
+curl -X POST http://localhost:8001/auth/jwt/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@wildbox.local&password=your-password"
+  -d "username=$INITIAL_ADMIN_EMAIL&password=$INITIAL_ADMIN_PASSWORD"
 
 # Response:
 {
@@ -185,14 +176,14 @@ curl -X GET http://localhost:8000/v1/tools \
 
 ```bash
 # Change PostgreSQL password
-docker-compose exec postgres \
+docker compose exec postgres \
   psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'new-secure-password';"
 
 # Update .env
 sed -i 's/DATABASE_PASSWORD=postgres/DATABASE_PASSWORD=new-secure-password/' .env
 
 # Restart services
-docker-compose restart
+docker compose restart
 ```
 
 ### 2. Generate Secure JWT Secret
@@ -224,7 +215,7 @@ CORS_ORIGINS=https://yourdomain.com,https://app.yourdomain.com
 
 ### 5. Enable HTTPS/TLS
 
-See `nginx-config.conf` for SSL certificate configuration.
+Configure TLS on the gateway service (see `haproxy/` and `docker-compose.prod.yml`).
 
 ---
 
@@ -234,7 +225,7 @@ See `nginx-config.conf` for SSL certificate configuration.
 
 ```bash
 # Access identity service
-docker-compose exec open-security-identity bash
+docker compose exec identity bash
 
 # Run user creation script
 python -c "
@@ -261,7 +252,7 @@ print(f'User created: {new_user.email}')
 
 ```bash
 # Access identity service
-docker-compose exec open-security-identity bash
+docker compose exec identity bash
 
 # Run password reset script
 python -c "
@@ -284,7 +275,7 @@ if user:
 
 ```bash
 # Access identity service
-docker-compose exec open-security-identity bash
+docker compose exec identity bash
 
 # Query users
 python -c "
@@ -322,9 +313,9 @@ Signature: HMACSHA256(header.payload, secret)
 ```bash
 # Tokens expire after 1 hour by default
 # To get a new token, authenticate again
-curl -X POST http://localhost:8001/token \
+curl -X POST http://localhost:8001/auth/jwt/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin@wildbox.local&password=password"
+  -d "username=$INITIAL_ADMIN_EMAIL&password=$INITIAL_ADMIN_PASSWORD"
 ```
 
 ### Revoke Tokens
@@ -371,11 +362,11 @@ curl -X POST http://localhost:8001/logout \
 
 ```bash
 # Check if user exists
-docker-compose exec postgres \
+docker compose exec postgres \
   psql -U postgres -d wildbox -c "SELECT email, is_active FROM users;"
 
 # Create admin user if missing
-docker-compose exec open-security-identity python -c "
+docker compose exec identity python -c "
 from app.db import SessionLocal
 from app.models import User
 from passlib.context import CryptContext
@@ -399,11 +390,11 @@ print('Admin user created')
 
 ```bash
 # Verify API key is set in environment
-docker-compose exec open-security-tools env | grep API_KEY
+docker compose exec open-security-tools env | grep API_KEY
 
 # Update .env and restart
 echo "API_KEY=dev-api-key-123" >> .env
-docker-compose restart open-security-tools
+docker compose restart open-security-tools
 ```
 
 ---

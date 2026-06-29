@@ -189,10 +189,12 @@ curl http://localhost:8001/health
 
 ### Default Credentials
 
-- **Email**: `admin@wildbox.security`
-- **Password**: `CHANGE-THIS-PASSWORD`
+The first admin account is created from the values you set in `.env`:
 
-**Change default credentials immediately after first login.**
+- **Email**: `INITIAL_ADMIN_EMAIL`
+- **Password**: `INITIAL_ADMIN_PASSWORD`
+
+Set both to strong values before the first start, and change the password after first login.
 
 ### Next Steps
 
