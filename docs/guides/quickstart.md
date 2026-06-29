@@ -19,7 +19,7 @@ Before starting, ensure you have installed:
 
 ```bash
 docker --version
-docker-compose --version
+docker compose --version
 git --version
 ```
 
@@ -56,8 +56,8 @@ DATABASE_URL=postgresql+asyncpg://postgres:secure_password@postgres:5432/wildbox
 # API Gateway
 API_KEY=your-secure-api-key-here
 
-# OpenAI (for AI-powered features)
-OPENAI_API_KEY=sk-your-actual-key
+# Claude (Anthropic) — optional; enables AI threat analysis
+ANTHROPIC_API_KEY=sk-ant-your-actual-key
 
 # JWT Security
 JWT_SECRET_KEY=your-secure-jwt-secret-min-32-chars
@@ -65,9 +65,6 @@ JWT_SECRET_KEY=your-secure-jwt-secret-min-32-chars
 # Redis
 REDIS_URL=redis://redis:6379/0
 
-# Stripe (if using billing)
-STRIPE_SECRET_KEY=sk_test_your_stripe_key
-STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 ```
 
 ---
@@ -78,32 +75,32 @@ STRIPE_WEBHOOK_SECRET=whsec_your_webhook_secret
 
 ```bash
 # Start all services in the background
-docker-compose up -d
+docker compose up -d
 
 # Check service status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 
 # Stop everything
-docker-compose down
+docker compose down
 ```
 
 ### Option B: Run Specific Services
 
 ```bash
-# Start only the dashboard and API
-docker-compose up -d postgres redis nginx open-security-identity open-security-tools
+# Start only the core (gateway, identity, tools API) plus datastores
+docker compose up -d postgres wildbox-redis gateway identity api
 
 # Or start individual services
-docker-compose up -d postgres redis
+docker compose up -d postgres wildbox-redis
 
 # Wait for databases to be ready
 sleep 10
 
 # Then start application services
-docker-compose up -d open-security-identity open-security-tools
+docker compose up -d identity api
 ```
 
 ---
@@ -119,7 +116,7 @@ curl http://localhost:8001/health
 curl http://localhost:8006/health
 
 # Expected response:
-# {"status":"healthy","timestamp":"2024-11-07T...","version":"1.0.0"}
+# {"status":"healthy","timestamp":"...","version":"..."}
 ```
 
 ---
@@ -130,10 +127,8 @@ Open your browser and navigate to:
 
 | Service | URL | Default Credentials |
 | --------- | ----- | ------------------- |
-| **Dashboard** | http://localhost:3000 | See `QUICKSTART_CREDENTIALS.md` |
+| **Dashboard** | http://localhost:3000 | Set via `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD` in `.env` |
 | **API Docs** | http://localhost:8000/docs | N/A |
-| **Prometheus** | http://localhost:9090 | N/A |
-| **Grafana** | http://localhost:3001 | admin / admin |
 
 ---
 
@@ -143,11 +138,11 @@ Open your browser and navigate to:
 
 ```bash
 # Get initial admin token
-curl -X POST http://localhost:8001/login \
+curl -X POST http://localhost:8001/auth/jwt/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@wildbox.local",
-    "password": "your-admin-password"
+    "email": "$INITIAL_ADMIN_EMAIL",
+    "password": "$INITIAL_ADMIN_PASSWORD"
   }'
 
 # Use the returned token for API requests
@@ -158,7 +153,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/dashboard
 
 ```bash
 # Access the identity service shell
-docker-compose exec open-security-identity bash
+docker compose exec identity bash
 
 # Reset password
 python -c "
@@ -179,24 +174,24 @@ hashed = pwd_context.hash('new-password-here')
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
-docker-compose logs -f open-security-identity
-docker-compose logs -f open-security-agents
+docker compose logs -f identity
+docker compose logs -f agents
 
 # Last 100 lines
-docker-compose logs --tail=100 open-security-identity
+docker compose logs --tail=100 identity
 ```
 
 ### Run Database Migrations
 
 ```bash
 # For PostgreSQL-based services
-docker-compose exec open-security-identity \
+docker compose exec identity \
   alembic upgrade head
 
-docker-compose exec open-security-data \
+docker compose exec data \
   alembic upgrade head
 ```
 
@@ -204,20 +199,20 @@ docker-compose exec open-security-data \
 
 ```bash
 # Access a service shell
-docker-compose exec open-security-identity bash
-docker-compose exec open-security-agents bash
+docker compose exec identity bash
+docker compose exec agents bash
 
 # Run a specific command
-docker-compose exec -T postgres psql -U postgres -d wildbox -c "SELECT COUNT(*) FROM users;"
+docker compose exec -T postgres psql -U postgres -d wildbox -c "SELECT COUNT(*) FROM users;"
 ```
 
 ### Test API Endpoints
 
 ```bash
 # Get authentication token
-TOKEN=$(curl -s -X POST http://localhost:8001/token \
+TOKEN=$(curl -s -X POST http://localhost:8001/auth/jwt/login \
   -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=admin&password=your-password" | jq -r '.access_token')
+  -d "username=$INITIAL_ADMIN_EMAIL&password=$INITIAL_ADMIN_PASSWORD" | jq -r '.access_token')
 
 # Make authenticated requests
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/indicators
@@ -244,10 +239,10 @@ curl http://localhost:8000/stats | jq .
 
 ```bash
 # Check PostgreSQL
-docker-compose exec postgres pg_isready -U postgres
+docker compose exec postgres pg_isready -U postgres
 
 # Check Redis
-docker-compose exec redis redis-cli ping
+docker compose exec wildbox-redis redis-cli ping
 ```
 
 ### Memory & Disk Usage
@@ -268,24 +263,24 @@ docker system df
 
 ```bash
 # Check error logs
-docker-compose logs open-security-identity
+docker compose logs identity
 
 # Rebuild images
-docker-compose build --no-cache
+docker compose build --no-cache
 
 # Restart services
-docker-compose restart
+docker compose restart
 
 # Full reset (WARNING: Deletes data)
-docker-compose down -v
-docker-compose up -d
+docker compose down -v
+docker compose up -d
 ```
 
 ### Can't Connect to API
 
 ```bash
 # Verify services are running
-docker-compose ps
+docker compose ps
 
 # Check if ports are open
 netstat -an | grep 8000
@@ -299,13 +294,13 @@ curl -v http://localhost:8000/health
 
 ```bash
 # Check PostgreSQL logs
-docker-compose logs postgres
+docker compose logs postgres
 
 # Verify database exists
-docker-compose exec postgres psql -U postgres -l
+docker compose exec postgres psql -U postgres -l
 
 # Check Redis connection
-docker-compose exec redis redis-cli info
+docker compose exec wildbox-redis redis-cli info
 ```
 
 ### Out of Memory or Disk Space
@@ -318,7 +313,7 @@ docker system prune -a
 du -sh ./*
 
 # Reduce log retention
-docker-compose down
+docker compose down
 # Edit docker-compose.yml and adjust volumes
 ```
 
@@ -328,12 +323,12 @@ docker-compose down
 
 After successful deployment:
 
-1. **Security Hardening**: Review [SECURITY_REMEDIATION_CHECKLIST.md](SECURITY_REMEDIATION_CHECKLIST.md)
-2. **Full Documentation**: See [README.md](README.md) for comprehensive information
+1. **Security Hardening**: Review [remediation checklist](../security/remediation-checklist.md)
+2. **Full Documentation**: See [README.md](../../README.md) for comprehensive information
 3. **API Documentation**: Visit http://localhost:8000/docs for interactive API docs
 4. **Monitoring Setup**: Configure Grafana dashboards and alerting rules
 5. **Integration**: Set up external integrations (Slack, email, webhooks, etc.)
-6. **Custom Playbooks**: Create YAML-based automation playbooks in [open-security-responder](open-security-responder)
+6. **Custom Playbooks**: Create YAML-based automation playbooks in [open-security-responder](https://github.com/fabriziosalmi/wildbox/tree/main/open-security-responder)
 
 ---
 
@@ -346,13 +341,13 @@ For production use:
 cp .env .env.production
 nano .env.production
 
-# 2. Use production docker-compose
-docker-compose -f docker-compose.yml \
+# 2. Use production docker compose
+docker compose -f docker-compose.yml \
                -f docker-compose.prod.yml \
                up -d
 
-# 3. Enable SSL/TLS in nginx
-# Edit nginx-config.conf and enable HTTPS
+# 3. Enable SSL/TLS on the gateway
+# Configure certificates for the gateway service (see haproxy/ and docker-compose.prod.yml)
 
 # 4. Set up monitoring and alerting
 # Configure Prometheus retention and Grafana alerts
@@ -379,16 +374,16 @@ docker-compose -f docker-compose.yml \
 
 | Command | Purpose |
 | --------- | --------- |
-| `docker-compose up -d` | Start all services |
-| `docker-compose down` | Stop all services |
-| `docker-compose logs -f` | View live logs |
-| `docker-compose ps` | Show running services |
-| `docker-compose exec <service> bash` | Access service shell |
-| `docker-compose restart <service>` | Restart specific service |
-| `docker-compose build` | Rebuild images |
+| `docker compose up -d` | Start all services |
+| `docker compose down` | Stop all services |
+| `docker compose logs -f` | View live logs |
+| `docker compose ps` | Show running services |
+| `docker compose exec <service> bash` | Access service shell |
+| `docker compose restart <service>` | Restart specific service |
+| `docker compose build` | Rebuild images |
 
 ---
 
 **Happy Securing!**
 
-For questions or issues, refer to the comprehensive [README.md](README.md) or open an issue on GitHub.
+For questions or issues, refer to the comprehensive [README.md](../../README.md) or open an issue on GitHub.
