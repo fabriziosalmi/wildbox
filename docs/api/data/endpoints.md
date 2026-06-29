@@ -561,7 +561,7 @@ done
 ## Related Documentation
 
 - [Security Policy](../../security/policy.md) - Authentication requirements
-- [API Reference Hub](../api-reference.html) - All service endpoints
+- [API Reference Hub](../../api-reference.html) - All service endpoints
 - [Guardian Service API](../guardian/endpoints.md) - Vulnerability management
 - [Agents Service API](../agents/endpoints.md) - Threat analysis
 
