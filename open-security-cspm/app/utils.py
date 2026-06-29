@@ -49,15 +49,19 @@ def _calculate_compliance_score(scan_results: Dict[str, Any]) -> float:
     """
     if not scan_results.get('results'):
         return 0.0
-    
+
     results = scan_results['results']
-    total_checks = len(results)
+    # Score over checks that produced a real verdict only. Not-implemented /
+    # skipped / errored checks are excluded so an unrun check never counts as
+    # (or against) compliance.
     passed_checks = sum(1 for result in results if result.get('status') == 'passed')
-    
-    if total_checks == 0:
+    failed_checks = sum(1 for result in results if result.get('status') == 'failed')
+    evaluated_checks = passed_checks + failed_checks
+
+    if evaluated_checks == 0:
         return 0.0
-    
-    return round((passed_checks / total_checks) * 100, 2)
+
+    return round((passed_checks / evaluated_checks) * 100, 2)
 
 
 def _generate_executive_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:

@@ -225,7 +225,9 @@ export interface ComplianceFinding {
   title: string
   description: string
   severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  status: 'passed' | 'failed' | 'warning'
+  // Backend (open-security-cspm) statuses. `not_implemented` means the check
+  // has no real implementation yet and must never be shown as passed.
+  status: 'passed' | 'failed' | 'warning' | 'error' | 'skipped' | 'not_implemented'
   resource: string
   region: string
   category: string
