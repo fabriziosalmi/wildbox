@@ -56,8 +56,8 @@ class CheckECRLifecyclePolicy(BaseCheck):
                 resource_type="AWS::ecr::Resource",
                 resource_name="placeholder",
                 region=region,
-                status=CheckStatus.PASSED,
-                message="Check implementation needed - placeholder",
+                status=CheckStatus.NOT_IMPLEMENTED,
+                message="Check not implemented yet — no assessment performed",
                 details={
                     'note': 'This check needs to be implemented with actual AWS API calls',
                     'service': 'ecr',

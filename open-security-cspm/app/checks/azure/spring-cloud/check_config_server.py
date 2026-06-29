@@ -56,8 +56,8 @@ class CheckSpringCloudConfigServer(BaseCheck):
                 resource_type="AZURE::spring_cloud::Resource",
                 resource_name="placeholder",
                 region=region,
-                status=CheckStatus.PASSED,
-                message="Check implementation needed - placeholder",
+                status=CheckStatus.NOT_IMPLEMENTED,
+                message="Check not implemented yet — no assessment performed",
                 details={
                     'note': 'This check needs to be implemented with actual AZURE API calls',
                     'service': 'spring-cloud',

@@ -199,7 +199,8 @@ class ScanReportSchema(BaseModel):
     failed_checks: int = Field(..., description="Number of failed checks")
     error_checks: int = Field(..., description="Number of checks with errors")
     skipped_checks: int = Field(..., description="Number of skipped checks")
-    
+    not_implemented_checks: int = Field(0, description="Number of checks not yet implemented (never counted as passed)")
+
     # Findings by severity
     critical_findings: int = Field(..., description="Critical severity findings")
     high_findings: int = Field(..., description="High severity findings")

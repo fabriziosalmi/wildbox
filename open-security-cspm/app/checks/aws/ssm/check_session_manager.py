@@ -55,7 +55,7 @@ class CheckSSMSessionManager(BaseCheck):
                 resource_type="AWS::ssm::Resource",
                 resource_name="placeholder",
                 region=region,
-                status=CheckStatus.PASSED,
+                status=CheckStatus.NOT_IMPLEMENTED,
                 message="Check implementation needed",
                 details={'note': 'This check needs to be implemented'}
             ))

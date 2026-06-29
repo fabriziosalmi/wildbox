@@ -25,6 +25,9 @@ class CheckStatus(str, Enum):
     FAILED = "failed"
     ERROR = "error"
     SKIPPED = "skipped"
+    # A check that has no real implementation yet. Never report these as PASSED:
+    # an unimplemented check that "passes" is a false compliance signal.
+    NOT_IMPLEMENTED = "not_implemented"
 
 
 class CloudProvider(str, Enum):
@@ -158,6 +161,7 @@ class ScanReport(BaseModel):
     failed_checks: int = 0
     error_checks: int = 0
     skipped_checks: int = 0
+    not_implemented_checks: int = 0
     critical_findings: int = 0
     high_findings: int = 0
     medium_findings: int = 0
@@ -195,6 +199,8 @@ class ScanReport(BaseModel):
             self.error_checks += 1
         elif result.status == CheckStatus.SKIPPED:
             self.skipped_checks += 1
+        elif result.status == CheckStatus.NOT_IMPLEMENTED:
+            self.not_implemented_checks += 1
     
     def _get_check_severity(self, check_id: str) -> CheckSeverity:
         """Get severity for a check ID. This would be enhanced with check registry."""
@@ -206,15 +212,26 @@ class ScanReport(BaseModel):
         self.completed_at = datetime.utcnow()
         self.status = "completed"
         
-        # Calculate compliance score (percentage of passed checks)
-        if self.total_checks > 0:
-            self.compliance_score = (self.passed_checks / self.total_checks) * 100
+        # Calculate compliance score over checks that actually produced a verdict.
+        # Not-implemented / skipped / errored checks are excluded from the
+        # denominator so they neither inflate nor deflate the score — only real
+        # pass/fail results count.
+        evaluated_checks = self.passed_checks + self.failed_checks
+        if evaluated_checks > 0:
+            self.compliance_score = (self.passed_checks / evaluated_checks) * 100
         else:
             self.compliance_score = 0.0
         
         # Generate summary
         self.summary = {
             "duration_seconds": (self.completed_at - self.started_at).total_seconds(),
+            "checks_by_status": {
+                "passed": self.passed_checks,
+                "failed": self.failed_checks,
+                "error": self.error_checks,
+                "skipped": self.skipped_checks,
+                "not_implemented": self.not_implemented_checks,
+            },
             "findings_by_severity": {
                 "critical": self.critical_findings,
                 "high": self.high_findings,
