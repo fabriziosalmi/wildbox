@@ -8,6 +8,10 @@
     },
     {
       "pattern": "^https://www\\.youtube\\.com/watch"
+    },
+    {
+      "comment": "LibHunt bot-blocks automated requests with HTTP 403; the badge is valid in a browser.",
+      "pattern": "^https://www\\.libhunt\\.com"
     }
   ],
   "replacementPatterns": [
