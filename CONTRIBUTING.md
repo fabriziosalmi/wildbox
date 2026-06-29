@@ -56,7 +56,7 @@ curl http://localhost:8001/health
 
 # 9. Access the dashboard
 # Open http://localhost:3000
-# Login: admin@wildbox.security / CHANGE-THIS-PASSWORD
+# Log in with the INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD you set in .env
 ```
 
 ### Running Tests
@@ -209,6 +209,44 @@ Follow our [Security Policy](SECURITY.md):
 2. Subject: `[SECURITY] Brief Description`
 3. Include: Description, reproduction steps, impact assessment
 4. Expect response within 48 hours
+
+---
+
+## Service Layout
+
+Backend services are FastAPI apps under `open-security-*/`. **`open-security-identity` is the reference layout** — new services and refactors should converge on it:
+
+```text
+open-security-<name>/
+├── app/
+│   ├── main.py          # FastAPI app, routers wired, health endpoint
+│   ├── config.py        # Settings (env-driven; no hardcoded secrets)
+│   ├── auth.py          # Gateway auth dependency (see note below)
+│   ├── database.py      # DB engine/session setup
+│   ├── models.py        # ORM models
+│   ├── schemas.py       # Pydantic request/response schemas
+│   └── api_v1/          # Versioned routers (endpoints grouped by resource)
+├── alembic/             # DB migrations (services with their own database)
+├── tests/               # Service tests
+├── requirements.txt
+└── Dockerfile
+```
+
+Conventions:
+
+- Authentication goes through the shared gateway dependency
+  (`open_security_shared.gateway_auth`); services trust the gateway-stamped
+  `X-Wildbox-*` headers and the `GATEWAY_INTERNAL_SECRET` proof-of-origin. Don't
+  reimplement auth per service.
+- Settings come from the environment via `config.py`; never hardcode secrets,
+  ports, or credentials.
+- Django services (e.g. `open-security-guardian`) keep their framework layout but
+  follow the same env/auth conventions.
+
+Known deviations to converge over later sprints (Sprint 1–2): several services
+still carry their own copy of the gateway-auth logic and import the shared code
+via `sys.path` shims rather than the packaged dependency — these are being
+consolidated onto `open_security_shared`.
 
 ---
 
