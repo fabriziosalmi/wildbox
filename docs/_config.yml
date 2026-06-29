@@ -73,6 +73,41 @@ exclude:
   - Gemfile.lock
   - README.md
   - LICENSE
+  # Internal/engineering docs kept in the repo (and referenced by SECURITY.md,
+  # CI scripts, etc.) but intentionally NOT published as standalone pages on the
+  # site. The live site is the HTML pages + the guides/ and security/ content
+  # rendered through docs.html.
+  - index.md
+  - ARCHITECTURE_DECISIONS.md
+  - ARCHITECTURE_STACK_JUSTIFICATION.md
+  - DATA_SERVICE_API_DOCUMENTATION.md
+  - DATA_SERVICE_EXPLORATION_INDEX.md
+  - DATA_SERVICE_QUICK_REFERENCE.md
+  - DEPENDENCY_MANAGEMENT_GUIDE.md
+  - DOCUMENTATION_MIGRATION.md
+  - DOCUMENTATION_QUALITY_AUDIT.md
+  - DOCUMENTATION_STYLE_GUIDE.md
+  - ENGINEERING_STANDARDS.md
+  - ERROR_HANDLING_REFACTORING.md
+  - FAANG_PATTERNS_IMPLEMENTATION.md
+  - GATEWAY_AUTHENTICATION_GUIDE.md
+  - GIT_COMMIT_SQUASH_GUIDE.md
+  - GIT_SECURITY_AUDIT.md
+  - GUARDIAN_API_ENDPOINTS.md
+  - GUARDIAN_ENDPOINTS_SUMMARY.txt
+  - GUARDIAN_EXPLORATION_INDEX.md
+  - GUARDIAN_QUICK_REFERENCE.md
+  - OBSERVABILITY_ROADMAP.md
+  - PRE_COMMIT_HOOKS.md
+  - SECURITY_SECRETS_ROTATION.md
+  - SERVICE_CONSOLIDATION_ANALYSIS.md
+  - SERVICE_LIFECYCLE.md
+  - TESTING_STRATEGY.md
+  - guardian/
+  - api/CONTRIBUTING.md
+  - api/GENERATION_GUIDE.md
+  - api/README.md
+  - api/TEMPLATE.md
 
 # Enable automatic sitemap
 jekyll-sitemap:
