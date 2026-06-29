@@ -97,6 +97,26 @@ async def get_user_from_gateway_headers(
         ```
     """
     
+    # Fail closed: without GATEWAY_INTERNAL_SECRET the service cannot verify that
+    # a request actually came from the gateway, so the X-Wildbox-* headers can't
+    # be trusted at all. Refuse to operate rather than trust forged headers.
+    # (Mirrors identity's /authorize, which also returns 503 when unconfigured.)
+    expected_secret = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if not expected_secret:
+        logger.error(
+            "GATEWAY_INTERNAL_SECRET not configured — refusing to trust gateway "
+            "headers (fail-closed)."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "Service misconfigured",
+                "message": "GATEWAY_INTERNAL_SECRET is not set; the service cannot "
+                           "verify gateway origin and will not trust request headers.",
+                "code": "GATEWAY_SECRET_NOT_CONFIGURED",
+            },
+        )
+
     # Check if headers are present
     if not x_wildbox_user_id or not x_wildbox_team_id:
         logger.error(
@@ -115,22 +135,18 @@ async def get_user_from_gateway_headers(
 
     # Proof-of-origin: the X-Wildbox-* headers are only trustworthy when the
     # request also carries the shared gateway secret (which the gateway stamps
-    # on every proxied request and clients cannot supply). Without this, a
-    # request reaching the service directly with forged headers would be trusted.
-    expected_secret = os.getenv("GATEWAY_INTERNAL_SECRET")
-    if expected_secret:
-        if not x_gateway_secret or not hmac.compare_digest(x_gateway_secret, expected_secret):
-            logger.warning("Rejected gateway headers without a valid X-Gateway-Secret")
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={
-                    "error": "Gateway authentication required",
-                    "message": "Direct access is not permitted; requests must traverse the gateway.",
-                    "code": "GATEWAY_SECRET_REQUIRED",
-                },
-            )
-    else:
-        logger.warning("GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
+    # on every proxied request and clients cannot supply). Without it, a request
+    # reaching the service directly with forged headers would otherwise be trusted.
+    if not x_gateway_secret or not hmac.compare_digest(x_gateway_secret, expected_secret):
+        logger.warning("Rejected gateway headers without a valid X-Gateway-Secret")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "Gateway authentication required",
+                "message": "Direct access is not permitted; requests must traverse the gateway.",
+                "code": "GATEWAY_SECRET_REQUIRED",
+            },
+        )
     
     # Validate UUIDs
     try:

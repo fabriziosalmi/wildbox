@@ -126,17 +126,23 @@ class GatewayAuthMiddleware(MiddlewareMixin):
             # X-Wildbox-User-ID/Role and authenticate as anyone. Enforced when the
             # secret is configured.
             gw_secret = os.getenv('GATEWAY_INTERNAL_SECRET')
-            if gw_secret:
-                provided = request.META.get('HTTP_X_GATEWAY_SECRET', '')
-                if not hmac.compare_digest(provided, gw_secret):
-                    logger.warning("[GATEWAY-AUTH] Rejected X-Wildbox-* headers without a valid gateway secret")
-                    return JsonResponse({
-                        'error': 'forbidden',
-                        'message': 'Direct access is not permitted; requests must traverse the gateway.',
-                        'code': 'GATEWAY_SECRET_REQUIRED',
-                    }, status=403)
-            else:
-                logger.warning("[GATEWAY-AUTH] GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
+            if not gw_secret:
+                # Fail closed: without the secret we cannot verify the request
+                # came from the gateway, so the X-Wildbox-* headers can't be trusted.
+                logger.error("[GATEWAY-AUTH] GATEWAY_INTERNAL_SECRET not configured — refusing to trust gateway headers (fail-closed).")
+                return JsonResponse({
+                    'error': 'service_misconfigured',
+                    'message': 'GATEWAY_INTERNAL_SECRET is not set; the service cannot verify gateway origin.',
+                    'code': 'GATEWAY_SECRET_NOT_CONFIGURED',
+                }, status=503)
+            provided = request.META.get('HTTP_X_GATEWAY_SECRET', '')
+            if not hmac.compare_digest(provided, gw_secret):
+                logger.warning("[GATEWAY-AUTH] Rejected X-Wildbox-* headers without a valid gateway secret")
+                return JsonResponse({
+                    'error': 'forbidden',
+                    'message': 'Direct access is not permitted; requests must traverse the gateway.',
+                    'code': 'GATEWAY_SECRET_REQUIRED',
+                }, status=403)
             try:
                 # Validate UUIDs
                 user_id = uuid.UUID(user_id_header)
