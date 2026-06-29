@@ -15,8 +15,6 @@ import {
   Settings,
   Menu,
   X,
-  Bell,
-  Search,
   User,
   LogOut,
   ChevronDown,
@@ -329,33 +327,10 @@ export function MainLayout({ children }: MainLayoutProps) {
               {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
             
-            {/* Search */}
-            <div className="hidden md:flex items-center gap-2 bg-accent/50 rounded-md px-3 py-2 min-w-96">
-              <Search className="w-4 h-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder="Search IOCs, playbooks, tools..."
-                className="bg-transparent border-0 outline-none flex-1 text-sm placeholder:text-muted-foreground"
-              />
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Notifications */}
-            <button className="relative p-2 rounded-md hover:bg-accent">
-              <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full text-xs flex items-center justify-center text-white">
-                3
-              </span>
-            </button>
-
-            {/* Status Indicator */}
-            <div className="flex items-center gap-2 px-3 py-1 bg-green-100 dark:bg-green-900 rounded-full">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-xs font-medium text-green-800 dark:text-green-100">
-                All Systems Operational
-              </span>
-            </div>
+            {/* Global search, notifications and the system-status pill are
+                hidden until they're backed by real data — showing a static
+                badge / always-green "operational" pill / dead search box made
+                the app look like a mockup. */}
           </div>
         </header>
 
