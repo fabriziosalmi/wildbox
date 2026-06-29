@@ -558,7 +558,7 @@ done
 ## Related Documentation
 
 - [Security Policy](../../security/policy.md) - Authentication requirements
-- [API Reference Hub](../api-reference.html) - All service endpoints
+- [API Reference Hub](../../api-reference.html) - All service endpoints
 - [Guardian Service API](../guardian/endpoints.md) - Asset management
 - [Responder Service API](../responder/endpoints.md) - Incident response
 

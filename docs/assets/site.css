@@ -1,0 +1,168 @@
+/* Wildbox documentation site — shared design system.
+   Dark, restrained, professional. Single blue accent, no animated gradients,
+   no glow/glass effects. Tailwind (Play CDN) handles layout & spacing; this
+   file owns colors, surfaces and the small set of themed components. */
+
+@import url('../vendor/fonts/fonts.css');
+
+:root {
+  --bg: #0a0b0d;
+  --bg-elev: #0f1115;
+  --surface: #15171b;
+  --surface-hover: #1a1d22;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text: #e7e9ee;
+  --text-muted: #9aa1ac;
+  --text-faint: #6b7280;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-soft: rgba(59, 130, 246, 0.12);
+  --accent-border: rgba(59, 130, 246, 0.28);
+  --radius: 12px;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Honor reduced-motion preferences everywhere. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ---- Text helpers ---- */
+.text-muted { color: var(--text-muted); }
+.text-faint { color: var(--text-faint); }
+.accent { color: var(--accent); }
+a { color: inherit; }
+
+/* ---- Navigation ---- */
+.site-nav {
+  background: rgba(10, 11, 13, 0.85);
+  backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.nav-link {
+  color: var(--text-muted);
+  transition: color 0.15s ease;
+}
+.nav-link:hover,
+.nav-link.is-active {
+  color: var(--text);
+}
+
+/* ---- Surfaces / cards ---- */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.card:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-hover);
+}
+.surface {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.divider { border-color: var(--border); }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+}
+.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+}
+.btn-secondary:hover { border-color: var(--text-muted); background: rgba(255, 255, 255, 0.03); }
+
+/* ---- Icon badge for feature cards ---- */
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+}
+.icon-badge svg { width: 22px; height: 22px; }
+.icon-inline {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* ---- Code / terminal ---- */
+.code-block {
+  background: #0d0f12;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 0.875rem;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+.inline-code {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.1rem 0.4rem;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 0.85em;
+  color: var(--accent);
+}
+
+/* ---- Step number ---- */
+.step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* ---- Mobile menu ---- */
+.mobile-menu {
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  background: var(--bg-elev);
+  border-left: 1px solid var(--border);
+}
+.mobile-menu.is-open { transform: translateX(0); }

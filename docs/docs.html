@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wildbox Documentation</title>
     <meta name="description" content="Complete Wildbox Security Platform documentation, guides, and API reference">
-    <meta property="og:image" content="https://wildbox.security/images/wildbox.png">
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
     
     <!-- Favicon and PWA Icons -->
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -26,514 +26,191 @@
     <script src="vendor/highlight.js/languages/json.min.js"></script>
     <script src="vendor/highlight.js/languages/xml.min.js"></script>
     <script src="vendor/highlight.js/languages/yaml.min.js"></script>
-<style>
-        @import url('vendor/fonts/fonts.css');
+<link rel="stylesheet" href="assets/site.css">
+    <style>
+        /* Documentation SPA — page-specific styles built on assets/site.css tokens. */
 
-        * {
-            scroll-behavior: smooth;
-        }
+        /* SPA sections */
+        .doc-section { display: none; }
+        .doc-section.active { display: block; }
 
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            -webkit-font-smoothing: antialiased;
-            -moz-osx-font-smoothing: grayscale;
-        }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 50%, #1d4ed8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            animation: gradient-shift 3s ease infinite;
-            background-size: 200% 200%;
-        }
-
-        @keyframes gradient-shift {
-            0%, 100% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-        }
-
-        .glass-effect {
-            background: rgba(59, 130, 246, 0.05);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(59, 130, 246, 0.15);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .glass-effect:hover {
-            background: rgba(59, 130, 246, 0.08);
-            border-color: rgba(59, 130, 246, 0.3);
-        }
-
-        .doc-section {
-            display: none;
-        }
-
-        .doc-section.active {
-            display: block;
-        }
-
+        /* Sidebar nav buttons */
         .nav-button {
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 0.15s ease, color 0.15s ease;
             border-radius: 8px;
-            padding: 0.75rem 1rem;
         }
-
-        .nav-button:hover {
-            background: rgba(255, 255, 255, 0.05);
-            transform: translateX(4px);
-        }
-
+        .nav-button:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
         .nav-button.active {
-            background: rgba(59, 130, 246, 0.2);
-            border-left: 3px solid #3b82f6;
+            background: var(--accent-soft);
+            border-left: 3px solid var(--accent);
+            color: var(--text);
         }
 
-        .hover-lift {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
-                        box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+        /* Sidebar */
+        #sidebar { transition: transform 0.25s ease; }
+        #sidebar::-webkit-scrollbar { width: 8px; }
+        #sidebar::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+        #sidebar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 4px; }
+        #sidebar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+        #sidebar-overlay { transition: opacity 0.25s ease; }
+        @media (max-width: 768px) { main { width: 100%; } }
 
-        .hover-lift:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.35);
-        }
-
-        .animate-fade-in {
-            animation: fadeIn 0.8s ease-out forwards;
-            opacity: 0;
-        }
-
-        @keyframes fadeIn {
-            to { opacity: 1; }
-        }
-
-        .pulse-glow {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { 
-                box-shadow: 0 0 20px rgba(59, 130, 246, 0.4),
-                           0 0 40px rgba(59, 130, 246, 0.2);
-            }
-            50% { 
-                box-shadow: 0 0 30px rgba(59, 130, 246, 0.6),
-                           0 0 60px rgba(59, 130, 246, 0.3);
-            }
-        }
-
-        .feature-card {
-            position: relative;
-            overflow: hidden;
-        }
-
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.15), transparent);
-            transition: left 0.5s;
-        }
-
-        .feature-card:hover::before {
-            left: 100%;
-        }
-
+        /* Markdown content */
         .markdown-content h1, .markdown-content h2, .markdown-content h3,
         .markdown-content h4, .markdown-content h5, .markdown-content h6 {
-            margin-top: 1.5rem;
+            margin-top: 1.75rem;
             margin-bottom: 0.75rem;
             font-weight: 600;
+            color: var(--text);
         }
-
         .markdown-content h1 { font-size: 2rem; }
-        .markdown-content h2 { font-size: 1.5rem; color: #60a5fa; }
+        .markdown-content h2 { font-size: 1.5rem; }
         .markdown-content h3 { font-size: 1.25rem; }
+        .markdown-content p { margin: 0.75rem 0; line-height: 1.7; color: var(--text-muted); }
+        .markdown-content strong { color: var(--text); }
+        .markdown-content em { color: var(--text-muted); }
 
         .markdown-content code {
-            background: #1f2937;
-            color: #10b981;
-            padding: 0.2rem 0.4rem;
-            border-radius: 4px;
-            font-family: 'Monaco', 'Courier New', monospace;
-            font-size: 0.9em;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid var(--border);
+            color: var(--accent);
+            padding: 0.15rem 0.4rem;
+            border-radius: 5px;
+            font-family: 'SFMono-Regular', Consolas, monospace;
+            font-size: 0.875em;
         }
-
         .markdown-content pre {
-            background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+            background: #0d0f12;
             color: #e5e7eb;
-            padding: 1.5rem;
-            border-radius: 12px;
+            padding: 1.25rem;
+            border-radius: 10px;
             overflow-x: auto;
             margin: 1.5rem 0;
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
+            border: 1px solid var(--border);
         }
+        .markdown-content pre code { background: none; border: none; color: inherit; padding: 0; }
+        .markdown-content .hljs { padding: 1rem; }
 
-        .markdown-content pre code {
-            background: none;
-            color: inherit;
-            padding: 0;
-        }
-
-        .markdown-content ul, .markdown-content ol {
-            margin-left: 1.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .markdown-content li {
-            margin-bottom: 0.5rem;
-        }
+        .markdown-content ul, .markdown-content ol { margin: 0.5rem 0 1rem 0; padding-left: 1.5rem; }
+        .markdown-content li { margin: 0.3rem 0; line-height: 1.6; }
+        .markdown-content .list-none { list-style: none; padding-left: 0; }
+        .markdown-content .list-none li { margin: 0.35rem 0; padding-left: 1.5rem; }
+        .markdown-content input[type="checkbox"] { margin-right: 0.5rem; cursor: default; accent-color: var(--accent); }
+        .markdown-content input[type="checkbox"]:disabled { opacity: 0.8; }
 
         .markdown-content a {
-            color: #f87171;
+            color: var(--accent);
             text-decoration: none;
-            border-bottom: 1px solid #f87171;
+            border-bottom: 1px solid var(--accent-border);
+            transition: border-color 0.15s ease;
         }
-
-        .markdown-content a:hover {
-            color: #fca5a5;
-        }
+        .markdown-content a:hover { border-bottom-color: var(--accent); }
 
         .markdown-content blockquote {
-            border-left: 4px solid #ef4444;
+            border-left: 3px solid var(--accent);
             padding-left: 1rem;
-            margin-left: 0;
-            color: #9ca3af;
-        }
-
-        .markdown-content table {
-            width: 100%;
-            border-collapse: collapse;
             margin: 1rem 0;
+            color: var(--text-muted);
         }
+        .markdown-content hr { border: none; border-top: 1px solid var(--border); margin: 2rem 0; }
 
-        .markdown-content th, .markdown-content td {
-            border: 1px solid #4b5563;
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        .markdown-content th {
+            background: var(--accent-soft);
+            color: var(--text);
+            font-weight: 600;
             padding: 0.75rem;
             text-align: left;
+            border: 1px solid var(--border);
         }
+        .markdown-content td { padding: 0.75rem; border: 1px solid var(--border); color: var(--text-muted); }
+        .markdown-content tr:hover { background: rgba(255, 255, 255, 0.03); }
 
-        .markdown-content th {
-            background: rgba(59, 130, 246, 0.1);
-        }
-
+        /* API endpoint cards */
         .api-endpoint {
-            background: rgba(59, 130, 246, 0.05);
-            border-left: 4px solid #ef4444;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
             padding: 1.25rem;
             margin: 1.5rem 0;
-            border-radius: 8px;
-            transition: all 0.3s ease;
+            border-radius: 10px;
+            transition: border-color 0.15s ease, background-color 0.15s ease;
         }
-
-        .api-endpoint:hover {
-            background: rgba(59, 130, 246, 0.08);
-            transform: translateX(4px);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.15);
-        }
-
+        .api-endpoint:hover { background: var(--surface-hover); }
         .api-method {
             display: inline-block;
             padding: 0.25rem 0.5rem;
-            border-radius: 3px;
+            border-radius: 4px;
             font-weight: 600;
             font-size: 0.85rem;
             margin-right: 0.5rem;
         }
+        .method-get { background: rgba(59, 130, 246, 0.18); color: #7eacf7; }
+        .method-post { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+        .method-put { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+        .method-delete { background: rgba(239, 68, 68, 0.18); color: #f87171; }
 
-        .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-        .method-post { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .method-put { background: rgba(248, 113, 113, 0.2); color: #f87171; }
-        .method-delete { background: rgba(59, 130, 246, 0.2); color: #fca5a5; }
-
-        .loading { opacity: 1; }
-
-        /* Code Block Styles */
-        .code-wrapper {
-            position: relative;
-            margin: 1.5rem 0;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
-        }
-
-        .code-wrapper > pre {
-            margin: 0 !important;
-            border-radius: 0 !important;
-        }
-
+        /* Code block with copy button */
+        .code-wrapper { position: relative; margin: 1.5rem 0; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+        .code-wrapper > pre { margin: 0 !important; border-radius: 0 !important; border: none !important; }
         .copy-button {
             position: absolute;
             top: 10px;
             right: 10px;
-            background: rgba(59, 130, 246, 0.9);
-            color: white;
+            background: var(--accent);
+            color: #fff;
             border: none;
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.85rem;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: 600;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 0.15s ease;
             z-index: 10;
-            box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
         }
+        .copy-button:hover { background: var(--accent-hover); }
+        .copy-button.copied { background: #16a34a; }
 
-        .copy-button:hover {
-            background: rgba(37, 99, 235, 1);
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
-        }
-
-        .copy-button.copied {
-            background: rgba(34, 197, 94, 0.9);
-            box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
-        }
-
-        .markdown-content pre code {
-            padding: 0;
-        }
-
-        .markdown-content .hljs {
-            padding: 1rem;
-        }
-
-        /* Table Styles */
-        .markdown-content table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 1.5rem 0;
-        }
-
-        .markdown-content th {
-            background: rgba(59, 130, 246, 0.15);
-            color: #f87171;
-            font-weight: 600;
-            padding: 0.75rem;
-            text-align: left;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-        }
-
-        .markdown-content td {
-            padding: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .markdown-content tr:hover {
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        /* TOC Styles */
+        /* Table of contents */
         .toc {
-            background: rgba(59, 130, 246, 0.08);
-            border-left: 4px solid #3b82f6;
+            background: var(--accent-soft);
+            border: 1px solid var(--accent-border);
+            border-left: 3px solid var(--accent);
             padding: 1.5rem;
             margin: 2rem 0;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
         }
+        .toc h3 { margin: 0 0 0.5rem 0; color: var(--accent); }
+        .toc ul { list-style: none; padding-left: 0; }
+        .toc li { margin: 0.25rem 0; }
+        .toc a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s ease; }
+        .toc a:hover { border-bottom-color: var(--accent); }
 
-        .toc h3 {
-            margin: 0 0 0.5rem 0;
-            color: #60a5fa;
-        }
-
-        .toc ul {
-            list-style: none;
-            padding-left: 0;
-        }
-
-        .toc li {
-            margin: 0.25rem 0;
-        }
-
-        .toc a {
-            color: #60a5fa;
-            text-decoration: none;
-            border-bottom: 1px solid transparent;
-            transition: all 0.2s ease;
-        }
-
-        .toc a:hover {
-            border-bottom: 1px solid #60a5fa;
-        }
-
-        /* List Styles */
-        .markdown-content ul {
-            margin: 0.5rem 0 1rem 0;
-            padding-left: 1.5rem;
-        }
-
-        .markdown-content ol {
-            margin: 0.5rem 0 1rem 0;
-            padding-left: 1.5rem;
-        }
-
-        .markdown-content li {
-            margin: 0.25rem 0;
-            line-height: 1.6;
-        }
-
-        .markdown-content .list-none {
-            list-style: none;
-            padding-left: 0;
-        }
-
-        .markdown-content .list-none li {
-            margin: 0.35rem 0;
-            padding-left: 1.5rem;
-        }
-
-        /* Checkbox Styles */
-        .markdown-content input[type="checkbox"] {
-            margin-right: 0.5rem;
-            cursor: default;
-            accent-color: #ef4444;
-        }
-
-        .markdown-content input[type="checkbox"]:disabled {
-            opacity: 0.8;
-        }
-
-        .markdown-content input[type="checkbox"] + span {
-            line-height: 1.5;
-        }
-
-        /* Bold and Italic Styles */
-        .markdown-content strong {
-            color: #f5f5f5;
-        }
-
-        .markdown-content em {
-            color: #d1d5db;
-        }
-
-        /* Link Styles */
-        .markdown-content a {
-            color: #ef4444;
-            text-decoration: none;
-            border-bottom: 1px solid rgba(59, 130, 246, 0.3);
-            transition: all 0.2s ease;
-        }
-
-        .markdown-content a:hover {
-            border-bottom: 1px solid #ef4444;
-            text-decoration: underline;
-        }
-
-        /* Blockquote Styles */
-        .markdown-content blockquote {
-            border-left: 4px solid #ef4444;
-            padding-left: 1rem;
-            margin-left: 0;
-            margin-right: 0;
-            color: #9ca3af;
-            font-style: italic;
-        }
-
-        /* Paragraph and Text */
-        .markdown-content p {
-            margin: 0.75rem 0;
-            line-height: 1.7;
-            color: #e5e7eb;
-        }
-
-        .markdown-content code {
-            font-size: 0.9em;
-        }
-
-        /* Horizontal Rule */
-        .markdown-content hr {
-            border: none;
-            border-top: 2px solid rgba(59, 130, 246, 0.2);
-            margin: 2rem 0;
-        }
-
-        /* Smooth sidebar transitions */
-        #sidebar {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.3);
-        }
-
-        #sidebar::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        #sidebar::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
-        }
-
-        #sidebar::-webkit-scrollbar-thumb {
-            background: rgba(59, 130, 246, 0.5);
-            border-radius: 4px;
-        }
-
-        #sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(59, 130, 246, 0.7);
-        }
-
-        /* Ensure main content takes full width on mobile when sidebar is hidden */
-        @media (max-width: 768px) {
-            main {
-                width: 100%;
-            }
-        }
-
-        /* Mobile menu overlay animation */
-        #sidebar-overlay {
-            transition: opacity 0.3s ease-in-out;
-        }
-
-        /* Section transition */
-        .doc-section {
-            animation: slideIn 0.4s ease-out;
-        }
-
-        @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        /* Logo styling - invert colors and remove white background */
-        .logo-inverted {
-            filter: invert(1) brightness(1.2);
-            mix-blend-mode: screen;
-        }
+        .loading { color: var(--text-muted); }
     </style>
 </head>
-<body class="bg-black text-white">
+<body>
     <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-effect border-b border-blue-900/30">
+    <nav class="site-nav sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <div class="flex items-center gap-4">
                 <!-- Mobile Menu Button -->
-                <button id="mobile-menu-btn" class="md:hidden text-gray-300 hover:text-white transition" onclick="toggleSidebar()">
+                <button id="mobile-menu-btn" class="md:hidden text-muted hover:text-white transition" onclick="toggleSidebar()" aria-label="Toggle sidebar">
                     <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
                     </svg>
                 </button>
                 <a href="index.html" class="flex items-center gap-2 hover:opacity-80 transition">
-                    <img src="../wildbox.png" alt="Wildbox Logo" class="w-8 h-8 object-contain logo-inverted">
-                    <span class="text-xl font-bold">Wildbox Docs</span>
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
+                    <span class="text-lg font-semibold tracking-tight">Wildbox Docs</span>
                 </a>
             </div>
-            <div class="hidden md:flex gap-6">
-                <a href="index.html" class="text-gray-300 hover:text-white transition">Features</a>
-                <a href="index.html#how-it-works" class="text-gray-300 hover:text-white transition">How It Works</a>
-                <a href="docs.html" class="text-blue-400 transition">Documentation</a>
-                <a href="index.html#pricing" class="text-gray-300 hover:text-white transition">Pricing</a>
-                <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
+            <div class="hidden md:flex gap-8 items-center text-sm">
+                <a href="index.html#features" class="nav-link">Features</a>
+                <a href="index.html#how-it-works" class="nav-link">How it works</a>
+                <a href="docs.html" class="nav-link is-active">Documentation</a>
+                <a href="api-reference.html" class="nav-link">API</a>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
             </div>
         </div>
     </nav>
@@ -542,15 +219,9 @@
     <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-40 hidden md:hidden transition-opacity" onclick="toggleSidebar()"></div>
 
     <div class="flex min-h-screen relative">
-        <!-- Background gradient effect -->
-        <div class="fixed inset-0 pointer-events-none overflow-hidden">
-            <div class="absolute top-1/4 -left-1/4 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
-            <div class="absolute bottom-1/4 -right-1/4 w-96 h-96 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse" style="animation-delay: 1s;"></div>
-        </div>
-
         <!-- Sidebar Navigation -->
-        <aside id="sidebar" class="fixed md:static inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800 p-6 overflow-y-auto">
-            <h3 class="text-xl font-bold mb-6 gradient-text">Documentation</h3>
+        <aside id="sidebar" class="fixed md:static inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out z-40 w-64 border-r border-white/10 p-6 overflow-y-auto" style="background: var(--bg-elev);">
+            <h3 class="text-xl font-bold mb-6 accent">Documentation</h3>
 
             <div class="space-y-4">
                 <div class="space-y-2">
@@ -562,7 +233,7 @@
                         Credentials & Auth
                     </button>
                     <button onclick="loadDoc('ollama')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
-                        🤖 Ollama LLM Setup
+                        Ollama LLM Setup
                     </button>
                 </div>
 
@@ -578,7 +249,7 @@
                         Platform Audit Report
                     </button>
                     <button onclick="loadDoc('tools-service-audit')" class="nav-button w-full text-left px-3 py-2 rounded hover:bg-gray-800 transition text-sm">
-                        🆕 Tools Service Audit
+                        Tools Service Audit
                     </button>
                 </div>
 
@@ -624,9 +295,9 @@
             <div class="max-w-4xl mx-auto p-8">
                 <!-- Welcome Section (default) -->
                 <div id="welcome-section" class="doc-section active">
-                    <div class="mb-12 animate-fade-in">
+                    <div class="mb-12">
                         <h1 class="text-5xl md:text-6xl font-bold mb-4">
-                            <span class="gradient-text">Wildbox Documentation</span>
+                            <span class="accent">Wildbox Documentation</span>
                         </h1>
                         <p class="text-xl md:text-2xl text-gray-400 mb-8 leading-relaxed">
                             Complete guides, API reference, and security documentation for the Wildbox Security Platform.
@@ -634,44 +305,44 @@
                     </div>
 
                     <div class="grid md:grid-cols-2 gap-6 mb-12">
-                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('quickstart')">
-                            <div class="text-4xl mb-4">🚀</div>
-                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Get Started in 5 Minutes</h3>
+                        <div class="card p-8 rounded-xl cursor-pointer" onclick="loadDoc('quickstart')">
+                            <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg></span>
+                            <h3 class="text-lg font-semibold mb-2">Quick start</h3>
                             <p class="text-gray-400 leading-relaxed">Quickstart guide to deploy Wildbox with Docker Compose and verify services.</p>
                         </div>
 
-                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('security-status')">
-                            <div class="text-4xl mb-4">🔒</div>
-                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Security Status</h3>
+                        <div class="card p-8 rounded-xl cursor-pointer" onclick="loadDoc('security-status')">
+                            <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg></span>
+                            <h3 class="text-lg font-semibold mb-2">Security status</h3>
                             <p class="text-gray-400 leading-relaxed">Current security metrics, verification checks, and vulnerability tracking.</p>
                         </div>
 
-                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('api-docs')">
-                            <div class="text-4xl mb-4">📚</div>
-                            <h3 class="text-xl font-semibold mb-3 text-blue-400">API Reference</h3>
+                        <div class="card p-8 rounded-xl cursor-pointer" onclick="loadDoc('api-docs')">
+                            <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg></span>
+                            <h3 class="text-lg font-semibold mb-2">API reference</h3>
                             <p class="text-gray-400 leading-relaxed">Complete API documentation with examples for all services and endpoints.</p>
                         </div>
 
-                        <div class="glass-effect p-8 rounded-xl cursor-pointer hover-lift feature-card" onclick="loadDoc('deployment')">
-                            <div class="text-4xl mb-4">🚢</div>
-                            <h3 class="text-xl font-semibold mb-3 text-blue-400">Deployment Guide</h3>
+                        <div class="card p-8 rounded-xl cursor-pointer" onclick="loadDoc('deployment')">
+                            <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/></svg></span>
+                            <h3 class="text-lg font-semibold mb-2">Deployment guide</h3>
                             <p class="text-gray-400 leading-relaxed">Production deployment procedures, security configuration, and operations.</p>
                         </div>
                     </div>
 
-                    <div class="glass-effect p-10 rounded-xl hover-lift">
-                        <h2 class="text-3xl font-bold mb-6 gradient-text">Documentation by Role</h2>
+                    <div class="card p-10 rounded-xl">
+                        <h2 class="text-3xl font-bold mb-6 accent">Documentation by Role</h2>
                         <div class="space-y-6">
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">👨‍💻 Developer</h4>
+                                <h4 class="font-semibold accent mb-2 text-lg">Developer</h4>
                                 <p class="text-gray-400 leading-relaxed">Start with <button onclick="loadDoc('quickstart')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Quick Start</button>, then explore <button onclick="loadDoc('api-docs')" class="text-blue-400 hover:text-blue-300 hover:underline transition">API Documentation</button> and <button onclick="loadDoc('credentials')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Credentials Guide</button>.</p>
                             </div>
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">🛡️ Security Engineer</h4>
+                                <h4 class="font-semibold accent mb-2 text-lg">Security engineer</h4>
                                 <p class="text-gray-400 leading-relaxed">Review <button onclick="loadDoc('security-policy')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Security Policy</button> and <button onclick="loadDoc('security-audit')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Audit Report</button> for comprehensive security analysis.</p>
                             </div>
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold text-blue-400 mb-2 text-lg">⚙️ System Administrator</h4>
+                                <h4 class="font-semibold accent mb-2 text-lg">System administrator</h4>
                                 <p class="text-gray-400 leading-relaxed">Follow <button onclick="loadDoc('deployment')" class="text-blue-400 hover:text-blue-300 hover:underline transition">Deployment Guide</button> for production setup.</p>
                             </div>
                         </div>
@@ -708,7 +379,7 @@
                         <h1 id="api-documentation">API Documentation</h1>
                         <p>Wildbox provides comprehensive REST APIs for all services. Complete OpenAPI documentation is available below with full endpoint specifications, request/response examples, and authentication details.</p>
 
-                        <div class="glass-effect p-6 rounded-lg mb-8">
+                        <div class="card p-6 rounded-lg mb-8">
                             <p class="text-sm text-gray-400"><strong>Note:</strong> To generate fresh API documentation from running services, execute: <code>python3 scripts/generate-api-docs.py</code></p>
                         </div>
 
@@ -1270,31 +941,6 @@
                 // No hash - show welcome section
                 document.getElementById('welcome-section').classList.add('active');
             }
-            
-            // Animate elements on scroll
-            const observerOptions = {
-                threshold: 0.1,
-                rootMargin: '0px 0px -50px 0px'
-            };
-
-            const observer = new IntersectionObserver(function(entries) {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        entry.target.style.opacity = '1';
-                        entry.target.style.transform = 'translateY(0)';
-                    }
-                });
-            }, observerOptions);
-
-            // Observe all cards and sections
-            document.querySelectorAll('.hover-lift, .feature-card, .glass-effect').forEach(el => {
-                if (!el.style.opacity) {
-                    el.style.opacity = '0';
-                    el.style.transform = 'translateY(20px)';
-                    el.style.transition = 'opacity 0.6s ease-out, transform 0.6s ease-out';
-                }
-                observer.observe(el);
-            });
         });
 
         // Handle browser back/forward with hash navigation

@@ -1043,7 +1043,7 @@ done
 ## Related Documentation
 
 - [Security Policy](../../security/policy.md) - Authentication and authorization requirements
-- [API Reference Hub](../api-reference.html) - All service endpoints
+- [API Reference Hub](../../api-reference.html) - All service endpoints
 - [Integration Guide](../../guides/integrations.md) - Integration setup instructions
 - [Quickstart Guide](../../guides/quickstart.md) - Getting started with API
 

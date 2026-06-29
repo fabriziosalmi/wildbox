@@ -3,34 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
+    <meta name="theme-color" content="#0a0b0d">
     <meta name="description" content="Complete Wildbox API Reference - All endpoints documented with examples">
     <title>Wildbox API Reference</title>
     <script src="vendor/tailwindcss/tailwind.js"></script>
-    <link rel="icon" href="../wildbox.png">
+    <link rel="icon" href="/favicon.ico">
+    <link rel="stylesheet" href="assets/site.css">
     <style>
-        @import url('vendor/fonts/fonts.css');
-
-        body { font-family: 'Inter', sans-serif; }
-        code, pre { font-family: 'JetBrains Mono', monospace; }
-
-        .gradient-text {
-            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        .glass-effect {
-            background: rgba(59, 130, 246, 0.05);
-            backdrop-filter: blur(16px);
-            border: 1px solid rgba(59, 130, 246, 0.15);
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        .glass-effect:hover {
-            background: rgba(59, 130, 246, 0.08);
-            border-color: rgba(59, 130, 246, 0.3);
-        }
+        /* API Reference — page-specific styles built on assets/site.css tokens. */
+        code, pre { font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace; }
 
         .api-method {
             display: inline-block;
@@ -38,84 +20,60 @@
             border-radius: 4px;
             font-weight: 600;
             font-size: 0.85rem;
-            font-family: 'JetBrains Mono';
+            font-family: 'JetBrains Mono', monospace;
         }
-
-        .method-get { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
-        .method-post { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .method-put { background: rgba(248, 113, 113, 0.2); color: #f87171; }
-        .method-delete { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-        .method-patch { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+        .method-get { background: rgba(59, 130, 246, 0.18); color: #7eacf7; }
+        .method-post { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+        .method-put { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
+        .method-delete { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+        .method-patch { background: rgba(168, 85, 247, 0.18); color: #c084fc; }
 
         .endpoint-card {
-            border-left: 4px solid #3b82f6;
-            transition: all 0.3s ease;
+            border-left: 3px solid var(--accent);
+            transition: border-color 0.15s ease, background-color 0.15s ease;
         }
-
-        .endpoint-card:hover {
-            transform: translateX(4px);
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2);
-        }
+        .endpoint-card:hover { background: var(--surface-hover); }
 
         .code-block {
-            background: #0f172a;
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: 8px;
+            background: #0d0f12;
+            border: 1px solid var(--border);
+            border-radius: 10px;
             padding: 1rem;
             overflow-x: auto;
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.4), 0 0 20px rgba(59, 130, 246, 0.1);
         }
-
-        .code-block code {
-            color: #e5e7eb;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
+        .code-block code { color: #e5e7eb; font-size: 0.9rem; line-height: 1.6; }
 
         .param-table {
             background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 6px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
             overflow: hidden;
         }
-
         .param-table td, .param-table th {
             padding: 0.75rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid var(--border);
             text-align: left;
             font-size: 0.95rem;
         }
-
-        .param-table th {
-            background: rgba(59, 130, 246, 0.1);
-            font-weight: 600;
-            color: #60a5fa;
-        }
-
-        .param-type {
-            color: #93c5fd;
-            font-family: 'JetBrains Mono';
-            font-weight: 500;
-            font-size: 0.85rem;
-        }
+        .param-table th { background: var(--accent-soft); font-weight: 600; color: var(--text); }
+        .param-type { color: #93c5fd; font-family: 'JetBrains Mono', monospace; font-weight: 500; font-size: 0.85rem; }
 
         .required-badge {
             display: inline-block;
-            background: #3b82f6;
-            color: white;
+            background: var(--accent);
+            color: #fff;
             padding: 0.2rem 0.5rem;
-            border-radius: 3px;
+            border-radius: 4px;
             font-size: 0.75rem;
             font-weight: 600;
             margin-left: 0.5rem;
         }
-
         .optional-badge {
             display: inline-block;
-            background: #6b7280;
-            color: white;
+            background: #4b5563;
+            color: #fff;
             padding: 0.2rem 0.5rem;
-            border-radius: 3px;
+            border-radius: 4px;
             font-size: 0.75rem;
             font-weight: 600;
             margin-left: 0.5rem;
@@ -128,36 +86,26 @@
             font-size: 0.85rem;
             font-weight: 600;
         }
-
-        .status-200 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .status-201 { background: rgba(34, 197, 94, 0.2); color: #4ade80; }
-        .status-400 { background: rgba(248, 113, 113, 0.2); color: #f87171; }
-        .status-401 { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-        .status-404 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-        .status-429 { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-        .status-500 { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
-
-        /* Logo styling - invert colors and remove white background */
-        .logo-inverted {
-            filter: invert(1) brightness(1.2);
-            mix-blend-mode: screen;
-        }
+        .status-200, .status-201 { background: rgba(34, 197, 94, 0.18); color: #4ade80; }
+        .status-400, .status-401, .status-500 { background: rgba(239, 68, 68, 0.18); color: #f87171; }
+        .status-404, .status-429 { background: rgba(245, 158, 11, 0.18); color: #fbbf24; }
     </style>
 </head>
-<body class="bg-black text-white">
+<body>
     <!-- Navigation -->
-    <nav class="sticky top-0 z-50 glass-effect border-b border-blue-900/30">
+    <nav class="site-nav sticky top-0 z-50">
         <div class="max-w-6xl mx-auto px-4 py-4 flex justify-between items-center">
             <div>
                 <a href="index.html" class="flex items-center gap-2 hover:opacity-80 transition">
-                    <img src="../wildbox.png" alt="Wildbox Logo" class="w-8 h-8 object-contain logo-inverted">
-                    <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-blue-600 bg-clip-text text-transparent">Wildbox</span>
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
+                    <span class="text-lg font-semibold tracking-tight">Wildbox</span>
                 </a>
             </div>
-            <div class="hidden md:flex gap-6">
-                <a href="docs.html" class="text-gray-300 hover:text-white transition">Docs Home</a>
-                <a href="api-reference.html" class="text-blue-400 transition">API Reference</a>
-                <a href="https://github.com/fabriziosalmi/wildbox" class="text-gray-300 hover:text-white transition">GitHub</a>
+            <div class="hidden md:flex gap-8 items-center text-sm">
+                <a href="index.html#features" class="nav-link">Features</a>
+                <a href="docs.html" class="nav-link">Documentation</a>
+                <a href="api-reference.html" class="nav-link is-active">API</a>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
             </div>
         </div>
     </nav>
@@ -167,34 +115,34 @@
         <!-- Header -->
         <div class="mb-16">
             <h1 class="text-5xl font-bold mb-4">
-                <span class="gradient-text">API Reference</span>
+                <span class="accent">API Reference</span>
             </h1>
             <p class="text-xl text-gray-400 mb-8">Complete documentation for all Wildbox microservices and their endpoints.</p>
         </div>
 
         <!-- Quick Links -->
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mb-16">
-            <a href="#identity-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#identity-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Identity Service</h3>
                 <p class="text-sm text-gray-400">Authentication, users, tokens</p>
             </a>
-            <a href="#guardian-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#guardian-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Guardian Service</h3>
                 <p class="text-sm text-gray-400">Integrations, queue management</p>
             </a>
-            <a href="#agents-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#agents-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Agents Service</h3>
                 <p class="text-sm text-gray-400">AI analysis, threat intelligence</p>
             </a>
-            <a href="#data-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#data-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Data Service</h3>
                 <p class="text-sm text-gray-400">Data aggregation, analysis</p>
             </a>
-            <a href="#tools-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#tools-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Tools Service</h3>
                 <p class="text-sm text-gray-400">Security tool execution</p>
             </a>
-            <a href="#responder-api" class="glass-effect p-4 rounded-lg hover:bg-blue-950/30 transition transform hover:scale-105">
+            <a href="#responder-api" class="card p-4 rounded-lg transition">
                 <h3 class="font-semibold text-blue-400 mb-2">Responder Service</h3>
                 <p class="text-sm text-gray-400">Incident response, playbooks</p>
             </a>
@@ -227,7 +175,7 @@
 
                 <!-- Core Endpoints -->
                 <div class="space-y-6">
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-post">POST</span>
@@ -264,7 +212,7 @@
                         </details>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-post">POST</span>
@@ -274,7 +222,7 @@
                         <p class="text-gray-400 mb-4">Refresh an existing JWT token to extend the session duration.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-post">POST</span>
@@ -284,7 +232,7 @@
                         <p class="text-gray-400 mb-4">Logout user and revoke the current JWT token.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-get">GET</span>
@@ -294,7 +242,7 @@
                         <p class="text-gray-400 mb-4">List all users with pagination and filtering support.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-post">POST</span>
@@ -304,7 +252,7 @@
                         <p class="text-gray-400 mb-4">Create a new user account with specified permissions.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-get">GET</span>
@@ -314,7 +262,7 @@
                         <p class="text-gray-400 mb-4">Retrieve detailed information about a specific user.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-put">PUT</span>
@@ -324,7 +272,7 @@
                         <p class="text-gray-400 mb-4">Update user profile, permissions, and settings.</p>
                     </div>
 
-                    <div class="endpoint-card glass-effect p-6 rounded-lg">
+                    <div class="endpoint-card card p-6 rounded-lg">
                         <div class="flex items-start justify-between mb-3">
                             <div>
                                 <span class="api-method method-delete">DELETE</span>
@@ -346,7 +294,7 @@
                     <h3 class="text-xl font-semibold mb-4 text-blue-400">Assets Management</h3>
                     <div class="space-y-4">
                         <!-- GET /assets -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">List Assets</h4>
@@ -373,7 +321,7 @@
                         </div>
 
                         <!-- POST /assets -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">Create Asset</h4>
@@ -403,7 +351,7 @@
                         </div>
 
                         <!-- POST /assets/{id}/scan -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">Scan Asset</h4>
@@ -437,7 +385,7 @@
                     <h3 class="text-xl font-semibold mb-4 text-blue-400">Vulnerabilities Management</h3>
                     <div class="space-y-4">
                         <!-- GET /vulnerabilities -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">List Vulnerabilities</h4>
@@ -464,7 +412,7 @@
                         </div>
 
                         <!-- PATCH /vulnerabilities/{id} -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">Update Vulnerability</h4>
@@ -499,7 +447,7 @@
                     <h3 class="text-xl font-semibold mb-4 text-blue-400">Integration Management</h3>
                     <div class="space-y-4">
                         <!-- GET /integrations -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">List Integrations</h4>
@@ -524,7 +472,7 @@
                         </div>
 
                         <!-- POST /integrations/{id}/test -->
-                        <div class="glass-effect p-6 rounded-lg endpoint-card">
+                        <div class="card p-6 rounded-lg endpoint-card">
                             <div class="flex items-start justify-between mb-3">
                                 <div>
                                     <h4 class="font-semibold">Test Integration</h4>
@@ -545,7 +493,7 @@
                 </div>
 
                 <!-- Authentication & Rate Limiting -->
-                <div class="glass-effect p-6 rounded-lg mt-8">
+                <div class="card p-6 rounded-lg mt-8">
                     <h4 class="font-semibold mb-3">Authentication</h4>
                     <p class="text-gray-400 text-sm mb-3">Guardian Service supports two authentication methods:</p>
                     <ul class="list-disc list-inside text-sm text-gray-400 space-y-2">
@@ -561,7 +509,7 @@
                 </div>
 
                 <!-- Full Documentation Link -->
-                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                <div class="card p-6 rounded-lg mt-4 text-center">
                     <p class="text-gray-400 mb-3">For complete Guardian Service API documentation including all endpoints, error codes, and advanced examples:</p>
                     <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/guardian/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">
                         View Full Documentation →
@@ -573,13 +521,13 @@
                 <h2 class="text-3xl font-bold mb-6">Agents Service API</h2>
                 <p class="text-gray-400 mb-8">AI-powered threat analysis and intelligent enrichment using large language models</p>
                 
-                <div class="glass-effect p-6 rounded-lg mb-4">
+                <div class="card p-6 rounded-lg mb-4">
                     <h3 class="text-xl font-semibold mb-4">Service Information</h3>
                     <p class="text-gray-400 text-sm mb-3"><strong>Port:</strong> 8004 | <strong>Base URL:</strong> http://localhost:8004 | <strong>Auth:</strong> Bearer Token (JWT)</p>
                     <p class="text-gray-400 text-sm">The Agents Service uses AI to analyze indicators of compromise (IOCs) and provide comprehensive threat assessments through intelligent agents.</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-get">GET</span>
                         <code class="text-blue-400">/health</code>
@@ -600,7 +548,7 @@
                     </div>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-post">POST</span>
                         <code class="text-blue-400">/v1/analyze</code>
@@ -610,7 +558,7 @@
                     <p class="text-gray-400 text-sm">Bearer Token (JWT) required</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                <div class="card p-6 rounded-lg mt-4 text-center">
                     <p class="text-gray-400 mb-3">For complete Agents Service API documentation:</p>
                     <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/agents/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">
                         View Full Documentation
@@ -622,13 +570,13 @@
                 <h2 class="text-3xl font-bold mb-6">Data Service API</h2>
                 <p class="text-gray-400 mb-8">Security intelligence data aggregation from 50+ threat intelligence sources</p>
                 
-                <div class="glass-effect p-6 rounded-lg mb-4">
+                <div class="card p-6 rounded-lg mb-4">
                     <h3 class="text-xl font-semibold mb-4">Service Information</h3>
                     <p class="text-gray-400 text-sm mb-3"><strong>Port:</strong> 8006 | <strong>Base URL:</strong> http://localhost:8006/api/v1 | <strong>Auth:</strong> Optional API Key</p>
                     <p class="text-gray-400 text-sm">Access threat intelligence data, IOCs, and enriched security information from multiple sources.</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-get">GET</span>
                         <code class="text-blue-400">/indicators/search</code>
@@ -663,7 +611,7 @@
                     </table>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                <div class="card p-6 rounded-lg mt-4 text-center">
                     <p class="text-gray-400 mb-3">For complete Data Service API documentation:</p>
                     <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/data/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">
                         View Full Documentation
@@ -675,7 +623,7 @@
                 <h2 class="text-3xl font-bold mb-6">Tools Service API</h2>
                 <p class="text-gray-400 mb-8">Execute 54+ security tools including vulnerability scanners and network analyzers</p>
                 
-                <div class="glass-effect p-6 rounded-lg mb-4">
+                <div class="card p-6 rounded-lg mb-4">
                     <h3 class="text-xl font-semibold mb-4">Service Information</h3>
                     <p class="text-gray-400 text-sm mb-3"><strong>Port:</strong> 8013 | <strong>Base URL:</strong> http://localhost:8013/api | <strong>Auth:</strong> API Key Required</p>
                     <p class="text-gray-400 text-sm">Unified interface for security analysis tools across vulnerability scanning, network analysis, and web application testing.</p>
@@ -685,7 +633,7 @@
                     </div>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-get">GET</span>
                         <code class="text-blue-400">/tools</code>
@@ -708,7 +656,7 @@
                     </div>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-post">POST</span>
                         <code class="text-blue-400">/execute</code>
@@ -718,7 +666,7 @@
                     <p class="text-gray-400 text-sm">X-API-Key header required</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                <div class="card p-6 rounded-lg mt-4 text-center">
                     <p class="text-gray-400 mb-3">For complete Tools Service API documentation:</p>
                     <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/tools/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">
                         View Full Documentation
@@ -730,13 +678,13 @@
                 <h2 class="text-3xl font-bold mb-6">Responder Service API</h2>
                 <p class="text-gray-400 mb-8">SOAR platform for automated incident response and playbook execution</p>
                 
-                <div class="glass-effect p-6 rounded-lg mb-4">
+                <div class="card p-6 rounded-lg mb-4">
                     <h3 class="text-xl font-semibold mb-4">Service Information</h3>
                     <p class="text-gray-400 text-sm mb-3"><strong>Port:</strong> 8018 | <strong>Base URL:</strong> http://localhost:8018/api/v1 | <strong>Auth:</strong> Bearer Token (JWT)</p>
                     <p class="text-gray-400 text-sm">Orchestrate incident response workflows, execute playbooks, and manage remediation actions automatically.</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-get">GET</span>
                         <code class="text-blue-400">/playbooks</code>
@@ -766,7 +714,7 @@
                     </table>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg endpoint-card mb-4">
+                <div class="card p-6 rounded-lg endpoint-card mb-4">
                     <div class="flex items-center gap-3 mb-3">
                         <span class="api-method method-post">POST</span>
                         <code class="text-blue-400">/playbooks/{id}/execute</code>
@@ -776,7 +724,7 @@
                     <p class="text-gray-400 text-sm">Bearer Token (JWT) required</p>
                 </div>
 
-                <div class="glass-effect p-6 rounded-lg mt-4 text-center">
+                <div class="card p-6 rounded-lg mt-4 text-center">
                     <p class="text-gray-400 mb-3">For complete Responder Service API documentation:</p>
                     <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/responder/endpoints.md" target="_blank" class="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded transition">
                         View Full Documentation
@@ -788,7 +736,7 @@
         <!-- Authentication Info -->
         <div class="mt-20 pt-12 border-t border-gray-800">
             <h2 class="text-2xl font-bold mb-6">Authentication</h2>
-            <div class="glass-effect p-6 rounded-lg">
+            <div class="card p-6 rounded-lg">
                 <p class="text-gray-400 mb-4">All API endpoints require authentication using Bearer tokens in the Authorization header:</p>
                 <div class="code-block mb-4">
                     <code>Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</code>
@@ -800,7 +748,7 @@
         <!-- Error Handling -->
         <div class="mt-12">
             <h2 class="text-2xl font-bold mb-6">Error Handling</h2>
-            <div class="glass-effect p-6 rounded-lg">
+            <div class="card p-6 rounded-lg">
                 <p class="text-gray-400 mb-4">The API returns standard HTTP status codes. Errors include detailed JSON responses:</p>
                 <div class="code-block">
                     <code>{

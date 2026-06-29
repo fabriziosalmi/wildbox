@@ -160,7 +160,7 @@ Focus areas for next audit:
 - **Full Audit Report:** [TOOLS_SERVICE_SECURITY_AUDIT.md](../../TOOLS_SERVICE_SECURITY_AUDIT.md)
 - **Beta Announcement:** [TOOLS_SERVICE_BETA_ANNOUNCEMENT.md](../../TOOLS_SERVICE_BETA_ANNOUNCEMENT.md)
 - **Monitoring Guide:** [TOOLS_SERVICE_POST_RELEASE_MONITORING.md](../../TOOLS_SERVICE_POST_RELEASE_MONITORING.md)
-- **Authentication Guide:** [GATEWAY_AUTHENTICATION_GUIDE.md](../GATEWAY_AUTHENTICATION_GUIDE.md)
+- **Authentication Guide:** [GATEWAY_AUTHENTICATION_GUIDE.md](https://github.com/fabriziosalmi/wildbox/blob/main/internal-docs/GATEWAY_AUTHENTICATION_GUIDE.md)
 - **Tools README:** [open-security-tools/README.md](../../open-security-tools/README.md)
 
 ---

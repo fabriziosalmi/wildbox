@@ -632,7 +632,7 @@ curl -X POST "http://localhost:8018/api/v1/playbooks/$PLAYBOOK_ID/execute" \
 ## Related Documentation
 
 - [Security Policy](../../security/policy.md) - Authentication requirements
-- [API Reference Hub](../api-reference.html) - All service endpoints
+- [API Reference Hub](../../api-reference.html) - All service endpoints
 - [Guardian Service API](../guardian/endpoints.md) - Asset and vulnerability management
 - [Tools Service API](../tools/endpoints.md) - Tool execution
 - [Quickstart Guide](../../guides/quickstart.md) - Getting started with APIs
