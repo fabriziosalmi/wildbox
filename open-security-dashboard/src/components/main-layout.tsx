@@ -12,7 +12,6 @@ import {
   Monitor,
   Bug,
   Zap,
-  Brain,
   Settings,
   Menu,
   X,
@@ -91,12 +90,6 @@ const baseNavigation: NavigationItem[] = [
       { name: 'Playbooks', href: '/response/playbooks' },
       { name: 'Runs', href: '/response/runs' },
     ],
-  },
-  {
-    name: 'AI Analyst',
-    href: '/ai-analyst',
-    icon: Brain,
-    description: 'Intelligent analysis',
   },
   {
     name: 'API Docs',
