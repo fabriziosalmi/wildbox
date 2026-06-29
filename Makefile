@@ -1,7 +1,7 @@
 # Wildbox Security Platform - Simplified Makefile
 # Use Docker Compose for orchestration - this is just a convenience wrapper
 
-.PHONY: help setup start stop restart logs health test clean
+.PHONY: help setup generate-secrets validate-secrets start stop restart logs health test clean
 
 # Colors
 BLUE := \033[0;34m
@@ -14,7 +14,9 @@ help:
 	@echo "$(BLUE)Wildbox Security Platform$(NC)"
 	@echo ""
 	@echo "$(GREEN)Essential Commands:$(NC)"
-	@echo "  make setup    - First-time setup (copy .env, validate config)"
+	@echo "  make setup            - First-time setup (copy .env, validate config)"
+	@echo "  make generate-secrets - Generate a .env with secure random secrets"
+	@echo "  make validate-secrets - Check .env for insecure/default values"
 	@echo "  make start    - Start all services"
 	@echo "  make stop     - Stop all services"
 	@echo "  make restart  - Restart all services"
@@ -44,6 +46,14 @@ setup:
 	@echo ""
 	@echo "$(GREEN)✓ Setup complete!$(NC)"
 	@echo "Next: make start"
+
+generate-secrets:
+	@echo "$(BLUE)Generating .env with secure secrets...$(NC)"
+	@python3 scripts/generate_secrets.py
+
+validate-secrets:
+	@echo "$(BLUE)Validating .env secrets...$(NC)"
+	@python3 scripts/validate_secrets.py
 
 start:
 	@echo "$(BLUE)Starting services...$(NC)"

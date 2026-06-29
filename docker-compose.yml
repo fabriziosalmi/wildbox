@@ -148,7 +148,7 @@ services:
     ports:
       - "127.0.0.1:8002:8002"
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL}
+      - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
@@ -174,7 +174,7 @@ services:
       - no-new-privileges:true
     command: python -m app.scheduler.main
     environment:
-      - DATABASE_URL=${DATA_DATABASE_URL}
+      - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -361,7 +361,7 @@ services:
     environment:
       - SECRET_KEY=${GUARDIAN_SECRET_KEY}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - DATABASE_URL=${GUARDIAN_DATABASE_URL}
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
       - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
@@ -396,7 +396,7 @@ services:
     ports:
       - "127.0.0.1:8018:8018"
     environment:
-      - DATABASE_URL=${RESPONDER_DATABASE_URL}
+      - DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
