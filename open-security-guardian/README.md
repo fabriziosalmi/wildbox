@@ -359,7 +359,7 @@ docker-compose restart guardian
 
 **Workaround:** Perform a GET request after PATCH to retrieve updated object
 
-**Tracked In:** VALIDATION_COMPLETE.md (Fix in progress)
+**Tracked In:** GitHub Issues
 
 ---
 
@@ -522,7 +522,6 @@ Key metrics:
 
 - **Full Documentation**: `/docs/guardian/` in main repository
 - **API Reference**: `http://localhost:8013/docs` (Swagger)
-- **Validation Report**: `VALIDATION_COMPLETE.md` in this directory
 - **Issue Tracker**: GitHub Issues
 
 ---
@@ -539,12 +538,11 @@ See main repository LICENSE file
 For questions or issues:
 
 1. Check this README and troubleshooting section
-2. Review `VALIDATION_COMPLETE.md` for known issues
-3. Check `/docs/guardian/` for detailed documentation
-4. Open an issue on GitHub
+2. Check `/docs/guardian/` for detailed documentation
+3. Open an issue on GitHub
 
 ---
 
 **Last Updated:** 15 November 2025  
 **Maintainer:** Wildbox Platform Team  
-**Status:** Production Ready (see VALIDATION_COMPLETE.md for score breakdown)
+**Status:** Production Ready
