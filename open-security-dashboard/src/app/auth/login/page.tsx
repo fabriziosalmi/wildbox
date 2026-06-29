@@ -147,12 +147,6 @@ export default function LoginPage() {
                     Remember me
                   </label>
                 </div>
-                <Link
-                  href="/auth/forgot-password"
-                  className="text-sm text-blue-600 hover:text-blue-500 dark:text-blue-400"
-                >
-                  Forgot password?
-                </Link>
               </div>
 
               <Button
@@ -183,18 +177,6 @@ export default function LoginPage() {
           </CardContent>
         </Card>
 
-        <div className="mt-8 text-center text-xs text-gray-500 dark:text-gray-400">
-          <p>
-            By signing in, you agree to our{' '}
-            <Link href="/terms" className="text-blue-600 hover:text-blue-500 dark:text-blue-400">
-              Terms of Service
-            </Link>{' '}
-            and{' '}
-            <Link href="/privacy" className="text-blue-600 hover:text-blue-500 dark:text-blue-400">
-              Privacy Policy
-            </Link>
-          </p>
-        </div>
       </div>
     </div>
   )

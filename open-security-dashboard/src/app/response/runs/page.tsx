@@ -43,56 +43,10 @@ interface RunsResponse {
   total: number
 }
 
-// Mock data since the API endpoint might not be implemented yet
-const mockRuns: PlaybookRun[] = [
-  {
-    id: 'run-001',
-    playbookId: 'triage_ip',
-    playbookName: 'IP Address Triage',
-    status: 'completed',
-    startTime: new Date(Date.now() - 30000).toISOString(),
-    endTime: new Date(Date.now() - 15000).toISOString(),
-    duration: 15,
-    trigger: 'manual',
-    userId: 'admin',
-  },
-  {
-    id: 'run-002',
-    playbookId: 'triage_url',
-    playbookName: 'URL Analysis and Response',
-    status: 'running',
-    startTime: new Date(Date.now() - 45000).toISOString(),
-    trigger: 'api',
-    userId: 'security-team',
-    progress: 65,
-  },
-  {
-    id: 'run-003',
-    playbookId: 'simple_notification',
-    playbookName: 'Simple Notification Test',
-    status: 'failed',
-    startTime: new Date(Date.now() - 120000).toISOString(),
-    endTime: new Date(Date.now() - 110000).toISOString(),
-    duration: 10,
-    trigger: 'manual',
-    userId: 'admin',
-    error: 'Connection timeout to external service',
-  },
-]
-
 async function fetchRuns(): Promise<RunsResponse> {
-  try {
-    // Try to fetch from API, but fall back to mock data if not available
-    const response = await responderClient.get('/v1/runs')
-    return response
-  } catch (error) {
-    console.warn('API not available, using mock data:', error)
-    // Return mock data for demonstration
-    return {
-      runs: mockRuns,
-      total: mockRuns.length
-    }
-  }
+  // Let API errors propagate so the page renders its real loading / error /
+  // "No runs found" states via react-query — never fabricated demo data.
+  return responderClient.get('/v1/runs')
 }
 
 function getStatusIcon(status: string) {
