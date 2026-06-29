@@ -52,8 +52,8 @@ services:
     container_name: open-security-dashboard
     restart: unless-stopped
     ports:
-      - "3000:3000"
-      - "3001:3001"  # For Next.js HMR
+      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3001"  # For Next.js HMR
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_API_BASE_URL=http://open-security-tools:8000

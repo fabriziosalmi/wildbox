@@ -25,7 +25,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8001:8001"
+      - "127.0.0.1:8001:8001"
     environment:
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
@@ -57,7 +57,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - API_KEY=${API_KEY}
       - DEBUG=${DEBUG:-false}
@@ -146,7 +146,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8002:8002"
+      - "127.0.0.1:8002:8002"
     environment:
       - DATABASE_URL=${DATA_DATABASE_URL}
       - DEBUG=${DEBUG:-false}
@@ -245,7 +245,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./open-security-dashboard:/app
       - /app/node_modules
@@ -357,7 +357,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8013:8013"
+      - "127.0.0.1:8013:8013"
     environment:
       - SECRET_KEY=${GUARDIAN_SECRET_KEY}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
@@ -394,7 +394,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8018:8018"
+      - "127.0.0.1:8018:8018"
     environment:
       - DATABASE_URL=${RESPONDER_DATABASE_URL}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
@@ -426,7 +426,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8019:8019"
+      - "127.0.0.1:8019:8019"
     environment:
       # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
       # on startup with a pydantic "secret_key Field required" error.
@@ -475,7 +475,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8006:8006"
+      - "127.0.0.1:8006:8006"
     environment:
       # Claude (Anthropic) — analysis is optional; the service starts without a
       # key and analysis tasks fail gracefully until one is set.
@@ -517,7 +517,7 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "8004:8004"
+      - "127.0.0.1:8004:8004"
     environment:
       - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
       - PYTHONPATH=/app
