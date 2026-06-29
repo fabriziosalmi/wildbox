@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-29
+
+Security hardening, first-run honesty, and a documentation/site overhaul. Some changes affect existing deployments — see **Security** and **Changed**.
+
+### Security
+
+- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially-forged headers (#163).
+- Backend service ports are now bound to `127.0.0.1`; only the gateway is published publicly (#164).
+- The central tools SSRF guard now also inspects `file_url`, `app_url`, and `download_url`, closing the bypass in `metadata_extractor` and `mobile_security_analyzer` (#165).
+
+### Added
+
+- Dashboard error handling: branded `error.tsx`, `not-found.tsx`, and a top-level `global-error.tsx` boundary, so a render throw no longer white-screens the app (#166).
+- `make generate-secrets` and `make validate-secrets` targets wrapping the existing scripts (#170).
+
+### Fixed
+
+- CSPM: unimplemented placeholder checks now report `NOT_IMPLEMENTED` instead of `PASSED`, and the compliance score counts only checks that actually ran — removing a false compliance signal (#158).
+- Data, Guardian and Responder boot: `DATABASE_URL` falls back to the shared value when the per-service variable is unset, so the documented stack no longer crashes on start (#170).
+
+### Changed
+
+- AI analysis standardizes on `ANTHROPIC_*`; leftover OpenAI/Stripe configuration was removed from the env templates (setting the old key made AI analysis silently no-op) (#169).
+- Dashboard header: the static "3" notification badge, the always-green "All Systems Operational" pill, and the non-functional global search are hidden until backed by real data (#168).
+
+### Removed
+
+- Dead dashboard navigation links (`/ai-analyst`, `/auth/forgot-password`, `/terms`, `/privacy`) and the hardcoded `mockRuns` fallback, replaced with real empty/error states (#167).
+- A committed status-report document that read as churn in a public repo (#160).
+
+### Documentation
+
+- Redesigned the GitHub Pages site under `docs/`: removed AI-"slop" theming, fixed the broken landing-page markup and logo, and made the copy honest (#210).
+- Documentation Quality CI is fully green for the first time: Markdown Linting passes repo-wide, alongside Spell Check and Link Validation (#211).
+- Reconciled README, SETUP_GUIDE and the quickstart to one source of truth — `INITIAL_ADMIN_*` credentials, the real `/auth/jwt/login` endpoint, correct Compose service names, and `make` / `docker compose` commands (#171).
+
 ## [0.6.2] - 2026-06-28
 
 ### Changed
