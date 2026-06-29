@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-security-shared"
+version = "1.0.0"
+description = "Shared utilities for Wildbox security services (gateway auth + auth helpers)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Wildbox" }]
+
+# Core dependencies: everything the gateway-auth path needs. Importing the
+# package (open_security_shared) eagerly loads auth_utils via __init__, so these
+# must be present wherever the package is installed.
+dependencies = [
+    "fastapi>=0.110",
+    "pydantic>=2",
+    "passlib[bcrypt]>=1.7",
+    "python-jose[cryptography]>=3.3",
+]
+
+[project.optional-dependencies]
+# Heavier, optional modules (observability / eventing). They are not on the
+# gateway-auth path and are not required to import open_security_shared.gateway_auth.
+observability = ["opentelemetry-api", "opentelemetry-sdk"]
+events = ["redis>=5", "sqlalchemy>=2", "httpx>=0.27"]
+
+[tool.setuptools]
+# The modules live flat in this directory; expose them under the importable
+# package name `open_security_shared`.
+packages = ["open_security_shared"]
+
+[tool.setuptools.package-dir]
+open_security_shared = "."
