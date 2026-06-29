@@ -28,6 +28,7 @@ Self-hosted, open-source security operations platform. Threat monitoring, analys
 [![Dependabot Updates](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates)
 
 ## Featured on
+
 [![Featured on Self-Host Weekly](https://img.shields.io/badge/Featured%20on-Self--Host%20Weekly-green)](https://selfh.st/weekly/2025-11-07/)
 [![Listed on LibHunt](https://img.shields.io/badge/Listed%20on-LibHunt-blue)](https://www.libhunt.com/r/wildbox)
 [![Featured on Product Hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=wildbox&theme=light)](https://www.producthunt.com/posts/wildbox)
@@ -149,6 +150,7 @@ graph TD
 ## Quick Start
 
 ### Prerequisites
+
 - Docker >= 20.10
 - Docker Compose >= 2.0
 - 8GB RAM minimum (16GB recommended)
@@ -186,18 +188,21 @@ curl http://localhost:8001/health
 ```
 
 ### Default Credentials
+
 - **Email**: `admin@wildbox.security`
 - **Password**: `CHANGE-THIS-PASSWORD`
 
 **Change default credentials immediately after first login.**
 
 ### Next Steps
+
 1. Review **[Security Best Practices](SECURITY.md)**
 2. Configure **[Environment Variables](docs/guides/credentials.md)**
 3. Read **[Deployment Guide](docs/guides/deployment.md)** for production setup
 4. Explore **[API Documentation](docs/api/)**
 
 ### Troubleshooting
+
 - Check Docker logs: `docker-compose logs <service-name>`
 - Verify port availability: `netstat -tuln | grep -E '(8000|8001|3000|5432|6379)'`
 - Ensure sufficient disk space: `df -h`
@@ -208,48 +213,59 @@ curl http://localhost:8001/health
 ## Components
 
 ### **open-security-identity**
+
 Identity management, JWT authentication, API key management, subscription billing.
 FastAPI, PostgreSQL, Stripe, JWT.
 
 ### **open-security-gateway**
+
 API gateway with routing, rate-limiting, and authentication.
 OpenResty (Nginx + Lua), Redis, Docker.
 
 ### **open-security-tools**
+
 Unified API for 50+ security tools with dynamic discovery and execution.
 FastAPI, Redis, Docker.
 
 ### **open-security-data**
+
 Threat intelligence aggregation and serving.
 FastAPI, PostgreSQL, Elasticsearch, Redis.
 
 ### **open-security-cspm** (In Development)
+
 Multi-cloud security posture management and compliance scanning.
 Not enabled in the default `docker-compose.yml`.
 FastAPI, Celery, Redis, Python cloud SDKs.
 
 ### **open-security-guardian**
+
 Vulnerability lifecycle management with risk-based prioritization.
 Django, PostgreSQL, Celery, Redis.
 
 ### **open-security-sensor** (In Development)
+
 Endpoint monitoring and telemetry collection.
 Not enabled in the default `docker-compose.yml`.
 osquery, Python, HTTPS.
 
 ### **open-security-responder**
+
 Incident response automation with YAML-based playbooks.
 FastAPI, Dramatiq, Redis.
 
 ### **open-security-automations**
+
 Node-based workflow automation for connecting services and APIs.
 n8n, Node.js, Docker.
 
 ### **open-security-agents**
+
 LLM-based security analysis and automation.
 FastAPI, Celery, LangChain, OpenAI.
 
 ### **open-security-dashboard**
+
 Web interface for the platform.
 Next.js, TypeScript, Tailwind CSS, TanStack Query.
 
@@ -258,6 +274,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 ## Technology Stack
 
 ### Frontend
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript 5.0+** - Type-safe JavaScript
 - **Tailwind CSS** - Utility-first CSS framework
@@ -266,6 +283,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 - **Recharts** - Charting library for React
 
 ### Backend
+
 - **FastAPI** - Python async web framework
 - **Django 4.2 LTS** - Python web framework
 - **OpenResty** - Nginx + LuaJIT
@@ -276,6 +294,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 - **Celery** - Distributed task queue
 
 ### AI
+
 - **OpenAI API** - LLM integration for threat analysis
 - **LangChain** - LLM application framework
 - **Pydantic** - Data validation
@@ -283,6 +302,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 - **Scikit-learn** - Machine learning
 
 ### Infrastructure
+
 - **Docker / Docker Compose** - Containerization and orchestration
 - **Nginx** - Reverse proxy
 - **Prometheus** - Metrics and monitoring
@@ -290,6 +310,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 - **GitHub Actions** - CI/CD
 
 ### Security
+
 - **JWT** - Authentication tokens
 - **bcrypt** - Password hashing
 - **cryptography** - Cryptographic primitives
@@ -303,15 +324,18 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 **Current version: v0.6.2 (Security-Hardened)**
 
 **Phase 1: Stabilization** - Done
+
 - Core security controls, documentation, CI/CD
 
 **Phase 2: Security Hardening** - Done
+
 - 3-round security audit, 35 issues fixed
 - 96/98 Dependabot alerts resolved
 - JWT revocation, account lockout, network segmentation
 - Docker network isolation, CI/CD secrets, Prometheus alerting
 
 **Phase 3: Feature Expansion** - Planned
+
 - Additional cloud provider integrations
 - Extended SOAR capabilities
 - Next.js 16 migration

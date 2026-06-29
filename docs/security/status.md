@@ -10,7 +10,7 @@
 ## Vulnerability Metrics
 
 | Metric | Value |
-|--------|-------|
+| -------- | ------- |
 | **Initial Vulnerabilities (Nov 2024)** | 29 (6 critical, 10 high, 9 moderate, 4 low) |
 | **After Phase 1 Fixes** | 10 (66% reduction) |
 | **Security Audit Rounds 1-3 (Feb 2026)** | 35 issues identified |
@@ -28,7 +28,7 @@
 ### Round 1: Critical & High Severity
 
 | # | Issue | Severity | Status |
-|---|-------|----------|--------|
+| --- | ------- | ---------- | -------- |
 | 1 | Hardcoded secrets in CI/CD pipelines | CRITICAL | Fixed |
 | 2 | JWT tokens not revocable after logout | CRITICAL | Fixed |
 | 3 | No account lockout mechanism | CRITICAL | Fixed |
@@ -43,7 +43,7 @@
 ### Round 2: Medium Severity
 
 | # | Issue | Severity | Status |
-|---|-------|----------|--------|
+| --- | ------- | ---------- | -------- |
 | 11 | No circuit breaker for external APIs | MEDIUM | Fixed |
 | 12 | HTTP used for external API calls | MEDIUM | Fixed |
 | 13 | Missing DB connection pool health checks | MEDIUM | Fixed |
@@ -54,7 +54,7 @@
 ### Round 3: Infrastructure & Monitoring
 
 | # | Issue | Severity | Status |
-|---|-------|----------|--------|
+| --- | ------- | ---------- | -------- |
 | 26 | No Prometheus alerting rules | MEDIUM | Fixed |
 | 27 | Incomplete monitoring coverage | MEDIUM | Fixed |
 | 28 | No database backup strategy | MEDIUM | Fixed |
@@ -67,7 +67,7 @@
 ### Critical Severity (9)
 
 | # | Issue | Status |
-|---|-------|--------|
+| --- | ------- | -------- |
 | C1 | Bearer token bypass in data service (grants enterprise/admin) | Fixed |
 | C2 | Bearer token bypass in responder service (grants enterprise/admin) | Fixed |
 | C3 | 5 unauthenticated endpoints in responder service | Fixed |
@@ -81,7 +81,7 @@
 ### High Severity (15)
 
 | # | Issue | Status |
-|---|-------|--------|
+| --- | ------- | -------- |
 | H1 | Account enumeration via different HTTP status codes | Fixed |
 | H2 | /metrics endpoint unauthenticated | Fixed |
 | H3 | Health endpoint leaks database error details | Fixed |
@@ -105,7 +105,7 @@
 ### Python Packages Updated
 
 | Package | Previous | Updated | CVEs Resolved |
-|---------|----------|---------|---------------|
+| --------- | ---------- | --------- | --------------- |
 | aiohttp | 3.12.14/3.13.2 | 3.13.3 | 48 (DoS, zip bomb, path leak) |
 | cryptography | 44.0.x | 46.0.5 | 10 (subgroup attack, OpenSSL) |
 | Django | 4.2.26 | 4.2.28 | 8 (SQL injection, DoS, timing) |
@@ -120,7 +120,7 @@
 ### npm Packages Updated
 
 | Package | Previous | Updated | CVEs Resolved |
-|---------|----------|---------|---------------|
+| --------- | ---------- | --------- | --------------- |
 | axios | ^1.7.0 | ^1.13.5 | 1 (DoS) |
 | next | ^14.2.0 | ^14.2.35 | Partial mitigation |
 | minimatch | (transitive) | ^10.2.1 (override) | 2 (ReDoS) |
@@ -142,18 +142,21 @@
 ## Security Controls Implemented
 
 ### Authentication & Authorization
+
 - JWT token revocation via Redis blacklist with JTI claims
 - Account lockout after configurable failed login attempts
 - Token blacklist with automatic TTL expiry
 - SELECT FOR UPDATE on subscription mutations (prevents TOCTOU)
 
 ### Infrastructure Security
+
 - Docker network segmentation: frontend, backend (internal), data (internal)
 - PostgreSQL not exposed to host network
 - CI/CD secrets via GitHub Secrets (no hardcoded values)
 - Pinned CI/CD action versions (Trivy @0.28.0)
 
 ### Application Security
+
 - Security headers on Next.js dashboard (CSP, HSTS, X-Frame-Options, etc.)
 - CORS restricted to configured origins (no wildcards)
 - Path traversal prevention with realpath validation
@@ -162,6 +165,7 @@
 - Specific exception handling (no bare except clauses)
 
 ### Monitoring & Operations
+
 - Prometheus alert rules for service health, infrastructure, database, security
 - PostgreSQL backup script with optional GPG encryption and S3 upload
 - Connection pool health checks (pool_pre_ping)
@@ -172,7 +176,7 @@
 ## Verification Checklist
 
 | Check | Status |
-|-------|--------|
+| ------- | -------- |
 | No eval() calls in source code | PASS |
 | No plaintext passwords in code | PASS |
 | CORS configured explicitly (no wildcards) | PASS |

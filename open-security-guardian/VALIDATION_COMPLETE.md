@@ -20,6 +20,7 @@ Open-security-guardian successfully implements a robust vulnerability management
 ## Validation Methodology
 
 ### Testing Approach
+
 - **Full CRUD lifecycle testing** via REST API
 - **Business logic validation** (risk scoring, vulnerability counting)
 - **Database constraint testing** (uniqueness, foreign keys)
@@ -27,6 +28,7 @@ Open-security-guardian successfully implements a robust vulnerability management
 - **Inter-service integration** (API key authentication through gateway)
 
 ### Test Environment
+
 ```bash
 Service: guardian (port 8013)
 Gateway: localhost:80 → http://guardian:8000
@@ -42,11 +44,13 @@ Authentication: API Key (wsk_* format)
 ### 1. Setup & Deployment (7/10)
 
 **Issues Discovered:**
+
 - ❌ Initial deployment missing database migrations
 - ❌ No automated migration generation in Dockerfile
 - ❌ Undocumented superuser creation requirement
 
 **Fixes Applied:**
+
 ```bash
 # Manual intervention required (now documented)
 docker-compose exec guardian python manage.py makemigrations
@@ -57,6 +61,7 @@ docker-compose exec guardian python manage.py createsuperuser
 **Deduction Reason:** Service should be deployable without manual database setup steps. Django projects typically include migrations in version control.
 
 **Recommendation:**
+
 - Include initial migrations in repository
 - Add health check that validates database schema exists
 - Document first-time setup steps in README
@@ -68,6 +73,7 @@ docker-compose exec guardian python manage.py createsuperuser
 #### ✅ Successful Test Cases
 
 **Asset Management:**
+
 ```bash
 # CREATE Asset
 POST /api/v1/assets/assets/
@@ -91,6 +97,7 @@ Response: 200 OK
 ```
 
 **Vulnerability Lifecycle:**
+
 ```bash
 # CREATE Vulnerability
 POST /api/v1/vulnerabilities/
@@ -113,6 +120,7 @@ Response: 200 OK (sets resolved_at timestamp)
 ```
 
 **Database Constraints:**
+
 ```bash
 # Attempt duplicate vulnerability creation
 POST /api/v1/vulnerabilities/
@@ -130,6 +138,7 @@ Response: 400 Bad Request
 ```
 
 **✨ Highlights:**
+
 - ✅ Proper `unique_together` constraint enforcement
 - ✅ Automatic risk score calculation based on vulnerability severity
 - ✅ Vulnerability count aggregation
@@ -139,6 +148,7 @@ Response: 400 Bad Request
 #### ⚠️ Minor Issues
 
 **1. PATCH Response Serialization:**
+
 ```bash
 # Issue: Incomplete response body after update
 PATCH /api/v1/vulnerabilities/1/
@@ -149,6 +159,7 @@ Response: {"id": null, "resolved_at": null}
 **Root Cause:** Serializer not configured to return instance after save  
 **Impact:** Low (client can re-fetch, but inefficient)  
 **Fix Required:**
+
 ```python
 # In VulnerabilityViewSet
 def perform_update(self, serializer):
@@ -157,6 +168,7 @@ def perform_update(self, serializer):
 ```
 
 **2. Nested Serializer Documentation:**
+
 ```bash
 # Asset response includes 'vulnerabilities' field
 # but structure not documented in README
@@ -175,11 +187,13 @@ GET /api/v1/assets/assets/1/
 **✅ Perfect Score - Exceptional Design**
 
 **Database-Level Data Integrity:**
+
 - `unique_together = ['asset', 'cve_id', 'port']` prevents duplicate vulnerability tracking
 - Foreign key constraints ensure asset references remain valid
 - Nullable fields handled correctly (e.g., `port` optional)
 
 **Authentication & Authorization:**
+
 ```bash
 # Proper API key validation
 curl http://localhost/api/v1/guardian/assets/assets/ \
@@ -193,6 +207,7 @@ Response: 200 OK
 ```
 
 **Error Handling:**
+
 - ✅ Returns appropriate HTTP status codes (400, 401, 404, 500)
 - ✅ Validation errors include actionable messages
 - ✅ Database errors caught and translated to user-friendly responses
@@ -204,11 +219,13 @@ Response: 200 OK
 ### 4. Documentation (8/10)
 
 **✅ Strengths:**
+
 - Swagger UI available at `/docs` with interactive API explorer
 - Clear endpoint structure documented via OpenAPI schema
 - Code includes docstrings for models and viewsets
 
 **❌ Gaps:**
+
 1. **README lacks setup instructions:**
    - No mention of `makemigrations` requirement
    - API key generation process not documented
@@ -227,6 +244,7 @@ Response: 200 OK
 ### Risk Score Calculation
 
 **Algorithm Verified:**
+
 ```python
 # From models.py Asset class
 @property
@@ -241,6 +259,7 @@ def risk_score(self):
 ```
 
 **Test Case:**
+
 ```bash
 Asset: test-server-01
 Vulnerabilities:
@@ -275,6 +294,7 @@ Browser/API Client
 ```
 
 **Test:**
+
 ```bash
 curl -X POST http://localhost/api/v1/guardian/assets/assets/ \
   -H "X-API-Key: wsk_test.abc123..." \
@@ -311,6 +331,7 @@ Cache Hit Rate: 78% (Redis DB 2)
 ## Critical Findings Summary
 
 ### 🟢 Production Ready
+
 - Core CRUD operations stable
 - Database constraints prevent data corruption
 - Authentication/authorization properly implemented
@@ -318,12 +339,14 @@ Cache Hit Rate: 78% (Redis DB 2)
 - Error handling comprehensive
 
 ### 🟡 Improvements Needed (Non-Blocking)
+
 1. **PATCH endpoint should return full object** (1-2 hours)
 2. **Include migrations in repository** (30 minutes)
 3. **Enhance README with setup guide** (1 hour)
 4. **Add architecture diagram** (2 hours)
 
 ### 🔴 Blockers
+
 - **None identified**
 
 ---
@@ -333,6 +356,7 @@ Cache Hit Rate: 78% (Redis DB 2)
 ### Immediate (Before Public Release)
 
 **1. Update README.md**
+
 ```markdown
 ## First-Time Setup
 
@@ -347,6 +371,7 @@ docker-compose exec guardian python manage.py createsuperuser
 ```
 
 ### API Key Generation
+
 ```python
 # In Django shell
 from app.models import APIKey
@@ -360,13 +385,15 @@ print(api_key.key)
 ```
 
 ### Example Requests
+
 ```bash
 # Create an asset
 curl -X POST http://localhost/api/v1/guardian/assets/assets/ \
   -H "X-API-Key: YOUR_KEY_HERE" \
   -d '{"name": "web-server-01", "type": "server"}'
 ```
-```
+
+```bash
 
 **2. Fix PATCH Serializer Response**
 ```python
@@ -382,6 +409,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
 ```
 
 **3. Add Health Check Validation**
+
 ```python
 # app/health.py
 def check_database_schema():
@@ -425,6 +453,7 @@ def check_database_schema():
 **Confidence Level:** HIGH
 
 Open-security-guardian is a well-architected service that demonstrates:
+
 - Deep understanding of Django/DRF best practices
 - Production-grade error handling and data validation
 - Thoughtful business logic implementation
@@ -437,15 +466,18 @@ Open-security-guardian is a well-architected service that demonstrates:
 ## Next Steps
 
 ### For Maintainers
+
 1. ✅ Apply recommended README updates
 2. ✅ Fix PATCH serializer response
 3. ✅ Include migrations in repository
 4. 📊 Monitor production metrics after deployment
 
 ### For Validators
+
 **Recommended Next Service:** `open-security-data`
 
 **Rationale:**
+
 - open-security-data is the threat intelligence hub
 - Both guardian and tools consume its IOC data
 - Validating the data layer is critical before full integration testing

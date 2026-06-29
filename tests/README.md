@@ -60,6 +60,7 @@ pytest tests/integration/test_agents_ai.py::AgentsAITester::test_ioc_analysis -v
 ```
 
 **Available Integration Tests:**
+
 - `test_agents_ai.py` - AI-powered security analysis
 - `test_automations_workflow.py` - n8n workflow automation
 - `test_cspm_compliance.py` - Cloud security compliance checks
@@ -88,6 +89,7 @@ pytest open-security-agents/tests/test_basic.py -v
 ```
 
 **Available Unit Tests:**
+
 - `tests/test_identity_comprehensive.py` - Identity service logic (457 lines!)
 - `tests/test_pulse_check_system.py` - System health monitoring
 - `tests/utils/test_data_generator.py` - Test data generation utilities
@@ -164,6 +166,7 @@ npx playwright show-report
 ```
 
 **Available E2E Tests:**
+
 - `admin-comprehensive.spec.ts` - Admin panel workflows (4 tests)
 - `admin-ui-only.spec.ts` - Admin UI interactions (6 tests)
 - `login-flow.spec.ts` - Authentication flows (8 tests)
@@ -371,6 +374,7 @@ markers =
 ### Playwright Configuration
 
 Already configured in `open-security-dashboard/playwright.config.ts`:
+
 - Base URL: `http://localhost:3000`
 - Retries: 2 on CI
 - Timeout: 30 seconds
@@ -536,6 +540,7 @@ npx playwright install
    - TypeScript: `*.spec.ts` or `*.test.ts`
 
 3. **Use pytest for new Python tests**:
+
 ```python
 import pytest
 from httpx import AsyncClient
@@ -547,7 +552,8 @@ async def test_api_endpoint():
         assert response.status_code == 200
 ```
 
-4. **Use Page Objects for E2E tests**:
+1. **Use Page Objects for E2E tests**:
+
 ```typescript
 import { test, expect } from '@playwright/test';
 import { LoginPage } from './page-objects/login-page';
@@ -574,6 +580,7 @@ test('User can login', async ({ page }) => {
 ## Support
 
 For questions or issues with tests:
+
 - Check `TROUBLESHOOTING.md`
 - Review service-specific README files
 - Contact: fabrizio.salmi@gmail.com

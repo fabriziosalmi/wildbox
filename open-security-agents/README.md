@@ -10,7 +10,7 @@ Open Security Agents provides "Threat Enrichment as a Service" through an AI-dri
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   FastAPI       │    │   Celery        │    │   LangChain     │
 │   REST API      │───▶│   Task Queue    │───▶│   AI Agents     │
@@ -80,7 +80,7 @@ See [LLM_SETUP.md](LLM_SETUP.md) for detailed configuration guide.
 ### LLM Options
 
 | Option | Model | Speed | Quality | Cost | Use Case |
-|--------|-------|-------|---------|------|----------|
+| -------- | ------- | ------- | --------- | ------ | ---------- |
 | **Local vLLM (GPU)** | Qwen2.5-0.5B-Instruct | ⭐⭐⭐ | ⭐⭐⭐ | Free | Development, low-volume |
 | **Local vLLM (CPU)** | Qwen2.5-0.5B-Instruct | ⭐ | ⭐⭐⭐ | Free | Testing only |
 | **OpenAI GPT-4o** | gpt-4o | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $0.01-0.05 | Production, high-priority |

@@ -5,7 +5,7 @@
 ### Health & System
 
 | Method | Path | Purpose | Auth | Rate Limited |
-|--------|------|---------|------|--------------|
+| -------- | ------ | --------- | ------ | -------------- |
 | GET | /health | Health check | No | Yes |
 | GET | /api/v1/stats | System statistics | Optional | Yes |
 | GET | /api/v1/dashboard/threat-intel | Dashboard metrics | Optional | Yes |
@@ -13,7 +13,7 @@
 ### Indicators (IOCs)
 
 | Method | Path | Purpose | Query Parameters | Auth |
-|--------|------|---------|------------------|------|
+| -------- | ------ | --------- | ------------------ | ------ |
 | GET | /api/v1/indicators/search | Search indicators | q, indicator_type, threat_types, confidence, min_severity, max_severity, source_id, since, active_only, limit, offset | Optional |
 | GET | /api/v1/indicators/{id} | Get indicator details | None | Optional |
 | POST | /api/v1/indicators/lookup | Bulk lookup (max 1000) | None (body params) | Optional |
@@ -21,7 +21,7 @@
 ### Type-Specific Intelligence
 
 | Method | Path | Purpose | Parameter | Enrichment |
-|--------|------|---------|-----------|-----------|
+| -------- | ------ | --------- | ----------- | ----------- |
 | GET | /api/v1/ips/{ip} | IP reputation | IPv4/IPv6 | ASN, geo, country, city, coords |
 | GET | /api/v1/domains/{domain} | Domain intelligence | domain name | TLD, registrar, DNS, WHOIS dates |
 | GET | /api/v1/hashes/{hash} | File hash intelligence | MD5/SHA1/SHA256 | Malware family, signatures, detection ratio |
@@ -29,14 +29,14 @@
 ### Data Sources & Feeds
 
 | Method | Path | Purpose | Parameters | Notes |
-|--------|------|---------|-----------|-------|
+| -------- | ------ | --------- | ----------- | ------- |
 | GET | /api/v1/sources | List sources | enabled_only (bool) | Returns source config and status |
 | GET | /api/v1/feeds/realtime | Real-time feed stream | indicator_types[], threat_types[], min_severity, since_minutes | NDJSON streaming format |
 
 ### Telemetry (Sensors & Events)
 
 | Method | Path | Purpose | Parameters |
-|--------|------|---------|-----------|
+| -------- | ------ | --------- | ----------- |
 | POST | /api/v1/ingest | Batch ingest events | batch_id, events[] |
 | GET | /api/v1/telemetry/events | Query events | sensor_id, event_type, start_time, end_time, limit, offset |
 | GET | /api/v1/telemetry/stats | Event statistics | sensor_id, hours |
@@ -48,6 +48,7 @@
 ## Response Patterns
 
 ### Search/List Pagination
+
 ```json
 {
   "data": [...],
@@ -59,6 +60,7 @@
 ```
 
 ### Error Response
+
 ```json
 {
   "detail": "Error message",
@@ -71,12 +73,14 @@
 ## Key Indicator Fields
 
 ### Required Fields
+
 - `id`: UUID
 - `indicator_type`: ip_address, domain, file_hash, url, email, certificate, asn, vulnerability
 - `value`: Indicator value
 - `source_id`: UUID of originating source
 
 ### Core Fields
+
 - `threat_types`: [malware, phishing, spam, botnet, exploit, vulnerability, certificate, dns, network_scan, suspicious]
 - `confidence`: low, medium, high, verified
 - `severity`: 1-10 scale
@@ -84,6 +88,7 @@
 - `tags`: String array
 
 ### Temporal Fields
+
 - `first_seen`: Initial detection timestamp
 - `last_seen`: Most recent detection timestamp
 - `expires_at`: Expiration timestamp
@@ -91,6 +96,7 @@
 - `updated_at`: Last modification time
 
 ### Status Fields
+
 - `active`: Boolean (default: true)
 - `false_positive`: Boolean (default: false)
 - `whitelisted`: Boolean (default: false)
@@ -112,7 +118,7 @@
 ## Severity Scale
 
 | Level | Meaning |
-|-------|---------|
+| ------- | --------- |
 | 1-3 | Low risk |
 | 4-6 | Medium risk |
 | 7-8 | High risk |
@@ -140,7 +146,7 @@
 
 ## Pagination Guide
 
-```
+```http
 # Request structure
 GET /api/v1/indicators/search?limit=100&offset=0
 
@@ -151,6 +157,7 @@ next_offset = offset + limit
 ```
 
 **Example:**
+
 - Total: 1234 records
 - Limit: 100
 - Total pages: ceil(1234/100) = 13
@@ -161,7 +168,7 @@ next_offset = offset + limit
 ## Field Filters (Search Endpoint)
 
 | Filter | Type | Example | Notes |
-|--------|------|---------|-------|
+| -------- | ------ | --------- | ------- |
 | q | string | "malware.com" | Full-text search |
 | indicator_type | string | "domain" | Single type only |
 | threat_types | string[] | ["malware", "botnet"] | Multiple values |
@@ -177,6 +184,7 @@ next_offset = offset + limit
 ## Database Schema Overview
 
 ### Tables
+
 1. **indicators** - Main IOC table (with unique constraint on source_id + type + value)
 2. **sources** - Data source definitions
 3. **ip_addresses** - IP enrichment (1:1 with indicators)
@@ -188,6 +196,7 @@ next_offset = offset + limit
 9. **collection_runs** - Collection job tracking
 
 ### Key Indexes
+
 - indicators: (type, normalized_value), source_id, first_seen, last_seen, active, confidence, expires_at
 - sources: name, status, enabled
 - ip_addresses: ip_address, asn, country_code, network_range
@@ -201,19 +210,22 @@ next_offset = offset + limit
 ## Configuration Essentials
 
 ### Required
-```
+
+```text
 DATABASE_URL=postgresql://user:pass@host:5432/db
 ```
 
 ### Important Security
-```
+
+```text
 API_KEY_REQUIRED=false (set true for production)
 MAX_BATCH_SIZE=1000
 RATE_LIMIT_ENABLED=true
 ```
 
 ### Tuning
-```
+
+```text
 COLLECTION_INTERVAL=3600
 MAX_CONCURRENT_COLLECTORS=10
 DATA_RETENTION_DAYS=365
@@ -225,7 +237,8 @@ API_WORKERS=4
 ## Common Query Examples
 
 ### Find all malicious IPs with high severity
-```
+
+```http
 GET /api/v1/indicators/search?
   indicator_type=ip_address&
   threat_types=malware&
@@ -235,14 +248,16 @@ GET /api/v1/indicators/search?
 ```
 
 ### Get recent indicators from last 24 hours
-```
+
+```http
 GET /api/v1/indicators/search?
   since=2025-11-06T00:00:00Z&
   limit=500
 ```
 
 ### Search across all indicators
-```
+
+```http
 GET /api/v1/indicators/search?
   q=example&
   limit=100&
@@ -250,12 +265,14 @@ GET /api/v1/indicators/search?
 ```
 
 ### Get domain intelligence with enrichment
-```
+
+```http
 GET /api/v1/domains/example.com
 ```
 
 ### Bulk IOC lookup
-```
+
+```http
 POST /api/v1/indicators/lookup
 Content-Type: application/json
 
@@ -269,7 +286,8 @@ Content-Type: application/json
 ```
 
 ### Stream real-time threats
-```
+
+```http
 GET /api/v1/feeds/realtime?
   since_minutes=60&
   min_severity=7&
@@ -277,7 +295,8 @@ GET /api/v1/feeds/realtime?
 ```
 
 ### Ingest telemetry from sensor
-```
+
+```http
 POST /api/v1/ingest
 Content-Type: application/json
 

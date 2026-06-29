@@ -1,53 +1,61 @@
-# 🎨 Workflow Design Guide
+# Workflow Design Guide
 
 This guide outlines best practices and design patterns for creating effective workflows in the Wildbox Open Security Automations platform.
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Core Design Principles](#-core-design-principles)
-- [Workflow Structure](#-workflow-structure)
-- [Node Naming Conventions](#-node-naming-conventions)
-- [Error Handling Patterns](#-error-handling-patterns)
-- [Performance Optimization](#-performance-optimization)
-- [Security Considerations](#-security-considerations)
-- [Testing Guidelines](#-testing-guidelines)
-- [Documentation Requirements](#-documentation-requirements)
+- [Core Design Principles](#core-design-principles)
+- [Workflow Structure](#workflow-structure)
+- [Node Naming Conventions](#node-naming-conventions)
+- [Error Handling Patterns](#error-handling-patterns)
+- [Performance Optimization](#performance-optimization)
+- [Security Considerations](#security-considerations)
+- [Testing Guidelines](#testing-guidelines)
+- [Documentation Requirements](#documentation-requirements)
 
 ---
 
-## 🎯 Core Design Principles
+## Core Design Principles
 
 ### 1. Single Responsibility
+
 Each workflow should have a clear, single purpose:
+
 - ✅ **Good**: "Support Ticket Triage"
 - ❌ **Bad**: "Support and Marketing and Analytics"
 
 ### 2. Modular Design
+
 Break complex processes into smaller, reusable workflows:
-```
+
+```text
 Main Workflow → Sub-workflow 1 → Sub-workflow 2
 ```
 
 ### 3. Idempotent Operations
+
 Workflows should produce the same result when run multiple times with the same input.
 
 ### 4. Fail-Fast Principle
+
 Validate inputs early and fail quickly if something is wrong.
 
 ### 5. Observable Execution
+
 Include logging and monitoring nodes to track workflow execution.
 
 ---
 
-## 🏗️ Workflow Structure
+## Workflow Structure
 
 ### Recommended Flow Pattern
 
-```
+```json
 [Trigger] → [Validation] → [Processing] → [Decision] → [Actions] → [Notification] → [Cleanup]
 ```
 
 ### 1. **Trigger Nodes**
+
 - Always start with a clear trigger
 - Include trigger validation
 - Document trigger requirements
@@ -61,54 +69,63 @@ if (!payload.timestamp || !payload.event_type) {
 ```
 
 ### 2. **Validation Nodes**
+
 - Validate all inputs early
 - Check required fields
 - Sanitize data
 
 ### 3. **Processing Nodes**
+
 - Keep processing logic focused
 - Use meaningful variable names
 - Comment complex operations
 
 ### 4. **Decision Nodes**
+
 - Use Switch nodes for multiple paths
 - Use IF nodes for binary decisions
 - Always handle the "else" case
 
 ### 5. **Action Nodes**
+
 - One action per node when possible
 - Include timeout configurations
 - Handle API errors gracefully
 
 ### 6. **Notification Nodes**
+
 - Always notify on completion
 - Include relevant context
 - Use appropriate channels
 
 ### 7. **Cleanup Nodes**
+
 - Clean up temporary data
 - Close connections
 - Log completion status
 
 ---
 
-## 📝 Node Naming Conventions
+## Node Naming Conventions
 
-### Node Names Should Be:
+### Node Names Should Be
+
 - **Descriptive**: Clearly explain what the node does
 - **Action-Oriented**: Use verbs for action nodes
 - **Consistent**: Follow the same pattern throughout
 
-### Examples:
+### Examples
 
-#### ✅ Good Node Names
+#### Good Node Names
+
 - `Parse Email Content`
 - `Classify with AI Agent`
 - `Send Discord Notification`
 - `Update Database Record`
 - `Validate Input Data`
 
-#### ❌ Bad Node Names
+#### Bad Node Names
+
 - `Node 1`
 - `HTTP Request`
 - `Code`
@@ -116,7 +133,9 @@ if (!payload.timestamp || !payload.event_type) {
 - `Check`
 
 ### Category Prefixes
+
 Use prefixes to group related nodes:
+
 - `Validate: Email Format`
 - `API: Get User Data`
 - `Transform: Clean Text`
@@ -124,9 +143,10 @@ Use prefixes to group related nodes:
 
 ---
 
-## 🛡️ Error Handling Patterns
+## Error Handling Patterns
 
 ### 1. **Global Error Handling**
+
 Every workflow should have a global error handler:
 
 ```javascript
@@ -147,6 +167,7 @@ return [{ json: errorData }];
 ```
 
 ### 2. **Retry Logic**
+
 For external API calls, implement retry logic:
 
 ```javascript
@@ -170,6 +191,7 @@ if (currentRetry < maxRetries) {
 ```
 
 ### 3. **Graceful Degradation**
+
 Handle partial failures gracefully:
 
 ```javascript
@@ -197,9 +219,10 @@ return [results, errors];
 
 ---
 
-## ⚡ Performance Optimization
+## Performance Optimization
 
 ### 1. **Batch Processing**
+
 Process multiple items together when possible:
 
 ```javascript
@@ -215,6 +238,7 @@ return batches.map(batch => ({ json: { items: batch } }));
 ```
 
 ### 2. **Async Operations**
+
 Use Promise.all for parallel operations:
 
 ```javascript
@@ -228,6 +252,7 @@ return results.map(result => ({ json: result }));
 ```
 
 ### 3. **Memory Management**
+
 Clean up large objects:
 
 ```javascript
@@ -238,6 +263,7 @@ return [{ json: result }];
 ```
 
 ### 4. **Conditional Execution**
+
 Skip unnecessary processing:
 
 ```javascript
@@ -249,14 +275,16 @@ if (!shouldProcess(inputData)) {
 
 ---
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### 1. **Credential Management**
+
 - Never hardcode credentials
 - Use n8n credential system
 - Rotate credentials regularly
 
 ### 2. **Input Validation**
+
 Always validate and sanitize inputs:
 
 ```javascript
@@ -275,11 +303,13 @@ function sanitizeInput(input) {
 ```
 
 ### 3. **Data Privacy**
+
 - Don't log sensitive data
 - Mask PII in outputs
 - Use secure communication channels
 
 ### 4. **Rate Limiting**
+
 Respect API rate limits:
 
 ```javascript
@@ -299,9 +329,10 @@ $node.context.lastCall = Date.now();
 
 ---
 
-## 🧪 Testing Guidelines
+## Testing Guidelines
 
 ### 1. **Test Data**
+
 Create comprehensive test datasets:
 
 ```javascript
@@ -321,6 +352,7 @@ const testCases = [
 ```
 
 ### 2. **Unit Testing**
+
 Test individual code nodes:
 
 ```javascript
@@ -342,22 +374,27 @@ if (result.category !== "general") {
 ```
 
 ### 3. **Integration Testing**
+
 Test complete workflow with real data:
+
 - Use test environments
 - Mock external services when needed
 - Verify end-to-end functionality
 
 ### 4. **Load Testing**
+
 Test workflow performance:
+
 - High volume of inputs
 - Concurrent executions
 - Resource usage monitoring
 
 ---
 
-## 📚 Documentation Requirements
+## Documentation Requirements
 
 ### 1. **Workflow Documentation**
+
 Each workflow must include:
 
 ```javascript
@@ -394,6 +431,7 @@ Each workflow must include:
 ```
 
 ### 2. **Node Documentation**
+
 Complex nodes should include comments:
 
 ```javascript
@@ -415,6 +453,7 @@ const recentArticles = articles.filter(article => {
 ```
 
 ### 3. **Change Log**
+
 Document workflow changes:
 
 ```markdown
@@ -438,9 +477,10 @@ Document workflow changes:
 
 ---
 
-## 🏆 Best Practices Summary
+## Best Practices Summary
 
-### ✅ Do:
+### Do
+
 - Use descriptive node names
 - Implement comprehensive error handling
 - Include logging and monitoring
@@ -450,7 +490,8 @@ Document workflow changes:
 - Use credentials system
 - Optimize for performance
 
-### ❌ Don't:
+### Don't
+
 - Hardcode sensitive data
 - Ignore error conditions
 - Create overly complex workflows
@@ -462,9 +503,10 @@ Document workflow changes:
 
 ---
 
-## 📞 Support
+## Support
 
 For questions about workflow design:
+
 - Check existing workflows for examples
 - Review n8n documentation
 - Ask in the team Discord channel
@@ -472,4 +514,4 @@ For questions about workflow design:
 
 ---
 
-*Last updated: January 26, 2025*
+_Last updated: January 26, 2025_

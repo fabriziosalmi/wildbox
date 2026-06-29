@@ -47,19 +47,21 @@ List all available security tools.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | category | string | No | Filter by category: scanner, analyzer, enricher, responder |
 | status | string | No | Filter by status: active, inactive, error |
 | limit | integer | No | Number of results (default: 50) |
 | offset | integer | No | Pagination offset |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8013/api/tools?category=scanner&status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 54,
@@ -117,12 +119,14 @@ Get detailed information about a specific tool.
 | tool_id | string | Tool identifier |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8013/api/tools/nessus-001/info \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "nessus-001",
@@ -188,7 +192,7 @@ Execute a security tool with specified parameters.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | parameters | object | Yes | Tool-specific parameters |
 | async_mode | boolean | No | Execute asynchronously (default: true) |
 | callback_url | string | No | Webhook URL for async completion |
@@ -196,6 +200,7 @@ Execute a security tool with specified parameters.
 | tags | array | No | Tags for organizing execution |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8013/api/tools/nessus-001/execute \
   -H "X-API-Key: your-api-key" \
@@ -211,6 +216,7 @@ curl -X POST http://localhost:8013/api/tools/nessus-001/execute \
 ```
 
 **Response (202 Accepted)**:
+
 ```json
 {
   "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
@@ -241,12 +247,14 @@ Get the status and results of a tool execution.
 | execution_id | string | Execution ID |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8013/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK) - Running**:
+
 ```json
 {
   "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
@@ -261,6 +269,7 @@ curl -X GET http://localhost:8013/api/tools/nessus-001/executions/exec-550e8400-
 ```
 
 **Response (200 OK) - Completed**:
+
 ```json
 {
   "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
@@ -296,12 +305,14 @@ Cancel a running or pending tool execution.
 **Authentication**: Required (API Key)
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:8013/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "message": "Execution cancelled successfully",
@@ -323,11 +334,13 @@ Service health check.
 **Authentication**: Not required
 
 **Request**:
+
 ```bash
 curl http://localhost:8013/api/health
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "healthy",
@@ -358,12 +371,14 @@ Get system and service information.
 **Authentication**: Required (API Key)
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8013/api/system/info \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "service": "Wildbox Tools Service",
@@ -396,12 +411,14 @@ Get detailed performance metrics.
 | time_range | string | 1h, 24h, 7d, 30d (default: 24h) |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8013/api/system/metrics?time_range=24h" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "time_range": "24h",
@@ -431,21 +448,27 @@ curl -X GET "http://localhost:8013/api/system/metrics?time_range=24h" \
 ## Available Tools by Category
 
 ### Vulnerability Scanners (15 tools)
+
 Nessus, Qualys, OpenVAS, Rapid7 Nexpose, Acunetix, AppScan, Checkmarx, Fortify, Veracode, etc.
 
 ### Network Analysis (12 tools)
+
 Wireshark, tcpdump, nmap, Zeek, Suricata, Security Onion, etc.
 
 ### Web Application Testing (10 tools)
+
 Burp Suite, OWASP ZAP, Acunetix, Rapid7, AppScan, WebInspect, etc.
 
 ### Threat Intelligence (8 tools)
+
 Shodan, GreyNoise, Censys, AlienVault OTX, Recorded Future, etc.
 
 ### Malware Analysis (6 tools)
+
 Cuckoo Sandbox, ANY.RUN, Joe Sandbox, Intezer, VirusTotal API, etc.
 
 ### Configuration Management (3 tools)
+
 Lynis, OpenSCAP, Compliance Checker
 
 ---
@@ -453,7 +476,7 @@ Lynis, OpenSCAP, Compliance Checker
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 200 | OK | Request successful |
 | 202 | Accepted | Tool execution submitted asynchronously |
 | 400 | Bad Request | Invalid parameters or request body |
@@ -474,7 +497,7 @@ The Tools Service enforces rate limits per API key:
 
 Rate limit information is returned in response headers:
 
-```
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100

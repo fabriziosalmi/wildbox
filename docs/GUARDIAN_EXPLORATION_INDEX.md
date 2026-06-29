@@ -10,9 +10,11 @@
 This exploration produced three comprehensive documentation files:
 
 ### 1. GUARDIAN_API_ENDPOINTS.md (1,661 lines)
+
 **File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_API_ENDPOINTS.md`
 
 **Contents**:
+
 - Complete API endpoint documentation organized by category
 - All 280+ HTTP endpoints with methods, paths, and parameters
 - Authentication methods and permission requirements
@@ -28,9 +30,11 @@ This exploration produced three comprehensive documentation files:
 ---
 
 ### 2. GUARDIAN_ENDPOINTS_SUMMARY.txt (522 lines)
+
 **File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_ENDPOINTS_SUMMARY.txt`
 
 **Contents**:
+
 - Executive summary of API capabilities
 - Authentication methods overview
 - Rate limiting configuration
@@ -48,9 +52,11 @@ This exploration produced three comprehensive documentation files:
 ---
 
 ### 3. GUARDIAN_QUICK_REFERENCE.md
+
 **File Location**: `/Users/fab/GitHub/wildbox/docs/GUARDIAN_QUICK_REFERENCE.md`
 
 **Contents**:
+
 - Quick start guide with authentication examples
 - Core endpoints by category (concise format)
 - Common query parameter examples
@@ -71,11 +77,13 @@ This exploration produced three comprehensive documentation files:
 ## Exploration Methodology
 
 ### Phase 1: Structure Analysis
+
 - Located main application directory
 - Identified Django REST Framework architecture
 - Mapped out 8 app modules (assets, vulnerabilities, scanners, remediation, compliance, reporting, integrations, core)
 
 ### Phase 2: Configuration Discovery
+
 - Examined `guardian/urls.py` for main URL routing (35 path registrations)
 - Analyzed `guardian/settings.py` for:
   - DRF configuration
@@ -87,12 +95,14 @@ This exploration produced three comprehensive documentation files:
   - Celery async configuration
 
 ### Phase 3: Endpoint Enumeration
+
 - Reviewed all 43 ViewSets across 7 app modules
 - Identified 120+ custom actions beyond standard CRUD
 - Categorized endpoints into 7 functional domains
 - Documented all HTTP methods (GET, POST, PUT, PATCH, DELETE)
 
 ### Phase 4: Authentication & Security Analysis
+
 - Found 3 authentication methods (API Key, JWT, Session)
 - Located authentication class: `apps/core/authentication.py`
 - Identified permission classes: `apps/core/permissions.py`
@@ -100,12 +110,14 @@ This exploration produced three comprehensive documentation files:
 - Reviewed CORS setup
 
 ### Phase 5: API Configuration Analysis
+
 - Examined drf-spectacular settings for OpenAPI/Swagger
 - Identified 6 API tags for organization
 - Found automatic documentation endpoints
 - Analyzed error response format
 
 ### Phase 6: Documentation Generation
+
 - Created comprehensive markdown documentation
 - Organized endpoints by category with examples
 - Added authentication and security guidance
@@ -116,7 +128,7 @@ This exploration produced three comprehensive documentation files:
 ## Key Statistics
 
 | Metric | Count |
-|--------|-------|
+| -------- | ------- |
 | Total HTTP Endpoints | 280+ |
 | Total ViewSets | 43 |
 | Standard CRUD Endpoints | 160+ |
@@ -133,7 +145,7 @@ This exploration produced three comprehensive documentation files:
 ## Endpoint Breakdown by Category
 
 | Category | Endpoints | ViewSets | Key Features |
-|----------|-----------|----------|--------------|
+| ---------- | ----------- | ---------- | -------------- |
 | Assets | 45+ | 7 | CRUD, scanning, discovery, tagging, groups |
 | Vulnerabilities | 35+ | 3 | CRUD, assignment, workflow, bulk ops, analytics |
 | Scanners | 45+ | 5 | Scanner CRUD, profile management, scan control, scheduling |
@@ -148,6 +160,7 @@ This exploration produced three comprehensive documentation files:
 ## Authentication Details Discovered
 
 ### API Key Authentication
+
 - **Implementation File**: `apps/core/authentication.py`
 - **Class**: `APIKeyAuthentication`
 - **Headers Supported**: `X-API-Key`, `Authorization: Bearer`
@@ -155,15 +168,18 @@ This exploration produced three comprehensive documentation files:
 - **Status Code on Failure**: 401 Unauthorized
 
 ### JWT Token Authentication
+
 - **Implementation**: Django built-in `SessionAuthentication`
 - **Header Format**: `Authorization: Bearer {token}`
 - **Status Code on Failure**: 401 Unauthorized
 
 ### Session Authentication
+
 - **Implementation**: Django standard session cookies
 - **Use Case**: Web interface authentication
 
 ### Default Requirement
+
 - **Permission Class**: `IsAuthenticated`
 - **Applies To**: 277+ endpoints
 - **Exceptions**: Health check, metrics, documentation
@@ -172,7 +188,7 @@ This exploration produced three comprehensive documentation files:
 
 ## Rate Limiting Configuration
 
-```
+```text
 DEFAULT_THROTTLE_CLASSES = [
     'rest_framework.throttling.AnonRateThrottle',
     'rest_framework.throttling.UserRateThrottle'
@@ -187,6 +203,7 @@ DEFAULT_THROTTLE_RATES = {
 **API Key Users**: 5000/hour (custom implementation)
 
 **Response Headers**:
+
 - `X-RateLimit-Limit`: Request limit
 - `X-RateLimit-Remaining`: Remaining requests
 - `X-RateLimit-Reset`: Unix timestamp for reset
@@ -199,11 +216,13 @@ DEFAULT_THROTTLE_RATES = {
 **Version**: Latest (auto-schema from DRF)
 
 **Endpoints**:
+
 - Schema: `/api/schema/` (JSON format)
 - UI: `/docs/` (Swagger UI)
 - Documentation: `/redoc/` (ReDoc)
 
 **Configuration**:
+
 ```python
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Open Security Guardian API',
@@ -225,18 +244,21 @@ SPECTACULAR_SETTINGS = {
 ## Source Code Files Examined
 
 ### Core Configuration
+
 - `guardian/urls.py` - URL routing
 - `guardian/settings.py` - Django & DRF configuration
 - `guardian/wsgi.py` - WSGI application
 - `guardian/asgi.py` - ASGI application
 
 ### Authentication & Security
+
 - `apps/core/authentication.py` - API Key authentication
 - `apps/core/permissions.py` - Permission classes
 - `apps/core/middleware.py` - Custom middleware
 - `apps/core/models.py` - APIKey and SystemConfiguration models
 
 ### Views & Endpoints
+
 - `apps/assets/views.py` - 7 ViewSets
 - `apps/vulnerabilities/views.py` - 3 ViewSets
 - `apps/scanners/views.py` - 5 ViewSets
@@ -246,6 +268,7 @@ SPECTACULAR_SETTINGS = {
 - `apps/integrations/views.py` - 6 ViewSets
 
 ### URL Routing
+
 - `apps/assets/urls.py` - Asset endpoint routing
 - `apps/vulnerabilities/urls.py` - Vulnerability endpoint routing
 - `apps/scanners/urls.py` - Scanner endpoint routing
@@ -255,6 +278,7 @@ SPECTACULAR_SETTINGS = {
 - `apps/integrations/urls.py` - Integration endpoint routing
 
 ### Data Models
+
 - Multiple `apps/*/models.py` files defining database schema
 - `apps/*/serializers.py` files for request/response handling
 - `apps/*/filters.py` files for filtering and search
@@ -264,6 +288,7 @@ SPECTACULAR_SETTINGS = {
 ## Error Response Format
 
 **Standard Error Response**:
+
 ```json
 {
     "error": "Error Type Name",
@@ -276,6 +301,7 @@ SPECTACULAR_SETTINGS = {
 ```
 
 **HTTP Status Codes Used**:
+
 - 200 OK - Successful GET, PUT, PATCH
 - 201 Created - Successful POST
 - 202 Accepted - Async operation submitted
@@ -292,12 +318,14 @@ SPECTACULAR_SETTINGS = {
 ## Filtering and Pagination
 
 ### Pagination Parameters
-```
+
+```text
 ?page=1                    # Page number (1-indexed)
 ?page_size=50             # Items per page (max 100)
 ```
 
 **Response Format**:
+
 ```json
 {
     "count": 1000,
@@ -310,25 +338,29 @@ SPECTACULAR_SETTINGS = {
 ### Filter Types Supported
 
 **1. Field Filtering** (DjangoFilterBackend)
-```
+
+```text
 ?severity=critical&status=open
 ?asset_type=server&environment=production
 ```
 
 **2. Text Search** (SearchFilter)
-```
+
+```text
 ?search=web-server
 ?search=CVE-2024
 ```
 
 **3. Ordering** (OrderingFilter)
-```
+
+```text
 ?ordering=-created_at
 ?ordering=name,severity
 ```
 
 **4. Date Range**
-```
+
+```text
 ?discovered_after=2025-06-01&discovered_before=2025-06-30
 ```
 
@@ -339,6 +371,7 @@ SPECTACULAR_SETTINGS = {
 **Registration Endpoint**: `POST /api/v1/integrations/webhooks/`
 
 **Request Body**:
+
 ```json
 {
     "url": "https://your-system.com/webhook",
@@ -349,6 +382,7 @@ SPECTACULAR_SETTINGS = {
 ```
 
 **Available Events**:
+
 - vulnerability.created
 - vulnerability.updated
 - asset.created
@@ -361,24 +395,30 @@ SPECTACULAR_SETTINGS = {
 ## Technology Stack Summary
 
 **Backend Framework**:
+
 - Django 4.x
 - Django REST Framework (DRF)
 
 **API Documentation**:
+
 - drf-spectacular (OpenAPI 3.0)
 
 **Database**:
+
 - PostgreSQL (via dj_database_url)
 
 **Caching & Async**:
+
 - Redis (django-redis)
 - Celery + Django-Celery-Beat
 
 **Filtering & Search**:
+
 - django-filter
 - DRF SearchFilter and OrderingFilter
 
 **Additional Features**:
+
 - django-cors-headers
 - psutil (system monitoring)
 - prometheus-client (metrics)
@@ -389,24 +429,28 @@ SPECTACULAR_SETTINGS = {
 ## Usage Recommendations
 
 ### For API Consumers
+
 1. Start with `GUARDIAN_QUICK_REFERENCE.md`
 2. Review authentication methods in this document
 3. Use Swagger UI at `/docs/` for interactive testing
 4. Reference `GUARDIAN_API_ENDPOINTS.md` for detailed endpoint info
 
 ### For Backend Developers
+
 1. Review `GUARDIAN_ENDPOINTS_SUMMARY.txt` for architecture overview
 2. Examine ViewSet implementations in `apps/*/views.py`
 3. Check serializers in `apps/*/serializers.py` for request/response handling
 4. Use Django admin at `/admin/` for database management
 
 ### For DevOps/Infrastructure
+
 1. Review technology stack in `GUARDIAN_ENDPOINTS_SUMMARY.txt`
 2. Check environment variables section
 3. Review deployment configuration
 4. Use health check and metrics endpoints for monitoring
 
 ### For Integration Specialists
+
 1. Review integrations section of `GUARDIAN_API_ENDPOINTS.md`
 2. Check external system integrations documentation
 3. Review webhook support and event types
@@ -426,7 +470,7 @@ SPECTACULAR_SETTINGS = {
 
 ## File Structure for Reference
 
-```
+```bash
 /Users/fab/GitHub/wildbox/
 ├── GUARDIAN_API_ENDPOINTS.md           (1,661 lines - COMPREHENSIVE)
 ├── GUARDIAN_ENDPOINTS_SUMMARY.txt      (522 lines - SUMMARY)
@@ -460,6 +504,7 @@ SPECTACULAR_SETTINGS = {
 ---
 
 ## Document Version
+
 - **Created**: 2025-11-07
 - **Service Version**: 1.0.0
 - **API Version**: v1

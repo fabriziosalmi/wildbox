@@ -9,6 +9,7 @@
 Current codebase uses **anti-pattern** of returning `{"success": False, "error": "message"}` objects instead of proper HTTP status codes:
 
 ### ❌ **WRONG** (Current)
+
 ```python
 def execute_tool(params):
     try:
@@ -19,6 +20,7 @@ def execute_tool(params):
 ```
 
 **Why This Breaks Monitoring:**
+
 - Prometheus/Grafana see `200 OK` for failures
 - API gateways can't rate-limit by error codes
 - Load balancers can't detect unhealthy services
@@ -26,6 +28,7 @@ def execute_tool(params):
 - Frontend has to parse JSON to know if request failed
 
 ### ✅ **CORRECT** (Target)
+
 ```python
 from fastapi import HTTPException
 
@@ -49,7 +52,7 @@ def execute_tool(params):
 ## HTTP Status Code Guide
 
 | Code | When to Use | Example |
-|------|-------------|---------|
+| ------ | ------------- | --------- |
 | **200** | Success with response body | Data retrieved successfully |
 | **201** | Resource created | New vulnerability added |
 | **204** | Success with no content | Delete operation completed |
@@ -68,13 +71,16 @@ def execute_tool(params):
 ## Files Refactored
 
 ### ✅ Completed
+
 - [x] `open-security-tools/app/tools/security_automation_orchestrator/main.py`
 
 ### 🚧 In Progress
+
 - [ ] `open-security-agents/app/tools/langchain_tools.py` (⚠️ Special case - LangChain tool returns)
 - [ ] `open-security-agents/app/tools/wildbox_client.py` (Client library - different pattern)
 
 ### ⏳ Pending
+
 - [ ] Review all FastAPI route handlers in:
   - `open-security-identity/app/api_v1/endpoints/*.py`
   - `open-security-guardian/api/views.py` (Django REST)
@@ -85,6 +91,7 @@ def execute_tool(params):
 ## Refactoring Patterns
 
 ### Pattern 1: Simple Validation
+
 ```python
 # Before
 if not user_input:
@@ -96,6 +103,7 @@ if not user_input:
 ```
 
 ### Pattern 2: Database Errors
+
 ```python
 # Before
 try:
@@ -112,6 +120,7 @@ except DBError as e:
 ```
 
 ### Pattern 3: External API Calls
+
 ```python
 # Before
 try:
@@ -132,6 +141,7 @@ except requests.HTTPError as e:
 ```
 
 ### Pattern 4: Authorization Checks
+
 ```python
 # Before
 if not user.has_permission(resource):
@@ -150,6 +160,7 @@ if not user.has_permission(resource):
 ### LangChain Tools (Agents Service)
 
 **Current:** Returns JSON strings for tool execution results
+
 ```python
 return json.dumps({"error": str(e), "success": False})
 ```
@@ -159,6 +170,7 @@ return json.dumps({"error": str(e), "success": False})
 ### Client Libraries
 
 Files like `wildbox_client.py` are **SDK/client code**, not API endpoints. They should:
+
 - Return `Result[T, Error]` types or tuples: `(data, error)`
 - Or raise custom exceptions that callers can catch
 - Do NOT use HTTPException (that's for FastAPI routes only)
@@ -179,6 +191,7 @@ class WildboxClient:
 ## Testing Updated Endpoints
 
 ### Before (Broken Monitoring)
+
 ```bash
 $ curl -X POST /api/tool/execute -d '{"tool": "invalid"}'
 HTTP/1.1 200 OK
@@ -188,6 +201,7 @@ HTTP/1.1 200 OK
 ```
 
 ### After (Proper Status Codes)
+
 ```bash
 $ curl -X POST /api/tool/execute -d '{"tool": "invalid"}'
 HTTP/1.1 403 Forbidden
@@ -250,11 +264,13 @@ try {
 ---
 
 **Next Steps:**
+
 1. Review all FastAPI route handlers for anti-pattern
 2. Create issue template for error handling refactor PRs
 3. Update pre-commit hooks to flag `{"success": False}` pattern
 
 **Reference:** This is industry standard RESTful API design. See:
+
 - [RFC 7231 - HTTP Status Codes](https://tools.ietf.org/html/rfc7231#section-6)
 - [FastAPI Exception Handling](https://fastapi.tiangolo.com/tutorial/handling-errors/)
 - [REST API Error Handling Best Practices](https://www.baeldung.com/rest-api-error-handling-best-practices)

@@ -16,6 +16,7 @@ This directory contains all the Django applications that make up the Guardian pl
 ## Common Patterns
 
 Each application follows Django best practices:
+
 - Models for data representation
 - Views for API endpoints
 - Serializers for data transformation

@@ -28,6 +28,7 @@ This will make Git use hooks from `.githooks/` directory instead of `.git/hooks/
 **Purpose:** Prevent secrets from being committed to the repository.
 
 **Checks:**
+
 1. ✅ Blocks .env files from being committed
 2. ✅ Scans for common secret patterns (API keys, tokens, passwords)
 3. ✅ Detects JWT tokens
@@ -39,6 +40,7 @@ This will make Git use hooks from `.githooks/` directory instead of `.git/hooks/
 9. ✅ Warns about hardcoded secrets in docker-compose files
 
 **Bypass (Not Recommended):**
+
 ```bash
 git commit --no-verify -m "message"
 ```
@@ -69,6 +71,7 @@ If you update hooks in `.githooks/`, contributors will need to:
 ---
 
 **Note:** These hooks run locally on each developer's machine. They provide a safety net but are not a substitute for:
+
 - Proper `.gitignore` configuration
 - Code review processes
 - Automated secret scanning in CI/CD

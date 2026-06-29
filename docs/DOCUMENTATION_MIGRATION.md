@@ -5,6 +5,7 @@ This document explains the new Wildbox documentation structure and how to use it
 ## What Changed
 
 ### Before
+
 - Documentation was fragmented across multiple locations:
   - Root markdown files (README.md, QUICKSTART.md, DEPLOYMENT.md, etc.)
   - Service-specific READMEs in each `open-security-*` directory
@@ -12,6 +13,7 @@ This document explains the new Wildbox documentation structure and how to use it
   - Separate API documentation files
 
 ### After
+
 - **Centralized documentation** in `website/` directory powered by Docusaurus
 - **Auto-generated API documentation** from OpenAPI specifications
 - **Professional, searchable** documentation portal
@@ -19,7 +21,7 @@ This document explains the new Wildbox documentation structure and how to use it
 
 ## New Documentation Structure
 
-```
+```text
 website/
 ├── docs/                      # All documentation content
 │   ├── 01-introduction/       # Platform overview and introduction
@@ -43,12 +45,14 @@ website/
 API documentation is automatically generated from OpenAPI specifications exposed by each service.
 
 **How it works:**
+
 1. Each FastAPI service exposes `/openapi.json` endpoint
 2. Script `scripts/generate-api-specs.sh` downloads all specs
 3. Docusaurus plugin converts specs to interactive documentation
 4. Documentation updates automatically on deployment
 
 **Services with API docs:**
+
 - Identity Service (`:8001`)
 - Tools API (`:8000`)
 - Data Lake (`:8002`)
@@ -59,10 +63,12 @@ API documentation is automatically generated from OpenAPI specifications exposed
 ### 2. Automated Deployment
 
 GitHub Actions automatically deploys documentation when:
+
 - Changes are pushed to `main` branch
 - Files in `website/`, `docs/`, or `*.md` are modified
 
 **Workflow:**
+
 1. Services start in CI environment
 2. OpenAPI specs are generated
 3. API docs are generated from specs
@@ -122,17 +128,20 @@ npm run serve
 ### From Root Markdown Files
 
 Old files like `QUICKSTART.md`, `DEPLOYMENT.md` have been migrated to:
+
 - `website/docs/02-getting-started/quickstart.md`
 - `website/docs/02-getting-started/deployment.md`
 
 ### From Service READMEs
 
 Each `open-security-*/README.md` should be migrated to:
+
 - `website/docs/04-components/[service-name].md`
 
 ### From Manual API Docs
 
 Files like `GUARDIAN_API_ENDPOINTS.md` are replaced by auto-generated docs in:
+
 - `website/docs/05-api-reference/`
 
 ## Updating Documentation
@@ -141,23 +150,27 @@ Files like `GUARDIAN_API_ENDPOINTS.md` are replaced by auto-generated docs in:
 
 1. Create `.md` file in appropriate directory
 2. Add frontmatter:
+
    ```yaml
    ---
    sidebar_position: 1
    title: Page Title
    ---
    ```
+
 3. Write content in Markdown
 4. Commit and push
 
 ### Updating API Documentation
 
 API docs update automatically when:
+
 1. OpenAPI specs change in services
 2. Script regenerates specs
 3. Site rebuilds
 
 **Manual update:**
+
 ```bash
 ./scripts/generate-api-specs.sh
 cd website
@@ -168,6 +181,7 @@ npm run gen-api-docs
 
 1. Place image in `website/static/img/`
 2. Reference in Markdown:
+
    ```markdown
    ![Alt text](/img/my-image.png)
    ```
@@ -177,6 +191,7 @@ npm run gen-api-docs
 ### Automatic (GitHub Actions)
 
 Push to `main` branch triggers automatic deployment:
+
 ```bash
 git add .
 git commit -m "docs: Update documentation"
@@ -228,6 +243,7 @@ npm run deploy
 ## Support
 
 For documentation-related questions:
+
 - 📖 [Docusaurus Guide](https://docusaurus.io/docs)
 - 💬 [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
 - 🐛 [Report Issues](https://github.com/fabriziosalmi/wildbox/issues)

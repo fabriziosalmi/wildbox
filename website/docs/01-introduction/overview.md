@@ -40,18 +40,21 @@ Wildbox consists of several integrated microservices:
 ## Technology Stack
 
 ### Frontend
+
 - **Next.js 14** - React framework with App Router
 - **TypeScript 5.0+** - Type-safe development
 - **Tailwind CSS** - Modern styling
 - **Shadcn/ui** - High-quality React components
 
 ### Backend
+
 - **FastAPI & Django** - Modern Python web frameworks
 - **PostgreSQL 15** - Relational database
 - **Redis 7** - Caching and queues
 - **OpenResty** - High-performance gateway
 
 ### AI & Automation
+
 - **OpenAI GPT-4o** - Advanced language model
 - **LangChain** - LLM application framework
 - **Celery** - Distributed task queue

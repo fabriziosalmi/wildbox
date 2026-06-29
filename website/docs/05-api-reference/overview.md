@@ -22,6 +22,7 @@ Authentication, authorization, user management, team management, and subscriptio
   - Rate limiting and permissions
 
 **Quick Example:**
+
 ```bash
 # Register a new user
 curl -X POST http://localhost:8001/api/v1/auth/register \
@@ -47,6 +48,7 @@ Unified API for 50+ security tools with dynamic discovery and execution.
   - Result caching
 
 **Quick Example:**
+
 ```bash
 # List available tools
 curl http://localhost:8000/api/v1/tools
@@ -72,6 +74,7 @@ Threat intelligence aggregation, IOC lookup, and enrichment from 50+ sources.
   - Advanced filtering and search
 
 **Quick Example:**
+
 ```bash
 # Search for IOCs
 curl http://localhost:8002/api/v1/iocs/search?type=ip&value=1.1.1.1 \
@@ -92,6 +95,7 @@ GPT-4 powered security analysis, report generation, and automated insights.
   - Context-aware responses
 
 **Quick Example:**
+
 ```bash
 # Analyze a security event
 curl -X POST http://localhost:8006/api/v1/analyze \
@@ -117,6 +121,7 @@ SOAR platform for incident response automation and playbook execution.
   - Variable interpolation
 
 **Quick Example:**
+
 ```bash
 # List playbooks
 curl http://localhost:8018/api/v1/playbooks \
@@ -143,6 +148,7 @@ Multi-cloud security posture management and compliance scanning.
   - Automated remediation recommendations
 
 **Quick Example:**
+
 ```bash
 # List available checks
 curl http://localhost:8019/api/v1/checks \
@@ -206,7 +212,8 @@ All APIs implement rate limiting to ensure fair usage:
 - **Enterprise Plan**: Unlimited
 
 Rate limit headers are included in all responses:
-```
+
+```yaml
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 999
 X-RateLimit-Reset: 1699564800
@@ -230,6 +237,7 @@ All APIs use standard HTTP status codes and return JSON error responses:
 ```
 
 Common status codes:
+
 - `200 OK` - Request successful
 - `201 Created` - Resource created
 - `400 Bad Request` - Invalid request

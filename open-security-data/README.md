@@ -16,7 +16,7 @@ Open Security Data is designed to build and maintain a centralized repository of
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Data Sources  │    │   Ingestion      │    │   Processing    │
 │                 │    │                  │    │                 │
@@ -39,30 +39,35 @@ Open Security Data is designed to build and maintain a centralized repository of
 ## Features
 
 ### Data Collection
+
 - **Automated Collectors**: Scheduled collection from 50+ public threat intelligence sources
 - **Rate Limiting**: Respectful API usage with configurable rate limits
 - **Error Handling**: Robust error handling and retry mechanisms
 - **Source Management**: Dynamic addition/removal of data sources
 
 ### Data Processing
+
 - **Validation**: Schema validation and data quality checks
 - **Normalization**: Standardized data formats across all sources
 - **Enrichment**: Geographic, ASN, and contextual data enrichment
 - **Deduplication**: Intelligent duplicate detection and merging
 
 ### Storage & Performance
+
 - **Multi-tier Storage**: Hot, warm, and cold data storage strategies
 - **Caching**: Redis-based caching for frequently accessed data
 - **Indexing**: Optimized database indexes for fast queries
 - **Partitioning**: Time-based and source-based data partitioning
 
 ### APIs & Access
+
 - **REST API**: Full CRUD operations with OpenAPI documentation
 - **GraphQL**: Flexible query interface for complex data relationships
 - **Real-time**: WebSocket connections for live threat feeds
 - **Export**: Bulk export in multiple formats (JSON, CSV, STIX)
 
 ### Monitoring & Analytics
+
 - **Metrics**: Collection quality, API usage, and performance metrics
 - **Dashboards**: Grafana dashboards for operational visibility
 - **Alerting**: Real-time alerts for data quality issues
@@ -140,7 +145,7 @@ ARCHIVE_AFTER_DAYS=90
 ### Currently Supported Sources
 
 | Source | Type | Data | Update Frequency |
-|--------|------|------|------------------|
+| -------- | ------ | ------ | ------------------ |
 | Malware Domain List | Denylist | Domains | Daily |
 | Spamhaus | IP/Domain | Blocklists | Hourly |
 | URLVoid | URL | Reputation | On-demand |
@@ -213,7 +218,7 @@ query ThreatIntelligence($domain: String!) {
 
 ### Project Structure
 
-```
+```bash
 open-security-data/
 ├── app/                     # Main application code
 │   ├── api/                # REST API and GraphQL endpoints

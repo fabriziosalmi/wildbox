@@ -7,6 +7,7 @@
 ## Current State
 
 ❌ **Problems:**
+
 ```txt
 # requirements.txt (current)
 fastapi
@@ -16,6 +17,7 @@ sqlalchemy
 ```
 
 **Risks:**
+
 - Dependency confusion attacks
 - Supply chain compromises
 - Unpredictable builds
@@ -24,6 +26,7 @@ sqlalchemy
 ## Target State
 
 ✅ **With pip-tools:**
+
 ```txt
 # requirements.in (human-edited)
 fastapi>=0.104.0,<0.105.0
@@ -55,11 +58,13 @@ pip install pip-tools
 ### Step 2: Create requirements.in Files
 
 **Rename current requirements.txt to requirements.in:**
+
 ```bash
 mv requirements.txt requirements.in
 ```
 
 **Edit requirements.in** - use version ranges for direct dependencies:
+
 ```txt
 # requirements.in - Human-maintained
 
@@ -92,6 +97,7 @@ pip-compile --generate-hashes --resolver=backtracking requirements.in
 ```
 
 **Output** → `requirements.txt` with:
+
 - ✅ Exact versions pinned
 - ✅ SHA256 hashes for every package
 - ✅ All transitive dependencies included
@@ -100,24 +106,28 @@ pip-compile --generate-hashes --resolver=backtracking requirements.in
 ### Step 4: Update Dockerfiles
 
 **Before:**
+
 ```dockerfile
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 ```
 
 **After:**
+
 ```dockerfile
 COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 ```
 
 The `--require-hashes` flag ensures pip **refuses** to install if:
+
 - Package doesn't match hash (tampered/corrupted)
 - New dependency added without hash (prevents sneaky additions)
 
 ### Step 5: Update Development Workflow
 
 **Add to each service's Makefile:**
+
 ```makefile
 .PHONY: deps-compile deps-upgrade deps-sync
 
@@ -135,6 +145,7 @@ deps-sync:
 ```
 
 **Usage:**
+
 ```bash
 # After editing requirements.in
 make deps-compile
@@ -149,6 +160,7 @@ make deps-sync
 ### Step 6: CI/CD Integration
 
 **GitHub Actions workflow** (`.github/workflows/dependency-check.yml`):
+
 ```yaml
 name: Dependency Security Check
 
@@ -213,6 +225,7 @@ jobs:
 ## Service-Specific Notes
 
 ### Identity Service
+
 ```bash
 cd open-security-identity
 pip install pip-tools
@@ -224,6 +237,7 @@ git commit -m "feat(deps): Pin dependencies with hashes for identity service"
 ```
 
 ### Django Services (Guardian, Data)
+
 ```bash
 cd open-security-guardian
 pip install pip-tools
@@ -234,7 +248,9 @@ git add requirements.in requirements.txt
 ```
 
 ### Frontend (Dashboard)
+
 **Use package-lock.json** (already hash-verified):
+
 ```bash
 cd open-security-dashboard
 npm ci  # Uses package-lock.json with integrity hashes
@@ -307,16 +323,19 @@ docker-compose up -d
 ## Benefits Achieved
 
 ✅ **Security:**
+
 - Prevents dependency confusion attacks
 - Detects package tampering
 - No surprise upgrades
 
 ✅ **Reliability:**
+
 - Reproducible builds across dev/CI/prod
 - Explicit transitive dependencies
 - No "works on my machine" issues
 
 ✅ **Compliance:**
+
 - Full SBOM (Software Bill of Materials)
 - Auditable dependency history
 - Meets security tool standards
@@ -324,7 +343,7 @@ docker-compose up -d
 ## Timeline
 
 | Service | Priority | Estimated Time | Assignee |
-|---------|----------|----------------|----------|
+| --------- | ---------- | ---------------- | ---------- |
 | identity | P0 | 1 hour | Sprint 2 |
 | tools | P0 | 1 hour | Sprint 2 |
 | data | P1 | 1 hour | Sprint 2 |

@@ -1,28 +1,33 @@
 # Guardian Service - API Quick Reference Guide
 
 ## Location
+
 `/Users/fab/GitHub/wildbox/open-security-guardian/`
 
 ## Quick Start
 
 ### Base URL
-```
+
+```text
 http://localhost:8000/api/v1/
 ```
 
 ### Authentication
 
 **API Key (Recommended)**
+
 ```bash
 curl -H "X-API-Key: your-api-key-here" http://localhost:8000/api/v1/assets/
 ```
 
 **Bearer Token**
+
 ```bash
 curl -H "Authorization: Bearer your-token" http://localhost:8000/api/v1/assets/
 ```
 
 ### Documentation
+
 - **Swagger UI**: http://localhost:8000/docs/
 - **ReDoc**: http://localhost:8000/redoc/
 - **OpenAPI Schema**: http://localhost:8000/api/schema/
@@ -33,7 +38,8 @@ curl -H "Authorization: Bearer your-token" http://localhost:8000/api/v1/assets/
 ## Core Endpoints by Category
 
 ### 1. Assets (`/api/v1/assets/`)
-```
+
+```http
 GET    /assets/                          List all assets
 POST   /assets/                          Create asset
 GET    /assets/{id}/                     Get asset details
@@ -45,7 +51,8 @@ GET    /assets/statistics/               Get statistics
 ```
 
 ### 2. Vulnerabilities (`/api/v1/vulnerabilities/`)
-```
+
+```http
 GET    /                                 List vulnerabilities
 POST   /                                 Create vulnerability
 GET    /{id}/                            Get vulnerability
@@ -59,7 +66,8 @@ POST   /bulk_action/                     Bulk operations
 ```
 
 ### 3. Scanners (`/api/v1/scanners/`)
-```
+
+```text
 GET    /scanners/                        List scanners
 POST   /scanners/                        Create scanner
 POST   /scanners/{id}/test_connection/   Test connection
@@ -70,7 +78,8 @@ GET    /scans/{id}/results/              Get results
 ```
 
 ### 4. Remediation (`/api/v1/remediation/`)
-```
+
+```text
 GET    /tickets/                         List tickets
 POST   /tickets/                         Create ticket
 POST   /tickets/{id}/assign/             Assign ticket
@@ -80,7 +89,8 @@ GET    /workflows/{id}/progress/         Get progress
 ```
 
 ### 5. Compliance (`/api/v1/compliance/`)
-```
+
+```text
 GET    /frameworks/                      List frameworks
 GET    /assessments/                     List assessments
 POST   /assessments/                     Create assessment
@@ -90,7 +100,8 @@ GET    /metrics/dashboard/               Dashboard metrics
 ```
 
 ### 6. Reports (`/api/v1/reports/`)
-```
+
+```text
 GET    /templates/                       List templates
 POST   /templates/{id}/generate/         Generate report
 GET    /reports/{id}/download/           Download report
@@ -99,7 +110,8 @@ GET    /dashboards/{id}/data/            Get dashboard data
 ```
 
 ### 7. Integrations (`/api/v1/integrations/`)
-```
+
+```text
 GET    /systems/                         List integrations
 POST   /systems/{id}/test_connection/    Test connection
 POST   /webhooks/                        Create webhook
@@ -111,30 +123,35 @@ POST   /notifications/                   Create channel
 ## Common Query Parameters
 
 ### Pagination
-```
+
+```text
 ?page=1&page_size=50
 ```
 
 ### Filtering
-```
+
+```text
 ?severity=critical&status=open
 ?asset_type=server&environment=production
 ```
 
 ### Search
-```
+
+```text
 ?search=web-server
 ?search=CVE-2024
 ```
 
 ### Ordering
-```
+
+```text
 ?ordering=-created_at
 ?ordering=name,severity
 ```
 
 ### Date Range
-```
+
+```text
 ?discovered_after=2025-06-01&discovered_before=2025-06-30
 ```
 
@@ -143,6 +160,7 @@ POST   /notifications/                   Create channel
 ## Response Format
 
 ### Success (List)
+
 ```json
 {
   "count": 100,
@@ -160,6 +178,7 @@ POST   /notifications/                   Create channel
 ```
 
 ### Success (Create/Update)
+
 ```json
 {
   "id": "uuid",
@@ -170,6 +189,7 @@ POST   /notifications/                   Create channel
 ```
 
 ### Error
+
 ```json
 {
   "error": "Validation Error",
@@ -185,11 +205,13 @@ POST   /notifications/                   Create channel
 ## Authentication & Authorization
 
 ### Methods
+
 - **API Key** (Header: `X-API-Key`)
 - **JWT Token** (Header: `Authorization: Bearer`)
 - **Session** (Django standard)
 
 ### Permissions
+
 - `IsAuthenticated` - Most endpoints
 - `IsAssetManager` - Asset operations
 - `IsComplianceManager` - Compliance operations
@@ -201,7 +223,7 @@ POST   /notifications/                   Create channel
 ## Rate Limits
 
 | User Type | Limit | Response Headers |
-|-----------|-------|-----------------|
+| ----------- | ------- | ----------------- |
 | Anonymous | 100/hour | X-RateLimit-* |
 | Authenticated | 1000/hour | X-RateLimit-* |
 | API Key | 5000/hour | X-RateLimit-* |
@@ -211,7 +233,7 @@ POST   /notifications/                   Create channel
 ## HTTP Status Codes
 
 | Code | Meaning |
-|------|---------|
+| ------ | --------- |
 | 200 | OK (GET, PUT, PATCH) |
 | 201 | Created (POST) |
 | 202 | Accepted (Async) |
@@ -228,24 +250,28 @@ POST   /notifications/                   Create channel
 ## Popular Queries
 
 ### Get all critical vulnerabilities
+
 ```bash
 curl -H "X-API-Key: your-key" \
   'http://localhost:8000/api/v1/vulnerabilities/?severity=critical&status=open'
 ```
 
 ### Get asset by hostname
+
 ```bash
 curl -H "X-API-Key: your-key" \
   'http://localhost:8000/api/v1/assets/?search=web-server'
 ```
 
 ### Get compliance summary
+
 ```bash
 curl -H "X-API-Key: your-key" \
   'http://localhost:8000/api/v1/compliance/assessments/{id}/summary/'
 ```
 
 ### Generate report
+
 ```bash
 curl -X POST -H "X-API-Key: your-key" \
   -H "Content-Type: application/json" \
@@ -257,6 +283,7 @@ curl -X POST -H "X-API-Key: your-key" \
 ```
 
 ### Run vulnerability bulk operation
+
 ```bash
 curl -X POST -H "X-API-Key: your-key" \
   -H "Content-Type: application/json" \
@@ -272,7 +299,7 @@ curl -X POST -H "X-API-Key: your-key" \
 
 ## File Structure
 
-```
+```bash
 open-security-guardian/
 ├── guardian/
 │   ├── urls.py              # Main URL routing
@@ -387,6 +414,7 @@ celery -A guardian beat -l info
 ## Webhook Events
 
 Subscribe to these events:
+
 - `vulnerability.created`
 - `vulnerability.updated`
 - `asset.created`
@@ -395,6 +423,7 @@ Subscribe to these events:
 - `remediation.ticket.created`
 
 Register webhook:
+
 ```bash
 POST /api/v1/integrations/webhooks/
 {
@@ -410,11 +439,13 @@ POST /api/v1/integrations/webhooks/
 ## Health Monitoring
 
 ### Health Check
+
 ```bash
 curl http://localhost:8000/health/
 ```
 
 ### Prometheus Metrics
+
 ```bash
 curl http://localhost:8000/metrics/
 ```
@@ -434,6 +465,7 @@ curl http://localhost:8000/metrics/
 ## Common Tasks
 
 ### Create an Asset
+
 ```bash
 POST /api/v1/assets/
 {
@@ -446,6 +478,7 @@ POST /api/v1/assets/
 ```
 
 ### Create a Vulnerability
+
 ```bash
 POST /api/v1/vulnerabilities/
 {
@@ -458,6 +491,7 @@ POST /api/v1/vulnerabilities/
 ```
 
 ### Create Compliance Assessment
+
 ```bash
 POST /api/v1/compliance/assessments/
 {
@@ -469,6 +503,7 @@ POST /api/v1/compliance/assessments/
 ```
 
 ### Start a Scan
+
 ```bash
 POST /api/v1/scanners/scans/{id}/start/
 {}

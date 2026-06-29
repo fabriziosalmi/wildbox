@@ -5,11 +5,13 @@ This directory contains real-world use case examples demonstrating how to use Wi
 ## 📚 Available Use Cases
 
 ### 1. [Web Attack Detection](web-attack-detection/)
+
 **Status**: ✅ Complete
 **Difficulty**: Beginner
 **Components Used**: Sensor, Data Lake
 
 Demonstrates log ingestion and parsing for detecting common web application attacks including:
+
 - SQL Injection
 - Cross-Site Scripting (XSS)
 - Path Traversal
@@ -18,12 +20,14 @@ Demonstrates log ingestion and parsing for detecting common web application atta
 - Security Scanner Activity
 
 **What you'll learn**:
+
 - How to configure the Wildbox Sensor for log forwarding
 - How to ingest and parse nginx/apache access logs
 - How to query and analyze ingested events via the Data Lake API
 - How to identify attack patterns in web traffic
 
 **Quick Start**:
+
 ```bash
 cd web-attack-detection
 ./quick-start.sh
@@ -34,26 +38,31 @@ cd web-attack-detection
 ## 🎯 Coming Soon
 
 ### 2. Cloud Security Monitoring (Planned)
+
 **Components**: CSPM, Data Lake, Agents
 
 Monitor AWS/Azure/GCP for security misconfigurations and compliance violations.
 
 ### 3. Threat Intelligence Enrichment (Planned)
+
 **Components**: Data Lake, Threat Feeds, Agents
 
 Enrich security events with threat intelligence from 50+ sources.
 
 ### 4. Automated Incident Response (Planned)
+
 **Components**: Responder, Agents, Gateway
 
 Automatically respond to security incidents with YAML-based playbooks.
 
 ### 5. Endpoint Threat Hunting (Planned)
+
 **Components**: Sensor, Data Lake, Agents
 
 Hunt for threats across your endpoint fleet using osquery.
 
 ### 6. API Security Monitoring (Planned)
+
 **Components**: Gateway, Data Lake, Agents
 
 Monitor and protect your APIs from abuse and attacks.
@@ -64,7 +73,7 @@ Monitor and protect your APIs from abuse and attacks.
 
 Want to contribute a use case? Use this structure:
 
-```
+```text
 use-cases/
 └── your-use-case-name/
     ├── README.md              # Main documentation
@@ -78,7 +87,8 @@ use-cases/
         └── troubleshooting.md
 ```
 
-### Required Sections in README.md:
+### Required Sections in README.md
+
 1. **Overview** - What the use case demonstrates
 2. **Architecture** - Component diagram
 3. **Prerequisites** - What's needed to run it
@@ -91,7 +101,7 @@ use-cases/
 ## 🏗️ Use Case Difficulty Levels
 
 | Level | Description | Best For |
-|-------|-------------|----------|
+| ------- | ------------- | ---------- |
 | **Beginner** | Single component, basic setup | Learning Wildbox basics |
 | **Intermediate** | Multiple components, some integration | Real-world deployments |
 | **Advanced** | Full platform, custom integrations | Production environments |
@@ -108,7 +118,8 @@ We welcome community contributions! To submit a use case:
 4. **Document completely** - Clear instructions for users
 5. **Submit a Pull Request** - With a description of the use case
 
-### Guidelines:
+### Guidelines
+
 - ✅ Use real-world scenarios
 - ✅ Include sample data
 - ✅ Provide automated setup scripts

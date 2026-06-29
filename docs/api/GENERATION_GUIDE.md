@@ -5,6 +5,7 @@ This guide explains how to automatically generate static OpenAPI documentation f
 ## Overview
 
 The Wildbox platform includes a Python script that:
+
 1. Starts all microservices using Docker Compose
 2. Waits for services to be healthy
 3. Fetches OpenAPI schemas from each service
@@ -28,6 +29,7 @@ python3 scripts/generate-api-docs.py
 ```
 
 The script will:
+
 - Start Docker Compose services
 - Generate HTML files in `docs/api/`
 - Create a swagger-index.html file
@@ -37,7 +39,7 @@ The script will:
 
 After generation completes, you'll find:
 
-```
+```text
 docs/api/
 ├── swagger-index.html       # Index page with all APIs
 ├── api-api.html            # API / Tools Service
@@ -53,7 +55,7 @@ Open `docs/api/swagger-index.html` in a browser to view all APIs.
 ## Services Documented
 
 | Service | Port | Description |
-|---------|------|-------------|
+| --------- | ------ | ------------- |
 | API | 8000 | Security tool execution and orchestration |
 | Identity | 8001 | Authentication, authorization, user management |
 | Data | 8002 | Threat intelligence and data aggregation |
@@ -71,6 +73,7 @@ cp .env.example .env
 ```
 
 Key variables needed:
+
 - `DATABASE_URL` - PostgreSQL connection
 - `REDIS_URL` - Redis connection
 - `JWT_SECRET_KEY` - JWT signing key
@@ -117,6 +120,7 @@ python3 scripts/generate-api-docs.py
 ### Port conflicts
 
 If ports are already in use:
+
 - Change port mappings in `docker-compose.yml`
 - Or stop conflicting containers: `docker stop <container>`
 
@@ -125,6 +129,7 @@ If ports are already in use:
 ### Modify Output Format
 
 Edit `scripts/generate-api-docs.py` to:
+
 - Change CSS themes
 - Modify HTML templates
 - Add custom branding
@@ -201,6 +206,7 @@ git commit -m "docs: Regenerate API documentation from services"
 ## Feedback & Issues
 
 For issues with documentation generation:
+
 1. Check [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 2. Enable debug logging in the Python script
 3. Share error messages and service logs

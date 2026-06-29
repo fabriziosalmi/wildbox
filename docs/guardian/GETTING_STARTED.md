@@ -14,16 +14,19 @@ This guide will help you get the Open Security Guardian platform up and running 
 ## Quick Start with Docker
 
 1. **Clone and navigate to the Guardian directory:**
+
    ```bash
    cd /Users/fab/GitHub/wildbox/open-security-guardian
    ```
 
 2. **Start the platform with Docker Compose:**
+
    ```bash
    docker-compose up -d
    ```
 
 3. **Initialize the database and create admin user:**
+
    ```bash
    docker-compose exec guardian python manage.py setup_guardian --create-admin --sample-data
    ```
@@ -37,27 +40,32 @@ This guide will help you get the Open Security Guardian platform up and running 
 ## Manual Installation
 
 1. **Install dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **Configure environment:**
+
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
 3. **Set up database:**
+
    ```bash
    python manage.py migrate
    ```
 
 4. **Initialize Guardian:**
+
    ```bash
    python manage.py setup_guardian --create-admin --sample-data
    ```
 
 5. **Start the development server:**
+
    ```bash
    python manage.py runserver 0.0.0.0:8002
    ```
@@ -65,38 +73,44 @@ This guide will help you get the Open Security Guardian platform up and running 
 ## Key Features Implemented
 
 ### ✅ Asset Management (`/apps/assets/`)
+
 - **Models**: Comprehensive asset inventory with criticality, environments, and metadata
 - **API**: Full CRUD operations, filtering, and bulk actions
 - **Features**: Auto-discovery integration, asset grouping, dependency mapping
 
 ### ✅ Vulnerability Management (`/apps/vulnerabilities/`)
+
 - **Models**: Advanced vulnerability tracking with risk scoring and lifecycle management
 - **API**: Complete vulnerability CRUD, assignment, bulk operations, and analytics
 - **Features**: Risk-based prioritization, SLA tracking, history, and attachments
 
 ### ✅ Scanner Integration (`/apps/scanners/`)
+
 - **Models**: Multi-scanner support (Nessus, Qualys, OpenVAS, custom)
 - **API**: Scanner management, scan scheduling, and result processing
 - **Features**: Health monitoring, scan profiles, automated result import
 
 ### ✅ Remediation Workflows (`/apps/remediation/`)
+
 - **Models**: Complete workflow management with steps, tickets, and templates
 - **API**: Workflow CRUD, progress tracking, and integration management
 - **Features**: External ticketing (JIRA, ServiceNow), SLA monitoring, step automation
 
 ### ✅ External Integrations (`/apps/integrations/`)
+
 - **Models**: Flexible integration framework for external systems
 - **API**: System configuration, sync management, and webhook handling
 - **Features**: Bidirectional sync, field mapping, notification channels
 
 ### ⚠️ To Be Implemented
+
 - **Compliance App**: Regulatory framework support and reporting
 - **Reporting App**: Analytics dashboards and executive reports
 - **Frontend UI**: React-based dashboard (currently API-only)
 
 ## Architecture Overview
 
-```
+```text
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │     Assets      │    │  Vulnerabilities │    │    Scanners     │
 │   Management    │───▶│   Management     │◀───│   Integration   │
@@ -121,29 +135,34 @@ This guide will help you get the Open Security Guardian platform up and running 
 ## Core Models and Relationships
 
 ### Assets (`apps.assets.models`)
+
 - **Asset**: Core asset model with networking, hardware, and software details
 - **AssetGroup**: Logical grouping of assets
 - **AssetDependency**: Asset interdependencies
 
 ### Vulnerabilities (`apps.vulnerabilities.models`)
+
 - **Vulnerability**: Core vulnerability with risk scoring and lifecycle
 - **VulnerabilityTemplate**: Reusable vulnerability definitions
 - **VulnerabilityHistory**: Change tracking and audit trail
 - **VulnerabilityAssessment**: Risk assessment details
 
 ### Scanners (`apps.scanners.models`)
+
 - **Scanner**: Scanner configuration and health monitoring
 - **ScanProfile**: Scan configuration templates
 - **Scan**: Individual scan instances with progress tracking
 - **ScanResult**: Individual vulnerability findings
 
 ### Remediation (`apps.remediation.models`)
+
 - **RemediationWorkflow**: Main workflow with steps and progress
 - **RemediationTicket**: External ticket integration
 - **RemediationTemplate**: Workflow templates
 - **RemediationStep**: Individual workflow steps
 
 ### Integrations (`apps.integrations.models`)
+
 - **ExternalSystem**: External system configurations
 - **IntegrationMapping**: Field and data mappings
 - **SyncRecord**: Synchronization tracking
@@ -153,7 +172,8 @@ This guide will help you get the Open Security Guardian platform up and running 
 
 All endpoints are available at `/api/v1/` with full OpenAPI documentation at `/docs/`.
 
-### Key Endpoint Collections:
+### Key Endpoint Collections
+
 - **Assets**: `/api/v1/assets/` - Asset management and discovery
 - **Vulnerabilities**: `/api/v1/vulnerabilities/` - Vulnerability lifecycle
 - **Scanners**: `/api/v1/scanners/` - Scanner integration and management
@@ -163,6 +183,7 @@ All endpoints are available at `/api/v1/` with full OpenAPI documentation at `/d
 ## Configuration
 
 ### Environment Variables (`.env`)
+
 ```bash
 # Database
 DATABASE_URL=postgresql://guardian:password@localhost:5432/guardian
@@ -194,12 +215,14 @@ Guardian integrates seamlessly with other Wildbox components:
 ## Development
 
 ### Adding New Apps
+
 1. Create app: `python manage.py startapp newapp apps/`
 2. Add to `INSTALLED_APPS` in `guardian/settings.py`
 3. Create models, serializers, views, and URLs
 4. Run migrations: `python manage.py makemigrations && python manage.py migrate`
 
 ### Key Design Patterns
+
 - **Model Relationships**: Extensive use of foreign keys and many-to-many relationships
 - **API Design**: DRF ViewSets with comprehensive filtering and pagination
 - **Background Tasks**: Celery for async processing (notifications, sync, etc.)
@@ -208,12 +231,14 @@ Guardian integrates seamlessly with other Wildbox components:
 ## Troubleshooting
 
 ### Common Issues
+
 1. **Database Connection**: Ensure PostgreSQL is running and credentials are correct
 2. **Redis Connection**: Verify Redis is accessible for caching and Celery
 3. **Scanner Integration**: Check scanner URLs and authentication in environment
 4. **Migrations**: Run `python manage.py migrate` after pulling updates
 
 ### Logs and Monitoring
+
 - Application logs: Check Django logs and Celery worker logs
 - Health checks: Visit `/health/` endpoint for system status
 - Metrics: Prometheus metrics available at `/metrics/`
@@ -229,6 +254,7 @@ Guardian integrates seamlessly with other Wildbox components:
 ## Support
 
 For issues and questions:
+
 - Review the API documentation at `/docs/`
 - Check the Django admin interface for data management
 - Monitor Celery tasks for background processing status

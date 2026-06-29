@@ -1,6 +1,7 @@
 # Comprehensive Security Audit Report - Wildbox Security Platform
 
 ## Executive Summary
+
 This security audit identified **19 security issues** across the Wildbox Security Platform codebase, ranging from Critical to Low severity. The platform has implemented several good security practices (bcrypt password hashing, defusedxml for XXE protection, proper JWT implementation) but has notable vulnerabilities in authentication, CORS configuration, code injection risks, and hardcoded credentials in committed files.
 
 ---
@@ -8,6 +9,7 @@ This security audit identified **19 security issues** across the Wildbox Securit
 ## CRITICAL ISSUES
 
 ### 1. Code Injection via eval() - Python Deserialization
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 266)
 **Severity**: CRITICAL
 **Risk**: Remote Code Execution (RCE)
@@ -18,7 +20,8 @@ task_metadata = eval(task_metadata_str.decode())
 
 **Issue**: Using `eval()` to deserialize untrusted data from Redis can allow arbitrary code execution if an attacker can control the Redis data.
 
-**Fix**: 
+**Fix**:
+
 - Replace with `json.loads()` for safe JSON deserialization
 - Use `json.dumps()` when storing instead of `str(task_metadata)`
 
@@ -29,16 +32,19 @@ task_metadata = json.loads(task_metadata_str.decode())
 ---
 
 ### 2. Hardcoded Credentials in Committed .env File
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-identity/.env`
 **Severity**: CRITICAL
 **Risk**: Credential Exposure, Unauthorized Access
 
 **Issues Found**:
+
 - Line 2: `DATABASE_URL=postgresql+asyncpg://postgres:password@localhost:5432/identity_db` (plaintext password)
 - Line 5: `JWT_SECRET_KEY=INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS` (default/insecure key)
 - Line 10-12: Stripe test keys (even test keys should not be in repo)
 
 **Fix**:
+
 - Remove all .env files from git history: `git filter-branch --tree-filter 'rm -f open-security-identity/.env' HEAD`
 - Ensure .env is in .gitignore (already done for root)
 - Add to open-security-identity/.gitignore: `.env` and `.env.*` except `.env.example`
@@ -47,7 +53,9 @@ task_metadata = json.loads(task_metadata_str.decode())
 ---
 
 ### 3. Missing Authentication on Critical API Endpoints
-**Files**: 
+
+**Files**:
+
 - `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 180)
 - `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py` (Line 133)
 
@@ -84,7 +92,9 @@ async def analyze_ioc(
 ## HIGH SEVERITY ISSUES
 
 ### 4. Overly Permissive CORS Configuration (Wildcard Origins)
+
 **Files**:
+
 - `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 91)
 - `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py` (Line 79)
 - `/Users/fab/GitHub/wildbox/open-security-data/app/config.py` (Line 64)
@@ -93,6 +103,7 @@ async def analyze_ioc(
 **Risk**: Cross-Site Request Forgery (CSRF), Data Exfiltration
 
 **Issue**:
+
 ```python
 CORSMiddleware,
 allow_origins=["*"],  # Dangerous!
@@ -109,6 +120,7 @@ allow_credentials=True,
 ```
 
 For data service - explicitly enumerate:
+
 ```python
 cors_origins: List[str] = field(default_factory=lambda: [
     "https://dashboard.wildbox.com",
@@ -119,6 +131,7 @@ cors_origins: List[str] = field(default_factory=lambda: [
 ---
 
 ### 5. SQL Injection Risk in osquery Table Validation
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-sensor/sensor/collectors/osquery_manager.py` (Line 411)
 **Severity**: HIGH
 **Risk**: SQL Injection via Dynamic Table Names
@@ -135,6 +148,7 @@ for table in tables:
 **Issue**: While regex restricts to `\w+`, it's still unsafe. Even though subprocess is not using shell=True, this is fragile.
 
 **Fix**: Use osquery's native validation APIs instead:
+
 ```python
 # Use osquery's schema API instead of dynamic query construction
 # Or use parameterized queries if available
@@ -143,7 +157,9 @@ for table in tables:
 ---
 
 ### 6. Missing Rate Limiting on Public Endpoints
+
 **Files**:
+
 - `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py`
 - `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py`
 
@@ -168,7 +184,9 @@ async def analyze_ioc(request: Request, ...):
 ---
 
 ### 7. Plaintext Logging of Sensitive Data
+
 **Files**:
+
 - `/Users/fab/GitHub/wildbox/open-security-identity/demo.py` (Line 22)
 - `/Users/fab/GitHub/wildbox/open-security-identity/auth.py` (Line 291)
 
@@ -197,6 +215,7 @@ except Exception as e:
 ---
 
 ### 8. Insecure Default Secrets in docker-compose.yml
+
 **File**: `/Users/fab/GitHub/wildbox/docker-compose.yml` (Lines 28-36)
 **Severity**: HIGH
 **Risk**: Data Compromise, Unauthorized Access
@@ -218,6 +237,7 @@ except Exception as e:
 ```
 
 Also, change line 58 API_KEY - this looks like a real key was exposed:
+
 ```yaml
 - API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}  # EXPOSED KEY!
 ```
@@ -229,6 +249,7 @@ Also, change line 58 API_KEY - this looks like a real key was exposed:
 ## MEDIUM SEVERITY ISSUES
 
 ### 9. Missing Input Validation on Unprotected Endpoints
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 181)
 **Severity**: MEDIUM
 **Risk**: Injection Attacks, Unexpected Behavior
@@ -264,6 +285,7 @@ class IOC(BaseModel):
 ---
 
 ### 10. Weak Hashing Algorithms Supported (md5, sha1)
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-tools/app/tools/hash_generator/main.py` (Lines 28-65)
 **Severity**: MEDIUM
 **Risk**: Weak Cryptography, Compliance Issues
@@ -298,11 +320,13 @@ LEGACY_ALGORITHMS = {  # Only for compatibility
 ---
 
 ### 11. Missing CSRF Protection Validation
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-identity/app/config.py` (Line 40)
 **Severity**: MEDIUM
 **Risk**: Cross-Site Request Forgery
 
-**Issue**: 
+**Issue**:
+
 ```python
 cors_allow_headers: list[str] = ["*"]  # Allows any headers - CSRF not checked
 ```
@@ -325,6 +349,7 @@ Also add CSRF middleware for state-changing operations.
 ---
 
 ### 12. Missing Security Headers
+
 **Severity**: MEDIUM
 **Risk**: Clickjacking, XSS, MIME Type Sniffing
 
@@ -350,6 +375,7 @@ async def add_security_headers(request, call_next):
 ---
 
 ### 13. Subprocess Usage Without Input Validation
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-sensor/sensor/collectors/log_forwarder.py` (Line 281)
 **Severity**: MEDIUM
 **Risk**: Command Injection
@@ -375,6 +401,7 @@ result = subprocess.run(
 ---
 
 ### 14. Insecure Deserialization - json.loads() without validation
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-cspm/app/main.py` (Multiple lines)
 **Severity**: MEDIUM
 **Risk**: Injection Attacks, Unexpected Type Confusion
@@ -405,6 +432,7 @@ except ValidationError as e:
 ---
 
 ### 15. Default Django Secret Key (Guardian)
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-guardian/guardian/settings.py` (Line 23)
 **Severity**: MEDIUM
 **Risk**: Session Hijacking, CSRF Token Forgery
@@ -430,6 +458,7 @@ if SECRET_KEY in ['your-secret-key-here-change-in-production', 'change-me']:
 ## LOW SEVERITY ISSUES
 
 ### 16. Missing API Key Validation on Tools Endpoint
+
 **File**: `/Users/fab/GitHub/wildbox/open-security-tools/app/api/router.py` (Line 22)
 **Severity**: LOW
 **Risk**: Information Disclosure
@@ -446,6 +475,7 @@ async def list_tools(request: Request, api_key: str = Depends(verify_api_key)):
 ---
 
 ### 17. Debug Flag in Production
+
 **File**: `/Users/fab/GitHub/wildbox/docker-compose.yml` (Line 59)
 **Severity**: LOW (if DEBUG is false in production)
 **Risk**: Information Disclosure
@@ -464,6 +494,7 @@ if os.getenv('ENVIRONMENT') == 'production' and os.getenv('DEBUG') == 'true':
 ---
 
 ### 18. Weak Password Requirements in Demo
+
 **File**: `/Users/fab/GitHub/wildbox/tests/verify_authentication_complete.py` (Line 581)
 **Severity**: LOW
 **Risk**: Weak Authentication
@@ -481,6 +512,7 @@ password = "TempDemo@2024!SecurePass"  # Meets complexity requirements
 ---
 
 ### 19. Missing API Documentation Security
+
 **Severity**: LOW
 **Risk**: Information Disclosure
 
@@ -506,7 +538,7 @@ app = FastAPI(
 ## SUMMARY TABLE
 
 | Severity | Count | Issues |
-|----------|-------|--------|
+| ---------- | ------- | -------- |
 | CRITICAL | 3 | Code injection (eval), Hardcoded credentials, Missing authentication |
 | HIGH | 6 | Permissive CORS, SQL injection risk, No rate limiting, Plaintext logging, Default secrets, Guardian defaults |
 | MEDIUM | 8 | Input validation, Weak hashes, No CSRF protection, Missing headers, Subprocess risks, Insecure deserialization, Django secret, API validation |
@@ -579,6 +611,7 @@ app = FastAPI(
 ## COMPLIANCE NOTES
 
 Current implementation is partially aligned with:
+
 - OWASP Top 10 (some issues present)
 - CWE/SANS Top 25 (several CWEs identified)
 - Missing: GDPR data protection logging, PII handling

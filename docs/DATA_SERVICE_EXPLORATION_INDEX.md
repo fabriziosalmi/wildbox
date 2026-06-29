@@ -30,7 +30,7 @@ This index provides navigation to all documentation related to the Open Security
 
 ## Project Structure
 
-```
+```text
 open-security-data/
 ├── app/
 │   ├── api/
@@ -59,6 +59,7 @@ open-security-data/
 ## Key Files Analyzed
 
 ### Application Entry Point
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/api/main.py`
 - **Type**: FastAPI Application
 - **Lines**: 806
@@ -81,6 +82,7 @@ open-security-data/
   - `get_telemetry_stats()` - Telemetry statistics
 
 ### Data Models
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/models.py`
 - **Type**: SQLAlchemy ORM Models
 - **Tables**: 9 main entities
@@ -96,12 +98,14 @@ open-security-data/
   - `SensorMetadata` - Sensor registration and status tracking
 
 ### Schemas & Validation
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/schemas/api.py`
 - **Type**: Pydantic Models (Request/Response)
 - **Classes**: 25+ schema definitions
 - **Purpose**: Input validation, response serialization, OpenAPI documentation
 
 ### Configuration Management
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/config.py`
 - **Type**: Configuration Class (Dataclasses)
 - **Config Sections**: 8 sections
@@ -111,17 +115,20 @@ open-security-data/
 ### Utilities
 
 #### Database Utilities
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/utils/database.py`
 - **Purpose**: SQLAlchemy engine setup, session management, table creation
 - **Key Functions**: `get_db_session()`, `create_tables()`, `drop_tables()`
 
 #### Rate Limiting
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/utils/rate_limiter.py`
 - **Purpose**: Async rate limiting with sliding window
 - **Classes**: `RateLimiter`, `GlobalRateLimiter`
 - **Mechanism**: Sliding window with configurable max requests and time window
 
 #### Validators
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/utils/validators.py`
 - **Purpose**: Security indicator validation (IP, domain, hash, email, etc.)
 - **Functions**: 15+ type-specific validators
@@ -129,6 +136,7 @@ open-security-data/
 - **Features**: Pattern matching, range validation, format verification
 
 #### Normalizers
+
 - **File**: `/Users/fab/GitHub/wildbox/open-security-data/app/utils/normalizers.py`
 - **Purpose**: Standardize indicator formats for consistency
 - **Functions**: Type-specific normalization, timestamp parsing, fingerprint generation
@@ -143,25 +151,30 @@ open-security-data/
 #### By Category
 
 **Health & Statistics (3)**
+
 - GET /health
 - GET /api/v1/stats
 - GET /api/v1/dashboard/threat-intel
 
 **Indicator Search & Lookup (3)**
+
 - GET /api/v1/indicators/search
 - GET /api/v1/indicators/{indicator_id}
 - POST /api/v1/indicators/lookup
 
 **Type-Specific Intelligence (3)**
+
 - GET /api/v1/ips/{ip_address}
 - GET /api/v1/domains/{domain}
 - GET /api/v1/hashes/{file_hash}
 
 **Sources & Feeds (2)**
+
 - GET /api/v1/sources
 - GET /api/v1/feeds/realtime
 
 **Telemetry Ingestion & Query (5)**
+
 - POST /api/v1/ingest
 - GET /api/v1/telemetry/events
 - GET /api/v1/telemetry/stats
@@ -173,6 +186,7 @@ open-security-data/
 ## Data Models Summary
 
 ### Indicator Types (8)
+
 - ip_address
 - domain
 - url
@@ -183,6 +197,7 @@ open-security-data/
 - vulnerability
 
 ### Threat Types (10)
+
 - malware
 - phishing
 - spam
@@ -195,16 +210,19 @@ open-security-data/
 - suspicious
 
 ### Confidence Levels (4)
+
 - low
 - medium
 - high
 - verified
 
 ### Severity Scale
+
 - 1-10 rating system
 - Inclusive range filtering supported
 
 ### Event Types (7)
+
 - process_event
 - network_connection
 - file_change
@@ -218,12 +236,14 @@ open-security-data/
 ## Authentication & Security
 
 ### Current Configuration
+
 - **Type**: Optional API Key
 - **Header**: X-API-Key
 - **Default Status**: Disabled (API_KEY_REQUIRED=false)
 - **Production**: Should be enabled
 
 ### Rate Limiting
+
 - **Default**: 100 requests per 60 seconds
 - **Configurable**: Yes (RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW)
 - **Batch Size Limit**: 1000 items
@@ -231,12 +251,14 @@ open-security-data/
 - **Status When Limited**: 429 Too Many Requests
 
 ### Input Validation
+
 - Type-specific validators for each indicator type
 - Pattern matching for IP addresses, domains, URLs
 - Hash format and length validation
 - CVE format validation
 
 ### Data Normalization
+
 - Automatic case normalization (domains, hashes, emails)
 - URL normalization (scheme, port defaults, fragment removal)
 - IP address standardization with version detection
@@ -247,6 +269,7 @@ open-security-data/
 ## Query Capabilities
 
 ### Search Filters (Indicators)
+
 1. **Text Search**: `q` parameter (full-text across value, normalized_value, description)
 2. **Type Filter**: `indicator_type` (single type selection)
 3. **Threat Types**: `threat_types` (multiple threat types, array support)
@@ -257,17 +280,20 @@ open-security-data/
 8. **Active Status**: `active_only` (boolean, default: true)
 
 ### Pagination
+
 - **Limit**: 1-10,000 (default: 100)
 - **Offset**: 0+ (cursor-free pagination)
 - **Response Fields**: total, limit, offset, query_time
 - **Calculation**: `ceil(total / limit)` = total pages
 
 ### Sorting
+
 - Indicators: By `last_seen DESC` (most recent first)
 - Telemetry: By `timestamp DESC`
 - Sensors: By `last_seen DESC`
 
 ### Advanced Features
+
 - **Bulk Lookup**: POST /api/v1/indicators/lookup (max 1000 items)
 - **Streaming**: GET /api/v1/feeds/realtime (NDJSON format, 1000 limit)
 - **Real-Time Feed**: Configurable lookback window (1-1440 minutes)
@@ -277,8 +303,9 @@ open-security-data/
 ## Key Functionality Breakdown
 
 ### 1. Data Aggregation
+
 - **Sources Supported**: 50+ public threat intelligence sources
-- **Collection Methods**: 
+- **Collection Methods**:
   - HTTP feeds
   - Public APIs
   - RSS feeds
@@ -290,6 +317,7 @@ open-security-data/
 - **Retry Logic**: Configurable retry attempts (default: 3)
 
 ### 2. Data Processing & Normalization
+
 - **Validation**: Input validation using defined schemas
 - **Normalization**: Type-specific format standardization
 - **Deduplication**: Fingerprint-based duplicate detection
@@ -297,6 +325,7 @@ open-security-data/
 - **Merging**: Intelligent indicator record merging
 
 ### 3. Data Analysis & Enrichment
+
 - **IP Analysis**: ASN, geolocation, organization, coordinates
 - **Domain Analysis**: TLD, registrar, creation/expiration dates, DNS records
 - **Hash Analysis**: File metadata, malware family, AV signatures, detection ratios
@@ -304,12 +333,14 @@ open-security-data/
 - **Severity Ratings**: 1-10 scale with range filtering
 
 ### 4. Real-Time Reporting
+
 - **Dashboard Metrics**: Feeds, new indicators, trend analysis
 - **Real-Time Stream**: NDJSON format with keep-alive support
 - **Configurable Lookback**: 1-1440 minute windows
 - **Filtering**: By type, threat category, severity
 
 ### 5. Telemetry Integration
+
 - **Event Types**: 7 event type categories
 - **Batch Processing**: Configurable batch size (default: 1000)
 - **Sensor Registration**: Automatic on first event
@@ -317,6 +348,7 @@ open-security-data/
 - **Statistics**: Event counts by type, active sensor count
 
 ### 6. Data Management
+
 - **Lifecycle**: first_seen, last_seen, expires_at tracking
 - **Status Flags**: active, false_positive, whitelisted
 - **Retention**: Configurable retention period (default: 365 days)
@@ -328,18 +360,21 @@ open-security-data/
 ## Database Schema
 
 ### Table Statistics
+
 - **Total Tables**: 9
 - **Total Indexes**: 25+
 - **Key Constraint**: (source_id, indicator_type, normalized_value) unique on Indicator table
 - **Type Hierarchy**: Indicator with 1:1 relationships to IPAddress, Domain, FileHash
 
 ### Storage Architecture
+
 - **Primary Database**: PostgreSQL
 - **Cache Layer**: Redis (optional)
 - **File Storage**: Configurable path for attachments
 - **Type System**: UUID primary keys, JSON for flexible metadata
 
 ### Performance Features
+
 - **Indexed Fields**: Type-value combo, source, timestamps, status flags
 - **Partitioning**: Support for time-based and source-based partitioning
 - **Connection Pooling**: SQLAlchemy with configurable pool size (default: 20)
@@ -350,6 +385,7 @@ open-security-data/
 ## Error Handling
 
 ### HTTP Status Codes
+
 - `200 OK`: Successful request
 - `400 Bad Request`: Invalid parameters, validation errors, batch size exceeded
 - `404 Not Found`: Resource not found
@@ -357,6 +393,7 @@ open-security-data/
 - `500 Internal Server Error`: Server-side error
 
 ### Error Response Format
+
 ```json
 {
   "detail": "Error message description",
@@ -365,6 +402,7 @@ open-security-data/
 ```
 
 ### Common Error Scenarios
+
 1. **Batch Size Exceeded**: Detail: "Too many indicators. Maximum allowed: {limit}"
 2. **Not Found**: Detail: "Indicator not found" / "Sensor {id} not found"
 3. **Invalid Type**: Detail: "Invalid indicator type"
@@ -375,7 +413,8 @@ open-security-data/
 ## Configuration Reference
 
 ### Database
-```
+
+```yaml
 DATABASE_URL: PostgreSQL connection string
 DB_POOL_SIZE: 20 (connection pool size)
 DB_MAX_OVERFLOW: 10 (additional connections beyond pool)
@@ -384,7 +423,8 @@ DB_ECHO: false (SQL logging)
 ```
 
 ### API Server
-```
+
+```yaml
 API_HOST: 0.0.0.0
 API_PORT: 8002
 API_WORKERS: 4
@@ -394,7 +434,8 @@ CORS_ORIGINS: ["*"] (or specific origins)
 ```
 
 ### Security
-```
+
+```yaml
 API_KEY_REQUIRED: false (set to true in production)
 API_KEY_HEADER: "X-API-Key"
 MAX_BATCH_SIZE: 1000
@@ -405,7 +446,8 @@ RATE_LIMIT_WINDOW: 60
 ```
 
 ### Collection
-```
+
+```yaml
 COLLECTION_ENABLED: true
 COLLECTION_INTERVAL: 3600 (seconds)
 MAX_CONCURRENT_COLLECTORS: 10
@@ -416,7 +458,8 @@ VALIDATE_COLLECTION_DATA: true
 ```
 
 ### Storage
-```
+
+```yaml
 DATA_RETENTION_DAYS: 365
 ARCHIVE_AFTER_DAYS: 90
 BACKUP_ENABLED: false
@@ -427,7 +470,8 @@ MAX_FILE_SIZE: 104857600 (100MB)
 ```
 
 ### Logging
-```
+
+```yaml
 LOG_LEVEL: INFO
 LOG_FILE_ENABLED: true
 LOG_FILE_PATH: ./logs/app.log
@@ -440,7 +484,9 @@ SENTRY_ENABLED: false
 ## Integration Points
 
 ### Data Sources
+
 Supports collection from:
+
 - Malware Domain List
 - AbuseIPDB
 - Spamhaus
@@ -453,6 +499,7 @@ Supports collection from:
 - GreyNoise
 
 ### External Systems
+
 - PostgreSQL database
 - Redis cache
 - HTTP/REST APIs
@@ -464,18 +511,21 @@ Supports collection from:
 ## Performance Metrics
 
 ### Scaling Characteristics
+
 - **Horizontal**: Multiple API instances behind load balancer
 - **Distributed Collection**: Concurrent collectors with rate limiting
 - **Database**: Read replicas supported
 - **Cache**: Redis clustering available
 
 ### Response Times (Expected)
+
 - Search with pagination: <100ms (cached)
 - Bulk lookup (100 items): <500ms
 - Real-time stream: Streaming with minimal latency
 - Telemetry ingest: <200ms per batch
 
 ### Capacity
+
 - **API Throughput**: 100 requests/sec with default rate limits
 - **Batch Size**: Up to 1000 items per operation
 - **Query Result Size**: Limited by available memory
@@ -486,6 +536,7 @@ Supports collection from:
 ## Testing & Validation
 
 ### Validators Provided
+
 - IP address validation (IPv4 and IPv6)
 - Domain name validation
 - URL validation
@@ -495,6 +546,7 @@ Supports collection from:
 - CVE identifier validation
 
 ### Example Validations
+
 - IPs: `ipaddress.ip_address()` with format check
 - Domains: Regex pattern with length limits
 - Hashes: Hex string validation with length matching
@@ -506,12 +558,14 @@ Supports collection from:
 ## Monitoring & Observability
 
 ### Endpoints for Monitoring
+
 - `/health` - Service health (for Kubernetes probes)
 - `/api/v1/stats` - System statistics
 - `/api/v1/dashboard/threat-intel` - Dashboard metrics
 - `/api/v1/telemetry/stats` - Telemetry statistics
 
 ### Metrics Available
+
 - Total and active indicators by type
 - Data source counts and status
 - Collection frequency and success rates
@@ -519,6 +573,7 @@ Supports collection from:
 - Sensor registration and activity
 
 ### Logging Configuration
+
 - File-based logging with rotation (10MB, 5 backups default)
 - Optional JSON structured logging
 - Optional Sentry integration for error tracking
@@ -529,6 +584,7 @@ Supports collection from:
 ## Security Considerations
 
 ### Current Status
+
 - API key authentication: Optional (disabled by default)
 - CORS: Configurable with origin whitelist
 - Rate limiting: Enabled by default
@@ -536,6 +592,7 @@ Supports collection from:
 - Database: No ORM injection vulnerabilities detected
 
 ### Recommendations for Production
+
 1. Enable API_KEY_REQUIRED=true
 2. Implement strong API key rotation
 3. Use HTTPS for all connections
@@ -550,6 +607,7 @@ Supports collection from:
 ## Source Code Statistics
 
 ### Python Files Analyzed
+
 1. `/Users/fab/GitHub/wildbox/open-security-data/app/api/main.py` - 806 lines
 2. `/Users/fab/GitHub/wildbox/open-security-data/app/models.py` - 408 lines
 3. `/Users/fab/GitHub/wildbox/open-security-data/app/schemas/api.py` - 297 lines
@@ -567,23 +625,27 @@ Supports collection from:
 ## Quick Navigation
 
 ### For API Integration
+
 - Start with: **DATA_SERVICE_QUICK_REFERENCE.md**
 - Common queries: Section "Common Query Examples"
 - Endpoint list: Section "API Endpoints Summary"
 
 ### For Detailed Implementation
+
 - Full documentation: **DATA_SERVICE_API_DOCUMENTATION.md**
 - Endpoints by category: Section "API Endpoints by Category"
 - Data models: Section "Data Models & Schemas"
 - Error handling: Section "Error Handling"
 
 ### For Operations & Configuration
+
 - Configuration: **DATA_SERVICE_API_DOCUMENTATION.md** Section "Configuration Summary"
 - Database: Section "Data Models & Schemas" - Database Tables
 - Monitoring: This document Section "Monitoring & Observability"
 - Security: This document Section "Security Considerations"
 
 ### For Development
+
 - Code structure: This document Section "Project Structure"
 - Utilities: Section "Key Files Analyzed"
 - Validation: **DATA_SERVICE_API_DOCUMENTATION.md** - Section "Data Validation"
@@ -594,6 +656,7 @@ Supports collection from:
 ## Conclusion
 
 The Open Security Data Service is a comprehensive threat intelligence platform with:
+
 - 16 well-structured REST API endpoints
 - Support for 8 indicator types and 10 threat classifications
 - Advanced querying with full-text search and filtering

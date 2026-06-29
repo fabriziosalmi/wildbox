@@ -50,6 +50,7 @@ Each service documentation should include:
 For each endpoint, include:
 
 1. **Endpoint Definition**:
+
    ```markdown
    ### GET /resource
 
@@ -62,6 +63,7 @@ For each endpoint, include:
    ```
 
 2. **Parameters Table**:
+
    ```markdown
    | Name | Type | Required | Description |
    |------|------|----------|-------------|
@@ -70,6 +72,7 @@ For each endpoint, include:
    ```
 
 3. **Request Example**:
+
    ```bash
    curl -X GET "http://localhost:8000/resource" \
      -H "Authorization: Bearer {token}"
@@ -88,6 +91,7 @@ For each endpoint, include:
 ### Code Examples
 
 All examples must be:
+
 - **Real and tested**: Verify against running services
 - **Actionable**: Users can copy and run them
 - **Consistent**: Same formatting across service docs
@@ -137,6 +141,7 @@ curl http://localhost:8001/openapi.json | jq '.'
 ### Step 3: Document Endpoints
 
 1. **Copy template**:
+
    ```bash
    cp docs/api/TEMPLATE.md docs/api/guardian/endpoints.md
    ```
@@ -154,6 +159,7 @@ curl http://localhost:8001/openapi.json | jq '.'
    - Provide examples
 
 4. **Verify examples**:
+
    ```bash
    # Test each curl example
    curl -X POST http://localhost:8001/v1/resource \
@@ -192,6 +198,7 @@ git push origin docs/guardian-api
 Here's what a complete Guardian Service documentation would include:
 
 ### Authentication
+
 - How to get tokens
 - Bearer token format
 - Webhook signature validation
@@ -199,6 +206,7 @@ Here's what a complete Guardian Service documentation would include:
 ### Endpoints by Group
 
 **Integration Management**:
+
 - GET /v1/integrations - List integrations
 - POST /v1/integrations - Create integration
 - GET /v1/integrations/{id} - Get integration
@@ -207,12 +215,14 @@ Here's what a complete Guardian Service documentation would include:
 - POST /v1/integrations/{id}/test - Test connection
 
 **Queue Monitoring**:
+
 - GET /v1/queue/status - Queue status
 - GET /v1/queue/tasks - List queued tasks
 - POST /v1/queue/tasks/{id}/retry - Retry task
 - POST /v1/queue/tasks/{id}/cancel - Cancel task
 
 **Webhook Management**:
+
 - GET /v1/webhooks - List webhooks
 - POST /v1/webhooks - Create webhook
 - POST /v1/webhooks/{id}/test - Test webhook
@@ -318,7 +328,7 @@ Make documentation searchable:
 
 Create `docs/api/[service]/examples/`:
 
-```
+```bash
 examples/
 ├── README.md
 ├── curl/

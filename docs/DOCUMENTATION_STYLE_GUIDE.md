@@ -11,23 +11,24 @@
 - [Markdown Formatting](#markdown-formatting)
 - [Code Examples](#code-examples)
 - [API Documentation](#api-documentation)
-- [Accessibility](#accessibility)
-- [Inclusive Language](#inclusive-language)
 
 ---
 
 ## General Principles
 
 ### 1. Accuracy Over Marketing
+
 - ❌ "Enterprise-grade", "NASA-level", "Military-grade"
 - ✅ Specific technical claims: "Handles 10,000 req/sec", "99.9% uptime SLA"
 
 ### 2. Honesty About Limitations
+
 - Document what the software **cannot** do
 - List known bugs and workarounds
 - Be explicit about alpha/beta status
 
 ### 3. Respect Reader's Time
+
 - Front-load key information
 - Use tables and lists over paragraphs
 - Add "Time to Read" for documents >1000 words
@@ -39,34 +40,41 @@
 ### Voice and Tone
 
 **Use Active Voice**:
+
 - ❌ "An email is sent to the user"
 - ✅ "The system sends an email to the user"
 
 **Be Direct**:
+
 - ❌ "Simply click the button"
 - ❌ "Just run this command"
 - ✅ "Click the button"
 - ✅ "Run this command"
 
 **Avoid Condescension**:
+
 - ❌ "Obviously, you need to install Docker first"
 - ✅ "Install Docker before proceeding"
 
 **No Self-Deprecation**:
+
 - ❌ "This is a hack, sorry"
 - ✅ "This workaround exists because [technical constraint]"
 
 ### Grammar
 
 **Present Tense**:
+
 - ❌ "The API will return a response"
 - ✅ "The API returns a response"
 
 **Second Person**:
+
 - ❌ "Users should configure their environment"
 - ✅ "Configure your environment"
 
 **Consistent Terminology**:
+
 - Pick one term and use it consistently
 - Bad: Switching between "User", "Client", "Customer"
 - Good: Always use "User" in identity service docs
@@ -78,20 +86,24 @@
 ### Headers
 
 **Title Case for H2 and Above**:
+
 - ✅ `## Quick Start Guide`
 - ❌ `## Quick start guide`
 
 **Sentence case for H3 and Below**:
+
 - ✅ `### Installing dependencies`
 - ❌ `### Installing Dependencies`
 
 **No Punctuation in Headers**:
+
 - ✅ `## Configuration`
 - ❌ `## Configuration:`
 
 ### Lists
 
 **Use Dashes for Unordered Lists**:
+
 ```markdown
 - Item one
 - Item two
@@ -99,6 +111,7 @@
 ```
 
 **Numbers for Sequential Steps**:
+
 ```markdown
 1. First step
 2. Second step
@@ -106,12 +119,14 @@
 ```
 
 **Consistent Bullet Formatting**:
+
 - ❌ Mixing `-`, `*`, and `+`
 - ✅ Always use `-`
 
 ### Code Blocks
 
 **Always Specify Language**:
+
 ````markdown
 ❌ Bad:
 ```
@@ -125,6 +140,7 @@ docker-compose up
 ````
 
 **Supported Languages**:
+
 - `bash` (shell commands)
 - `python`
 - `typescript` / `javascript`
@@ -137,22 +153,26 @@ docker-compose up
 ### Links
 
 **Descriptive Link Text**:
+
 - ❌ `For more info, [click here](https://docs.wildbox.io)`
 - ✅ `See the [complete API documentation](https://docs.wildbox.io)`
 
 **No Bare URLs**:
+
 - ❌ `Visit https://wildbox.io for details`
 - ✅ `Visit [Wildbox](https://wildbox.io) for details`
 
 ### Images
 
 **Always Include Alt Text**:
+
 ```markdown
 ❌ ![ ](diagram.png)
 ✅ ![Architecture diagram showing 11 microservices connected via API gateway](diagram.png)
 ```
 
 **Alt Text Guidelines**:
+
 - Describe what the image shows
 - Include relevant context for screen readers
 - Don't just repeat the caption
@@ -164,6 +184,7 @@ docker-compose up
 ### Prerequisites
 
 **Always Document Requirements**:
+
 ```markdown
 ## Prerequisites
 
@@ -177,6 +198,7 @@ Before running this example:
 ### Expected Output
 
 **Show Success Looks Like**:
+
 ````markdown
 ```bash
 curl http://localhost:8001/health
@@ -193,6 +215,7 @@ curl http://localhost:8001/health
 ### Error Handling
 
 **Document Common Errors**:
+
 ````markdown
 ```bash
 docker-compose up -d
@@ -207,6 +230,7 @@ docker-compose up -d
 ### Environment Variables
 
 **Explain Every Variable**:
+
 ```bash
 # JWT_SECRET_KEY: Secret for signing authentication tokens
 # - Minimum 256 bits (64 characters)
@@ -243,6 +267,7 @@ Content-Type: application/json
 ```
 
 **Response** (200 OK):
+
 ```json
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -253,10 +278,12 @@ Content-Type: application/json
 ```
 
 **Errors**:
+
 - `401 Unauthorized`: Missing or invalid JWT token
 - `404 Not Found`: User does not exist
 - `403 Forbidden`: Insufficient permissions
-```
+
+```text
 
 ### Status Codes
 

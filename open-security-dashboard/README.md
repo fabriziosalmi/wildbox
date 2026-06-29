@@ -16,36 +16,42 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 ## 🚀 Features
 
 ### 🔍 **Threat Intelligence**
+
 - Real-time IOC lookup and analysis
 - Threat feed management and monitoring
 - Reputation scoring and geolocation data
 - Integrated WHOIS and certificate intelligence
 
 ### ☁️ **Cloud Security (CSPM)**
+
 - Multi-cloud account scanning (AWS, Azure, GCP)
 - Compliance framework assessment
 - Risk scoring and remediation guidance
 - Automated compliance reporting
 
 ### 🖥️ **Endpoint Management**
+
 - Agent deployment and health monitoring
 - Telemetry collection and analysis
 - Endpoint alerts and incident management
 - Fleet management and configuration
 
 ### 🔧 **Security Toolbox**
+
 - 50+ integrated security tools
 - Dynamic form generation for tool parameters
 - Real-time execution monitoring
 - Output visualization and analysis
 
 ### ⚡ **Response Automation**
+
 - Playbook creation and execution
 - Workflow orchestration
 - Step-by-step execution tracking
 - Integration with external systems
 
 ### 🧠 **AI-Powered Analysis**
+
 - Intelligent threat analysis
 - Automated report generation
 - Context-aware recommendations
@@ -65,7 +71,7 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                 Wildbox Security Dashboard                  │
 ├─────────────────────────────────────────────────────────────┤
@@ -87,7 +93,7 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 
 ## 📁 Project Structure
 
-```
+```text
 src/
 ├── app/                          # Next.js 14 App Router
 │   ├── auth/                    # Authentication pages
@@ -121,18 +127,20 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm, yarn, or pnpm
 - Git
 
 ### Quick Start
 
 1. **Clone the repository**
+
    ```bash
    cd open-security-dashboard
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    # or
@@ -142,11 +150,13 @@ src/
    ```
 
 3. **Environment setup**
+
    ```bash
    cp .env.example .env.local
    ```
-   
+
    Edit `.env.local` with your configuration:
+
    ```env
    # API Endpoints
    NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
@@ -162,6 +172,7 @@ src/
    ```
 
 4. **Start development server**
+
    ```bash
    npm run dev
    # or
@@ -183,36 +194,42 @@ The dashboard uses JWT-based authentication with secure HTTP-only cookies. Defau
 ## 📊 Key Features Implementation
 
 ### Dashboard Overview
+
 - Real-time system health monitoring
 - Security metrics and trends visualization
 - Recent activity feed
 - Quick action shortcuts
 
 ### Threat Intelligence
+
 - **IOC Lookup**: Analyze IPs, domains, URLs, hashes
 - **Feed Management**: Monitor and configure threat feeds
 - **Reputation Analysis**: Multi-source reputation scoring
 - **Geolocation & WHOIS**: Comprehensive indicator context
 
 ### Cloud Security
+
 - **Scan Management**: Schedule and monitor compliance scans
 - **Finding Details**: Detailed remediation guidance
 - **Compliance Frameworks**: NIST, PCI-DSS, SOX, HIPAA support
 - **Risk Scoring**: Context-aware risk prioritization
 
 ### Security Toolbox
+
 - **Dynamic Tool Discovery**: Automatic tool registration
 - **Parameter Validation**: Type-safe input handling
 - **Execution Monitoring**: Real-time progress tracking
 - **Output Visualization**: JSON formatting and syntax highlighting
 
 ### Response Automation
+
 - **Playbook Management**: Create and manage response playbooks
 - **Workflow Execution**: Step-by-step execution tracking
 - **Integration Ready**: Connect with SIEM and ticketing systems
 - **Audit Trail**: Complete execution history
 
 ### AI Analysis
+
 - **Intelligent Analysis**: Context-aware threat analysis
 - **Progress Tracking**: Real-time analysis progress
 - **Report Generation**: Professional markdown reports
@@ -239,6 +256,7 @@ The dashboard uses JWT-based authentication with secure HTTP-only cookies. Defau
 ### Component Development
 
 UI components follow the Shadcn/ui pattern:
+
 - Base components in `components/ui/`
 - Compound components for complex features
 - Consistent prop interfaces
@@ -278,6 +296,7 @@ CMD ["npm", "start"]
 ### Environment Variables
 
 Production environment variables:
+
 ```env
 NODE_ENV=production
 NEXT_PUBLIC_API_BASE_URL=https://api.wildbox.com
@@ -293,7 +312,7 @@ The dashboard integrates with multiple Wildbox microservices:
 ### Service Endpoints
 
 | Service | Port | Purpose |
-|---------|------|---------|
+| --------- | ------ | --------- |
 | open-security-tools | 8000 | Security tools execution |
 | open-security-data | 8002 | Threat intelligence data |
 | open-security-guardian | 8003 | Vulnerability management |

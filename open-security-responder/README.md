@@ -15,7 +15,7 @@ The Responder is the orchestration heart of Wildbox, designed to automate securi
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   FastAPI       │    │   Dramatiq      │    │   Connectors    │
 │   REST API      │───▶│   Workflow      │───▶│   Framework     │
@@ -112,7 +112,7 @@ steps:
 Environment variables:
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6381/0` |
 | `WILDBOX_API_URL` | Open Security API URL | `http://localhost:8000` |
 | `WILDBOX_DATA_URL` | Open Security Data URL | `http://localhost:8002` |
@@ -137,7 +137,7 @@ python scripts/test_responder.py
 
 ### Project Structure
 
-```
+```text
 open-security-responder/
 ├── app/
 │   ├── __init__.py

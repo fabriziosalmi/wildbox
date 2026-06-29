@@ -7,6 +7,7 @@
 ## Current State
 
 ### ✅ **Good:**
+
 - Pytest configuration in place (`pytest.ini`)
 - Test markers for categorization (unit, integration, e2e)
 - HTML reporting configured
@@ -14,6 +15,7 @@
 - Tests directory structure exists
 
 ### ❌ **Bad:**
+
 - Debug scripts in production (`scripts/debug/*.py`)
 - Shell scripts duplicating pytest functionality (`test_*.sh`)
 - Tests not containerized - rely on local environment
@@ -87,7 +89,7 @@ services:
 
 ## Test Organization
 
-```
+```text
 tests/
 ├── unit/                           # No external dependencies
 │   ├── test_auth_logic.py
@@ -133,6 +135,7 @@ scripts/debug/test_rate_limit.py
 **Example conversion:**
 
 **Before** (`scripts/debug/test_api_keys.py`):
+
 ```python
 # Debug script - manual execution
 def test_api_key_generation():
@@ -145,6 +148,7 @@ if __name__ == "__main__":
 ```
 
 **After** (`tests/integration/test_identity_service.py`):
+
 ```python
 import pytest
 from httpx import AsyncClient
@@ -451,7 +455,7 @@ test-teardown:
 ## Timeline
 
 | Task | Status | Owner |
-|------|--------|-------|
+| ------ | -------- | ------- |
 | Move debug scripts to archive | ✅ Completed | Sprint 1 |
 | Create docker-compose.test.yml | 📋 Planned | Sprint 2 |
 | Convert debug scripts to pytest | 📋 Planned | Sprint 2 |

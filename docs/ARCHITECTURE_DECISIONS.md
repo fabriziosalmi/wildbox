@@ -41,7 +41,7 @@ Wildbox uses a **microservices architecture** with 11 distinct services orchestr
 **Hardware Requirements:**
 
 | Deployment | RAM | CPU | Storage | Notes |
-|------------|-----|-----|---------|-------|
+| ------------ | ----- | ----- | --------- | ------- |
 | **Minimal** (no AI/CSPM) | 4GB | 2 cores | 20GB | Identity + Tools + Data only |
 | **Standard** (with AI) | 8GB | 4 cores | 50GB | All services except CSPM |
 | **Full** (all services) | 16GB+ | 6+ cores | 100GB | Production-grade deployment |
@@ -101,6 +101,7 @@ Bundle **n8n workflow automation** as a core service rather than using a lightwe
 ### Migration Path
 
 If n8n proves too heavy, we can:
+
 1. Make it **optional** (separate docker-compose.automations.yml)
 2. Replace with lightweight alternatives (Temporal, custom)
 3. Provide export to standard playbook formats
@@ -135,11 +136,12 @@ Use **Ollama** with Qwen2.5-0.5B model for local AI inference rather than cloud 
 **Performance Expectations:**
 
 | Hardware | Tokens/sec | Use Case |
-|----------|-----------|----------|
+| ---------- | ----------- | ---------- |
 | CPU (4 cores) | ~10-20 | Acceptable for analysis tasks |
 | GPU (RTX 3060) | ~100+ | Real-time chat |
 
 **Model Choice - Qwen2.5-0.5B:**
+
 - **Size:** 300MB (fits in RAM)
 - **Quality:** Sufficient for log analysis, IOC extraction
 - **Speed:** Fast enough for non-interactive tasks
@@ -187,7 +189,8 @@ Use **single Redis instance** with logical database separation rather than multi
 3. **Sufficient isolation:** Logical DBs (0-15) prevent key collisions
 
 **Database Allocation:**
-```
+
+```text
 DB 0: Identity (sessions, auth cache)
 DB 1: Guardian (vulnerability cache)
 DB 2: Tools (rate limiting, task queue)
@@ -227,6 +230,7 @@ Use **single PostgreSQL 15 instance** with separate databases per service.
 3. **Resource efficiency:** ~200MB RAM vs 1GB+ for multiple instances
 
 **Database Separation:**
+
 - `identity`: User accounts, teams, subscriptions
 - `data`: Threat intelligence, IOCs, feeds
 - `guardian`: Vulnerabilities, assets, tickets
@@ -278,10 +282,12 @@ For enterprise deployments:
 ### Hardware Recommendations
 
 **Development:**
+
 - Docker Desktop on laptop (8GB+ RAM)
 - Disable unused services in `docker-compose.override.yml`
 
 **Production:**
+
 - Dedicated server: 16GB RAM, 6 cores, 100GB SSD
 - OR Cloud VM: AWS t3.xlarge, GCP e2-standard-4
 
@@ -308,10 +314,12 @@ Use **FastAPI** for new API services (Tools, Agents, Responder, CSPM).
 5. **Modern:** Python 3.11+ type hints, dependency injection
 
 **Why Not Flask:**
+
 - Slower, no native async
 - Manual validation (security risk)
 
 **Why Not Django REST Framework:**
+
 - Heavier, includes ORM overhead
 - Guardian service uses Django for admin UI (makes sense there)
 
@@ -344,10 +352,12 @@ Use **FastAPI** for new API services (Tools, Agents, Responder, CSPM).
 The audit challenged our microservices approach as "over-engineering." We're evaluating:
 
 **Option A: Keep microservices** (current)
+
 - Pro: Isolation, technology fit
 - Con: Resource heavy, operational complexity
 
 **Option B: Consolidate to 3 services**
+
 - Monolith (Identity + Tools + Data + Guardian + Responder)
 - LLM (Ollama/vLLM)
 - Automations (n8n)
@@ -361,7 +371,7 @@ The audit challenged our microservices approach as "over-engineering." We're eva
 ## Summary Table
 
 | Decision | Status | Resource Impact | Reversibility |
-|----------|--------|----------------|---------------|
+| ---------- | -------- | ---------------- | --------------- |
 | Microservices | ✅ ACCEPTED | HIGH (8-16GB) | MEDIUM (Q2 2026 review) |
 | n8n | ✅ ACCEPTED | MEDIUM (500MB) | HIGH (optional service) |
 | Ollama | ✅ ACCEPTED | MEDIUM (2GB) | HIGH (cloud API alternative) |

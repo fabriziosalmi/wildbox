@@ -1,4 +1,4 @@
-#  Wildbox Quick Start Guide
+# Wildbox Quick Start Guide
 
 **Get Wildbox running in 5 minutes**
 
@@ -16,6 +16,7 @@ Before starting, ensure you have installed:
 - **Minimum Resources**: 8GB RAM, 20GB disk space
 
 **Check installations:**
+
 ```bash
 docker --version
 docker-compose --version
@@ -33,7 +34,7 @@ cd wildbox
 
 ---
 
-##  2. Configure Environment
+## 2. Configure Environment
 
 Create environment files for each service:
 
@@ -47,6 +48,7 @@ nano .env
 ```
 
 **Essential environment variables:**
+
 ```env
 # Database
 DATABASE_URL=postgresql+asyncpg://postgres:secure_password@postgres:5432/wildbox
@@ -106,7 +108,7 @@ docker-compose up -d open-security-identity open-security-tools
 
 ---
 
-##  4. Verify Installation
+## 4. Verify Installation
 
 Once services are running, verify they're healthy:
 
@@ -127,7 +129,7 @@ curl http://localhost:8006/health
 Open your browser and navigate to:
 
 | Service | URL | Default Credentials |
-|---------|-----|-------------------|
+| --------- | ----- | ------------------- |
 | **Dashboard** | http://localhost:3000 | See `QUICKSTART_CREDENTIALS.md` |
 | **API Docs** | http://localhost:8000/docs | N/A |
 | **Prometheus** | http://localhost:9090 | N/A |
@@ -138,6 +140,7 @@ Open your browser and navigate to:
 ## 🔑 6. First-Time Login
 
 ### Dashboard Access
+
 ```bash
 # Get initial admin token
 curl -X POST http://localhost:8001/login \
@@ -152,6 +155,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/dashboard
 ```
 
 ### Reset Admin Password (if needed)
+
 ```bash
 # Access the identity service shell
 docker-compose exec open-security-identity bash
@@ -169,9 +173,10 @@ hashed = pwd_context.hash('new-password-here')
 
 ---
 
-##  7. Common Tasks
+## 7. Common Tasks
 
 ### View Service Logs
+
 ```bash
 # All services
 docker-compose logs -f
@@ -185,6 +190,7 @@ docker-compose logs --tail=100 open-security-identity
 ```
 
 ### Run Database Migrations
+
 ```bash
 # For PostgreSQL-based services
 docker-compose exec open-security-identity \
@@ -195,6 +201,7 @@ docker-compose exec open-security-data \
 ```
 
 ### Execute Commands in Running Containers
+
 ```bash
 # Access a service shell
 docker-compose exec open-security-identity bash
@@ -205,6 +212,7 @@ docker-compose exec -T postgres psql -U postgres -d wildbox -c "SELECT COUNT(*) 
 ```
 
 ### Test API Endpoints
+
 ```bash
 # Get authentication token
 TOKEN=$(curl -s -X POST http://localhost:8001/token \
@@ -220,9 +228,10 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/v1/analyze \
 
 ---
 
-##  8. Monitoring & Health Checks
+## 8. Monitoring & Health Checks
 
 ### Dashboard Status
+
 ```bash
 # Get overall health
 curl http://localhost:8000/health | jq .
@@ -232,6 +241,7 @@ curl http://localhost:8000/stats | jq .
 ```
 
 ### Database Connectivity
+
 ```bash
 # Check PostgreSQL
 docker-compose exec postgres pg_isready -U postgres
@@ -241,6 +251,7 @@ docker-compose exec redis redis-cli ping
 ```
 
 ### Memory & Disk Usage
+
 ```bash
 # Check container resource usage
 docker stats
@@ -251,9 +262,10 @@ docker system df
 
 ---
 
-##  9. Troubleshooting
+## 9. Troubleshooting
 
 ### Services Won't Start
+
 ```bash
 # Check error logs
 docker-compose logs open-security-identity
@@ -270,6 +282,7 @@ docker-compose up -d
 ```
 
 ### Can't Connect to API
+
 ```bash
 # Verify services are running
 docker-compose ps
@@ -283,6 +296,7 @@ curl -v http://localhost:8000/health
 ```
 
 ### Database Connection Issues
+
 ```bash
 # Check PostgreSQL logs
 docker-compose logs postgres
@@ -295,6 +309,7 @@ docker-compose exec redis redis-cli info
 ```
 
 ### Out of Memory or Disk Space
+
 ```bash
 # Clean up unused images/volumes
 docker system prune -a
@@ -309,7 +324,7 @@ docker-compose down
 
 ---
 
-##  10. Next Steps
+## 10. Next Steps
 
 After successful deployment:
 
@@ -322,7 +337,7 @@ After successful deployment:
 
 ---
 
-##  11. Production Deployment
+## 11. Production Deployment
 
 For production use:
 
@@ -360,10 +375,10 @@ docker-compose -f docker-compose.yml \
 
 ---
 
-##  Quick Reference
+## Quick Reference
 
 | Command | Purpose |
-|---------|---------|
+| --------- | --------- |
 | `docker-compose up -d` | Start all services |
 | `docker-compose down` | Stop all services |
 | `docker-compose logs -f` | View live logs |
@@ -374,6 +389,6 @@ docker-compose -f docker-compose.yml \
 
 ---
 
-**Happy Securing! **
+**Happy Securing!**
 
 For questions or issues, refer to the comprehensive [README.md](README.md) or open an issue on GitHub.

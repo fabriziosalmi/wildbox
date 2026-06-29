@@ -1,20 +1,22 @@
-#  Wildbox Default Credentials & Setup
+# Wildbox Default Credentials & Setup
 
 **⚠ WARNING**: Default credentials are for development only. Change them immediately for any non-development environment.
 
 ---
 
-##  Default Credentials
+## Default Credentials
 
 ### Dashboard & Web UI
+
 | Service | URL | Username | Password | Notes |
 |---------|-----|----------|----------|-------|
 | **Grafana** | http://localhost:3001 | admin | admin | Change immediately |
 | **Prometheus** | http://localhost:9090 | N/A | N/A | No auth (local only) |
 
 ### API Services
+
 | Service | Port | Default API Key | Purpose |
-|---------|------|-----------------|---------|
+| --------- | ------ | ----------------- | --------- |
 | **API Gateway** | 8000 | `dev-api-key-123` | Tools & Intelligence APIs |
 | **Identity Service** | 8001 | N/A | Authentication & Users |
 | **Threat Intel** | 8002 | `dev-threat-key` | Threat Intelligence |
@@ -24,6 +26,7 @@
 | **CSPM** | 8019 | N/A | Cloud Security |
 
 ### Database Credentials
+
 | Database | Host | Port | Username | Password | Database |
 |----------|------|------|----------|----------|----------|
 | **PostgreSQL** | postgres | 5432 | postgres | postgres | wildbox |
@@ -31,7 +34,7 @@
 
 ---
 
-##  Environment Variable Template
+## Environment Variable Template
 
 Create a `.env` file in the project root:
 
@@ -109,14 +112,16 @@ CELERY_WORKER_CONCURRENCY=4
 ## 👤 Default User Accounts
 
 ### Admin User (Initial Setup)
-```
+
+```yaml
 Email: admin@wildbox.local
 Password: (generated during first run)
 Role: Administrator
 ```
 
 ### Test User (Demo Account)
-```
+
+```yaml
 Email: demo@wildbox.local
 Password: demo-password-123
 Role: Analyst
@@ -174,7 +179,7 @@ curl -X GET http://localhost:8000/v1/tools \
 
 ---
 
-##  Secure Your Deployment
+## Secure Your Deployment
 
 ### 1. Change Default Passwords Immediately
 
@@ -295,13 +300,13 @@ for user in users:
 
 ---
 
-##  Token Management
+## Token Management
 
 ### JWT Token Structure
 
 Wildbox uses JWT (JSON Web Tokens) for authentication:
 
-```
+```yaml
 Header: {"alg": "HS256", "typ": "JWT"}
 Payload: {
   "sub": "admin@wildbox.local",
@@ -334,7 +339,8 @@ curl -X POST http://localhost:8001/logout \
 
 ## 🚨 Security Best Practices
 
-###  DO:
+### DO
+
 - ✓ Change all default credentials before production use
 - ✓ Use strong passwords (min 16 characters, mix of cases/numbers/symbols)
 - ✓ Store API keys securely (use secrets manager)
@@ -345,7 +351,8 @@ curl -X POST http://localhost:8001/logout \
 - ✓ Enable audit logging for user actions
 - ✓ Use separate credentials for each environment
 
-### ❌ DON'T:
+### ❌ DON'T
+
 - ✗ Hardcode credentials in code or config files
 - ✗ Commit .env files to git
 - ✗ Use same credentials across environments
@@ -401,9 +408,10 @@ docker-compose restart open-security-tools
 
 ---
 
-##  Support
+## Support
 
 For credential-related issues:
+
 1. Check this file first
 2. Review [Quick Start Guide](quickstart.md)
 3. Check [README.md](../../README.md)

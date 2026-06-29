@@ -5,7 +5,7 @@ Complete API reference documentation for all Wildbox microservices with examples
 ## 📚 Documentation Status
 
 | Service | Status | Files |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | **Identity Service** | ✅ Complete | [endpoints.md](identity/endpoints.md) |
 | **Guardian Service** | ✅ Complete | [endpoints.md](guardian/endpoints.md) |
 | **Agents Service** | ✅ Complete | [endpoints.md](agents/endpoints.md) |
@@ -19,10 +19,12 @@ Complete API reference documentation for all Wildbox microservices with examples
 ### Access API Documentation
 
 **Interactive HTML Portal**:
+
 - Local: [http://localhost/landing-page/api-reference.html](../api-reference.html)
 - GitHub Pages: [https://www.wildbox.io/docs/api-reference.html](../api-reference.html)
 
 **Live OpenAPI Endpoints** (during development):
+
 - Identity Service: [http://localhost:8000/docs](http://localhost:8000/docs)
 - Guardian Service: [http://localhost:8001/docs](http://localhost:8001/docs)
 - Agents Service: [http://localhost:8002/docs](http://localhost:8002/docs)
@@ -32,36 +34,42 @@ Complete API reference documentation for all Wildbox microservices with examples
 ## 📖 Available Documentation
 
 ### Identity Service
+
 - **Description**: User authentication, JWT tokens, user management
 - **Port**: 8000
 - **Documentation**: [Full Endpoint Reference](identity/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8000/docs) | [OpenAPI Schema](http://localhost:8000/openapi.json)
 
 ### Guardian Service
+
 - **Description**: Integration management, queue monitoring, orchestration
 - **Port**: 8001
 - **Documentation**: [Full Endpoint Reference](guardian/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8001/docs) | [OpenAPI Schema](http://localhost:8001/openapi.json)
 
 ### Agents Service
+
 - **Description**: AI-powered threat analysis, intelligence enrichment
 - **Port**: 8004
 - **Documentation**: [Full Endpoint Reference](agents/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8004/docs) | [OpenAPI Schema](http://localhost:8004/openapi.json)
 
 ### Data Service
+
 - **Description**: Security data aggregation, analysis, reporting
 - **Port**: 8006
 - **Documentation**: [Full Endpoint Reference](data/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8006/docs) | [OpenAPI Schema](http://localhost:8006/openapi.json)
 
 ### Tools Service
+
 - **Description**: Security tool execution, resource management
 - **Port**: 8013
 - **Documentation**: [Full Endpoint Reference](tools/endpoints.md)
 - **Live Docs**: [Swagger UI](http://localhost:8013/docs) | [OpenAPI Schema](http://localhost:8013/openapi.json)
 
 ### Responder Service
+
 - **Description**: Incident response, playbook execution, remediation
 - **Port**: 8018
 - **Documentation**: [Full Endpoint Reference](responder/endpoints.md)
@@ -78,11 +86,13 @@ Use these templates when documenting a new service:
 ### Step-by-Step Guide
 
 1. **Create service directory**:
+
    ```bash
    mkdir -p docs/api/[service-name]
    ```
 
 2. **Copy template and customize**:
+
    ```bash
    cp docs/api/TEMPLATE.md docs/api/[service-name]/endpoints.md
    ```
@@ -109,7 +119,7 @@ Use these templates when documenting a new service:
 
 Each service documentation should follow this structure:
 
-```
+```bash
 docs/api/
 ├── [service-name]/
 │   ├── endpoints.md          # Complete endpoint reference
@@ -163,6 +173,7 @@ Each API documentation page is optimized for search engines:
 ### SEO Keywords
 
 Each service documentation targets:
+
 - Service name + "API"
 - "Wildbox" + service function
 - HTTP methods + endpoint paths
@@ -210,16 +221,19 @@ A: Open an issue on [GitHub Issues](https://github.com/fabriziosalmi/wildbox/iss
 ## 📊 Documentation Roadmap
 
 **Phase 1 (Complete)**:
+
 - ✅ Identity Service - Full endpoint documentation
 - ✅ API documentation template
 - ✅ HTML reference portal
 
 **Phase 2 (In Progress)**:
+
 - 🔄 Guardian Service API documentation
 - 🔄 Agents Service API documentation
 - 🔄 Data Service API documentation
 
 **Phase 3 (Planned)**:
+
 - 📋 Tools Service API documentation
 - 📋 Responder Service API documentation
 - 📋 CSPM Service API documentation

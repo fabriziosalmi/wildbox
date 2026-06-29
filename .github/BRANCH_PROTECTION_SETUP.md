@@ -5,6 +5,7 @@ This guide explains how to set up branch protection rules to prevent breaking ch
 ## Why Branch Protection?
 
 Branch protection ensures:
+
 - All changes go through pull requests
 - Automated tests must pass before merging
 - Critical files cannot be accidentally deleted
@@ -25,7 +26,8 @@ Branch protection ensures:
 Configure the following settings:
 
 #### Branch name pattern
-```
+
+```text
 main
 ```
 
@@ -82,6 +84,7 @@ For a more robust workflow, also protect the `develop` branch:
 After setup, test by trying to:
 
 1. **Direct push to main** (should fail):
+
    ```bash
    git checkout main
    git commit --allow-empty -m "test"
@@ -90,6 +93,7 @@ After setup, test by trying to:
    ```
 
 2. **Create PR** (should succeed):
+
    ```bash
    git checkout -b test-branch
    git commit --allow-empty -m "test"
@@ -100,6 +104,7 @@ After setup, test by trying to:
 ## GitHub Actions Required
 
 The following workflow must exist and be enabled:
+
 - `.github/workflows/pr-validation.yml` ✓ (Already created)
 
 ## PR Workflow
@@ -107,6 +112,7 @@ The following workflow must exist and be enabled:
 With branch protection enabled:
 
 ### 1. Create Feature Branch
+
 ```bash
 git checkout -b feature/your-feature-name
 # Make changes
@@ -116,11 +122,13 @@ git push -u origin feature/your-feature-name
 ```
 
 ### 2. Create Pull Request
+
 - Go to GitHub and create a PR from your branch to `main`
 - Add description explaining changes
 - Request reviewers if needed
 
 ### 3. Automated Checks Run
+
 - Docker validation
 - Project structure validation
 - Security scanning
@@ -128,11 +136,13 @@ git push -u origin feature/your-feature-name
 - Integration tests
 
 ### 4. Review and Fix
+
 - If checks fail, fix issues in your branch
 - Push fixes (checks will re-run automatically)
 - Resolve any review comments
 
 ### 5. Merge
+
 - Once all checks pass and reviews are approved
 - Click "Squash and merge" or "Rebase and merge"
 - Delete the feature branch after merge
@@ -140,16 +150,20 @@ git push -u origin feature/your-feature-name
 ## Monitoring
 
 ### View Protection Status
+
 - Go to Settings → Branches
 - See active rules and their configuration
 
 ### View Failed Checks
+
 - In any PR, scroll to "Checks" section
 - Click on failed check to see details
 - Review logs to understand failure
 
 ### Override Protection (Emergency Only)
+
 If you must override protection:
+
 1. Temporarily disable the rule in Settings → Branches
 2. Make the urgent change
 3. **Immediately re-enable the rule**
@@ -158,10 +172,13 @@ If you must override protection:
 ## Common Issues and Solutions
 
 ### Issue: "Required status check is expected"
+
 **Solution:** Push a commit to trigger the workflow
 
 ### Issue: "Branch is out of date"
+
 **Solution:** Update your branch:
+
 ```bash
 git checkout your-branch
 git fetch origin
@@ -170,9 +187,11 @@ git push --force-with-lease
 ```
 
 ### Issue: "Checks are taking too long"
+
 **Solution:** Check GitHub Actions status page, or cancel and re-trigger
 
 ### Issue: "I need to push to main urgently"
+
 **Solution:** Don't. Use branch protection override process above, but this should be extremely rare.
 
 ## Best Practices
@@ -189,6 +208,7 @@ git push --force-with-lease
 ## Additional Security
 
 Consider also:
+
 - **CODEOWNERS file** - Auto-assign reviewers for specific paths
 - **Required signed commits** - Ensure commit authenticity
 - **Dependabot** - Auto-update dependencies

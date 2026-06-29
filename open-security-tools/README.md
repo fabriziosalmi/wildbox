@@ -27,16 +27,19 @@ A robust and extensible open security API platform built with Python and FastAPI
 ### Security Highlights
 
 ✅ **Command Injection Protection**
+
 - All subprocess calls use secure `create_subprocess_exec` pattern
 - Input validation with regex sanitization removes shell metacharacters
 - 100% of malicious payloads blocked in penetration testing
 
 ✅ **Triple-Layer Defense**
+
 1. **Subprocess Security:** Argument-based execution (no shell interpretation)
 2. **Input Sanitization:** Regex filters remove dangerous characters
 3. **Architectural Protection:** Many tools use direct sockets (no subprocess)
 
 ✅ **55 Security Tools Audited**
+
 - Network scanners (port_scanner, network_scanner)
 - OSINT tools (whois_lookup, dns_enumerator)
 - Cryptography (hash_generator, password_generator, jwt_decoder)
@@ -48,6 +51,7 @@ A robust and extensible open security API platform built with Python and FastAPI
 ### Dual-Mode Authentication
 
 **Production Mode (Recommended):**
+
 ```bash
 # Via API Gateway with X-Wildbox-* headers
 curl http://localhost/api/v1/tools/whois_lookup \
@@ -57,6 +61,7 @@ curl http://localhost/api/v1/tools/whois_lookup \
 ```
 
 **Development Mode:**
+
 ```bash
 # Direct service access with X-API-Key
 curl http://localhost:8000/api/tools/whois_lookup \
@@ -109,10 +114,12 @@ make prod
 ## 📋 Prerequisites
 
 ### For Docker (Recommended)
+
 - Docker 20.10+
 - Docker Compose 2.0+
 
 ### For Local Development
+
 - Python 3.11+
 - Redis (optional, for caching and rate limiting)
 
@@ -121,6 +128,7 @@ make prod
 ### Option 1: Docker (Recommended)
 
 1. **Clone and setup:**
+
    ```bash
    git clone https://github.com/fabriziosalmi/wildbox.git
    cd wildbox/open-security-tools
@@ -129,6 +137,7 @@ make prod
 
 2. **Configure environment:**
    Edit `.env` file with your settings:
+
    ```bash
    # Required: Change the default API key
    API_KEY=your-secure-api-key-here
@@ -139,6 +148,7 @@ make prod
    ```
 
 3. **Start the application:**
+
    ```bash
    # Development with hot reload
    make dev
@@ -153,17 +163,20 @@ make prod
 ### Option 2: Local Development
 
 1. **Install dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 2. **Setup environment:**
+
    ```bash
    cp .env.example .env
    # Edit .env with your configuration
    ```
 
 3. **Run the application:**
+
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -173,6 +186,7 @@ make prod
 We provide a comprehensive Makefile for easy Docker management:
 
 ### Development Commands
+
 ```bash
 make dev          # Start development environment with hot reload
 make dev-build    # Build and start development environment
@@ -181,6 +195,7 @@ make dev-logs     # Show development logs
 ```
 
 ### Production Commands
+
 ```bash
 make prod         # Start production environment
 make prod-build   # Build and start production environment
@@ -190,6 +205,7 @@ make prod-logs    # Show production logs
 ```
 
 ### Management Commands
+
 ```bash
 make status       # Show container status
 make logs         # Show application logs
@@ -207,6 +223,7 @@ make urls         # Show useful URLs
 ### Production Deployment with Docker
 
 1. **Prepare production environment:**
+
    ```bash
    # Clone repository
    git clone <repository-url>
@@ -217,6 +234,7 @@ make urls         # Show useful URLs
    ```
 
 2. **Configure production settings:**
+
    ```bash
    # Edit .env file
    API_KEY=your-production-api-key-here
@@ -226,6 +244,7 @@ make urls         # Show useful URLs
    ```
 
 3. **Deploy with Docker Compose:**
+
    ```bash
    # Standard deployment
    make prod-build
@@ -235,6 +254,7 @@ make urls         # Show useful URLs
    ```
 
 4. **SSL/TLS Setup (Optional):**
+
    ```bash
    # Create SSL directory
    mkdir ssl
@@ -250,7 +270,7 @@ make urls         # Show useful URLs
 ### Environment Variables
 
 | Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
+| ---------- | ------------- | --------- | ---------- |
 | `API_KEY` | API authentication key | - | ✅ |
 | `SECRET_KEY` | Session secret key | auto-generated | ❌ |
 | `HOST` | Server bind address | `127.0.0.1` | ❌ |
@@ -345,7 +365,7 @@ TOOL_INFO = {
 
 ## 📁 Project Structure
 
-```
+```bash
 open-security-tools/
 ├── app/
 │   ├── __init__.py
@@ -412,23 +432,27 @@ open-security-tools/
 ### Steps
 
 1. **Clone or create the project directory:**
+
    ```bash
    mkdir open-security-tools
    cd open-security-tools
    ```
 
 2. **Create a virtual environment (recommended):**
+
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    ```
 
 3. **Install dependencies:**
+
    ```bash
    pip install -r requirements.txt
    ```
 
 4. **Configure environment variables:**
+
    ```bash
    # Edit the .env file with your settings
    cp .env.example .env  # If you have an example file
@@ -513,7 +537,7 @@ For long-running security tools (e.g., port scanners, vulnerability assessments)
 
 ### Architecture
 
-```
+```text
 Client → FastAPI (submit task) → Redis Queue → Celery Worker (execute tool) → Redis (store result)
          ↓ (18ms response)                      ↓ (runs in background)
          task_id                                 ↓
@@ -536,6 +560,7 @@ curl -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
 ```
 
 **Response (immediate, ~18ms):**
+
 ```json
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
@@ -554,6 +579,7 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42409
 ```
 
 **Response while task is running:**
+
 ```json
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
@@ -564,6 +590,7 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42409
 ```
 
 **Response when task is completed:**
+
 ```json
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
@@ -584,6 +611,7 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42409
 ```
 
 **Response if task failed:**
+
 ```json
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
@@ -603,6 +631,7 @@ curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42
 ```
 
 **Response:**
+
 ```json
 {
   "status": "cancelled",
@@ -634,7 +663,7 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/$TASK_ID" \
 ### Task States
 
 | State | Description | Next Action |
-|-------|-------------|-------------|
+| ------- | ------------- | ------------- |
 | `PENDING` | Task queued, not yet started | Wait and poll again |
 | `STARTED` | Task is currently executing | Wait and poll again |
 | `SUCCESS` | Task completed successfully | Retrieve result from `result` field |
@@ -652,6 +681,7 @@ http://127.0.0.1:5555
 ```
 
 **Features:**
+
 - Real-time task monitoring
 - Worker status and performance metrics
 - Task history and logs
@@ -704,11 +734,13 @@ mkdir app/tools/your_tool_name
 ### 2. Create Required Files
 
 #### `app/tools/your_tool_name/__init__.py`
+
 ```python
 """Your security tool package."""
 ```
 
 #### `app/tools/your_tool_name/schemas.py`
+
 ```python
 """Pydantic schemas for your tool."""
 
@@ -733,6 +765,7 @@ class YourToolOutput(BaseModel):
 ```
 
 #### `app/tools/your_tool_name/main.py`
+
 ```python
 """Your security tool implementation."""
 
@@ -790,6 +823,7 @@ def perform_analysis(target: str):
 ### 3. Restart the Server
 
 The new tool will be automatically discovered and available at:
+
 - API: `POST /api/tools/your_tool_name`
 - Web: `http://127.0.0.1:8000/tools/your_tool_name`
 
@@ -838,30 +872,35 @@ DEBUG=false
 ## 🔧 **Recent Improvements & Enhancements**
 
 ### Security Enhancements
+
 - **🔒 Secure API Key Management**: API keys are now properly managed using Pydantic SecretStr
 - **🛡️ Security Headers**: Comprehensive security headers including CSP, HSTS, X-Frame-Options
 - **⚡ Rate Limiting**: Built-in rate limiting with configurable limits and windows
 - **🔍 Input Validation**: Enhanced validation with custom validators and better error messages
 
 ### Performance & Scalability
+
 - **⚙️ Execution Management**: Proper tool execution management with timeouts and concurrency control
 - **📊 Metrics Collection**: Built-in metrics middleware for monitoring performance
 - **🎯 Concurrent Execution**: Configurable maximum concurrent tool executions
 - **⏱️ Timeout Control**: Proper timeout handling for long-running tools
 
 ### Architecture & Code Quality
+
 - **🏗️ Enhanced Configuration**: Comprehensive configuration management with validation
 - **🔧 Middleware System**: Custom middleware for logging, security, and performance
 - **❌ Better Error Handling**: Comprehensive exception handling and user-friendly error messages
 - **📝 Audit Logging**: Detailed audit trails for all tool executions
 
 ### Monitoring & Observability
+
 - **📈 Health Monitoring**: Enhanced health check endpoints with detailed system information
 - **📊 Execution Statistics**: Tool performance metrics and execution history
 - **🔍 Request Logging**: Structured logging for all HTTP requests and responses
 - **⚡ Real-time Metrics**: Live performance metrics collection
 
 ### Developer Experience
+
 - **🔧 Better Configuration**: Environment-based configuration with validation
 - **📚 Enhanced Documentation**: Comprehensive API documentation and examples
 - **🧪 Testing Ready**: Test infrastructure preparation
@@ -889,6 +928,7 @@ The included `sample_tool` demonstrates:
 ### Docker Issues
 
 1. **Container won't start**:
+
    ```bash
    # Check container status
    make status
@@ -901,6 +941,7 @@ The included `sample_tool` demonstrates:
    ```
 
 2. **Permission denied errors**:
+
    ```bash
    # Fix file permissions
    sudo chown -R $USER:$USER .
@@ -911,6 +952,7 @@ The included `sample_tool` demonstrates:
    ```
 
 3. **Redis connection issues**:
+
    ```bash
    # Check Redis container
    make redis-cli
@@ -920,6 +962,7 @@ The included `sample_tool` demonstrates:
    ```
 
 4. **Port already in use**:
+
    ```bash
    # Change port in .env file
    PORT=8001
@@ -934,6 +977,7 @@ The included `sample_tool` demonstrates:
    - Check that the tool directory contains `main.py` and `schemas.py`
    - Verify the `execute_tool` function exists in `main.py`
    - Check server logs for import errors
+
    ```bash
    make logs | grep ERROR
    ```
@@ -942,6 +986,7 @@ The included `sample_tool` demonstrates:
    - Verify the API key in the `.env` file
    - Check the Authorization header format
    - Ensure the API key matches exactly
+
    ```bash
    # Test with curl
    curl -H "X-API-Key: your-api-key" http://localhost:8000/health
@@ -951,6 +996,7 @@ The included `sample_tool` demonstrates:
    - Check Python path and virtual environment
    - Verify all dependencies are installed
    - Check for syntax errors in tool files
+
    ```bash
    # Enter container to debug
    make shell
@@ -963,12 +1009,14 @@ The included `sample_tool` demonstrates:
    - Check Redis cache configuration
    - Monitor container resources
    - Check for tool timeout settings
+
    ```bash
    # Monitor container resources
    docker stats
    ```
 
 2. **Memory issues**:
+
    ```bash
    # Check container memory usage
    docker-compose exec wildbox-api free -h
@@ -1048,7 +1096,7 @@ For support and questions:
 ## 🔄 API Endpoints Summary
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | GET | `/` | Web interface dashboard |
 | GET | `/tools/{tool_name}` | Tool interaction page |
 | GET | `/health` | Health check |
@@ -1068,7 +1116,7 @@ make urls
 ```
 
 | Service | URL | Description |
-|---------|-----|-------------|
+| --------- | ----- | ------------- |
 | Web Interface | http://localhost:8000 | Main dashboard |
 | API Documentation | http://localhost:8000/docs | Interactive API docs |
 | ReDoc | http://localhost:8000/redoc | Alternative API docs |
@@ -1083,12 +1131,14 @@ make urls
 ## 📊 Monitoring and Observability
 
 ### Built-in Monitoring
+
 - Health check endpoints
 - Structured JSON logging
 - Redis performance metrics
 - Container resource monitoring
 
 ### External Monitoring Integration
+
 ```yaml
 # Example Prometheus configuration
 version: '3.8'

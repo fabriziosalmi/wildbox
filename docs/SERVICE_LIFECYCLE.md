@@ -12,7 +12,7 @@ Wildbox operates as a containerized microservices platform with the following co
    - API gateway with Lua-based authentication
    - Handles all external traffic routing
    - Rate limiting and request validation
-   
+
 2. **Identity** (FastAPI) - Port 8001
    - Authentication and authorization (JWT, API keys)
    - User and team management
@@ -71,23 +71,29 @@ Wildbox operates as a containerized microservices platform with the following co
 ## Service States
 
 ### Development State
+
 Services under active development with incomplete features.
 
 **Current Development Services**:
+
 - **Sensor**: 50% complete, Rust implementation in progress
 - **CSPM**: Feature complete, requires extensive testing (314 files)
 
 ### Deprecated Services
+
 Previously active services that have been consolidated or replaced.
 
 **Deprecated**:
+
 - Standalone scripts in `scripts/debug/` (replaced by integrated testing)
 - Legacy authentication endpoints (migrated to identity service)
 
 ### Disabled Services
+
 Services configured in docker-compose but not active in production.
 
 **Disabled**:
+
 - Automations service (upstream marked `down` in gateway config)
 
 ## Service Startup Sequence
@@ -123,6 +129,7 @@ curl http://localhost:8002/health  # Data
 ```
 
 **Expected Response**:
+
 ```json
 {
   "status": "healthy",
@@ -134,14 +141,16 @@ curl http://localhost:8002/health  # Data
 ## Service Communication Patterns
 
 ### Gateway-Mediated (Production)
-```
+
+```text
 Client → Gateway (Lua auth) → Backend Service
 ```
 
 All production traffic flows through gateway with authentication injection via `X-Wildbox-*` headers.
 
 ### Direct Access (Development Only)
-```
+
+```text
 Client → Backend Service (port 8000-8019)
 ```
 
@@ -150,6 +159,7 @@ Used for debugging and local development. **Never expose in production.**
 ## Database Migrations
 
 ### FastAPI Services (Alembic)
+
 ```bash
 # Identity service example
 docker-compose exec identity alembic upgrade head
@@ -157,6 +167,7 @@ docker-compose exec identity alembic revision -m "Add new column"
 ```
 
 ### Django Services (Django Migrations)
+
 ```bash
 # Guardian service example
 docker-compose exec guardian python manage.py migrate
@@ -204,6 +215,7 @@ If a service needs to be brought back online:
 See `docs/OBSERVABILITY_ROADMAP.md` for detailed monitoring setup.
 
 **Current State**:
+
 - Health checks: ✅ Implemented
 - Metrics endpoints: ⚠️ Partial (identity, tools)
 - Prometheus integration: ❌ Planned
@@ -213,6 +225,7 @@ See `docs/OBSERVABILITY_ROADMAP.md` for detailed monitoring setup.
 ## Troubleshooting Service Issues
 
 ### Service Won't Start
+
 ```bash
 # Check logs
 docker-compose logs -f <service-name>
@@ -225,6 +238,7 @@ docker-compose exec <service-name> python -c "import psycopg2; print('DB OK')"
 ```
 
 ### Service Crashes on Startup
+
 ```bash
 # Run migrations
 docker-compose exec <service-name> alembic upgrade head
@@ -237,6 +251,7 @@ docker-compose up -d --build --no-deps <service-name>
 ```
 
 ### Gateway Can't Reach Service
+
 ```bash
 # Verify service is running
 docker-compose ps <service-name>
@@ -250,7 +265,7 @@ docker-compose restart gateway
 
 ## Service Dependencies Graph
 
-```
+```text
 Gateway
   ├─> Identity (auth validation)
   ├─> Tools (security tools)
@@ -290,7 +305,8 @@ Before releasing a new version:
 
 **Last Updated**: 2025-11-24  
 **Maintainer**: DevOps Team  
-**Related Docs**: 
+**Related Docs**:
+
 - `docs/OBSERVABILITY_ROADMAP.md`
 - `docs/GATEWAY_AUTHENTICATION_GUIDE.md`
 - `TROUBLESHOOTING.md`

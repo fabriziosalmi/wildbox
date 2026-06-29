@@ -17,6 +17,7 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 **Subject Format**: `[SECURITY] <Brief Description>`
 
 **Required Information**:
+
 1. **Vulnerability Description**: Clear explanation of the security issue
 2. **Affected Components**: Which services/files are impacted
 3. **Reproduction Steps**: Detailed steps to reproduce the vulnerability
@@ -25,6 +26,7 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 6. **Suggested Fix**: (Optional) Your proposed remediation
 
 **What NOT to do**:
+
 - ❌ Do not open public GitHub issues for security vulnerabilities
 - ❌ Do not discuss vulnerabilities in public channels (Discord, Twitter, etc.)
 - ❌ Do not exploit vulnerabilities beyond verification
@@ -33,7 +35,7 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 ### Response Timeline
 
 | Timeframe | Action |
-|-----------|--------|
+| ----------- | -------- |
 | **48 hours** | Initial acknowledgment of your report |
 | **7 days** | Detailed status update and severity assessment |
 | **14-90 days** | Fix development and testing (based on severity) |
@@ -42,7 +44,7 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 ### Severity Classification
 
 | Severity | Response Time | Examples |
-|----------|---------------|----------|
+| ---------- | --------------- | ---------- |
 | **Critical** | 24-48 hours | Authentication bypass, Remote Code Execution, Hardcoded secrets in production code |
 | **High** | 3-7 days | SQL Injection, XSS, Privilege escalation, Insecure defaults exposing sensitive data |
 | **Medium** | 14 days | CSRF, Information disclosure, Missing security headers, Weak cryptography |
@@ -51,6 +53,7 @@ We take security seriously. If you discover a vulnerability in Wildbox, please r
 ### Recognition
 
 Security researchers who responsibly disclose vulnerabilities will be:
+
 - Credited in our SECURITY.md Hall of Fame (with permission)
 - Mentioned in release notes for the fix
 - Eligible for swag/recognition (for significant findings)
@@ -94,7 +97,8 @@ STRIPE_SECRET_KEY=sk_live_<your-stripe-key>
 **Never commit `.env` files to version control!**
 openssl rand -base64 24 > .secrets/n8n_password
 openssl rand -base64 32 > .secrets/db_password
-```
+
+```bash
 
 **Required environment variables:**
 
@@ -110,6 +114,7 @@ API_KEY=<generate with: openssl rand -hex 32>
 ```
 
 **Validation:**
+
 ```bash
 # Verify no hardcoded secrets
 ./security_validation_v2.sh
@@ -118,12 +123,14 @@ API_KEY=<generate with: openssl rand -hex 32>
 #### 2. Network Security
 
 **Production deployment MUST:**
+
 - Use HTTPS/TLS for all external traffic
 - Route all requests through the gateway (port 80/443)
 - Block direct access to backend services (ports 8000-8019)
 - Enable firewall rules limiting access to necessary ports
 
 **Firewall Configuration:**
+
 ```bash
 # Allow only gateway and dashboard
 ufw allow 80/tcp
@@ -137,6 +144,7 @@ ufw deny 8000:8019/tcp
 #### 3. Database Security
 
 **PostgreSQL:**
+
 - Change default password immediately
 - Use strong passwords (min 24 chars, cryptographically random)
 - Limit connections to localhost/internal network
@@ -144,6 +152,7 @@ ufw deny 8000:8019/tcp
 - Regular backups with encryption
 
 **Configuration:**
+
 ```yaml
 postgres:
   environment:
@@ -159,12 +168,14 @@ postgres:
 #### 4. Authentication & Authorization
 
 **JWT Security:**
+
 - Rotate `JWT_SECRET_KEY` regularly (every 90 days)
 - Use strong signing algorithms (RS256 for production)
 - Set appropriate token expiration (15 min access, 7 day refresh)
 - Implement token revocation (Redis denylist)
 
 **API Key Management:**
+
 - Generate cryptographically secure API keys
 - Store only hashed versions in database (SHA256)
 - Implement rate limiting (enforced at gateway)
@@ -173,6 +184,7 @@ postgres:
 #### 5. Rate Limiting
 
 **Gateway Configuration:**
+
 ```nginx
 # Per IP rate limiting
 limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
@@ -183,6 +195,7 @@ location /api/ {
 ```
 
 **Service-level limits (via environment):**
+
 ```bash
 RATE_LIMIT_REQUESTS=500
 RATE_LIMIT_WINDOW=60

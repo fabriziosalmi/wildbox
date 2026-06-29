@@ -5,9 +5,11 @@
 ## Compromised Secrets Inventory
 
 ### 1. JWT Secrets
+
 **Location**: `.env.example`, `.env.template`, service-specific configs  
 **Risk**: Token forgery, privilege escalation  
 **Action Required**:
+
 ```bash
 # Generate new secure JWT secret (256-bit minimum)
 openssl rand -base64 64 > /tmp/new_jwt_secret.txt
@@ -17,9 +19,11 @@ JWT_SECRET_KEY=$(cat /tmp/new_jwt_secret.txt)
 ```
 
 ### 2. Database Passwords
+
 **Location**: `docker-compose.yml`, `.env.example`, hardcoded in connection strings  
 **Risk**: Full database compromise  
 **Action Required**:
+
 ```bash
 # Generate strong database password
 POSTGRES_PASSWORD=$(openssl rand -base64 32)
@@ -30,17 +34,21 @@ POSTGRES_PASSWORD=$(openssl rand -base64 32)
 ```
 
 ### 3. API Keys
+
 **Location**: Test files, example configurations  
 **Risk**: Unauthorized API access  
 **Action Required**:
+
 - Revoke all API keys generated before secret rotation
 - Force re-generation of all team API keys
 - Implement key rotation policy (90-day expiry)
 
 ### 4. Redis Passwords
+
 **Location**: Service configurations, docker-compose  
 **Risk**: Cache poisoning, session hijacking  
 **Action Required**:
+
 ```bash
 # Generate Redis password
 REDIS_PASSWORD=$(openssl rand -hex 32)
@@ -50,9 +58,11 @@ REDIS_PASSWORD=$(openssl rand -hex 32)
 ```
 
 ### 5. Stripe API Keys (if production)
+
 **Location**: `.env.example`  
 **Risk**: Payment data exposure, financial fraud  
 **Action Required**:
+
 - Rotate keys in Stripe Dashboard
 - Update webhook signing secrets
 - Audit transaction logs for unauthorized access
@@ -60,18 +70,21 @@ REDIS_PASSWORD=$(openssl rand -hex 32)
 ## Rotation Procedure
 
 ### Phase 1: Immediate Lockdown (0-2 hours)
+
 1. **Revoke all known API keys** in identity service database
 2. **Invalidate all JWT tokens** by changing JWT_SECRET_KEY (forces re-login)
 3. **Reset all service-to-service authentication** tokens
 4. **Audit access logs** for suspicious activity during compromise window
 
 ### Phase 2: Credential Rotation (2-6 hours)
+
 1. Generate new secrets using cryptographically secure methods (above)
 2. Update secrets in production environment (secrets manager, NOT git)
 3. Restart all services with new credentials
 4. Verify health checks and authentication flows
 
 ### Phase 3: Git History Sanitization (6-24 hours)
+
 ```bash
 # WARNING: This rewrites git history. Coordinate with all developers.
 git filter-branch --force --index-filter \
@@ -86,7 +99,9 @@ git push origin --force --tags
 **Alternative**: Treat repository as compromised, create fresh repository with sanitized code.
 
 ### Phase 4: Prevention (Ongoing)
+
 1. **Implement pre-commit hooks** to block secret commits:
+
    ```bash
    # Install gitleaks or detect-secrets
    pip install detect-secrets
@@ -104,6 +119,7 @@ git push origin --force --tags
    - API keys: 90-day expiry, auto-revocation
 
 4. **Audit secret access**:
+
    ```bash
    # Add to CI/CD pipeline
    git log -p | grep -i 'password\|secret\|key' | grep -v '.example'
@@ -148,6 +164,7 @@ git grep -i 'password.*=' | grep -v '.example' | grep -v '.md'
 ## Contact for Security Incidents
 
 Report security incidents immediately:
+
 - **Email**: security@wildbox.security (if configured)
 - **GitHub Security Advisory**: Use "Report a vulnerability" in repository settings
 - **Slack**: #security-incidents (if team workspace exists)
