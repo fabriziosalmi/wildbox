@@ -46,8 +46,14 @@ def _verify_gateway_origin(provided_secret: Optional[str]) -> None:
     import hmac
     expected = os.getenv("GATEWAY_INTERNAL_SECRET")
     if not expected:
-        logger.warning("GATEWAY_INTERNAL_SECRET not set — cannot verify gateway origin")
-        return
+        logger.error(
+            "GATEWAY_INTERNAL_SECRET not configured — refusing to trust gateway "
+            "headers (fail-closed)."
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Service misconfigured: GATEWAY_INTERNAL_SECRET is not set.",
+        )
     if not provided_secret or not hmac.compare_digest(provided_secret, expected):
         raise HTTPException(status_code=403, detail="Direct access is not permitted; requests must traverse the gateway.")
 
