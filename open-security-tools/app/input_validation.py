@@ -161,7 +161,9 @@ class InputSanitizer:
         return url
 
     # Tool-input fields that carry a URL the tool will connect to (SSRF surface).
-    URL_REQUEST_FIELDS = ("target_url", "url")
+    # Keep in sync with any tool that fetches an attacker-supplied URL, e.g.
+    # metadata_extractor (file_url), mobile_security_analyzer (app_url).
+    URL_REQUEST_FIELDS = ("target_url", "url", "file_url", "app_url", "download_url")
 
     @classmethod
     def validate_request_urls(cls, input_obj) -> None:
