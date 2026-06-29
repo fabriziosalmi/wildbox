@@ -1,6 +1,7 @@
 # Open Security Data Service - Complete API Documentation
 
 ## Table of Contents
+
 1. [Overview](#overview)
 2. [Authentication & Security](#authentication--security)
 3. [API Endpoints by Category](#api-endpoints-by-category)
@@ -22,6 +23,7 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
 - **Telemetry Ingestion**: Security sensor event processing
 
 **Service Details:**
+
 - Framework: FastAPI 1.0.0
 - Database: PostgreSQL with SQLAlchemy ORM
 - Caching: Redis support
@@ -33,16 +35,18 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
 ## Authentication & Security
 
 ### Current Implementation
+
 - **API Key Authentication**: Optional (controlled by `API_KEY_REQUIRED` config)
 - **Header**: `X-API-Key` (configurable via `API_KEY_HEADER`)
 - **CORS**: Configurable with origins whitelist
-- **Rate Limiting**: 
+- **Rate Limiting**:
   - Per-endpoint: 100 requests/60 seconds (configurable)
   - Batch operations: Limited by `max_batch_size` (default: 1000)
   - Query size limit: 10000 characters (default)
 
 ### Security Configuration
-```
+
+```text
 API_KEY_REQUIRED=false                    # Enable API key requirement
 API_KEY_HEADER=X-API-Key                 # Header name for API key
 RATE_LIMIT_ENABLED=true                  # Enable rate limiting
@@ -53,6 +57,7 @@ MAX_QUERY_SIZE=10000                     # Max query size in characters
 ```
 
 ### Data Validation
+
 - Input validation for all indicator types (IP, domain, hash, etc.)
 - Normalized value storage for deduplication
 - JSON schema validation for complex objects
@@ -64,14 +69,17 @@ MAX_QUERY_SIZE=10000                     # Max query size in characters
 ### Health & Monitoring
 
 #### Health Check
-```
+
+```http
 GET /health
 Tags: Health
 Response: HealthResponse
 ```
+
 Returns service health status and version information.
 
 **Response Example:**
+
 ```json
 {
   "status": "healthy",
@@ -85,14 +93,17 @@ Returns service health status and version information.
 ### Statistics & Dashboard
 
 #### System Statistics
-```
+
+```http
 GET /api/v1/stats
 Tags: Statistics
 Response: SystemStats
 ```
+
 Retrieves overall system statistics including indicator counts by type, source information, and collection metrics.
 
 **Response Fields:**
+
 - `total_indicators` (int): Total active indicators
 - `indicator_types` (object): Count breakdown by indicator type
 - `total_sources` (int): Total data sources configured
@@ -103,14 +114,17 @@ Retrieves overall system statistics including indicator counts by type, source i
 ---
 
 #### Threat Intelligence Dashboard Metrics
-```
+
+```http
 GET /api/v1/dashboard/threat-intel
 Tags: Dashboard
 Response: Object
 ```
+
 Dashboard-optimized threat intelligence metrics with trends.
 
 **Response Fields:**
+
 - `total_feeds` (int): Total configured feeds
 - `active_feeds` (int): Active feeds
 - `last_updated` (datetime): Last collection timestamp
@@ -122,15 +136,17 @@ Dashboard-optimized threat intelligence metrics with trends.
 ### Indicators - Search & Query
 
 #### Search Indicators
-```
+
+```http
 GET /api/v1/indicators/search
 Tags: Indicators
 Response: IndicatorSearchResponse
 ```
 
 **Query Parameters:**
+
 | Parameter | Type | Description | Default |
-|-----------|------|-------------|---------|
+| ----------- | ------ | ------------- | --------- |
 | q | string | Search query (full-text) | None |
 | indicator_type | string | Filter by type (ip_address, domain, file_hash, etc.) | None |
 | threat_types | string[] | Filter by threat types | None |
@@ -144,6 +160,7 @@ Response: IndicatorSearchResponse
 | offset | int | Pagination offset (0+) | 0 |
 
 **Response:**
+
 ```json
 {
   "indicators": [
@@ -176,7 +193,8 @@ Response: IndicatorSearchResponse
 ---
 
 #### Get Indicator Details
-```
+
+```http
 GET /api/v1/indicators/{indicator_id}
 Tags: Indicators
 Response: IndicatorDetail
@@ -187,6 +205,7 @@ Path Parameters:
 Returns detailed indicator information with enrichment data based on type (IP geolocation, domain WHOIS, hash analysis, etc.).
 
 **Response Includes:**
+
 - Base indicator fields (from IndicatorResponse)
 - `enrichment` (object): Type-specific enrichment data
 - `raw_data` (object): Original source data
@@ -194,7 +213,8 @@ Returns detailed indicator information with enrichment data based on type (IP ge
 ---
 
 #### Bulk Indicator Lookup
-```
+
+```http
 POST /api/v1/indicators/lookup
 Tags: Indicators
 Request: BulkLookupRequest
@@ -204,6 +224,7 @@ Response: BulkLookupResponse
 Perform batch lookups of multiple indicators in a single request.
 
 **Request Body:**
+
 ```json
 {
   "indicators": [
@@ -220,10 +241,12 @@ Perform batch lookups of multiple indicators in a single request.
 ```
 
 **Constraints:**
+
 - Maximum batch size: 1000 items (configurable)
 - Returns matches for each queried indicator
 
 **Response:**
+
 ```json
 {
   "results": [
@@ -245,7 +268,8 @@ Perform batch lookups of multiple indicators in a single request.
 ### IP Intelligence
 
 #### Get IP Address Intelligence
-```
+
+```http
 GET /api/v1/ips/{ip_address}
 Tags: IP Intelligence
 Response: IPIntelligence
@@ -254,6 +278,7 @@ Path Parameters:
 ```
 
 **Enrichment Data Returned:**
+
 - `asn` (int): Autonomous System Number
 - `asn_organization` (string): ASN organization name
 - `country_code` (string): 2-letter country code
@@ -262,6 +287,7 @@ Path Parameters:
 - `coordinates` (object): Latitude/longitude if available
 
 **Response:**
+
 ```json
 {
   "ip_address": "192.0.2.1",
@@ -286,7 +312,8 @@ Path Parameters:
 ### Domain Intelligence
 
 #### Get Domain Intelligence
-```
+
+```http
 GET /api/v1/domains/{domain}
 Tags: Domain Intelligence
 Response: DomainIntelligence
@@ -295,6 +322,7 @@ Path Parameters:
 ```
 
 **Enrichment Data Returned:**
+
 - `tld` (string): Top-level domain
 - `subdomain` (string): Subdomain if present
 - `apex_domain` (string): Root domain
@@ -311,7 +339,8 @@ Path Parameters:
 ### File Intelligence
 
 #### Get File Hash Intelligence
-```
+
+```http
 GET /api/v1/hashes/{file_hash}
 Tags: File Intelligence
 Response: HashIntelligence
@@ -320,6 +349,7 @@ Path Parameters:
 ```
 
 **Enrichment Data Returned:**
+
 - `hash_type` (string): Hash algorithm (md5, sha1, sha256)
 - `file_name` (string): Associated filename if known
 - `file_size` (int): File size in bytes
@@ -334,7 +364,8 @@ Path Parameters:
 ### Data Sources
 
 #### List Data Sources
-```
+
+```http
 GET /api/v1/sources
 Tags: Sources
 Response: SourceInfo[]
@@ -343,6 +374,7 @@ Query Parameters:
 ```
 
 **Response Fields per Source:**
+
 - `id` (string): Source UUID
 - `name` (string): Source name
 - `description` (string): Source description
@@ -358,7 +390,8 @@ Query Parameters:
 ### Real-Time Feeds
 
 #### Real-Time Threat Feed
-```
+
+```http
 GET /api/v1/feeds/realtime
 Tags: Feeds
 Response: StreamingResponse (application/x-ndjson)
@@ -367,8 +400,9 @@ Response: StreamingResponse (application/x-ndjson)
 Streams recent threat indicators in NDJSON format (newline-delimited JSON).
 
 **Query Parameters:**
+
 | Parameter | Type | Description |
-|-----------|------|-------------|
+| ----------- | ------ | ------------- |
 | indicator_types | string[] | Filter by types |
 | threat_types | string[] | Filter by threat types |
 | min_severity | int | Minimum severity (1-10) |
@@ -376,12 +410,14 @@ Streams recent threat indicators in NDJSON format (newline-delimited JSON).
 
 **Stream Format:**
 Each line is a complete JSON object:
+
 ```json
 {"id": "uuid", "indicator_type": "ip_address", "value": "192.0.2.1", ...}
 {"id": "uuid", "indicator_type": "domain", "value": "malicious.com", ...}
 ```
 
 **Characteristics:**
+
 - Streaming response (keep-alive connection)
 - Server-sent events compatible
 - Limited to 1000 most recent indicators per stream
@@ -391,7 +427,8 @@ Each line is a complete JSON object:
 ### Telemetry - Event Ingestion
 
 #### Ingest Telemetry Batch
-```
+
+```http
 POST /api/v1/ingest
 Tags: Telemetry
 Request: TelemetryBatch
@@ -401,6 +438,7 @@ Response: TelemetryBatchResponse
 Ingest security sensor telemetry events in batch.
 
 **Request Body:**
+
 ```json
 {
   "batch_id": "optional-batch-uuid",
@@ -424,6 +462,7 @@ Ingest security sensor telemetry events in batch.
 ```
 
 **Event Types:**
+
 - `process_event`: Process execution events
 - `network_connection`: Network connection events
 - `file_change`: File system events
@@ -433,6 +472,7 @@ Ingest security sensor telemetry events in batch.
 - `security_event`: Generic security events
 
 **Response:**
+
 ```json
 {
   "batch_id": "uuid",
@@ -450,15 +490,17 @@ Ingest security sensor telemetry events in batch.
 ### Telemetry - Event Query
 
 #### Get Telemetry Events
-```
+
+```http
 GET /api/v1/telemetry/events
 Tags: Telemetry
 Response: TelemetryEvent[]
 ```
 
 **Query Parameters:**
+
 | Parameter | Type | Description |
-|-----------|------|-------------|
+| ----------- | ------ | ------------- |
 | sensor_id | string | Filter by sensor ID |
 | event_type | string | Filter by event type |
 | start_time | datetime | Events after this time |
@@ -467,6 +509,7 @@ Response: TelemetryEvent[]
 | offset | int | Pagination offset (default: 0) |
 
 **Response Fields:**
+
 - `id` (string): Event UUID
 - `sensor_id` (string): Originating sensor
 - `event_type` (string): Type of event
@@ -483,19 +526,22 @@ Response: TelemetryEvent[]
 ---
 
 #### Get Telemetry Statistics
-```
+
+```http
 GET /api/v1/telemetry/stats
 Tags: Telemetry
 Response: Object
 ```
 
 **Query Parameters:**
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | sensor_id | string | Filter by specific sensor |
 | hours | int | Time window (default: 24) |
 
 **Response Fields:**
+
 - `time_window_hours` (int): Analysis period
 - `total_events` (int): Total events in window
 - `active_sensors` (int): Sensors with events
@@ -507,7 +553,8 @@ Response: Object
 ### Sensors - Management & Status
 
 #### List Sensors
-```
+
+```http
 GET /api/v1/sensors
 Tags: Telemetry
 Response: SensorMetadata[]
@@ -516,6 +563,7 @@ Query Parameters:
 ```
 
 **Response Fields per Sensor:**
+
 - `id` (string): Metadata record UUID
 - `sensor_id` (string): Unique sensor identifier
 - `hostname` (string): Sensor hostname
@@ -531,7 +579,8 @@ Query Parameters:
 ---
 
 #### Get Specific Sensor
-```
+
+```http
 GET /api/v1/sensors/{sensor_id}
 Tags: Telemetry
 Response: SensorMetadata
@@ -588,6 +637,7 @@ ConfidenceLevel = Enum:
 ### Core Database Tables
 
 #### Indicator
+
 Main table for security indicators (IOCs).
 
 ```sql
@@ -621,6 +671,7 @@ Indexes:
 ```
 
 #### Source
+
 Data source configuration and tracking.
 
 ```sql
@@ -653,6 +704,7 @@ Indexes:
 ```
 
 #### IPAddress (Type-Specific Enrichment)
+
 IP address specific data.
 
 ```sql
@@ -675,6 +727,7 @@ Indexes:
 ```
 
 #### Domain (Type-Specific Enrichment)
+
 Domain-specific data.
 
 ```sql
@@ -699,6 +752,7 @@ Indexes:
 ```
 
 #### FileHash (Type-Specific Enrichment)
+
 File hash-specific data.
 
 ```sql
@@ -721,6 +775,7 @@ Indexes:
 ```
 
 #### TelemetryEvent
+
 Sensor telemetry events.
 
 ```sql
@@ -746,6 +801,7 @@ Indexes:
 ```
 
 #### SensorMetadata
+
 Registered sensor information.
 
 ```sql
@@ -772,20 +828,24 @@ Indexes:
 ## Query Capabilities
 
 ### Full-Text Search
+
 The `/api/v1/indicators/search` endpoint supports full-text search across:
+
 - Indicator value
 - Normalized value
 - Description
 
 **Example:**
-```
+
+```http
 GET /api/v1/indicators/search?q=malware&threat_types=malware&active_only=true
 ```
 
 ### Multi-Field Filtering
+
 Combine multiple filters for complex queries:
 
-```
+```http
 GET /api/v1/indicators/search?
   indicator_type=ip_address&
   min_severity=7&
@@ -796,25 +856,32 @@ GET /api/v1/indicators/search?
 ```
 
 ### Type-Specific Queries
+
 Direct queries for specific indicator types:
+
 - `GET /api/v1/ips/{ip_address}` - IP intelligence
 - `GET /api/v1/domains/{domain}` - Domain intelligence
 - `GET /api/v1/hashes/{file_hash}` - File hash intelligence
 
 ### Time-Range Filtering
+
 - `since` parameter: ISO 8601 datetime
 - Automatic handling of timezone-aware datetimes
 - Default behavior: last seen >= since_date
 
 ### Threat Classification
+
 Filter by multiple threat types simultaneously:
-```
+
+```http
 GET /api/v1/indicators/search?threat_types=malware&threat_types=botnet
 ```
 
 ### Severity Filtering
+
 Range-based filtering:
-```
+
+```http
 GET /api/v1/indicators/search?min_severity=5&max_severity=10
 ```
 
@@ -823,6 +890,7 @@ GET /api/v1/indicators/search?min_severity=5&max_severity=10
 ## Pagination & Sorting
 
 ### Pagination Parameters
+
 - `limit` (int): Results per page
   - Range: 1-10,000
   - Default: 100
@@ -834,6 +902,7 @@ GET /api/v1/indicators/search?min_severity=5&max_severity=10
   - Used for cursor-free pagination
 
 ### Default Sorting
+
 Most endpoints sort by `last_seen DESC` (most recent first) for indicators.
 
 Telemetry endpoints sort by `timestamp DESC`.
@@ -841,7 +910,8 @@ Telemetry endpoints sort by `timestamp DESC`.
 Sensor endpoints sort by `last_seen DESC`.
 
 ### Pagination Example
-```
+
+```http
 # First page
 GET /api/v1/indicators/search?limit=100&offset=0
 
@@ -853,7 +923,9 @@ GET /api/v1/indicators/search?limit=100&offset=200
 ```
 
 ### Response Pagination Fields
+
 All search/list responses include:
+
 ```json
 {
   "limit": 100,
@@ -864,6 +936,7 @@ All search/list responses include:
 ```
 
 Use `total` to calculate:
+
 - Total pages: `ceil(total / limit)`
 - Has next page: `(offset + limit) < total`
 
@@ -874,12 +947,14 @@ Use `total` to calculate:
 ### 1. Data Aggregation
 
 **Multi-Source Collection:**
+
 - 50+ public threat intelligence sources
 - Automated scheduled collection with configurable intervals
 - Support for feed, API, file, and custom source types
 - Rate limiting and retry mechanisms
 
 **Data Processing Pipeline:**
+
 1. Raw data collection from sources
 2. Validation against defined schemas
 3. Normalization for consistency
@@ -888,7 +963,8 @@ Use `total` to calculate:
 6. Storage in PostgreSQL
 
 **Configuration:**
-```
+
+```text
 COLLECTION_ENABLED=true
 COLLECTION_INTERVAL=3600              # 1 hour
 MAX_CONCURRENT_COLLECTORS=10
@@ -904,6 +980,7 @@ VALIDATE_COLLECTION_DATA=true
 **Indicator Enrichment:**
 
 **IP Addresses:**
+
 - ASN lookup
 - Geographic coordinates
 - Country codes
@@ -911,6 +988,7 @@ VALIDATE_COLLECTION_DATA=true
 - Organization identification
 
 **Domains:**
+
 - TLD extraction
 - WHOIS data (registrar, dates)
 - DNS resolution status
@@ -918,6 +996,7 @@ VALIDATE_COLLECTION_DATA=true
 - Associated IPs
 
 **File Hashes:**
+
 - Hash type identification
 - File metadata
 - Malware family classification
@@ -925,6 +1004,7 @@ VALIDATE_COLLECTION_DATA=true
 - Detection ratios
 
 **Data Quality:**
+
 - Confidence scoring (low, medium, high, verified)
 - Severity rating (1-10 scale)
 - Expiration tracking
@@ -936,6 +1016,7 @@ VALIDATE_COLLECTION_DATA=true
 ### 3. Real-Time Reporting
 
 **Dashboard Metrics:**
+
 - Total feeds and active feeds
 - New indicator counts (24-hour)
 - Trend analysis (% change)
@@ -943,6 +1024,7 @@ VALIDATE_COLLECTION_DATA=true
 - Source health status
 
 **Real-Time Feed:**
+
 - Streaming NDJSON format
 - 1000 most recent indicators
 - Configurable lookback window (1-1440 minutes)
@@ -954,6 +1036,7 @@ VALIDATE_COLLECTION_DATA=true
 ### 4. Security & Data Management
 
 **Data Lifecycle:**
+
 - `first_seen`: Initial detection
 - `last_seen`: Most recent detection
 - `expires_at`: Automatic expiration
@@ -962,7 +1045,8 @@ VALIDATE_COLLECTION_DATA=true
 - `whitelisted` flag: Exception marking
 
 **Storage Strategy:**
-```
+
+```text
 DATA_RETENTION_DAYS=365               # Total retention
 ARCHIVE_AFTER_DAYS=90                 # Archive old data
 BACKUP_ENABLED=false
@@ -971,6 +1055,7 @@ BACKUP_RETENTION=30                   # 30 days
 ```
 
 **Data Normalization:**
+
 - IPs: Standardized format with version detection
 - Domains: Lowercase with TLD extraction
 - Hashes: Lowercase hex validation
@@ -982,6 +1067,7 @@ BACKUP_RETENTION=30                   # 30 days
 ### 5. Telemetry Integration
 
 **Event Types Supported:**
+
 - Process execution events
 - Network connections
 - File system changes
@@ -991,12 +1077,14 @@ BACKUP_RETENTION=30                   # 30 days
 - Generic security events
 
 **Batch Processing:**
+
 - Configurable batch size (default: 1000)
 - Partial success handling (returns errors per item)
 - Automatic sensor metadata creation
 - Event-to-indicator correlation capability
 
 **Sensor Management:**
+
 - Automatic registration on first ingest
 - Activity tracking (first_seen, last_seen)
 - Configuration storage per sensor
@@ -1007,18 +1095,21 @@ BACKUP_RETENTION=30                   # 30 days
 ### 6. Monitoring & Health
 
 **Health Checks:**
+
 - Simple `/health` endpoint
 - Status and version reporting
 - Ready for use in Kubernetes probes
 
 **Metrics Available:**
+
 - System statistics (indicator counts, sources)
 - Dashboard metrics (feeds, trends)
 - Telemetry stats (events by type, active sensors)
 - Sensor status and activity
 
 **Logging:**
-```
+
+```text
 LOG_LEVEL=INFO
 LOG_FILE_ENABLED=true
 LOG_FILE_PATH=logs/app.log
@@ -1031,6 +1122,7 @@ SENTRY_ENABLED=false                  # Optional error tracking
 ## Error Handling
 
 ### HTTP Status Codes
+
 - `200 OK`: Successful GET/POST
 - `400 Bad Request`: Invalid parameters, max batch size exceeded
 - `404 Not Found`: Indicator/sensor not found
@@ -1038,6 +1130,7 @@ SENTRY_ENABLED=false                  # Optional error tracking
 - `500 Internal Server Error`: Server-side error
 
 ### Error Response Format
+
 ```json
 {
   "detail": "Error message description",
@@ -1048,19 +1141,22 @@ SENTRY_ENABLED=false                  # Optional error tracking
 ### Common Errors
 
 **Batch Size Exceeded:**
-```
+
+```yaml
 Status: 400
 Detail: "Too many indicators. Maximum allowed: 1000"
 ```
 
 **Indicator Not Found:**
-```
+
+```yaml
 Status: 404
 Detail: "Indicator not found"
 ```
 
 **Invalid Indicator Type:**
-```
+
+```yaml
 Status: 400
 Detail: "Invalid indicator type"
 ```
@@ -1070,7 +1166,9 @@ Detail: "Invalid indicator type"
 ## Performance Considerations
 
 ### Database Indexes
+
 Optimized for common queries:
+
 - Indicator type + normalized value
 - Source ID
 - First/last seen timestamps
@@ -1080,17 +1178,21 @@ Optimized for common queries:
 - Telemetry sensor + timestamp
 
 ### Caching
+
 - Redis support for frequently accessed data
 - Configurable cache TTL
 - Automatic cache invalidation on updates
 
 ### Rate Limiting
+
 Default: 100 requests/60 seconds
+
 - Per-endpoint enforcement
 - Can be disabled per config
 - Returns 429 status when exceeded
 
 ### Response Compression
+
 - GZip compression for responses > 1000 bytes
 - Automatic via middleware
 
@@ -1099,16 +1201,19 @@ Default: 100 requests/60 seconds
 ## Integration Examples
 
 ### Retrieve All Malware IPs
+
 ```bash
 curl "http://localhost:8002/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware&limit=1000"
 ```
 
 ### Check IP Reputation
+
 ```bash
 curl "http://localhost:8002/api/v1/ips/192.0.2.1"
 ```
 
 ### Bulk Lookup IOCs
+
 ```bash
 curl -X POST "http://localhost:8002/api/v1/indicators/lookup" \
   -H "Content-Type: application/json" \
@@ -1121,12 +1226,14 @@ curl -X POST "http://localhost:8002/api/v1/indicators/lookup" \
 ```
 
 ### Real-Time Feed Stream
+
 ```bash
 curl "http://localhost:8002/api/v1/feeds/realtime?since_minutes=60&min_severity=7" \
   -H "Accept: application/x-ndjson"
 ```
 
 ### Ingest Sensor Events
+
 ```bash
 curl -X POST "http://localhost:8002/api/v1/ingest" \
   -H "Content-Type: application/json" \
@@ -1151,7 +1258,8 @@ curl -X POST "http://localhost:8002/api/v1/ingest" \
 ## Configuration Summary
 
 ### Database
-```
+
+```text
 DATABASE_URL=postgresql://user:pass@host:5432/db
 DB_POOL_SIZE=20
 DB_MAX_OVERFLOW=10
@@ -1159,7 +1267,8 @@ DB_POOL_TIMEOUT=30
 ```
 
 ### API Server
-```
+
+```text
 API_HOST=0.0.0.0
 API_PORT=8002
 API_WORKERS=4
@@ -1169,7 +1278,8 @@ CORS_ORIGINS=*
 ```
 
 ### Security
-```
+
+```text
 API_KEY_REQUIRED=false
 API_KEY_HEADER=X-API-Key
 MAX_BATCH_SIZE=1000
@@ -1180,7 +1290,8 @@ RATE_LIMIT_WINDOW=60
 ```
 
 ### Collection
-```
+
+```text
 COLLECTION_ENABLED=true
 COLLECTION_INTERVAL=3600
 MAX_CONCURRENT_COLLECTORS=10
@@ -1189,7 +1300,8 @@ SKIP_DUPLICATES=true
 ```
 
 ### Storage
-```
+
+```text
 DATA_RETENTION_DAYS=365
 ARCHIVE_AFTER_DAYS=90
 BACKUP_ENABLED=false

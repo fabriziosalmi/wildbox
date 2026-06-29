@@ -35,7 +35,7 @@ Open Security Automations is the **central orchestration engine** for the Wildbo
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Wildbox Automations                      │
 │                                                             │
@@ -107,7 +107,7 @@ docker-compose logs -f n8n
 ## 📊 Workflow Inventory
 
 | Workflow | Trigger | Purpose | Status |
-|----------|---------|---------|--------|
+| ---------- | --------- | --------- | -------- |
 | **Support Ticket Triage** | Email (IMAP) | Automatically categorize and route support emails | ✅ Ready |
 | **Daily OSINT Report** | Cron (06:00 UTC) | Generate daily cybersecurity intelligence reports | ✅ Ready |
 | **Honeypot Alert Classifier** | Webhook | Classify and enrich honeypot attack logs | ✅ Ready |
@@ -162,7 +162,7 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 ## 📁 Project Structure
 
-```
+```bash
 open-security-automations/
 ├── docker-compose.yml           # Main orchestration file
 ├── n8n-data/                   # Persistent n8n data
@@ -198,21 +198,25 @@ open-security-automations/
 ## 🔗 Service Integration
 
 ### Wildbox API Gateway
+
 - **Endpoint**: `http://wildbox-gateway:8000`
 - **Purpose**: Central API routing to all services
 - **Auth**: Bearer token authentication
 
 ### Open Security Agents
+
 - **Endpoint**: `http://open-security-agents:8001/v1/`
 - **Purpose**: AI-powered analysis and classification
 - **Use Cases**: Email triage, log analysis, content generation
 
 ### Open Security Data
+
 - **Endpoint**: `http://open-security-data:8002/v1/`
 - **Purpose**: Data lake operations and analytics
 - **Use Cases**: Log enrichment, report data, metrics
 
 ### Other Services
+
 - Integration patterns for all Wildbox microservices
 - Webhook endpoints for event-driven workflows
 - Health check monitoring for all components
@@ -224,6 +228,7 @@ open-security-automations/
 ### Adding New Workflows
 
 1. **Design in n8n UI**
+
    ```bash
    # Access the n8n interface
    open http://localhost:5678
@@ -235,6 +240,7 @@ open-security-automations/
    - Check error handling
 
 3. **Export and Version**
+
    ```bash
    # Export workflow from n8n UI
    # Save to appropriate workflows/ subdirectory
@@ -302,16 +308,19 @@ docker-compose up -d
 ## 🔒 Security Considerations
 
 ### Access Control
+
 - n8n basic authentication enabled
 - Secure credential storage in n8n
 - Network isolation via Docker networks
 
 ### API Security
+
 - All external calls use secure authentication
 - Credentials encrypted at rest
 - Regular credential rotation
 
 ### Data Privacy
+
 - No sensitive data in workflow definitions
 - Secure handling of email content
 - Audit logging for all operations

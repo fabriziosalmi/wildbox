@@ -11,10 +11,10 @@ Use this template for documenting each service's endpoints. Copy and customize f
 **Authentication**: Bearer Token (JWT) in Authorization header
 
 ### Table of Contents
+
 - [Authentication](#authentication)
 - [Endpoints](#endpoints)
   - [Endpoint Group 1](#endpoint-group-1)
-  - [Endpoint Group 2](#endpoint-group-2)
 - [Error Handling](#error-handling)
 - [Rate Limiting](#rate-limiting)
 - [Examples](#examples)
@@ -30,6 +30,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 ```
 
 **Obtaining a Token**:
+
 ```bash
 curl -X POST http://localhost:[PORT]/auth/login \
   -H "Content-Type: application/json" \
@@ -57,13 +58,14 @@ Retrieve a list of resources.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | `limit` | integer | No | Number of results to return (default: 20, max: 100) |
 | `offset` | integer | No | Pagination offset (default: 0) |
 | `filter` | string | No | Filter expression for results |
 | `sort` | string | No | Sort field and direction (e.g., "name:asc") |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:[PORT]/v1/resource?limit=10&offset=0" \
   -H "Authorization: Bearer {token}" \
@@ -71,6 +73,7 @@ curl -X GET "http://localhost:[PORT]/v1/resource?limit=10&offset=0" \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": [
@@ -91,6 +94,7 @@ curl -X GET "http://localhost:[PORT]/v1/resource?limit=10&offset=0" \
 ```
 
 **Error Response (401 Unauthorized)**:
+
 ```json
 {
   "error": "Unauthorized",
@@ -113,12 +117,13 @@ Create a new resource.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | `name` | string | Yes | Resource name (max 255 characters) |
 | `description` | string | No | Resource description |
 | `config` | object | No | Configuration parameters |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:[PORT]/v1/resource \
   -H "Authorization: Bearer {token}" \
@@ -133,6 +138,7 @@ curl -X POST http://localhost:[PORT]/v1/resource \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "data": {
@@ -149,6 +155,7 @@ curl -X POST http://localhost:[PORT]/v1/resource \
 ```
 
 **Error Response (400 Bad Request)**:
+
 ```json
 {
   "error": "Bad Request",
@@ -177,12 +184,14 @@ Retrieve a specific resource by ID.
 | `id` | string | Resource ID |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:[PORT]/v1/resource/resource-002 \
   -H "Authorization: Bearer {token}"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -208,6 +217,7 @@ Update an existing resource.
 **Authentication**: Required (Bearer Token)
 
 **Request Body**:
+
 ```bash
 curl -X PUT http://localhost:[PORT]/v1/resource/resource-002 \
   -H "Authorization: Bearer {token}" \
@@ -219,6 +229,7 @@ curl -X PUT http://localhost:[PORT]/v1/resource/resource-002 \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -242,13 +253,15 @@ Delete a resource.
 **Authentication**: Required (Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:[PORT]/v1/resource/resource-002 \
   -H "Authorization: Bearer {token}"
 ```
 
 **Response (204 No Content)**:
-```
+
+```text
 (Empty response body)
 ```
 
@@ -261,7 +274,7 @@ The API uses standard HTTP status codes and returns error details in JSON format
 ### Common Error Codes
 
 | Code | Error | Description |
-|------|-------|-------------|
+| ------ | ------- | ------------- |
 | 400 | Bad Request | Invalid request parameters or body |
 | 401 | Unauthorized | Missing or invalid authentication token |
 | 403 | Forbidden | Authenticated but not authorized for this resource |
@@ -288,18 +301,21 @@ The API uses standard HTTP status codes and returns error details in JSON format
 API endpoints are rate limited to prevent abuse.
 
 **Rate Limits**:
+
 - **Standard endpoints**: 100 requests/minute per user
 - **Analysis endpoints**: 10 requests/minute per user
 - **Authentication endpoints**: 5 requests/minute per IP
 
 **Rate Limit Headers**:
-```
+
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100
 ```
 
 When rate limit is exceeded, the API returns:
+
 ```json
 {
   "error": "Too Many Requests",
@@ -315,6 +331,7 @@ When rate limit is exceeded, the API returns:
 ### Complete Workflow Example
 
 **1. Login and get token**:
+
 ```bash
 TOKEN=$(curl -X POST http://localhost:[PORT]/auth/login \
   -H "Content-Type: application/json" \
@@ -325,6 +342,7 @@ TOKEN=$(curl -X POST http://localhost:[PORT]/auth/login \
 ```
 
 **2. Create resource**:
+
 ```bash
 curl -X POST http://localhost:[PORT]/v1/resource \
   -H "Authorization: Bearer $TOKEN" \
@@ -336,12 +354,14 @@ curl -X POST http://localhost:[PORT]/v1/resource \
 ```
 
 **3. Retrieve resource**:
+
 ```bash
 curl -X GET http://localhost:[PORT]/v1/resource/resource-id \
   -H "Authorization: Bearer $TOKEN" | jq '.'
 ```
 
 **4. Update resource**:
+
 ```bash
 curl -X PUT http://localhost:[PORT]/v1/resource/resource-id \
   -H "Authorization: Bearer $TOKEN" \
@@ -352,6 +372,7 @@ curl -X PUT http://localhost:[PORT]/v1/resource/resource-id \
 ```
 
 **5. Delete resource**:
+
 ```bash
 curl -X DELETE http://localhost:[PORT]/v1/resource/resource-id \
   -H "Authorization: Bearer $TOKEN"
@@ -362,6 +383,7 @@ curl -X DELETE http://localhost:[PORT]/v1/resource/resource-id \
 ## SDKs and Libraries
 
 Official SDKs coming soon for:
+
 - Python
 - JavaScript/TypeScript
 - Go
@@ -374,6 +396,7 @@ Check [GitHub releases](https://github.com/fabriziosalmi/wildbox/releases) for S
 ## Support
 
 For API documentation questions:
+
 - **Documentation Issues**: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
 - **Security Issues**: fabrizio.salmi@gmail.com

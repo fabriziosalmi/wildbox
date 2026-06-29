@@ -17,6 +17,7 @@ Successfully migrated from **LM Studio** (host-based local LLM) to **vLLM contai
 **File:** `docker-compose.yml` (both root and agents-specific)
 
 **New Service:**
+
 ```yaml
 llm:
   image: vllm/vllm-openai:latest
@@ -34,6 +35,7 @@ llm:
 ```
 
 **Features:**
+
 - OpenAI-compatible API at `http://llm:8000/v1`
 - Automatic model download from Hugging Face
 - GPU acceleration support (with CPU fallback)
@@ -42,6 +44,7 @@ llm:
 ### 2. Updated Agents Service Configuration
 
 **Before (LM Studio):**
+
 ```yaml
 environment:
   - OPENAI_BASE_URL=http://192.168.100.12:1234/v1  # Host machine
@@ -50,6 +53,7 @@ environment:
 ```
 
 **After (Containerized vLLM):**
+
 ```yaml
 environment:
   - OPENAI_BASE_URL=http://llm:8000/v1  # Container network
@@ -62,11 +66,13 @@ depends_on:
 ### 3. Updated Code References
 
 **Files Modified:**
+
 - `app/config.py` - Updated comment: "vLLM container" instead of "LM Studio"
 - `app/agents/threat_enrichment_agent.py` - Updated comment
 - `app/tools/wildbox_client.py` - Added retry logic with exponential backoff
 
 **Retry Logic Added:**
+
 ```python
 # Handle 429 rate limits with exponential backoff
 for attempt in range(max_retries + 1):
@@ -81,11 +87,13 @@ for attempt in range(max_retries + 1):
 ### 4. Created Documentation
 
 **New Files:**
+
 - `LLM_SETUP.md` - Comprehensive setup and troubleshooting guide
 - `docker-compose.cpu.yml` - CPU-only configuration for systems without GPU
 - `test_llm_setup.sh` - Automated testing script
 
 **Updated Files:**
+
 - `README.md` - Added local LLM quick start section
 
 ### 5. Fixed Rate Limiting Issues
@@ -93,11 +101,13 @@ for attempt in range(max_retries + 1):
 **Problem:** Agents hitting 429 errors from API service (100 requests/min limit)
 
 **Solution:**
+
 1. Increased API service rate limit to 500 requests/min
 2. Added retry logic with exponential backoff in agents client
 3. Proper async handling of tool calls
 
 **Changes:**
+
 ```yaml
 # docker-compose.yml - API service
 environment:
@@ -110,7 +120,7 @@ environment:
 ## Model Comparison
 
 | Aspect | LM Studio Setup | vLLM Container |
-|--------|----------------|----------------|
+| -------- | ---------------- | ---------------- |
 | **Deployment** | Host-based (manual) | Container-based (automated) |
 | **Networking** | `host.docker.internal:1234` | `llm:8000` (internal) |
 | **Model** | qwen2.5-coder-3b-instruct-mlx | Qwen2.5-0.5B-Instruct |
@@ -127,27 +137,32 @@ environment:
 ## Advantages of New Setup
 
 ### 1. **Zero External Dependencies**
+
 - No need to install LM Studio separately
 - Model auto-downloads on first run
 - Everything in Docker containers
 
 ### 2. **Better Portability**
+
 - Works on Linux, macOS, Windows
 - GPU or CPU operation
 - Easy deployment to cloud/servers
 
 ### 3. **Simplified Configuration**
+
 - Single `docker-compose.yml` file
 - Environment variables for all settings
 - No host network configuration
 
 ### 4. **Production Ready**
+
 - Container health checks
 - Automatic restarts
 - Resource limits configurable
 - Model caching for faster restarts
 
 ### 5. **Scalability**
+
 - Can run multiple LLM containers
 - Load balancing possible
 - Horizontal scaling support
@@ -159,16 +174,19 @@ environment:
 ### From LM Studio to vLLM Container
 
 **Step 1: Stop LM Studio**
+
 ```bash
 # No longer needed - can uninstall
 ```
 
 **Step 2: Pull Latest Changes**
+
 ```bash
 git pull origin main
 ```
 
 **Step 3: Start New Stack**
+
 ```bash
 # GPU setup (recommended)
 docker-compose up -d
@@ -178,6 +196,7 @@ docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ```
 
 **Step 4: Verify**
+
 ```bash
 # Run test script
 ./test_llm_setup.sh
@@ -186,6 +205,7 @@ docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ### From OpenAI API to Local vLLM
 
 **Step 1: Update Environment**
+
 ```bash
 # .env or docker-compose.yml
 OPENAI_API_KEY=wildbox-local-llm
@@ -194,6 +214,7 @@ OPENAI_MODEL=qwen3-0.6b
 ```
 
 **Step 2: Start Services**
+
 ```bash
 docker-compose up -d
 ```
@@ -245,12 +266,14 @@ Test 6: IOC Analysis Test
 ### Performance Metrics
 
 **Hardware:** Apple M4 Max (CPU mode)
+
 - **Model Load Time:** 45 seconds (first run)
 - **Inference Speed:** 8-12 tokens/second
 - **Analysis Duration:** 25-35 seconds per IOC
 - **Memory Usage:** ~3GB RAM
 
 **Expected with GPU:**
+
 - **Model Load Time:** 30 seconds
 - **Inference Speed:** 30-50 tokens/second
 - **Analysis Duration:** 10-15 seconds per IOC
@@ -296,6 +319,7 @@ llm:
 ```
 
 **Available models:**
+
 - `Qwen/Qwen2.5-0.5B-Instruct` (500MB, fastest)
 - `Qwen/Qwen2.5-1.5B-Instruct` (1.5GB, balanced)
 - `Qwen/Qwen2.5-3B-Instruct` (3GB, best quality)
@@ -308,11 +332,13 @@ llm:
 ### Issue: GPU not detected
 
 **Symptoms:**
-```
+
+```yaml
 RuntimeError: No GPU found
 ```
 
 **Solution:**
+
 ```bash
 # Check nvidia-docker
 docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
@@ -324,11 +350,13 @@ docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ### Issue: Model download fails
 
 **Symptoms:**
-```
+
+```text
 Repository not found: Qwen/Qwen2.5-0.5B-Instruct
 ```
 
 **Solution:**
+
 ```yaml
 # Check Hugging Face connectivity
 curl https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct
@@ -342,11 +370,13 @@ llm:
 ### Issue: Out of memory
 
 **Symptoms:**
-```
+
+```text
 CUDA out of memory
 ```
 
 **Solution:**
+
 ```yaml
 llm:
   command: >

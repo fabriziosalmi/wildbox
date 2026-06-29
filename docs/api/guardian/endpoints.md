@@ -53,6 +53,7 @@ curl -X GET http://localhost:8001/api/v1/assets/ \
 **Authentication**: Required (Bearer Token)
 
 **Request Body**:
+
 ```json
 {
   "name": "Production API Key",
@@ -62,6 +63,7 @@ curl -X GET http://localhost:8001/api/v1/assets/ \
 ```
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/auth/api-keys/ \
   -H "Authorization: Bearer {token}" \
@@ -74,6 +76,7 @@ curl -X POST http://localhost:8001/api/v1/auth/api-keys/ \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "key-123",
@@ -101,7 +104,7 @@ List all security assets with filtering and pagination.
 **Query Parameters**:
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
+| ------ | ------ | ---------- | --------- | ------------- |
 | limit | integer | No | 20 | Number of results (max 100) |
 | offset | integer | No | 0 | Pagination offset |
 | status | string | No | - | Filter by status: active, inactive, vulnerable |
@@ -110,12 +113,14 @@ List all security assets with filtering and pagination.
 | severity | string | No | - | Filter by highest vulnerability: critical, high, medium, low |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8001/api/v1/assets/?limit=20&status=active&severity=critical" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 150,
@@ -160,7 +165,7 @@ Create a new asset in the system.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | name | string | Yes | Asset name or hostname |
 | asset_type | string | Yes | Type: server, network, application, database, container |
 | ip_address | string | No | IPv4 or IPv6 address |
@@ -170,6 +175,7 @@ Create a new asset in the system.
 | tags | array | No | Tags for organization |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/assets/ \
   -H "X-API-Key: your-api-key" \
@@ -185,6 +191,7 @@ curl -X POST http://localhost:8001/api/v1/assets/ \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "asset-456",
@@ -216,12 +223,14 @@ Retrieve detailed information about a specific asset.
 | id | string | Asset ID |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8001/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "asset-001",
@@ -268,6 +277,7 @@ Update an asset's information.
 **Authentication**: Required (API Key or Bearer Token)
 
 **Request Body**:
+
 ```json
 {
   "name": "Production Server 1 - Updated",
@@ -278,6 +288,7 @@ Update an asset's information.
 ```
 
 **Request**:
+
 ```bash
 curl -X PUT http://localhost:8001/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key" \
@@ -289,6 +300,7 @@ curl -X PUT http://localhost:8001/api/v1/assets/asset-001/ \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "asset-001",
@@ -308,13 +320,15 @@ Delete an asset from the system.
 **Authentication**: Required (API Key or Bearer Token - admin only)
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:8001/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (204 No Content)**:
-```
+
+```text
 (Empty response body)
 ```
 
@@ -329,12 +343,13 @@ Initiate a security scan on an asset.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | scanner_id | string | Yes | Scanner ID to use for scanning |
 | scan_profile | string | No | Scan profile: full, quick, vulnerability-only |
 | schedule | string | No | Schedule: immediate, daily, weekly |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/assets/asset-001/scan/ \
   -H "X-API-Key: your-api-key" \
@@ -346,6 +361,7 @@ curl -X POST http://localhost:8001/api/v1/assets/asset-001/scan/ \
 ```
 
 **Response (202 Accepted)**:
+
 ```json
 {
   "id": "scan-job-123",
@@ -374,7 +390,7 @@ List all vulnerabilities with advanced filtering.
 **Query Parameters**:
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
+| ------ | ------ | ---------- | --------- | ------------- |
 | limit | integer | No | 20 | Number of results (max 100) |
 | offset | integer | No | 0 | Pagination offset |
 | severity | string | No | - | Filter by severity: critical, high, medium, low, info |
@@ -385,12 +401,14 @@ List all vulnerabilities with advanced filtering.
 | has_exploit | boolean | No | - | Filter vulnerabilities with known exploits |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8001/api/v1/vulnerabilities/?severity=critical&status=open" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 45,
@@ -434,12 +452,14 @@ Retrieve detailed information about a specific vulnerability.
 **Authentication**: Required (API Key or Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8001/api/v1/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "vuln-001",
@@ -489,13 +509,14 @@ Update a vulnerability's status or assignment.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | status | string | No | New status: open, in_progress, resolved, false_positive |
 | assigned_to | string | No | Team or user to assign |
 | priority | string | No | Priority: immediate, high, medium, low |
 | remediation_notes | string | No | Notes about remediation |
 
 **Request**:
+
 ```bash
 curl -X PATCH http://localhost:8001/api/v1/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key" \
@@ -508,6 +529,7 @@ curl -X PATCH http://localhost:8001/api/v1/vulnerabilities/vuln-001/ \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "vuln-001",
@@ -527,6 +549,7 @@ Assign a vulnerability to a team or user.
 **Authentication**: Required (API Key or Bearer Token)
 
 **Request Body**:
+
 ```json
 {
   "assigned_to": "team-name",
@@ -536,6 +559,7 @@ Assign a vulnerability to a team or user.
 ```
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/vulnerabilities/vuln-001/assign/ \
   -H "X-API-Key: your-api-key" \
@@ -548,6 +572,7 @@ curl -X POST http://localhost:8001/api/v1/vulnerabilities/vuln-001/assign/ \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "vuln-001",
@@ -574,19 +599,21 @@ List all configured security scanners.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | limit | integer | No | Number of results (default: 20) |
 | offset | integer | No | Pagination offset |
 | status | string | No | Filter by status: active, inactive, error |
 | scanner_type | string | No | Filter by type: vulnerability, configuration, network, web |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8001/api/v1/scanners/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 5,
@@ -628,7 +655,7 @@ Register a new security scanner.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | name | string | Yes | Scanner name |
 | scanner_type | string | Yes | Type: vulnerability, configuration, network, web |
 | vendor | string | Yes | Scanner vendor |
@@ -637,6 +664,7 @@ Register a new security scanner.
 | description | string | No | Scanner description |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/scanners/ \
   -H "X-API-Key: your-api-key" \
@@ -651,6 +679,7 @@ curl -X POST http://localhost:8001/api/v1/scanners/ \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "scanner-qualys-01",
@@ -671,12 +700,14 @@ Test connectivity and authentication with a scanner.
 **Authentication**: Required (API Key or Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/scanners/scanner-nessus-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "scanner_id": "scanner-nessus-01",
@@ -703,19 +734,21 @@ List all configured integrations with external systems.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | limit | integer | No | Number of results (default: 20) |
 | offset | integer | No | Pagination offset |
 | status | string | No | Filter by status: active, inactive, error |
 | integration_type | string | No | Filter by type: ticketing, siem, notification, vulnerability |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8001/api/v1/integrations/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 8,
@@ -754,7 +787,7 @@ Create a new integration with an external system.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | name | string | Yes | Integration name |
 | integration_type | string | Yes | Type: ticketing, siem, notification, vulnerability |
 | platform | string | Yes | Platform name (JIRA, Slack, etc.) |
@@ -763,6 +796,7 @@ Create a new integration with an external system.
 | config | object | No | Integration configuration |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/integrations/ \
   -H "X-API-Key: your-api-key" \
@@ -779,6 +813,7 @@ curl -X POST http://localhost:8001/api/v1/integrations/ \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "int-pagerduty-01",
@@ -799,12 +834,14 @@ Test connectivity and authentication with an integration.
 **Authentication**: Required (API Key or Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/integrations/int-jira-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "integration_id": "int-jira-01",
@@ -832,7 +869,7 @@ List all remediation tickets and workflows.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | limit | integer | No | Number of results (default: 20) |
 | offset | integer | No | Pagination offset |
 | status | string | No | Filter by status: open, in_progress, resolved, rejected |
@@ -840,12 +877,14 @@ List all remediation tickets and workflows.
 | assigned_to | string | No | Filter by assignee |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8001/api/v1/remediation-tickets/?status=in_progress" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 23,
@@ -879,7 +918,7 @@ Create a new remediation ticket.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | title | string | Yes | Ticket title |
 | description | string | Yes | Detailed description |
 | vulnerability_id | string | No | Associated vulnerability |
@@ -888,6 +927,7 @@ Create a new remediation ticket.
 | deadline_days | integer | No | Days until deadline |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
   -H "X-API-Key: your-api-key" \
@@ -903,6 +943,7 @@ curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "ticket-456",
@@ -921,7 +962,7 @@ curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 400 | Bad Request | Invalid request parameters or body |
 | 401 | Unauthorized | Missing or invalid API key/token |
 | 403 | Forbidden | Authenticated but not authorized for this action |
@@ -932,6 +973,7 @@ curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
 | 503 | Service Unavailable | Service temporarily unavailable |
 
 **Error Response Format**:
+
 ```json
 {
   "error": "Bad Request",
@@ -953,7 +995,7 @@ Guardian Service enforces rate limits to ensure fair use:
 
 Rate limit information is returned in response headers:
 
-```
+```yaml
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 995
 X-RateLimit-Reset: 1730963100
@@ -961,6 +1003,7 @@ X-RateLimit-Retry-After: 3600
 ```
 
 When rate limit is exceeded (429 error):
+
 ```json
 {
   "error": "Too Many Requests",

@@ -19,10 +19,12 @@ This document establishes **mandatory engineering standards** for the Wildbox Se
 #### Rules
 
 ✅ **DO:**
+
 - Store ALL secrets in `.env` files (never committed to Git)
 - Use environment variable injection: `${VARIABLE_NAME}`
 - Provide `.env.example` with placeholder values
 - Generate cryptographic-quality secrets:
+
   ```bash
   # JWT/API keys (hex)
   openssl rand -hex 32
@@ -32,6 +34,7 @@ This document establishes **mandatory engineering standards** for the Wildbox Se
   ```
 
 ❌ **DON'T:**
+
 - Hardcode secrets in `docker-compose.yml`
 - Use default fallback values for production secrets
 - Commit `.env` files to version control
@@ -66,6 +69,7 @@ API_KEY=<openssl rand -hex 32>
 #### Docker Images
 
 ✅ **DO:**
+
 ```yaml
 image: ollama/ollama:0.4.7
 image: n8nio/n8n:1.74.0
@@ -74,6 +78,7 @@ image: prom/prometheus:v2.55.1
 ```
 
 ❌ **DON'T:**
+
 ```yaml
 image: ollama/ollama:latest
 image: n8nio/n8n:latest
@@ -84,6 +89,7 @@ image: n8nio/n8n:latest
 #### Python Dependencies
 
 ✅ **DO:**
+
 ```python
 fastapi==0.115.5
 pydantic==2.10.3
@@ -91,6 +97,7 @@ requests==2.32.3
 ```
 
 ❌ **DON'T:**
+
 ```python
 fastapi>=0.104.1
 pydantic>=2.5.0
@@ -127,6 +134,7 @@ async def create_scan(request: ScanRequest):
 ```
 
 **Dashboard forms:**
+
 ```typescript
 import { z } from 'zod'
 
@@ -147,6 +155,7 @@ const scanSchema = z.object({
 #### Makefile Test Commands
 
 ✅ **DO:**
+
 ```makefile
 test:
 	@failed=0; \
@@ -161,6 +170,7 @@ test:
 ```
 
 ❌ **DON'T:**
+
 ```makefile
 test:
 	@for dir in open-security-*/; do \
@@ -175,6 +185,7 @@ test:
 #### Specific Exception Handling
 
 ✅ **DO:**
+
 ```python
 import asyncio
 from aiohttp import ClientError, ClientTimeout
@@ -209,6 +220,7 @@ async def fetch_data(url: str) -> dict:
 ```
 
 ❌ **DON'T:**
+
 ```python
 async def fetch_data(url: str) -> dict:
     try:
@@ -221,6 +233,7 @@ async def fetch_data(url: str) -> dict:
 ```
 
 **Problems with blanket exception handling:**
+
 1. Masks the actual error type
 2. Makes debugging impossible
 3. Prevents proper error recovery
@@ -263,6 +276,7 @@ except ScanError as e:
 #### Real Metrics Implementation
 
 ✅ **DO:**
+
 ```typescript
 // Fetch real metrics from services
 const metrics = await Promise.all([
@@ -278,6 +292,7 @@ const systemHealth = {
 ```
 
 ❌ **DON'T:**
+
 ```typescript
 // Hardcoded "approximate" metrics
 const systemHealth = {
@@ -289,6 +304,7 @@ const systemHealth = {
 #### Health Check Endpoints
 
 **Every service MUST expose:**
+
 ```python
 @router.get("/health")
 async def health_check():
@@ -318,6 +334,7 @@ async def get_metrics():
 ### 2. Monitoring Integration
 
 **Required tools:**
+
 - **Prometheus:** Metrics collection (already configured)
 - **Grafana:** Visualization dashboards (already configured)
 - **Structured logging:** `structlog` for all Python services
@@ -447,6 +464,7 @@ repos:
 ### 2. GitHub Actions
 
 **Required workflows:**
+
 - ✅ `test.yml`: Run all tests on PR
 - ✅ `security-scan.yml`: Dependency and container scanning
 - ✅ `lint.yml`: Code quality checks
@@ -487,7 +505,7 @@ repos:
 **Target improvements from D- (41/100) audit score:**
 
 | Category | Before | Target | Status |
-|----------|--------|--------|--------|
+| ---------- | -------- | -------- | -------- |
 | Security | 6/20 | 18/20 | 🟢 In Progress |
 | Core Engineering | 7/20 | 16/20 | 🟡 Partial |
 | QA & Operations | 10/20 | 18/20 | 🟢 In Progress |

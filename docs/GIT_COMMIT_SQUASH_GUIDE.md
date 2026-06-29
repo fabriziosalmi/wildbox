@@ -5,7 +5,8 @@
 ## Why Squash Commits?
 
 ### Bad Commit History (Current State)
-```
+
+```text
 fix
 fix
 fix typo
@@ -17,13 +18,15 @@ fix tests
 ```
 
 **Problems**:
+
 - Unprofessional appearance
 - Difficult to identify what changed in each commit
 - Impossible to bisect bugs
 - Clutters `git log` output
 
 ### Good Commit History (Target State)
-```
+
+```yaml
 feat(identity): Add API key expiration and rotation
 fix(gateway): Resolve upstream timeout on service restart  
 refactor(admin): Extract SystemHealth and StatsCards components
@@ -31,6 +34,7 @@ docs: Add service lifecycle and secrets rotation guides
 ```
 
 **Benefits**:
+
 - Clear, descriptive commit messages
 - Each commit represents a logical unit of work
 - Easy to understand project evolution
@@ -63,7 +67,8 @@ git rebase -i q3r4s5t^
 ```
 
 This opens your editor with:
-```
+
+```text
 pick q3r4s5t Add feature X
 pick m0n1o2p actually fix the thing
 pick i7j8k9l fix tests
@@ -82,7 +87,8 @@ pick a1b2c3d fix
 ### Step 3: Mark Commits for Squashing
 
 **Change to**:
-```
+
+```text
 pick q3r4s5t Add feature X
 fixup m0n1o2p actually fix the thing
 fixup i7j8k9l fix tests
@@ -91,20 +97,23 @@ fixup a1b2c3d fix
 ```
 
 Or use `squash` (alias `s`) to preserve commit messages for editing:
-```
+
+```text
 pick q3r4s5t Add feature X
 squash m0n1o2p actually fix the thing
 squash i7j8k9l fix tests
 ```
 
 **Difference**:
+
 - `fixup` (f): Discards commit message, only keeps code changes
 - `squash` (s): Opens editor to combine/edit all commit messages
 
 ### Step 4: Edit Combined Commit Message
 
 If using `squash`, editor opens with all messages:
-```
+
+```text
 # This is a combination of 5 commits.
 # The first commit's message is:
 Add feature X
@@ -120,7 +129,8 @@ fix tests
 ```
 
 **Replace with clean message**:
-```
+
+```text
 feat(identity): Add API key expiration and auto-rotation
 
 - Implement 90-day expiration policy for API keys
@@ -161,7 +171,7 @@ git push --force-with-lease origin main
 
 Use structured commit messages for automated changelog generation:
 
-```
+```text
 <type>(<scope>): <subject>
 
 <body>
@@ -170,6 +180,7 @@ Use structured commit messages for automated changelog generation:
 ```
 
 ### Types
+
 - `feat`: New feature
 - `fix`: Bug fix
 - `docs`: Documentation changes
@@ -180,6 +191,7 @@ Use structured commit messages for automated changelog generation:
 - `ci`: CI/CD configuration changes
 
 ### Scopes (Wildbox-specific)
+
 - `identity`: Identity service
 - `gateway`: API gateway
 - `tools`: Security tools service
@@ -234,6 +246,7 @@ supply chain attacks and ensure reproducible builds.
 ## Squash Strategies by Situation
 
 ### Daily WIP Commits (Squash Before PR)
+
 ```bash
 # You made 10 commits while developing feature
 git rebase -i HEAD~10
@@ -244,6 +257,7 @@ fixup <all-other-commits>
 ```
 
 ### Fixing PR Review Comments
+
 ```bash
 # Don't create "Address review comments" commits
 # Squash fixes into original commits
@@ -253,6 +267,7 @@ git rebase -i origin/main
 ```
 
 ### Hotfix Commits
+
 ```bash
 # Emergency production fix had multiple attempts
 git rebase -i HEAD~5
@@ -266,12 +281,15 @@ fixup <actually-fix>
 ## Automated Squash via GitHub/GitLab
 
 ### GitHub: Squash and Merge
+
 When merging PR, select "Squash and merge":
+
 - All commits squashed into one
 - Preserves PR number in commit message
 - Clean main branch history
 
 ### Pre-Merge Squash Script
+
 ```bash
 #!/bin/bash
 # scripts/squash-branch.sh
@@ -323,6 +341,7 @@ fi
 ```
 
 Install:
+
 ```bash
 chmod +x .git/hooks/commit-msg
 ```
@@ -330,28 +349,33 @@ chmod +x .git/hooks/commit-msg
 ## Common Mistakes to Avoid
 
 ### ❌ Squashing Already-Pushed Commits Without Team Coordination
+
 - Causes conflicts for teammates
 - Use `--force-with-lease` instead of `--force`
 - Notify team before force-pushing
 
 ### ❌ Squashing Too Much
+
 - Don't squash unrelated changes
 - Each commit should be atomic (one logical change)
 - Bad: Squash feature + unrelated bug fix
 - Good: Separate commits for feature and bug fix
 
 ### ❌ Losing Important Context
+
 - Use `squash` instead of `fixup` when commit messages have value
 - Preserve issue/ticket references
 - Include co-authors if applicable
 
 ### ❌ Rebasing Public/Protected Branches
+
 - Never rebase `main` or `production`
 - Only rebase feature branches before merge
 
 ## Recovery from Bad Squash
 
 ### If Rebase Goes Wrong
+
 ```bash
 # Abort during rebase
 git rebase --abort
@@ -363,6 +387,7 @@ git reset --hard abc123
 ```
 
 ### If Already Force-Pushed
+
 ```bash
 # Find previous state in reflog
 git reflog
@@ -407,6 +432,7 @@ jobs:
 ```
 
 `.commitlintrc.json`:
+
 ```json
 {
   "extends": ["@commitlint/config-conventional"],
@@ -423,6 +449,7 @@ jobs:
 
 **Last Updated**: 2025-11-24  
 **Related**:
+
 - [Conventional Commits Spec](https://www.conventionalcommits.org/)
 - [Git Documentation - Rewriting History](https://git-scm.com/book/en/v2/Git-Tools-Rewriting-History)
 - Project: `CONTRIBUTING.md` (commit message guidelines)

@@ -5,23 +5,27 @@ A comprehensive, multi-cloud Security Posture Management service designed for th
 ## 🚀 Features
 
 ### 🔍 **Multi-Cloud Coverage**
+
 - **AWS**: S3, EC2, IAM, RDS, VPC, CloudTrail, KMS, Lambda
 - **GCP**: Cloud Storage, IAM, Compute Engine, Identity & Access Management
 - **Azure**: Storage Accounts, Virtual Machines, Identity Management
 
 ### 📊 **Comprehensive Security Checks**
+
 - **120+ Security Controls** across all major cloud providers
 - **Compliance Framework Support**: CIS Benchmarks, NIST CSF, SOC 2, PCI DSS, GDPR, HIPAA
 - **Real-time Assessment** with detailed remediation guidance
 - **Risk-based Prioritization** with severity scoring
 
 ### 🎯 **Executive Reporting**
+
 - **Executive Dashboard** with high-level security metrics
 - **Trending Analysis** to track security posture over time
 - **Compliance Scoring** per framework with gap analysis
 - **Remediation Roadmaps** with prioritized action items
 
 ### ⚡ **Advanced Operations**
+
 - **Batch Scanning** across multiple accounts and providers
 - **Asynchronous Processing** with Celery task queue
 - **Multi-region Support** with concurrent execution
@@ -29,7 +33,7 @@ A comprehensive, multi-cloud Security Posture Management service designed for th
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────┐
 │                    Wildbox Dashboard                        │
 │               (React + TypeScript)                         │
@@ -131,6 +135,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 ```
 
 **Response:**
+
 ```json
 {
   "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
@@ -408,7 +413,7 @@ actions:
 
 - **Throughput**: 100+ concurrent scans
 - **Latency**: < 2s API response time
-- **Scan Duration**: 
+- **Scan Duration**:
   - AWS: 10-20 minutes (full account)
   - GCP: 8-15 minutes (full project)
   - Azure: 12-18 minutes (full subscription)
@@ -469,6 +474,7 @@ spec:
 ## 🚀 Roadmap
 
 ### v1.1 (Q3 2025)
+
 - [ ] Multi-account AWS Organizations support
 - [ ] GCP Folder/Organization scanning
 - [ ] Azure Management Groups support
@@ -476,6 +482,7 @@ spec:
 - [ ] Advanced threat modeling integration
 
 ### v1.2 (Q4 2025)
+
 - [ ] Machine learning for anomaly detection
 - [ ] Infrastructure as Code scanning
 - [ ] Container security integration
@@ -483,6 +490,7 @@ spec:
 - [ ] Advanced compliance reporting
 
 ### v2.0 (Q1 2026)
+
 - [ ] Multi-cloud resource dependency mapping
 - [ ] Automated remediation engine
 - [ ] Real-time continuous monitoring

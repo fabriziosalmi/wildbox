@@ -12,6 +12,7 @@
 **File**: `open-security-agents/app/main.py`
 
 **Step 1: Backup current code**
+
 ```bash
 cp open-security-agents/app/main.py open-security-agents/app/main.py.backup
 ```
@@ -19,11 +20,13 @@ cp open-security-agents/app/main.py open-security-agents/app/main.py.backup
 **Step 2: Update line 266**
 
 Replace:
+
 ```python
 task_metadata = eval(task_metadata_str.decode())
 ```
 
 With:
+
 ```python
 import json
 task_metadata = json.loads(task_metadata_str.decode())
@@ -32,6 +35,7 @@ task_metadata = json.loads(task_metadata_str.decode())
 **Step 3: Also update line 206 - use json.dumps() instead of str()**
 
 Replace:
+
 ```python
 redis_client.setex(
     f"task:{task_id}:metadata",
@@ -41,6 +45,7 @@ redis_client.setex(
 ```
 
 With:
+
 ```python
 import json
 redis_client.setex(
@@ -51,12 +56,14 @@ redis_client.setex(
 ```
 
 **Step 4: Test**
+
 ```bash
 cd open-security-agents
 python -m pytest tests/ -v
 ```
 
 **Step 5: Verify fix**
+
 - Ensure no eval() calls remain in the codebase
 - Verify Redis data is JSON-serialized correctly
 
@@ -67,12 +74,14 @@ python -m pytest tests/ -v
 **File**: `open-security-identity/.env`
 
 **Step 1: Check if .env is in gitignore**
+
 ```bash
 grep "^\.env$" .gitignore  # Should exist at repo root
 grep "^\.env" open-security-identity/.gitignore  # Check if it exists locally
 ```
 
 **Step 2: Add to open-security-identity/.gitignore if not present**
+
 ```bash
 echo ".env" >> open-security-identity/.gitignore
 echo ".env.*" >> open-security-identity/.gitignore
@@ -80,6 +89,7 @@ echo "!.env.example" >> open-security-identity/.gitignore
 ```
 
 **Step 3: Remove .env from git history (REQUIRES FORCE PUSH)**
+
 ```bash
 # WARNING: This rewrites history - only do if not shared!
 git filter-branch --tree-filter 'rm -f open-security-identity/.env' HEAD
@@ -89,22 +99,26 @@ git filter-branch --tree-filter 'rm -f open-security-identity/.env' HEAD
 ```
 
 **Step 4: Verify removal**
+
 ```bash
 git log --all --name-status | grep "\.env"  # Should show deletions only
 ```
 
 **Step 5: Force push (if applicable)**
+
 ```bash
 git push origin --force-with-lease main
 ```
 
 **Step 6: Create new .env from example**
+
 ```bash
 cp open-security-identity/.env.example open-security-identity/.env
 # Edit with actual secrets from secure vault
 ```
 
 **Step 7: IMPORTANT - Rotate all credentials**
+
 - Change database password
 - Generate new JWT secret
 - Regenerate Stripe keys if they were real
@@ -117,6 +131,7 @@ cp open-security-identity/.env.example open-security-identity/.env
 **File 1**: `open-security-agents/app/main.py`
 
 **Step 1: Add import**
+
 ```python
 from fastapi import Depends
 from app.auth import get_current_user  # Adjust import path as needed
@@ -125,12 +140,14 @@ from app.auth import get_current_user  # Adjust import path as needed
 **Step 2: Update endpoint (line 180)**
 
 Replace:
+
 ```python
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
 async def analyze_ioc(request: AnalysisTaskRequest):
 ```
 
 With:
+
 ```python
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
 async def analyze_ioc(
@@ -142,6 +159,7 @@ async def analyze_ioc(
 **File 2**: `open-security-responder/app/main.py`
 
 **Step 1: Add import**
+
 ```python
 from fastapi import Depends
 from app.auth import get_current_user
@@ -150,6 +168,7 @@ from app.auth import get_current_user
 **Step 2: Update endpoint (line 133)**
 
 Replace:
+
 ```python
 @app.post("/v1/playbooks/{playbook_id}/execute")
 async def execute_playbook(
@@ -159,6 +178,7 @@ async def execute_playbook(
 ```
 
 With:
+
 ```python
 @app.post("/v1/playbooks/{playbook_id}/execute")
 async def execute_playbook(
@@ -169,6 +189,7 @@ async def execute_playbook(
 ```
 
 **Step 3: Test authentication**
+
 ```bash
 # Should return 401 Unauthorized without token
 curl -X POST http://localhost:8001/v1/analyze \
@@ -206,6 +227,7 @@ grep -r "wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90" /Users/fab/GitHub/wild
 ### [ ] 5. Fix CORS Configuration (Wildcard Origins)
 
 **Files to update:**
+
 - `open-security-agents/app/main.py` (line 91)
 - `open-security-responder/app/main.py` (line 79)
 - `open-security-data/app/config.py` (line 64)
@@ -213,6 +235,7 @@ grep -r "wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90" /Users/fab/GitHub/wild
 **Step 1**: Update `open-security-agents/app/main.py`
 
 Replace:
+
 ```python
 app.add_middleware(
     CORSMiddleware,
@@ -224,6 +247,7 @@ app.add_middleware(
 ```
 
 With:
+
 ```python
 import os
 
@@ -248,10 +272,12 @@ CORS_ORIGINS=https://dashboard.yourdomain.com,https://app.yourdomain.com
 **Step 3**: Repeat for other services
 
 Apply same changes to:
+
 - `open-security-responder/app/main.py`
 - `open-security-data/app/main.py`
 
 **Step 4**: Test CORS**
+
 ```bash
 curl -X OPTIONS http://localhost:8001/ \
   -H "Origin: http://localhost:3000" \
@@ -268,11 +294,13 @@ curl -X OPTIONS http://localhost:8001/ \
 **Step 1: Update lines 28-36**
 
 Replace all lines like:
+
 ```yaml
 - DATABASE_URL=${DATABASE_URL:-postgresql+asyncpg://postgres:postgres@postgres:5432/identity}
 ```
 
 With:
+
 ```yaml
 - DATABASE_URL=${DATABASE_URL}  # Will fail if not set - intentional!
 ```
@@ -280,11 +308,13 @@ With:
 **Step 2: Update line 58 - Remove exposed API key**
 
 Replace:
+
 ```yaml
 - API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}
 ```
 
 With:
+
 ```yaml
 - API_KEY=${API_KEY}  # Require explicit environment variable
 ```
@@ -292,12 +322,14 @@ With:
 **Step 3: Remove all Stripe fallbacks**
 
 Replace:
+
 ```yaml
 - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_set_your_stripe_key}
 - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_set_your_webhook_secret}
 ```
 
 With:
+
 ```yaml
 - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
 - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
@@ -317,6 +349,7 @@ ENV
 ```
 
 **Step 5: Update docker-compose to use external .env**
+
 ```bash
 docker-compose --env-file .env.production up
 ```
@@ -328,11 +361,13 @@ docker-compose --env-file .env.production up
 **File 1**: `open-security-identity/demo.py` (line 22)
 
 Replace:
+
 ```python
 print(f"Password: {password}")
 ```
 
 With:
+
 ```python
 logger.debug(f"Demo user created: {email}")  # Never log password
 ```
@@ -340,6 +375,7 @@ logger.debug(f"Demo user created: {email}")  # Never log password
 **File 2**: `open-security-identity/auth.py` (line 291)
 
 Replace:
+
 ```python
 except Exception as e:
     print(f"Authentication error: {str(e)}")
@@ -347,6 +383,7 @@ except Exception as e:
 ```
 
 With:
+
 ```python
 except Exception as e:
     logger.error("Authentication error occurred", exc_info=False)
@@ -367,11 +404,13 @@ grep -r "logger.*password\|logger.*secret\|logger.*token" open-security-*
 **File 1**: `open-security-agents/app/main.py`
 
 **Step 1: Install slowapi**
+
 ```bash
 pip install slowapi
 ```
 
 **Step 2: Add imports**
+
 ```python
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -379,6 +418,7 @@ from slowapi.errors import RateLimitExceeded
 ```
 
 **Step 3: Create limiter**
+
 ```python
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -392,6 +432,7 @@ def _rate_limit_exceeded_handler(request, exc):
 ```
 
 **Step 4: Add rate limiting decorators**
+
 ```python
 @app.post("/v1/analyze", ...)
 @limiter.limit("10/minute")  # 10 requests per minute per IP
@@ -430,6 +471,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 ```
 
 **Add to main app**:
+
 ```python
 from app.security_middleware import SecurityHeadersMiddleware
 
@@ -437,6 +479,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 ```
 
 **Verify headers**:
+
 ```bash
 curl -I http://localhost:8001/health | grep -E "X-|Strict-Transport|Content-Security"
 ```
@@ -450,6 +493,7 @@ curl -I http://localhost:8001/health | grep -E "X-|Strict-Transport|Content-Secu
 **File**: `open-security-sensor/sensor/collectors/osquery_manager.py` (line 411)
 
 Replace:
+
 ```python
 for table in tables:
     test_query = f"SELECT COUNT(*) FROM {table} LIMIT 1;"
@@ -457,6 +501,7 @@ for table in tables:
 ```
 
 With:
+
 ```python
 # Use osquery's schema validation instead
 # Option 1: Use osqueryi's introspection
@@ -479,6 +524,7 @@ valid_tables = [t for t in tables if t in SAFE_TABLES]
 **File**: `open-security-tools/app/tools/hash_generator/main.py`
 
 Replace:
+
 ```python
 ALGORITHMS = {
     'md5': hashlib.md5,      # BROKEN
@@ -491,6 +537,7 @@ DEPRECATED = ['md5', 'sha1']
 ```
 
 With:
+
 ```python
 ALGORITHMS = {
     'sha256': hashlib.sha256,   # RECOMMENDED
@@ -522,11 +569,13 @@ def get_hash_function(algorithm: str):
 **File**: `open-security-guardian/guardian/settings.py` (line 23)
 
 Replace:
+
 ```python
 SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
 ```
 
 With:
+
 ```python
 SECRET_KEY = os.getenv('SECRET_KEY')
 
@@ -556,6 +605,7 @@ if SECRET_KEY.lower() in WEAK_SECRETS or len(SECRET_KEY) < 32:
 **File**: `open-security-agents/app/schemas.py`
 
 Add validators:
+
 ```python
 from pydantic import validator, Field
 import re
@@ -614,6 +664,7 @@ class AnalysisTaskRequest(BaseModel):
 **File**: `open-security-agents/app/main.py`
 
 Replace:
+
 ```python
 app = FastAPI(
     title="Open Security Agents API",
@@ -626,6 +677,7 @@ app = FastAPI(
 ```
 
 With:
+
 ```python
 import os
 
@@ -643,6 +695,7 @@ app = FastAPI(
 ```
 
 Repeat for:
+
 - `open-security-responder/app/main.py`
 - `open-security-tools/app/main.py`
 
@@ -653,11 +706,13 @@ Repeat for:
 **File**: `tests/verify_authentication_complete.py` (line 581)
 
 Replace:
+
 ```python
 password = "demopassword123"
 ```
 
 With:
+
 ```python
 # Use secure test password that meets complexity requirements
 password = "TempDemo@2024!SecurePass123"
@@ -670,6 +725,7 @@ password = "TempDemo@2024!SecurePass123"
 ### [ ] Install Security Scanning Tools
 
 **Step 1: Install tools**
+
 ```bash
 pip install bandit safety
 npm install -g snyk
@@ -715,6 +771,7 @@ jobs:
 ```
 
 **Step 3: Enable branch protection**
+
 - Require security checks to pass before merge
 - Require code review for security findings
 

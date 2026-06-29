@@ -12,14 +12,14 @@ Git history analysis completed. While .env files appear to have been properly ex
 ### 1. Secret-Related Commits (High Priority)
 
 | Commit | Date | Description | Risk Level |
-|--------|------|-------------|-----------|
+| -------- | ------ | ------------- | ----------- |
 | `b9852f80` | Nov 18, 2025 | "Untrack open-security-identity/.env to prevent hardcoded credentials" | 🔴 **HIGH** - Implies .env was previously tracked |
 | `5c3dc4935` | Nov 23, 2025 | "CRITICAL - Remove hardcoded secrets and fake metrics" | 🟡 **MEDIUM** - Cleanup commit |
 | `469a35be2` | Nov 15, 2025 | "update JWT_SECRET_KEY to ensure consistency" | 🟡 **MEDIUM** - May contain old secrets |
 
 ### 2. Files Found in History
 
-```
+```text
 .github/workflows/ingest-leaked-passwords.yml
 open-security-api/.env (deleted in later commit)
 open-security-identity/.env (untracked in b9852f80)
@@ -36,6 +36,7 @@ open-security-identity/.env (untracked in b9852f80)
 ### IMMEDIATE (Within 24 Hours)
 
 1. **Rotate All Production Secrets**
+
    ```bash
    # Generate new secrets for all services
    python scripts/generate_secrets.py --rotate-all
@@ -45,12 +46,14 @@ open-security-identity/.env (untracked in b9852f80)
    ```
 
 2. **Verify No .env Files in History**
+
    ```bash
    git log --all --full-history -- "**/.env"
    git log --all --full-history -- ".env"
    ```
 
 3. **Check for Actual Secret Values**
+
    ```bash
    # Search for JWT patterns
    git log --all -S 'eyJ' --oneline | head -10
@@ -61,10 +64,10 @@ open-security-identity/.env (untracked in b9852f80)
 
 ### SHORT-TERM (Within 1 Week)
 
-4. **Consider History Rewrite (NUCLEAR OPTION)**
-   
+1. **Consider History Rewrite (NUCLEAR OPTION)**
+
    ⚠️ **WARNING**: This will break all existing clones and require force push
-   
+
    ```bash
    # Use BFG Repo-Cleaner
    java -jar bfg.jar --delete-files .env --no-blob-protection
@@ -76,7 +79,8 @@ open-security-identity/.env (untracked in b9852f80)
    git push origin --force --tags
    ```
 
-5. **Implement git-secrets Pre-Commit Hook**
+2. **Implement git-secrets Pre-Commit Hook**
+
    ```bash
    # Prevent future commits
    git secrets --install
@@ -87,12 +91,12 @@ open-security-identity/.env (untracked in b9852f80)
 
 ### LONG-TERM (Ongoing)
 
-6. **Secret Rotation Policy**
+1. **Secret Rotation Policy**
    - Rotate JWT_SECRET_KEY every 90 days
    - Rotate database passwords every 180 days
    - Rotate API keys on team member departures
 
-7. **Monitoring**
+2. **Monitoring**
    - GitHub secret scanning enabled
    - Dependabot alerts configured
    - Audit log reviews monthly
@@ -112,6 +116,7 @@ open-security-identity/.env (untracked in b9852f80)
 ## Prevention Measures Implemented
 
 ✅ `.gitignore` updated to exclude:
+
 - `.env` and `.env.*`
 - `secrets/`
 - `credentials/`

@@ -6,6 +6,7 @@
 ## What Are Pre-commit Hooks?
 
 Git hooks that **automatically run checks before each commit**, preventing:
+
 - ❌ Debug statements (`console.log`, `print()`) in production code
 - ❌ Hardcoded secrets/passwords
 - ❌ Trailing whitespace and formatting issues
@@ -18,6 +19,7 @@ Git hooks that **automatically run checks before each commit**, preventing:
 ### 1. Install pre-commit
 
 **macOS/Linux:**
+
 ```bash
 pip install pre-commit
 # or
@@ -25,6 +27,7 @@ brew install pre-commit
 ```
 
 **Verify:**
+
 ```bash
 pre-commit --version
 # Should show: pre-commit 3.x.x
@@ -38,7 +41,8 @@ pre-commit install
 ```
 
 **Output:**
-```
+
+```text
 pre-commit installed at .git/hooks/pre-commit
 ```
 
@@ -49,6 +53,7 @@ pre-commit run --all-files
 ```
 
 **This will:**
+
 - Format all Python files with Black
 - Sort imports with isort
 - Run flake8 linting
@@ -63,6 +68,7 @@ Subsequent commits are fast (<10 seconds).
 ## What Happens on Each Commit
 
 **Before (old workflow):**
+
 ```bash
 git add .
 git commit -m "Quick fix"
@@ -70,6 +76,7 @@ git commit -m "Quick fix"
 ```
 
 **After (with pre-commit):**
+
 ```bash
 git add .
 git commit -m "Quick fix"
@@ -97,6 +104,7 @@ open-security-dashboard/src/lib/api-client.ts:32:  console.log('Debug info')
 ```
 
 **Fix and retry:**
+
 ```bash
 # Remove the console.log
 vim open-security-dashboard/src/lib/api-client.ts
@@ -110,6 +118,7 @@ git commit -m "Quick fix"
 ## Configured Checks
 
 ### Python Checks
+
 - **Black** - Code formatter (120 char lines)
 - **isort** - Import sorting
 - **Flake8** - Linting (PEP 8 compliance)
@@ -117,10 +126,12 @@ git commit -m "Quick fix"
 - **Detect-secrets** - Finds hardcoded credentials
 
 ### TypeScript/JavaScript Checks
+
 - **Prettier** - Code formatter
 - **ESLint** - Linting (Next.js config)
 
 ### General Checks
+
 - **Trailing whitespace** removal
 - **End-of-file** fixer (ensures newline)
 - **Large files** blocker (>1MB)
@@ -131,6 +142,7 @@ git commit -m "Quick fix"
 - **Shell script** linting (shellcheck)
 
 ### Custom Checks
+
 - **Prevent debug statements** - Blocks `console.log`, `print()`
 - **Prevent hardcoded secrets** - Regex for password/token patterns
 - **Requirements sync** - Ensures `requirements.txt` matches `.in`
@@ -138,6 +150,7 @@ git commit -m "Quick fix"
 ## Bypassing Hooks (Emergency Only)
 
 **If absolutely necessary:**
+
 ```bash
 git commit --no-verify -m "Emergency hotfix"
 ```
@@ -147,6 +160,7 @@ git commit --no-verify -m "Emergency hotfix"
 ## Skipping Specific Checks
 
 **Temporary skip for one commit:**
+
 ```bash
 SKIP=black,flake8 git commit -m "WIP: refactoring"
 ```
@@ -157,11 +171,13 @@ Edit `.pre-commit-config.yaml` and remove the hook.
 ## Updating Hooks
 
 **Check for updates:**
+
 ```bash
 pre-commit autoupdate
 ```
 
 **Manually update to specific version:**
+
 ```yaml
 # .pre-commit-config.yaml
 repos:
@@ -172,6 +188,7 @@ repos:
 ## Troubleshooting
 
 ### "command not found: pre-commit"
+
 ```bash
 pip install --user pre-commit
 # Add ~/.local/bin to PATH
@@ -179,6 +196,7 @@ export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ### "Hook failed with code 127"
+
 ```bash
 # Reinstall hooks
 pre-commit clean
@@ -187,6 +205,7 @@ pre-commit run --all-files
 ```
 
 ### "ESLint cannot find module"
+
 ```bash
 cd open-security-dashboard
 npm install
@@ -195,6 +214,7 @@ pre-commit run eslint --all-files
 ```
 
 ### "Detect-secrets baseline missing"
+
 ```bash
 # Generate initial baseline
 detect-secrets scan > .secrets.baseline
@@ -206,6 +226,7 @@ git add .secrets.baseline
 **GitHub Actions already runs these checks!**
 
 See `.github/workflows/lint.yml`:
+
 ```yaml
 - name: Run pre-commit
   run: pre-commit run --all-files --show-diff-on-failure
@@ -216,7 +237,7 @@ Even if you bypass locally, CI will catch violations and fail the build.
 ## Configuration Files
 
 | File | Purpose |
-|------|---------|
+| ------ | --------- |
 | `.pre-commit-config.yaml` | Hook configuration |
 | `.secrets.baseline` | Known false-positive secrets |
 | `pyproject.toml` | Black/isort settings (if exists) |
@@ -230,6 +251,7 @@ Even if you bypass locally, CI will catch violations and fail the build.
 **Full repo scan:** ~60-90 seconds (`pre-commit run --all-files`)
 
 **Tips for speed:**
+
 - Hooks only run on staged files by default
 - Use `--no-verify` sparingly
 - Keep hook environments updated: `pre-commit gc`
@@ -246,12 +268,14 @@ Even if you bypass locally, CI will catch violations and fail the build.
 ## Team Adoption
 
 **For new contributors:**
+
 1. Clone repo
 2. `pip install pre-commit`
 3. `pre-commit install`
 4. Done!
 
 **Include in onboarding docs:**
+
 ```markdown
 ## Setup Development Environment
 
@@ -264,7 +288,8 @@ Even if you bypass locally, CI will catch violations and fail the build.
 ## Example Output
 
 **Successful commit:**
-```
+
+```bash
 $ git commit -m "feat: Add new API endpoint"
 
 Trim Trailing Whitespace...................Passed
@@ -283,7 +308,8 @@ Prevent hardcoded secrets..................Passed
 ```
 
 **Failed commit (needs fixes):**
-```
+
+```bash
 $ git commit -m "WIP: testing"
 
 black......................................Failed

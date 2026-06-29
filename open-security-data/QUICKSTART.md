@@ -33,6 +33,7 @@ python manage.py sources list
 ### 3. Start the Platform
 
 #### Option A: Docker (Recommended)
+
 ```bash
 # Start all services
 docker-compose up -d
@@ -42,6 +43,7 @@ docker-compose logs -f
 ```
 
 #### Option B: Manual
+
 ```bash
 # Start API server
 python -m app.api.main &
@@ -59,6 +61,7 @@ python -m app.scheduler.main &
 ### 5. Basic Usage Examples
 
 #### Search for indicators
+
 ```bash
 # Search for malicious IPs
 curl "http://localhost:8001/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware"
@@ -68,6 +71,7 @@ curl "http://localhost:8001/api/v1/indicators/search?indicator_type=domain&threa
 ```
 
 #### Lookup specific indicators
+
 ```bash
 # Check IP address
 curl "http://localhost:8001/api/v1/ips/1.2.3.4"
@@ -80,6 +84,7 @@ curl "http://localhost:8001/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
 ```
 
 #### Bulk lookup
+
 ```bash
 curl -X POST "http://localhost:8001/api/v1/indicators/lookup" \
   -H "Content-Type: application/json" \
@@ -92,6 +97,7 @@ curl -X POST "http://localhost:8001/api/v1/indicators/lookup" \
 ```
 
 #### Real-time threat feed
+
 ```bash
 # Get recent threats (NDJSON format)
 curl "http://localhost:8001/api/v1/feeds/realtime?since_minutes=60"
@@ -136,6 +142,7 @@ The platform collects data from:
 - **File-based Sources**: CSV, JSON, text files
 
 Data is automatically:
+
 - **Validated** for correctness
 - **Normalized** for consistency  
 - **Enriched** with geolocation, ASN, and other metadata
@@ -145,6 +152,7 @@ Data is automatically:
 ### 9. Integration Examples
 
 #### Python Client
+
 ```python
 import requests
 
@@ -160,7 +168,9 @@ if response.status_code == 200:
 ```
 
 #### SIEM Integration
+
 Use the real-time feed endpoint to stream threats into your SIEM:
+
 ```bash
 curl -N "http://localhost:8001/api/v1/feeds/realtime" | jq .
 ```

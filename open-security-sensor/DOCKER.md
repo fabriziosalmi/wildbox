@@ -14,6 +14,7 @@ This guide provides comprehensive instructions for deploying the Open Security S
 ### Basic Deployment
 
 1. **Clone and configure:**
+
    ```bash
    git clone https://github.com/wildbox/open-security-sensor.git
    cd open-security-sensor
@@ -21,17 +22,20 @@ This guide provides comprehensive instructions for deploying the Open Security S
    ```
 
 2. **Edit configuration:**
+
    ```bash
    nano config.yaml
    # Update data_lake.endpoint and data_lake.api_key
    ```
 
 3. **Deploy:**
+
    ```bash
    docker-compose up -d
    ```
 
 4. **Verify:**
+
    ```bash
    curl http://localhost:8899/health
    ```
@@ -81,7 +85,7 @@ docker-compose ps
 ### Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `SENSOR_LOGGING_LEVEL` | Log level | `INFO` |
 | `PYTHONPATH` | Python module path | `/app` |
 | `DEVELOPMENT` | Development mode | `false` |
@@ -98,6 +102,7 @@ Required volumes for system monitoring:
 ### Network Configuration
 
 Networks used:
+
 - `sensor-network` - Internal communication
 - `security-suite` - External security components
 

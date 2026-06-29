@@ -1,4 +1,4 @@
-#  Deployment Guide
+# Deployment Guide
 
 **For Wildbox Security Platform**
 
@@ -11,7 +11,7 @@ This guide covers deploying Wildbox in various environments. As the platform ent
 
 ---
 
-##  Table of Contents
+## Table of Contents
 
 1. [Pre-Deployment](#pre-deployment)
 2. [Infrastructure Setup](#infrastructure-setup)
@@ -26,7 +26,7 @@ This guide covers deploying Wildbox in various environments. As the platform ent
 
 ---
 
-##  Pre-Deployment
+## Pre-Deployment
 
 ### 1. Requirements Checklist
 
@@ -73,7 +73,7 @@ git log -S "api_key" --all
 
 ---
 
-##  Infrastructure Setup
+## Infrastructure Setup
 
 ### 1. System Hardening
 
@@ -123,7 +123,7 @@ cd wildbox
 
 ---
 
-##  Secret Management
+## Secret Management
 
 ### 1. Generate Secure Secrets
 
@@ -214,7 +214,7 @@ history -c
 
 ---
 
-## 🗄 Database Setup
+## Database Setup
 
 ### 1. Prepare PostgreSQL
 
@@ -295,7 +295,7 @@ chmod +x /home/wildbox/backup.sh
 
 ---
 
-##  Service Deployment
+## Service Deployment
 
 ### 1. Prepare Environment
 
@@ -362,7 +362,7 @@ PYTHON
 
 ---
 
-##  SSL/TLS Configuration
+## SSL/TLS Configuration
 
 ### 1. Obtain Certificate
 
@@ -434,7 +434,7 @@ sudo certbot renew --dry-run
 
 ---
 
-##  Monitoring & Logging
+## Monitoring & Logging
 
 ### 1. Configure Logging
 
@@ -500,7 +500,7 @@ groups:
 
 ---
 
-## 💾 Backup & Recovery
+## Backup & Recovery
 
 ### 1. Test Backups
 
@@ -534,7 +534,7 @@ curl http://localhost:8000/health
 
 ---
 
-##  Post-Deployment
+## Post-Deployment
 
 ### 1. Verify All Services
 
@@ -592,7 +592,7 @@ NOTES
 
 ---
 
-##  Troubleshooting
+## Troubleshooting
 
 ### Service Not Starting
 
@@ -643,7 +643,7 @@ watch -n 1 docker stats
 
 ---
 
-##  Support
+## Support
 
 - **Documentation**: [Security Policy](../security/policy.md), [Quick Start](quickstart.md)
 - **Issues**: https://github.com/fabriziosalmi/wildbox/issues

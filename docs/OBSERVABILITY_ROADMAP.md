@@ -7,12 +7,14 @@
 ## Current State
 
 **Working:**
+
 - Service health checks (`/health` endpoints)
 - Basic uptime monitoring via health checks
 - Service status indicators in admin UI
 - Docker Compose service orchestration
 
 **Missing:**
+
 - **Prometheus metrics scraping**
 - **Grafana dashboards**
 - **Distributed tracing** (Jaeger/Tempo)
@@ -25,6 +27,7 @@
 ### 1.1 Add Prometheus Exporters
 
 **FastAPI Services** (identity, tools, agents, responder, cspm):
+
 ```python
 # pip install prometheus-fastapi-instrumentator
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -34,6 +37,7 @@ Instrumentator().instrument(app).expose(app)  # Exposes /metrics endpoint
 ```
 
 **Django Services** (guardian, data):
+
 ```python
 # pip install django-prometheus
 INSTALLED_APPS = [
@@ -49,6 +53,7 @@ MIDDLEWARE = [
 ```
 
 **Nginx/OpenResty Gateway**:
+
 ```nginx
 # Add to nginx.conf
 server {
@@ -64,6 +69,7 @@ server {
 ### 1.2 Add Prometheus Service
 
 **docker-compose.yml addition:**
+
 ```yaml
   prometheus:
     image: prom/prometheus:v2.48.0
@@ -86,6 +92,7 @@ volumes:
 ```
 
 **monitoring/prometheus/prometheus.yml:**
+
 ```yaml
 global:
   scrape_interval: 15s
@@ -144,11 +151,13 @@ scrape_configs:
 ### 1.3 Key Metrics to Track
 
 **HTTP Metrics:**
+
 - Request count by endpoint, method, status code
 - Request duration (histogram)
 - Request size / response size
 
 **Application Metrics:**
+
 - Active API keys
 - Authentication attempts (success/failure)
 - Rate limit hits
@@ -157,6 +166,7 @@ scrape_configs:
 - Threats detected
 
 **Infrastructure Metrics:**
+
 - Database connection pool usage
 - Redis cache hit/miss ratio
 - Gateway request queue depth
@@ -192,6 +202,7 @@ volumes:
 ### 2.2 Pre-Built Dashboards
 
 **Service Overview Dashboard:**
+
 - Service health matrix
 - Request rate per service
 - Error rate per service
@@ -199,6 +210,7 @@ volumes:
 - Top 10 slowest endpoints
 
 **Security Operations Dashboard:**
+
 - Threats detected over time
 - Vulnerabilities by severity
 - Authentication failures
@@ -206,6 +218,7 @@ volumes:
 - API key usage patterns
 
 **Infrastructure Dashboard:**
+
 - CPU/Memory usage per container
 - Database query performance
 - Redis cache efficiency
@@ -217,11 +230,13 @@ volumes:
 ### 3.1 Add Jaeger/Tempo
 
 **For request flow visibility:**
+
 - Browser → Gateway → Identity → Database
 - Track latency at each hop
 - Identify bottlenecks
 
 **OpenTelemetry instrumentation:**
+
 ```python
 from opentelemetry import trace
 from opentelemetry.exporter.jaeger.thrift import JaegerExporter
@@ -242,11 +257,13 @@ trace.set_tracer_provider(provider)
 ### 4.1 Centralized Logging
 
 **Options:**
+
 - **Grafana Loki** (lightweight, integrates with Grafana)
 - **ELK Stack** (Elasticsearch, Logstash, Kibana)
 - **Fluentd** (log shipper)
 
 **Log shipping from Docker:**
+
 ```yaml
 services:
   identity:
@@ -262,6 +279,7 @@ services:
 ### 5.1 Prometheus AlertManager
 
 **monitoring/prometheus/alerts.yml:**
+
 ```yaml
 groups:
   - name: wildbox
@@ -297,6 +315,7 @@ groups:
 ### Update Frontend to Fetch Real Metrics
 
 **src/lib/metrics-client.ts:**
+
 ```typescript
 export class MetricsClient {
   async getSystemHealth() {
@@ -329,6 +348,7 @@ export class MetricsClient {
 ```
 
 **Update dashboard/page.tsx:**
+
 ```typescript
 const systemHealth = await metricsClient.getSystemHealth()
 // No more nulls!
@@ -337,7 +357,7 @@ const systemHealth = await metricsClient.getSystemHealth()
 ## Timeline
 
 | Phase | Effort | Timeline | Dependencies |
-|-------|--------|----------|--------------|
+| ------- | -------- | ---------- | -------------- |
 | 1. Prometheus | 2 weeks | Q1 2026 | None |
 | 2. Grafana | 1 week | Q1 2026 | Phase 1 |
 | 3. Tracing | 2 weeks | Q2 2026 | Phase 1 |
@@ -348,11 +368,13 @@ const systemHealth = await metricsClient.getSystemHealth()
 ## Estimated Costs
 
 **Self-Hosted (Recommended):**
+
 - $0/month (runs in existing Docker Compose)
 - +200MB RAM per container (Prometheus, Grafana)
 - +10GB disk for 30-day metrics retention
 
 **Cloud (Alternative):**
+
 - Grafana Cloud: $0-$50/month (depending on volume)
 - Datadog: $15/host/month
 - New Relic: $25/user/month
@@ -360,6 +382,7 @@ const systemHealth = await metricsClient.getSystemHealth()
 ## Success Metrics
 
 After Phase 1 & 2 completion:
+
 - [ ] All services expose `/metrics` endpoint
 - [ ] Prometheus scraping all services every 15s
 - [ ] Grafana dashboards show real-time data

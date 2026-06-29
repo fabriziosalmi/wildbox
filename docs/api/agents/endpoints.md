@@ -56,11 +56,13 @@ Service information and root endpoint.
 **Authentication**: Not required
 
 **Request**:
+
 ```bash
 curl http://localhost:8004/
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "service": "Wildbox Agents Service",
@@ -81,11 +83,13 @@ Health check endpoint for service monitoring and orchestration.
 **Authentication**: Not required
 
 **Request**:
+
 ```bash
 curl http://localhost:8004/health
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "status": "healthy",
@@ -110,11 +114,13 @@ Service statistics and performance metrics.
 **Authentication**: Not required
 
 **Request**:
+
 ```bash
 curl http://localhost:8004/stats
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "total_analyses": 450,
@@ -144,13 +150,14 @@ Submit an indicator of compromise (IOC) for AI-powered threat analysis.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | ioc | object | Yes | Indicator of compromise object |
 | ioc.type | string | Yes | IOC type: ipv4, ipv6, domain, url, md5, sha1, sha256, email |
 | ioc.value | string | Yes | IOC value (IP address, domain name, URL, or hash) |
 | priority | string | No | Analysis priority: low, normal, high (default: normal) |
 
 **Supported IOC Types**:
+
 - `ipv4` - IPv4 address (e.g., 192.168.1.1)
 - `ipv6` - IPv6 address (e.g., 2001:4860:4860::8888)
 - `domain` - Domain name (e.g., example.com)
@@ -161,6 +168,7 @@ Submit an indicator of compromise (IOC) for AI-powered threat analysis.
 - `email` - Email address (e.g., user@example.com)
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8004/v1/analyze \
   -H "Authorization: Bearer your-jwt-token" \
@@ -175,6 +183,7 @@ curl -X POST http://localhost:8004/v1/analyze \
 ```
 
 **Response (202 Accepted)**:
+
 ```json
 {
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -189,6 +198,7 @@ curl -X POST http://localhost:8004/v1/analyze \
 ```
 
 **Error (401 Unauthorized)**:
+
 ```json
 {
   "error": "Unauthorized",
@@ -214,12 +224,14 @@ Retrieve the status and results of a submitted analysis task.
 | task_id | string | UUID of the analysis task |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK) - Pending**:
+
 ```json
 {
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -234,6 +246,7 @@ curl -X GET http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-44665544000
 ```
 
 **Response (200 OK) - Completed**:
+
 ```json
 {
   "task_id": "550e8400-e29b-41d4-a716-446655440000",
@@ -285,6 +298,7 @@ curl -X GET http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-44665544000
 ```
 
 **Response (404 Not Found)**:
+
 ```json
 {
   "error": "Not Found",
@@ -294,6 +308,7 @@ curl -X GET http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-44665544000
 ```
 
 **Task Status Values**:
+
 - `pending` - Task queued, waiting to start
 - `running` - Task currently executing
 - `completed` - Task finished successfully
@@ -317,12 +332,14 @@ Cancel a pending or running analysis task.
 | task_id | string | UUID of the analysis task to cancel |
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "message": "Task cancelled successfully",
@@ -332,6 +349,7 @@ curl -X DELETE http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-44665544
 ```
 
 **Response (404 Not Found)**:
+
 ```json
 {
   "error": "Not Found",
@@ -347,7 +365,7 @@ curl -X DELETE http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-44665544
 The Agents Service has access to 9 security analysis tools that are automatically selected and executed based on the IOC type:
 
 | Tool | Purpose | IOC Types |
-|------|---------|-----------|
+| ------ | --------- | ----------- |
 | **reputation_check_tool** | Multi-source threat reputation scoring | IPv4, IPv6, Domain, URL, Hash, Email |
 | **whois_lookup_tool** | Domain/IP registration information | Domain, IPv4, IPv6 |
 | **dns_lookup_tool** | DNS record resolution and history | Domain |
@@ -363,7 +381,7 @@ The Agents Service has access to 9 security analysis tools that are automaticall
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 202 | Accepted | Analysis task successfully submitted |
 | 400 | Bad Request | Invalid IOC type or value format |
 | 401 | Unauthorized | Missing or invalid authorization token |
@@ -382,13 +400,14 @@ The Agents Service enforces rate limits on analysis requests:
 
 Rate limit information is returned in response headers:
 
-```
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100
 ```
 
 When rate limit is exceeded (429 error):
+
 ```json
 {
   "error": "Too Many Requests",

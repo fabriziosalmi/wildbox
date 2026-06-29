@@ -5,9 +5,10 @@ This comprehensive end-to-end testing suite uses Playwright to simulate real adm
 ## 🎯 What the Tests Cover
 
 ### 1. Complete Admin Workflow
+
 - **Admin Login**: Tests login with superadmin credentials
 - **User Creation**: Creates test users with various permissions
-- **User Management**: 
+- **User Management**:
   - Activate/deactivate users
   - Promote/demote superuser privileges
   - Search and filter users
@@ -17,6 +18,7 @@ This comprehensive end-to-end testing suite uses Playwright to simulate real adm
 - **Logout**: Verifies proper session cleanup
 
 ### 2. Edge Cases & Validation
+
 - Invalid email format handling
 - Password strength validation
 - Non-existent user searches
@@ -24,6 +26,7 @@ This comprehensive end-to-end testing suite uses Playwright to simulate real adm
 - Error message validation
 
 ### 3. System Health Monitoring
+
 - Service status checks (Identity, Gateway, Database, Redis)
 - Stats refresh functionality
 - Real-time monitoring capabilities
@@ -33,6 +36,7 @@ This comprehensive end-to-end testing suite uses Playwright to simulate real adm
 ### Prerequisites
 
 1. **Services Running**: Make sure all services are running:
+
    ```bash
    # Start the dashboard
    npm run dev
@@ -83,6 +87,7 @@ npm run test:e2e:debug
 ```
 
 This script will:
+
 - Check if required services are running
 - Run the admin comprehensive tests
 - Generate an HTML report
@@ -109,7 +114,7 @@ npx playwright test -g "Complete Admin Workflow"
 
 ## 📁 Test Structure
 
-```
+```text
 tests/
 ├── e2e/
 │   ├── page-objects/
@@ -192,11 +197,13 @@ export default defineConfig({
 ## 🐛 Debugging
 
 ### Debug Mode
+
 ```bash
 npm run test:e2e:debug
 ```
 
 This opens Playwright Inspector where you can:
+
 - Step through tests
 - Inspect elements
 - View network requests
@@ -205,6 +212,7 @@ This opens Playwright Inspector where you can:
 ### Screenshots & Videos
 
 Failed tests automatically capture:
+
 - Screenshots at the point of failure
 - Video recordings of the entire test
 - Network traces for debugging
@@ -212,15 +220,19 @@ Failed tests automatically capture:
 ### Common Issues
 
 1. **Services Not Running**
-   ```
+
+   ```text
    ❌ Dashboard not running on localhost:3000
    ```
+
    **Solution**: Start the dashboard with `npm run dev`
 
 2. **Identity Service Unavailable**
-   ```
+
+   ```text
    ❌ Identity service not running on localhost
    ```
+
    **Solution**: Start the identity service and gateway
 
 3. **Timeout Errors**
@@ -285,6 +297,7 @@ test('New Admin Feature', async ({ page }) => {
 ### Updating Tests
 
 When UI changes:
+
 1. Update selectors in page objects
 2. Add new data-testid attributes if needed
 3. Update test expectations
@@ -293,6 +306,7 @@ When UI changes:
 ### Test Data Management
 
 The tests create temporary users with timestamps to avoid conflicts:
+
 ```typescript
 const TEST_USER_CREDENTIALS = {
   email: `test-user-${Date.now()}@wildbox.com`,
@@ -303,15 +317,19 @@ const TEST_USER_CREDENTIALS = {
 ## 🚀 Advanced Features
 
 ### Parallel Execution
+
 Tests run in parallel by default for faster execution.
 
 ### Cross-Browser Testing
+
 Tests run on Chromium, Firefox, and WebKit automatically.
 
 ### Mobile Testing
+
 Uncomment mobile configurations in `playwright.config.ts` for mobile testing.
 
 ### API Testing
+
 Playwright can also test APIs directly alongside UI tests.
 
 ---

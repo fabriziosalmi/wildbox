@@ -48,7 +48,7 @@ make start
 
 Add these entries to your `/etc/hosts` file:
 
-```
+```text
 127.0.0.1 wildbox.local
 127.0.0.1 api.wildbox.local
 127.0.0.1 dashboard.wildbox.local
@@ -69,7 +69,7 @@ make logs
 The gateway routes requests to backend services based on URL patterns:
 
 | Path Pattern | Backend Service | Authentication | Plan Requirement |
-|--------------|----------------|----------------|------------------|
+| -------------- | ---------------- | ---------------- | ------------------ |
 | `/api/v1/auth/*` | open-security-identity | ❌ | None |
 | `/api/v1/users/*` | open-security-identity | ✅ | Any |
 | `/api/v1/admin/*` | open-security-identity | ✅ | Admin Only |
@@ -88,16 +88,19 @@ The gateway routes requests to backend services based on URL patterns:
 The gateway supports multiple authentication methods:
 
 ### Bearer Token (Recommended)
+
 ```bash
 curl -H "Authorization: Bearer <token>" https://api.wildbox.local/api/v1/data/feeds
 ```
 
 ### API Key
+
 ```bash
 curl -H "X-API-Key: <api-key>" https://api.wildbox.local/api/v1/data/feeds
 ```
 
 ### Query Parameter (Limited use)
+
 ```bash
 curl "https://api.wildbox.local/api/v1/data/feeds?token=<token>"
 ```
@@ -107,23 +110,27 @@ curl "https://api.wildbox.local/api/v1/data/feeds?token=<token>"
 The gateway enforces feature access based on subscription plans:
 
 ### Free Plan
+
 - Dashboard access
 - Basic monitoring
 - Data feeds (limited)
 
 ### Personal Plan
+
 - All Free features
 - CSPM scanning
 - Guardian threat detection
 - Sensor data collection
 
 ### Business Plan
+
 - All Personal features
 - Incident response (Responder)
 - Workflow automation
 - Advanced analytics
 
 ### Enterprise Plan
+
 - All Business features
 - AI-powered security agents
 - Custom integrations
@@ -132,17 +139,20 @@ The gateway enforces feature access based on subscription plans:
 ## ⚡ Performance Features
 
 ### Intelligent Caching
+
 - Authentication data cached for 5 minutes
 - API responses cached based on user plan
 - Static content cached with long TTLs
 
 ### Rate Limiting
+
 - **Free**: 10 requests/second per team
 - **Personal**: 50 requests/second per team
 - **Business**: 200 requests/second per team
 - **Enterprise**: 1000 requests/second per team
 
 ### Connection Pooling
+
 - HTTP/1.1 keep-alive connections to backends
 - Connection pooling for reduced latency
 - Automatic failover and health checks
@@ -168,7 +178,7 @@ cp .env.example .env
 #### Optional Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `WILDBOX_ENV` | `development` | Environment mode (`development`, `staging`, `production`) |
 | `GATEWAY_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
 | `AUTH_CACHE_TTL` | `300` | Authentication cache TTL in seconds (recommended: 300) |
@@ -181,7 +191,7 @@ cp .env.example .env
 Backend services are automatically discovered via Docker networking:
 
 | Service | Internal URL | Port |
-|---------|-------------|------|
+| --------- | ------------- | ------ |
 | Identity | `open-security-identity:8001` | 8001 |
 | Tools | `open-security-tools:8000` | 8000 |
 | Data | `open-security-data:8002` | 8002 |
@@ -248,12 +258,14 @@ docker-compose exec gateway tail -f /var/log/nginx/error.log
 ## 🔒 Security Features
 
 ### TLS Configuration
+
 - TLS 1.2+ only
 - Strong cipher suites
 - HSTS headers
 - OCSP stapling
 
 ### Security Headers
+
 - `Strict-Transport-Security`
 - `X-Frame-Options: DENY`
 - `X-Content-Type-Options: nosniff`
@@ -261,6 +273,7 @@ docker-compose exec gateway tail -f /var/log/nginx/error.log
 - `Referrer-Policy`
 
 ### Input Validation
+
 - Request size limits
 - Header validation
 - Path traversal protection
@@ -274,6 +287,7 @@ curl -k https://wildbox.local/health
 ```
 
 Response:
+
 ```json
 {
   "status": "healthy",
@@ -287,7 +301,7 @@ Response:
 
 The gateway logs detailed metrics in structured format:
 
-```
+```bash
 127.0.0.1 - - [15/Jan/2024:10:30:00 +0000] "GET /api/v1/data/feeds HTTP/1.1" 
 200 1234 "-" "curl/7.68.0" "-" rt=0.045 uct="0.001" uht="0.002" urt="0.042" 
 team_id="team_123" user_id="user_456" plan="business"
@@ -298,6 +312,7 @@ team_id="team_123" user_id="user_456" plan="business"
 ### Common Issues
 
 1. **SSL Certificate Errors**
+
    ```bash
    # Regenerate certificates
    make certs
@@ -307,6 +322,7 @@ team_id="team_123" user_id="user_456" plan="business"
    ```
 
 2. **Backend Service Unreachable**
+
    ```bash
    # Check network connectivity
    docker network ls
@@ -317,6 +333,7 @@ team_id="team_123" user_id="user_456" plan="business"
    ```
 
 3. **Authentication Failures**
+
    ```bash
    # Check identity service logs
    docker-compose logs open-security-identity

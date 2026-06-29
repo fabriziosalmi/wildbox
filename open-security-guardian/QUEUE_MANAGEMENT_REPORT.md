@@ -9,6 +9,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 1. Queue Management Infrastructure ✅
 
 **Implemented Components:**
+
 - Celery-based task queue system
 - Redis as the message broker and result backend
 - Queue prioritization and routing
@@ -16,6 +17,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 - Scheduled task management via Celery Beat
 
 **Key Features:**
+
 - **Priority Queues**: High, normal, and low priority task routing
 - **Specialized Queues**: Dedicated queues for different operation types:
   - `queue_management` - Core queue operations
@@ -30,6 +32,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 2. Core Queue Management Models ✅
 
 **TaskQueue Model** (`apps/queue_management/models.py`):
+
 - Task metadata storage
 - Priority management
 - Status tracking (pending, running, completed, failed)
@@ -37,6 +40,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 - Dependency management
 
 **QueueMetrics Model**:
+
 - Real-time queue performance monitoring
 - Task execution statistics
 - Resource utilization tracking
@@ -45,6 +49,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 3. Task Processing Engine ✅
 
 **Queue Processor** (`apps/queue_management/processors.py`):
+
 - Intelligent task scheduling
 - Priority-based execution
 - Resource-aware task allocation
@@ -52,6 +57,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 - Error handling and recovery
 
 **Task Manager** (`apps/queue_management/tasks.py`):
+
 - Celery task definitions
 - Queue monitoring tasks
 - Resource cleanup operations
@@ -60,12 +66,14 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 4. API and Management Interface ✅
 
 **RESTful API** (`apps/queue_management/views.py`):
+
 - Task submission endpoints
 - Queue status monitoring
 - Metrics retrieval
 - Administrative controls
 
 **Admin Interface** (`apps/queue_management/admin.py`):
+
 - Django admin integration
 - Queue visualization
 - Task management tools
@@ -74,16 +82,19 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 5. Service Integration ✅
 
 **Asset Management Integration**:
+
 - Asset discovery tasks
 - Port scanning operations
 - Asset categorization workflows
 
 **Vulnerability Scanning Integration**:
+
 - Automated scan queuing
 - Priority-based scan scheduling
 - Results processing pipelines
 
 **Analytics Integration**:
+
 - Data processing tasks
 - Report generation queues
 - Performance analytics
@@ -91,6 +102,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 ### 6. Docker and Deployment ✅
 
 **Container Configuration**:
+
 - Multi-service Docker Compose setup
 - Celery worker containers
 - Celery Beat scheduler
@@ -99,6 +111,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 - PostgreSQL database
 
 **Environment Configuration**:
+
 - Production-ready settings
 - Environment variable management
 - Health checks and monitoring
@@ -108,7 +121,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 
 ### Queue Architecture
 
-```
+```text
 ┌─────────────────┐    ┌──────────────┐    ┌─────────────────┐
 │   Task Producer │───▶│ Redis Broker │───▶│ Celery Workers  │
 │   (Django App)  │    │   (Queues)   │    │  (Background)   │
@@ -138,7 +151,7 @@ The Open Security Guardian has been successfully enhanced with a comprehensive q
 
 All services are successfully running:
 
-```
+```text
 ✅ Guardian Web Application (Port 8013)
 ✅ Celery Workers (Background Tasks)
 ✅ Celery Beat (Scheduled Tasks)
@@ -210,21 +223,25 @@ CELERY_RESULT_COMPRESSION = 'gzip'
 ## Next Steps and Recommendations
 
 ### 1. Production Deployment
+
 - Set up monitoring alerts for queue depth and worker health
 - Implement log aggregation for task execution tracking
 - Configure auto-scaling for worker instances
 
 ### 2. Advanced Features
+
 - Implement task dependency graphs for complex workflows
 - Add support for task cancellation and cleanup
 - Develop custom task scheduling algorithms
 
 ### 3. Integration Enhancements
+
 - Connect to external monitoring systems (Prometheus, Grafana)
 - Implement webhook notifications for task completion
 - Add support for distributed task execution
 
 ### 4. Performance Optimization
+
 - Implement queue partitioning for high-volume scenarios
 - Add result caching for frequently accessed data
 - Optimize task serialization and deserialization

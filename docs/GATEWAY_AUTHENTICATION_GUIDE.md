@@ -4,7 +4,7 @@
 
 All Wildbox backend services use a **trust-based authentication pattern** where the API Gateway validates user credentials (JWT or API keys) and injects trusted headers to backend services.
 
-```
+```text
 ┌────────┐     ┌─────────┐     ┌──────────┐     ┌─────────┐
 │ Client │────▶│ Gateway │────▶│ Identity │────▶│ Backend │
 └────────┘     └─────────┘     └──────────┘     └─────────┘
@@ -18,11 +18,13 @@ All Wildbox backend services use a **trust-based authentication pattern** where 
 The Tools service supports **two authentication modes** for flexibility during development and testing:
 
 **Production Mode (Recommended):**
+
 - Requests go through API Gateway (`http://localhost/api/v1/tools/...`)
 - Gateway validates credentials and injects `X-Wildbox-*` headers
 - Backend trusts gateway headers
 
 **Legacy/Development Mode:**
+
 - Direct service access (`http://localhost:8000/api/tools/...`)
 - Client provides `X-API-Key` header directly
 - Service validates API key locally
@@ -42,7 +44,7 @@ The Tools service supports **two authentication modes** for flexibility during d
 The gateway injects these headers after successful authentication:
 
 | Header | Type | Description | Example |
-|--------|------|-------------|---------|
+| -------- | ------ | ------------- | --------- |
 | `X-Wildbox-User-ID` | UUID | Authenticated user's unique ID | `da8adf0a-072a-4f53-8b29-043212761bbd` |
 | `X-Wildbox-Team-ID` | UUID | User's team ID | `28169a02-5b81-4ec4-a668-a7a100f8d642` |
 | `X-Wildbox-Plan` | String | Subscription plan (`free`, `pro`, `business`, `enterprise`) | `pro` |
@@ -270,19 +272,23 @@ async def endpoint(user: GatewayUser = Depends(get_user_from_gateway_headers)):
 **Problem**: Service logs "Missing gateway authentication headers"
 
 **Solutions**:
+
 1. Check gateway Lua code is setting headers:
+
    ```lua
    ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
    ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
    ```
 
 2. Check proxy_params.conf forwards headers:
+
    ```nginx
    proxy_set_header X-Wildbox-User-ID $http_x_wildbox_user_id;
    proxy_set_header X-Wildbox-Team-ID $http_x_wildbox_team_id;
    ```
 
 3. Verify request goes through gateway:
+
    ```bash
    # Correct: http://localhost/api/v1/tools/...
    # Wrong: http://localhost:8000/api/tools/...
@@ -293,6 +299,7 @@ async def endpoint(user: GatewayUser = Depends(get_user_from_gateway_headers)):
 **Problem**: `ImportError: No module named 'gateway_auth'`
 
 **Solution**: Add shared directory to Python path:
+
 ```python
 import sys
 import os
@@ -304,6 +311,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-sec
 **Problem**: Services can't reach each other
 
 **Solution**: Verify all services are in same Docker network:
+
 ```bash
 docker-compose ps
 docker network inspect wildbox

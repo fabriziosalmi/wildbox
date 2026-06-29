@@ -5,6 +5,7 @@
 ## Current Stack
 
 ### Core Infrastructure
+
 - **OpenResty (Nginx + Lua)**: API gateway, authentication, rate limiting
 - **PostgreSQL 15**: Relational database (users, teams, vulnerabilities, IOCs)
 - **Redis 7**: Caching, session storage, rate limiting, Celery broker
@@ -21,6 +22,7 @@
 ### 1. OpenResty (Nginx + Lua) vs. Alternatives
 
 **Why OpenResty?**
+
 - **Lua scripting**: Authentication logic at gateway level (reduces latency)
 - **Performance**: C-based Nginx core handles 10k+ req/sec
 - **Header injection**: Secure `X-Wildbox-User-ID` injection prevents backend spoofing
@@ -29,7 +31,7 @@
 **Alternatives Considered**:
 
 | Alternative | Why Not Chosen |
-|------------|----------------|
+| ------------ | ---------------- |
 | **Traefik** | Lacks Lua scripting for custom auth logic, middleware limited |
 | **Kong** | Overkill (plugin ecosystem we don't need), higher resource usage |
 | **Envoy** | Excellent choice, but steeper learning curve for Lua → WASM migration |
@@ -45,6 +47,7 @@
 ### 2. PostgreSQL vs. Alternatives
 
 **Why PostgreSQL?**
+
 - **ACID compliance**: Critical for auth, subscriptions, financial data
 - **JSON support**: Store flexible data (IOCs, CSPM findings) without schema changes
 - **Performance**: Handles 10k+ writes/sec with proper indexing
@@ -54,13 +57,14 @@
 **Alternatives Considered**:
 
 | Alternative | Why Not Chosen |
-|------------|----------------|
+| ------------ | ---------------- |
 | **MySQL** | Weaker JSON support, less ACID strict in default config |
 | **MongoDB** | No ACID across collections (pre-v4), auth data requires consistency |
 | **SQLite** | No concurrent writes, unsuitable for multi-service architecture |
 | **Supabase** | Vendor lock-in, hosted solution increases attack surface |
 
 **Current State**:
+
 - **1 PostgreSQL instance, 11 databases** (identity, data, guardian, tools, etc.)
 - **Shared connection pool** (max 100 connections per DB)
 
@@ -69,6 +73,7 @@
 ❌ **No**. Consolidating into fewer databases increases blast radius (one compromised service = all data exposed). Current separation follows **database-per-service pattern** (microservices best practice).
 
 **Potential Optimization**:
+
 - Use **read replicas** for analytics queries (current: all queries hit primary)
 - Implement **connection pooling** via PgBouncer (reduces connection overhead)
 
@@ -79,6 +84,7 @@
 ### 3. Redis vs. Alternatives
 
 **Why Redis?**
+
 - **Performance**: 100k+ ops/sec in-memory
 - **Celery broker**: Task queue requires Redis or RabbitMQ
 - **Session storage**: TTL-based expiry (JWT denylisting, API rate limits)
@@ -86,6 +92,7 @@
 - **Atomic operations**: INCR for rate limiting (thread-safe without locks)
 
 **Current Usage**:
+
 - **1 Redis instance, 15 logical databases** (DB 0 = identity, DB 1 = guardian, etc.)
 - **Celery broker**: DB 10
 - **Gateway auth cache**: DB 5
@@ -93,7 +100,7 @@
 **Alternatives Considered**:
 
 | Alternative | Why Not Chosen |
-|------------|----------------|
+| ------------ | ---------------- |
 | **Memcached** | No persistence, no Celery support, no atomic ops |
 | **In-memory dicts** | Shared state across containers impossible, no TTL |
 | **RabbitMQ** | Heavier (Erlang VM), overkill for our queue volume |
@@ -102,6 +109,7 @@
 **Simplification Needed?**:
 
 ⚠️ **Maybe**. Logical DB separation (DB 0-15) is organizational convenience, not security boundary. Could consolidate to:
+
 - **DB 0**: All application caching
 - **DB 1**: Celery broker
 
@@ -114,12 +122,14 @@
 ### 4. Celery vs. Alternatives
 
 **Why Celery?**
+
 - **Background jobs**: Port scanning, DNS enumeration, CSPM checks (long-running)
 - **Scheduling**: Periodic tasks (daily CVE updates, weekly reports)
 - **Retry logic**: Exponential backoff for failed API calls
 - **Monitoring**: Flower dashboard for task visibility
 
 **Current Usage**:
+
 - **Tools service**: 55+ security tools as Celery tasks
 - **Data service**: Threat feed updates (every 6 hours)
 - **Guardian service**: Vulnerability scanning (on-demand + scheduled)
@@ -127,7 +137,7 @@
 **Alternatives Considered**:
 
 | Alternative | Why Not Chosen |
-|------------|----------------|
+| ------------ | ---------------- |
 | **APScheduler** | No distributed workers, single-process (not fault-tolerant) |
 | **Kubernetes CronJobs** | For scheduled tasks, not ad-hoc jobs. No retry logic. |
 | **AWS Lambda** | Vendor lock-in, cold start latency, cost for high volume |
@@ -136,6 +146,7 @@
 **Simplification Needed?**:
 
 ❌ **No**. Security tools (port scans, fuzzing, cloud checks) are CPU-intensive and must run asynchronously. Without Celery:
+
 - API endpoints block for minutes (port scan of /16 subnet = 20+ minutes)
 - No fault tolerance (worker crash = lost job)
 - No rate limiting (all jobs run simultaneously, exhaust memory)
@@ -163,11 +174,13 @@ redis_client.set('guardian:vuln:456', data)
 ```
 
 **Benefits**:
+
 - Simpler configuration (no DB number management)
 - Better visibility (all keys in one namespace)
 - Minimal code changes (update key generation functions)
 
 **Risks**:
+
 - Key collision if prefixes not enforced
 - Slightly harder to flush single service's cache (`FLUSHDB` won't work)
 
@@ -178,10 +191,12 @@ redis_client.set('guardian:vuln:456', data)
 ### 2. Remove Unused Services
 
 **Analysis**:
+
 - **Automations (n8n)**: Upstream marked `down` in gateway config, not used
 - **CSPM**: 314 files, extensive testing required before production
 
 **Action**:
+
 - **Automations**: Disable in docker-compose.yml, document removal in v0.4.0
 - **CSPM**: Mark as beta, require explicit opt-in (`ENABLE_CSPM=true`)
 
@@ -204,6 +219,7 @@ pgbouncer:
 ```
 
 **Benefits**:
+
 - Reduce PostgreSQL connections (current: ~100 per service = 1000+ total)
 - Faster connection reuse (connection handshake cached)
 - Centralized connection limits
@@ -215,7 +231,7 @@ pgbouncer:
 
 ## "Do You Really Need This?" Decision Tree
 
-```
+```text
 Need background jobs (port scans, API fuzzing)?
   ├─ Yes → Keep Celery + Redis
   └─ No → Use APScheduler (but lose distribution)
@@ -252,6 +268,7 @@ services:
 ```
 
 **What's lost**:
+
 - No background jobs (port scanning, fuzzing)
 - No rate limiting (DDoS vulnerable)
 - No centralized auth (JWT validation per-endpoint)
@@ -264,6 +281,7 @@ services:
 ## Performance Benchmarks (Justify Complexity)
 
 ### Gateway Performance (OpenResty)
+
 ```bash
 # Authenticated requests with Lua validation
 wrk -t4 -c100 -d30s https://api.wildbox.local/health
@@ -278,6 +296,7 @@ Results:
 **Comparison**: Node.js Express gateway = ~3,500 req/sec (3.5x slower)
 
 ### Celery Task Throughput
+
 ```bash
 # Port scan of /24 subnet (254 hosts)
 celery -A app.celery_app worker --loglevel=info --concurrency=10
@@ -291,6 +310,7 @@ Results:
 **Without Celery**: Sequential execution = 254 * 1.07s = **4.5 minutes**. Celery parallelizes to **4.5 minutes total** (10x speedup).
 
 ### Redis Cache Hit Rate (Gateway Auth)
+
 ```bash
 # 10,000 requests with same JWT token
 redis-cli INFO stats | grep keyspace_hits
@@ -307,17 +327,20 @@ Results:
 
 ## Final Verdict
 
-### Keep (Critical to platform):
+### Keep (Critical to platform)
+
 - ✅ **OpenResty**: Gateway pattern industry standard, Lua auth = performance
 - ✅ **PostgreSQL**: ACID, JSON, extensions essential for security data
 - ✅ **Redis**: Celery broker + caching irreplaceable
 - ✅ **Celery**: Async jobs core to security tools
 
-### Simplify (Low effort, high clarity):
+### Simplify (Low effort, high clarity)
+
 - ✅ **Consolidate Redis DBs**: Use key prefixes instead of logical databases
 - ✅ **Disable unused services**: Remove n8n automations, mark CSPM as beta
 
-### Defer (Optimize at scale):
+### Defer (Optimize at scale)
+
 - ⏸️ **PgBouncer**: Useful at >1000 req/sec, not needed yet
 - ⏸️ **Read replicas**: Implement when analytics queries slow primary DB
 
@@ -330,6 +353,7 @@ Results:
 **Last Updated**: 2025-11-24  
 **Review Cycle**: Quarterly (reassess as platform scales)  
 **Related Docs**:
+
 - `docs/GATEWAY_AUTHENTICATION_GUIDE.md`
 - `docs/SERVICE_LIFECYCLE.md`
 - `docs/OBSERVABILITY_ROADMAP.md`

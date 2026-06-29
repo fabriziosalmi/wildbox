@@ -58,7 +58,7 @@ Search for indicators of compromise in the threat intelligence database.
 **Query Parameters**:
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
+| ------ | ------ | ---------- | --------- | ------------- |
 | q | string | Yes | - | Search query (IP, domain, hash, URL, email) |
 | type | string | No | - | Filter by type: ipv4, ipv6, domain, url, md5, sha1, sha256, email |
 | threat_level | string | No | - | Filter by threat: malware, phishing, botnet, ransomware, etc. |
@@ -71,12 +71,14 @@ Search for indicators of compromise in the threat intelligence database.
 | active_only | boolean | No | true | Only return currently active indicators |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8006/api/v1/indicators/search?q=malicious-domain.com&limit=20" \
   -H "X-API-Key: your-api-key"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 1,
@@ -123,6 +125,7 @@ Perform bulk lookup of multiple indicators at once.
 | include_enrichment | boolean | No | Include WHOIS/geolocation data (default: false) |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8006/api/v1/indicators/bulk-lookup \
   -H "Content-Type: application/json" \
@@ -133,6 +136,7 @@ curl -X POST http://localhost:8006/api/v1/indicators/bulk-lookup \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "results": [
@@ -177,11 +181,13 @@ Get detailed threat intelligence for an IP address.
 | ip | string | IPv4 or IPv6 address |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8006/api/v1/intelligence/ip/192.168.1.100
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "ip": "192.168.1.100",
@@ -231,11 +237,13 @@ Get detailed threat intelligence for a domain.
 | domain | string | Domain name (FQDN) |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8006/api/v1/intelligence/domain/example.com
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "domain": "example.com",
@@ -284,11 +292,13 @@ Get detailed threat intelligence for a file hash.
 | hash | string | MD5, SHA1, or SHA256 file hash |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8006/api/v1/intelligence/hash/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -331,11 +341,13 @@ List all configured threat intelligence sources and feeds.
 | offset | integer | Pagination offset |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8006/api/v1/sources?limit=20
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 52,
@@ -381,13 +393,15 @@ Stream newly added indicators from a specific source (NDJSON format).
 | source_id | string | Source ID |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8006/api/v1/sources/src-001/stream \
   --stream
 ```
 
 **Response (200 OK) - Streaming NDJSON**:
-```
+
+```json
 {"value":"8.8.8.8","type":"ipv4","threat":"spam","timestamp":"2024-11-07T18:00:00Z"}
 {"value":"malware-domain.com","type":"domain","threat":"malware","timestamp":"2024-11-07T18:00:01Z"}
 {"value":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","type":"sha256","threat":"malware","timestamp":"2024-11-07T18:00:02Z"}
@@ -408,7 +422,7 @@ Ingest telemetry events from sensors and endpoints.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | events | array | Yes | Array of telemetry events |
 | events[].type | string | Yes | Event type: network_connection, file_operation, process_execution, dns_query |
 | events[].sensor_id | string | Yes | Sensor/endpoint identifier |
@@ -416,6 +430,7 @@ Ingest telemetry events from sensors and endpoints.
 | events[].data | object | Yes | Event-specific data |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8006/api/v1/telemetry/events \
   -H "Content-Type: application/json" \
@@ -437,6 +452,7 @@ curl -X POST http://localhost:8006/api/v1/telemetry/events \
 ```
 
 **Response (202 Accepted)**:
+
 ```json
 {
   "ingested": 1,
@@ -463,11 +479,13 @@ Get aggregated telemetry statistics and metrics.
 | sensor_id | string | Filter by specific sensor |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8006/api/v1/telemetry/statistics?time_range=24h"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "total_events": 45000,
@@ -488,7 +506,7 @@ curl -X GET "http://localhost:8006/api/v1/telemetry/statistics?time_range=24h"
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 200 | OK | Request successful |
 | 202 | Accepted | Data successfully ingested (async processing) |
 | 400 | Bad Request | Invalid query parameters or request body |
@@ -508,7 +526,7 @@ The Data Service enforces rate limits based on authentication:
 
 Rate limit information is returned in response headers:
 
-```
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100

@@ -9,6 +9,7 @@ The Open Security Sensor is a critical component of the Wildbox security suite t
 ## Key Features
 
 ### 🔍 **Comprehensive Telemetry Collection**
+
 - **Process Execution & Ancestry**: Track all process creations with command-line arguments and parent-child relationships
 - **Network Connections**: Monitor all TCP/UDP connections with process association
 - **File Integrity Monitoring**: Monitor critical system files and directories for unauthorized changes
@@ -17,17 +18,20 @@ The Open Security Sensor is a critical component of the Wildbox security suite t
 - **Log Forwarding**: Forward system and application logs to central data lake
 
 ### ⚡ **High Performance**
+
 - Built on osquery for efficient host telemetry collection
 - Minimal resource consumption with intelligent query scheduling
 - Data batching to reduce network overhead
 - Low memory footprint
 
 ### 🌐 **Cross-Platform Support**
+
 - Linux (Ubuntu, CentOS, RHEL, Debian)
 - Windows (Windows 10, Windows Server 2016+)
 - macOS (10.14+)
 
 ### 🔒 **Security & Reliability**
+
 - TLS/HTTPS encrypted data transmission
 - Certificate-based authentication
 - Robust error handling and retry mechanisms
@@ -35,7 +39,7 @@ The Open Security Sensor is a critical component of the Wildbox security suite t
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Host System   │    │   Sensor Agent   │    │  Data Pipeline  │
 │                 │    │                  │    │                 │
@@ -61,6 +65,7 @@ The Open Security Sensor is a critical component of the Wildbox security suite t
 ### Installation
 
 #### Linux (Ubuntu/Debian)
+
 ```bash
 # Download and install
 wget https://github.com/wildbox/open-security-sensor/releases/latest/download/sensor-linux-amd64.deb
@@ -76,6 +81,7 @@ sudo systemctl start security-sensor
 ```
 
 #### Windows
+
 ```powershell
 # Download and install MSI package
 Invoke-WebRequest -Uri "https://github.com/wildbox/open-security-sensor/releases/latest/download/sensor-windows-amd64.msi" -OutFile "sensor.msi"
@@ -90,6 +96,7 @@ Start-Service SecuritySensor
 ```
 
 #### macOS
+
 ```bash
 # Install via Homebrew
 brew tap wildbox/security-sensor
@@ -125,6 +132,7 @@ docker-compose down
 ```
 
 For development with hot reload:
+
 ```bash
 # Start development environment
 docker-compose -f docker-compose.dev.yml up -d
@@ -134,6 +142,7 @@ docker-compose -f docker-compose.dev.yml logs -f sensor-dev
 ```
 
 With monitoring stack (Prometheus + Grafana):
+
 ```bash
 # Start with monitoring
 docker-compose --profile monitoring up -d
@@ -210,6 +219,7 @@ nano config.yaml
 ```
 
 Update the configuration with your data lake endpoint:
+
 ```yaml
 data_lake:
   endpoint: "https://your-security-data-platform.com/api/v1/ingest"
@@ -262,7 +272,7 @@ docker-compose --profile monitoring up -d
 #### Environment Variables
 
 | Variable | Description | Default |
-|----------|-------------|---------|
+| ---------- | ------------- | --------- |
 | `SENSOR_LOGGING_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
 | `PYTHONPATH` | Python path | `/app` |
 | `DEVELOPMENT` | Enable development mode | `false` |
@@ -352,6 +362,7 @@ docker run --rm -v sensor_data:/data -v $(pwd):/backup alpine tar xzf /backup/se
 #### Common Issues
 
 **Container fails to start:**
+
 ```bash
 # Check container logs
 docker-compose logs sensor
@@ -364,6 +375,7 @@ docker-compose config
 ```
 
 **Permission denied errors:**
+
 ```bash
 # Check file permissions
 ls -la config.yaml
@@ -373,6 +385,7 @@ sudo chown $USER:$USER config.yaml
 ```
 
 **Host monitoring not working:**
+
 ```bash
 # Verify host mounts
 docker-compose exec sensor ls -la /host/proc
@@ -382,6 +395,7 @@ docker-compose exec sensor capsh --print
 ```
 
 **Network connectivity issues:**
+
 ```bash
 # Test from container
 docker-compose exec sensor curl -I https://your-data-lake.com
@@ -393,6 +407,7 @@ docker-compose exec sensor nslookup your-data-lake.com
 #### Performance Optimization
 
 **Resource limits:**
+
 ```yaml
 services:
   sensor:
@@ -407,6 +422,7 @@ services:
 ```
 
 **Optimize for high-volume:**
+
 ```yaml
 # In config.yaml
 performance:
@@ -477,21 +493,27 @@ For large deployments:
 ## Integration
 
 ### With Open Security Data
+
 The sensor seamlessly integrates with the data lake platform, providing enriched telemetry that enhances:
+
 - Threat hunting capabilities
 - Historical analysis and forensics
 - Real-time alerting and detection
 - Compliance reporting and auditing
 
 ### With Open Security Agents
+
 LLM agents gain access to endpoint context, enabling sophisticated correlation:
+
 - Process-to-network connection mapping
 - Behavioral analysis and anomaly detection
 - Automated threat classification
 - Context-aware response recommendations
 
 ### With Open Security Responder
+
 Response playbooks can execute endpoint actions:
+
 - Process termination
 - Network isolation
 - File quarantine
@@ -500,6 +522,7 @@ Response playbooks can execute endpoint actions:
 ## API Reference
 
 ### Configuration API
+
 ```bash
 # Get current configuration
 curl -X GET http://localhost:8899/api/v1/config
@@ -514,6 +537,7 @@ curl -X POST http://localhost:8899/api/v1/config/reload
 ```
 
 ### Query API
+
 ```bash
 # Execute custom query
 curl -X POST http://localhost:8899/api/v1/query \
@@ -532,18 +556,21 @@ curl -X POST http://localhost:8899/api/v1/queries \
 ## Security Considerations
 
 ### Data Protection
+
 - All data transmission is encrypted using TLS 1.3
 - API keys are stored securely using OS keychain/credential manager
 - Sensitive data is never logged or cached locally
 - Certificate pinning prevents man-in-the-middle attacks
 
 ### Access Control
+
 - Sensor runs with minimal required privileges
 - File system access is restricted to monitored paths
 - Network access is limited to configured endpoints
 - Administrative functions require elevated privileges
 
 ### Privacy
+
 - Personal data collection can be disabled via configuration
 - Data retention policies are enforced at the data lake level
 - GDPR and privacy compliance features available
@@ -554,6 +581,7 @@ curl -X POST http://localhost:8899/api/v1/queries \
 ### Common Issues
 
 **Sensor not starting**
+
 ```bash
 # Check service status
 sudo systemctl status security-sensor
@@ -566,6 +594,7 @@ security-sensor --validate-config
 ```
 
 **High resource usage**
+
 ```bash
 # Check current resource usage
 security-sensor --status
@@ -578,6 +607,7 @@ sudo systemctl restart security-sensor
 ```
 
 **Connection issues**
+
 ```bash
 # Test connectivity
 security-sensor --test-connection

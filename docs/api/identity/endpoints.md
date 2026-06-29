@@ -42,6 +42,7 @@ User login with email and password. Returns JWT token valid for subsequent API r
 ```
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8000/auth/login \
   -H "Content-Type: application/json" \
@@ -52,6 +53,7 @@ curl -X POST http://localhost:8000/auth/login \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -66,6 +68,7 @@ curl -X POST http://localhost:8000/auth/login \
 ```
 
 **Error (401 Unauthorized)**:
+
 ```json
 {
   "error": "Unauthorized",
@@ -92,12 +95,14 @@ Refresh an existing JWT token to extend the session without requiring re-authent
 **Authentication**: Required (Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8000/auth/refresh \
   -H "Authorization: Bearer {current_token}"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -119,13 +124,15 @@ Logout user and revoke the current JWT token. Token becomes invalid for future r
 **Authentication**: Required (Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8000/auth/logout \
   -H "Authorization: Bearer {token}"
 ```
 
 **Response (204 No Content)**:
-```
+
+```text
 (Empty response body)
 ```
 
@@ -145,7 +152,7 @@ List all users with pagination, filtering, and sorting support.
 **Query Parameters**:
 
 | Name | Type | Required | Default | Description |
-|------|------|----------|---------|-------------|
+| ------ | ------ | ---------- | --------- | ------------- |
 | limit | integer | No | 20 | Number of results (max 100) |
 | offset | integer | No | 0 | Pagination offset |
 | status | string | No | - | Filter by status: active, inactive, suspended |
@@ -153,12 +160,14 @@ List all users with pagination, filtering, and sorting support.
 | sort | string | No | created_at:desc | Sort field and direction |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8000/users?limit=10&status=active" \
   -H "Authorization: Bearer {token}"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": [
@@ -214,6 +223,7 @@ Create a new user account with specified role and permissions.
 ```
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8000/users \
   -H "Authorization: Bearer {admin_token}" \
@@ -227,6 +237,7 @@ curl -X POST http://localhost:8000/users \
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "data": {
@@ -242,6 +253,7 @@ curl -X POST http://localhost:8000/users \
 ```
 
 **Error (400 Bad Request)**:
+
 ```json
 {
   "error": "Bad Request",
@@ -253,7 +265,7 @@ curl -X POST http://localhost:8000/users \
 **Parameters**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | email | string | Yes | User email address (must be unique) |
 | full_name | string | Yes | User full name |
 | password | string | Yes | Initial password (minimum 8 characters) |
@@ -277,12 +289,14 @@ Retrieve detailed information about a specific user.
 | id | string | User ID |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8000/users/usr-001 \
   -H "Authorization: Bearer {token}"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -321,6 +335,7 @@ Update user profile, role, permissions, and team assignments.
 **Authentication**: Required (Bearer Token - admin or user updating self)
 
 **Request Body**:
+
 ```json
 {
   "full_name": "Updated Name",
@@ -331,6 +346,7 @@ Update user profile, role, permissions, and team assignments.
 ```
 
 **Request**:
+
 ```bash
 curl -X PUT http://localhost:8000/users/usr-001 \
   -H "Authorization: Bearer {token}" \
@@ -342,6 +358,7 @@ curl -X PUT http://localhost:8000/users/usr-001 \
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -366,13 +383,15 @@ Delete a user account and revoke all associated tokens and permissions.
 **Authentication**: Required (Bearer Token - admin only)
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:8000/users/usr-001 \
   -H "Authorization: Bearer {admin_token}"
 ```
 
 **Response (204 No Content)**:
-```
+
+```text
 (Empty response body)
 ```
 
@@ -389,6 +408,7 @@ List all active tokens for the current user.
 **Authentication**: Required (Bearer Token)
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": [
@@ -415,6 +435,7 @@ Revoke a specific token immediately.
 **Authentication**: Required (Bearer Token)
 
 **Request Body**:
+
 ```json
 {
   "token_id": "token-001"
@@ -434,6 +455,7 @@ List all available permissions in the system.
 **Authentication**: Required (Bearer Token)
 
 **Response (200 OK)**:
+
 ```json
 {
   "data": {
@@ -465,7 +487,7 @@ List all available permissions in the system.
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 400 | Bad Request | Invalid request parameters or body |
 | 401 | Unauthorized | Missing or invalid authentication token |
 | 403 | Forbidden | Authenticated but not authorized for this action |
@@ -484,7 +506,8 @@ Authentication endpoints are rate limited to prevent brute force attacks:
 - **Other endpoints**: 100 requests/minute per user
 
 Rate limit information is returned in response headers:
-```
+
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100

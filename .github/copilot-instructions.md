@@ -8,7 +8,7 @@ Wildbox is a microservices-based security operations platform with **11 containe
 
 ### Service Communication Pattern
 
-```
+```text
 Browser/API Client → Gateway (port 80/443) → Backend Services
                          ↓
                    Identity Service (8001) ← Authentication/Authorization
@@ -19,7 +19,7 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 ### Core Services & Ports
 
 | Service | Port | Purpose | Auth Method |
-|---------|------|---------|-------------|
+| --------- | ------ | --------- | ------------- |
 | **gateway** | 80/443 | OpenResty API gateway with Lua auth | JWT + API Key |
 | **identity** | 8001 | FastAPI auth service (JWT, teams, subscriptions) | JWT internally |
 | **api** (tools) | 8000 | FastAPI security tools (55+ tools) | API Key |
@@ -53,7 +53,7 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 
 ### API Key Format
 
-```
+```yaml
 wsk_<4-char-prefix>.<64-char-hex>
 Example: wsk_a3f4.e7d2c8b1...
 ```
@@ -76,6 +76,7 @@ const response = await fetch('http://localhost:8001/api/v1/auth/me')
 ```
 
 **Path transformation rules:**
+
 - Identity: `/api/v1/auth/*` → Gateway: `/auth/*`
 - Data: `/api/v1/data/*` → Gateway: `/api/v1/data/*`
 - Guardian: `/api/v1/vulnerabilities/*` → Gateway: `/api/v1/guardian/*`
@@ -96,6 +97,7 @@ sleep 180
 ```
 
 **First-time setup creates**:
+
 - Default admin user: `admin@wildbox.security` / `CHANGE-THIS-PASSWORD`
 - API keys for inter-service communication
 - Database schemas via migrations
@@ -119,16 +121,19 @@ curl http://localhost:8001/health
 ### Common Issues & Fixes
 
 **"Gateway upstream host not found"**: Services starting in wrong order
+
 ```bash
 docker-compose restart gateway
 ```
 
 **"Browser cache showing old data"**: Frontend caching issue
+
 ```bash
 # Clear browser cache or use incognito mode
 ```
 
 **"Database does not exist"**: Migration not run
+
 ```bash
 docker-compose exec postgres createdb -U postgres [db-name]
 docker-compose restart [service-name]
@@ -139,6 +144,7 @@ docker-compose restart [service-name]
 ### Creating a New API Endpoint
 
 1. **Backend** (FastAPI example in `identity`):
+
    ```python
    # app/api_v1/endpoints/new_feature.py
    @router.get("/new-endpoint")
@@ -151,6 +157,7 @@ docker-compose restart [service-name]
    ```
 
 2. **Gateway routing** (add to `nginx/conf.d/wildbox_gateway.conf`):
+
    ```nginx
    location /api/v1/new-feature/ {
        access_by_lua_block {
@@ -162,6 +169,7 @@ docker-compose restart [service-name]
    ```
 
 3. **Frontend client** (update `src/lib/api-client.ts`):
+
    ```typescript
    const newFeatureClient = new ApiClient(
      useGateway 
@@ -173,6 +181,7 @@ docker-compose restart [service-name]
 ### Database Migrations
 
 **Identity Service** (Alembic):
+
 ```bash
 # Create migration
 docker-compose exec identity alembic revision -m "description"
@@ -182,6 +191,7 @@ docker-compose exec identity alembic upgrade head
 ```
 
 **Django Services** (Guardian, Data):
+
 ```bash
 # Create migration
 docker-compose exec guardian python manage.py makemigrations
@@ -197,6 +207,7 @@ docker-compose exec guardian python manage.py migrate
 **Location**: `tests/integration/test_*.py`
 
 **Pattern**: Service-specific test classes with health checks first
+
 ```python
 class ServiceTester:
     def __init__(self, base_url: str = "http://localhost:8002"):
@@ -235,6 +246,7 @@ test('Complete workflow', async ({ page }) => {
 ```
 
 **Run tests**:
+
 ```bash
 cd open-security-dashboard
 npx playwright test --project=chromium
@@ -247,6 +259,7 @@ npx playwright show-report    # View results
 **Use before testing**: `./scripts/shell-scripts/comprehensive_health_check.sh`
 
 Validates:
+
 - All containers running
 - Database connectivity (postgres, redis)
 - Service health endpoints responding
@@ -259,6 +272,7 @@ Validates:
 **Never commit** `.env` files. Use `.env.example` as template.
 
 **Critical variables**:
+
 - `JWT_SECRET_KEY`: Identity service token signing
 - `GATEWAY_INTERNAL_SECRET`: Gateway → Identity auth
 - `DATABASE_URL`: PostgreSQL connection strings
@@ -267,6 +281,7 @@ Validates:
 ### Docker Compose Commands
 
 **Always use** `docker-compose` (not `docker compose`) for consistency:
+
 ```bash
 docker-compose up -d        # Start services
 docker-compose logs -f api  # Follow logs
@@ -283,6 +298,7 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 ### API Response Format
 
 **Consistent across services**:
+
 ```json
 {
   "status": "success|error",
@@ -295,22 +311,26 @@ docker-compose down -v      # Stop and remove volumes (destructive)
 ## 📚 Key Files Reference
 
 ### Gateway Configuration
+
 - `open-security-gateway/nginx/nginx.conf`: Main OpenResty config
 - `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`: Service routing
 - `open-security-gateway/nginx/lua/auth_handler.lua`: Authentication logic
 - `open-security-gateway/nginx/lua/utils.lua`: Shared utilities
 
 ### Identity Service
+
 - `open-security-identity/app/auth.py`: JWT/API key generation & validation
 - `open-security-identity/app/internal.py`: Gateway authorization endpoint
 - `open-security-identity/app/api_v1/endpoints/auth.py`: Public auth endpoints
 
 ### Frontend
+
 - `open-security-dashboard/src/lib/api-client.ts`: Gateway-aware API clients
 - `open-security-dashboard/src/app/api/`: Next.js API routes (SSR)
 - `open-security-dashboard/next.config.js`: Proxy & CORS config
 
 ### Infrastructure
+
 - `docker-compose.yml`: Service orchestration & dependencies
 - `scripts/shell-scripts/comprehensive_health_check.sh`: Health validation & auto-fix
 - `scripts/shell-scripts/system_monitor.sh`: Performance & resource monitoring

@@ -8,7 +8,7 @@ The agents service now includes a **vLLM-powered OpenAI-compatible API** running
 
 ### Architecture
 
-```
+```text
 ┌─────────────────┐     ┌──────────────┐     ┌─────────────┐
 │ Agents Service  │────▶│  vLLM API    │────▶│ Qwen2.5-0.5B│
 │   (FastAPI)     │     │ (Port 8000)  │     │   Model     │
@@ -77,7 +77,7 @@ docker-compose logs -f llm
 ### Environment Variables
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `OPENAI_BASE_URL` | `http://llm:8000/v1` | vLLM API endpoint |
 | `OPENAI_API_KEY` | `wildbox-local-llm` | API key for local LLM |
 | `OPENAI_MODEL` | `qwen3-0.6b` | Model name for inference |
@@ -95,6 +95,7 @@ llm:
 ```
 
 **Supported models:**
+
 - `Qwen/Qwen2.5-0.5B-Instruct` (500MB, fastest)
 - `Qwen/Qwen2.5-1.5B-Instruct` (1.5GB, balanced)
 - `Qwen/Qwen2.5-3B-Instruct` (3GB, best quality)
@@ -133,6 +134,7 @@ docker-compose up -d agents
 **Symptom:** `llm` container exits immediately
 
 **Solution 1: GPU not detected**
+
 ```bash
 # Check GPU availability
 docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
@@ -143,6 +145,7 @@ sudo systemctl restart docker
 ```
 
 **Solution 2: Use CPU-only mode**
+
 ```bash
 docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ```
@@ -152,6 +155,7 @@ docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 **Symptom:** "Repository not found" or "Connection timeout"
 
 **Solution: Set Hugging Face token (for gated models)**
+
 ```yaml
 llm:
   environment:
@@ -159,6 +163,7 @@ llm:
 ```
 
 **Solution: Use proxy for China/restricted regions**
+
 ```yaml
 llm:
   environment:
@@ -170,6 +175,7 @@ llm:
 **Symptom:** "CUDA out of memory" or container restarts
 
 **Solution 1: Reduce max model length**
+
 ```yaml
 llm:
   command: >
@@ -178,6 +184,7 @@ llm:
 ```
 
 **Solution 2: Use smaller model**
+
 ```yaml
 llm:
   command: >
@@ -185,6 +192,7 @@ llm:
 ```
 
 **Solution 3: Use CPU mode**
+
 ```bash
 docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 ```
@@ -194,6 +202,7 @@ docker-compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
 **Expected:** 2-5 tokens/second on CPU
 
 **Optimization:**
+
 ```yaml
 llm:
   deploy:
@@ -208,16 +217,19 @@ llm:
 ### Agent analysis fails
 
 **Check LLM health:**
+
 ```bash
 curl http://localhost:8080/health
 ```
 
 **Check agent logs:**
+
 ```bash
 docker-compose logs agents | grep -i llm
 ```
 
 **Test LLM directly:**
+
 ```bash
 curl http://localhost:8080/v1/chat/completions \
   -H "Authorization: Bearer wildbox-local-llm" \
@@ -229,7 +241,7 @@ curl http://localhost:8080/v1/chat/completions \
 ### Qwen2.5-0.5B-Instruct
 
 | Hardware | Tokens/sec | Analysis Time | Cost |
-|----------|------------|---------------|------|
+| ---------- | ------------ | --------------- | ------ |
 | RTX 3090 (24GB) | 50-80 | 10-15s | Free |
 | RTX 2060 (6GB) | 15-20 | 20-30s | Free |
 | CPU (8 cores) | 2-5 | 60-120s | Free |
@@ -238,7 +250,7 @@ curl http://localhost:8080/v1/chat/completions \
 ### Quality Comparison
 
 | Model | Verdict Accuracy | Report Quality | Reasoning Depth |
-|-------|------------------|----------------|-----------------|
+| ------- | ------------------ | ---------------- | ----------------- |
 | Qwen2.5-0.5B | ⭐⭐⭐ Good | ⭐⭐⭐ Good | ⭐⭐ Basic |
 | Qwen2.5-3B | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐ Moderate |
 | GPT-4o | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Deep |
@@ -262,6 +274,7 @@ curl http://localhost:8080/v1/chat/completions \
 ## Recommended Deployment
 
 ### Development/Testing
+
 ```yaml
 # Local LLM (CPU or GPU)
 OPENAI_BASE_URL=http://llm:8000/v1
@@ -269,6 +282,7 @@ OPENAI_MODEL=qwen3-0.6b
 ```
 
 ### Low-Volume Production (<100/day)
+
 ```yaml
 # Local LLM (GPU required)
 OPENAI_BASE_URL=http://llm:8000/v1
@@ -276,6 +290,7 @@ OPENAI_MODEL=qwen3-0.6b
 ```
 
 ### High-Volume Production (>100/day)
+
 ```yaml
 # OpenAI API (best quality + speed)
 OPENAI_BASE_URL=
@@ -284,6 +299,7 @@ OPENAI_API_KEY=sk-real-key
 ```
 
 ### Hybrid Deployment
+
 ```python
 # Route based on priority
 if priority == "high":
@@ -333,11 +349,14 @@ If you were using LM Studio:
 
 1. **Stop LM Studio** (port 1234 no longer needed)
 2. **Remove old configuration:**
+
    ```bash
    unset OPENAI_BASE_URL
    # Or delete from .env: OPENAI_BASE_URL=http://192.168.100.12:1234/v1
    ```
+
 3. **Start new stack:**
+
    ```bash
    docker-compose down
    docker-compose up -d
@@ -346,6 +365,7 @@ If you were using LM Studio:
 ## Support
 
 For issues or questions:
+
 - GitHub Issues: https://github.com/fabriziosalmi/wildbox/issues
 - Documentation: https://wildbox.security/docs
 - Security: security@wildbox.security

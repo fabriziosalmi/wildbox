@@ -20,6 +20,7 @@ Before starting, ensure you have:
 - **Minimum Resources**: 8GB RAM, 20GB disk space
 
 **Check your installations:**
+
 ```bash
 docker --version
 docker-compose --version
@@ -121,7 +122,7 @@ curl http://localhost:8006/health
 Open your browser and navigate to:
 
 | Service | URL | Default Credentials |
-|---------|-----|-------------------|
+| --------- | ----- | ------------------- |
 | **Dashboard** | http://localhost:3000 | See [Credentials Guide](./credentials) |
 | **API Docs** | http://localhost:8000/docs | N/A |
 | **Prometheus** | http://localhost:9090 | N/A |

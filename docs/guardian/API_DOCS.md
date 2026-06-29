@@ -6,7 +6,7 @@ The Open Security Guardian provides a comprehensive REST API for vulnerability m
 
 ## Base URL
 
-```
+```text
 http://localhost:8000/api/v1/
 ```
 
@@ -51,11 +51,13 @@ Standard Django session authentication for web interface.
 ### Assets Management
 
 #### List Assets
+
 ```http
 GET /api/v1/assets/
 ```
 
 Query parameters:
+
 - `asset_type`: Filter by asset type
 - `environment`: Filter by environment
 - `criticality`: Filter by criticality level
@@ -65,6 +67,7 @@ Query parameters:
 - `page_size`: Number of items per page (max 100)
 
 Example response:
+
 ```json
 {
     "count": 250,
@@ -89,6 +92,7 @@ Example response:
 ```
 
 #### Create Asset
+
 ```http
 POST /api/v1/assets/
 Content-Type: application/json
@@ -106,11 +110,13 @@ Content-Type: application/json
 ```
 
 #### Get Asset Details
+
 ```http
 GET /api/v1/assets/{id}/
 ```
 
 #### Update Asset
+
 ```http
 PUT /api/v1/assets/{id}/
 Content-Type: application/json
@@ -122,11 +128,13 @@ Content-Type: application/json
 ```
 
 #### Asset Vulnerabilities
+
 ```http
 GET /api/v1/assets/{id}/vulnerabilities/
 ```
 
 #### Asset Scan History
+
 ```http
 GET /api/v1/assets/{id}/scan_history/
 ```
@@ -134,11 +142,13 @@ GET /api/v1/assets/{id}/scan_history/
 ### Vulnerability Management
 
 #### List Vulnerabilities
+
 ```http
 GET /api/v1/vulnerabilities/
 ```
 
 Query parameters:
+
 - `severity`: Filter by severity (critical, high, medium, low)
 - `status`: Filter by status (open, in_progress, resolved, false_positive)
 - `asset`: Filter by asset ID
@@ -147,6 +157,7 @@ Query parameters:
 - `search`: Search in title, description, or CVE ID
 
 Example response:
+
 ```json
 {
     "count": 1250,
@@ -175,6 +186,7 @@ Example response:
 ```
 
 #### Create Vulnerability
+
 ```http
 POST /api/v1/vulnerabilities/
 Content-Type: application/json
@@ -193,6 +205,7 @@ Content-Type: application/json
 ```
 
 #### Update Vulnerability Status
+
 ```http
 PATCH /api/v1/vulnerabilities/{id}/
 Content-Type: application/json
@@ -205,11 +218,13 @@ Content-Type: application/json
 ```
 
 #### Vulnerability Statistics
+
 ```http
 GET /api/v1/vulnerabilities/stats/
 ```
 
 Response:
+
 ```json
 {
     "total_count": 1250,
@@ -234,11 +249,13 @@ Response:
 ### Scanner Management
 
 #### List Scanners
+
 ```http
 GET /api/v1/scanners/
 ```
 
 #### Create Scanner Configuration
+
 ```http
 POST /api/v1/scanners/
 Content-Type: application/json
@@ -258,6 +275,7 @@ Content-Type: application/json
 ```
 
 #### Run Scan
+
 ```http
 POST /api/v1/scanners/{id}/scan/
 Content-Type: application/json
@@ -270,6 +288,7 @@ Content-Type: application/json
 ```
 
 #### Scan Results
+
 ```http
 GET /api/v1/scanners/scans/{scan_id}/results/
 ```
@@ -277,21 +296,25 @@ GET /api/v1/scanners/scans/{scan_id}/results/
 ### Compliance Management
 
 #### List Compliance Frameworks
+
 ```http
 GET /api/v1/compliance/frameworks/
 ```
 
 #### Framework Controls
+
 ```http
 GET /api/v1/compliance/frameworks/{id}/controls/
 ```
 
 #### List Assessments
+
 ```http
 GET /api/v1/compliance/assessments/
 ```
 
 #### Create Assessment
+
 ```http
 POST /api/v1/compliance/assessments/
 Content-Type: application/json
@@ -306,11 +329,13 @@ Content-Type: application/json
 ```
 
 #### Assessment Summary
+
 ```http
 GET /api/v1/compliance/assessments/{id}/summary/
 ```
 
 Response:
+
 ```json
 {
     "total_controls": 285,
@@ -326,6 +351,7 @@ Response:
 ```
 
 #### Submit Evidence
+
 ```http
 POST /api/v1/compliance/evidence/
 Content-Type: multipart/form-data
@@ -340,11 +366,13 @@ file: @/path/to/evidence.png
 ### Remediation Management
 
 #### List Remediation Workflows
+
 ```http
 GET /api/v1/remediation/workflows/
 ```
 
 #### Create Ticket
+
 ```http
 POST /api/v1/remediation/tickets/
 Content-Type: application/json
@@ -360,6 +388,7 @@ Content-Type: application/json
 ```
 
 #### Update Ticket Status
+
 ```http
 PATCH /api/v1/remediation/tickets/{id}/
 Content-Type: application/json
@@ -371,6 +400,7 @@ Content-Type: application/json
 ```
 
 #### Add Comment
+
 ```http
 POST /api/v1/remediation/tickets/{id}/comments/
 Content-Type: application/json
@@ -384,11 +414,13 @@ Content-Type: application/json
 ### Reporting & Analytics
 
 #### List Report Templates
+
 ```http
 GET /api/v1/reports/templates/
 ```
 
 #### Generate Report
+
 ```http
 POST /api/v1/reports/templates/{id}/generate/
 Content-Type: application/json
@@ -409,11 +441,13 @@ Content-Type: application/json
 ```
 
 #### Download Report
+
 ```http
 GET /api/v1/reports/reports/{id}/download/
 ```
 
 #### Dashboard Data
+
 ```http
 GET /api/v1/reports/dashboards/{id}/data/
 ```
@@ -421,16 +455,19 @@ GET /api/v1/reports/dashboards/{id}/data/
 ### Integration Management
 
 #### List External Systems
+
 ```http
 GET /api/v1/integrations/systems/
 ```
 
 #### Test Integration
+
 ```http
 POST /api/v1/integrations/systems/{id}/test/
 ```
 
 #### Sync Data
+
 ```http
 POST /api/v1/integrations/systems/{id}/sync/
 Content-Type: application/json
@@ -444,12 +481,15 @@ Content-Type: application/json
 ## Response Formats
 
 ### Success Response
+
 All successful responses return JSON with appropriate HTTP status codes:
+
 - `200 OK`: Successful GET, PUT, PATCH
 - `201 Created`: Successful POST
 - `204 No Content`: Successful DELETE
 
 ### Error Response
+
 Error responses include details about the failure:
 
 ```json
@@ -464,6 +504,7 @@ Error responses include details about the failure:
 ```
 
 ### Pagination
+
 List endpoints support pagination:
 
 ```json
@@ -478,11 +519,13 @@ List endpoints support pagination:
 ## Rate Limiting
 
 The API implements rate limiting:
+
 - Anonymous users: 100 requests/hour
 - Authenticated users: 1000 requests/hour
 - API key users: 5000 requests/hour
 
 Rate limit headers are included in responses:
+
 ```http
 X-RateLimit-Limit: 1000
 X-RateLimit-Remaining: 999
@@ -494,21 +537,25 @@ X-RateLimit-Reset: 1625097600
 Most list endpoints support filtering and searching:
 
 ### Date Filters
+
 ```http
 GET /api/v1/vulnerabilities/?discovered_after=2025-06-01&discovered_before=2025-06-30
 ```
 
 ### Multiple Value Filters
+
 ```http
 GET /api/v1/vulnerabilities/?severity=critical,high&status=open
 ```
 
 ### Search
+
 ```http
 GET /api/v1/assets/?search=web-server
 ```
 
 ### Ordering
+
 ```http
 GET /api/v1/vulnerabilities/?ordering=-cvss_score,discovered_at
 ```
@@ -518,6 +565,7 @@ GET /api/v1/vulnerabilities/?ordering=-cvss_score,discovered_at
 Configure webhooks to receive real-time notifications:
 
 ### Register Webhook
+
 ```http
 POST /api/v1/integrations/webhooks/
 Content-Type: application/json
@@ -531,6 +579,7 @@ Content-Type: application/json
 ```
 
 ### Webhook Events
+
 - `vulnerability.created`
 - `vulnerability.updated`
 - `asset.created`
@@ -541,6 +590,7 @@ Content-Type: application/json
 ## SDK and Client Libraries
 
 Official client libraries are available:
+
 - Python: `pip install guardian-api-client`
 - JavaScript: `npm install @wildbox/guardian-client`
 - Go: `go get github.com/wildbox/guardian-go-client`
@@ -548,7 +598,7 @@ Official client libraries are available:
 ## Error Codes
 
 | Code | Description |
-|------|-------------|
+| ------ | ------------- |
 | 400 | Bad Request - Invalid data provided |
 | 401 | Unauthorized - Authentication required |
 | 403 | Forbidden - Insufficient permissions |
@@ -572,6 +622,7 @@ Official client libraries are available:
 ## Support
 
 For API support and questions:
+
 - Documentation: https://docs.wildbox.security/guardian/api
 - GitHub Issues: https://github.com/wildbox/open-security-guardian/issues
 - Email: support@wildbox.security

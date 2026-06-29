@@ -28,17 +28,20 @@ The Wildbox Security API now has comprehensive Docker and Docker Compose support
 ### 🚀 Key Features
 
 #### Docker Images
+
 - **Production Image**: Optimized, secure, non-root user
 - **Development Image**: Hot reload, debugging tools
 - **Multi-stage builds**: Minimal final image size
 - **Security**: Non-root execution, minimal attack surface
 
 #### Services
+
 - **Wildbox API**: Main FastAPI application
 - **Redis**: Caching and rate limiting
 - **Nginx**: Optional reverse proxy with SSL/TLS support
 
 #### Management
+
 - **Makefile**: 20+ commands for easy Docker management
 - **Health Checks**: Built-in container health monitoring
 - **Automated Setup**: One-command setup script
@@ -69,6 +72,7 @@ make urls         # Show access URLs
 ### 📊 Environment Variables
 
 Key configuration options:
+
 - `API_KEY` - Required authentication key
 - `DEBUG` - Enable development mode
 - `REDIS_URL` - Redis connection
@@ -104,6 +108,7 @@ Key configuration options:
 ## Quick Start
 
 1. **Clone and setup:**
+
    ```bash
    git clone <repository>
    cd open-security-tools
@@ -111,6 +116,7 @@ Key configuration options:
    ```
 
 2. **Start development:**
+
    ```bash
    make dev
    ```

@@ -15,12 +15,14 @@ docker-compose up --build
 ```
 
 The service will automatically:
+
 - ✅ Create and migrate the database schema
 - ✅ Set up FastAPI Users authentication system  
 - ✅ Create an initial admin user (optional)
 - ✅ Start all services
 
 **Default Access:**
+
 - **API**: http://localhost:8001
 - **Documentation**: http://localhost:8001/docs
 - **Admin Email**: admin@wildbox.security
@@ -31,6 +33,7 @@ The service will automatically:
 ## 📋 New FastAPI Users Features
 
 The service now includes enhanced authentication with:
+
 - 🔐 Secure JWT authentication
 - ✉️ Email verification system
 - 🔑 Password reset functionality  
@@ -50,7 +53,7 @@ Open Security Identity is the critical microservice that manages:
 
 ## Architecture
 
-```
+```text
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   API Gateway    │    │  Other Services │
 │                 │    │                  │    │                 │
@@ -84,29 +87,34 @@ Open Security Identity is the critical microservice that manages:
 ## Features
 
 ### 🔐 Authentication & Authorization
+
 - JWT token-based user authentication
 - API key authentication for service-to-service communication
 - Role-based access control (Owner, Admin, Member)
 - Secure password hashing with bcrypt
 
 ### 👥 Team Management
+
 - Multi-tenant team/organization support
 - Team ownership and membership management
 - Per-team subscription and billing
 
 ### 🔑 API Key Management
+
 - Secure API key generation and storage
 - Prefix-based key identification (wsk_xxxx)
 - Key expiration and usage tracking
 - Team-scoped key management
 
 ### 💳 Billing Integration
+
 - Stripe Checkout for subscription management
 - Customer Portal for self-service billing
 - Webhook handling for real-time updates
 - Multiple subscription tiers (Free, Pro, Business)
 
 ### 🛡️ Security Features
+
 - Password validation and hashing
 - API key hashing and secure comparison
 - Webhook signature verification
@@ -176,34 +184,41 @@ FRONTEND_URL=http://localhost:3000
 ## API Endpoints
 
 ### Authentication
+
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - User login
 - `GET /api/v1/auth/me` - Get current user info
 
 ### API Keys
+
 - `POST /api/v1/teams/{team_id}/api-keys` - Create API key
 - `GET /api/v1/teams/{team_id}/api-keys` - List API keys
 - `DELETE /api/v1/teams/{team_id}/api-keys/{prefix}` - Revoke API key
 
 ### Billing
+
 - `POST /api/v1/billing/create-checkout-session` - Create Stripe checkout
 - `POST /api/v1/billing/create-portal-session` - Create customer portal
 
 ### Internal (Service-to-Service)
+
 - `POST /internal/authorize` - Authorize API key and get permissions
 
 ### Webhooks
+
 - `POST /webhooks/stripe` - Stripe webhook handler
 
 ## Subscription Plans
 
 ### Free Plan
+
 - Basic tool access
 - 100 API calls/hour
 - 10 tool executions/hour
 - Community support
 
 ### Pro Plan ($29/month)
+
 - Advanced tools
 - Premium threat feeds
 - 1,000 API calls/hour
@@ -211,6 +226,7 @@ FRONTEND_URL=http://localhost:3000
 - Email support
 
 ### Business Plan ($99/month)
+
 - Enterprise tools
 - Premium + enterprise feeds
 - Advanced CSPM scanning
@@ -295,6 +311,7 @@ The service exposes several endpoints for monitoring:
 - `GET /docs` - API documentation
 
 Key metrics to monitor:
+
 - Authentication success/failure rates
 - API key usage patterns
 - Subscription status changes

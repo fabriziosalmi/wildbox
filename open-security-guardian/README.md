@@ -93,7 +93,8 @@ After successful setup, you should see:
 ### Swagger UI
 
 Interactive API documentation available at:
-```
+
+```text
 http://localhost:8013/docs
 ```
 
@@ -107,6 +108,7 @@ curl -H "X-API-Key: wsk_grd.your-key-here" \
 ```
 
 When accessed through the gateway (production):
+
 ```bash
 curl -H "X-API-Key: wsk_your-key" \
   http://localhost/api/v1/guardian/assets/assets/
@@ -186,6 +188,7 @@ curl http://localhost:8013/api/v1/assets/assets/1/ \
 Represents a trackable security asset (server, database, endpoint, etc.)
 
 **Key Fields:**
+
 - `name`: Asset identifier
 - `type`: server, database, endpoint, cloud_resource, network_device
 - `criticality`: low, medium, high, critical
@@ -197,6 +200,7 @@ Represents a trackable security asset (server, database, endpoint, etc.)
 Represents a security vulnerability associated with an asset
 
 **Key Fields:**
+
 - `asset`: Foreign key to Asset
 - `cve_id`: CVE identifier
 - `severity`: info, low, medium, high, critical
@@ -305,6 +309,7 @@ docker-compose exec guardian mypy apps/
 **Symptom:** API returns errors about missing tables
 
 **Solution:**
+
 ```bash
 docker-compose exec guardian python manage.py migrate
 ```
@@ -314,6 +319,7 @@ docker-compose exec guardian python manage.py migrate
 **Symptom:** 401 Unauthorized on all requests
 
 **Solution:**
+
 ```bash
 # Verify API key exists
 docker-compose exec guardian python manage.py shell
@@ -335,6 +341,7 @@ docker-compose exec guardian python manage.py shell
 **Symptom:** `OperationalError: could not connect to server`
 
 **Solution:**
+
 ```bash
 # Ensure PostgreSQL is running
 docker-compose ps postgres
@@ -384,6 +391,7 @@ API_PAGE_SIZE=50
 Main settings file: `guardian/settings.py`
 
 Key customizations:
+
 - REST Framework configuration
 - CORS settings (for frontend integration)
 - Cache backends
@@ -397,7 +405,7 @@ Key customizations:
 
 Production traffic flows through the gateway:
 
-```
+```text
 Client Request → Gateway (port 80)
   → Authentication Check (Identity Service)
   → Route: /api/v1/guardian/* → Guardian (port 8013)
@@ -440,6 +448,7 @@ const guardianClient = new ApiClient(
 ### Scaling
 
 For production deployments:
+
 - Use connection pooling (configured in `settings.py`)
 - Enable Redis caching for frequent queries
 - Consider read replicas for reporting queries
@@ -496,11 +505,13 @@ docker-compose logs --no-color guardian > guardian-logs.txt
 ### Metrics
 
 Prometheus metrics available at:
-```
+
+```text
 http://localhost:8013/metrics
 ```
 
 Key metrics:
+
 - `guardian_requests_total`: Total API requests
 - `guardian_assets_total`: Total assets tracked
 - `guardian_vulnerabilities_open`: Open vulnerabilities count
@@ -526,6 +537,7 @@ See main repository LICENSE file
 ## Support
 
 For questions or issues:
+
 1. Check this README and troubleshooting section
 2. Review `VALIDATION_COMPLETE.md` for known issues
 3. Check `/docs/guardian/` for detailed documentation

@@ -47,7 +47,7 @@ List all available SOAR playbooks.
 **Query Parameters**:
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| ------ | ------ | ---------- | ------------- |
 | category | string | No | Filter by category: incident_response, malware, threat_intel, access_control |
 | enabled | boolean | No | Filter by enabled status |
 | limit | integer | No | Number of results (default: 50) |
@@ -55,12 +55,14 @@ List all available SOAR playbooks.
 | search | string | No | Search playbook name or description |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8018/api/v1/playbooks?category=incident_response&enabled=true" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 24,
@@ -119,12 +121,14 @@ Get detailed information about a specific playbook.
 | playbook_id | string | Playbook identifier |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8018/api/v1/playbooks/pb-001 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "pb-001",
@@ -219,13 +223,14 @@ Execute a playbook with specified parameters.
 **Request Body**:
 
 | Field | Type | Required | Description |
-|-------|------|----------|-------------|
+| ------- | ------ | ---------- | ------------- |
 | trigger_data | object | Yes | Data from the triggering event |
 | alert_id | string | No | Associated alert ID |
 | incident_id | string | No | Associated incident ID |
 | priority | string | No | Priority: low, normal, high, critical (default: normal) |
 
 **Request**:
+
 ```bash
 curl -X POST http://localhost:8018/api/v1/playbooks/pb-001/execute \
   -H "Authorization: Bearer your-jwt-token" \
@@ -242,6 +247,7 @@ curl -X POST http://localhost:8018/api/v1/playbooks/pb-001/execute \
 ```
 
 **Response (202 Accepted)**:
+
 ```json
 {
   "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
@@ -274,12 +280,14 @@ Get the status and results of a playbook execution.
 | run_id | string | Execution run identifier |
 
 **Request**:
+
 ```bash
 curl -X GET http://localhost:8018/api/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK) - In Progress**:
+
 ```json
 {
   "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
@@ -311,6 +319,7 @@ curl -X GET http://localhost:8018/api/v1/runs/run-550e8400-e29b-41d4-a716-446655
 ```
 
 **Response (200 OK) - Completed**:
+
 ```json
 {
   "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
@@ -395,7 +404,7 @@ List playbook executions with filtering and pagination.
 **Query Parameters**:
 
 | Name | Type | Description |
-|------|------|-------------|
+| ------ | ------ | ------------- |
 | playbook_id | string | Filter by playbook |
 | status | string | Filter by status: running, success, failed, cancelled |
 | limit | integer | Results per page (default: 50) |
@@ -403,12 +412,14 @@ List playbook executions with filtering and pagination.
 | time_range | string | 1h, 24h, 7d, 30d |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8018/api/v1/runs?status=success&time_range=24h" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 45,
@@ -437,12 +448,14 @@ Cancel a running playbook execution.
 **Authentication**: Required (Bearer Token)
 
 **Request**:
+
 ```bash
 curl -X DELETE http://localhost:8018/api/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "message": "Execution cancelled",
@@ -471,12 +484,14 @@ List all configured connectors for playbook actions.
 | status | string | Filter by status: active, inactive, error |
 
 **Request**:
+
 ```bash
 curl -X GET "http://localhost:8018/api/v1/connectors?status=active" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 12,
@@ -519,7 +534,7 @@ curl -X GET "http://localhost:8018/api/v1/connectors?status=active" \
 ## Error Codes
 
 | Code | Status | Description |
-|------|--------|-------------|
+| ------ | -------- | ------------- |
 | 200 | OK | Request successful |
 | 202 | Accepted | Playbook execution started |
 | 400 | Bad Request | Invalid request parameters |
@@ -540,7 +555,7 @@ The Responder Service enforces rate limits per token:
 
 Rate limit information is returned in response headers:
 
-```
+```yaml
 X-RateLimit-Limit: 100
 X-RateLimit-Remaining: 95
 X-RateLimit-Reset: 1730963100

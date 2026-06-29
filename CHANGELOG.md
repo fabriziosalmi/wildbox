@@ -10,19 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.6.2] - 2026-06-28
 
 ### Changed
+
 - Documentation-quality CI: run link checking on Node 22 (Node 18 broke on the now-ESM `marked`), expand the cspell dictionary, and fix the empty-alt examples so the Spell Check, Link Validation, and Image Alt Text gates pass.
 
 ### Removed
+
 - Stopped tracking generated artifacts (`.coverage`, `tests/reports/junit.xml`, Playwright `test-results/`).
 - Removed committed status-report docs (`*_COMPLETE.md`, `*_IN_PROGRESS.md`, …) and one-off migration scripts.
 
 ### Fixed
+
 - Removed a hardcoded developer path from the tool audit/integration scripts so they run on any checkout.
 - Fixed the dead YouTube thumbnail link in the README (`maxresdefault` → `hqdefault`).
 
 ## [0.5.5] - 2026-02-22
 
 ### Security
+
 - Removed Bearer token bypass in data and responder services (granted enterprise/admin to any token)
 - Added authentication to 19 previously unauthenticated endpoints across data, responder, and agents services
 - Added SSRF protection (private IP filtering) to URL scanner and header analyzer tools
@@ -47,6 +51,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.4] - 2026-02-22
 
 ### Security
+
 - Updated aiohttp 3.12.x/3.13.2 → 3.13.3 across 6 services (fixes 8 CVEs: DoS, zip bomb, path leak)
 - Updated cryptography 44.0.x → 46.0.5 across 7 services (subgroup attack + OpenSSL vulnerability)
 - Updated Django 4.2.26 → 4.2.28 (SQL injection + DoS + timing attack)
@@ -65,6 +70,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.5.2] - 2026-02-22
 
 ### Security
+
 - Added JWT token revocation via Redis blacklist with JTI claims
 - Implemented account lockout after failed login attempts
 - Added Docker network segmentation (frontend/backend/data layers)
@@ -82,39 +88,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed PostgreSQL port exposure in development docker-compose
 
 ### Added
+
 - `open-security-identity/app/token_blacklist.py` - Redis-based token blacklist and account lockout
 - `open-security-sensor/monitoring/alert_rules.yml` - Prometheus alerting rules
 - `scripts/backup_postgres.sh` - PostgreSQL backup script with encryption
 
 ### Removed
+
 - `.env-e` sed artifact removed from repository
 
 ## [0.5.0] - 2026-02-22
 
 ### Security
+
 - Comprehensive security hardening across all microservices
 
 ### Fixed
+
 - Pydantic v2 type annotation error in CSPM config
 - Test suite failures: missing services and insufficient timeouts in CI
 
 ### Changed
+
 - Enhanced integration tests for Identity Service authentication flow
 
 ## [0.4.0] - 2026-02-22
 
 ### Added
+
 - 8 FAANG-level architectural patterns implementation
 - Comprehensive documentation quality framework
 - Spell check dictionary (100 terms)
 
 ### Changed
+
 - Critical code quality remediation: removed test skips, fixed tests, extracted components
 - Documentation quality improvements (phases 1 and 2, issues 1-35)
 - Documentation quality audit completion report
 - Removed self-congratulatory progress reports from repository root
 
 ### Documentation
+
 - Replaced "blacklist/whitelist" with "denylist/allowlist" across documentation
 - Replaced "JWT blacklisting" with "JWT denylisting" in architecture docs
 - Added descriptive alt text to images for accessibility
@@ -124,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.2] - 2025-11-24
 
 ### Added
+
 - Comprehensive documentation improvements following best practices
 - Table of Contents in long documentation files
 - Explicit environment variable documentation in `.env.example`
@@ -133,6 +148,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Troubleshooting section expansions
 
 ### Changed
+
 - Replaced "Simply" and "Just" with direct instructions (removed condescending language)
 - Replaced "master/slave" with "main/replica" terminology
 - Replaced "sanity check" with "validity check" terminology
@@ -144,6 +160,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated API documentation with explicit return types
 
 ### Fixed
+
 - Removed hardcoded API keys from example code (replaced with clear placeholders)
 - Removed TODO placeholders from production documentation
 - Fixed broken hyperlinks throughout documentation
@@ -152,6 +169,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed whitespace in Markdown tables
 
 ### Security
+
 - Removed real-looking secrets from code examples
 - Added explicit security warnings for production deployments
 - Clarified authentication flow documentation
@@ -159,11 +177,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.1] - 2025-11-24
 
 ### Fixed
+
 - Corrected integration tests to use fastapi-users JWT endpoints (`/api/v1/auth/jwt/login`)
 - Fixed endpoint path mismatches causing 404 errors in CI/CD
 - Added appropriate test skips for unavailable services in test environment
 
 ### Changed
+
 - Improved CI/CD pipeline stability and reliability
 - Integration tests now validate actual API behavior when endpoints exist
 - Tests gracefully handle test environment limitations
@@ -171,18 +191,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.3.0] - 2025-11-23
 
 ### Added
+
 - Comprehensive integration test suite
 - E2E Playwright tests for frontend
 - Security validation tests
 - Performance monitoring tests
 
 ### Changed
+
 - Updated test infrastructure with docker-compose.test.yml
 - Enhanced test fixtures and utilities
 
 ## [0.2.0] - 2025-11-16
 
 ### Added
+
 - Security Tools Service with 55+ production-ready tools
 - Dual-mode authentication (API Key + Bearer Token)
 - Gateway-level authentication via OpenResty Lua
@@ -192,12 +215,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebSocket support for real-time updates
 
 ### Changed
+
 - Optimized FastAPI performance with async/await
 - Enhanced Django admin for Guardian service
 - Improved error handling across all APIs
 - Frontend bundle optimization with code splitting
 
 ### Fixed
+
 - PostgreSQL password inconsistencies
 - CORS issues in data service
 - Gateway routing for direct service access
@@ -205,6 +230,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Redis connection pooling issues
 
 ### Performance
+
 - 30% faster gateway authentication validation
 - Optimized database queries (eliminated N+1 patterns)
 - 60% reduced database load via Redis caching
@@ -213,6 +239,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2025-11-01
 
 ### Added
+
 - Initial release
 - Core microservices architecture
 - Identity management with RBAC

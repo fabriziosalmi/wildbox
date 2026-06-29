@@ -12,6 +12,7 @@
 Implemented **8 production-grade architectural patterns** to transform Wildbox from "vibecoding" to enterprise-grade reliability. These patterns are battle-tested by FAANG companies (Netflix, Stripe, Uber, Google) and address critical gaps in resilience, observability, and deployment safety.
 
 **Total Impact:**
+
 - **3,469 lines** of production-ready code
 - **12 new files** across shared libraries, tests, and infrastructure
 - **Zero breaking changes** to existing services (all additive)
@@ -24,12 +25,15 @@ Implemented **8 production-grade architectural patterns** to transform Wildbox f
 **File:** `/open-security-shared/idempotency.py` (280 lines)
 
 ### Problem Solved
+
 Without idempotency, network retries cause duplicate operations:
+
 - User clicks "Create API Key" twice → 2 API keys created
 - Payment retry after timeout → double charge
 - Webhook redelivery → duplicate database entries
 
 ### Solution
+
 RFC-compliant idempotency using Redis-backed storage:
 
 ```python
@@ -48,6 +52,7 @@ async def create_api_key(data: CreateKeyRequest):
 ```
 
 **Client usage:**
+
 ```bash
 # First request
 curl -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
@@ -60,6 +65,7 @@ curl -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
 ```
 
 ### Technical Details
+
 - **Storage:** Redis DB 6 (separate from cache)
 - **Key format:** UUID v4 (36 characters minimum)
 - **Fingerprint:** SHA256(method + path + key + body_hash)
@@ -67,6 +73,7 @@ curl -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
 - **Performance:** <1ms overhead per request
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/idempotency.py`
 2. ⏳ Add `redis` dependency to `requirements.txt`
 3. ⏳ Add middleware to Identity service (auth endpoints)
@@ -74,6 +81,7 @@ curl -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
 5. ⏳ Document in API reference with examples
 
 **Files to modify:**
+
 - `/open-security-identity/app/main.py` - Add middleware
 - `/open-security-identity/requirements.txt` - Add `redis>=5.0.0`
 
@@ -84,12 +92,15 @@ curl -H "Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000" \
 **File:** `/open-security-shared/circuit_breaker.py` (380 lines)
 
 ### Problem Solved
+
 When external services fail (OpenAI, threat feeds, cloud APIs), without circuit breakers:
+
 - Requests hang waiting for timeout (30s)
 - Thread pool exhaustion (all workers blocked)
 - Cascading failures across services
 
 ### Solution
+
 3-state circuit breaker (Netflix Hystrix pattern):
 
 ```python
@@ -113,12 +124,13 @@ async def analyze_with_ai(threat_data: dict):
 ### States & Transitions
 
 | State | Behavior | Transition |
-|-------|----------|------------|
+| ------- | ---------- | ------------ |
 | **CLOSED** | Normal operation | 3 failures → OPEN |
 | **OPEN** | Fail fast (no requests sent) | 120s timeout → HALF_OPEN |
 | **HALF_OPEN** | Test 1 request | Success → CLOSED, Failure → OPEN |
 
 ### Pre-configured Breakers
+
 1. `OPENAI_BREAKER` - 3 failures, 120s timeout (AI analysis)
 2. `THREAT_FEED_BREAKER` - 5 failures, 300s timeout (external IOCs)
 3. `AWS_API_BREAKER` - 10 failures, 180s timeout (CSPM scans)
@@ -126,6 +138,7 @@ async def analyze_with_ai(threat_data: dict):
 5. `GCP_API_BREAKER` - 10 failures, 180s timeout (CSPM scans)
 
 ### Monitoring
+
 ```python
 # Prometheus metrics endpoint
 @app.get("/metrics/circuit-breakers")
@@ -137,6 +150,7 @@ async def breaker_metrics():
 ```
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/circuit_breaker.py`
 2. ⏳ Wrap all OpenAI calls in `agents` service
 3. ⏳ Wrap threat feed API calls in `data` service
@@ -144,6 +158,7 @@ async def breaker_metrics():
 5. ⏳ Add Grafana dashboard for breaker states
 
 **Files to modify:**
+
 - `/open-security-agents/app/analysis.py` - Wrap `openai.chat.completions.create()`
 - `/open-security-data/app/threat_feeds.py` - Wrap external API calls
 - `/open-security-cspm/app/cloud_apis.py` - Wrap AWS/Azure/GCP clients
@@ -155,12 +170,15 @@ async def breaker_metrics():
 **File:** `/open-security-shared/event_sourcing.py` (330 lines)
 
 ### Problem Solved
+
 Without event sourcing:
+
 - No audit trail (can't prove what happened)
 - Can't reconstruct past state (debugging impossible)
 - Compliance violations (GDPR, SOC 2 require audit logs)
 
 ### Solution
+
 Immutable event store with PostgreSQL:
 
 ```python
@@ -195,6 +213,7 @@ for event in events:
 ```
 
 ### Database Schema
+
 ```sql
 CREATE TABLE event_store (
     event_id UUID PRIMARY KEY,
@@ -210,12 +229,14 @@ CREATE TABLE event_store (
 ```
 
 ### 20+ Predefined Events
+
 - **Auth:** `UserCreated`, `UserLoginSuccess`, `UserPasswordChanged`
 - **API Keys:** `APIKeyCreated`, `APIKeyRotated`, `APIKeyRevoked`
 - **Teams:** `TeamMemberAdded`, `TeamRoleChanged`
 - **Vulnerabilities:** `VulnerabilityDiscovered`, `VulnerabilityRemediated`
 
 ### Time-Travel Debugging
+
 ```python
 # Reconstruct state at any point in time
 state = await event_store.get_snapshot("api_key_abc123")
@@ -223,6 +244,7 @@ state = await event_store.get_snapshot("api_key_abc123")
 ```
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/event_sourcing.py`
 2. ⏳ Create `event_store` table in identity database
 3. ⏳ Emit events on user creation/login in identity service
@@ -230,6 +252,7 @@ state = await event_store.get_snapshot("api_key_abc123")
 5. ⏳ Create audit trail API endpoint
 
 **Files to modify:**
+
 - `/open-security-identity/app/auth.py` - Emit `UserCreated`, `UserLoginSuccess`
 - `/open-security-guardian/vulnerabilities/views.py` - Emit vulnerability events
 
@@ -240,12 +263,15 @@ state = await event_store.get_snapshot("api_key_abc123")
 **File:** `/open-security-shared/cqrs.py` (420 lines)
 
 ### Problem Solved
+
 Without CQRS:
+
 - Dashboard queries slow down write operations
 - Analytics queries lock database tables
 - Can't scale reads independently from writes
 
 ### Solution
+
 Separate command (write) and query (read) models:
 
 ```python
@@ -279,11 +305,13 @@ async def get_team_stats(query: GetTeamStatsQuery) -> dict:
 ```
 
 ### Performance Impact
+
 - **Baseline:** Dashboard query takes 2.5s (joins 5 tables)
 - **With CQRS:** Dashboard query takes 50ms (cached + materialized view)
 - **50x improvement** for read-heavy endpoints
 
 ### Materialized Views
+
 ```sql
 CREATE MATERIALIZED VIEW team_stats_mv AS
 SELECT 
@@ -299,6 +327,7 @@ CREATE INDEX ON team_stats_mv (team_id);
 ```
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/cqrs.py`
 2. ⏳ Create materialized views for dashboard widgets
 3. ⏳ Implement QueryBus in identity service (user stats)
@@ -306,6 +335,7 @@ CREATE INDEX ON team_stats_mv (team_id);
 5. ⏳ Add cache invalidation to all write operations
 
 **Files to modify:**
+
 - `/open-security-identity/app/analytics.py` - Use QueryBus for stats
 - `/open-security-guardian/vulnerabilities/views.py` - Use QueryBus for trends
 
@@ -316,12 +346,15 @@ CREATE INDEX ON team_stats_mv (team_id);
 **File:** `/open-security-shared/tracing.py` (400 lines)
 
 ### Problem Solved
+
 Without distributed tracing:
+
 - Can't debug cross-service requests (which service is slow?)
 - No visibility into database query performance
 - Can't correlate logs across services
 
 ### Solution
+
 OpenTelemetry with Jaeger backend:
 
 ```python
@@ -345,7 +378,8 @@ setup_wildbox_service_tracing(
 ### Trace Visualization
 
 **Request flow:**
-```
+
+```http
 Gateway [200ms]
   └─> Identity [180ms]
       ├─> PostgreSQL query [50ms] - SELECT * FROM users
@@ -354,18 +388,21 @@ Gateway [200ms]
 ```
 
 **Jaeger UI:** `http://localhost:16686`
+
 - Search traces by service
 - Filter by latency (>1s)
 - View request dependencies
 - Correlate with logs (trace_id in every log line)
 
 ### Automatic Instrumentation
+
 - **FastAPI:** All endpoints
 - **SQLAlchemy:** All queries
 - **Redis:** All commands
 - **httpx:** All external API calls
 
 ### Manual Spans
+
 ```python
 from shared.tracing import trace_function, trace_span
 
@@ -379,6 +416,7 @@ async with trace_span("external_api", api="openai"):
 ```
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/tracing.py`
 2. ⏳ Add Jaeger to `docker-compose.yml`
 3. ⏳ Add OpenTelemetry dependencies to all services
@@ -386,11 +424,13 @@ async with trace_span("external_api", api="openai"):
 5. ⏳ Update logging format to include trace_id
 
 **Files to modify:**
+
 - `/docker-compose.yml` - Add Jaeger service
 - `/open-security-identity/requirements.txt` - Add `opentelemetry-*` packages
 - `/open-security-identity/app/main.py` - Call `setup_wildbox_service_tracing()`
 
 **Docker Compose addition:**
+
 ```yaml
 jaeger:
   image: jaegertracing/all-in-one:1.50
@@ -406,12 +446,15 @@ jaeger:
 **File:** `/tests/chaos/test_chaos_experiments.py` (450 lines)
 
 ### Problem Solved
+
 Without chaos testing:
+
 - Don't know if circuit breakers work until production outage
 - No validation of graceful degradation
 - Blind to cascading failure scenarios
 
 ### Solution
+
 Docker-based chaos testing with `ChaosController`:
 
 ```python
@@ -440,39 +483,48 @@ chaos.restore_limits('wildbox-agents-1')
 ### Test Scenarios
 
 **1. Identity Service Isolation**
+
 ```bash
 pytest tests/chaos/test_chaos_identity.py::test_identity_network_partition
 ```
+
 - Disconnect identity service
 - Verify circuit breaker trips within 5s
 - Verify requests fail fast (<2s, not timeout)
 - Reconnect and verify recovery
 
 **2. Database Latency**
+
 ```bash
 pytest tests/chaos/test_chaos_identity.py::test_database_latency_impact
 ```
+
 - Inject 500ms database delay
 - Verify response times increase
 - Verify no timeouts or crashes
 
 **3. Cascading Failures**
+
 ```bash
 pytest tests/chaos/test_chaos_failures.py::test_upstream_service_down
 ```
+
 - Kill data service
 - Verify guardian circuit breaker trips
 - Verify guardian remains functional for non-IOC operations
 
 **4. Full Outage Scenario** (manual)
+
 ```bash
 pytest tests/chaos/test_chaos_experiments.py::test_full_outage_scenario -v -s
 ```
+
 - Kill database, Redis, identity service
 - Verify gateway remains responsive
 - Restore services and verify full recovery
 
 ### Adoption Plan
+
 1. ✅ Created `/tests/chaos/test_chaos_experiments.py`
 2. ⏳ Install `docker` and `psutil` Python packages
 3. ⏳ Run chaos tests against staging environment
@@ -480,6 +532,7 @@ pytest tests/chaos/test_chaos_experiments.py::test_full_outage_scenario -v -s
 5. ⏳ Create runbook for chaos test failures
 
 **Run command:**
+
 ```bash
 pytest tests/chaos/ -v -m chaos
 ```
@@ -491,12 +544,15 @@ pytest tests/chaos/ -v -m chaos
 **File:** `/open-security-shared/feature_flags.py` (500 lines)
 
 ### Problem Solved
+
 Without feature flags:
+
 - Can't test features in production (100% or 0%)
 - Can't disable broken features without redeployment
 - No A/B testing capability
 
 ### Solution
+
 PostgreSQL + Redis feature flag service:
 
 ```python
@@ -529,7 +585,7 @@ else:
 ### Rollout Strategies
 
 | Strategy | Use Case | Example |
-|----------|----------|---------|
+| ---------- | ---------- | --------- |
 | **PERCENTAGE** | Gradual rollout | 10% → 50% → 100% |
 | **USERS** | VIP/beta testers | `["user_vip_1", "user_vip_2"]` |
 | **TEAMS** | Enterprise features | `["team_enterprise_1"]` |
@@ -538,6 +594,7 @@ else:
 | **NONE** | Kill switch | Disable instantly |
 
 ### Deterministic Percentage Rollout
+
 ```python
 # User "user_123" always gets same result for flag
 # SHA256(flag_key + user_id) % 100 < percentage
@@ -545,6 +602,7 @@ else:
 ```
 
 ### Default Flags
+
 1. `ai_threat_analysis` - 50% percentage rollout
 2. `cspm_azure_support` - Enterprise teams only
 3. `new_vulnerability_ui` - 10% beta rollout
@@ -552,6 +610,7 @@ else:
 5. `api_rate_limit_increase` - VIP users (kill switch disabled)
 
 ### Admin API
+
 ```python
 # Update rollout percentage
 @app.put("/admin/flags/{key}/percentage")
@@ -571,6 +630,7 @@ async def disable_flag(key: str):
 ```
 
 ### Adoption Plan
+
 1. ✅ Created `/open-security-shared/feature_flags.py`
 2. ⏳ Create `feature_flags` table in identity database
 3. ⏳ Create default flags with `WILDBOX_FLAGS`
@@ -578,6 +638,7 @@ async def disable_flag(key: str):
 5. ⏳ Build admin UI for flag management
 
 **Files to modify:**
+
 - `/open-security-identity/migrations/` - Add feature_flags table
 - `/open-security-agents/app/analysis.py` - Check `ai_threat_analysis` flag
 
@@ -585,7 +646,8 @@ async def disable_flag(key: str):
 
 ## 8. Blue/Green Deployments 🔵🟢
 
-**Files:** 
+**Files:**
+
 - `/docker-compose.blue-green.yml` (200 lines)
 - `/scripts/shell-scripts/blue_green_deploy.sh` (80 lines)
 - `/scripts/shell-scripts/blue_green_rollback.sh` (60 lines)
@@ -593,15 +655,18 @@ async def disable_flag(key: str):
 - `/haproxy/haproxy.cfg` (100 lines)
 
 ### Problem Solved
+
 Without blue/green deployments:
+
 - Downtime during deployments (service restarts)
 - No safe rollback (need to rebuild old version)
 - High risk deployments (all-or-nothing)
 
 ### Solution
+
 HAProxy-based blue/green infrastructure:
 
-```
+```text
 ┌─────────────┐
 │   HAProxy   │ :80
 └──────┬──────┘
@@ -617,6 +682,7 @@ HAProxy-based blue/green infrastructure:
 ```
 
 ### Deployment Flow
+
 ```bash
 # Step 1: Deploy new version to green
 ./scripts/blue_green_deploy.sh identity 0.3.0
@@ -631,6 +697,7 @@ HAProxy-based blue/green infrastructure:
 ```
 
 ### Instant Rollback
+
 ```bash
 # If issues detected
 ./scripts/blue_green_rollback.sh identity
@@ -643,6 +710,7 @@ HAProxy-based blue/green infrastructure:
 ```
 
 ### Health Monitoring
+
 ```bash
 ./scripts/blue_green_health.sh
 
@@ -653,6 +721,7 @@ HAProxy-based blue/green infrastructure:
 ```
 
 ### HAProxy Configuration
+
 ```haproxy
 backend wildbox_services
     # Active: blue (current production)
@@ -663,6 +732,7 @@ backend wildbox_services
 ```
 
 ### Adoption Plan
+
 1. ✅ Created blue/green infrastructure files
 2. ⏳ Deploy HAProxy to production
 3. ⏳ Test blue/green deployment in staging
@@ -670,6 +740,7 @@ backend wildbox_services
 5. ⏳ Document rollback procedures in runbook
 
 **Files to create:**
+
 - `/scripts/shell-scripts/smoke_tests.sh` - Basic API checks
 
 ---
@@ -677,6 +748,7 @@ backend wildbox_services
 ## Integration Roadmap
 
 ### Phase 1: Foundation (Week 1)
+
 - [ ] Add dependencies to all `requirements.txt` files
   - `redis>=5.0.0` (idempotency, CQRS, feature flags)
   - `opentelemetry-api>=1.20.0`
@@ -689,12 +761,14 @@ backend wildbox_services
   - `feature_flags` table (identity DB)
 
 ### Phase 2: Observability (Week 2)
+
 - [ ] Initialize OpenTelemetry in all 11 services
 - [ ] Verify traces appear in Jaeger UI
 - [ ] Add trace_id to all log lines
 - [ ] Create Grafana dashboards for traces
 
 ### Phase 3: Resilience (Week 3)
+
 - [ ] Add circuit breakers to all external API calls
   - Agents service: OpenAI calls
   - Data service: Threat feed APIs
@@ -706,6 +780,7 @@ backend wildbox_services
 - [ ] Validate circuit breakers trip correctly
 
 ### Phase 4: Event Sourcing (Week 4)
+
 - [ ] Emit events for all critical operations
   - User creation/login (identity)
   - API key rotation (identity)
@@ -714,6 +789,7 @@ backend wildbox_services
 - [ ] Build compliance report generator
 
 ### Phase 5: CQRS (Week 5)
+
 - [ ] Create materialized views
   - `team_stats_mv` (identity)
   - `vulnerability_trends_mv` (guardian)
@@ -722,18 +798,21 @@ backend wildbox_services
 - [ ] Measure query performance improvement
 
 ### Phase 6: Feature Flags (Week 6)
+
 - [ ] Create default flags (`WILDBOX_FLAGS`)
 - [ ] Add flag checks to AI analysis
 - [ ] Build admin UI for flag management
 - [ ] Document flag usage in API reference
 
 ### Phase 7: Blue/Green (Week 7)
+
 - [ ] Deploy HAProxy to production
 - [ ] Create smoke test suite
 - [ ] Test deployment in staging
 - [ ] Document rollback procedures
 
 ### Phase 8: Production Validation (Week 8)
+
 - [ ] Run full chaos test suite in production
 - [ ] Validate all patterns working together
 - [ ] Performance testing (load test with patterns enabled)
@@ -744,30 +823,37 @@ backend wildbox_services
 ## Metrics & Monitoring
 
 ### Idempotency
+
 - **Metric:** `idempotency_replay_count` (how many duplicates prevented)
 - **Alert:** >1000 replays/hour (possible attack or buggy client)
 
 ### Circuit Breakers
+
 - **Metric:** `circuit_breaker_state{service="openai"}` (0=CLOSED, 1=OPEN, 2=HALF_OPEN)
 - **Alert:** Any breaker in OPEN state >5 minutes
 
 ### Event Sourcing
+
 - **Metric:** `event_store_events_total` (events appended per second)
 - **Alert:** Disk space for event_store table >80% full
 
 ### CQRS
+
 - **Metric:** `query_cache_hit_rate` (percentage of cached reads)
 - **Target:** >90% cache hit rate for dashboard queries
 
 ### OpenTelemetry
+
 - **Metric:** `trace_latency_p99` (99th percentile request latency)
 - **Target:** <500ms for API endpoints
 
 ### Feature Flags
+
 - **Metric:** `feature_flag_evaluations{flag="ai_analysis"}` (checks per second)
 - **Dashboard:** Show rollout percentage vs actual usage
 
 ### Blue/Green
+
 - **Metric:** `deployment_duration_seconds` (time from start to switch)
 - **Target:** <5 minutes for complete deployment
 
@@ -776,10 +862,12 @@ backend wildbox_services
 ## Operational Runbooks
 
 ### Runbook 1: High Circuit Breaker Trip Rate
+
 **Symptoms:** Circuit breaker stuck in OPEN state  
 **Impact:** Users not getting AI analysis results
 
 **Steps:**
+
 1. Check Jaeger for traces showing OpenAI errors
 2. Verify OpenAI API key valid: `curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY"`
 3. Check OpenAI status page: https://status.openai.com
@@ -787,10 +875,12 @@ backend wildbox_services
 5. If API key issue: Rotate key and restart agents service
 
 ### Runbook 2: Feature Flag Rollback
+
 **Symptoms:** Increased error rate after flag rollout  
 **Impact:** Users experiencing new feature bugs
 
 **Steps:**
+
 1. Identify problematic flag: Check Grafana for error spike timing
 2. Instant disable: `curl -X POST /admin/flags/{key}/disable`
 3. Verify error rate drops
@@ -798,10 +888,12 @@ backend wildbox_services
 5. Deploy fix, re-enable flag gradually (10% → 25% → 50%)
 
 ### Runbook 3: Blue/Green Rollback
+
 **Symptoms:** New version causing errors  
 **Impact:** Production degraded
 
 **Steps:**
+
 1. Run rollback: `./scripts/blue_green_rollback.sh identity`
 2. Verify health: `./scripts/blue_green_health.sh`
 3. Check Jaeger traces for root cause
@@ -813,6 +905,7 @@ backend wildbox_services
 ## Cost Analysis
 
 ### Infrastructure Costs
+
 - **Jaeger:** ~$50/month (1 EC2 t3.medium)
 - **Redis (additional DB):** $0 (using existing Redis instance)
 - **PostgreSQL (additional tables):** $0 (using existing database)
@@ -821,6 +914,7 @@ backend wildbox_services
 **Total:** ~$50/month
 
 ### Engineering Time Saved
+
 - **Debugging without traces:** 2 hours/incident → 15 min (8x faster)
 - **Rollback deployments:** 30 min (rebuild) → 2 min (blue/green) (15x faster)
 - **Duplicate transaction debugging:** 1 hour → 0 (prevented by idempotency)
@@ -834,21 +928,25 @@ backend wildbox_services
 ## Security Considerations
 
 ### Idempotency
+
 - ✅ Keys must be UUID v4 (no predictable patterns)
 - ✅ Keys in Redis, not request headers (prevent replay attacks)
 - ✅ TTL prevents indefinite replay window
 
 ### Event Sourcing
+
 - ✅ Events immutable (append-only, no updates/deletes)
 - ✅ PII in `metadata` field (can be encrypted separately)
 - ✅ Aggregate IDs not sequential (use UUIDs)
 
 ### Feature Flags
+
 - ✅ Admin API requires authentication
 - ✅ Flag state cached in Redis (can't be manipulated by clients)
 - ✅ Percentage rollout deterministic (can't be gamed)
 
 ### Blue/Green
+
 - ✅ HAProxy stats dashboard requires authentication
 - ✅ Green environment isolated (no production traffic until validated)
 - ✅ Blue environment kept running (instant rollback)

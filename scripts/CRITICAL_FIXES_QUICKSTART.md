@@ -1,4 +1,5 @@
 # 🚨 Critical Fixes - Quick Implementation Guide
+
 ## Immediate Actions to Address Integrity Violations
 
 **Timeline**: Complete within 48 hours  
@@ -9,6 +10,7 @@
 ## 🎯 Fix #1: Remove Fake Metrics (2 hours)
 
 ### Current State (CRITICAL ISSUE)
+
 ```typescript
 // open-security-dashboard/src/app/admin/page.tsx:141-142
 const avgResponseTime = 0 // Real metrics not yet implemented
@@ -83,12 +85,14 @@ setSystemHealth({
 **Step 5**: Update dashboard page (`src/app/dashboard/page.tsx`) similarly - grep found it also has errorRate
 
 **Test**:
+
 ```bash
 cd open-security-dashboard
 npm run build  # Ensure no TypeScript errors
 ```
 
 **Commit**:
+
 ```bash
 git add -A
 git commit -m "fix(critical): Remove fake metrics, display 'N/A' until Prometheus integration
@@ -103,6 +107,7 @@ git commit -m "fix(critical): Remove fake metrics, display 'N/A' until Prometheu
 ## 🔍 Fix #2: Upgrade API Discovery (4 hours)
 
 ### Current State (NAIVE IMPLEMENTATION)
+
 ```python
 # open-security-tools/app/tools/api_security_tester/main.py:269-274
 common_paths = [
@@ -124,6 +129,7 @@ mkdir -p app/tools/wordlists
 **Step 2**: Download SecLists common API paths (manual curation for now)
 
 Create `app/tools/wordlists/api_common.txt`:
+
 ```bash
 cat > app/tools/wordlists/api_common.txt << 'EOF'
 # API Discovery Wordlist - Curated from SecLists
@@ -229,6 +235,7 @@ EOF
 **Step 3**: Create wordlist loader module
 
 Create `app/tools/wordlists/__init__.py`:
+
 ```python
 """Wordlist management for API discovery and security testing"""
 from pathlib import Path
@@ -389,6 +396,7 @@ curl -X POST http://localhost:8000/api/v1/tools/api_security_tester \
 ```
 
 **Commit**:
+
 ```bash
 git add -A
 git commit -m "fix(critical): Replace naive API discovery with extensible wordlist system
@@ -406,6 +414,7 @@ Future: Integrate full SecLists repository (4,700+ paths)"
 ## 🧪 Fix #3: Integration Test Emergency Stabilization (8 hours)
 
 ### Current State (DISABLED)
+
 ```yaml
 # Commit f8deb6a: "fix(ci): Disable integration tests"
 # Tests were failing due to service startup races
@@ -416,6 +425,7 @@ Future: Integrate full SecLists repository (4,700+ paths)"
 **Step 1**: Create service readiness checker
 
 Create `scripts/wait-for-services.sh`:
+
 ```bash
 #!/bin/bash
 set -e
@@ -504,6 +514,7 @@ Edit `.github/workflows/integration-tests.yml`:
 **Step 3**: Add pytest markers for test categorization
 
 Create `tests/integration/pytest.ini`:
+
 ```ini
 [pytest]
 markers =
@@ -515,6 +526,7 @@ markers =
 **Step 4**: Update integration tests to be more resilient
 
 Edit `tests/integration/conftest.py`:
+
 ```python
 import pytest
 import asyncio
@@ -574,6 +586,7 @@ All integration tests now pass locally and in CI."
 ## 🔐 Fix #4: Remove Default Secrets (4 hours)
 
 ### Current State (INSECURE DEFAULTS)
+
 ```yaml
 # docker-compose.yml:249
 - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-CHANGE-THIS-DB-PASSWORD}
@@ -661,6 +674,7 @@ EOF
 **Step 2**: Create secret generation helper
 
 Create `scripts/generate_secrets.py`:
+
 ```python
 #!/usr/bin/env python3
 """Generate secure secrets for Wildbox .env file"""
@@ -731,6 +745,7 @@ chmod +x scripts/generate_secrets.py
 **Step 3**: Create secret validation script
 
 Create `scripts/validate_secrets.py`:
+
 ```python
 #!/usr/bin/env python3
 """Validate that .env contains secure values (no defaults)"""
@@ -820,6 +835,7 @@ chmod +x scripts/validate_secrets.py
 **Step 4**: Update Makefile with secret management targets
 
 Add to `Makefile`:
+
 ```makefile
 .PHONY: generate-secrets validate-secrets
 
@@ -843,6 +859,7 @@ cp docker-compose.yml docker-compose.yml.backup
 ```
 
 Replace all instances of `${VAR:-default}` with just `${VAR}` for secrets:
+
 - `${POSTGRES_PASSWORD:-CHANGE-THIS-DB-PASSWORD}` → `${POSTGRES_PASSWORD}`
 - `${JWT_SECRET_KEY:-...}` → `${JWT_SECRET_KEY}`
 - etc.
@@ -850,6 +867,7 @@ Replace all instances of `${VAR:-default}` with just `${VAR}` for secrets:
 **Step 6**: Update service entrypoints to validate secrets on startup
 
 For each Python service, add to Dockerfile:
+
 ```dockerfile
 # Before CMD/ENTRYPOINT
 COPY scripts/validate_secrets.py /app/scripts/
@@ -876,6 +894,7 @@ docker-compose up -d
 ```
 
 **Commit**:
+
 ```bash
 git add .env.template scripts/generate_secrets.py scripts/validate_secrets.py Makefile
 git commit -m "fix(critical): Remove insecure default secrets, enforce validation
@@ -913,7 +932,7 @@ After completing all 4 critical fixes:
 ## 📈 Impact Assessment
 
 | Metric | Before | After |
-|--------|--------|-------|
+| -------- | -------- | ------- |
 | **Dashboard Integrity** | Displays fake data | Honest "N/A" until implemented |
 | **API Discovery Coverage** | 15 paths (naive) | 80+ paths (curated wordlist) |
 | **Test Status** | Disabled (giving up) | Re-enabled with resilience |

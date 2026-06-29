@@ -1,20 +1,20 @@
-# 🤝 Contributing to Wildbox
+# Contributing to Wildbox
 
 We welcome contributions from the security community! This guide will help you get started with contributing to Wildbox.
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Development Environment Setup](#-development-environment-setup)
-- [Code Contribution Process](#-code-contribution-process)
-- [Contribution Areas](#-contribution-areas)
-- [Security Contributions](#-security-contributions)
-- [Code Style Guidelines](#-code-style-guidelines)
-- [Testing Requirements](#-testing-requirements)
-- [Getting Help](#-getting-help)
+- [Development Environment Setup](#development-environment-setup)
+- [Code Contribution Process](#code-contribution-process)
+- [Contribution Areas](#contribution-areas)
+- [Security Contributions](#security-contributions)
+- [Code Style Guidelines](#code-style-guidelines)
+- [Testing Requirements](#testing-requirements)
+- [Getting Help](#getting-help)
 
 ---
 
-## 🛠️ Development Environment Setup
+## Development Environment Setup
 
 ### Prerequisites
 
@@ -102,7 +102,7 @@ alembic revision -m "description"
 
 ---
 
-## 💻 Code Contribution Process
+## Code Contribution Process
 
 ### 1. Find or Create an Issue
 
@@ -166,9 +166,9 @@ git push origin feature/my-feature-name
 
 ---
 
-## 💡 Contribution Areas
+## Contribution Areas
 
-### 🟢 Good First Issues (New Contributors)
+### Good First Issues (New Contributors)
 
 - Documentation improvements and typo fixes
 - Adding code examples and tutorials
@@ -177,7 +177,7 @@ git push origin feature/my-feature-name
 - Adding type hints to Python code
 - Creating Docker Compose variations
 
-### 🟡 Intermediate Contributions
+### Intermediate Contributions
 
 - New SOAR playbook examples
 - Additional threat intelligence feed integrations
@@ -186,7 +186,7 @@ git push origin feature/my-feature-name
 - Performance optimizations
 - Adding cloud provider connectors
 
-### 🔴 Advanced Contributions
+### Advanced Contributions
 
 - Multi-tenancy architecture
 - High-availability clustering
@@ -197,7 +197,7 @@ git push origin feature/my-feature-name
 
 ---
 
-## 🔒 Security Contributions
+## Security Contributions
 
 **Found a security vulnerability?**
 
@@ -212,7 +212,7 @@ Follow our [Security Policy](SECURITY.md):
 
 ---
 
-## 🎨 Code Style Guidelines
+## Code Style Guidelines
 
 ### Python
 
@@ -276,7 +276,7 @@ changes
 
 ---
 
-## ✅ Testing Requirements
+## Testing Requirements
 
 ### Required for All PRs
 
@@ -329,7 +329,7 @@ describe('Authentication', () => {
 
 ---
 
-## 💬 Getting Help
+## Getting Help
 
 - **Questions?** [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
 - **Feature Ideas?** [Ideas Discussion Category](https://github.com/fabriziosalmi/wildbox/discussions/categories/ideas)
@@ -338,9 +338,10 @@ describe('Authentication', () => {
 
 ---
 
-## 🎖️ Recognition
+## Recognition
 
 Contributors are recognized in:
+
 - [AUTHORS.md](AUTHORS.md) file
 - Release notes for their contributions
 - GitHub contributor graphs
@@ -348,11 +349,12 @@ Contributors are recognized in:
 
 **Thank you for contributing to Wildbox! 🙏**
 
-## 🔥 High Priority Contributions (Evaluation Phase)
+## High Priority Contributions (Evaluation Phase)
 
 As we are in an early evaluation phase, we are looking for feedback on the following:
 
 **Testing & Feedback** (No coding required)
+
 - [ ] Deploy Wildbox and share your experience.
 - [ ] Test different deployment scenarios (Docker, cloud, on-premise).
 - [ ] Try various security integrations and workflows.
@@ -361,6 +363,7 @@ As we are in an early evaluation phase, we are looking for feedback on the follo
 - [ ] Performance testing in different environments.
 
 **Issues & Bug Reports**
+
 - [ ] Compatibility issues (OS, Python, Node versions).
 - [ ] Documentation gaps or unclear sections.
 - [ ] Error messages that need improvement.
@@ -368,24 +371,26 @@ As we are in an early evaluation phase, we are looking for feedback on the follo
 - [ ] Performance bottlenecks you discover.
 
 **Real-World Feedback**
+
 - [ ] Share your deployment architecture.
 - [ ] Document security use cases you implement.
 - [ ] Suggest integrations with your tools.
 - [ ] Provide scaling feedback (10, 100, 1000+ events/sec).
 - [ ] Report operational issues and solutions.
 
-## 💻 Code Contribution Process
+### Code Contribution Process
 
-1.  **Fork** the repository on GitHub.
-2.  **Create** a feature branch: `git checkout -b feature/my-feature`.
-3.  **Make** your changes with clear, descriptive commits.
-4.  **Test** your changes thoroughly.
-5.  **Push** to your fork: `git push origin feature/my-feature`.
-6.  **Create** a Pull Request with a detailed description of your changes.
+1. **Fork** the repository on GitHub.
+2. **Create** a feature branch: `git checkout -b feature/my-feature`.
+3. **Make** your changes with clear, descriptive commits.
+4. **Test** your changes thoroughly.
+5. **Push** to your fork: `git push origin feature/my-feature`.
+6. **Create** a Pull Request with a detailed description of your changes.
 
-## 💡 Contribution Areas
+### Contribution Areas
 
-### Easy Wins for New Contributors
+#### Easy Wins for New Contributors
+
 - [ ] Documentation improvements and clarifications.
 - [ ] README translations to other languages.
 - [ ] Additional example configurations.
@@ -399,45 +404,48 @@ As we are in an early evaluation phase, we are looking for feedback on the follo
   - [x] Responder Service playbook endpoints.
   - [ ] CSPM Service cloud security endpoints.
 
-### Medium-Level Contributions
+#### Medium-Level Contributions
+
 - [ ] New SOAR playbook examples.
 - [ ] Additional threat intelligence sources.
 - [ ] Cloud provider integrations (starter).
 - [ ] Dashboard improvements and visualizations.
 - [ ] API client libraries in different languages.
 
-### Advanced Contributions
+#### Advanced Contributions
+
 - [ ] Multi-tenancy support.
 - [ ] High-availability clustering.
 - [ ] Advanced analytics features.
 - [ ] Custom authentication backends.
 - [ ] Performance optimizations.
 
-## 🔒 Security Contributions
+### Security Contributions
 
 Found a security vulnerability?
 
 **Please report security issues privately:**
+
 - Email: fabrizio.salmi@gmail.com
 - **Do NOT create public GitHub issues for security vulnerabilities.**
 - Include: description, reproduction steps, and impact assessment.
 - Allow 48 hours for an initial response.
 
-## 🎨 Code Style
+### Code Style
 
 - **Python**: Follow PEP 8 and use Black for formatting.
 - **TypeScript**: Follow the ESLint configuration and use Prettier.
 - **Commits**: Use clear, descriptive messages following the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
 - **Documentation**: Update relevant documentation with your changes.
 
-## ✅ Testing Requirements
+### Testing Requirements
 
 - Write unit tests for all new code.
 - Add integration tests for API changes.
 - Create E2E tests for user-facing features.
 - Maintain >80% code coverage.
 
-## 💬 Getting Help
+### Getting Help
 
 - **Questions?** Ask in [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions).
 - **Feature Ideas?** Post in [Discussions > Ideas](https://github.com/fabriziosalmi/wildbox/discussions/categories/ideas).

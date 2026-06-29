@@ -45,11 +45,13 @@ docker stats --no-stream
 ### Problem: `docker-compose` command not found
 
 **Symptoms:**
-```
+
+```bash
 bash: docker-compose: command not found
 ```
 
 **Solution:**
+
 ```bash
 # Install Docker Compose
 # Ubuntu/Debian
@@ -66,11 +68,13 @@ docker-compose --version
 ### Problem: Permission denied when running Docker commands
 
 **Symptoms:**
-```
+
+```text
 Got permission denied while trying to connect to the Docker daemon socket
 ```
 
 **Solution:**
+
 ```bash
 # Add your user to the docker group
 sudo usermod -aG docker $USER
@@ -85,11 +89,13 @@ newgrp docker
 ### Problem: Insufficient disk space
 
 **Symptoms:**
-```
+
+```yaml
 Error: No space left on device
 ```
 
 **Solution:**
+
 ```bash
 # Check disk space
 df -h
@@ -107,11 +113,13 @@ docker container prune
 ### Problem: Port already in use
 
 **Symptoms:**
-```
+
+```yaml
 Error: bind: address already in use
 ```
 
 **Solution:**
+
 ```bash
 # Find what's using the port (e.g., 8000)
 sudo lsof -i :8000
@@ -130,11 +138,13 @@ kill -9 <PID>
 ### Problem: Services keep restarting
 
 **Symptoms:**
-```
+
+```text
 Container is in "Restarting" status
 ```
 
 **Diagnostic Steps:**
+
 ```bash
 # Check specific service logs
 docker-compose logs <service-name>
@@ -149,6 +159,7 @@ docker inspect <container-name>
 **Common Causes & Solutions:**
 
 1. **Missing environment variables:**
+
    ```bash
    # Check .env file exists
    ls -la .env
@@ -158,6 +169,7 @@ docker inspect <container-name>
    ```
 
 2. **Database not ready:**
+
    ```bash
    # Check PostgreSQL is running
    docker-compose logs postgres
@@ -167,6 +179,7 @@ docker inspect <container-name>
    ```
 
 3. **Health check failing:**
+
    ```bash
    # Check health status
    docker ps --format "table {{.Names}}\t{{.Status}}"
@@ -178,11 +191,13 @@ docker inspect <container-name>
 ### Problem: Services fail to start with exit code 1
 
 **Symptoms:**
-```
+
+```text
 Exited with code 1
 ```
 
 **Solution:**
+
 ```bash
 # View full error logs
 docker-compose logs <service-name> --tail=100
@@ -201,10 +216,12 @@ docker-compose exec <service-name> ls -la
 ### Problem: Frontend (dashboard) shows blank page
 
 **Symptoms:**
+
 - Dashboard loads but shows white/blank screen
 - Browser console shows errors
 
 **Solution:**
+
 ```bash
 # Check dashboard logs
 docker-compose logs dashboard
@@ -226,12 +243,14 @@ docker-compose exec dashboard env | grep NEXT_PUBLIC
 ### Problem: Database connection refused
 
 **Symptoms:**
-```
+
+```text
 could not connect to server: Connection refused
 psycopg2.OperationalError: could not connect to server
 ```
 
 **Solution:**
+
 ```bash
 # Check if PostgreSQL is running
 docker-compose ps postgres
@@ -249,11 +268,13 @@ docker-compose exec postgres pg_isready -U postgres
 ### Problem: Database migration failed
 
 **Symptoms:**
-```
+
+```text
 alembic.util.exc.CommandError: Can't locate revision identified by 'xxxxx'
 ```
 
 **Solution:**
+
 ```bash
 # Check current migration status
 docker-compose exec identity alembic current
@@ -275,11 +296,13 @@ docker-compose exec identity alembic upgrade head
 ### Problem: Database authentication failed
 
 **Symptoms:**
-```
+
+```yaml
 FATAL: password authentication failed for user "postgres"
 ```
 
 **Solution:**
+
 ```bash
 # Check DATABASE_URL in .env
 grep DATABASE_URL .env
@@ -301,10 +324,12 @@ docker-compose exec postgres psql -U postgres -c "ALTER USER postgres PASSWORD '
 ### Problem: Cannot access dashboard at localhost:3000
 
 **Symptoms:**
+
 - Browser shows "This site can't be reached"
 - Connection timeout
 
 **Solution:**
+
 ```bash
 # Check if dashboard container is running
 docker-compose ps dashboard
@@ -324,12 +349,14 @@ curl http://<container-ip>:3000
 ### Problem: Services cannot communicate with each other
 
 **Symptoms:**
-```
+
+```text
 requests.exceptions.ConnectionError: HTTPConnectionPool
 Failed to establish a new connection
 ```
 
 **Solution:**
+
 ```bash
 # Check Docker network
 docker network ls
@@ -352,10 +379,12 @@ docker-compose exec identity ping redis
 ### Problem: API Gateway returns 502 Bad Gateway
 
 **Symptoms:**
+
 - Gateway returns "502 Bad Gateway"
 - Services work when accessed directly
 
 **Solution:**
+
 ```bash
 # Check gateway logs
 docker-compose logs gateway
@@ -379,10 +408,12 @@ docker-compose restart gateway
 ### Problem: Cannot log in with default credentials
 
 **Symptoms:**
+
 - "Invalid credentials" error
 - 401 Unauthorized
 
 **Solution:**
+
 ```bash
 # Check if admin user was created
 docker-compose logs identity | grep -i "admin"
@@ -412,12 +443,14 @@ print('Admin user created')
 ### Problem: JWT token expired or invalid
 
 **Symptoms:**
-```
+
+```json
 {"detail": "Could not validate credentials"}
 {"detail": "Token has expired"}
 ```
 
 **Solution:**
+
 ```bash
 # Check JWT configuration
 grep JWT_ .env
@@ -433,11 +466,13 @@ docker-compose exec gateway env | grep JWT_SECRET_KEY
 ### Problem: API key authentication failed
 
 **Symptoms:**
-```
+
+```json
 {"detail": "Invalid API key"}
 ```
 
 **Solution:**
+
 ```bash
 # Check API_KEY in .env
 grep API_KEY .env
@@ -456,6 +491,7 @@ docker-compose restart
 ### Problem: Services are slow or unresponsive
 
 **Diagnostic Steps:**
+
 ```bash
 # Check resource usage
 docker stats
@@ -474,6 +510,7 @@ docker stats --format "table {{.Name}}\t{{.BlockIO}}"
    - Increase CPU, Memory allocation
 
 2. **Optimize database:**
+
    ```bash
    # Check database size
    docker-compose exec postgres psql -U postgres -c "\l+"
@@ -483,11 +520,13 @@ docker stats --format "table {{.Name}}\t{{.BlockIO}}"
    ```
 
 3. **Clear Redis cache:**
+
    ```bash
    docker-compose exec redis redis-cli FLUSHALL
    ```
 
 4. **Check logs for slow queries:**
+
    ```bash
    docker-compose logs | grep -i "slow"
    ```
@@ -495,10 +534,12 @@ docker stats --format "table {{.Name}}\t{{.BlockIO}}"
 ### Problem: High memory usage
 
 **Symptoms:**
+
 - Container using excessive RAM
 - System becomes sluggish
 
 **Solution:**
+
 ```bash
 # Identify memory-hungry containers
 docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}"
@@ -522,11 +563,13 @@ docker system prune -a
 ### Problem: Docker daemon not running
 
 **Symptoms:**
-```
+
+```text
 Cannot connect to the Docker daemon
 ```
 
 **Solution:**
+
 ```bash
 # Start Docker service
 # Linux
@@ -543,12 +586,14 @@ docker info
 ### Problem: Docker build fails with network timeout
 
 **Symptoms:**
-```
+
+```text
 Could not fetch URL
 Temporary failure resolving
 ```
 
 **Solution:**
+
 ```bash
 # Use different DNS for Docker
 # Edit /etc/docker/daemon.json (Linux)
@@ -566,10 +611,12 @@ docker-compose build --build-arg http_proxy=http://your-proxy
 ### Problem: Volume mount issues
 
 **Symptoms:**
+
 - Changes to files not reflected in container
 - Permission denied errors
 
 **Solution:**
+
 ```bash
 # Check volume mounts
 docker inspect <container-name> | grep -A 10 Mounts
@@ -589,10 +636,12 @@ docker-compose up -d
 ### Problem: Hot reload not working in development
 
 **Symptoms:**
+
 - Code changes not reflected
 - Need to rebuild container for changes
 
 **Solution:**
+
 ```bash
 # Verify volume mounts in docker-compose.override.yml
 cat docker-compose.override.yml
@@ -607,12 +656,14 @@ make dev
 ### Problem: Tests failing in container
 
 **Symptoms:**
-```
+
+```text
 pytest errors
 Test suite fails
 ```
 
 **Solution:**
+
 ```bash
 # Run tests with verbose output
 docker-compose exec <service-name> pytest -v
@@ -634,6 +685,7 @@ docker-compose exec <service-name> rm -rf .pytest_cache
 If you're still experiencing issues:
 
 1. **Check logs:**
+
    ```bash
    # Get logs from all services
    docker-compose logs > logs.txt
@@ -668,7 +720,7 @@ If you're still experiencing issues:
 ## Common Error Messages Reference
 
 | Error Message | Common Cause | Quick Fix |
-|--------------|--------------|-----------|
+| -------------- | -------------- | ----------- |
 | `Connection refused` | Service not running | `docker-compose up -d` |
 | `Address already in use` | Port conflict | Change port or kill process |
 | `No space left on device` | Disk full | `docker system prune -a` |
@@ -720,4 +772,4 @@ INITIAL_ADMIN_PASSWORD=changeme
 
 ---
 
-*Last updated: 2025-11-08*
+_Last updated: 2025-11-08_

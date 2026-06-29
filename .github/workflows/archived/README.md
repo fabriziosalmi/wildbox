@@ -5,12 +5,14 @@
 
 ## What Happened?
 
-These 35+ individual `ingest-*.yml` workflow files were **consolidated into a single workflow**: 
+These 35+ individual `ingest-*.yml` workflow files were **consolidated into a single workflow**:
+
 - **New Workflow:** `../ ingest-threat-feeds.yml`
 
 ## Why?
 
 ### Problems with Old Approach
+
 - ❌ **35 nearly identical files** - maintenance nightmare
 - ❌ **Duplicate code** - same git clone logic repeated everywhere
 - ❌ **Hard to update** - need to edit 35 files for single change
@@ -18,6 +20,7 @@ These 35+ individual `ingest-*.yml` workflow files were **consolidated into a si
 - ❌ **Resource waste** - each workflow had separate trigger
 
 ### Benefits of New Approach
+
 - ✅ **Single source of truth** - one workflow with matrix strategy
 - ✅ **Parameterized** - select specific feed or run all
 - ✅ **DRY principle** - shared steps, feed-specific config
@@ -27,6 +30,7 @@ These 35+ individual `ingest-*.yml` workflow files were **consolidated into a si
 ## Migration Guide
 
 ### Old Usage
+
 ```yaml
 # Had to manually dispatch each workflow
 - ingest-threat-actor-iocs.yml
@@ -38,6 +42,7 @@ These 35+ individual `ingest-*.yml` workflow files were **consolidated into a si
 ### New Usage
 
 **Option 1: Ingest specific feed**
+
 ```bash
 # Via GitHub Actions UI
 Actions → Ingest Threat Intelligence Data → Run workflow
@@ -45,6 +50,7 @@ Select feed_type: "sigma-rules"
 ```
 
 **Option 2: Ingest all feeds**
+
 ```bash
 # Via GitHub Actions UI
 Actions → Ingest Threat Intelligence Data → Run workflow
@@ -52,6 +58,7 @@ Select feed_type: "all"
 ```
 
 **Option 3: Automated daily ingestion**
+
 ```yaml
 # Already configured in workflow
 schedule:
@@ -89,6 +96,7 @@ Edit `.github/workflows/ingest-threat-feeds.yml`:
 
 1. Add feed name to `inputs.feed_type.options`
 2. Add case block in "Configure feed parameters" step:
+
    ```yaml
    "new-feed-name")
      echo "data_dir=datalake/raw/new-category" >> $GITHUB_OUTPUT

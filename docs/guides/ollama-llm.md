@@ -72,11 +72,11 @@ docker exec wildbox-ollama ollama pull codellama
 ## Available Models
 
 | Model | Size | Use Case | Recommended |
-|-------|------|----------|-------------|
-| `llama2` | 7B/13B/70B | General security analysis |  Yes (7B or 13B) |
-| `codellama` | 7B/13B | Code review, vulnerability detection |  Yes (for code analysis) |
+| ------- | ------ | ---------- | ------------- |
+| `llama2` | 7B/13B/70B | General security analysis | Yes (7B or 13B) |
+| `codellama` | 7B/13B | Code review, vulnerability detection | Yes (for code analysis) |
 | `mistral` | 7B | Fast general-purpose | ⚡ Good for quick analysis |
-| `phi` | 2.7B | Lightweight, fast |  For resource-constrained environments |
+| `phi` | 2.7B | Lightweight, fast | For resource-constrained environments |
 
 **Note:** Larger models provide better analysis but require more RAM (7B ≈ 8GB, 13B ≈ 16GB, 70B ≈ 64GB).
 
@@ -122,6 +122,7 @@ curl http://localhost:11434/v1/chat/completions \
 ### AI Agents Service
 
 The AI Agents service automatically uses Ollama for:
+
 - **Threat analysis**: Analyzing suspicious patterns
 - **Incident response**: Generating response playbooks
 - **Log analysis**: Identifying anomalies
@@ -130,6 +131,7 @@ The AI Agents service automatically uses Ollama for:
 ### Guardian Service
 
 Guardian uses LLM for:
+
 - **Policy interpretation**: Understanding complex security policies
 - **Anomaly detection**: Identifying unusual behavior patterns
 - **Recommendations**: Suggesting remediation steps
@@ -273,10 +275,10 @@ docker exec wildbox-ollama ollama pull llama2
 
 ### Data Privacy
 
--  All processing happens locally
--  No data sent to external APIs
--  Models cached in Docker volume
--  GDPR/compliance-friendly
+- All processing happens locally
+- No data sent to external APIs
+- Models cached in Docker volume
+- GDPR/compliance-friendly
 
 ---
 
@@ -310,7 +312,7 @@ OLLAMA_MODEL=my-security-model
 ### Ollama Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/api/tags` | GET | List installed models |
 | `/api/generate` | POST | Generate text completion |
 | `/api/chat` | POST | Chat completion (multi-turn) |
@@ -320,7 +322,7 @@ OLLAMA_MODEL=my-security-model
 ### OpenAI-Compatible Endpoints
 
 | Endpoint | Method | Description |
-|----------|--------|-------------|
+| ---------- | -------- | ------------- |
 | `/v1/models` | GET | List available models |
 | `/v1/chat/completions` | POST | Chat completion (OpenAI format) |
 | `/v1/completions` | POST | Text completion (OpenAI format) |
@@ -330,7 +332,7 @@ OLLAMA_MODEL=my-security-model
 ## Cost Comparison
 
 | Solution | Cost | Privacy | Latency |
-|----------|------|---------|---------|
+| ---------- | ------ | --------- | --------- |
 | **Ollama (Local)** | $0 (hardware only) | 100% private | Low (local) |
 | **OpenAI GPT-4** | ~$30/1M tokens | Sent to OpenAI | Medium (API call) |
 | **OpenAI GPT-3.5** | ~$1/1M tokens | Sent to OpenAI | Medium (API call) |

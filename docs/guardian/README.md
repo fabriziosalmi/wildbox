@@ -4,29 +4,32 @@
 
 A comprehensive, Django-based vulnerability lifecycle management platform that moves beyond simple vulnerability scanning to provide risk-based prioritization, automated remediation tracking, and intelligent asset management.
 
-## 🛡️ Overview
+## Overview
 
 Open Security Guardian transforms vulnerability management from a reactive, checkbox exercise into a proactive, risk-driven discipline. By combining asset inventory, vulnerability data, threat intelligence, and business context, it ensures that security teams focus their limited resources on the vulnerabilities that pose the greatest actual risk to the organization.
 
 Built with Django and Django REST Framework, the Guardian provides a modern, scalable, and extensible platform for enterprise vulnerability management.
 
-## 🎯 Key Features
+## Key Features
 
-### 🔍 **Intelligent Asset Discovery & Management**
+### **Intelligent Asset Discovery & Management**
+
 - **Dynamic Asset Inventory**: Automatically discovers and maintains an up-to-date inventory of all assets across your environment
 - **Asset Classification**: Categorizes assets by criticality, business function, and risk exposure
 - **Dependency Mapping**: Understands relationships between assets and applications
 - **Cloud & On-Premise**: Unified view across hybrid infrastructure
 - **RESTful API**: Complete API access for asset management and automation
 
-### 📊 **Risk-Based Vulnerability Prioritization**
+### **Risk-Based Vulnerability Prioritization**
+
 - **Contextual Risk Scoring**: Goes beyond CVSS scores to include asset criticality, threat intelligence, and exploitability
 - **Threat Intelligence Integration**: Leverages open-security-data for real-time threat context
 - **Business Impact Analysis**: Considers business criticality and regulatory requirements
 - **Attack Surface Analysis**: Understands exposure and accessibility of vulnerable assets
 - **Advanced Filtering**: Powerful filtering and search capabilities via API and UI
 
-### 🔄 **Automated Remediation Lifecycle**
+### **Automated Remediation Lifecycle**
+
 - **Workflow Engine**: Configurable remediation workflows with approval processes
 - **Ticketing Integration**: Automatically creates and tracks remediation tickets in Jira, ServiceNow, etc.
 - **SLA Management**: Enforces remediation SLAs based on risk score and asset criticality
@@ -34,7 +37,8 @@ Built with Django and Django REST Framework, the Guardian provides a modern, sca
 - **Verification**: Automated verification of remediation completion
 - **Email Notifications**: Automated notifications for status changes and overdue items
 
-### 📈 **Compliance & Reporting**
+### **Compliance & Reporting**
+
 - **Regulatory Compliance**: Built-in frameworks for NIST CSF, PCI DSS, SOX, HIPAA, GDPR, and custom requirements
 - **Compliance Assessments**: Structured assessment workflows with evidence collection
 - **Executive Dashboards**: Risk metrics and trends for leadership and board reporting
@@ -42,7 +46,8 @@ Built with Django and Django REST Framework, the Guardian provides a modern, sca
 - **Audit Trails**: Complete audit trail of all vulnerability management activities
 - **Trend Analysis**: Historical analysis of vulnerability posture and remediation effectiveness
 
-### 🔗 **Deep Integration**
+### **Deep Integration**
+
 - **Scanner Agnostic**: Integrates with Nessus, Qualys, Rapid7, OpenVAS, and custom scanners
 - **Wildbox Suite**: Deep integration with open-security-tools, open-security-data, and open-security-sensor
 - **RESTful APIs**: Complete REST API for all functionality
@@ -50,9 +55,9 @@ Built with Django and Django REST Framework, the Guardian provides a modern, sca
 - **SIEM/SOAR**: Feeds vulnerability context into security operations workflows
 - **Authentication**: Multiple authentication methods (API keys, JWT, session auth)
 
-## 🏗️ Architecture
+## Architecture
 
-```
+```text
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │  Asset Sources  │    │   Discovery      │    │ Asset Database  │
 │                 │    │                  │    │                 │
@@ -81,7 +86,7 @@ Built with Django and Django REST Framework, the Guardian provides a modern, sca
 └─────────────────┘    └──────────────────┘    └─────────────────┘
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Docker Deployment (Recommended)
 
@@ -124,12 +129,12 @@ python manage.py create-admin
 python manage.py runserver 0.0.0.0:8003
 ```
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
 | Variable | Description | Default | Required |
-|----------|-------------|---------|----------|
+| ---------- | ------------- | --------- | ---------- |
 | `DATABASE_URL` | PostgreSQL connection string | - | ✅ |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379` | ❌ |
 | `SECRET_KEY` | Django secret key | auto-generated | ❌ |
@@ -168,7 +173,7 @@ scanners:
     scan_frequency: "daily"
 ```
 
-## 📊 Usage Examples
+## Usage Examples
 
 ### Asset Management
 
@@ -222,7 +227,7 @@ curl "http://localhost:8003/api/v1/reports/remediation?timeframe=30d" \
   -H "Authorization: Bearer your-api-key"
 ```
 
-## 🔗 Integration
+## Integration
 
 ### With Wildbox Suite
 
@@ -263,11 +268,11 @@ for vuln in critical_vulns:
     jira.create_remediation_ticket(vuln)
 ```
 
-## 🛠️ Development
+## Development
 
 ### Project Structure
 
-```
+```bash
 open-security-guardian/
 ├── guardian/                    # Main application
 │   ├── __init__.py
@@ -323,8 +328,8 @@ class CustomScanner(BaseScanner):
         pass
 ```
 
-2. Register the scanner in `apps/scanners/registry.py`
-3. Add configuration to `config/scanners.yaml`
+1. Register the scanner in `apps/scanners/registry.py`
+2. Add configuration to `config/scanners.yaml`
 
 ### Custom Risk Scoring
 
@@ -348,7 +353,7 @@ class CustomRiskCalculator(BaseRiskCalculator):
         return min(base_score, 10.0)
 ```
 
-## 📈 Monitoring & Observability
+## Monitoring & Observability
 
 ### Health Checks
 
@@ -396,27 +401,30 @@ Structured logging with configurable levels:
 }
 ```
 
-## 🔒 Security Considerations
+## Security Considerations
 
 ### Data Protection
+
 - Vulnerability data encryption at rest and in transit
 - Secure API key management
 - Role-based access control (RBAC)
 - Audit logging for all operations
 
 ### Scanner Security
+
 - Encrypted communication with all scanners
 - Credential rotation for scanner accounts
 - Network segmentation for scanner traffic
 - Scan result integrity verification
 
 ### Integration Security
+
 - OAuth 2.0 for external system authentication
 - API rate limiting and throttling
 - Input validation and sanitization
 - SQL injection and XSS protection
 
-## 📋 Compliance Frameworks
+## Compliance Frameworks
 
 ### Built-in Frameworks
 
@@ -443,7 +451,7 @@ for req in requirements:
     print(f"{req.id}: {req.status} - {req.remediation_progress}%")
 ```
 
-## 🚀 Deployment
+## Deployment
 
 ### Production Deployment
 
@@ -495,15 +503,14 @@ tar -czf config_backup_$(date +%Y%m%d).tar.gz config/
 0 2 * * * /opt/guardian/scripts/backup.sh
 ```
 
-## 🤝 Contributing
-
-## 🚀 Current Implementation Status
+## Current Implementation Status
 
 The Open Security Guardian is now fully scaffolded with all core components implemented:
 
-### ✅ Completed Components
+### Completed Components
 
 #### **Core Infrastructure**
+
 - ✅ Django 5.0 application with PostgreSQL backend
 - ✅ Redis integration for caching and Celery
 - ✅ Docker containerization with docker-compose
@@ -511,6 +518,7 @@ The Open Security Guardian is now fully scaffolded with all core components impl
 - ✅ Production-ready logging and monitoring
 
 #### **Applications & Models**
+
 - ✅ **Assets Management**: Complete asset inventory with discovery and classification
 - ✅ **Vulnerability Management**: Full vulnerability lifecycle with risk scoring
 - ✅ **Scanner Integration**: Configurable scanner support (Nessus, OpenVAS, Qualys, etc.)
@@ -520,6 +528,7 @@ The Open Security Guardian is now fully scaffolded with all core components impl
 - ✅ **External Integrations**: SIEM, ticketing, and notification systems
 
 #### **REST API**
+
 - ✅ Complete REST API with Django REST Framework
 - ✅ API authentication (API keys, JWT, session auth)
 - ✅ Advanced filtering, searching, and pagination
@@ -528,26 +537,30 @@ The Open Security Guardian is now fully scaffolded with all core components impl
 - ✅ Rate limiting and throttling
 
 #### **Background Processing**
+
 - ✅ Celery task queue for async processing
 - ✅ Scheduled tasks for maintenance and monitoring
 - ✅ Email notifications and alerts
 - ✅ Data import/export capabilities
 
 #### **Management Commands**
+
 - ✅ Initial setup and demo data loading
 - ✅ Vulnerability data import from multiple sources
 - ✅ Compliance report generation
 - ✅ System maintenance and cleanup
 
 #### **Developer Experience**
+
 - ✅ Comprehensive documentation (README, API docs, Getting Started)
 - ✅ Development setup script
 - ✅ Docker development environment
 - ✅ Example configurations and sample data
 
-### 🔧 Ready for Development
+### Ready for Development
 
 The platform is now ready for:
+
 - **Custom scanner integrations**
 - **Frontend development** (React, Vue, or Angular)
 - **Advanced reporting features**
@@ -555,7 +568,7 @@ The platform is now ready for:
 - **Custom compliance frameworks**
 - **Additional third-party integrations**
 
-### 📚 Quick Start
+### Quick Start
 
 ```bash
 # Automated development setup
@@ -574,12 +587,13 @@ python manage.py runserver
 ```
 
 Access the application:
+
 - **Main Application**: http://localhost:8000/
 - **Admin Interface**: http://localhost:8000/admin/ (admin/admin123)
 - **API Documentation**: http://localhost:8000/docs/
 - **API Endpoints**: http://localhost:8000/api/v1/
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions to Open Security Guardian! Here's how you can help:
 
@@ -619,20 +633,20 @@ python manage.py test
 - **Documentation**: Improve documentation and examples
 - **Testing**: Add comprehensive test coverage
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## Support
 
-- **Documentation**: 
+- **Documentation**:
   - [Getting Started Guide](GETTING_STARTED.md)
   - [API Documentation](API_DOCS.md)
   - [Development Setup](setup_dev.sh)
 - **Issues**: Report bugs and feature requests on GitHub
 - **Security**: Report security issues responsibly
 
-## 🏆 Acknowledgments
+## Acknowledgments
 
 - Built on the solid foundation of the Wildbox Security Suite
 - Inspired by the need for better vulnerability management
@@ -642,4 +656,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Transform your vulnerability management from reactive to proactive with Open Security Guardian.**
 
-*Part of the Wildbox Security Suite - The future of open-source cybersecurity.*
+_Part of the Wildbox Security Suite - The future of open-source cybersecurity._
