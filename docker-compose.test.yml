@@ -235,7 +235,7 @@ services:
     environment:
       REDIS_URL: redis://redis-test:6379/6
       API_KEY: test-api-key-for-ci-only
-      OPENAI_API_KEY: ""
+      ANTHROPIC_API_KEY: ""
       DEBUG: "true"
     depends_on:
       redis-test:
