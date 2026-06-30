@@ -61,6 +61,38 @@ app.add_middleware(
 # Redis client for caching
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
+
+# --- Per-team scan index (tenancy) -------------------------------------------
+# Scans are stored under flat keys (scan:{id}:metadata). To scope reads by team
+# WITHOUT scanning every team's keys, each team keeps a Redis SET of its scan
+# ids. Dashboards iterate the caller's set instead of `scan:*:metadata`.
+_SCAN_INDEX_TTL = int(timedelta(days=30).total_seconds())
+
+
+def _team_scans_key(team_id: str) -> str:
+    return f"cspm:team:{team_id}:scans"
+
+
+def _index_team_scan(team_id: str, scan_id: str) -> None:
+    """Record that ``scan_id`` belongs to ``team_id``."""
+    key = _team_scans_key(team_id)
+    redis_client.sadd(key, scan_id)
+    # Keep the index alive at least as long as scan metadata.
+    redis_client.expire(key, _SCAN_INDEX_TTL)
+
+
+def _iter_team_scan_metadata(team_id: str):
+    """Yield metadata dicts for the team's scans via its index set, skipping
+    any whose metadata has expired or fails to parse."""
+    for scan_id in redis_client.smembers(_team_scans_key(team_id)):
+        raw = redis_client.get(f"scan:{scan_id}:metadata")
+        if not raw:
+            continue
+        try:
+            yield json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+
 # Application state
 app_start_time = datetime.utcnow()
 
@@ -87,6 +119,24 @@ async def get_current_user(request: Request):
     All requests must come through the API gateway which validates tokens
     and injects X-Wildbox-* headers.
     """
+    # Proof-of-origin: only the gateway (holding the shared secret) may assert
+    # identity via X-Wildbox-* headers. The service port is reachable directly,
+    # so without this a client could forge them. FAIL CLOSED: if the secret is
+    # not configured, refuse all requests rather than trusting forgeable
+    # headers (matches the gateway-auth hardening in #163).
+    _expected = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if not _expected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Gateway authentication is not configured.",
+        )
+    _provided = request.headers.get("X-Gateway-Secret", "")
+    if not hmac.compare_digest(_provided, _expected):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Direct access is not permitted; requests must traverse the gateway.",
+        )
+
     user_id = request.headers.get("X-Wildbox-User-ID")
     team_id = request.headers.get("X-Wildbox-Team-ID")
 
@@ -96,18 +146,6 @@ async def get_current_user(request: Request):
             detail="Authentication required. Access via gateway with X-Wildbox-* headers.",
             headers={"WWW-Authenticate": "Bearer"}
         )
-
-    # Proof-of-origin: only the gateway (holding the shared secret) may assert
-    # identity via X-Wildbox-* headers. The service port is reachable directly,
-    # so without this a client could forge them. Enforced when configured.
-    _expected = os.getenv("GATEWAY_INTERNAL_SECRET")
-    if _expected:
-        _provided = request.headers.get("X-Gateway-Secret", "")
-        if not hmac.compare_digest(_provided, _expected):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Direct access is not permitted; requests must traverse the gateway.",
-            )
 
     return {
         "user_id": user_id,
@@ -238,7 +276,9 @@ async def start_scan(
             timedelta(days=30).total_seconds(),
             json.dumps(scan_metadata)
         )
-        
+        # Namespace the scan under its team so reads never scan other teams' keys.
+        _index_team_scan(current_user["team_id"], scan_id)
+
         logger.info(f"Started CSPM scan {scan_id} for {scan_request.provider} account {scan_request.account_id}")
         
         return schemas.ScanResponse(
@@ -571,35 +611,17 @@ async def get_dashboard_summary(
 ):
     """Get summary for dashboard."""
     try:
-        # Get all scans for the team
-        team_scans = []
-        cursor = 0
-        while True:
-            # Scan Redis for scan metadata
-            scan_keys = redis_client.scan_iter(
-                match=f"scan:*:metadata",
-                count=1000,
-                cursor=cursor
-            )
-            
-            for key in scan_keys:
-                metadata = json.loads(redis_client.get(key))
-                if metadata.get("team_id") == current_user["team_id"]:
-                    team_scans.append(metadata)
-            
-            # If cursor is 0, we have scanned all keys
-            if cursor == 0:
-                break
-            
-            cursor = 0  # For next iteration, set cursor to 0 to continue scanning
-        
-        # Calculate summary metrics
+        # Get the team's scans via its index set (no cross-team key scanning).
+        team_scans = list(_iter_team_scan_metadata(current_user["team_id"]))
+
+        # Calculate summary metrics. Use defensive .get() — a freshly started
+        # scan has no resources/summary yet (the worker fills them on completion).
         total_scans = len(team_scans)
-        total_resources = sum(len(s["resources"]) for s in team_scans)
-        total_findings = sum(s["summary"].get("total_findings", 0) for s in team_scans)
-        total_passed = sum(s["summary"].get("passed", 0) for s in team_scans)
-        total_failed = sum(s["summary"].get("failed", 0) for s in team_scans)
-        total_skipped = sum(s["summary"].get("skipped", 0) for s in team_scans)
+        total_resources = sum(len(s.get("resources", [])) for s in team_scans)
+        total_findings = sum(s.get("summary", {}).get("total_findings", 0) for s in team_scans)
+        total_passed = sum(s.get("summary", {}).get("passed", 0) for s in team_scans)
+        total_failed = sum(s.get("summary", {}).get("failed", 0) for s in team_scans)
+        total_skipped = sum(s.get("summary", {}).get("skipped", 0) for s in team_scans)
         
         # Get trending metrics
         trending_metrics = _get_trending_metrics(redis_client, "all", current_user["team_id"])
@@ -630,30 +652,24 @@ async def get_executive_summary(
 ):
     """Get executive summary with high-level security metrics."""
     try:
-        # Get recent scans for the team
+        # Get the team's recent scans via its index set (no cross-team scan).
         recent_scans = []
-        scan_keys = redis_client.scan_iter(match=f"scan:*:metadata")
-        
         cutoff_date = datetime.utcnow() - timedelta(days=days)
-        
-        for key in scan_keys:
+
+        for metadata in _iter_team_scan_metadata(current_user["team_id"]):
             try:
-                metadata = json.loads(redis_client.get(key))
-                if (metadata.get("team_id") == current_user["team_id"] and 
-                    datetime.fromisoformat(metadata.get("started_at", "")) >= cutoff_date):
-                    
-                    if not provider or metadata.get("provider") == provider:
-                        # Get scan results
-                        scan_id = metadata["scan_id"]
-                        results_key = f"scan:{scan_id}:results"
-                        results_data = redis_client.get(results_key)
-                        
-                        if results_data:
-                            results = json.loads(results_data)
-                            recent_scans.append({
-                                "metadata": metadata,
-                                "results": results
-                            })
+                if datetime.fromisoformat(metadata.get("started_at", "")) < cutoff_date:
+                    continue
+                if provider and metadata.get("provider") != provider:
+                    continue
+                # Get scan results
+                scan_id = metadata["scan_id"]
+                results_data = redis_client.get(f"scan:{scan_id}:results")
+                if results_data:
+                    recent_scans.append({
+                        "metadata": metadata,
+                        "results": json.loads(results_data)
+                    })
             except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
                 logger.warning(f"Error processing scan metadata: {e}")
                 continue
@@ -785,7 +801,10 @@ async def start_batch_scans(
                 args=[scan_config_dict],
                 task_id=scan_id
             )
-            
+
+            # Namespace the scan under its team (consistent with single scans).
+            _index_team_scan(current_user["team_id"], scan_id)
+
             scan_jobs.append({
                 "scan_id": scan_id,
                 "provider": scan_config.provider.value,
