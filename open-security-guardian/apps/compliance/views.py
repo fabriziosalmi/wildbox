@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, permissions
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -23,7 +24,7 @@ from .filters import (
 class ComplianceFrameworkViewSet(viewsets.ModelViewSet):
     queryset = ComplianceFramework.objects.all()
     serializer_class = ComplianceFrameworkSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ComplianceFrameworkFilter
     search_fields = ['name', 'description', 'authority']
@@ -60,7 +61,7 @@ class ComplianceFrameworkViewSet(viewsets.ModelViewSet):
 class ComplianceControlViewSet(viewsets.ModelViewSet):
     queryset = ComplianceControl.objects.select_related('framework').all()
     serializer_class = ComplianceControlSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ComplianceControlFilter
     search_fields = ['control_id', 'title', 'description']
@@ -87,7 +88,7 @@ class ComplianceControlViewSet(viewsets.ModelViewSet):
 class ComplianceAssessmentViewSet(viewsets.ModelViewSet):
     queryset = ComplianceAssessment.objects.select_related('framework', 'assessor').prefetch_related('assets').all()
     serializer_class = ComplianceAssessmentSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ComplianceAssessmentFilter
     search_fields = ['name', 'description']
@@ -151,7 +152,7 @@ class ComplianceAssessmentViewSet(viewsets.ModelViewSet):
 class ComplianceEvidenceViewSet(viewsets.ModelViewSet):
     queryset = ComplianceEvidence.objects.select_related('assessment', 'control', 'collected_by').all()
     serializer_class = ComplianceEvidenceSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description']
     ordering_fields = ['title', 'evidence_type', 'collected_at']
@@ -161,7 +162,7 @@ class ComplianceEvidenceViewSet(viewsets.ModelViewSet):
 class ComplianceResultViewSet(viewsets.ModelViewSet):
     queryset = ComplianceResult.objects.select_related('assessment', 'control', 'tested_by', 'reviewed_by').all()
     serializer_class = ComplianceResultSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ComplianceResultFilter
     search_fields = ['findings', 'recommendations']
@@ -190,7 +191,7 @@ class ComplianceResultViewSet(viewsets.ModelViewSet):
 class ComplianceExceptionViewSet(viewsets.ModelViewSet):
     queryset = ComplianceException.objects.select_related('control', 'requested_by', 'approved_by').all()
     serializer_class = ComplianceExceptionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ComplianceExceptionFilter
     search_fields = ['title', 'justification']
@@ -229,7 +230,7 @@ class ComplianceExceptionViewSet(viewsets.ModelViewSet):
 class ComplianceMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ComplianceMetrics.objects.select_related('framework', 'assessment').all()
     serializer_class = ComplianceMetricsSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ['metric_date', 'compliance_percentage']
     ordering = ['-metric_date']

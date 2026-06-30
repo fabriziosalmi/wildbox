@@ -15,12 +15,23 @@ from django.test import RequestFactory
 from apps.core.gateway_middleware import GatewayAuthMiddleware, GatewayUser
 from apps.reporting.models import ReportTemplate
 
+# Since #163 the middleware fails closed: it returns 503 unless
+# GATEWAY_INTERNAL_SECRET is configured and the matching X-Gateway-Secret header
+# is present. Provide both so these tests exercise the authenticated path.
+_GW_SECRET = "test-gateway-secret"
+
+
+@pytest.fixture(autouse=True)
+def _configure_gateway_secret(monkeypatch):
+    monkeypatch.setenv("GATEWAY_INTERNAL_SECRET", _GW_SECRET)
+
 
 def _gateway_request(role="admin", user_id=None):
     req = RequestFactory().post("/api/v1/reporting/templates/")
     req.META["HTTP_X_WILDBOX_USER_ID"] = user_id or str(uuid.uuid4())
     req.META["HTTP_X_WILDBOX_TEAM_ID"] = str(uuid.uuid4())
     req.META["HTTP_X_WILDBOX_ROLE"] = role
+    req.META["HTTP_X_GATEWAY_SECRET"] = _GW_SECRET
     assert GatewayAuthMiddleware(lambda r: None).process_request(req) is None
     return req
 
