@@ -154,6 +154,14 @@ async def get_current_user(request: Request):
     }
 
 
+@app.get("/health/live")
+async def liveness():
+    """Liveness probe: the HTTP process is up. Unlike /health (readiness) it
+    does NOT require Redis or an active Celery worker, so orchestration can
+    distinguish "process alive" from "dependencies ready"."""
+    return {"status": "alive"}
+
+
 @app.get("/health", response_model=schemas.HealthCheckResponse)
 async def health_check():
     """Health check endpoint."""

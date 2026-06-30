@@ -216,7 +216,7 @@ jobs:
         timeout-minutes: 5
         env:
           # Only check services actually started in CI (identity, tools, data, responder, cspm)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health"
+          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health/live"
           # Skip optional services in CI (they don't exist in this environment)
           OPTIONAL_SERVICES: ""
 
