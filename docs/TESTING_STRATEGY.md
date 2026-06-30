@@ -1,8 +1,11 @@
 # Containerized Testing Strategy
 
-**Status:** ✅ IMPLEMENTED (Framework Ready)  
-**Migration:** 🔄 IN PROGRESS  
-**Priority:** HIGH
+> **⚠️ SUPERSEDED (historical design doc).** The `docker-compose.test.yml`
+> approach described below was never finished and has been removed. The
+> maintained integration layer is **`.github/workflows/integration-tests.yml`**,
+> which starts the backend services and runs `pytest tests/integration/` in CI.
+> This document is kept for context only; commands referencing
+> `docker-compose.test.yml` no longer work.
 
 ## Current State
 
