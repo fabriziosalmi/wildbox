@@ -294,6 +294,8 @@ async def get_indicator(
     )
 
 # Bulk lookup endpoint
+# #182 policy: POST but read-only (bulk lookup takes a request body) — no role
+# gate; results are already team-scoped.
 @app.post("/api/v1/indicators/lookup", response_model=BulkLookupResponse, tags=["Indicators"])
 async def bulk_lookup(
     request: BulkLookupRequest,
@@ -638,6 +640,8 @@ async def get_threat_intel_metrics(current_user: GatewayUser = Depends(get_curre
     }
 
 # Telemetry ingestion endpoints
+# #182 policy: machine-to-machine telemetry ingest from sensors (not a user
+# admin action) — gated by gateway auth + team scope, not by role.
 @app.post("/api/v1/ingest", response_model=TelemetryBatchResponse, tags=["Telemetry"])
 async def ingest_telemetry_batch(
     batch: TelemetryBatch,

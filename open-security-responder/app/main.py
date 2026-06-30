@@ -161,6 +161,8 @@ async def list_playbooks(current_user: GatewayUser = Depends(get_current_user)):
         )
 
 
+# #182 policy: executing a playbook is an operational action, member-allowed
+# (gated only by gateway auth + per-run team ownership, not by role).
 @app.post("/v1/playbooks/{playbook_id}/execute")
 async def execute_playbook(
     playbook_id: str,
@@ -239,6 +241,9 @@ async def get_execution_status(run_id: str, current_user: GatewayUser = Depends(
         )
 
 
+# #182 policy: configuration mutations require owner/admin. Reloading playbook
+# definitions from disk changes service config, so it is gated; operational
+# endpoints (execute/cancel a run) stay member-allowed.
 @app.post("/v1/playbooks/reload")
 async def reload_playbooks(current_user: GatewayUser = Depends(require_role("owner", "admin"))):
     """Reload playbooks from disk"""

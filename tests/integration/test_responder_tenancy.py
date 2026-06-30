@@ -14,11 +14,11 @@ import pytest
 import requests
 
 
-def _gateway_headers(team_id: str, secret: str) -> Dict[str, str]:
+def _gateway_headers(team_id: str, secret: str, role: str = "member") -> Dict[str, str]:
     return {
         "X-Wildbox-User-ID": str(uuid.uuid4()),
         "X-Wildbox-Team-ID": team_id,
-        "X-Wildbox-Role": "member",
+        "X-Wildbox-Role": role,
         "X-Gateway-Secret": secret,
     }
 
@@ -86,3 +86,27 @@ def test_responder_run_not_readable_by_other_team(service_urls):
         f"{base}/v1/runs/{run_id}", headers=_gateway_headers(team_b, secret), timeout=10
     )
     assert b_del.status_code == 404, b_del.text
+
+
+def test_responder_reload_requires_admin_role(service_urls):
+    """#182 policy: configuration mutations require owner/admin. Reloading
+    playbook definitions from disk is config, so a member is denied (403) and an
+    admin is allowed (200). Operational mutations (execute/cancel) stay member-
+    allowed and are covered by the tenancy tests above."""
+    secret = _require_secret()
+    base = service_urls["responder"]
+    team = str(uuid.uuid4())
+
+    member = requests.post(
+        f"{base}/v1/playbooks/reload",
+        headers=_gateway_headers(team, secret, role="member"),
+        timeout=10,
+    )
+    assert member.status_code == 403, member.text
+
+    admin = requests.post(
+        f"{base}/v1/playbooks/reload",
+        headers=_gateway_headers(team, secret, role="admin"),
+        timeout=10,
+    )
+    assert admin.status_code == 200, admin.text
