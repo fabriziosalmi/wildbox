@@ -205,6 +205,7 @@ jobs:
           REDIS_URL: redis://localhost:6379/4
           CELERY_BROKER_URL: redis://localhost:6379/4
           CELERY_RESULT_BACKEND: redis://localhost:6379/4
+          SECRET_KEY: test-secret-key-for-ci-only-0123456789
           ENVIRONMENT: test
 
       - name: Wait for all services to be healthy
