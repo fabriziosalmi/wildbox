@@ -1,63 +1,23 @@
-"""Security implementation for Tools service authentication.
+"""Authentication for the Tools service.
 
-The Tools service accepts authentication in two ways:
-1. **Gateway Authentication** (recommended): Requests coming through the API gateway
-   with X-Wildbox-* headers injected after user auth validation
-2. **Direct API Key** (legacy/development): Direct access with API key for testing
-
-In production, all requests should go through the gateway.
+Two authentication modes:
+1. **Gateway** (production): requests arrive through the API gateway with
+   X-Wildbox-* identity headers and the X-Gateway-Secret proof-of-origin. This
+   is delegated to the shared `open_security_shared.gateway_auth` dependency.
+2. **Direct API key** (legacy/dev): a static X-API-Key. Tracked for removal/
+   scoping in #175 — it currently authenticates as a zero-team admin.
 """
 
-from fastapi import HTTPException, Depends, status, Request, Header
 from typing import Optional
-import sys
-import os
 
-# Add parent directory to path to import shared modules
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-security-shared'))
+from fastapi import HTTPException, status, Request, Header
 
-try:
-    from gateway_auth import get_user_from_gateway_headers, GatewayUser
-    GATEWAY_AUTH_AVAILABLE = True
-except ImportError:
-    GATEWAY_AUTH_AVAILABLE = False
-    GatewayUser = None
-    
-    # Fallback if shared module not available
-    class _FallbackGatewayUser:
-        def __init__(self, user_id: str, team_id: str, role: str = "member"):
-            self.user_id = user_id
-            self.team_id = team_id
-            self.role = role
-    
-    GatewayUser = _FallbackGatewayUser
+from open_security_shared.gateway_auth import GatewayUser, get_user_from_gateway_headers
 
 from app.config import settings
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def _verify_gateway_origin(provided_secret: Optional[str]) -> None:
-    """Reject forged X-Wildbox-* headers: only the gateway holds the shared
-    secret. The service port is reachable directly, so without this a client
-    could forge identity headers. Enforced when the secret is configured."""
-    import hmac
-    expected = os.getenv("GATEWAY_INTERNAL_SECRET")
-    if not expected:
-        logger.error(
-            "GATEWAY_INTERNAL_SECRET not configured — refusing to trust gateway "
-            "headers (fail-closed)."
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Service misconfigured: GATEWAY_INTERNAL_SECRET is not set.",
-        )
-    if not provided_secret or not hmac.compare_digest(provided_secret, expected):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Direct access is not permitted; requests must traverse the gateway.",
-        )
 
 
 async def get_current_user(
@@ -66,74 +26,43 @@ async def get_current_user(
     x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
     x_gateway_secret: Optional[str] = Header(None, alias="X-Gateway-Secret"),
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
-    request: Request = None
+    request: Request = None,
 ) -> GatewayUser:
-    """
-    Unified authentication dependency for Tools service.
-    
-    Accepts authentication from:
-    1. Gateway headers (X-Wildbox-*) - production path
-    2. API key (X-API-Key) - legacy/dev path
-    
-    Args:
-        x_wildbox_user_id: User ID from gateway
-        x_wildbox_team_id: Team ID from gateway
-        x_wildbox_role: User role from gateway
-        x_api_key: Direct API key (fallback)
-        request: FastAPI request object
-        
-    Returns:
-        GatewayUser with user information
-        
-    Raises:
-        HTTPException 401: If authentication fails
-    """
-    
-    # Prefer gateway authentication
-    if x_wildbox_user_id and x_wildbox_team_id:
-        _verify_gateway_origin(x_gateway_secret)
-        logger.info(f"Gateway-authenticated request: user={x_wildbox_user_id}, team={x_wildbox_team_id}")
+    """Unified auth dependency: gateway headers (preferred) or a legacy API key."""
 
-        if GATEWAY_AUTH_AVAILABLE:
-            # Use shared dependency for proper validation
-            return await get_user_from_gateway_headers(
-                x_wildbox_user_id=x_wildbox_user_id,
-                x_wildbox_team_id=x_wildbox_team_id,
-                x_wildbox_role=x_wildbox_role
-            )
-        else:
-            # Fallback without validation (for development)
-            logger.warning("Gateway auth module not available, using fallback")
-            return GatewayUser(
-                user_id=x_wildbox_user_id,
-                team_id=x_wildbox_team_id,
-                role=x_wildbox_role or "member"
-            )
-    
-    # Fallback to direct API key (legacy/development)
+    # Gateway path (production): the shared dependency verifies the
+    # GATEWAY_INTERNAL_SECRET proof-of-origin and validates the headers.
+    if x_wildbox_user_id and x_wildbox_team_id:
+        return await get_user_from_gateway_headers(
+            x_wildbox_user_id=x_wildbox_user_id,
+            x_wildbox_team_id=x_wildbox_team_id,
+            x_wildbox_role=x_wildbox_role,
+            x_gateway_secret=x_gateway_secret,
+        )
+
+    # Legacy/dev: direct API key. NOTE: returns a zero-team admin — see #175.
     if x_api_key:
         if x_api_key != settings.get_api_key():
-            logger.warning(f"Invalid API key attempt from {request.client.host if request and request.client else 'unknown'}")
+            client = request.client.host if request and request.client else "unknown"
+            logger.warning(f"Invalid API key attempt from {client}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid API key",
-                headers={"WWW-Authenticate": "Bearer"}
+                headers={"WWW-Authenticate": "Bearer"},
             )
-        
         logger.info("Direct API key authentication (legacy mode)")
-        # Return a generic user for API key auth
         return GatewayUser(
-            user_id="00000000-0000-0000-0000-000000000000",  # System user
-            team_id="00000000-0000-0000-0000-000000000000",  # System team
-            role="admin"
+            user_id="00000000-0000-0000-0000-000000000000",
+            team_id="00000000-0000-0000-0000-000000000000",
+            role="admin",
         )
-    
-    # No authentication provided
-    logger.warning(f"Unauthenticated request from {request.client.host if request and request.client else 'unknown'}")
+
+    client = request.client.host if request and request.client else "unknown"
+    logger.warning(f"Unauthenticated request from {client}")
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Authentication required. Provide X-API-Key header or access via gateway.",
-        headers={"WWW-Authenticate": "Bearer"}
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
 
