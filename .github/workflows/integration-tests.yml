@@ -186,6 +186,28 @@ jobs:
           REDIS_URL: redis://localhost:6379/3
           ENVIRONMENT: test
 
+      - name: Install CSPM Service Dependencies
+        run: |
+          # Own venv (cloud SDKs + celery pin their own deps).
+          python -m venv /tmp/cspm-venv
+          /tmp/cspm-venv/bin/pip install --upgrade pip
+          /tmp/cspm-venv/bin/pip install ./open-security-shared
+          cd open-security-cspm
+          /tmp/cspm-venv/bin/pip install -r requirements.txt
+
+      - name: Start CSPM Service
+        run: |
+          cd open-security-cspm
+          /tmp/cspm-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8019 > /tmp/cspm.log 2>&1 &
+          CSPM_PID=$!
+          echo "CSPM_PID=$CSPM_PID" >> $GITHUB_ENV
+        env:
+          REDIS_URL: redis://localhost:6379/4
+          CELERY_BROKER_URL: redis://localhost:6379/4
+          CELERY_RESULT_BACKEND: redis://localhost:6379/4
+          SECRET_KEY: test-secret-key-for-ci-only-0123456789
+          ENVIRONMENT: test
+
       - name: Wait for all services to be healthy
         run: |
           # Give services a few seconds to bind to ports
@@ -194,8 +216,8 @@ jobs:
           ./scripts/wait-for-services.sh
         timeout-minutes: 5
         env:
-          # Only check services actually started in CI (identity, tools, data, responder)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health"
+          # Only check services actually started in CI (identity, tools, data, responder, cspm)
+          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health/live"
           # Skip optional services in CI (they don't exist in this environment)
           OPTIONAL_SERVICES: ""
 
@@ -213,8 +235,15 @@ jobs:
           TOOLS_SERVICE_URL: http://localhost:8000
           DATA_SERVICE_URL: http://localhost:8002
           RESPONDER_SERVICE_URL: http://localhost:8018
+          CSPM_SERVICE_URL: http://localhost:8019
           TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
+
+      - name: Dump CSPM logs on failure
+        if: failure()
+        run: |
+          echo "===== /tmp/cspm.log ====="
+          cat /tmp/cspm.log || echo "(no cspm log)"
 
       - name: Upload Test Results
         if: always()
@@ -232,6 +261,7 @@ jobs:
           if [ ! -z "$IDENTITY_PID" ]; then kill $IDENTITY_PID || true; fi
           if [ ! -z "$TOOLS_PID" ]; then kill $TOOLS_PID || true; fi
           if [ ! -z "$RESPONDER_PID" ]; then kill $RESPONDER_PID || true; fi
+          if [ ! -z "$CSPM_PID" ]; then kill $CSPM_PID || true; fi
 
   security-validation:
     name: Security Validation
