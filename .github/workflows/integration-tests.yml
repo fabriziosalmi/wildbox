@@ -137,6 +137,26 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           REDIS_URL: redis://localhost:6379/2
 
+      - name: Install Data Service Dependencies
+        run: |
+          pip install ./open-security-shared
+          cd open-security-data
+          pip install -r requirements.txt
+
+      - name: Start Data Service
+        run: |
+          cd open-security-data
+          python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8002 &
+          DATA_PID=$!
+          echo "DATA_PID=$DATA_PID" >> $GITHUB_ENV
+        env:
+          # Reuse the postgres "identity" database in CI (no separate DB needed);
+          # data's create_tables() lifespan hook adds its own tables on startup.
+          DATABASE_URL: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/identity
+          REDIS_URL: redis://localhost:6379/1
+          SECRET_KEY: test-secret-key-for-ci-only
+          ENVIRONMENT: test
+
       - name: Wait for all services to be healthy
         run: |
           # Give services a few seconds to bind to ports
@@ -145,8 +165,8 @@ jobs:
           ./scripts/wait-for-services.sh
         timeout-minutes: 5
         env:
-          # Only check services actually started in CI (identity and tools)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health"
+          # Only check services actually started in CI (identity, tools, data)
+          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health"
           # Skip optional services in CI (they don't exist in this environment)
           OPTIONAL_SERVICES: ""
 
@@ -162,6 +182,7 @@ jobs:
         env:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
+          DATA_SERVICE_URL: http://localhost:8002
           TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
 
