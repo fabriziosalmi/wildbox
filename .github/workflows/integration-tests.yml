@@ -236,6 +236,9 @@ jobs:
           DATA_SERVICE_URL: http://localhost:8002
           RESPONDER_SERVICE_URL: http://localhost:8018
           CSPM_SERVICE_URL: http://localhost:8019
+          # psycopg2 DSN for the data DB, used to seed the cross-tenant test
+          # (data has no create API). Same DB the data service runs against.
+          DATA_DB_DSN: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD }}@localhost:5432/identity
           TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
 
