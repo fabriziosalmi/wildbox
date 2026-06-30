@@ -7,13 +7,14 @@ Handles asynchronous AI-powered threat analysis tasks.
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from celery import Celery
 import redis
 
 from .config import settings
 from .agents.threat_enrichment_agent import get_threat_enrichment_agent
+from .tools.wildbox_client import set_caller_identity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -47,26 +48,38 @@ redis_client = redis.from_url(settings.redis_url)
 
 
 @celery_app.task(bind=True, name="run_threat_enrichment_task")
-def run_threat_enrichment_task(self, task_id: str, ioc: Dict[str, Any]) -> Dict[str, Any]:
+def run_threat_enrichment_task(
+    self, task_id: str, ioc: Dict[str, Any], caller: Optional[Dict[str, str]] = None
+) -> Dict[str, Any]:
     """
     Main Celery task for AI-powered threat enrichment
-    
+
     This task orchestrates the entire analysis process:
     1. Initialize the AI agent
     2. Run the analysis
     3. Generate structured report
     4. Update task status
-    
+
     Args:
         task_id: Unique task identifier
         ioc: IOC dictionary with 'type' and 'value'
-        
+        caller: Gateway identity of the requesting user (user_id/team_id/role).
+            Forwarded to downstream services so tool calls run with the user's
+            real team scope instead of the legacy service key (#175).
+
     Returns:
         Complete analysis result dictionary
     """
-    
+
     try:
         logger.info(f"Starting threat enrichment task {task_id} for IOC type: {ioc['type']}")
+
+        # Forward the caller's identity to internal tool calls (#175). Set before
+        # the event loop runs so it is visible to the async agent/tool stack.
+        if caller and caller.get("user_id") and caller.get("team_id"):
+            set_caller_identity(
+                caller["user_id"], caller["team_id"], caller.get("role", "member")
+            )
         
         # Update task status to running
         self.update_state(

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     
     # Security
     internal_api_key: str = Field(default="", env="INTERNAL_API_KEY")  # REQUIRED: set via env var
+    # Proof-of-origin secret used to forward the caller's gateway identity to
+    # downstream services (#175). When set, internal tool calls carry the user's
+    # X-Wildbox-* headers + this secret instead of the static service key.
+    gateway_internal_secret: str = Field(default="", env="GATEWAY_INTERNAL_SECRET")
     
     # Analysis Settings
     max_analysis_time_minutes: int = 10
