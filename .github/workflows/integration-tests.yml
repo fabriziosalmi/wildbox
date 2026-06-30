@@ -198,7 +198,7 @@ jobs:
       - name: Start CSPM Service
         run: |
           cd open-security-cspm
-          /tmp/cspm-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8019 &
+          /tmp/cspm-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8019 > /tmp/cspm.log 2>&1 &
           CSPM_PID=$!
           echo "CSPM_PID=$CSPM_PID" >> $GITHUB_ENV
         env:
@@ -238,6 +238,12 @@ jobs:
           CSPM_SERVICE_URL: http://localhost:8019
           TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
+
+      - name: Dump CSPM logs on failure
+        if: failure()
+        run: |
+          echo "===== /tmp/cspm.log ====="
+          cat /tmp/cspm.log || echo "(no cspm log)"
 
       - name: Upload Test Results
         if: always()
