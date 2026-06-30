@@ -219,6 +219,9 @@ async def health_check():
         )
 
 
+# #182 policy: starting/cancelling a scan is an operational action, member-
+# allowed (gated by gateway auth + per-team scan ownership, not by role).
+# CSPM has no configuration-mutation endpoint that would require owner/admin.
 @app.post(
     "/api/v1/scans",
     response_model=schemas.ScanResponse,
