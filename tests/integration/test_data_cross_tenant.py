@@ -12,6 +12,7 @@ import pytest
 import requests
 
 psycopg2 = pytest.importorskip("psycopg2")
+from psycopg2.extras import Json  # noqa: E402
 
 
 def _gateway_headers(team_id: str, secret: str) -> Dict[str, str]:
@@ -38,9 +39,13 @@ def _seed(conn, *, team_id, value):
         cur.execute(
             "INSERT INTO indicators "
             "(id, source_id, team_id, indicator_type, value, normalized_value, "
+            " threat_types, confidence, severity, tags, "
             " first_seen, last_seen, collection_date, active) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            # threat_types/confidence/severity/tags are NOT NULL in the response
+            # schema (pydantic defaults don't apply to a NULL read from the ORM).
             (str(indicator_id), str(source_id), team_id, "ipv4", value, value,
+             Json([]), "medium", 5, Json([]),
              now, now, now, True),
         )
     conn.commit()
