@@ -13,7 +13,7 @@ Shared-library consolidation and the first tenancy isolation, with new CI safety
 
 ### Security
 
-- Data service read endpoints are now team-scoped (#178). Model: shared feeds + per-team overlay — collector/feed records stay global (`team_id` NULL, visible to all teams) and team-owned records are private; reads return global OR own-team. Fixes a cross-tenant disclosure where every team's indicators/sources were returned. Existing data (no `team_id`) is treated as global, so behaviour is unchanged for single-team setups.
+- Data service read endpoints are now team-scoped (#178). Model: shared feeds + per-team overlay — collector/feed records stay global (`team_id` NULL, visible to all teams) and team-owned records are private; reads return global OR own-team. Fixes a cross-tenant disclosure where every team's indicators/sources were returned. Existing data (no `team_id`) is treated as global, so behavior is unchanged for single-team setups.
 
 ### Changed
 
