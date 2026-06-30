@@ -39,6 +39,12 @@ RUN apt-get update \
 # Copy installed Python packages from builder
 COPY --from=builder /install /usr/local
 
+# Install the shared package, provided via the `shared` additional build
+# context (see docker-compose.yml / CI). --no-deps: its deps already come from
+# this service's requirements.txt.
+COPY --from=shared . /tmp/open-security-shared
+RUN pip install --no-deps /tmp/open-security-shared
+
 # Copy project
 COPY . .
 
