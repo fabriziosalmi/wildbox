@@ -62,8 +62,11 @@ curl http://localhost:8001/health
 ### Running Tests
 
 ```bash
-# Integration tests
-docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+# Integration tests run in CI via .github/workflows/integration-tests.yml,
+# which starts the backend services and runs `pytest tests/integration/`.
+# To run them locally, start the stack and point pytest at it:
+#   docker compose up -d
+#   pytest tests/integration/
 
 # Unit tests for a specific service
 cd open-security-identity
@@ -332,8 +335,10 @@ pytest tests/ -v --cov
 # JavaScript tests
 npm test
 
-# Integration tests
-docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+# Integration tests (run in CI via .github/workflows/integration-tests.yml).
+# Locally: start the stack, then run pytest against it.
+docker compose up -d
+pytest tests/integration/
 
 # E2E tests
 cd open-security-dashboard
