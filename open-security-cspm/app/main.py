@@ -66,7 +66,9 @@ redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 # Scans are stored under flat keys (scan:{id}:metadata). To scope reads by team
 # WITHOUT scanning every team's keys, each team keeps a Redis SET of its scan
 # ids. Dashboards iterate the caller's set instead of `scan:*:metadata`.
-_SCAN_INDEX_TTL = int(timedelta(days=30).total_seconds())
+# Scan retention. NOTE: must be an int — redis SETEX rejects a float TTL with
+# "value is not an integer or out of range".
+_SCAN_TTL_SECONDS = int(timedelta(days=30).total_seconds())
 
 
 def _team_scans_key(team_id: str) -> str:
@@ -78,7 +80,7 @@ def _index_team_scan(team_id: str, scan_id: str) -> None:
     key = _team_scans_key(team_id)
     redis_client.sadd(key, scan_id)
     # Keep the index alive at least as long as scan metadata.
-    redis_client.expire(key, _SCAN_INDEX_TTL)
+    redis_client.expire(key, _SCAN_TTL_SECONDS)
 
 
 def _iter_team_scan_metadata(team_id: str):
@@ -281,7 +283,7 @@ async def start_scan(
         
         redis_client.setex(
             f"scan:{scan_id}:metadata",
-            timedelta(days=30).total_seconds(),
+            _SCAN_TTL_SECONDS,
             json.dumps(scan_metadata)
         )
         # Namespace the scan under its team so reads never scan other teams' keys.
@@ -593,7 +595,7 @@ async def cancel_scan(
         metadata["cancelled_at"] = datetime.utcnow().isoformat()
         redis_client.setex(
             f"scan:{scan_id}:metadata",
-            timedelta(days=30).total_seconds(),
+            _SCAN_TTL_SECONDS,
             json.dumps(metadata)
         )
         
