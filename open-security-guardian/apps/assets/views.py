@@ -23,7 +23,7 @@ from .serializers import (
 )
 from .tasks import discover_assets, update_asset_inventory
 from .filters import AssetFilter
-from apps.core.permissions import IsAssetManager
+from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
 
 
 class AssetViewSet(viewsets.ModelViewSet):
@@ -32,7 +32,7 @@ class AssetViewSet(viewsets.ModelViewSet):
         'environment', 'business_function', 'owner', 'technical_contact'
     ).prefetch_related('software', 'ports', 'groups')
     serializer_class = AssetSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = AssetFilter
     search_fields = ['name', 'hostname', 'fqdn', 'ip_address', 'description']
@@ -148,7 +148,7 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
     """Environment management viewset"""
     queryset = Environment.objects.all()
     serializer_class = EnvironmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering = ['name']
@@ -158,7 +158,7 @@ class BusinessFunctionViewSet(viewsets.ModelViewSet):
     """Business function management viewset"""
     queryset = BusinessFunction.objects.all()
     serializer_class = BusinessFunctionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering = ['name']
@@ -168,7 +168,7 @@ class AssetGroupViewSet(viewsets.ModelViewSet):
     """Asset group management viewset"""
     queryset = AssetGroup.objects.prefetch_related('assets')
     serializer_class = AssetGroupSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name', 'description']
     ordering = ['name']
@@ -279,7 +279,7 @@ class AssetSoftwareViewSet(viewsets.ModelViewSet):
     """Asset software management viewset"""
     queryset = AssetSoftware.objects.select_related('asset')
     serializer_class = AssetSoftwareSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['asset', 'name', 'vendor', 'is_critical']
     search_fields = ['name', 'vendor', 'version']
@@ -302,7 +302,7 @@ class AssetPortViewSet(viewsets.ModelViewSet):
     """Asset port management viewset"""
     queryset = AssetPort.objects.select_related('asset')
     serializer_class = AssetPortSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_fields = ['asset', 'port_number', 'protocol', 'state', 'service']
     search_fields = ['service', 'banner']

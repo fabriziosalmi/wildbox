@@ -1,4 +1,5 @@
 from rest_framework import viewsets, status, permissions
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -26,7 +27,7 @@ import os
 class ReportTemplateViewSet(viewsets.ModelViewSet):
     queryset = ReportTemplate.objects.all()
     serializer_class = ReportTemplateSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ReportTemplateFilter
     search_fields = ['name', 'description']
@@ -80,7 +81,7 @@ class ReportTemplateViewSet(viewsets.ModelViewSet):
 class ReportScheduleViewSet(viewsets.ModelViewSet):
     queryset = ReportSchedule.objects.select_related('template', 'created_by').all()
     serializer_class = ReportScheduleSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ReportScheduleFilter
     search_fields = ['name', 'description']
@@ -126,7 +127,7 @@ class ReportScheduleViewSet(viewsets.ModelViewSet):
 class ReportViewSet(viewsets.ModelViewSet):
     queryset = Report.objects.select_related('template', 'schedule', 'generated_by').all()
     serializer_class = ReportSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = ReportFilter
     search_fields = ['name']
@@ -174,7 +175,7 @@ class ReportViewSet(viewsets.ModelViewSet):
 class DashboardViewSet(viewsets.ModelViewSet):
     queryset = Dashboard.objects.prefetch_related('shared_with').all()
     serializer_class = DashboardSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = DashboardFilter
     search_fields = ['name', 'description']
@@ -227,7 +228,7 @@ class DashboardViewSet(viewsets.ModelViewSet):
 class WidgetViewSet(viewsets.ModelViewSet):
     queryset = Widget.objects.all()
     serializer_class = WidgetSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = WidgetFilter
     search_fields = ['name', 'description']
@@ -268,7 +269,7 @@ class WidgetViewSet(viewsets.ModelViewSet):
 class ReportMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = ReportMetrics.objects.select_related('template').all()
     serializer_class = ReportMetricsSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ['metric_date', 'generation_count', 'success_rate']
     ordering = ['-metric_date']
@@ -303,7 +304,7 @@ class ReportMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 class AlertRuleViewSet(viewsets.ModelViewSet):
     queryset = AlertRule.objects.all()
     serializer_class = AlertRuleSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = AlertRuleFilter
     search_fields = ['name', 'description']

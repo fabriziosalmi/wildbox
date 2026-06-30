@@ -5,6 +5,7 @@ Django REST Framework views for scanner management.
 """
 
 from rest_framework import viewsets, status, permissions
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -22,7 +23,7 @@ from .serializers import (
 class ScannerViewSet(viewsets.ModelViewSet):
     """ViewSet for managing scanners"""
     queryset = Scanner.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description', 'scanner_type']
     filterset_fields = ['scanner_type', 'status']
@@ -64,7 +65,7 @@ class ScanProfileViewSet(viewsets.ModelViewSet):
     """ViewSet for managing scan profiles"""
     queryset = ScanProfile.objects.all()
     serializer_class = ScanProfileSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['scanner']
@@ -75,7 +76,7 @@ class ScanProfileViewSet(viewsets.ModelViewSet):
 class ScanViewSet(viewsets.ModelViewSet):
     """ViewSet for managing scans"""
     queryset = Scan.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['scanner', 'profile', 'status']
@@ -152,7 +153,7 @@ class ScanResultViewSet(viewsets.ModelViewSet):
     """ViewSet for managing scan results"""
     queryset = ScanResult.objects.all()
     serializer_class = ScanResultSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['plugin_name', 'description', 'host']
     filterset_fields = ['scan', 'severity', 'processed', 'vulnerability_created']
@@ -164,7 +165,7 @@ class ScanScheduleViewSet(viewsets.ModelViewSet):
     """ViewSet for managing scan schedules"""
     queryset = ScanSchedule.objects.all()
     serializer_class = ScanScheduleSerializer
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['scanner', 'is_active']
