@@ -129,6 +129,33 @@ class WorkflowEngine:
             logger.error(f"Failed to parse execution state for {run_id}: {e}")
             return None
     
+    def _get_owner_key(self, run_id: str) -> str:
+        """Get Redis key recording which team owns an execution (tenancy)."""
+        return f"{self.key_prefix}run:{run_id}:team"
+
+    def set_run_owner(self, run_id: str, team_id) -> None:
+        """Record which team owns a run so reads/cancels can be tenant-scoped.
+
+        Stored as a separate key with the same retention as the run state, so
+        it is independent of the worker rewriting the execution state.
+        """
+        key = self._get_owner_key(run_id)
+        self.redis_client.set(key, str(team_id))
+        expire_seconds = settings.execution_retention_days * 24 * 60 * 60
+        self.redis_client.expire(key, expire_seconds)
+
+    def get_run_owner(self, run_id: str) -> Optional[str]:
+        """Return the team_id that owns ``run_id``, or None if unknown."""
+        value = self.redis_client.get(self._get_owner_key(run_id))
+        if value is None:
+            return None
+        return value.decode() if isinstance(value, (bytes, bytearray)) else str(value)
+
+    def is_run_owner(self, run_id: str, team_id) -> bool:
+        """True only if ``team_id`` owns ``run_id`` (unknown owner -> False)."""
+        owner = self.get_run_owner(run_id)
+        return owner is not None and owner == str(team_id)
+
     def add_log(self, run_id: str, message: str, level: str = "INFO"):
         """Add a log entry for the execution"""
         logs_key = self._get_logs_key(run_id)

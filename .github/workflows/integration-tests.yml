@@ -163,6 +163,29 @@ jobs:
           SECRET_KEY: test-secret-key-for-ci-only
           ENVIRONMENT: test
 
+      - name: Install Responder Service Dependencies
+        run: |
+          # Own venv (same rationale as data): responder pins its own
+          # dramatiq/redis/fastapi stack; keep it off the identity/tools env.
+          python -m venv /tmp/responder-venv
+          /tmp/responder-venv/bin/pip install --upgrade pip
+          /tmp/responder-venv/bin/pip install ./open-security-shared
+          cd open-security-responder
+          /tmp/responder-venv/bin/pip install -r requirements.txt
+
+      - name: Start Responder Service
+        run: |
+          # Run from the service dir so the default ./playbooks (bundled YAML)
+          # loads. uvicorn alone is enough — start_execution persists the
+          # initial run state to Redis synchronously, no Dramatiq worker needed.
+          cd open-security-responder
+          /tmp/responder-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8018 &
+          RESPONDER_PID=$!
+          echo "RESPONDER_PID=$RESPONDER_PID" >> $GITHUB_ENV
+        env:
+          REDIS_URL: redis://localhost:6379/3
+          ENVIRONMENT: test
+
       - name: Wait for all services to be healthy
         run: |
           # Give services a few seconds to bind to ports
@@ -171,8 +194,8 @@ jobs:
           ./scripts/wait-for-services.sh
         timeout-minutes: 5
         env:
-          # Only check services actually started in CI (identity, tools, data)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health"
+          # Only check services actually started in CI (identity, tools, data, responder)
+          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health"
           # Skip optional services in CI (they don't exist in this environment)
           OPTIONAL_SERVICES: ""
 
@@ -189,6 +212,7 @@ jobs:
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
           DATA_SERVICE_URL: http://localhost:8002
+          RESPONDER_SERVICE_URL: http://localhost:8018
           TEST_API_KEY: ${{ secrets.API_KEY }}
         timeout-minutes: 10
 
@@ -207,6 +231,7 @@ jobs:
         run: |
           if [ ! -z "$IDENTITY_PID" ]; then kill $IDENTITY_PID || true; fi
           if [ ! -z "$TOOLS_PID" ]; then kill $TOOLS_PID || true; fi
+          if [ ! -z "$RESPONDER_PID" ]; then kill $RESPONDER_PID || true; fi
 
   security-validation:
     name: Security Validation
