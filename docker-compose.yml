@@ -20,6 +20,8 @@ services:
     build:
       context: ./open-security-identity
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-identity
     restart: unless-stopped
     security_opt:
@@ -52,6 +54,8 @@ services:
     build:
       context: ./open-security-tools
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-tools
     restart: unless-stopped
     security_opt:
@@ -84,6 +88,8 @@ services:
     build:
       context: ./open-security-tools
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-tools-worker
     restart: unless-stopped
     security_opt:
@@ -111,6 +117,8 @@ services:
     build:
       context: ./open-security-tools
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-tools-flower
     restart: unless-stopped
     security_opt:
@@ -141,6 +149,8 @@ services:
     build:
       context: ./open-security-data
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-data
     restart: unless-stopped
     security_opt:
@@ -168,6 +178,8 @@ services:
     build:
       context: ./open-security-data
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-data-scheduler
     restart: unless-stopped
     security_opt:
@@ -352,6 +364,8 @@ services:
     build:
       context: ./open-security-guardian
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-guardian
     restart: unless-stopped
     security_opt:
@@ -389,6 +403,8 @@ services:
     build:
       context: ./open-security-responder
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-responder
     restart: unless-stopped
     security_opt:
@@ -421,6 +437,8 @@ services:
     build:
       context: ./open-security-cspm
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-cspm
     restart: unless-stopped
     security_opt:
@@ -470,6 +488,8 @@ services:
     build:
       context: ./open-security-agents
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-agents
     restart: unless-stopped
     security_opt:
@@ -512,6 +532,8 @@ services:
     build:
       context: ./open-security-sensor
       dockerfile: Dockerfile
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
     security_opt:

@@ -55,6 +55,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./open-security-${{ matrix.service }}
+          build-contexts: |
+            shared=open-security-shared
           push: false
           load: false
           cache-from: type=gha,scope=${{ matrix.service }}

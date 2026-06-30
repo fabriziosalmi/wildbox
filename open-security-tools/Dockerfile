@@ -25,6 +25,12 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+# Install the shared package, provided via the `shared` additional build
+# context (see docker-compose.yml / CI). --no-deps: its deps already come from
+# this service's requirements.txt.
+COPY --from=shared . /tmp/open-security-shared
+RUN pip install --no-deps /tmp/open-security-shared
+
 # Copy application code
 COPY . .
 
