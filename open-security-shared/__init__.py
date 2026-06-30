@@ -18,6 +18,7 @@ from .auth_utils import (
     get_bearer_token_from_header,
     AuthConfig,
 )
+from .tenancy import team_filter, scope_query, scope_select
 
 __version__ = "1.0.0"
 __all__ = [
@@ -29,4 +30,7 @@ __all__ = [
     "get_api_key_from_header",
     "get_bearer_token_from_header",
     "AuthConfig",
+    "team_filter",
+    "scope_query",
+    "scope_select",
 ]
