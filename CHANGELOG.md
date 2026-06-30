@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-06-30
+
+Tenancy and RBAC across the backend: downstream services now isolate data by team and enforce the gateway-provided role. **These are behavior changes — read the upgrade notes.** Backward-compatible for existing single-team deployments (pre-existing data has no `team_id` and is treated as global/shared).
+
+### Upgrade notes
+
+- **Set `GATEWAY_INTERNAL_SECRET` everywhere.** Guardian and CSPM now **fail closed** (HTTP `503`) when the secret is unset, matching the other services — they will not serve requests without it. It is also forwarded by the agents service (see below).
+- **Members are now read-only in Guardian.** Mutating viewsets require the gateway role `owner`/`admin`; plain members can read but no longer create/update/delete. Configuration mutations elsewhere (e.g. responder playbook reload) also require `owner`/`admin`.
+- **Data is team-scoped.** Existing rows without a `team_id` are treated as global and stay visible to everyone; new team-owned data is private. The data service adds nullable `team_id` columns on startup (`create_tables()`); deployments managing the schema externally should add `team_id` to `sources` and `indicators`.
+- **AI agent tool calls now run with the requesting user's identity** instead of a zero-team admin key (#175). Ensure `GATEWAY_INTERNAL_SECRET` is set for the agents service so it can forward identity; otherwise it falls back to the (now non-privileged) service key.
+
+### Security
+
+- **Data service** read endpoints are team-scoped: collector/feed records stay global (`team_id` NULL, visible to all), team-owned records are private; reads return global OR own-team. Fixes a cross-tenant disclosure (#178).
+- **Responder** run history is owned by the team that started each run; another team gets `404` on read and cancel (#180).
+- **CSPM** scans are namespaced per team (no more scanning every team's keys), and its auth now fails closed when `GATEWAY_INTERNAL_SECRET` is unset (it had been missed by the earlier hardening) (#179).
+- **Guardian** enforces the gateway role on mutating viewsets and tightens `GatewayUser.has_perm()` so a member can no longer perform admin-only actions at the service layer (#181).
+- The legacy `X-API-Key` on the tools service is scoped to a non-privileged `service` identity (no longer a zero-team admin); the agents service forwards the caller's gateway identity on internal calls (#175).
+- Configuration mutations require `owner`/`admin` across services; operational and machine-to-machine endpoints stay member-allowed, audited per endpoint (#182).
+
+### Added
+
+- Reusable tenancy helpers `team_or_global_filter` / `scope_query_shared` and a DRF `RequireGatewayRole` permission.
+- Two-team cross-tenant and role-enforcement integration/unit tests for data, responder, CSPM and guardian, run in CI (#183).
+
+### Fixed
+
+- CSPM `/dashboard/summary` returned a payload that didn't match its response model and `500`'d for every caller — it now returns the declared fields (#179 follow-up).
+- CSPM scan creation `500`'d on a float Redis `SETEX` TTL; the TTL is now an int (#179).
+
+### CI
+
+- The integration harness now runs the data, responder and CSPM services; agents and guardian gained real unit tests (the agents unit-test job previously collected nothing).
+
 ## [0.7.1] - 2026-06-30
 
 Shared-library consolidation and the first tenancy isolation, with new CI safety nets. Backward-compatible for existing single-team deployments.
