@@ -61,6 +61,10 @@ class Source(Base):
     __tablename__ = "sources"
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Tenancy: NULL means a global/shared feed source (visible to every team);
+    # a value means the source is private to that team. See open_security_shared
+    # .tenancy.team_or_global_filter.
+    team_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     name = Column(String(255), unique=True, nullable=False)
     description = Column(Text)
     url = Column(String(1024))
@@ -108,7 +112,10 @@ class Indicator(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     source_id = Column(UUID(as_uuid=True), ForeignKey("sources.id"), nullable=False)
-    
+    # Tenancy: inherited from the source. NULL = global/shared feed indicator
+    # (visible to every team); a value = private to that team.
+    team_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+
     # Core indicator data
     indicator_type = Column(String(50), nullable=False)
     value = Column(String(1024), nullable=False)
