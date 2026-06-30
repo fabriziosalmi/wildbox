@@ -14,11 +14,17 @@ from typing import Any
 
 from .gateway_auth import GatewayUser
 
-__all__ = ["team_filter", "scope_query", "scope_select"]
+__all__ = [
+    "team_filter",
+    "scope_query",
+    "scope_select",
+    "team_or_global_filter",
+    "scope_query_shared",
+]
 
 
 def team_filter(model: Any, user: GatewayUser):
-    """Return a filter expression scoping ``model`` to the caller's team.
+    """Return a filter expression scoping ``model`` strictly to the caller's team.
 
     Usage::
 
@@ -26,6 +32,24 @@ def team_filter(model: Any, user: GatewayUser):
         select(Model).where(team_filter(Model, user))         # SQLAlchemy 2.0
     """
     return model.team_id == user.team_id
+
+
+def team_or_global_filter(model: Any, user: GatewayUser):
+    """Filter for the "shared feeds + per-team overlay" model: rows the caller's
+    team owns OR rows with no owner (``team_id IS NULL``, i.e. global/shared).
+
+    Use for data where collector/feed records are global and only
+    team-configured records are private::
+
+        db.query(Model).filter(team_or_global_filter(Model, user))
+    """
+    # `== None` intentionally maps to SQL `IS NULL` (do not change to `is None`).
+    return (model.team_id == None) | (model.team_id == user.team_id)  # noqa: E711
+
+
+def scope_query_shared(query: Any, model: Any, user: GatewayUser):
+    """Scope a legacy ``Query`` to the caller's team plus global rows."""
+    return query.filter(team_or_global_filter(model, user))
 
 
 def scope_query(query: Any, model: Any, user: GatewayUser):
