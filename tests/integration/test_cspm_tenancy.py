@@ -83,8 +83,15 @@ def test_cspm_scan_isolated_by_team(service_urls):
     )
     assert b_del.status_code == 403, b_del.text
 
-    # NOTE: the /dashboard/summary endpoint has a pre-existing broken response
-    # contract (its return doesn't match DashboardSummaryResponse), so it 500s
-    # regardless of tenancy — not asserted here. The per-team scan index that
-    # backs it is still exercised by start_scan above; the dashboard response
-    # contract is a separate fix.
+    # Team A's dashboard counts the scan; team B's does not (per-team index).
+    a_dash = requests.get(
+        f"{base}/api/v1/dashboard/summary", headers=_gateway_headers(team_a, secret), timeout=10
+    )
+    assert a_dash.status_code == 200, a_dash.text
+    assert a_dash.json()["total_scans"] >= 1
+
+    b_dash = requests.get(
+        f"{base}/api/v1/dashboard/summary", headers=_gateway_headers(team_b, secret), timeout=10
+    )
+    assert b_dash.status_code == 200, b_dash.text
+    assert b_dash.json()["total_scans"] == 0

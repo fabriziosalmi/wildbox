@@ -627,26 +627,50 @@ async def get_dashboard_summary(
         # Get the team's scans via its index set (no cross-team key scanning).
         team_scans = list(_iter_team_scan_metadata(current_user["team_id"]))
 
-        # Calculate summary metrics. Use defensive .get() — a freshly started
-        # scan has no resources/summary yet (the worker fills them on completion).
         total_scans = len(team_scans)
-        total_resources = sum(len(s.get("resources", [])) for s in team_scans)
-        total_findings = sum(s.get("summary", {}).get("total_findings", 0) for s in team_scans)
-        total_passed = sum(s.get("summary", {}).get("passed", 0) for s in team_scans)
-        total_failed = sum(s.get("summary", {}).get("failed", 0) for s in team_scans)
-        total_skipped = sum(s.get("summary", {}).get("skipped", 0) for s in team_scans)
-        
-        # Get trending metrics
-        trending_metrics = _get_trending_metrics(redis_client, "all", current_user["team_id"])
-        
+        active_states = {"started", "running", "queued", "pending"}
+        active_scans = sum(1 for s in team_scans if s.get("status") in active_states)
+        failed_scans = sum(1 for s in team_scans if s.get("status") == "failed")
+        completed_scans = sum(1 for s in team_scans if s.get("status") == "completed")
+
+        # Aggregate findings from each scan's results (present only after a scan
+        # completes). Per-check severity isn't tracked yet, so the per-severity
+        # buckets stay 0; total_findings counts failed checks.
+        all_results = []
+        for s in team_scans:
+            raw = redis_client.get(f"scan:{s['scan_id']}:results")
+            if not raw:
+                continue
+            try:
+                all_results.extend(json.loads(raw).get("results", []))
+            except (ValueError, TypeError):
+                continue
+        total_findings = sum(1 for r in all_results if r.get("status") == "failed")
+        compliance_score = (
+            _calculate_compliance_score({"results": all_results}) if all_results else 0.0
+        )
+
+        # Most recent scan start time.
+        started_times = []
+        for s in team_scans:
+            try:
+                started_times.append(datetime.fromisoformat(s["started_at"]))
+            except (KeyError, ValueError, TypeError):
+                continue
+        last_scan_at = max(started_times) if started_times else None
+
         return schemas.DashboardSummaryResponse(
             total_scans=total_scans,
-            total_resources=total_resources,
+            active_scans=active_scans,
+            failed_scans=failed_scans,
+            completed_scans=completed_scans,
             total_findings=total_findings,
-            total_passed=total_passed,
-            total_failed=total_failed,
-            total_skipped=total_skipped,
-            trending_metrics=trending_metrics
+            critical_findings=0,
+            high_findings=0,
+            medium_findings=0,
+            low_findings=0,
+            compliance_score=compliance_score,
+            last_scan_at=last_scan_at,
         )
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
