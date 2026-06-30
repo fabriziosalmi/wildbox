@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-30
+
+Shared-library consolidation and the first tenancy isolation, with new CI safety nets. Backward-compatible for existing single-team deployments.
+
+### Security
+
+- Data service read endpoints are now team-scoped (#178). Model: shared feeds + per-team overlay — collector/feed records stay global (`team_id` NULL, visible to all teams) and team-owned records are private; reads return global OR own-team. Fixes a cross-tenant disclosure where every team's indicators/sources were returned. Existing data (no `team_id`) is treated as global, so behavior is unchanged for single-team setups.
+
+### Changed
+
+- Gateway authentication is consolidated onto the shared `open_security_shared.gateway_auth` dependency across tools/agents/data/responder (#173, #174); the per-service `auth.py` duplicates and `sys.path`/`try-except` import shims were removed (~520 LOC). Also forwards `X-Gateway-Secret` correctly so the proof-of-origin is always enforced.
+
+### Added
+
+- `open-security-shared` is now a real installable package (`pyproject.toml`), installed into every service image via a BuildKit additional context (#172).
+- Reusable tenancy helpers in `open_security_shared.tenancy` — `team_filter`, `scope_query`, `team_or_global_filter`, `scope_query_shared` (#177).
+
+### CI
+
+- Build every service image (build-only) on pull requests so Docker/build changes are validated before merge (#229).
+- Run the data service in the integration harness, in its own venv against the test database (#233).
+
+### Documentation
+
+- Document the canonical service layout (identity reference) in CONTRIBUTING (#176).
+
 ## [0.7.0] - 2026-06-29
 
 Security hardening, first-run honesty, and a documentation/site overhaul. Some changes affect existing deployments — see **Security** and **Changed**.
