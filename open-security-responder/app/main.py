@@ -187,7 +187,10 @@ async def execute_playbook(
         
         # Start execution
         run_id = start_execution(playbook_id, request.trigger_data)
-        
+
+        # Record the owning team so other teams can't read or cancel this run.
+        workflow_engine.set_run_owner(run_id, current_user.team_id)
+
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
             content={
@@ -215,13 +218,15 @@ async def get_execution_status(run_id: str, current_user: GatewayUser = Depends(
     """Get execution status and results"""
     try:
         execution_result = workflow_engine.get_execution_state(run_id)
-        
-        if not execution_result:
+
+        # Treat "not yours" the same as "not found" so existence isn't leaked
+        # across teams.
+        if not execution_result or not workflow_engine.is_run_owner(run_id, current_user.team_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Execution '{run_id}' not found"
             )
-        
+
         return execution_result
         
     except HTTPException:
@@ -275,8 +280,9 @@ async def cancel_execution(run_id: str, current_user: GatewayUser = Depends(get_
     try:
         # For now, we'll just mark it as cancelled in Redis
         execution_result = workflow_engine.get_execution_state(run_id)
-        
-        if not execution_result:
+
+        # "Not yours" -> 404, identical to "not found", to avoid cross-team leak.
+        if not execution_result or not workflow_engine.is_run_owner(run_id, current_user.team_id):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Execution '{run_id}' not found"
