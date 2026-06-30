@@ -139,14 +139,20 @@ jobs:
 
       - name: Install Data Service Dependencies
         run: |
-          pip install ./open-security-shared
+          # Isolate data's deps in their own venv: it pins different
+          # pydantic/fastapi/sqlalchemy versions than identity/tools, and
+          # installing them into the shared env would break the already-running
+          # services.
+          python -m venv /tmp/data-venv
+          /tmp/data-venv/bin/pip install --upgrade pip
+          /tmp/data-venv/bin/pip install ./open-security-shared
           cd open-security-data
-          pip install -r requirements.txt
+          /tmp/data-venv/bin/pip install -r requirements.txt
 
       - name: Start Data Service
         run: |
           cd open-security-data
-          python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8002 &
+          /tmp/data-venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8002 &
           DATA_PID=$!
           echo "DATA_PID=$DATA_PID" >> $GITHUB_ENV
         env:
