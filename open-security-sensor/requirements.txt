@@ -3,13 +3,13 @@
 # Core dependencies
 asyncio-mqtt==0.16.2
 aiohttp==3.14.1
-aiohttp-cors==0.7.0
-PyYAML==6.0.2
+aiohttp-cors==0.8.1
+PyYAML==6.0.3
 psutil==6.1.1
-feedparser==6.0.11
+feedparser==6.0.12
 
 # Data processing
-jsonschema==4.23.0
+jsonschema==4.26.0
 python-dateutil==2.9.0
 
 # System monitoring
@@ -27,7 +27,7 @@ pytest==8.3.4
 pytest-asyncio==0.24.0
 pytest-cov==6.0.0
 black==24.10.0
-flake8==7.1.1
+flake8==7.3.0
 mypy==1.13.0
 
 # Platform-specific dependencies

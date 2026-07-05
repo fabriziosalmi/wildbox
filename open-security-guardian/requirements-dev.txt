@@ -3,22 +3,22 @@
 
 # Additional development tools
 django-debug-toolbar==4.1.0
-django-silk==5.0.3
+django-silk==5.5.0
 ipython==8.14.0
-jupyter==1.0.0
+jupyter==1.1.1
 
 # API documentation
-mkdocs==1.5.0
-mkdocs-material==9.1.21
-mkdocs-mermaid2-plugin==1.1.1
+mkdocs==1.6.1
+mkdocs-material==9.7.6
+mkdocs-mermaid2-plugin==1.2.3
 
 # Code quality
-bandit==1.7.5
+bandit==1.9.4
 safety==2.3.5
-vulture==2.9.1
+vulture==2.16
 
 # Performance testing
-locust==2.16.1
+locust==2.44.4
 
 # Database tools
 pgcli==3.5.0

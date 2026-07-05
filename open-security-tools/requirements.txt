@@ -2,37 +2,37 @@
 defusedxml==0.7.1
 
 # Web framework
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-pydantic==2.10.3
-pydantic-settings==2.10.1
+fastapi==0.139.0
+uvicorn[standard]==0.50.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
 python-dotenv==1.2.2
 Jinja2==3.1.6
 aiofiles==24.1.0
 
 # DNS enumeration dependencies
-dnspython==2.7.0
+dnspython==2.8.0
 aiodns==3.2.0
-python-whois==0.9.4
+python-whois==0.9.6
 
 # Port scanning dependencies
 python-nmap==0.7.1
 
 # Web vulnerability scanning dependencies
 aiohttp==3.14.1
-beautifulsoup4==4.12.3
-requests==2.33.0
+beautifulsoup4==4.15.0
+requests==2.34.2
 
 # SSL/TLS analysis dependencies
 cryptography==48.0.1
 
 # Additional security and performance
-slowapi==0.1.9
+slowapi==0.1.10
 redis==5.2.1
 psutil==6.1.1
 
 # Asynchronous task queue
-celery==5.4.0
+celery==5.6.3
 flower==2.0.1
 
 # Development and testing (optional)
