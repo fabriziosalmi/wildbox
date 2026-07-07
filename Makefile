@@ -83,8 +83,8 @@ health:
 
 test:
 	@echo "$(BLUE)Running integration tests...$(NC)"
-	@docker-compose exec -T identity pytest tests/ || true
-	@docker-compose exec -T guardian python manage.py test || true
+	@docker-compose exec -T identity pytest tests/
+	@docker-compose exec -T guardian python manage.py test
 	@echo "$(GREEN)✓ Tests complete$(NC)"
 
 clean:
