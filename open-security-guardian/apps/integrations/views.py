@@ -5,6 +5,7 @@ Django REST Framework views for managing integrations with external systems.
 """
 
 from rest_framework import viewsets, status, permissions
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -19,7 +20,7 @@ from .models import (
 class ExternalSystemViewSet(viewsets.ModelViewSet):
     """ViewSet for managing external system integrations"""
     queryset = ExternalSystem.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description', 'vendor']
     filterset_fields = ['system_type', 'status', 'auth_type']
@@ -51,7 +52,7 @@ class ExternalSystemViewSet(viewsets.ModelViewSet):
 class IntegrationMappingViewSet(viewsets.ModelViewSet):
     """ViewSet for managing field mappings between Guardian and external systems"""
     queryset = IntegrationMapping.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['system', 'guardian_entity', 'sync_direction', 'is_active']
     ordering_fields = ['created_at', 'updated_at']
@@ -75,7 +76,7 @@ class IntegrationMappingViewSet(viewsets.ModelViewSet):
 class SyncRecordViewSet(viewsets.ModelViewSet):
     """ViewSet for managing synchronization records"""
     queryset = SyncRecord.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['system', 'sync_type', 'status', 'entity_type']
     ordering_fields = ['sync_time', 'created_at']
@@ -103,7 +104,7 @@ class SyncRecordViewSet(viewsets.ModelViewSet):
 class WebhookEndpointViewSet(viewsets.ModelViewSet):
     """ViewSet for managing webhook endpoints"""
     queryset = WebhookEndpoint.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['system', 'is_active', 'event_types']
@@ -129,7 +130,7 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
 class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for viewing integration logs"""
     queryset = IntegrationLog.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['system', 'operation_type', 'log_level', 'entity_type']
     search_fields = ['message', 'entity_id']
@@ -157,7 +158,7 @@ class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
 class NotificationChannelViewSet(viewsets.ModelViewSet):
     """ViewSet for managing notification channels"""
     queryset = NotificationChannel.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['channel_type', 'is_active', 'severity_levels']

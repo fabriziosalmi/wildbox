@@ -264,10 +264,16 @@ async def analyze_ioc(
             json.dumps(task_metadata)
         )
         
-        # Submit Celery task
+        # Submit Celery task, forwarding the caller's gateway identity so tool
+        # calls run with the user's real team scope, not the legacy key (#175).
         celery_task = run_threat_enrichment_task.delay(
             task_id=task_id,
-            ioc=request.ioc.dict()
+            ioc=request.ioc.dict(),
+            caller={
+                "user_id": str(user.user_id),
+                "team_id": str(user.team_id),
+                "role": getattr(user, "role", "member"),
+            },
         )
         
         # Store Celery task ID mapping

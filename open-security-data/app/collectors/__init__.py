@@ -220,6 +220,9 @@ class BaseCollector(ABC):
                 # Create new indicator
                 indicator = Indicator(
                     source_id=self.source.id,
+                    # Inherit tenancy from the source: NULL (global feed) stays
+                    # global; a team-owned source yields team-owned indicators.
+                    team_id=self.source.team_id,
                     indicator_type=indicator_data['indicator_type'],
                     value=indicator_data['value'],
                     normalized_value=indicator_data['normalized_value'],

@@ -5,6 +5,7 @@ Django REST Framework views for remediation ticket and workflow management.
 """
 
 from rest_framework import viewsets, status, permissions
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -19,7 +20,7 @@ from .models import (
 class RemediationTicketViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation tickets"""
     queryset = RemediationTicket.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description', 'external_ticket_id']
     filterset_fields = ['status', 'priority', 'assigned_to', 'ticketing_system']
@@ -58,7 +59,7 @@ class RemediationTicketViewSet(viewsets.ModelViewSet):
 class RemediationWorkflowViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation workflows"""
     queryset = RemediationWorkflow.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['vulnerability', 'status', 'priority', 'assigned_to']
@@ -108,7 +109,7 @@ class RemediationWorkflowViewSet(viewsets.ModelViewSet):
 class RemediationStepViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation steps"""
     queryset = RemediationStep.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description']
     filterset_fields = ['workflow', 'status', 'assigned_to', 'step_type']
@@ -144,7 +145,7 @@ class RemediationStepViewSet(viewsets.ModelViewSet):
 class RemediationCommentViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation comments"""
     queryset = RemediationComment.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['content']
     filterset_fields = ['ticket', 'workflow', 'author', 'comment_type']
@@ -159,7 +160,7 @@ class RemediationCommentViewSet(viewsets.ModelViewSet):
 class RemediationTemplateViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation templates"""
     queryset = RemediationTemplate.objects.all()
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['category', 'is_active', 'created_by']

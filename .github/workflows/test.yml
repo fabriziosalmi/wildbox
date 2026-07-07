@@ -38,16 +38,28 @@ jobs:
       - name: Install dependencies for ${{ matrix.service }}
         run: |
           cd open-security-${{ matrix.service }}
+          # Python services import open_security_shared; install it so unit
+          # tests that touch service code can import it (harmless otherwise).
+          pip install ../open-security-shared || true
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
       
       - name: Run unit tests
         run: |
           cd open-security-${{ matrix.service }}
-          pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term
-        continue-on-error: true
-      
+          # Truthful gating: a service WITH unit tests must pass them (no
+          # continue-on-error masking); a service WITHOUT them emits a visible
+          # warning instead of a silent pytest exit-4. Coverage gaps for the
+          # services that have no tests/unit/ are tracked in #245.
+          if [ -d tests/unit ] && [ -n "$(find tests/unit -name 'test_*.py' -print -quit)" ]; then
+            pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term
+          else
+            echo "::warning title=No unit tests::open-security-${{ matrix.service }} has no tests/unit/ — coverage gap tracked in #245"
+          fi
+
       - name: Upload coverage to Codecov
+        if: ${{ hashFiles(format('open-security-{0}/coverage.xml', matrix.service)) != '' }}
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           files: ./open-security-${{ matrix.service }}/coverage.xml
@@ -210,6 +222,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./open-security-${{ matrix.service }}
+          build-contexts: |
+            shared=open-security-shared
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

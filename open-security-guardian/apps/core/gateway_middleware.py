@@ -70,17 +70,23 @@ class GatewayUser:
     def __repr__(self):
         return self.__str__()
     
-    def has_perm(self, perm):
-        """Check if user has permission."""
-        # Owner/admin have all permissions
-        if self.role in ["owner", "admin"]:
+    def has_perm(self, perm, obj=None):
+        """Check if the user has a Django-style permission.
+
+        Owner/admin get everything. A member gets ONLY read permissions
+        (``view_*`` / ``read_*``) and never cross-tenant ``*_all`` scopes or any
+        add/change/delete/manage perm. Matching is on the perm codename
+        (``app_label.codename``) by prefix, not a loose substring, so a perm
+        like ``approve_review`` can't slip through on the word "view".
+        """
+        if self.role in ("owner", "admin"):
             return True
-        # Members only get basic view permissions, not view_all_*
-        if "view_all" in perm:
+        if self.role != "member":
             return False
-        if "view" in perm or "read" in perm:
-            return True
-        return False
+        codename = perm.split(".", 1)[-1] if isinstance(perm, str) else ""
+        if "_all" in codename:  # cross-tenant view_all_* etc.
+            return False
+        return codename.startswith(("view_", "read_")) or codename in ("view", "read")
     
     def has_module_perms(self, app_label):
         """Check if user has module permissions."""

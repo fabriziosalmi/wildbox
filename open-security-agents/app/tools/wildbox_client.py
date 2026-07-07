@@ -6,12 +6,29 @@ Provides authenticated access to the Wildbox security toolkit.
 
 import asyncio
 import logging
+from contextvars import ContextVar
 from typing import Dict, Any, Optional
 import httpx
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
+
+# Identity of the user on whose behalf internal tool calls are made (#175). Set
+# per analysis task (see worker.run_threat_enrichment_task) so downstream calls
+# carry the real team-scoped identity instead of a god-mode service key.
+_caller_identity: ContextVar[Optional[Dict[str, str]]] = ContextVar(
+    "wildbox_caller_identity", default=None
+)
+
+
+def set_caller_identity(user_id: str, team_id: str, role: str = "member") -> None:
+    """Record the gateway identity to forward on subsequent internal calls."""
+    _caller_identity.set({
+        "user_id": str(user_id),
+        "team_id": str(team_id),
+        "role": role or "member",
+    })
 
 
 class WildboxAPIClient:
@@ -35,19 +52,37 @@ class WildboxAPIClient:
         self.guardian_url = settings.wildbox_guardian_url
         self.responder_url = settings.wildbox_responder_url
         self.api_key = settings.internal_api_key
-        if not self.api_key:
+        self.gateway_secret = settings.gateway_internal_secret
+        if not self.api_key and not self.gateway_secret:
             logger.warning(
-                "INTERNAL_API_KEY is not set — internal tool calls will go out "
-                "without an X-API-Key and be rejected by the backend services."
+                "Neither INTERNAL_API_KEY nor GATEWAY_INTERNAL_SECRET is set — "
+                "internal tool calls will be unauthenticated and rejected."
             )
 
         # HTTP client configuration
         self.timeout = httpx.Timeout(30.0, connect=10.0)
-        self.headers = {
+
+    def _request_headers(self) -> Dict[str, str]:
+        """Build auth headers per call.
+
+        Preferred (#175): forward the caller's gateway identity (X-Wildbox-*)
+        plus the proof-of-origin secret, so downstream services apply the user's
+        real team scope and role. Fall back to the static (now non-privileged,
+        #175) service API key only when no caller identity / secret is available.
+        """
+        headers = {
             "User-Agent": "Open-Security-Agents/1.0",
-            "X-API-Key": self.api_key,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
+        caller = _caller_identity.get()
+        if caller and self.gateway_secret:
+            headers["X-Wildbox-User-ID"] = caller["user_id"]
+            headers["X-Wildbox-Team-ID"] = caller["team_id"]
+            headers["X-Wildbox-Role"] = caller["role"]
+            headers["X-Gateway-Secret"] = self.gateway_secret
+        else:
+            headers["X-API-Key"] = self.api_key
+        return headers
     
     async def run_tool(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -94,7 +129,7 @@ class WildboxAPIClient:
                         response = await client.post(
                             url,
                             json=transformed_params,  # Send params directly, not wrapped
-                            headers=self.headers
+                            headers=self._request_headers()
                         )
                         
                         # Handle rate limiting with exponential backoff
@@ -149,7 +184,7 @@ class WildboxAPIClient:
                 response = await client.get(
                     url,
                     params=params,
-                    headers=self.headers
+                    headers=self._request_headers()
                 )
                 response.raise_for_status()
                 
@@ -330,7 +365,7 @@ class WildboxAPIClient:
                 response = await client.get(
                     url,
                     params=params,
-                    headers=self.headers
+                    headers=self._request_headers()
                 )
                 response.raise_for_status()
                 return response.json()
@@ -360,7 +395,7 @@ class WildboxAPIClient:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
                     response = await client.get(
                         f"{service_url}/health",
-                        headers={"X-API-Key": self.api_key}
+                        headers=self._request_headers()
                     )
                     if response.status_code == 200:
                         health_status[service_name] = "healthy"

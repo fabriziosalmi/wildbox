@@ -24,6 +24,7 @@ from app.models import Source, Indicator, IPAddress, Domain, FileHash, Collectio
 from app.utils.database import get_db_session, create_tables
 from app.schemas.api import *
 from app.auth import get_current_user, GatewayUser
+from open_security_shared.tenancy import team_or_global_filter
 
 logger = logging.getLogger(__name__)
 config = get_config()
@@ -115,17 +116,24 @@ async def get_statistics(current_user: GatewayUser = Depends(get_current_user), 
         Indicator.indicator_type,
         func.count(Indicator.id).label('count')
     ).filter(
-        Indicator.active == True
+        Indicator.active == True,
+        team_or_global_filter(Indicator, current_user)
     ).group_by(Indicator.indicator_type).all()
-    
+
     indicator_stats = {item.indicator_type: item.count for item in indicator_counts}
-    
-    # Count sources
-    active_sources = db.query(func.count(Source.id)).filter(Source.enabled == True).scalar()
-    total_sources = db.query(func.count(Source.id)).scalar()
-    
-    # Total indicators
-    total_indicators = db.query(func.count(Indicator.id)).filter(Indicator.active == True).scalar()
+
+    # Count sources (caller's team + global)
+    active_sources = db.query(func.count(Source.id)).filter(
+        Source.enabled == True, team_or_global_filter(Source, current_user)
+    ).scalar()
+    total_sources = db.query(func.count(Source.id)).filter(
+        team_or_global_filter(Source, current_user)
+    ).scalar()
+
+    # Total indicators (caller's team + global)
+    total_indicators = db.query(func.count(Indicator.id)).filter(
+        Indicator.active == True, team_or_global_filter(Indicator, current_user)
+    ).scalar()
     
     # Recent collection runs
     recent_collections = db.query(func.count(CollectionRun.id)).filter(
@@ -162,8 +170,8 @@ async def search_indicators(
     
     logger.info(f"🔐 Authenticated request to search indicators (User: {current_user.user_id}, Team: {current_user.team_id})")
     
-    query = db.query(Indicator)
-    
+    query = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user))
+
     # Apply filters
     if active_only:
         query = query.filter(Indicator.active == True)
@@ -224,7 +232,7 @@ async def get_indicator(
 ):
     """Get detailed information about a specific indicator"""
 
-    indicator = db.query(Indicator).filter(Indicator.id == indicator_id).first()
+    indicator = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(Indicator.id == indicator_id).first()
     
     if not indicator:
         raise HTTPException(
@@ -286,6 +294,8 @@ async def get_indicator(
     )
 
 # Bulk lookup endpoint
+# #182 policy: POST but read-only (bulk lookup takes a request body) — no role
+# gate; results are already team-scoped.
 @app.post("/api/v1/indicators/lookup", response_model=BulkLookupResponse, tags=["Indicators"])
 async def bulk_lookup(
     request: BulkLookupRequest,
@@ -304,7 +314,7 @@ async def bulk_lookup(
     
     for item in request.indicators:
         # Find matching indicators
-        query = db.query(Indicator).filter(
+        query = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
             and_(
                 Indicator.indicator_type == item.indicator_type.lower(),
                 or_(
@@ -341,7 +351,7 @@ async def get_ip_intelligence(
     """Get intelligence about an IP address"""
     
     # Find IP indicators
-    indicators = db.query(Indicator).filter(
+    indicators = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
         and_(
             Indicator.indicator_type == 'ip_address',
             or_(
@@ -398,7 +408,7 @@ async def get_domain_intelligence(
     normalized_domain = domain.lower().strip()
     
     # Find domain indicators
-    indicators = db.query(Indicator).filter(
+    indicators = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
         and_(
             Indicator.indicator_type == 'domain',
             or_(
@@ -454,7 +464,7 @@ async def get_hash_intelligence(
     normalized_hash = file_hash.lower().strip()
     
     # Find hash indicators
-    indicators = db.query(Indicator).filter(
+    indicators = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
         and_(
             Indicator.indicator_type == 'file_hash',
             or_(
@@ -506,7 +516,7 @@ async def list_sources(
 ):
     """List data sources"""
     
-    query = db.query(Source)
+    query = db.query(Source).filter(team_or_global_filter(Source, current_user))
     
     if enabled_only:
         query = query.filter(Source.enabled == True)
@@ -539,7 +549,7 @@ async def realtime_feed(
     
     since_time = datetime.now(timezone.utc) - timedelta(minutes=since_minutes)
     
-    query = db.query(Indicator).filter(
+    query = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
         and_(
             Indicator.last_seen >= since_time,
             Indicator.active == True
@@ -630,6 +640,8 @@ async def get_threat_intel_metrics(current_user: GatewayUser = Depends(get_curre
     }
 
 # Telemetry ingestion endpoints
+# #182 policy: machine-to-machine telemetry ingest from sensors (not a user
+# admin action) — gated by gateway auth + team scope, not by role.
 @app.post("/api/v1/ingest", response_model=TelemetryBatchResponse, tags=["Telemetry"])
 async def ingest_telemetry_batch(
     batch: TelemetryBatch,

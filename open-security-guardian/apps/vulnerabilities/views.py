@@ -9,6 +9,7 @@ from django.db.models import Q, Count, Avg, F, Case, When, IntegerField
 from django.utils import timezone
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status, filters
+from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -41,7 +42,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
     Provides CRUD operations plus additional actions for vulnerability lifecycle
     """
     queryset = Vulnerability.objects.select_related('asset', 'assigned_to', 'created_by')
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
     filterset_class = VulnerabilityFilter
     search_fields = ['title', 'description', 'cve_id', 'asset__name']
@@ -407,7 +408,7 @@ class VulnerabilityTemplateViewSet(viewsets.ModelViewSet):
     """ViewSet for vulnerability templates"""
     queryset = VulnerabilityTemplate.objects.all()
     serializer_class = VulnerabilityTemplateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['title', 'cve_id', 'category']
     ordering_fields = ['title', 'severity', 'created_at']
@@ -418,6 +419,6 @@ class VulnerabilityAssessmentViewSet(viewsets.ModelViewSet):
     """ViewSet for vulnerability risk assessments"""
     queryset = VulnerabilityAssessment.objects.select_related('vulnerability')
     serializer_class = VulnerabilityAssessmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['vulnerability', 'exploit_available', 'exploit_public']

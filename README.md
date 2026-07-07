@@ -323,7 +323,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 
 ## Roadmap
 
-**Current version: v0.7.0 (Security-Hardened)**
+**Current version: v0.8.0 (Security-Hardened)**
 
 **Phase 1: Stabilization** - Done
 
