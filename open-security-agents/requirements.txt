@@ -8,7 +8,7 @@ slowapi==0.1.9  # rate limiting; imported in app/main.py
 
 # Task Queue
 celery[redis]==5.4.0
-redis==5.2.1
+redis==8.0.1
 
 # AI/LLM Framework
 # Pinned versions for reproducible builds and security
