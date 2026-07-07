@@ -1,20 +1,20 @@
 # Open Security Agents - AI-Powered Threat Intelligence
 # Core API Framework
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
-pydantic==2.10.3
-pydantic-settings==2.10.1
-slowapi==0.1.9  # rate limiting; imported in app/main.py
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
+pydantic==2.13.4
+pydantic-settings==2.14.2
+slowapi==0.1.10  # rate limiting; imported in app/main.py
 
 # Task Queue
-celery[redis]==5.4.0
+celery[redis]==5.6.3
 redis==5.2.1
 
 # AI/LLM Framework
 # Pinned versions for reproducible builds and security
 langchain==0.3.30
 langchain-anthropic==0.3.22
-langchain-community==0.3.31
+langchain-community==0.4.2
 
 # HTTP Client
 httpx==0.28.1

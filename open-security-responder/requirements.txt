@@ -1,22 +1,22 @@
 # Open Security Responder - Python Dependencies
 
 # Core framework
-fastapi==0.115.5
-uvicorn[standard]==0.32.1
+fastapi==0.139.0
+uvicorn[standard]==0.50.2
 
 # Task queue and workflow engine
 dramatiq[redis,watch]==1.17.0
 redis==5.2.1
 
 # Data validation and settings
-pydantic==2.10.3
-pydantic-settings==2.10.1
+pydantic==2.13.4
+pydantic-settings==2.14.2
 
 # Template engine for playbook input parsing
 jinja2==3.1.6
 
 # YAML parsing for playbooks
-pyyaml==6.0.2
+pyyaml==6.0.3
 
 # HTTP client for connector interactions
 httpx==0.28.1
