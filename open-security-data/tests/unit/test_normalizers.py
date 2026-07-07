@@ -4,11 +4,15 @@ Pure-logic, no DB/service needed. Locks in the value-canonicalization rules
 that downstream dedup/fingerprinting (create_fingerprint) and tenancy-scoped
 querying rely on producing stable, comparable values.
 """
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
-from app.utils.normalizers import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.utils.normalizers import (  # noqa: E402
     create_fingerprint,
     merge_indicators,
     normalize_asn,

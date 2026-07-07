@@ -4,9 +4,14 @@ Pure-logic, no cloud credentials/DB/Redis needed. Locks in the compliance
 scoring and remediation-roadmap math so a refactor can't silently change
 what counts as "compliant" or how findings get prioritized.
 """
+import sys
+from pathlib import Path
+
 import pytest
 
-from app.utils import (
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from app.utils import (  # noqa: E402
     _calculate_compliance_score,
     _estimate_scan_duration,
     _generate_remediation_roadmap,
