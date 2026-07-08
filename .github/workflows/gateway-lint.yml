@@ -1,0 +1,39 @@
+name: Gateway Lint
+
+# The API gateway (OpenResty/Nginx + Lua) is the platform's auth boundary but
+# had no CI coverage — auth bugs shipped undetected because nothing exercised
+# its Lua. This job lints the gateway Lua with luacheck, gating on syntax and
+# undefined-global errors (see open-security-gateway/.luacheckrc). Tracks #108.
+
+on:
+  pull_request:
+    paths:
+      - 'open-security-gateway/nginx/lua/**'
+      - 'open-security-gateway/.luacheckrc'
+      - '.github/workflows/gateway-lint.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'open-security-gateway/nginx/lua/**'
+      - 'open-security-gateway/.luacheckrc'
+      - '.github/workflows/gateway-lint.yml'
+  workflow_dispatch:
+
+jobs:
+  luacheck:
+    name: Luacheck (OpenResty Lua)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install luacheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.3 luarocks
+          sudo luarocks install luacheck
+
+      - name: Run luacheck over gateway Lua
+        working-directory: open-security-gateway
+        run: luacheck nginx/lua
