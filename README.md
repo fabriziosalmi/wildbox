@@ -344,6 +344,10 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 
 ---
 
+## Commercial support & consulting
+
+Running Wildbox - or building out SIEM/SOAR/WAF? I offer paid support, deployment & tuning, and consulting - custom detection & SOAR, hardening, and WAF. Reach out: **fabrizio.salmi@gmail.com**.
+
 ## Contributing
 
 See **[Contributing Guide](CONTRIBUTING.md)** for development setup and guidelines.
