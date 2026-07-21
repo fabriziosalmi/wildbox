@@ -2,7 +2,7 @@
 
 - **Library:** ReDoc 2.5.1 (standalone bundle)
 - **Upstream:** https://github.com/Redocly/redoc
-- **Licence:** MIT. Third-party notices for everything bundled into it are in
+- **License:** MIT. Third-party notices for everything bundled into it are in
   `redoc.standalone.js.LICENSE.txt`, kept alongside as upstream ships it.
 - **Source of this copy:** `https://cdn.jsdelivr.net/npm/redoc@2.5.1/bundles/redoc.standalone.js`
 - **SHA-256:** `LY0T6UtaIQEcxvgmDYfKR10Pby+u0W3RLnOU36O7Bbg=`
