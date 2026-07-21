@@ -12,7 +12,7 @@ redis==5.2.1
 
 # AI/LLM Framework
 # Pinned versions for reproducible builds and security
-langchain==0.3.30
+langchain==1.3.14
 langchain-anthropic==0.3.22
 langchain-community==0.3.31
 
