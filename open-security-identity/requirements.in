@@ -27,7 +27,7 @@ cryptography>=48.0.1,<49.0.0
 
 # Explicit security constraints for transitive deps
 starlette>=0.52.0,<1.0.0
-urllib3>=2.6.3,<3.0.0
+urllib3>=2.7.0,<3.0.0
 
 # Testing
 pytest>=7.4.0,<8.0.0
