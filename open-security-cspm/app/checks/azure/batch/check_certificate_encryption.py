@@ -4,7 +4,7 @@ AZURE BATCH Check: Batch Certificate Encryption
 
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.resource import ResourceManagementClient
-from typing import List, Any, Optional
+from typing import List, Optional
 import logging
 
 from ...framework import (
@@ -42,7 +42,7 @@ class CheckBatchCertificateEncryption(BaseCheck):
                        "4. Validate and apply changes."
         )
     
-    async def execute(self, session: Any, region: Optional[str] = None) -> List[CheckResult]:
+    async def execute(self, session: Optional[ResourceManagementClient], region: Optional[str] = None) -> List[CheckResult]:
         """Execute the batch certificate encryption check."""
         results = []
         
