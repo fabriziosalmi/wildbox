@@ -15,13 +15,13 @@ function _M.log(level, message, context)
         warn = 3,
         error = 4
     }
-    
+
     if levels[level] >= levels[log_level] then
         local log_message = message
         if context then
             log_message = message .. " | " .. cjson.encode(context)
         end
-        
+
         if level == "error" then
             ngx.log(ngx.ERR, log_message)
         elseif level == "warn" then
@@ -39,12 +39,12 @@ function _M.json_decode(str)
     if not str or str == "" then
         return nil, "empty string"
     end
-    
+
     local ok, result = pcall(cjson.decode, str)
     if not ok then
         return nil, "invalid json: " .. tostring(result)
     end
-    
+
     return result, nil
 end
 
@@ -53,12 +53,12 @@ function _M.json_encode(obj)
     if not obj then
         return "{}", nil
     end
-    
+
     local ok, result = pcall(cjson.encode, obj)
     if not ok then
         return nil, "encode error: " .. tostring(result)
     end
-    
+
     return result, nil
 end
 
@@ -72,13 +72,13 @@ function _M.extract_auth_token()
             return bearer_token, "bearer"
         end
     end
-    
+
     -- Try X-API-Key header
     local api_key = ngx.var.http_x_api_key
     if api_key and api_key ~= "" then
         return api_key, "api_key"
     end
-    
+
     return nil, "no_token"
 end
 
@@ -91,33 +91,33 @@ end
 -- Clean sensitive headers before forwarding to backend
 function _M.http_request(method, url, options)
     local httpc = http:new()
-    
+
     -- Set timeouts
     httpc:set_timeouts(5000, 10000, 10000) -- connect, send, read timeouts
-    
+
     -- Default options
     local opts = options or {}
     opts.method = method
     opts.headers = opts.headers or {}
-    
+
     -- Add standard headers
     opts.headers["User-Agent"] = "Wildbox-Gateway/1.0"
     opts.headers["Accept"] = "application/json"
-    
+
     if opts.body and type(opts.body) == "table" then
         opts.body = _M.json_encode(opts.body)
         opts.headers["Content-Type"] = "application/json"
     end
-    
+
     local res, err = httpc:request_uri(url, opts)
-    
+
     if not res then
         return nil, "request failed: " .. (err or "unknown error")
     end
-    
+
     -- Close connection
     httpc:close()
-    
+
     return res, nil
 end
 
@@ -126,22 +126,22 @@ function _M.validate_team_access(user_id, team_id, auth_data)
     if not auth_data or not auth_data.team_id then
         return false, "no team data"
     end
-    
+
     if auth_data.team_id ~= team_id then
         return false, "team mismatch"
     end
-    
+
     if auth_data.user_id ~= user_id then
         return false, "user mismatch"
     end
-    
+
     return true, nil
 end
 
 -- Generate request ID for tracing
 function _M.generate_request_id()
-    return ngx.var.request_id or string.format("%s-%s", 
-        os.time(), 
+    return ngx.var.request_id or string.format("%s-%s",
+        os.time(),
         string.sub(ngx.encode_base64(ngx.sha1_bin(tostring(math.random()))), 1, 8)
     )
 end
@@ -160,7 +160,7 @@ function _M.clean_request_headers()
     -- Remove original authorization header
     ngx.req.clear_header("Authorization")
     ngx.req.clear_header("X-API-Key")
-    
+
     -- Remove any existing Wildbox headers (prevent spoofing)
     ngx.req.clear_header("X-Wildbox-User-ID")
     ngx.req.clear_header("X-Wildbox-Team-ID")
