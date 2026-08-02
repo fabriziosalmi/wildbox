@@ -10,25 +10,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# NOTE: Lua linting (luacheck + .luacheckrc) lives in gateway-lint.yml
+# (PR #258) — this workflow covers the behavioral auth tests only, so the
+# two PRs stay orthogonal and mergeable in either order.
 jobs:
-  lua-lint:
-    name: Gateway Lua Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Install luacheck
-        run: |
-          sudo apt-get update -qq
-          # Ubuntu packages the luacheck binary as "lua-check"
-          sudo apt-get install -y -qq lua-check
-
-      - name: Run luacheck on gateway Lua modules
-        working-directory: open-security-gateway
-        run: luacheck nginx/lua --codes
-
   auth-tests:
     name: Gateway Auth Tests
     runs-on: ubuntu-latest
