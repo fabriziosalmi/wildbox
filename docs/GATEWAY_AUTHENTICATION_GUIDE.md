@@ -201,7 +201,7 @@ The gateway authentication dependency raises standard FastAPI HTTPExceptions:
 ```bash
 # Authenticate and get API key
 curl -X POST 'http://localhost/api/v1/tools/whois_lookup' \
-  -H 'X-API-Key: wsk_51c0.77d4c520955c5908e4a9d9202533aff0f3dbb10dfb7f12cb701009b3e1993fde' \
+  -H 'X-API-Key: wsk_<REDACTED-LEAKED-KEY>' \
   -H 'Content-Type: application/json' \
   -d '{"domain":"example.com"}'
 

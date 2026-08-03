@@ -1,0 +1,59 @@
+# Gitleaks configuration for the wildbox monorepo.
+#
+# Scope note: this gates the working tree (HEAD), not the full history. Three
+# high-entropy keys were committed before scanning existed; they are dead
+# (no instance ever ran with them) and the history is deliberately NOT
+# rewritten — with 10 public forks a rewrite would not un-leak anything while
+# breaking every outstanding fork and PR. What this config must guarantee is
+# that no NEW secret lands.
+
+title = "wildbox"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documentation placeholders, security fixtures and vendored baselines"
+
+paths = [
+  # detect-secrets' own baseline: by definition a catalogue of fingerprints.
+  '''^\.secrets\.baseline$''',
+  # Templates are meant to carry example values.
+  '''\.env\.example$''',
+  '''\.env\.template$''',
+  # Documentation and rendered API references are full of copy-paste curl
+  # samples with "Authorization: Bearer <token>" / "X-API-Key: ..." lines.
+  '''^docs/''',
+  '''^website/docs/''',
+  '''README\.md$''',
+  '''LLM_SETUP\.md$''',
+  '''^open-security-tools/app/web/templates/''',
+  # Django migrations: the matches are verbose help_text strings
+  # ("Encrypted API key", "Password for authentication"), not values.
+  '''/migrations/\d+_.*\.py$''',
+  # Test fixtures use dummy credentials by design.
+  '''^tests/''',
+  '''/tests?/''',
+  # n8n's local dev config, generated at first run and gitignored in prod.
+  '''^open-security-automations/n8n-data/config$''',
+  # Makefile smoke-test targets embedding sample curl calls.
+  '''Makefile$''',
+  '''\.sh$''',
+]
+
+regexes = [
+  # Canonical AWS example key from AWS' own documentation.
+  '''AKIAIOSFODNN7EXAMPLE''',
+  '''AKIAFAKEFAKEFAKEFAKE''',
+  # Self-documenting placeholders used across docs and fixtures.
+  '''(?i)(your|example|placeholder|dummy|changeme|redacted|xxxx)[-_]?(api)?[-_]?(key|token|secret)''',
+  '''<REDACTED[^>]*>''',
+  '''sk_live_XXXXX''',
+  '''xoxb-your-slack-bot-token''',
+  # CI-only fallbacks: ephemeral values for fork/dependabot runs that receive
+  # no repo secrets. They authenticate nothing outside the throwaway job.
+  '''ci-fallback-[a-z0-9-]+''',
+  '''ci-gateway-[a-z0-9-]+''',
+  '''test-secret-key-for-ci-only[0-9-]*''',
+  '''test-api-key-for-ci-only''',
+]
