@@ -16,7 +16,7 @@ passlib[bcrypt]>=1.7.4,<1.8.0
 
 # Configuration and validation
 pydantic>=2.10.0,<3.0.0
-pydantic-settings>=2.6.0,<3.0.0
+pydantic-settings>=2.14.2,<3.0.0
 email-validator>=2.1.0,<3.0.0
 
 # HTTP client
