@@ -102,6 +102,13 @@ jobs:
             -e GATEWAY_INTERNAL_SECRET="$GATEWAY_INTERNAL_SECRET" \
             -e IDENTITY_SERVICE_URL=http://open-security-identity:8001 \
             wildbox-gateway-e2e
+          # nginx.conf writes access/error logs to files inside the container,
+          # so `docker logs` shows nothing but startup noise — which made the
+          # first failures undiagnosable. Redirect both to the container's
+          # stdout/stderr so the failure dump below is actually useful.
+          sleep 5
+          docker exec wildbox-gateway sh -c \
+            'ln -sf /dev/stdout /var/log/nginx/access.log; ln -sf /dev/stderr /var/log/nginx/error.log' || true
 
       - name: Wait for identity and gateway
         run: |
@@ -137,6 +144,16 @@ jobs:
             exit 1
           fi
           echo "admin login through gateway OK"
+
+      - name: Verify the gateway can actually reach the dashboard
+        # The browser talks only to the gateway, so if this proxy hop is
+        # broken every spec fails with an opaque locator timeout. Start Next
+        # here, prove the hop, then hand it over to Playwright's webServer.
+        working-directory: open-security-dashboard
+        run: |
+          echo "(the dashboard is not up yet — expecting 502 from the gateway)"
+          curl -sk -o /dev/null -w "gateway->dashboard (no backend): %{http_code}\n" \
+            https://localhost/auth/login || true
 
       - name: Install dashboard dependencies
         working-directory: open-security-dashboard
@@ -191,5 +208,12 @@ jobs:
           docker logs open-security-identity 2>&1 | tail -120 || true
           echo "===== gateway ====="
           docker logs wildbox-gateway 2>&1 | tail -80 || true
+          echo "===== dashboard-fwd (socat) ====="
+          docker logs dashboard-fwd 2>&1 | tail -40 || true
+          echo "===== gateway: can it resolve/reach the dashboard upstream? ====="
+          docker exec wildbox-gateway sh -c \
+            'getent hosts open-security-dashboard; curl -s -o /dev/null -w "upstream:%{http_code}\n" http://open-security-dashboard:3000/ --max-time 5' || true
+          echo "===== is Next listening on the runner host? ====="
+          curl -s -o /dev/null -w "host:3000 -> %{http_code}\n" http://localhost:3000/ --max-time 5 || true
           echo "===== postgres ====="
           docker logs postgres-e2e 2>&1 | tail -30 || true
