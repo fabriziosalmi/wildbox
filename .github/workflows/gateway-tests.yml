@@ -1,0 +1,76 @@
+name: Gateway Tests
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# NOTE: Lua linting (luacheck + .luacheckrc) lives in gateway-lint.yml
+# (PR #258) — this workflow covers the behavioral auth tests only, so the
+# two PRs stay orthogonal and mergeable in either order.
+jobs:
+  auth-tests:
+    name: Gateway Auth Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # Ephemeral CI-only proof-of-origin value shared by the mock identity
+      # and the correctly-configured gateway; gateway-wrong-secret gets a
+      # different one to prove the rejection path (#133/#134).
+      CI_GATEWAY_SECRET: ci-gateway-proof-of-origin-fixture-value
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Build gateway test image
+        run: docker build -f open-security-gateway/Dockerfile.test -t wildbox-gateway-test open-security-gateway
+
+      - name: Start mock identity and gateways
+        run: |
+          docker network create gwtest
+          docker run -d --name identity-test --network gwtest -p 8001:8001 \
+            -e EXPECTED_GATEWAY_SECRET="$CI_GATEWAY_SECRET" \
+            -v "$PWD/open-security-gateway/test/mock_identity.py:/mock_identity.py:ro" \
+            python:3.12-alpine python /mock_identity.py
+          docker run -d --name gateway --network gwtest -p 8080:80 \
+            -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
+            -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
+            wildbox-gateway-test
+          docker run -d --name gateway-wrong-secret --network gwtest -p 8081:80 \
+            -e GATEWAY_INTERNAL_SECRET=not-the-right-proof-of-origin \
+            -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
+            wildbox-gateway-test
+
+      - name: Wait for services
+        run: |
+          for url in http://localhost:8001/health http://localhost:8080/health http://localhost:8081/health; do
+            for i in $(seq 1 30); do
+              if curl -fsS "$url" >/dev/null 2>&1; then
+                echo "$url ready"
+                break
+              fi
+              if [ "$i" = 30 ]; then
+                echo "$url never became ready"
+                exit 1
+              fi
+              sleep 2
+            done
+          done
+
+      - name: Run gateway auth tests
+        run: bash open-security-gateway/test/ci_auth_tests.sh
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "===== gateway ====="
+          docker logs gateway 2>&1 | tail -100 || true
+          echo "===== gateway-wrong-secret ====="
+          docker logs gateway-wrong-secret 2>&1 | tail -50 || true
+          echo "===== identity-test ====="
+          docker logs identity-test 2>&1 | tail -50 || true
