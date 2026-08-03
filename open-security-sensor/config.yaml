@@ -56,7 +56,10 @@ logging:
 
 # Network Configuration
 network:
-  bind_address: "0.0.0.0"  # Bind to all interfaces for Docker
+  # Loopback only. This API can read host telemetry, mutate the agent
+  # config and run osquery: never expose it on all interfaces. Put a
+  # reverse proxy in front of it if remote access is genuinely needed.
+  bind_address: "127.0.0.1"
   bind_port: 8004
   enable_api: true
   api_key: null  # Set to require API key authentication

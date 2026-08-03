@@ -23,28 +23,29 @@ services:
       - ./config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_dev_logs:/var/log/security-sensor
       - sensor_dev_data:/var/lib/security-sensor
-      # Host monitoring
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host monitoring: only the files the collectors consume. A full /proc
+      # + /etc bind is host-wide read access and docker.sock is host root —
+      # not something a dev container needs either.
+      - /proc/stat:/host/proc/stat:ro
+      - /proc/meminfo:/host/proc/meminfo:ro
+      - /proc/loadavg:/host/proc/loadavg:ro
+      - /sys/class/net:/host/sys/class/net:ro
     
     # Network configuration
     ports:
-      - "8899:8899"  # Local API port
-      - "5678:5678"  # Debug port
+      - "127.0.0.1:8899:8899"  # Local API port
+      - "127.0.0.1:5678:5678"  # Debug port
     
     # Security context (relaxed for development)
     security_opt:
       - no-new-privileges:true
     
-    # Capabilities for system monitoring
-    cap_add:
-      - SYS_PTRACE
-      - DAC_READ_SEARCH
+    # No added capabilities. SYS_PTRACE allowed dumping the memory of any
+    # host process (with pid: host) and DAC_READ_SEARCH bypassed every
+    # filesystem read permission check on the mounted host paths.
+    cap_drop:
+      - ALL
     
-    # PID namespace for process monitoring
-    pid: host
     
     # Networks
     networks:

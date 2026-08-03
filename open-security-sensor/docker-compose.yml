@@ -24,27 +24,32 @@ services:
       - ./config.yaml:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor
       - sensor_data:/var/lib/security-sensor
-      # Host monitoring (required for system telemetry)
-      - /proc:/host/proc:ro
-      - /sys:/host/sys:ro
-      - /etc:/host/etc:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # Host monitoring: only the specific read-only files the collectors
+      # consume, mirroring the root docker-compose.yml. A full /proc + /etc
+      # bind is equivalent to host-wide read access, and /var/run/docker.sock
+      # is root on the host (":ro" restricts the file, not the Docker API).
+      # Verified: nothing under sensor/ references /host or docker.sock.
+      - /proc/stat:/host/proc/stat:ro
+      - /proc/meminfo:/host/proc/meminfo:ro
+      - /proc/loadavg:/host/proc/loadavg:ro
+      - /sys/class/net:/host/sys/class/net:ro
     
     # Network configuration
     ports:
-      - "8004:8004"  # Local API port
+      # Loopback only: the local API can read host telemetry, mutate the
+      # agent config and run osquery.
+      - "127.0.0.1:8004:8004"
     
     # Security context
     security_opt:
       - no-new-privileges:true
     
-    # Capabilities for system monitoring
-    cap_add:
-      - SYS_PTRACE
-      - DAC_READ_SEARCH
+    # No added capabilities. SYS_PTRACE allowed dumping the memory of any
+    # host process (with pid: host) and DAC_READ_SEARCH bypassed every
+    # filesystem read permission check on the mounted host paths.
+    cap_drop:
+      - ALL
     
-    # PID namespace for process monitoring
-    pid: host
     
     # Networks
     networks:
