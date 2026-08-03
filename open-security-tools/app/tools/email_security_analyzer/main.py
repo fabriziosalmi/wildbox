@@ -6,6 +6,9 @@ assessment including SPF, DKIM, DMARC, and reputation analysis.
 """
 
 import re
+
+import dns.resolver
+from email.utils import parsedate_to_datetime
 import socket
 import ipaddress
 from datetime import datetime, timezone, timedelta
@@ -23,6 +26,90 @@ except ImportError:
         EmailSecurityInput, EmailSecurityOutput, SPFAnalysis, DKIMAnalysis,
         DMARCAnalysis, EmailRouting, ReputationAnalysis, PhishingIndicators
     )
+
+
+
+# --- Real DNS lookups -------------------------------------------------------
+# SPF/DKIM/DMARC verdicts used to be produced with random.random(); they are
+# published as DNS TXT records, so they are looked up for real here. The
+# pattern mirrors the dns_security_checker tool.
+
+DNS_TIMEOUT = 5.0
+# DKIM selectors are not discoverable from DNS alone: the selector lives in
+# the DKIM-Signature header. When a message is supplied we use its selector;
+# otherwise we probe the selectors used by the common ESPs.
+COMMON_DKIM_SELECTORS = ("default", "google", "selector1", "selector2", "s1", "s2", "k1", "mail")
+
+
+def _resolver() -> "dns.resolver.Resolver":
+    r = dns.resolver.Resolver()
+    r.timeout = DNS_TIMEOUT
+    r.lifetime = DNS_TIMEOUT
+    return r
+
+
+# Public DNS blocklists. A listed host resolves inside the zone (127.0.0.x);
+# an unlisted one returns NXDOMAIN. No credentials required.
+URL_SHORTENERS = (
+    "bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "buff.ly",
+    "cutt.ly", "rebrand.ly", "shorturl.at",
+)
+
+IP_BLOCKLISTS = {
+    "Spamhaus ZEN": "zen.spamhaus.org",
+    "Barracuda": "b.barracudacentral.org",
+    "SpamCop": "bl.spamcop.net",
+}
+DOMAIN_BLOCKLISTS = {
+    "SURBL": "multi.surbl.org",
+    "Spamhaus DBL": "dbl.spamhaus.org",
+}
+
+
+def check_ip_blocklist(ip: str, zone: str) -> bool:
+    """Query a DNSBL for an IPv4 address (reversed octets + zone)."""
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if addr.version != 4 or addr.is_private:
+        return False
+    query = ".".join(reversed(str(addr).split("."))) + "." + zone
+    try:
+        _resolver().resolve(query, "A")
+        return True
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return False
+    except Exception:
+        # A resolver failure is not a listing; do not invent one.
+        return False
+
+
+def check_domain_blocklist(domain: str, zone: str) -> bool:
+    """Query a domain-based blocklist (URIBL/DBL style)."""
+    if not domain:
+        return False
+    try:
+        _resolver().resolve(f"{domain}.{zone}", "A")
+        return True
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return False
+    except Exception:
+        return False
+
+
+def query_txt(name: str) -> List[str]:
+    """Return the TXT records for a name, or [] when there are none.
+
+    A missing record and a broken resolver are different things: NXDOMAIN /
+    NoAnswer return [], everything else propagates so the caller can report
+    the lookup failure instead of silently claiming "no record".
+    """
+    try:
+        answers = _resolver().resolve(name, "TXT")
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return []
+    return [b"".join(rdata.strings).decode("utf-8", "replace") for rdata in answers]
 
 
 class EmailSecurityAnalyzer:
@@ -97,54 +184,95 @@ class EmailSecurityAnalyzer:
             raise ValueError(f"Failed to parse email headers: {str(e)}")
     
     def analyze_spf(self, sender_domain: str, sender_ip: Optional[str]) -> SPFAnalysis:
-        """Analyze SPF records and authentication"""
-        
-        spf_record = None
+        """Look up and evaluate the domain's real SPF record (RFC 7208)."""
+        issues: List[str] = []
+        authorized_senders: List[str] = []
+        spf_record: Optional[str] = None
         spf_result = "none"
-        issues = []
-        authorized_senders = []
-        
+
+        if not sender_domain:
+            return SPFAnalysis(
+                spf_record_found=False, spf_record=None, spf_result="none",
+                spf_issues=["No sender domain to evaluate"], authorized_senders=[],
+            )
+
         try:
-            # Simulate SPF record lookup
-            if sender_domain in self.TRUSTED_DOMAINS:
-                spf_record = f"v=spf1 include:_spf.{sender_domain} ~all"
-                spf_result = "pass"
-                authorized_senders = [f"_spf.{sender_domain}"]
-            elif sender_domain in self.MALICIOUS_DOMAINS:
-                spf_record = None
-                spf_result = "fail"
-                issues.append("No SPF record found for suspicious domain")
+            records = [r for r in query_txt(sender_domain) if r.lower().startswith("v=spf1")]
+        except Exception as exc:  # resolver failure, not a missing record
+            return SPFAnalysis(
+                spf_record_found=False, spf_record=None, spf_result="temperror",
+                spf_issues=[f"SPF lookup failed: {exc}"], authorized_senders=[],
+            )
+
+        if not records:
+            return SPFAnalysis(
+                spf_record_found=False, spf_record=None, spf_result="none",
+                spf_issues=["No SPF record published for this domain"],
+                authorized_senders=[],
+            )
+
+        if len(records) > 1:
+            issues.append(
+                f"{len(records)} SPF records published — RFC 7208 requires exactly "
+                "one; receivers must treat this as permerror"
+            )
+            spf_result = "permerror"
+
+        spf_record = records[0]
+        mechanisms = spf_record.split()[1:]
+        authorized_senders = [
+            m for m in mechanisms
+            if m.split(":")[0].lstrip("+-~?") in ("a", "mx", "ip4", "ip6", "include", "exists")
+        ]
+
+        # The "all" mechanism decides what happens to unlisted senders.
+        all_mechanism = next((m for m in mechanisms if m.endswith("all")), None)
+        if all_mechanism is None:
+            issues.append("SPF record has no 'all' mechanism: unlisted senders are unconstrained")
+        elif all_mechanism.startswith("+"):
+            issues.append("SPF ends with '+all', which authorises every sender — equivalent to no SPF")
+        elif all_mechanism.startswith("?"):
+            issues.append("SPF ends with '?all' (neutral): the record provides no enforcement")
+
+        # RFC 7208 caps DNS-querying mechanisms at 10; exceeding it is permerror.
+        lookup_mechanisms = sum(
+            1 for m in mechanisms
+            if m.split(":")[0].lstrip("+-~?") in ("include", "a", "mx", "ptr", "exists")
+            or m.startswith("redirect=")
+        )
+        if lookup_mechanisms > 10:
+            issues.append(
+                f"{lookup_mechanisms} DNS-querying mechanisms exceed the RFC 7208 "
+                "limit of 10 — receivers return permerror"
+            )
+            spf_result = "permerror"
+        if "ptr" in [m.lstrip("+-~?") for m in mechanisms]:
+            issues.append("SPF uses the deprecated 'ptr' mechanism (RFC 7208 §5.5)")
+
+        if spf_result != "permerror":
+            # Evaluating a specific IP against the record requires full RFC 7208
+            # macro/include expansion; report the policy instead of guessing a
+            # per-IP verdict we cannot compute here.
+            if all_mechanism and all_mechanism.startswith("-"):
+                spf_result = "fail-closed policy (-all)"
+            elif all_mechanism and all_mechanism.startswith("~"):
+                spf_result = "softfail policy (~all)"
             else:
-                # Simulate mixed results
-                import random
-                if random.random() < 0.7:  # 70% have SPF records
-                    spf_record = f"v=spf1 a mx include:{sender_domain} ~all"
-                    spf_result = random.choice(["pass", "pass", "softfail", "neutral"])
-                    authorized_senders = [f"a:{sender_domain}", f"mx:{sender_domain}"]
-                else:
-                    spf_result = "none"
-                    issues.append("No SPF record found")
-            
-            # Check for common SPF issues
-            if spf_record:
-                if "~all" not in spf_record and "-all" not in spf_record:
-                    issues.append("SPF record lacks proper 'all' mechanism")
-                if spf_record.count("include:") > 10:
-                    issues.append("Too many SPF includes (DNS lookup limit)")
-                if "redirect=" in spf_record and ("include:" in spf_record or "a" in spf_record):
-                    issues.append("SPF record contains both redirect and other mechanisms")
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            issues.append(f"SPF lookup failed: {str(e)}")
-        
+                spf_result = "neutral"
+            if sender_ip:
+                issues.append(
+                    f"Sender IP {sender_ip} was not evaluated against the record: "
+                    "per-IP SPF evaluation requires full include/macro expansion"
+                )
+
         return SPFAnalysis(
-            spf_record_found=spf_record is not None,
+            spf_record_found=True,
             spf_record=spf_record,
             spf_result=spf_result,
             spf_issues=issues,
-            authorized_senders=authorized_senders
+            authorized_senders=authorized_senders,
         )
-    
+
     def analyze_dkim(self, headers: Dict[str, Any]) -> DKIMAnalysis:
         """Analyze DKIM signatures"""
         
@@ -171,27 +299,61 @@ class EmailSecurityAnalyzer:
         selector = dkim_parts.get('s', '')
         algorithm = dkim_parts.get('a', '')
         
-        # Simulate DKIM validation
         issues = []
         is_valid = True
-        
-        if domain != headers['sender_domain']:
+
+        if domain != headers.get('sender_domain'):
             issues.append("DKIM domain doesn't match sender domain")
             is_valid = False
         
         if algorithm and 'sha1' in algorithm.lower():
             issues.append("DKIM uses weak SHA-1 algorithm")
         
-        # Simulate validation based on domain reputation
-        if domain in self.MALICIOUS_DOMAINS:
-            is_valid = False
-            issues.append("DKIM signature validation failed")
-        elif domain not in self.TRUSTED_DOMAINS:
-            # Random chance of validation failure
-            import random
-            if random.random() < 0.2:  # 20% chance of failure
-                is_valid = False
-                issues.append("DKIM signature validation failed")
+        # Verify what is actually verifiable here: that the signing domain
+        # publishes a public key for the selector named in the signature.
+        # Cryptographic verification of the signature itself needs the full
+        # raw message (RFC 6376 canonicalisation over headers AND body); this
+        # tool only receives headers, so it does not claim a crypto verdict.
+        is_valid = False
+        if domain and selector:
+            try:
+                key_records = query_txt(f"{selector}._domainkey.{domain}")
+            except Exception as exc:
+                issues.append(f"DKIM key lookup failed: {exc}")
+                key_records = []
+
+            if not key_records:
+                issues.append(
+                    f"No DKIM public key published at {selector}._domainkey.{domain} — "
+                    "the signature cannot be verified by any receiver"
+                )
+            else:
+                key_record = key_records[0]
+                tags = {}
+                for part in key_record.split(";"):
+                    if "=" in part:
+                        k, _, v = part.strip().partition("=")
+                        tags[k.strip().lower()] = v.strip()
+                if not tags.get("p"):
+                    issues.append(
+                        "DKIM key record has an empty 'p=' tag: the key has been "
+                        "revoked, so signatures will not verify"
+                    )
+                else:
+                    # A published, non-revoked key is the strongest statement
+                    # we can make without the raw message.
+                    issues.append(
+                        "DKIM public key is published and not revoked; the "
+                        "signature itself was NOT cryptographically verified "
+                        "(requires the full raw message, not just headers)"
+                    )
+                if tags.get("k", "rsa") == "rsa" and tags.get("p"):
+                    # base64 length -> approximate modulus size
+                    key_bits = (len(tags["p"]) * 3 // 4) * 8
+                    if key_bits < 1024:
+                        issues.append(f"DKIM RSA key looks shorter than 1024 bits (~{key_bits})")
+        else:
+            issues.append("DKIM signature is missing the domain (d=) or selector (s=) tag")
         
         return DKIMAnalysis(
             dkim_signature_found=True,
@@ -203,55 +365,88 @@ class EmailSecurityAnalyzer:
         )
     
     def analyze_dmarc(self, sender_domain: str, spf_result: str, dkim_valid: bool) -> DMARCAnalysis:
-        """Analyze DMARC policy and alignment"""
-        
-        dmarc_record = None
-        dmarc_policy = None
-        issues = []
-        
+        """Look up and evaluate the domain's real DMARC record (RFC 7489)."""
+        issues: List[str] = []
+        dmarc_record: Optional[str] = None
+        dmarc_policy: Optional[str] = None
+
+        if not sender_domain:
+            return DMARCAnalysis(
+                dmarc_record_found=False, dmarc_record=None, dmarc_policy=None,
+                dmarc_alignment={"spf": False, "dkim": False},
+                dmarc_issues=["No sender domain to evaluate"], dmarc_compliance=False,
+            )
+
         try:
-            # Simulate DMARC record lookup
-            if sender_domain in self.TRUSTED_DOMAINS:
-                dmarc_record = f"v=DMARC1; p=reject; rua=mailto:dmarc@{sender_domain}; ruf=mailto:dmarc@{sender_domain}; sp=reject; adkim=s; aspf=s"
-                dmarc_policy = "reject"
-            elif sender_domain in self.MALICIOUS_DOMAINS:
-                dmarc_record = None
-                issues.append("No DMARC record found for suspicious domain")
-            else:
-                # Simulate mixed DMARC policies
-                import random
-                if random.random() < 0.6:  # 60% have DMARC records
-                    policy = random.choice(["none", "quarantine", "reject"])
-                    dmarc_record = f"v=DMARC1; p={policy}; rua=mailto:dmarc@{sender_domain}"
-                    dmarc_policy = policy
-                else:
-                    issues.append("No DMARC record found")
-            
-            # Check DMARC alignment
-            spf_aligned = spf_result in ["pass"]
-            dkim_aligned = dkim_valid
-            
-            # Determine DMARC compliance
-            dmarc_compliance = spf_aligned or dkim_aligned  # At least one must pass
-            
-            if dmarc_policy == "none" and not issues:
-                issues.append("DMARC policy is set to 'none' (monitoring only)")
-            
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            issues.append(f"DMARC lookup failed: {str(e)}")
-            spf_aligned = False
-            dkim_aligned = False
-            dmarc_compliance = False
-        
+            records = [
+                r for r in query_txt(f"_dmarc.{sender_domain}")
+                if r.lower().startswith("v=dmarc1")
+            ]
+        except Exception as exc:
+            return DMARCAnalysis(
+                dmarc_record_found=False, dmarc_record=None, dmarc_policy=None,
+                dmarc_alignment={"spf": False, "dkim": False},
+                dmarc_issues=[f"DMARC lookup failed: {exc}"], dmarc_compliance=False,
+            )
+
+        spf_passed = spf_result.startswith("pass") or "fail-closed" in spf_result
+        alignment = {"spf": spf_passed, "dkim": bool(dkim_valid)}
+
+        if not records:
+            return DMARCAnalysis(
+                dmarc_record_found=False, dmarc_record=None, dmarc_policy=None,
+                dmarc_alignment=alignment,
+                dmarc_issues=[
+                    "No DMARC record published: receivers have no instruction for "
+                    "handling messages that fail authentication"
+                ],
+                dmarc_compliance=False,
+            )
+
+        if len(records) > 1:
+            issues.append(f"{len(records)} DMARC records published — RFC 7489 requires exactly one")
+
+        dmarc_record = records[0]
+        tags = {}
+        for part in dmarc_record.split(";"):
+            if "=" in part:
+                key, _, value = part.strip().partition("=")
+                tags[key.strip().lower()] = value.strip()
+
+        dmarc_policy = tags.get("p")
+        if dmarc_policy not in ("none", "quarantine", "reject"):
+            issues.append(f"Invalid or missing DMARC policy tag: p={dmarc_policy!r}")
+        elif dmarc_policy == "none":
+            issues.append(
+                "DMARC policy is 'none' (monitoring only): failing messages are "
+                "still delivered"
+            )
+
+        if "rua" not in tags:
+            issues.append("No 'rua' aggregate-report address: failures cannot be monitored")
+
+        pct = tags.get("pct")
+        if pct and pct != "100":
+            issues.append(f"DMARC applies to only {pct}% of messages (pct={pct})")
+
+        if tags.get("sp") == "none" and dmarc_policy in ("quarantine", "reject"):
+            issues.append(
+                "Subdomain policy sp=none weakens the parent policy: subdomains "
+                "are unprotected"
+            )
+
+        # DMARC passes when at least one aligned mechanism passes (RFC 7489 §6.6.2).
+        compliance = alignment["spf"] or alignment["dkim"]
+
         return DMARCAnalysis(
-            dmarc_record_found=dmarc_record is not None,
+            dmarc_record_found=True,
             dmarc_record=dmarc_record,
             dmarc_policy=dmarc_policy,
-            dmarc_alignment={"spf": spf_aligned, "dkim": dkim_aligned},
+            dmarc_alignment=alignment,
             dmarc_issues=issues,
-            dmarc_compliance=dmarc_compliance
+            dmarc_compliance=compliance,
         )
-    
+
     def analyze_email_routing(self, received_headers: List[str]) -> EmailRouting:
         """Analyze email routing path"""
         
@@ -270,17 +465,31 @@ class EmailSecurityAnalyzer:
                 if any(pattern in server.lower() for pattern in ['tor', 'proxy', 'vpn', 'anonymous']):
                     suspicious_hops.append(f"Suspicious server: {server}")
                 
-                # Simulate geolocation
-                import random
-                geo_locations.append(random.choice(['US', 'GB', 'CA', 'DE', 'FR', 'JP', 'AU']))
+                # No geolocation: it would require a GeoIP database this
+                # service does not ship. Previously this appended a country
+                # picked at random, which is worse than reporting nothing.
         
-        # Calculate delivery delay
+        # Delivery delay, computed from the real timestamps in the Received
+        # headers (RFC 5322 date after the final ';'). Previously this was
+        # random.uniform(0.1, 24.0).
         delivery_delay = None
-        if len(received_headers) >= 2:
-            # Simulate delivery delay calculation
-            import random
-            delivery_delay = random.uniform(0.1, 24.0)  # Random delay between 0.1-24 hours
-        
+        timestamps = []
+        for received in received_headers:
+            _, _, date_part = received.rpartition(";")
+            if not date_part.strip():
+                continue
+            try:
+                timestamps.append(parsedate_to_datetime(date_part.strip()))
+            except (TypeError, ValueError):
+                continue
+        if len(timestamps) >= 2:
+            timestamps.sort()
+            delivery_delay = (timestamps[-1] - timestamps[0]).total_seconds() / 3600.0
+            if delivery_delay > 24:
+                suspicious_hops.append(
+                    f"Message took {delivery_delay:.1f} hours to be delivered"
+                )
+
         return EmailRouting(
             hop_count=len(routing_path),
             routing_path=routing_path,
@@ -292,66 +501,58 @@ class EmailSecurityAnalyzer:
     def analyze_reputation(self, sender_domain: str, sender_ip: Optional[str]) -> ReputationAnalysis:
         """Analyze sender reputation"""
         
-        # Domain reputation
-        if sender_domain in self.TRUSTED_DOMAINS:
-            domain_reputation = "good"
-            sender_score = 90
-        elif sender_domain in self.MALICIOUS_DOMAINS:
+        # Reputation is derived from real DNSBL lookups. DNS blocklists are
+        # queried over DNS and are free: a listed host resolves to 127.0.0.x,
+        # an unlisted one gets NXDOMAIN. Previously every value in this method
+        # was random.choices()/random.uniform().
+        blacklist_status: Dict[str, bool] = {}
+        whitelist_status: Dict[str, bool] = {}
+
+        for name, zone in IP_BLOCKLISTS.items():
+            blacklist_status[name] = (
+                check_ip_blocklist(sender_ip, zone) if sender_ip else False
+            )
+        for name, zone in DOMAIN_BLOCKLISTS.items():
+            blacklist_status[name] = (
+                check_domain_blocklist(sender_domain, zone) if sender_domain else False
+            )
+
+        listings = sum(1 for listed in blacklist_status.values() if listed)
+        if listings >= 2:
             domain_reputation = "malicious"
-            sender_score = 10
+            sender_score = 10.0
+        elif listings == 1:
+            domain_reputation = "poor"
+            sender_score = 35.0
         else:
-            # Random reputation for demo
-            import random
-            reputations = ["good", "neutral", "poor"]
-            weights = [0.5, 0.3, 0.2]
-            domain_reputation = random.choices(reputations, weights=weights)[0]
-            
-            if domain_reputation == "good":
-                sender_score = random.uniform(70, 90)
-            elif domain_reputation == "neutral":
-                sender_score = random.uniform(40, 70)
-            else:
-                sender_score = random.uniform(10, 40)
-        
-        # IP reputation
+            # Not being listed is the absence of a negative signal, not a
+            # positive endorsement — hence "neutral", never "good".
+            domain_reputation = "neutral"
+            sender_score = 70.0
+
+        # IP reputation from the same real lookups.
         ip_reputation = "unknown"
         if sender_ip:
             try:
-                ip = ipaddress.ip_address(sender_ip)
-                if ip.is_private:
+                if ipaddress.ip_address(sender_ip).is_private:
                     ip_reputation = "private"
-                elif sender_domain in self.TRUSTED_DOMAINS:
-                    ip_reputation = "good"
-                elif sender_domain in self.MALICIOUS_DOMAINS:
-                    ip_reputation = "malicious"
+                elif any(
+                    blacklist_status.get(name) for name in IP_BLOCKLISTS
+                ):
+                    ip_reputation = "listed"
                 else:
-                    ip_reputation = "neutral"
+                    ip_reputation = "not listed"
             except ValueError:
                 ip_reputation = "invalid"
-        
-        # Simulate blacklist/whitelist checks
-        blacklist_status = {}
+
+        # Whitelists (Microsoft SNDS, Gmail Postmaster, Sender Score) are
+        # per-sender dashboards behind authentication, not public lookups:
+        # reporting them as booleans would be fabrication.
         whitelist_status = {}
-        
-        blacklists = ["Spamhaus", "SURBL", "URIBL", "Barracuda"]
-        whitelists = ["Microsoft SNDS", "Gmail Postmaster", "Sender Score"]
-        
-        for bl in blacklists:
-            blacklist_status[bl] = sender_domain in self.MALICIOUS_DOMAINS
-        
-        for wl in whitelists:
-            whitelist_status[wl] = sender_domain in self.TRUSTED_DOMAINS
-        
-        # Simulate domain age
+
+        # Domain age needs WHOIS/RDAP, which this tool does not query.
         domain_age_days = None
-        if sender_domain in self.TRUSTED_DOMAINS:
-            domain_age_days = 7300  # ~20 years
-        elif sender_domain in self.MALICIOUS_DOMAINS:
-            domain_age_days = 30    # New domain
-        else:
-            import random
-            domain_age_days = random.randint(90, 3650)  # 3 months to 10 years
-        
+
         return ReputationAnalysis(
             domain_reputation=domain_reputation,
             ip_reputation=ip_reputation,
@@ -406,10 +607,28 @@ class EmailSecurityAnalyzer:
         if any(word in subject for word in ['suspend', 'verify', 'confirm']):
             social_engineering.append("Account verification pressure")
         
-        # Simulate link analysis
-        import random
-        if random.random() < 0.3:  # 30% chance of suspicious links
-            suspicious_links.append("http://suspicious-link.example.com")
+        # Real link analysis over the supplied content. Previously this
+        # appended a hardcoded "suspicious-link.example.com" 30% of the time,
+        # regardless of what the message actually contained.
+        for url in re.findall(r'https?://[^\s<>"\'\)]+', content or ""):
+            host = re.sub(r'^https?://', '', url).split('/')[0].split('@')[-1].lower()
+            reasons = []
+            if url.startswith("http://"):
+                reasons.append("plaintext HTTP")
+            if re.match(r'^\d{1,3}(\.\d{1,3}){3}(:\d+)?$', host):
+                reasons.append("bare IP address instead of a hostname")
+            if "@" in url.split("//", 1)[-1].split("/")[0]:
+                reasons.append("embedded credentials/userinfo (classic obfuscation)")
+            if any(host.endswith(s) or host == s.lstrip(".") for s in URL_SHORTENERS):
+                reasons.append("URL shortener hides the destination")
+            if host.count(".") > 4:
+                reasons.append("unusually deep subdomain nesting")
+            if any(brand in host for brand in self.BRAND_PATTERNS) and not any(
+                host == d or host.endswith("." + d) for d in self.TRUSTED_DOMAINS
+            ):
+                reasons.append("brand name in a domain that is not the brand's own")
+            if reasons:
+                suspicious_links.append(f"{url} ({'; '.join(reasons)})")
         
         return PhishingIndicators(
             suspicious_patterns=suspicious_patterns,
@@ -695,7 +914,7 @@ TOOL_INFO = {
     "name": "email_security_analyzer",
     "display_name": "Email Security Analyzer",
     "description": "Comprehensive email security analysis including SPF, DKIM, DMARC, and phishing detection",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "author": "Wildbox Security",
     "category": "email_security"
 }
