@@ -728,7 +728,11 @@
     "openfontlicense",
     "Redocly",
     "jsdelivr",
-    "Redoc"
+    "Redoc",
+    "DMARC",
+    "DNSBL",
+    "dnspython",
+    "superadmins"
   ],
   "ignoreWords": [
     "APIKEY",
