@@ -18,6 +18,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Cookie options for the auth token. `secure` is derived from the actual
+// page protocol instead of being hardcoded true: a Secure cookie is dropped
+// by the browser on a plain-HTTP origin (local dev, and the CI E2E harness
+// on http://localhost), which silently broke login there — the token was
+// never stored, so the post-login /users/me call and redirect never ran. In
+// production the dashboard is served over HTTPS, so this stays true.
+function authCookieOptions(): Cookies.CookieAttributes {
+  const secure =
+    typeof window !== 'undefined' && window.location.protocol === 'https:'
+  return { expires: 7, secure, sameSite: 'strict' }
+}
+
 export function useAuth() {
   const context = useContext(AuthContext)
   
@@ -61,7 +73,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)
       if (typeof window !== 'undefined') {
-        Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+        Cookies.set('auth_token', access_token, authCookieOptions())
       }
 
       // Fetch user data separately using the correct FastAPI Users endpoint
@@ -82,7 +94,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)
       if (typeof window !== 'undefined') {
-        Cookies.set('auth_token', access_token, { expires: 7, secure: true, sameSite: 'strict' })
+        Cookies.set('auth_token', access_token, authCookieOptions())
       }
 
       // Fetch user data separately using the correct FastAPI Users endpoint
