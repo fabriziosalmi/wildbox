@@ -210,9 +210,14 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-    # Production-specific nginx configuration
-    volumes:
-      - ./open-security-gateway/nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
+    # No nginx config override. This used to bind-mount
+    # ./open-security-gateway/nginx/nginx.prod.conf, a file that does not
+    # exist in the repo: Docker creates an empty DIRECTORY at a missing bind
+    # source, nginx finds a directory where it expects nginx.conf and refuses
+    # to start, so the gateway crash-looped on every production deploy. The
+    # image already ships the reviewed nginx.conf — which is also where the
+    # limit_req_zone definitions live, so silently replacing it would have
+    # taken the rate limiting with it.
 
   # Dashboard - Production (frontend only, NO direct backend/data access)
   dashboard:
