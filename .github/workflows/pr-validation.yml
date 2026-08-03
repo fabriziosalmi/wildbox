@@ -22,7 +22,12 @@ jobs:
             echo "ERROR: docker-compose.yml is missing!"
             exit 1
           fi
+          # compose interpolation now uses ${VAR:?} for secrets (no insecure
+          # defaults), so the linter needs a .env — .env.example is exactly
+          # the documented set of required variables.
+          cp .env.example .env
           docker compose config --quiet
+          rm -f .env
           echo "✓ docker-compose.yml is valid"
 
   # Check for critical files
