@@ -102,8 +102,14 @@ jobs:
           # first failures undiagnosable. Redirect both to the container's
           # stdout/stderr so the failure dump below is actually useful.
           sleep 5
+          # Redirect nginx access/error logs to the container stdout/stderr.
+          # nginx holds the original log fds open, so after symlinking we must
+          # tell it to reopen its log files — otherwise `docker logs` shows
+          # only startup noise and the request log is invisible.
           docker exec wildbox-gateway sh -c \
-            'ln -sf /dev/stdout /var/log/nginx/access.log; ln -sf /dev/stderr /var/log/nginx/error.log' || true
+            'ln -sf /dev/stdout /var/log/nginx/access.log; \
+             ln -sf /dev/stderr /var/log/nginx/error.log; \
+             openresty -s reopen' || true
 
       - name: Wait for identity and gateway
         run: |
