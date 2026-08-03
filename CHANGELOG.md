@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-03
+
+Truthful security tooling. The headline is a catalog-wide cleanup: every tool that fabricated its results with `random` now either does real work or has been removed. Alongside it, a 360° pre-release audit produced a batch of security fixes — a privilege escalation, leaked-secret purge with CI scanning, real gateway CORS, and more. **Several changes are user-facing — read the upgrade notes.**
+
+### Upgrade notes
+
+- **Fabricated tools are gone or now behave differently.** Fourteen tools used to invent their output with `random`. Nine now perform real analysis (their output shape is unchanged but the data is real, so downstream consumers that keyed on the old fake fields may see different values); five were removed entirely (`compliance_checker`, `security_compliance_checker`, `incident_response_automation`, `threat_hunting_platform`, `social_media_osint`). The tool catalog went from 59 to 54.
+- **`database_security_analyzer` now supports PostgreSQL and MySQL/MariaDB only.** It connects for real with the supplied credentials; Oracle, MSSQL and MongoDB return an honest "engine not supported" instead of fabricated findings. Add `PyMySQL`/`pg8000` are bundled.
+- **`container_security_scanner` requires Trivy.** It wraps the real scanner (bundled in the tools image, pinned) and returns an honest error if the binary is absent rather than inventing vulnerabilities.
+- **Set the gateway CORS allowlist for split-origin deployments.** If the dashboard is served from a different origin than the gateway, add that origin to `$cors_allow_origin` in `open-security-gateway/nginx/nginx.conf`. Same-origin deployments need no change. (Previously the gateway emitted no CORS headers at all, silently breaking login on split-origin setups.)
+- **Rotate any credentials ever used with the keys purged from history** (see Security). None were known to be live, but the repo is public.
+
+### Security
+
+- **Privilege escalation on the identity admin endpoints fixed (#323).** Three "admin" user endpoints gated on being OWNER/ADMIN of *any* team, and registration makes every new user OWNER of a personal team — so any registered account could list all users and deactivate every account, superadmins included. They now require `is_superuser`.
+- **Leaked keys purged from HEAD and secret scanning armed in CI (#322).** Three high-entropy credentials had been committed to the public repo; replaced with placeholders and a Gitleaks job added so new secrets fail the build. Compose files no longer degrade to `changeme`/known-password defaults — an incomplete `.env` now fails loudly.
+- **Gateway now emits real CORS headers via a secure allowlist (#336).** Credentialed cross-origin requests echo only allowlisted origins (never `*`-with-credentials), with a proper preflight; a comment-only stub had left login broken on split-origin deployments.
+- **Five audit fixes (#325):** the responder no longer reports success for containment actions it never ran; one malformed tool no longer crashes the whole tools service; the sensor's local API (which runs osquery) is now authenticated and fails closed; the sensor compose no longer grants host-escape privileges; and the production gateway can actually start (it mounted a non-existent nginx config).
+- **Dashboard auth cookie `secure` flag now follows the page protocol (#337)** instead of being hardcoded, so login works on non-HTTPS origins without weakening production (partial fix for the audit's token-handling finding).
+
+### Tools — now real
+
+- **CT log scanner (#326):** queries crt.sh instead of generating certificates with `random`.
+- **Email security analyzer (#327):** real SPF/DKIM/DMARC record checks and DNSBL lookups via `dnspython`, replacing random verdicts layered over genuine header parsing.
+- **PKI certificate manager (#328):** parses real X.509 certificates and fetches the one a host actually serves over TLS; revocation and CT entries are reported honestly, not invented.
+- **Vulnerability DB scanner (#329):** queries OSV.dev and NVD with CVSS computed from the published vector — no more invented CVE ids mixed into real results.
+- **WAF bypass tester (#330):** sends real encoded/obfuscated payloads to the target (behind an authorization allowlist) instead of a `hash(payload) % 100` simulation.
+- **IoT security scanner (#332):** real TCP discovery and banner grabbing; fields a network scan cannot know (MAC, firmware, default-credential status) are left unset rather than guessed.
+- **Container security scanner (#333):** wraps Trivy for real image/Dockerfile scanning.
+- **Database security analyzer (#334):** connects to real PostgreSQL/MySQL servers and reports their actual security posture.
+- **Security automation orchestrator (#331):** kept (its engine really runs other tools) but made honest — no fabricated metrics or scheduler.
+
+### CI / quality
+
+- **Gateway now has CI coverage (#320, #258):** Lua lint plus a behavioral auth-test harness (25+ assertions incl. anti-spoofing, scope enforcement, proof-of-origin, and CORS) that drives the real gateway.
+- **Full-stack E2E harness (#321):** backend-dependent Playwright login flows run against a real identity+gateway+dashboard stack; four redirect-dependent specs are quarantined pending a cross-origin auth follow-up.
+- **CI made truthful (#255, #245, #247, #256):** `make test` and the unit-test matrix no longer swallow failures; secret-less fork/dependabot runs get explicit CI-only fallbacks.
+- Removed the dead `docker-compose.test.yml` harness (#244) and untracked committed `.pyc` bytecode (#248).
+
+### Privacy
+
+- **Self-hosted ReDoc and fonts (#301, #306)** — no third-party CDN at runtime.
+- **`/privacy` notice added and linked** from the footer and previously-orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
+
+### Features
+
+- **Entra ID security analyzer (#249):** flags stale accounts and MFA gaps in a Microsoft Entra tenant via the Graph API.
+- Unit tests added for the cspm, data, responder and identity services (#250).
+
+### Dependencies
+
+- Security-motivated dependency bumps across the dashboard and website (axios, lodash, node-forge, form-data, brace-expansion, shell-quote, immutable, js-yaml, and others), plus the CI actions group and `black`.
+
 ## [0.8.0] - 2026-06-30
 
 Tenancy and RBAC across the backend: downstream services now isolate data by team and enforce the gateway-provided role. **These are behavior changes — read the upgrade notes.** Backward-compatible for existing single-team deployments (pre-existing data has no `team_id` and is treated as global/shared).
