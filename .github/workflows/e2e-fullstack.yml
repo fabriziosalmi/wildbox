@@ -1,0 +1,203 @@
+name: E2E Full-Stack
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  # Ephemeral CI-only values (same pattern as integration-tests.yml —
+  # this stack never leaves the runner).
+  JWT_SECRET_KEY: ci-fallback-jwt-signing-string-for-e2e-runs
+  GATEWAY_INTERNAL_SECRET: ci-gateway-proof-of-origin-e2e-value
+  POSTGRES_PASSWORD: ci-e2e-postgres-pw
+  ADMIN_EMAIL: superadmin@wildbox.com
+  ADMIN_PASSWORD: wildbox123
+
+jobs:
+  e2e-fullstack:
+    # Restores the backend-dependent Playwright flows (#103) on a real stack:
+    # postgres + redis + identity (its production image, which migrates and
+    # seeds the admin) + gateway (production OpenResty image) as containers,
+    # dashboard as a host process built with NEXT_PUBLIC_* pointing at the
+    # gateway (those vars are inlined at `next build` time).
+    name: E2E Full-Stack (login flows)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: open-security-dashboard/package-lock.json
+
+      - name: Create docker network + data services
+        run: |
+          docker network create wildbox-e2e
+          docker run -d --name postgres-e2e --network wildbox-e2e \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+            -e POSTGRES_DB=identity \
+            -e POSTGRES_HOST_AUTH_METHOD=trust \
+            postgres:15
+          docker run -d --name redis-e2e --network wildbox-e2e redis:7-alpine
+
+      - name: Build identity image
+        run: |
+          docker build \
+            --build-context shared=open-security-shared \
+            -t wildbox-identity-e2e open-security-identity
+
+      - name: Build gateway image
+        run: docker build -t wildbox-gateway-e2e open-security-gateway
+
+      - name: Start identity (migrations + admin seed)
+        # Container name MUST be open-security-identity: the gateway's static
+        # upstream resolves that exact name at nginx boot.
+        run: |
+          docker run -d --name open-security-identity --network wildbox-e2e \
+            -p 8001:8001 \
+            -e DATABASE_URL="postgresql+asyncpg://postgres:$POSTGRES_PASSWORD@postgres-e2e:5432/identity" \
+            -e REDIS_URL=redis://redis-e2e:6379/0 \
+            -e JWT_SECRET_KEY="$JWT_SECRET_KEY" \
+            -e GATEWAY_INTERNAL_SECRET="$GATEWAY_INTERNAL_SECRET" \
+            -e CREATE_INITIAL_ADMIN=true \
+            -e INITIAL_ADMIN_EMAIL="$ADMIN_EMAIL" \
+            -e INITIAL_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
+            wildbox-identity-e2e
+
+      - name: Start upstream stand-ins + gateway
+        # nginx refuses to boot if any static upstream hostname is
+        # unresolvable, so every absent service (including the dashboard, which
+        # the browser now reaches directly, not through the gateway) gets a
+        # blackhole DNS alias just to satisfy nginx's boot-time resolution.
+        run: |
+          docker run -d --name upstream-blackhole --network wildbox-e2e \
+            --network-alias open-security-data \
+            --network-alias open-security-guardian \
+            --network-alias open-security-responder \
+            --network-alias open-security-agents \
+            --network-alias open-security-tools \
+            --network-alias open-security-dashboard \
+            --network-alias dashboard \
+            alpine:3.20 sleep infinity
+          docker run -d --name wildbox-gateway --network wildbox-e2e \
+            --add-host host.docker.internal:host-gateway \
+            -p 443:443 -p 8090:80 \
+            -e GATEWAY_INTERNAL_SECRET="$GATEWAY_INTERNAL_SECRET" \
+            -e IDENTITY_SERVICE_URL=http://open-security-identity:8001 \
+            wildbox-gateway-e2e
+          # nginx.conf writes access/error logs to files inside the container,
+          # so `docker logs` shows nothing but startup noise — which made the
+          # first failures undiagnosable. Redirect both to the container's
+          # stdout/stderr so the failure dump below is actually useful.
+          sleep 5
+          # Redirect nginx access/error logs to the container stdout/stderr.
+          # nginx holds the original log fds open, so after symlinking we must
+          # tell it to reopen its log files — otherwise `docker logs` shows
+          # only startup noise and the request log is invisible.
+          docker exec wildbox-gateway sh -c \
+            'ln -sf /dev/stdout /var/log/nginx/access.log; \
+             ln -sf /dev/stderr /var/log/nginx/error.log; \
+             openresty -s reopen' || true
+
+      - name: Wait for identity and gateway
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:8001/health >/dev/null 2>&1; then
+              echo "identity ready"; break
+            fi
+            if [ "$i" = 60 ]; then echo "identity never became ready"; exit 1; fi
+            sleep 3
+          done
+          for i in $(seq 1 30); do
+            if curl -fsSk https://localhost/health >/dev/null 2>&1; then
+              echo "gateway ready"; break
+            fi
+            if [ "$i" = 30 ]; then echo "gateway never became ready"; exit 1; fi
+            sleep 2
+          done
+
+      - name: Verify seeded admin can log in through the gateway
+        # identity's init.sh swallows admin-seed failures and still starts the
+        # service — so prove the whole chain (gateway TLS -> auth route
+        # rewrite -> identity -> seeded admin) works before spending minutes
+        # on the dashboard build. This is the harness's own smoke test.
+        run: |
+          status=$(curl -sk -o /tmp/login.json -w "%{http_code}" \
+            -X POST https://localhost/auth/jwt/login \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode "username=$ADMIN_EMAIL" \
+            --data-urlencode "password=$ADMIN_PASSWORD")
+          if [ "$status" != "200" ] || ! grep -q access_token /tmp/login.json; then
+            echo "login through gateway failed (HTTP $status):"
+            head -c 400 /tmp/login.json; echo
+            exit 1
+          fi
+          echo "admin login through gateway OK"
+
+      - name: Install dashboard dependencies
+        working-directory: open-security-dashboard
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: open-security-dashboard
+        run: npx playwright install --with-deps chromium
+
+      - name: Build dashboard (gateway-wired)
+        # NEXT_PUBLIC_* are inlined at build time — they must be set HERE,
+        # not only when the tests run.
+        working-directory: open-security-dashboard
+        env:
+          NEXT_PUBLIC_USE_GATEWAY: 'true'
+          NEXT_PUBLIC_GATEWAY_URL: https://localhost
+        run: npm run build
+
+      - name: Run backend-dependent Playwright specs
+        working-directory: open-security-dashboard
+        env:
+          CI: 'true'
+          NEXT_PUBLIC_USE_GATEWAY: 'true'
+          NEXT_PUBLIC_GATEWAY_URL: https://localhost
+          # The browser loads the dashboard directly from Playwright's own
+          # Next server (http://localhost:3000, the default baseURL) and its
+          # XHRs go cross-origin to the gateway at https://localhost. That
+          # cross-origin call is now allowed by the gateway's CORS allowlist
+          # (localhost is on it), which is why this no longer needs to proxy
+          # the dashboard through the gateway via socat.
+          NODE_TLS_REJECT_UNAUTHORIZED: '0'
+          TEST_EMAIL: superadmin@wildbox.com
+          TEST_PASSWORD: wildbox123
+        run: npx playwright test --project=backend-chromium
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-fullstack-report
+          path: open-security-dashboard/playwright-report/
+          retention-days: 30
+
+      - name: Dump container logs on failure
+        if: failure()
+        run: |
+          echo "===== identity ====="
+          docker logs open-security-identity 2>&1 | tail -120 || true
+          echo "===== gateway ====="
+          docker logs wildbox-gateway 2>&1 | tail -80 || true
+          echo "===== is Next (Playwright webServer) still on :3000? ====="
+          curl -s -o /dev/null -w "localhost:3000 -> %{http_code}\n" http://localhost:3000/ --max-time 5 || true
+          echo "===== can the browser origin reach the gateway API? ====="
+          curl -sk -o /dev/null -w "gateway /health -> %{http_code}\n" https://localhost/health --max-time 5 || true
+          echo "===== postgres ====="
+          docker logs postgres-e2e 2>&1 | tail -30 || true
