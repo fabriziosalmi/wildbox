@@ -245,6 +245,10 @@ class PKICertificateManager:
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
+            # Do not negotiate TLS 1.0/1.1 just to read a certificate. A host
+            # that only speaks them is itself a finding, and ssl_analyzer is
+            # the tool for protocol-level analysis.
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
             with socket.create_connection((host, port), timeout=10) as sock:
                 with context.wrap_socket(sock, server_hostname=host) as tls:
                     return tls.getpeercert(binary_form=True)

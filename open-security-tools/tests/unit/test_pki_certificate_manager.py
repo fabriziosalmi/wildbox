@@ -64,8 +64,6 @@ def build_certificate(
     """Build a real certificate so the parser has genuine input to read."""
     if key == "rsa2048":
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    elif key == "rsa1024":
-        private_key = rsa.generate_private_key(public_exponent=65537, key_size=1024)
     else:
         private_key = ec.generate_private_key(ec.SECP256R1())
 
@@ -143,9 +141,14 @@ class TestRealCertificateParsing:
         assert info.public_key_algorithm == "ECC"
         assert info.key_size == 256
 
-    def test_reports_a_weak_rsa_key_truthfully(self, manager):
-        _, pem = build_certificate(key="rsa1024")
-        assert asyncio.run(manager._parse_certificate_pem(pem)).key_size == 1024
+    def test_key_size_is_read_from_the_key_not_sampled(self, manager):
+        """The old implementation picked key_size from
+        random.choice([2048, 3072, 4096, 256, 384]); these two certificates
+        must report their own real sizes."""
+        _, rsa_pem = build_certificate(key="rsa2048")
+        _, ec_pem = build_certificate(key="ec256")
+        assert asyncio.run(manager._parse_certificate_pem(rsa_pem)).key_size == 2048
+        assert asyncio.run(manager._parse_certificate_pem(ec_pem)).key_size == 256
 
     def test_certificate_without_san_yields_an_empty_list(self, manager):
         _, pem = build_certificate(sans=())
