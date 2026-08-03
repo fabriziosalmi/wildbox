@@ -97,30 +97,35 @@ class LocalAPI:
     def _setup_routes(self):
         """Setup API routes"""
         
-        # Health and status endpoints
+        # Health is the only unauthenticated endpoint: container and load
+        # balancer probes need it, and it exposes nothing but liveness.
         self.app.router.add_get('/health', self._health_handler)
-        self.app.router.add_get('/status', self._status_handler)
-        self.app.router.add_get('/api/v1/status', self._status_handler)
-        
+
+        # Everything else requires the API key. These endpoints read host
+        # telemetry, mutate the agent configuration and run osquery, so an
+        # unauthenticated caller on the same network would own the endpoint.
+        self.app.router.add_get('/status', self._require_auth(self._status_handler))
+        self.app.router.add_get('/api/v1/status', self._require_auth(self._status_handler))
+
         # Configuration endpoints
-        self.app.router.add_get('/api/v1/config', self._get_config_handler)
-        self.app.router.add_put('/api/v1/config', self._update_config_handler)
-        self.app.router.add_post('/api/v1/config/reload', self._reload_config_handler)
-        self.app.router.add_post('/api/v1/config/validate', self._validate_config_handler)
-        
+        self.app.router.add_get('/api/v1/config', self._require_auth(self._get_config_handler))
+        self.app.router.add_put('/api/v1/config', self._require_auth(self._update_config_handler))
+        self.app.router.add_post('/api/v1/config/reload', self._require_auth(self._reload_config_handler))
+        self.app.router.add_post('/api/v1/config/validate', self._require_auth(self._validate_config_handler))
+
         # Query endpoints
-        self.app.router.add_post('/api/v1/query', self._execute_query_handler)
-        self.app.router.add_get('/api/v1/queries', self._list_queries_handler)
-        
+        self.app.router.add_post('/api/v1/query', self._require_auth(self._execute_query_handler))
+        self.app.router.add_get('/api/v1/queries', self._require_auth(self._list_queries_handler))
+
         # Component endpoints
-        self.app.router.add_get('/api/v1/components', self._components_status_handler)
-        self.app.router.add_get('/api/v1/stats', self._stats_handler)
-        
+        self.app.router.add_get('/api/v1/components', self._require_auth(self._components_status_handler))
+        self.app.router.add_get('/api/v1/stats', self._require_auth(self._stats_handler))
+
         # Dashboard endpoint
-        self.app.router.add_get('/api/v1/dashboard/metrics', self._dashboard_metrics_handler)
-        
+        self.app.router.add_get('/api/v1/dashboard/metrics', self._require_auth(self._dashboard_metrics_handler))
+
         # Control endpoints
-        self.app.router.add_post('/api/v1/test-connection', self._test_connection_handler)
+        self.app.router.add_post('/api/v1/test-connection', self._require_auth(self._test_connection_handler))
         
         # Static documentation (only in development)
         if os.getenv("ENVIRONMENT", "development") != "production":
@@ -130,7 +135,15 @@ class LocalAPI:
     def _require_auth(self, handler):
         """Decorator to require API key authentication"""
         async def wrapper(request):
-            if self.config.network.api_key:
+            if not self.config.network.api_key:
+                # Fail closed. Previously a missing api_key silently disabled
+                # authentication for every endpoint below.
+                logger.error("Local API called but network.api_key is not configured")
+                return web.json_response(
+                    {'error': 'API authentication is not configured on this sensor'},
+                    status=503
+                )
+            if True:
                 auth_header = request.headers.get('Authorization', '')
                 api_key = request.headers.get('X-API-Key', '')
                 
