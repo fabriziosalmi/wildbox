@@ -42,6 +42,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
 
+    /* Backend-dependent specs (#103): need the full identity+gateway stack
+       from .github/workflows/e2e-fullstack.yml behind them. The dashboard's
+       API calls go to the gateway over https://localhost with a self-signed
+       CI cert, hence ignoreHTTPSErrors. Scoped by testMatch so the plain
+       `chromium` smoke project stays backend-free. */
+    {
+      name: 'backend-chromium',
+      use: { ...devices['Desktop Chrome'], ignoreHTTPSErrors: true },
+      testMatch: /login-flow\.spec\.ts/,
+    },
+
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },

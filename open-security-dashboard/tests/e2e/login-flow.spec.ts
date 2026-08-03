@@ -105,9 +105,10 @@ test.describe('Login Flow - Critical Path', () => {
     // Get current URL
     const authenticatedUrl = page.url();
     
-    // Reload page
-    await page.reload();
-    await page.waitForLoadState('networkidle');
+    // Reload page. domcontentloaded is enough: the URL assertions below are
+    // about the server-side middleware redirect, and Next.js pages rarely
+    // reach networkidle (polling/websockets) — it was a 30s-timeout trap.
+    await page.reload({ waitUntil: 'domcontentloaded' });
     console.log('✅ Page reloaded');
     
     // Verify we're still on authenticated page (not redirected to login)
@@ -139,12 +140,19 @@ test.describe('Login Flow - Critical Path', () => {
     await page.waitForURL(/\/$|auth\/login|auth\/logout/, { timeout: 10000 });
     console.log('✅ Redirected after logout');
     
-    // Try to navigate to protected route
+    // Try to navigate to protected route. The middleware bounces
+    // unauthenticated visits to "/" (with ?redirect=...) or the login page —
+    // wait for that explicitly instead of networkidle. Note: page.url()
+    // returns the FULL url, so the old `page.url() === '/'` check could
+    // never match; compare pathnames instead.
     await page.goto('/dashboard');
-    await page.waitForLoadState('networkidle');
-    
-    // Should be redirected to login (or see login prompt)
-    const isOnLoginPage = page.url().includes('/auth/login') || page.url() === '/';
+    await page.waitForURL(
+      (url) => url.pathname === '/' || url.pathname.startsWith('/auth/login'),
+      { timeout: 10000 }
+    );
+
+    const finalPath = new URL(page.url()).pathname;
+    const isOnLoginPage = finalPath.startsWith('/auth/login') || finalPath === '/';
     expect(isOnLoginPage).toBeTruthy();
     console.log('✅ Cannot access protected route after logout');
   });
