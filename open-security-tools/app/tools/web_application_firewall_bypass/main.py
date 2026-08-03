@@ -1,10 +1,35 @@
 import asyncio
+import logging
+import os
 import time
-import re
 import urllib.parse
 import base64
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
+
+import aiohttp
+
+logger = logging.getLogger(__name__)
+
+# A WAF-bypass tester sends attack payloads to a live target. It only runs
+# against hosts the operator has explicitly authorised: the built-in list
+# below (safe public test endpoints) plus anything in the
+# WAF_BYPASS_AUTHORIZED_DOMAINS environment variable (comma-separated). This
+# is not security theatre — without it the tool is an attack proxy.
+_ENV_AUTHORIZED = [
+    d.strip().lower()
+    for d in os.getenv("WAF_BYPASS_AUTHORIZED_DOMAINS", "").split(",")
+    if d.strip()
+]
+
+# Requests that carry a WAF block are commonly one of these, in addition to
+# any response matched by the signature/pattern detector.
+_BLOCK_STATUS_CODES = {403, 406, 429, 501, 503}
+
+# Cap the real request volume: the payload x encoding x obfuscation grid can
+# be large, and this hits a live host.
+_MAX_REQUESTS = 200
+_CONCURRENCY = 5
 
 try:
     from schemas import (
@@ -21,10 +46,15 @@ except ImportError:
 TOOL_INFO = {
     "name": "web_application_firewall_bypass",
     "display_name": "WAF Bypass Tester",
-    "description": "Tests various techniques to bypass Web Application Firewall (WAF) protections",
+    "description": (
+        "Sends real encoded/obfuscated attack payloads to a target and reports "
+        "which get through its WAF, based on the actual HTTP responses. Only "
+        "runs against authorised hosts (built-in test endpoints plus "
+        "WAF_BYPASS_AUTHORIZED_DOMAINS)."
+    ),
     "category": "web_security",
     "author": "Wildbox Security",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "input_schema": WAFBypassRequest.model_json_schema(),
     "output_schema": WAFBypassResponse.model_json_schema(),
     "requires_api_key": False,
@@ -170,74 +200,49 @@ class WAFBypassTester:
         
         return False, None
     
-    def _simulate_request(self, url: str, payload: str, 
-                         headers: Optional[Dict[str, str]] = None) -> Dict:
-        """Simulate HTTP request and response"""
-        # Simulate response based on payload characteristics
-        payload_lower = payload.lower()
-        
-        # Determine if WAF would trigger
-        waf_triggered = False
-        response_code = 200
-        
-        # Basic WAF rules simulation
-        suspicious_patterns = [
-            "script", "union", "select", "drop", "insert", "update",
-            "delete", "exec", "eval", "alert", "onload", "onerror",
-            "../", "etc/passwd", "system32", "cmd.exe"
-        ]
-        
-        # Check for obvious attack patterns
-        for pattern in suspicious_patterns:
-            if pattern in payload_lower:
-                # Simulate WAF detection based on encoding/obfuscation
-                detection_probability = 0.8
-                
-                # Reduce detection for encoded payloads
-                if "%3c" in payload or "&#x" in payload or "\\u" in payload:
-                    detection_probability *= 0.6
-                
-                # Reduce detection for obfuscated payloads
-                if "/**/" in payload or "<!---->" in payload:
-                    detection_probability *= 0.7
-                
-                if hash(payload) % 100 < detection_probability * 100:
-                    waf_triggered = True
-                    response_code = 403
-                    break
-        
-        # Simulate response
-        response_size = 1500 + (hash(payload) % 5000)
-        
-        # Simulate headers
-        simulated_headers = {
-            "server": "nginx/1.18.0",
-            "content-type": "text/html",
-            "content-length": str(response_size)
+    async def _send_request(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        payload: str,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Dict:
+        """Send the payload to the real target as a query parameter.
+
+        Returns the real status code, headers, body and size — or an error
+        string if the request could not be completed. WAFs inspect the query
+        string, so injecting the payload there is the standard way to test
+        whether it gets through.
+        """
+        parsed = urllib.parse.urlparse(url)
+        query = dict(urllib.parse.parse_qsl(parsed.query))
+        query["q"] = payload
+        target = parsed._replace(query=urllib.parse.urlencode(query)).geturl()
+
+        request_headers = {
+            "User-Agent": "Wildbox-WAF-Bypass-Tester/2.0",
+            **(headers or {}),
         }
-        
-        # Add WAF headers if triggered
-        if waf_triggered:
-            waf_type = list(self.waf_signatures.keys())[hash(url) % len(self.waf_signatures)]
-            if waf_type == "cloudflare":
-                simulated_headers["cf-ray"] = "abc123-SJC"
-                simulated_headers["server"] = "cloudflare"
-            elif waf_type == "akamai":
-                simulated_headers["server"] = "AkamaiGHost"
-        
-        # Simulate response body
-        if waf_triggered:
-            response_body = "<html><body><h1>Access Denied</h1><p>Security violation detected.</p></body></html>"
-        else:
-            response_body = "<html><body><h1>Welcome</h1><p>Request processed successfully.</p></body></html>"
-        
-        return {
-            "status_code": response_code,
-            "headers": simulated_headers,
-            "body": response_body,
-            "size": response_size
-        }
-    
+
+        try:
+            async with session.get(
+                target, headers=request_headers, allow_redirects=False
+            ) as response:
+                body = await response.text(errors="replace")
+                return {
+                    "status_code": response.status,
+                    "headers": {k.lower(): v for k, v in response.headers.items()},
+                    "body": body,
+                    "size": len(body),
+                    "error": None,
+                }
+        except asyncio.TimeoutError:
+            return {"status_code": 0, "headers": {}, "body": "", "size": 0,
+                    "error": "request timed out"}
+        except aiohttp.ClientError as exc:
+            return {"status_code": 0, "headers": {}, "body": "", "size": 0,
+                    "error": f"request failed: {exc}"}
+
     def _generate_technique_stats(self, payloads: List[WAFBypassPayload]) -> List[WAFBypassTechnique]:
         """Generate statistics for each technique"""
         techniques = {}
@@ -361,8 +366,8 @@ class WAFBypassTester:
             if ':' in domain:
                 domain = domain.split(':')[0]
             
-            # Check against authorized domains
-            for authorized in self.authorized_domains:
+            # Check against authorized domains (built-in + operator-supplied)
+            for authorized in self.authorized_domains + _ENV_AUTHORIZED:
                 if domain == authorized or domain.endswith(f".{authorized}"):
                     return True
             
@@ -403,74 +408,88 @@ async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
             bypass_recommendations=["Only test against authorized targets"],
             waf_improvement_suggestions=["Ensure proper authorization before testing"],
             timestamp=datetime.now().isoformat(),
-            processing_time_ms=int((time.time() - start_time) * 1000)
+            processing_time_ms=int((time.time() - start_time) * 1000),
+            success=False,
+            summary="Target not authorised for WAF bypass testing",
         )
     
-    payload_results = []
-    
-    # Test different combinations of payloads, encodings, and obfuscations
+    # Build the full payload grid up front so it can be capped and run with
+    # bounded concurrency against the live target.
+    jobs = []
     for payload_type in request.payload_types:
         if payload_type not in tester.base_payloads:
             continue
-            
         for base_payload in tester.base_payloads[payload_type]:
             for encoding in request.encoding_techniques:
                 for obfuscation in request.obfuscation_methods:
-                    # Apply encoding and obfuscation
-                    modified_payload = tester._encode_payload(base_payload, encoding)
-                    modified_payload = tester._obfuscate_payload(modified_payload, obfuscation)
-                    
-                    # Simulate request
-                    response = tester._simulate_request(
-                        request.target_url, 
-                        modified_payload, 
-                        request.custom_headers
-                    )
-                    
-                    # Detect WAF
-                    waf_triggered, _ = tester._detect_waf(
-                        response["headers"], 
-                        response["body"]
-                    )
-                    
-                    # Determine bypass success
-                    bypass_success = response["status_code"] == 200 and not waf_triggered
-                    
-                    # Extract detection signatures
-                    detection_signatures = []
-                    if waf_triggered:
-                        for waf_name, signatures in tester.waf_signatures.items():
-                            for sig in signatures:
-                                if sig.lower() in str(response["headers"]).lower():
-                                    detection_signatures.append(f"{waf_name}:{sig}")
-                    
-                    payload_results.append(WAFBypassPayload(
-                        original_payload=base_payload,
-                        modified_payload=modified_payload,
-                        technique=payload_type,
-                        encoding=encoding,
-                        obfuscation=obfuscation,
-                        bypass_success=bypass_success,
-                        response_code=response["status_code"],
-                        response_size=response["size"],
-                        waf_triggered=waf_triggered,
-                        detection_signatures=detection_signatures
-                    ))
-                    
-                    # Add delay to simulate real testing
-                    await asyncio.sleep(0.01)
-    
+                    modified = tester._encode_payload(base_payload, encoding)
+                    modified = tester._obfuscate_payload(modified, obfuscation)
+                    jobs.append((payload_type, base_payload, encoding, obfuscation, modified))
+
+    truncated = len(jobs) > _MAX_REQUESTS
+    jobs = jobs[:_MAX_REQUESTS]
+
+    payload_results: List[WAFBypassPayload] = []
+    timeout = aiohttp.ClientTimeout(total=request.timeout)
+    connector = aiohttp.TCPConnector(ssl=request.verify_ssl)
+    semaphore = asyncio.Semaphore(_CONCURRENCY)
+
+    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+
+        async def run_job(job):
+            payload_type, base_payload, encoding, obfuscation, modified = job
+            async with semaphore:
+                response = await tester._send_request(
+                    session, request.target_url, modified, request.custom_headers
+                )
+            waf_triggered, _ = tester._detect_waf(response["headers"], response["body"])
+
+            # A bypass means the attack payload reached the app without being
+            # blocked: a real 2xx/3xx AND no WAF block signature. A failed
+            # request (error / status 0) is never counted as a bypass.
+            blocked = (
+                response["error"] is not None
+                or response["status_code"] in _BLOCK_STATUS_CODES
+                or response["status_code"] == 0
+                or waf_triggered
+            )
+            bypass_success = (not blocked) and 200 <= response["status_code"] < 400
+
+            detection_signatures = []
+            if waf_triggered:
+                headers_str = str(response["headers"]).lower()
+                for waf_name, signatures in tester.waf_signatures.items():
+                    for sig in signatures:
+                        if sig.lower() in headers_str:
+                            detection_signatures.append(f"{waf_name}:{sig}")
+
+            return WAFBypassPayload(
+                original_payload=base_payload,
+                modified_payload=modified,
+                technique=payload_type,
+                encoding=encoding,
+                obfuscation=obfuscation,
+                bypass_success=bypass_success,
+                response_code=response["status_code"],
+                response_size=response["size"],
+                waf_triggered=waf_triggered,
+                detection_signatures=detection_signatures,
+            )
+
+        payload_results = await asyncio.gather(*(run_job(j) for j in jobs))
+
     # Analyze results
     successful_bypasses = sum(1 for p in payload_results if p.bypass_success)
     total_payloads = len(payload_results)
     bypass_rate = successful_bypasses / total_payloads if total_payloads > 0 else 0
     
-    # Detect WAF from initial request
-    initial_response = tester._simulate_request(request.target_url, "test")
-    waf_detected, waf_type = tester._detect_waf(
-        initial_response["headers"], 
-        initial_response["body"]
-    )
+    # Detect the WAF from a clean baseline request to the real target.
+    async with aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=request.timeout),
+        connector=aiohttp.TCPConnector(ssl=request.verify_ssl),
+    ) as session:
+        baseline = await tester._send_request(session, request.target_url, "wildbox-baseline")
+    waf_detected, waf_type = tester._detect_waf(baseline["headers"], baseline["body"])
     
     # Generate technique statistics
     techniques_tested = tester._generate_technique_stats(payload_results)
@@ -491,6 +510,10 @@ async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
     risk_level = tester._assess_risk_level(bypass_rate, successful_bypasses)
     
     vulnerability_summary = f"WAF bypass success rate: {bypass_rate:.1%}. "
+    if truncated:
+        vulnerability_summary += (
+            f"Note: the payload grid was capped at {_MAX_REQUESTS} requests. "
+        )
     if risk_level in ["Critical", "High"]:
         vulnerability_summary += "Significant bypass vulnerabilities detected."
     elif risk_level == "Medium":
@@ -517,16 +540,20 @@ async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
         payload_results=payload_results[:50],  # Limit results
         blocked_patterns=blocked_patterns,
         allowed_patterns=allowed_patterns,
-        filtering_rules=[
-            "SQL injection pattern detection",
-            "XSS script tag filtering",
-            "Command injection prevention",
-            "Path traversal blocking"
-        ],
+        filtering_rules=sorted({
+            f"{p.technique} payloads blocked ({p.encoding}/{p.obfuscation})"
+            for p in payload_results
+            if p.waf_triggered or p.response_code in _BLOCK_STATUS_CODES
+        }) or ["No payloads were blocked by the target"],
         risk_level=risk_level,
         vulnerability_summary=vulnerability_summary,
         bypass_recommendations=bypass_recommendations,
         waf_improvement_suggestions=waf_improvements,
         timestamp=datetime.now().isoformat(),
-        processing_time_ms=processing_time
+        processing_time_ms=processing_time,
+        success=True,
+        summary=(
+            f"Tested {total_payloads} payloads against {request.target_url}: "
+            f"{successful_bypasses} reached the application"
+        )
     )
