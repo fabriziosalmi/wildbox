@@ -8,12 +8,14 @@
 -- existing handler and stay meaningful; they can be ratcheted on in a
 -- follow-up once auth_handler.lua is tidied.
 
--- OpenResty runs LuaJIT (Lua 5.1 + 5.2 extensions).
-std = "luajit"
+-- OpenResty runs LuaJIT (Lua 5.1 + 5.2 extensions); luacheck's builtin
+-- "ngx_lua" std is LuaJIT plus the OpenResty globals with the correct
+-- mutability (a bare read_globals "ngx" flags every legitimate
+-- ngx.status/ngx.header/ngx.var assignment as W122 setting-read-only-field).
+std = "ngx_lua"
 
--- Globals OpenResty injects into the Lua VM at request time.
+-- ndk (nginx devel kit) is not part of the ngx_lua std.
 read_globals = {
-    "ngx",
     "ndk",
 }
 

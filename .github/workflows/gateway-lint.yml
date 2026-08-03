@@ -30,9 +30,10 @@ jobs:
 
       - name: Install luacheck
         run: |
-          sudo apt-get update
-          sudo apt-get install -y lua5.3 luarocks
-          sudo luarocks install luacheck
+          sudo apt-get update -qq
+          # Ubuntu packages the luacheck binary as "lua-check"; installing via
+          # luarocks needs liblua dev headers and fails on the stock runner.
+          sudo apt-get install -y -qq lua-check
 
       - name: Run luacheck over gateway Lua
         working-directory: open-security-gateway
