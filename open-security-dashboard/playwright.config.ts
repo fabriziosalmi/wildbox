@@ -46,13 +46,11 @@ export default defineConfig({
     },
 
     /* Backend-dependent specs (#103): need the full identity+gateway stack
-       from .github/workflows/e2e-fullstack.yml behind them. The browser talks
-       only to the gateway (PLAYWRIGHT_BASE_URL=https://localhost), which
-       proxies both the dashboard and the APIs — same-origin, like production,
-       and the only topology that works: the gateway emits no CORS headers
-       (includes/cors_params.conf is a comment-only stub), so a dashboard
-       served from a different origin has every API call blocked by the
-       browser. ignoreHTTPSErrors covers the self-signed CI certificate. */
+       from .github/workflows/e2e-fullstack.yml behind them. The browser loads
+       the dashboard from Playwright's own Next server (http://localhost:3000)
+       and its XHRs go cross-origin to the gateway at https://localhost — now
+       allowed by the gateway's CORS allowlist. ignoreHTTPSErrors covers the
+       self-signed CI certificate on the gateway. */
     {
       name: 'backend-chromium',
       use: { ...devices['Desktop Chrome'], ignoreHTTPSErrors: true },

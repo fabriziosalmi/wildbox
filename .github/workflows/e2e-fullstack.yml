@@ -78,11 +78,9 @@ jobs:
 
       - name: Start upstream stand-ins + gateway
         # nginx refuses to boot if any static upstream hostname is
-        # unresolvable, so every absent service gets a DNS alias:
-        # - blackhole (connection refused) for services these flows don't use;
-        # - socat forwarding :3000 to the runner host for the dashboard
-        #   (which runs as a host process), plus the host.docker.internal
-        #   backup already present in the upstream block.
+        # unresolvable, so every absent service (including the dashboard, which
+        # the browser now reaches directly, not through the gateway) gets a
+        # blackhole DNS alias just to satisfy nginx's boot-time resolution.
         run: |
           docker run -d --name upstream-blackhole --network wildbox-e2e \
             --network-alias open-security-data \
@@ -90,12 +88,9 @@ jobs:
             --network-alias open-security-responder \
             --network-alias open-security-agents \
             --network-alias open-security-tools \
-            alpine:3.20 sleep infinity
-          docker run -d --name dashboard-fwd --network wildbox-e2e \
             --network-alias open-security-dashboard \
             --network-alias dashboard \
-            --add-host host.docker.internal:host-gateway \
-            alpine/socat tcp-listen:3000,fork,reuseaddr tcp-connect:host.docker.internal:3000
+            alpine:3.20 sleep infinity
           docker run -d --name wildbox-gateway --network wildbox-e2e \
             --add-host host.docker.internal:host-gateway \
             -p 443:443 -p 8090:80 \
@@ -145,16 +140,6 @@ jobs:
           fi
           echo "admin login through gateway OK"
 
-      - name: Verify the gateway can actually reach the dashboard
-        # The browser talks only to the gateway, so if this proxy hop is
-        # broken every spec fails with an opaque locator timeout. Start Next
-        # here, prove the hop, then hand it over to Playwright's webServer.
-        working-directory: open-security-dashboard
-        run: |
-          echo "(the dashboard is not up yet — expecting 502 from the gateway)"
-          curl -sk -o /dev/null -w "gateway->dashboard (no backend): %{http_code}\n" \
-            https://localhost/auth/login || true
-
       - name: Install dashboard dependencies
         working-directory: open-security-dashboard
         run: npm ci
@@ -178,19 +163,15 @@ jobs:
           CI: 'true'
           NEXT_PUBLIC_USE_GATEWAY: 'true'
           NEXT_PUBLIC_GATEWAY_URL: https://localhost
-          # Drive the browser through the gateway, which proxies both the
-          # dashboard and the APIs — the production topology, and the only one
-          # that works: the gateway emits no CORS headers (its
-          # includes/cors_params.conf is a comment-only stub), so a dashboard
-          # served from a different origin than the API has every XHR blocked
-          # by the browser. Playwright's webServer still starts Next on :3000
-          # for the gateway (via socat) to proxy to.
-          PLAYWRIGHT_BASE_URL: https://localhost
+          # The browser loads the dashboard directly from Playwright's own
+          # Next server (http://localhost:3000, the default baseURL) and its
+          # XHRs go cross-origin to the gateway at https://localhost. That
+          # cross-origin call is now allowed by the gateway's CORS allowlist
+          # (localhost is on it), which is why this no longer needs to proxy
+          # the dashboard through the gateway via socat.
+          NODE_TLS_REJECT_UNAUTHORIZED: '0'
           TEST_EMAIL: superadmin@wildbox.com
           TEST_PASSWORD: wildbox123
-          # `next start` (spawned by Playwright's webServer) may fetch the
-          # gateway server-side over the self-signed CI cert.
-          NODE_TLS_REJECT_UNAUTHORIZED: '0'
         run: npx playwright test --project=backend-chromium
 
       - name: Upload Playwright report
@@ -208,12 +189,9 @@ jobs:
           docker logs open-security-identity 2>&1 | tail -120 || true
           echo "===== gateway ====="
           docker logs wildbox-gateway 2>&1 | tail -80 || true
-          echo "===== dashboard-fwd (socat) ====="
-          docker logs dashboard-fwd 2>&1 | tail -40 || true
-          echo "===== gateway: can it resolve/reach the dashboard upstream? ====="
-          docker exec wildbox-gateway sh -c \
-            'getent hosts open-security-dashboard; curl -s -o /dev/null -w "upstream:%{http_code}\n" http://open-security-dashboard:3000/ --max-time 5' || true
-          echo "===== is Next listening on the runner host? ====="
-          curl -s -o /dev/null -w "host:3000 -> %{http_code}\n" http://localhost:3000/ --max-time 5 || true
+          echo "===== is Next (Playwright webServer) still on :3000? ====="
+          curl -s -o /dev/null -w "localhost:3000 -> %{http_code}\n" http://localhost:3000/ --max-time 5 || true
+          echo "===== can the browser origin reach the gateway API? ====="
+          curl -sk -o /dev/null -w "gateway /health -> %{http_code}\n" https://localhost/health --max-time 5 || true
           echo "===== postgres ====="
           docker logs postgres-e2e 2>&1 | tail -30 || true
