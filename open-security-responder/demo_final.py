@@ -61,7 +61,8 @@ def demo_connectors():
     
     print("\n🧪 Testing API Connector:")
     
-    # List available tools (with fallback to simulation)
+    # List available tools. The connector no longer falls back to fabricated
+    # data when the tools service is down: report the outage instead.
     try:
         result = connector_registry.execute_action("api", "list_tools", {})
         tools = result.get('tools', [])
@@ -69,17 +70,8 @@ def demo_connectors():
         for tool in tools[:3]:  # Show first 3
             print(f"    - {tool['name']}: {tool['description']}")
     except Exception as e:
-        print(f"  ⚠️  API service not available, using simulation mode")
-        # Use the simulated tools method directly
-        from app.connectors.api_connector import ApiConnector
-        api_conn = ApiConnector()
-        result = api_conn._get_simulated_tools()
-        tools = result.get('tools', [])
-        print(f"  ✅ Available Tools (simulated): {len(tools)} tools")
-        for tool in tools[:3]:
-            print(f"    - {tool['name']}: {tool['description']}")
-    
-    # Simulate tool execution (will use simulation mode automatically)
+        print(f"  ⚠️  Tools service unavailable, cannot list tools: {e}")
+
     try:
         result = connector_registry.execute_action("api", "run_tool", {
             "tool_name": "nmap",

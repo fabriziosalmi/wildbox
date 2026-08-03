@@ -418,13 +418,6 @@ WILDBOX_FLAGS = [
         description="Redesigned vulnerability dashboard (10% beta)"
     ),
     FeatureFlag(
-        key="incident_response_automation",
-        enabled=True,
-        strategy=RolloutStrategy.ENVIRONMENT,
-        environments=["staging"],
-        description="Automated incident response (staging only)"
-    ),
-    FeatureFlag(
         key="api_rate_limit_increase",
         enabled=False,
         strategy=RolloutStrategy.USERS,

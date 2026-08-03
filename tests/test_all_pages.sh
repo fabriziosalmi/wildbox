@@ -91,7 +91,7 @@ echo "1. Testing Toolbox Page API"
 echo "========================================="
 test_json_endpoint "Tools List" \
     "http://localhost:80/api/v1/tools/tools" \
-    "X-API-Key: wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90" \
+    "X-API-Key: wbx-<REDACTED-LEAKED-KEY>" \
     "length"
 
 echo ""

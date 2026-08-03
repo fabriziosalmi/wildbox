@@ -132,7 +132,7 @@ app.add_middleware(
 **Before:**
 
 ```yaml
-- API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}
+- API_KEY=${API_KEY:-wbx-<REDACTED-LEAKED-KEY>}
 - DATABASE_URL=${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/...}
 - JWT_SECRET_KEY=${JWT_SECRET_KEY:-fallback-secret}
 ```

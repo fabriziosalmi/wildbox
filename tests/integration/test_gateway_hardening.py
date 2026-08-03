@@ -19,7 +19,7 @@ class GatewayHardeningTester:
     
     def __init__(self, base_url: str = None):
         self.base_url = base_url or os.getenv("GATEWAY_URL", "http://localhost")
-        self.admin_api_key = os.getenv("TEST_API_KEY", "wsk_51c0.77d4c520955c5908e4a9d9202533aff0f3dbb10dfb7f12cb701009b3e1993fde")
+        self.admin_api_key = os.getenv("TEST_API_KEY", "test-api-key-for-ci-only")
         self.results = []
         
         # Default headers

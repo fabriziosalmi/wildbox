@@ -207,11 +207,11 @@ curl -X POST http://localhost:8001/v1/analyze \
 
 ### [ ] 4. Check & Rotate API Key (If Exposed)
 
-**Action**: Check if `wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90` is a real production key
+**Action**: Check if `wbx-<REDACTED-LEAKED-KEY>` is a real production key
 
 ```bash
 # Search for usage of this key
-grep -r "wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90" /Users/fab/GitHub/wildbox/
+grep -r "wbx-<REDACTED-LEAKED-KEY>" /Users/fab/GitHub/wildbox/
 
 # If found in actual usage:
 # 1. Immediately rotate the key in your system
@@ -310,7 +310,7 @@ With:
 Replace:
 
 ```yaml
-- API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}
+- API_KEY=${API_KEY:-wbx-<REDACTED-LEAKED-KEY>}
 ```
 
 With:

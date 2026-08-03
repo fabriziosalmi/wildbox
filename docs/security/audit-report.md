@@ -225,7 +225,7 @@ except Exception as e:
 - JWT_SECRET_KEY=${JWT_SECRET_KEY:-please-set-jwt-secret-in-env-file}
 - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_set_your_webhook_secret}
 - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD:-CHANGE-THIS-PASSWORD}
-- API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}
+- API_KEY=${API_KEY:-wbx-<REDACTED-LEAKED-KEY>}
 ```
 
 **Fix**: Remove all default values. Use only `${VAR_NAME}` which will fail if not set:
@@ -239,10 +239,10 @@ except Exception as e:
 Also, change line 58 API_KEY - this looks like a real key was exposed:
 
 ```yaml
-- API_KEY=${API_KEY:-wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90}  # EXPOSED KEY!
+- API_KEY=${API_KEY:-wbx-<REDACTED-LEAKED-KEY>}  # EXPOSED KEY!
 ```
 
-**Immediate Action**: If `wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90` is a real key, rotate it immediately.
+**Immediate Action**: If `wbx-<REDACTED-LEAKED-KEY>` is a real key, rotate it immediately.
 
 ---
 
@@ -554,7 +554,7 @@ app = FastAPI(
    - Fix code injection (eval) vulnerability - CRITICAL RCE risk
    - Remove hardcoded credentials from .env file in git
    - Add authentication to critical endpoints
-   - Validate API key `wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90` hasn't been exposed
+   - Validate API key `wbx-<REDACTED-LEAKED-KEY>` hasn't been exposed
 
 2. **Short-term (Within 1 week)**:
    - Fix CORS configuration

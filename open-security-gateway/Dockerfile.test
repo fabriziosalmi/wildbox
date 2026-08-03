@@ -5,6 +5,12 @@ RUN apk add --no-cache curl wget && \
     mkdir -p /var/cache/nginx/wildbox_cache /var/log/nginx && \
     chmod 755 /var/cache/nginx/wildbox_cache /var/log/nginx
 
+# nginx.conf declares `user nginx;` — without this user the master process
+# fails to boot with getpwnam("nginx") failed (the production Dockerfile
+# creates it too; the openresty:alpine base image does not ship one).
+RUN adduser -D -s /bin/sh nginx && \
+    chown -R nginx:nginx /var/log/nginx /var/cache/nginx
+
 # Install lua-resty-http (required by auth_handler.lua)
 RUN cd /usr/local/openresty/lualib/resty \
     && wget -O http.lua https://raw.githubusercontent.com/ledgetech/lua-resty-http/v0.17.2/lib/resty/http.lua \
@@ -13,6 +19,10 @@ RUN cd /usr/local/openresty/lualib/resty \
 
 # Copy Lua scripts
 COPY nginx/lua /usr/local/openresty/lualib/
+
+# Shared include snippets (cors_params.conf and friends) referenced by the
+# test config's auth locations.
+COPY nginx/includes /etc/nginx/includes
 
 # Copy test configuration (kept out of nginx/conf.d so the production image,
 # which COPYs the whole conf.d, doesn't load it alongside wildbox_gateway.conf)

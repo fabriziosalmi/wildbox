@@ -173,12 +173,12 @@ echo -e "${YELLOW}════════════════════�
 
 test_json_endpoint "Tools List" \
     "http://localhost:8000/api/v1/tools/tools" \
-    "-H 'X-API-Key: wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90'" \
+    "-H 'X-API-Key: wbx-<REDACTED-LEAKED-KEY>'" \
     "List of available security tools"
 
 test_json_endpoint "Tools Categories" \
     "http://localhost:8000/api/v1/tools/categories" \
-    "-H 'X-API-Key: wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90'" \
+    "-H 'X-API-Key: wbx-<REDACTED-LEAKED-KEY>'" \
     "Tool categories"
 
 # ======================================================================

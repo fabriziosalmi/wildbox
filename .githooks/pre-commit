@@ -68,11 +68,11 @@ if [ "$SECRETS_FOUND" = true ]; then
   echo "If these are legitimate test values or examples, you can proceed."
   echo "If these are real secrets, DO NOT COMMIT THEM!"
   echo ""
-  read -p "Continue anyway? (type 'yes' to proceed): " confirm
-  if [ "$confirm" != "yes" ]; then
-    echo "Commit aborted."
-    exit 1
-  fi
+  # Fail closed. An interactive prompt is a no-op wherever stdin is not a
+  # terminal (IDE commit UIs, scripts, CI), which silently degraded this
+  # check to a warning. Override deliberately with `git commit --no-verify`.
+  echo "Commit aborted. If these are legitimate examples, re-run with --no-verify."
+  exit 1
 fi
 
 # Check 3: Ensure .env.example doesn't contain real secrets
@@ -105,10 +105,8 @@ if git diff --cached --name-only | grep -E "docker-compose.*\.yml"; then
     echo "Suspicious lines:"
     git diff --cached | grep -E "docker-compose" | grep -E "(SECRET|PASSWORD|KEY):.*[a-zA-Z0-9]{16,}" | grep -vE "\$\{|:-" --color=always
     echo ""
-    read -p "Continue anyway? (type 'yes' to proceed): " confirm
-    if [ "$confirm" != "yes" ]; then
-      exit 1
-    fi
+    echo "Commit aborted. If this is a placeholder, re-run with --no-verify."
+    exit 1
   fi
 fi
 

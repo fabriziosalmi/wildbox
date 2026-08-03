@@ -719,7 +719,16 @@
     "xdist",
     "XSOAR",
     "yangshun",
-    "yara"
+    "yara",
+    "Montserrat",
+    "Roboto",
+    "googleapis",
+    "gstatic",
+    "woff",
+    "openfontlicense",
+    "Redocly",
+    "jsdelivr",
+    "Redoc"
   ],
   "ignoreWords": [
     "APIKEY",

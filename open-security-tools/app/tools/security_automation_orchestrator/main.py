@@ -1,10 +1,9 @@
 from typing import Dict, Any, List
 import asyncio
-import random
 import importlib
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 try:
     from schemas import (
@@ -32,26 +31,28 @@ class SecurityAutomationOrchestrator:
     
     def __init__(self):
         # Updated list of available tools with proper module names
+        # A workflow step may name any discovered tool; this list is only the
+        # curated default set the orchestrator advertises. The four fabricated
+        # tools that used to appear here (threat_hunting_platform,
+        # incident_response_automation, compliance_checker,
+        # security_compliance_checker) were removed from the service.
         self.available_tools = [
-            "network_port_scanner", "ssl_analyzer", "dns_enumerator", "dns_security_checker",
-            "threat_hunting_platform", "incident_response_automation", "compliance_checker",
-            "network_scanner", "api_security_tester", "email_harvester", "password_generator",
-            "hash_generator", "jwt_analyzer", "base64_tool", "metadata_extractor",
-            "directory_bruteforcer", "cookie_scanner", "header_analyzer"
+            "network_port_scanner", "ssl_analyzer", "dns_security_checker",
+            "api_security_tester", "email_harvester", "jwt_analyzer",
+            "metadata_extractor", "cookie_scanner", "header_analyzer",
+            "ct_log_scanner", "email_security_analyzer", "pki_certificate_manager",
+            "vulnerability_db_scanner",
         ]
         
         self.workflow_templates = {
             "security_assessment": "Comprehensive security assessment workflow",
-            "incident_response": "Automated incident response workflow",
-            "compliance_audit": "Automated compliance audit workflow",
-            "threat_hunting": "Proactive threat hunting workflow",
-            "vulnerability_management": "Vulnerability management workflow"
+            "vulnerability_management": "Vulnerability management workflow",
         }
 
     async def execute_workflow(self, workflow_input: AutomationWorkflowInput) -> SecurityAutomationOutput:
         """Execute security automation workflow"""
         
-        execution_id = f"EXEC-{datetime.now().strftime('%Y%m%d%H%M%S')}-{random.randint(100, 999)}"
+        execution_id = f"EXEC-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
         start_time = datetime.now()
         
         # Create workflow execution
@@ -339,15 +340,17 @@ class SecurityAutomationOrchestrator:
 
     async def _generate_automation_metrics(self) -> AutomationMetrics:
         """Generate real automation metrics from execution history"""
-        # TODO: Implement real metrics from database/logs
-        # For now, return minimal metrics with real data structure
+        # This service keeps no execution history (no database/log store), so
+        # cross-run metrics cannot be computed. Return zeros rather than
+        # fabricated counts, so a consumer sees "no history available", not a
+        # made-up throughput figure.
         return AutomationMetrics(
-            total_executions=0,  # Should come from database
-            successful_executions=0,  # Should come from database  
-            failed_executions=0,  # Should come from database
-            average_execution_time="0 minutes",  # Should be calculated from real data
-            most_used_tools=[],  # Should come from usage statistics
-            error_patterns=[]  # Should come from error log analysis
+            total_executions=0,
+            successful_executions=0,
+            failed_executions=0,
+            average_execution_time="not tracked (no execution history store)",
+            most_used_tools=[],
+            error_patterns=[],
         )
 
     def _generate_recommendations(self, execution: WorkflowExecution) -> List[str]:
@@ -372,15 +375,17 @@ class SecurityAutomationOrchestrator:
         return recommendations
 
     def _calculate_next_run(self, trigger_type: str) -> str:
-        """Calculate next scheduled run time"""
-        
-        if trigger_type == "schedule":
-            next_run = datetime.now() + timedelta(days=1)
-            return next_run.strftime("%Y-%m-%d %H:%M:%S")
-        elif trigger_type == "event":
-            return "Based on event triggers"
-        else:
-            return "Manual execution only"
+        """Describe when this workflow would run again.
+
+        This service has no scheduler: it executes a workflow on request and
+        returns. Rather than invent a next-run timestamp (the previous code
+        returned now + 1 day for "schedule"), state plainly that scheduling
+        must be driven externally.
+        """
+        return (
+            "This service does not schedule runs; trigger the workflow "
+            "externally (cron, CI, or the responder service)."
+        )
 
 # Required async function for tool execution
 async def execute_tool(tool_input: AutomationWorkflowInput) -> SecurityAutomationOutput:

@@ -1,8 +1,13 @@
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import asyncio
-import random
 import re
-from datetime import datetime, timedelta
+import socket
+import ssl
+from datetime import datetime, timedelta, timezone
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
 
 try:
     from schemas import (
@@ -25,7 +30,11 @@ class PKICertificateManager:
     """PKI Certificate Manager - Comprehensive certificate analysis and validation"""
     
     name = "PKI Certificate Manager"
-    description = "Comprehensive PKI certificate analysis, validation, and management tool for SSL/TLS certificates"
+    description = ("PKI certificate analysis for SSL/TLS certificates: parses a supplied "
+                   "PEM/DER certificate or fetches the one a host presents over TLS, "
+                   "and reports its real subject, issuer, key, validity, SANs and "
+                   "embedded SCTs. Revocation is reported as Unknown — OCSP/CRL are "
+                   "not queried.")
     category = "cryptography"
     
     # Common certificate authorities
@@ -37,6 +46,10 @@ class PKICertificateManager:
     # Weak algorithms and key sizes
     WEAK_ALGORITHMS = ["md5", "sha1", "rc4"]
     MIN_KEY_SIZES = {"RSA": 2048, "ECC": 256, "DSA": 2048}
+
+    def __init__(self) -> None:
+        # Set by _to_certificate_info; read by the SCT and OCSP checks.
+        self._last_certificate: Optional[x509.Certificate] = None
     
     async def execute(self, input_data: PKICertificateManagerInput) -> PKICertificateManagerOutput:
         """Execute PKI certificate analysis"""
@@ -110,63 +123,141 @@ class PKICertificateManager:
                 compliance_status={}
             )
     
+    @staticmethod
+    def _name_to_dict(name: x509.Name) -> Dict[str, str]:
+        """Render an X.509 Name as the {CN, O, C, ...} mapping the schema uses."""
+        out: Dict[str, str] = {}
+        for attribute in name:
+            key = attribute.oid._name  # e.g. commonName
+            short = {
+                "commonName": "CN",
+                "organizationName": "O",
+                "organizationalUnitName": "OU",
+                "countryName": "C",
+                "stateOrProvinceName": "ST",
+                "localityName": "L",
+            }.get(key, key)
+            out[short] = str(attribute.value)
+        return out
+
+    @staticmethod
+    def _public_key_details(certificate: x509.Certificate) -> tuple:
+        """Return (algorithm, key size in bits) read from the real public key."""
+        public_key = certificate.public_key()
+        if isinstance(public_key, rsa.RSAPublicKey):
+            return "RSA", public_key.key_size
+        if isinstance(public_key, ec.EllipticCurvePublicKey):
+            return "ECC", public_key.curve.key_size
+        if isinstance(public_key, dsa.DSAPublicKey):
+            return "DSA", public_key.key_size
+        return type(public_key).__name__, 0
+
+    def _to_certificate_info(self, certificate: x509.Certificate) -> CertificateInfo:
+        """Build CertificateInfo from a parsed X.509 certificate.
+
+        Every field is read from the certificate. The previous implementation
+        generated issuer, serial, validity, algorithm, key size and both
+        fingerprints with `random`.
+        """
+        # Keep the parsed certificate: the CT/SCT and OCSP checks below read
+        # extensions from it rather than re-deriving anything.
+        self._last_certificate = certificate
+        key_algorithm, key_size = self._public_key_details(certificate)
+
+        try:
+            san_names = [
+                str(name) for name in
+                certificate.extensions.get_extension_for_class(
+                    x509.SubjectAlternativeName
+                ).value.get_values_for_type(x509.DNSName)
+            ]
+        except x509.ExtensionNotFound:
+            san_names = []
+
+        try:
+            is_ca = certificate.extensions.get_extension_for_class(
+                x509.BasicConstraints
+            ).value.ca
+        except x509.ExtensionNotFound:
+            is_ca = False
+
+        # cryptography exposes naive UTC datetimes on the *_utc properties in
+        # newer versions; fall back for older ones.
+        valid_from = getattr(certificate, "not_valid_before_utc", None) or \
+            certificate.not_valid_before.replace(tzinfo=timezone.utc)
+        valid_to = getattr(certificate, "not_valid_after_utc", None) or \
+            certificate.not_valid_after.replace(tzinfo=timezone.utc)
+
+        signature_algorithm = (
+            certificate.signature_algorithm_oid._name
+            if certificate.signature_algorithm_oid else "unknown"
+        )
+
+        return CertificateInfo(
+            subject=self._name_to_dict(certificate.subject),
+            issuer=self._name_to_dict(certificate.issuer),
+            serial_number=format(certificate.serial_number, "x"),
+            valid_from=valid_from,
+            valid_to=valid_to,
+            signature_algorithm=signature_algorithm,
+            public_key_algorithm=key_algorithm,
+            key_size=key_size,
+            fingerprint_sha1=certificate.fingerprint(hashes.SHA1()).hex(),
+            fingerprint_sha256=certificate.fingerprint(hashes.SHA256()).hex(),
+            san_names=san_names,
+            is_ca=is_ca,
+            # Self-signed means subject == issuer. Verifying the signature
+            # against its own key would prove it cryptographically; the DN
+            # comparison is the standard cheap check and is not a guess.
+            is_self_signed=certificate.subject == certificate.issuer,
+        )
+
     async def _parse_certificate_pem(self, pem_data: str) -> CertificateInfo:
-        """Parse PEM certificate data (simulated)"""
-        await asyncio.sleep(0.1)  # Simulate processing
-        
-        # Simulate certificate parsing
-        return CertificateInfo(
-            subject={
-                "CN": "example.com",
-                "O": "Example Organization",
-                "C": "US"
-            },
-            issuer={
-                "CN": random.choice(self.TRUSTED_CAS),
-                "O": "Certificate Authority",
-                "C": "US"
-            },
-            serial_number=f"{random.randint(100000000000000000, 999999999999999999):x}",
-            valid_from=datetime.now() - timedelta(days=30),
-            valid_to=datetime.now() + timedelta(days=60),
-            signature_algorithm=random.choice(["sha256WithRSAEncryption", "ecdsa-with-SHA256"]),
-            public_key_algorithm=random.choice(["RSA", "ECC"]),
-            key_size=random.choice([2048, 3072, 4096, 256, 384]),
-            fingerprint_sha1=self._generate_fingerprint(),
-            fingerprint_sha256=self._generate_fingerprint(64),
-            san_names=["example.com", "www.example.com", "*.example.com"],
-            is_ca=False,
-            is_self_signed=random.choice([True, False])
-        )
-    
-    async def _fetch_domain_certificate(self, domain: str) -> CertificateInfo:
-        """Fetch certificate for domain (simulated)"""
-        await asyncio.sleep(0.2)  # Simulate network request
-        
-        return CertificateInfo(
-            subject={
-                "CN": domain,
-                "O": f"{domain.split('.')[0].title()} Inc",
-                "C": "US"
-            },
-            issuer={
-                "CN": random.choice(self.TRUSTED_CAS),
-                "O": "Certificate Authority",
-                "C": "US"
-            },
-            serial_number=f"{random.randint(100000000000000000, 999999999999999999):x}",
-            valid_from=datetime.now() - timedelta(days=random.randint(1, 90)),
-            valid_to=datetime.now() + timedelta(days=random.randint(30, 365)),
-            signature_algorithm=random.choice(["sha256WithRSAEncryption", "ecdsa-with-SHA256"]),
-            public_key_algorithm=random.choice(["RSA", "ECC"]),
-            key_size=random.choice([2048, 3072, 4096, 256, 384]),
-            fingerprint_sha1=self._generate_fingerprint(),
-            fingerprint_sha256=self._generate_fingerprint(64),
-            san_names=[domain, f"www.{domain}"],
-            is_ca=False,
-            is_self_signed=False
-        )
-    
+        """Parse a real PEM/DER certificate supplied by the caller."""
+        data = (pem_data or "").strip().encode()
+        if not data:
+            raise ValueError("No certificate data supplied")
+        try:
+            certificate = x509.load_pem_x509_certificate(data)
+        except ValueError:
+            try:
+                certificate = x509.load_der_x509_certificate(data)
+            except ValueError as exc:
+                raise ValueError(f"Not a valid PEM or DER certificate: {exc}") from exc
+        return self._to_certificate_info(certificate)
+
+    async def _fetch_domain_certificate(self, domain: str, port: int = 443) -> CertificateInfo:
+        """Fetch the certificate a host actually presents over TLS."""
+        host = (domain or "").strip()
+        if not host:
+            raise ValueError("No domain supplied")
+        if "://" in host:
+            host = host.split("://", 1)[1]
+        host = host.split("/")[0]
+        if ":" in host:
+            host, _, port_str = host.partition(":")
+            port = int(port_str) if port_str.isdigit() else port
+
+        def _connect() -> bytes:
+            # verify_mode NONE on purpose: the job is to INSPECT whatever the
+            # host presents, including expired or self-signed certificates.
+            # Trust is assessed separately in _validate_certificate.
+            context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+            # Do not negotiate TLS 1.0/1.1 just to read a certificate. A host
+            # that only speaks them is itself a finding, and ssl_analyzer is
+            # the tool for protocol-level analysis.
+            context.minimum_version = ssl.TLSVersion.TLSv1_2
+            with socket.create_connection((host, port), timeout=10) as sock:
+                with context.wrap_socket(sock, server_hostname=host) as tls:
+                    return tls.getpeercert(binary_form=True)
+
+        der = await asyncio.get_running_loop().run_in_executor(None, _connect)
+        if not der:
+            raise ValueError(f"{host}:{port} presented no certificate")
+        return self._to_certificate_info(x509.load_der_x509_certificate(der))
+
     async def _validate_certificate(self, cert_info: CertificateInfo, input_data: PKICertificateManagerInput) -> CertificateValidation:
         """Validate certificate"""
         issues = []
@@ -196,11 +287,23 @@ class PKICertificateManager:
         if cert_info.is_self_signed:
             warnings.append("Certificate is self-signed")
         
-        # Simulate revocation check
-        revocation_status = "Valid"
-        if input_data.check_revocation and random.random() < 0.05:  # 5% chance of revoked
-            revocation_status = "Revoked"
-            issues.append("Certificate has been revoked")
+        # Revocation. Determining it for real means an OCSP request to the
+        # responder in the AIA extension (or fetching the CRL): neither is done
+        # here, so the status is reported as Unknown instead of being decided
+        # by a 5% coin flip, which is what this used to do.
+        revocation_status = "Unknown"
+        if input_data.check_revocation:
+            ocsp_urls = self._ocsp_responders(cert_info)
+            if ocsp_urls:
+                warnings.append(
+                    "Revocation not checked: certificate publishes OCSP responder(s) "
+                    f"{', '.join(ocsp_urls)} but this tool does not query them"
+                )
+            else:
+                warnings.append(
+                    "Revocation cannot be checked: certificate publishes no OCSP "
+                    "responder in its Authority Information Access extension"
+                )
         
         is_valid = len(issues) == 0
         chain_complete = not cert_info.is_self_signed
@@ -276,26 +379,50 @@ class PKICertificateManager:
         return warnings
     
     async def _check_ct_logs(self, cert_info: CertificateInfo) -> List[Dict[str, Any]]:
-        """Check Certificate Transparency logs (simulated)"""
-        await asyncio.sleep(0.1)
-        
-        # Simulate CT log entries
-        if random.random() < 0.8:  # 80% chance of CT log entries
-            return [
-                {
-                    "log_name": "Google 'Argon2023' log",
-                    "timestamp": datetime.now().isoformat(),
-                    "entry_id": random.randint(100000000, 999999999),
-                    "precertificate": False
-                },
-                {
-                    "log_name": "Cloudflare 'Nimbus2023' Log",
-                    "timestamp": datetime.now().isoformat(),
-                    "entry_id": random.randint(100000000, 999999999),
-                    "precertificate": True
-                }
-            ]
-        return []
+        """Report the SCTs embedded in the certificate itself.
+
+        These are real: a CT-logged certificate carries signed certificate
+        timestamps in an X.509 extension. Querying the logs by domain is a
+        different job — the ct_log_scanner tool does that against crt.sh.
+        This used to return two hardcoded log names with random entry ids,
+        80% of the time.
+        """
+        certificate = getattr(self, "_last_certificate", None)
+        if certificate is None:
+            return []
+        try:
+            scts = certificate.extensions.get_extension_for_class(
+                x509.PrecertificateSignedCertificateTimestamps
+            ).value
+        except (x509.ExtensionNotFound, AttributeError):
+            return []
+
+        return [
+            {
+                "log_id": sct.log_id.hex(),
+                "timestamp": sct.timestamp.isoformat(),
+                "version": str(sct.version),
+                "entry_type": str(sct.entry_type),
+            }
+            for sct in scts
+        ]
+
+    def _ocsp_responders(self, cert_info: CertificateInfo) -> List[str]:
+        """OCSP responder URLs published in the certificate's AIA extension."""
+        certificate = getattr(self, "_last_certificate", None)
+        if certificate is None:
+            return []
+        try:
+            aia = certificate.extensions.get_extension_for_class(
+                x509.AuthorityInformationAccess
+            ).value
+        except x509.ExtensionNotFound:
+            return []
+        return [
+            desc.access_location.value
+            for desc in aia
+            if desc.access_method == x509.oid.AuthorityInformationAccessOID.OCSP
+        ]
     
     def _generate_recommendations(self, cert_info: CertificateInfo, validation: CertificateValidation, security: SecurityAnalysis) -> List[str]:
         """Generate security recommendations"""
@@ -399,11 +526,6 @@ class PKICertificateManager:
             return "Strong"
         else:
             return "Moderate"
-    
-    def _generate_fingerprint(self, length: int = 40) -> str:
-        """Generate random fingerprint"""
-        chars = "0123456789abcdef"
-        return ":".join("".join(random.choice(chars) for _ in range(2)) for _ in range(length // 2))
     
     def _create_error_cert_info(self) -> CertificateInfo:
         """Create error certificate info"""

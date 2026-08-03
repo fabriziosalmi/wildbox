@@ -68,7 +68,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
       # Increased rate limits for AI agent service
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
@@ -100,7 +100,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=DEBUG
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
     depends_on:
       - wildbox-redis
       - api
@@ -123,14 +123,14 @@ services:
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
-    command: celery -A app.celery_app flower --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-changeme}
+    command: celery -A app.celery_app flower --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:?FLOWER_PASSWORD is required}
     ports:
       - "127.0.0.1:5555:5555"
     environment:
       # app.config.Settings requires API_KEY (shared with api/tools-worker);
       # without it flower crashes on startup with "api_key Field required".
       - API_KEY=${API_KEY}
-      - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2
+      - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
     depends_on:
       - wildbox-redis
       - tools-worker
@@ -339,7 +339,7 @@ services:
     image: redis:7-alpine
     container_name: wildbox-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:-changeme}
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     deploy:
       resources:
         limits:
@@ -353,7 +353,7 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -376,9 +376,9 @@ services:
       - SECRET_KEY=${GUARDIAN_SECRET_KEY}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
-      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
-      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
-      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/1}
+      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE=/app/logs/guardian.log
@@ -414,7 +414,7 @@ services:
     environment:
       - DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/2}
+      - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -450,9 +450,9 @@ services:
       # on startup with a pydantic "secret_key Field required" error.
       - SECRET_KEY=${CSPM_SECRET_KEY}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
-      - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
-      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
-      - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3}
+      - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -474,9 +474,9 @@ services:
   #   restart: unless-stopped
   #   command: celery -A app.worker worker --loglevel=info --concurrency=4
   #   environment:
-  #     - REDIS_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
-  #     - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
-  #     - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/3
+  #     - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
+  #     - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
+  #     - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
   #     - LOG_LEVEL=INFO
   #   depends_on:
   #     - wildbox-redis
@@ -505,9 +505,9 @@ services:
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
       # Authentication for tools service (must match API_KEY in tools service)
       - INTERNAL_API_KEY=${API_KEY}
-      - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
-      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
-      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:-changeme}@wildbox-redis:6379/4}
+      - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
+      - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
+      - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:

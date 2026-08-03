@@ -141,11 +141,11 @@
       "issues": [
         "Default postgres password fallback",
         "Default JWT secret fallback",
-        "Exposed API key: wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90",
+        "Exposed API key: wbx-<REDACTED-LEAKED-KEY>",
         "Default Stripe secrets"
       ],
       "risk": "Data compromise, unauthorized access",
-      "action_required": "ROTATE API KEY wbx-FtWXeuB_1VZut2DjxpT2TCjtVzeNjem8W0V3OA38M90 IMMEDIATELY",
+      "action_required": "ROTATE API KEY wbx-<REDACTED-LEAKED-KEY> IMMEDIATELY",
       "fix": "Remove all default fallback values",
       "cwe": "CWE-798: Use of Hard-Coded Credentials"
     },

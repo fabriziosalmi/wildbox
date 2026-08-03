@@ -67,11 +67,6 @@ class ApiConnector(BaseConnector):
                 response.raise_for_status()
                 
         except httpx.HTTPError as e:
-            # For testing, provide simulated results when API is not available
-            if "Connection" in str(e) or "refused" in str(e).lower():
-                self.logger.warning(f"API service unavailable, using simulation for tool '{tool_name}'")
-                return self._simulate_tool_execution(tool_name, params)
-            
             error_msg = f"HTTP error executing tool '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -99,10 +94,6 @@ class ApiConnector(BaseConnector):
             return result
             
         except httpx.HTTPError as e:
-            if "Connection" in str(e) or "refused" in str(e).lower():
-                self.logger.warning("API service unavailable, using simulated tool list")
-                return self._get_simulated_tools()
-            
             error_msg = f"HTTP error listing tools: {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -133,9 +124,6 @@ class ApiConnector(BaseConnector):
             return result
             
         except httpx.HTTPError as e:
-            if "Connection" in str(e) or "refused" in str(e).lower():
-                return self._get_simulated_tool_info(tool_name)
-            
             error_msg = f"HTTP error getting tool info for '{tool_name}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
@@ -202,168 +190,6 @@ class ApiConnector(BaseConnector):
             error_msg = f"Failed to get execution status for '{execution_id}': {str(e)}"
             self.logger.error(error_msg)
             raise ConnectorError(error_msg)
-    
-    def _simulate_tool_execution(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Simulate tool execution for testing when API is not available
-        
-        Args:
-            tool_name: Name of the tool
-            params: Tool parameters
-            
-        Returns:
-            Simulated execution results
-        """
-        import time
-        import random
-        import uuid
-        
-        # Simulate processing time
-        time.sleep(random.uniform(0.5, 2.0))
-        
-        # Generate realistic results based on tool type
-        execution_id = str(uuid.uuid4())
-        
-        if "nmap" in tool_name.lower():
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "open_ports": [22, 80, 443, 8080],
-                    "services": ["ssh", "http", "https", "http-proxy"],
-                    "target": params.get("target", "unknown"),
-                    "scan_type": params.get("scan_type", "quick"),
-                    "duration": random.uniform(1.0, 5.0)
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        elif "whois" in tool_name.lower():
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "registrar": "Example Registrar Inc.",
-                    "creation_date": "2020-01-15",
-                    "expiration_date": "2025-01-15",
-                    "name_servers": ["ns1.example.com", "ns2.example.com"],
-                    "status": "active"
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        elif "reputation" in tool_name.lower():
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "reputation_score": random.randint(1, 10),
-                    "verdict": "clean" if random.random() > 0.3 else "suspicious",
-                    "sources": ["VirusTotal", "AbuseIPDB", "URLVoid"],
-                    "confidence": random.choice(["low", "medium", "high"]),
-                    "malicious_sources": [] if random.random() > 0.3 else ["source1", "source2"]
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        elif "url_analyzer" in tool_name.lower():
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "verdict": random.choice(["clean", "suspicious", "malicious"]),
-                    "screenshot_url": f"https://screenshots.example.com/{execution_id}.png",
-                    "analysis": {
-                        "redirects": random.randint(0, 3),
-                        "scripts_found": random.randint(0, 10),
-                        "external_links": random.randint(0, 5)
-                    },
-                    "summary": "URL analyzed successfully"
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        elif "domain_reputation" in tool_name.lower():
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "reputation_score": random.randint(1, 10),
-                    "age_days": random.randint(30, 3650),
-                    "categories": ["technology", "business"],
-                    "security_flags": []
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-        else:
-            return {
-                "execution_id": execution_id,
-                "tool": tool_name,
-                "status": "completed",
-                "results": {
-                    "message": f"Tool '{tool_name}' executed successfully (simulated)",
-                    "input_params": params,
-                    "output": "Simulated execution completed"
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
-    
-    def _get_simulated_tools(self) -> Dict[str, Any]:
-        """Get simulated list of tools for testing"""
-        return {
-            "tools": [
-                {
-                    "name": "nmap",
-                    "description": "Network port scanner",
-                    "category": "network",
-                    "parameters": ["target", "scan_type", "ports"]
-                },
-                {
-                    "name": "whois",
-                    "description": "Domain/IP WHOIS lookup",
-                    "category": "intelligence",
-                    "parameters": ["target"]
-                },
-                {
-                    "name": "reputation_check",
-                    "description": "Reputation checker",
-                    "category": "intelligence",
-                    "parameters": ["ip", "url", "sources"]
-                },
-                {
-                    "name": "url_analyzer",
-                    "description": "URL analysis tool",
-                    "category": "web",
-                    "parameters": ["url", "deep_scan", "screenshot"]
-                },
-                {
-                    "name": "domain_reputation",
-                    "description": "Domain reputation checker",
-                    "category": "intelligence",
-                    "parameters": ["domain"]
-                }
-            ],
-            "total": 5
-        }
-    
-    def _get_simulated_tool_info(self, tool_name: str) -> Dict[str, Any]:
-        """Get simulated tool info for testing"""
-        tools = self._get_simulated_tools()["tools"]
-        tool_info = next((t for t in tools if t["name"] == tool_name), None)
-        
-        if tool_info:
-            return {
-                "tool": tool_info,
-                "version": "1.0.0",
-                "status": "available",
-                "last_updated": datetime.utcnow().isoformat()
-            }
-        else:
-            return {
-                "error": f"Tool '{tool_name}' not found",
-                "available_tools": [t["name"] for t in tools]
-            }
     
     def __del__(self):
         """Cleanup HTTP client"""

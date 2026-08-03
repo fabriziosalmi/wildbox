@@ -130,9 +130,23 @@ def discover_tools() -> Dict[str, Any]:
             tools[tool_name] = main_module
             logger.info(f"Successfully loaded tool: {tool_name}")
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError, ModuleNotFoundError, ImportError) as e:
-            logger.error(f"Failed to load tool {tool_name}: {str(e)}")
+        except Exception as e:
+            # Loading a tool runs third-party module-level code via
+            # exec_module, so any exception type is reachable — SyntaxError,
+            # IndentationError, AttributeError, NameError, OSError. None of
+            # those were caught before, and discover_tools() runs at import
+            # time inside create_app(), so a single malformed tool killed the
+            # process and took all the others down with it.
+            logger.error(
+                f"Failed to load tool {tool_name}: {type(e).__name__}: {e}",
+                exc_info=True,
+            )
             continue
+        finally:
+            # exec_module may abort midway and leave these behind, which would
+            # make the next tool import the previous tool's schemas.
+            sys.modules.pop('schemas', None)
+            sys.modules.pop('standardized_schemas', None)
     
     logger.info(f"Discovered {len(tools)} tools: {list(tools.keys())}")
     return tools

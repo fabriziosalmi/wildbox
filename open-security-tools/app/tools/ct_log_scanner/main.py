@@ -1,533 +1,353 @@
+"""
+Certificate Transparency Log Scanner
+
+Queries the public Certificate Transparency logs (via the crt.sh index) for
+certificates issued for a domain, and derives subdomain, issuer, timeline and
+security analysis from what is actually there.
+
+Every value in the output comes from a real CT log entry. Fields the CT index
+does not carry (key algorithm, key size, signature algorithm, fingerprint) are
+reported as "unknown" rather than guessed: an invented key size on a
+certificate report is worse than an absent one.
+"""
+
 import asyncio
 import logging
 import re
-from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
-import json
-import random
-import hashlib
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
-from schemas import CTLogScannerInput, CTLogScannerOutput, CertificateInfo
+import aiohttp
+
+from schemas import CertificateInfo, CTLogScannerInput, CTLogScannerOutput
 
 logger = logging.getLogger(__name__)
 
 TOOL_INFO = {
     "name": "Certificate Transparency Log Scanner",
-    "description": "Scan Certificate Transparency logs for domain certificates and security analysis",
-    "version": "1.0.0",
+    "description": (
+        "Search the public Certificate Transparency logs for certificates "
+        "issued for a domain, and analyse the resulting hostnames, issuers "
+        "and issuance timeline. Data source: crt.sh (no credentials needed)."
+    ),
+    "version": "2.0.0",
     "author": "Wildbox Security",
     "category": "reconnaissance",
-    "tags": ["certificates", "ct-logs", "ssl", "tls", "surveillance"]
+    "tags": ["certificates", "ct-logs", "ssl", "tls", "osint"],
 }
 
-
-class CTLogAPI:
-    """Simulated Certificate Transparency Log API."""
-    
-    def __init__(self):
-        self.common_issuers = [
-            "Let's Encrypt Authority X3",
-            "DigiCert Inc",
-            "GlobalSign Organization Validation CA - SHA256 - G2",
-            "Cloudflare Inc ECC CA-3",
-            "Amazon",
-            "GeoTrust RSA CA 2018",
-            "Sectigo RSA Domain Validation Secure Server CA"
-        ]
-        
-        self.key_algorithms = ["RSA", "ECDSA", "DSA"]
-        self.signature_algorithms = [
-            "sha256WithRSAEncryption",
-            "ecdsa-with-SHA256",
-            "sha1WithRSAEncryption"
-        ]
-    
-    async def search_certificates(self, domain: str, include_subdomains: bool = True, 
-                                 max_results: int = 100, days_back: int = 365) -> List[Dict[str, Any]]:
-        """Search CT logs for certificates."""
-        await asyncio.sleep(0.3)  # Simulate API delay
-        
-        certificates = []
-        num_certs = min(max_results, random.randint(5, 50))
-        
-        # Generate simulated certificates
-        for i in range(num_certs):
-            cert_data = await self.generate_certificate_data(domain, include_subdomains, days_back)
-            certificates.append(cert_data)
-        
-        return certificates
-    
-    async def generate_certificate_data(self, domain: str, include_subdomains: bool, days_back: int) -> Dict[str, Any]:
-        """Generate simulated certificate data."""
-        
-        # Generate certificate dates
-        not_before = datetime.now() - timedelta(days=random.randint(1, days_back))
-        not_after = not_before + timedelta(days=random.randint(30, 395))
-        is_expired = not_after < datetime.now()
-        
-        # Generate subject alternative names
-        san_list = [domain]
-        if include_subdomains:
-            subdomains = [
-                f"www.{domain}",
-                f"mail.{domain}",
-                f"api.{domain}",
-                f"admin.{domain}",
-                f"blog.{domain}",
-                f"shop.{domain}",
-                f"dev.{domain}",
-                f"staging.{domain}"
-            ]
-            # Add random subdomains
-            num_sans = random.randint(1, min(8, len(subdomains)))
-            san_list.extend(random.sample(subdomains, num_sans))
-        
-        # Choose issuer and algorithms
-        issuer = random.choice(self.common_issuers)
-        key_algorithm = random.choice(self.key_algorithms)
-        signature_algorithm = random.choice(self.signature_algorithms)
-        
-        # Generate key size based on algorithm
-        if key_algorithm == "RSA":
-            key_size = random.choice([2048, 3072, 4096])
-        elif key_algorithm == "ECDSA":
-            key_size = random.choice([256, 384, 521])
-        else:
-            key_size = 2048
-        
-        # Generate serial number and fingerprint
-        serial_number = f"{random.randint(100000000000000000, 999999999999999999):X}"
-        fingerprint_data = f"{domain}_{serial_number}_{issuer}".encode()
-        fingerprint_sha256 = hashlib.sha256(fingerprint_data).hexdigest()
-        
-        # Check if self-signed (less common)
-        is_self_signed = issuer == domain and random.random() < 0.05
-        
-        return {
-            "serial_number": serial_number,
-            "issuer": issuer if not is_self_signed else domain,
-            "subject": f"CN={domain}",
-            "subject_alt_names": san_list,
-            "not_before": not_before.isoformat(),
-            "not_after": not_after.isoformat(),
-            "is_expired": is_expired,
-            "is_self_signed": is_self_signed,
-            "key_algorithm": key_algorithm,
-            "signature_algorithm": signature_algorithm,
-            "key_size": key_size,
-            "fingerprint_sha256": fingerprint_sha256,
-            "ct_log_entry_id": f"{random.randint(1000000, 9999999)}",
-            "log_timestamp": (not_before + timedelta(hours=random.randint(1, 24))).isoformat()
-        }
+CRT_SH_URL = "https://crt.sh/"
+REQUEST_TIMEOUT = 30
+# crt.sh answers 5xx under load fairly often; one retry covers the transient
+# case without letting a worker hang on a dead endpoint.
+MAX_ATTEMPTS = 2
 
 
-def analyze_subdomains(certificates: List[CertificateInfo]) -> Dict[str, Any]:
-    """Analyze subdomain patterns from certificates."""
-    all_domains = set()
-    
-    for cert in certificates:
-        all_domains.update(cert.subject_alt_names)
-    
-    # Extract subdomains
-    subdomains = set()
-    for domain in all_domains:
-        if '.' in domain:
-            parts = domain.split('.')
-            if len(parts) > 2:  # It's a subdomain
-                subdomains.add(domain)
-    
-    # Categorize subdomains
-    categorized = {
-        "web_services": [],
-        "email_services": [],
-        "development": [],
-        "api_services": [],
-        "admin_interfaces": [],
-        "other": []
+class CTLogLookupError(RuntimeError):
+    """Raised when the CT log index cannot be queried."""
+
+
+def _parse_ct_timestamp(value: Optional[str]) -> Optional[datetime]:
+    """Parse a crt.sh timestamp ('2026-01-31T12:00:00', with or without micros)."""
+    if not value:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(value, fmt).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    logger.warning("Unparsable CT timestamp: %r", value)
+    return None
+
+
+def _split_name_value(name_value: Optional[str]) -> List[str]:
+    """crt.sh packs the SANs into a newline-separated name_value field."""
+    if not name_value:
+        return []
+    return sorted({n.strip().lower() for n in name_value.split("\n") if n.strip()})
+
+
+def _issuer_organisation(issuer_name: str) -> str:
+    """Extract O= from an RFC4514 issuer DN, falling back to the raw DN."""
+    match = re.search(r"O=([^,]+)", issuer_name or "")
+    return match.group(1).strip().strip('"') if match else (issuer_name or "unknown")
+
+
+async def fetch_ct_entries(domain: str, include_subdomains: bool) -> List[Dict[str, Any]]:
+    """Fetch raw CT log entries for a domain from crt.sh."""
+    query = f"%.{domain}" if include_subdomains else domain
+    params = {"q": query, "output": "json"}
+    timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+    last_error: Optional[str] = None
+
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(CRT_SH_URL, params=params) as response:
+                    if response.status == 200:
+                        # crt.sh sometimes answers 200 with an HTML error page.
+                        try:
+                            return await response.json(content_type=None)
+                        except (ValueError, aiohttp.ContentTypeError) as exc:
+                            last_error = f"malformed response from crt.sh: {exc}"
+                    else:
+                        last_error = f"crt.sh returned HTTP {response.status}"
+        except asyncio.TimeoutError:
+            last_error = f"crt.sh timed out after {REQUEST_TIMEOUT}s"
+        except aiohttp.ClientError as exc:
+            last_error = f"cannot reach crt.sh: {exc}"
+
+        if attempt < MAX_ATTEMPTS:
+            await asyncio.sleep(2)
+
+    raise CTLogLookupError(last_error or "unknown error querying crt.sh")
+
+
+def to_certificate_info(entry: Dict[str, Any], now: datetime) -> Optional[CertificateInfo]:
+    """Map one crt.sh entry onto the tool's certificate model."""
+    not_before = _parse_ct_timestamp(entry.get("not_before"))
+    not_after = _parse_ct_timestamp(entry.get("not_after"))
+    if not_after is None:
+        return None
+
+    sans = _split_name_value(entry.get("name_value"))
+    subject = entry.get("common_name") or ""
+
+    return CertificateInfo(
+        serial_number=str(entry.get("serial_number") or "unknown"),
+        issuer=_issuer_organisation(entry.get("issuer_name", "")),
+        subject=subject or (sans[0] if sans else "unknown"),
+        subject_alt_names=sans,
+        not_before=not_before.isoformat() if not_before else "unknown",
+        not_after=not_after.isoformat(),
+        is_expired=not_after < now,
+        # A CT-logged certificate chains to a trusted root by construction:
+        # the logs do not accept self-signed certificates.
+        is_self_signed=False,
+        # Not carried by the crt.sh index. Reported honestly instead of
+        # invented — use the ssl_analyzer tool against a live host for these.
+        key_algorithm="unknown",
+        signature_algorithm="unknown",
+        key_size=None,
+        fingerprint_sha256="unknown",
+        ct_log_entry_id=str(entry.get("id") or "unknown"),
+        log_timestamp=(
+            _parse_ct_timestamp(entry.get("entry_timestamp")) or not_after
+        ).isoformat(),
+    )
+
+
+def analyze_subdomains(certificates: List[CertificateInfo], domain: str) -> Dict[str, Any]:
+    """Aggregate the distinct hostnames the CT logs expose for this domain."""
+    hostnames = {
+        name
+        for cert in certificates
+        for name in cert.subject_alt_names
+        if name == domain or name.endswith("." + domain)
     }
-    
-    for subdomain in subdomains:
-        lower_sub = subdomain.lower()
-        if any(word in lower_sub for word in ['www', 'web', 'site']):
-            categorized["web_services"].append(subdomain)
-        elif any(word in lower_sub for word in ['mail', 'smtp', 'imap', 'pop']):
-            categorized["email_services"].append(subdomain)
-        elif any(word in lower_sub for word in ['dev', 'test', 'staging', 'qa']):
-            categorized["development"].append(subdomain)
-        elif any(word in lower_sub for word in ['api', 'service', 'rest']):
-            categorized["api_services"].append(subdomain)
-        elif any(word in lower_sub for word in ['admin', 'manage', 'control']):
-            categorized["admin_interfaces"].append(subdomain)
-        else:
-            categorized["other"].append(subdomain)
-    
+    wildcards = sorted(n for n in hostnames if n.startswith("*."))
+    concrete = sorted(n for n in hostnames if not n.startswith("*."))
     return {
-        "total_unique_domains": len(all_domains),
-        "total_subdomains": len(subdomains),
-        "categorized_subdomains": categorized,
-        "most_common_patterns": extract_common_patterns(list(subdomains))
+        "unique_hostnames": len(hostnames),
+        "wildcard_certificates": len(wildcards),
+        "wildcards": wildcards,
+        "subdomains": concrete,
     }
-
-
-def extract_common_patterns(subdomains: List[str]) -> List[str]:
-    """Extract common subdomain patterns."""
-    patterns = {}
-    
-    for subdomain in subdomains:
-        # Extract the first part before the main domain
-        parts = subdomain.split('.')
-        if len(parts) >= 2:
-            pattern = parts[0]
-            patterns[pattern] = patterns.get(pattern, 0) + 1
-    
-    # Return top 10 most common patterns
-    sorted_patterns = sorted(patterns.items(), key=lambda x: x[1], reverse=True)
-    return [pattern for pattern, count in sorted_patterns[:10]]
 
 
 def analyze_issuers(certificates: List[CertificateInfo]) -> Dict[str, Any]:
-    """Analyze certificate issuers."""
-    issuer_counts = {}
-    issuer_timeline = {}
-    
-    for cert in certificates:
-        issuer = cert.issuer
-        issuer_counts[issuer] = issuer_counts.get(issuer, 0) + 1
-        
-        # Track issuer usage over time
-        cert_date = datetime.fromisoformat(cert.not_before)
-        year_month = f"{cert_date.year}-{cert_date.month:02d}"
-        
-        if issuer not in issuer_timeline:
-            issuer_timeline[issuer] = {}
-        issuer_timeline[issuer][year_month] = issuer_timeline[issuer].get(year_month, 0) + 1
-    
-    # Sort by usage
-    sorted_issuers = sorted(issuer_counts.items(), key=lambda x: x[1], reverse=True)
-    
+    """Count certificates per issuing CA."""
+    counts = Counter(cert.issuer for cert in certificates)
     return {
-        "total_issuers": len(issuer_counts),
-        "issuer_distribution": dict(sorted_issuers),
-        "most_used_issuer": sorted_issuers[0] if sorted_issuers else None,
-        "issuer_timeline": issuer_timeline,
-        "free_vs_paid": classify_issuers(issuer_counts.keys())
+        "distinct_issuers": len(counts),
+        "certificates_per_issuer": dict(counts.most_common()),
+        "primary_issuer": counts.most_common(1)[0][0] if counts else None,
     }
 
 
-def classify_issuers(issuers: List[str]) -> Dict[str, List[str]]:
-    """Classify issuers as free or paid services."""
-    free_issuers = []
-    paid_issuers = []
-    
-    for issuer in issuers:
-        if "Let's Encrypt" in issuer:
-            free_issuers.append(issuer)
-        else:
-            paid_issuers.append(issuer)
-    
+def analyze_timeline(certificates: List[CertificateInfo], now: datetime) -> Dict[str, Any]:
+    """Summarise issuance and expiry across the returned certificates."""
+    issued = sorted(c.not_before for c in certificates if c.not_before != "unknown")
+    expiring_soon = [
+        c.subject
+        for c in certificates
+        if not c.is_expired
+        and datetime.fromisoformat(c.not_after) < now + timedelta(days=30)
+    ]
     return {
-        "free_cas": free_issuers,
-        "commercial_cas": paid_issuers
+        "first_seen": issued[0] if issued else None,
+        "last_seen": issued[-1] if issued else None,
+        "active_certificates": sum(1 for c in certificates if not c.is_expired),
+        "expired_certificates": sum(1 for c in certificates if c.is_expired),
+        "expiring_within_30_days": expiring_soon,
     }
 
 
-def analyze_timeline(certificates: List[CertificateInfo]) -> Dict[str, Any]:
-    """Analyze certificate timeline patterns."""
-    issuance_dates = []
-    expiry_dates = []
-    cert_lifespans = []
-    
-    for cert in certificates:
-        not_before = datetime.fromisoformat(cert.not_before)
-        not_after = datetime.fromisoformat(cert.not_after)
-        
-        issuance_dates.append(not_before)
-        expiry_dates.append(not_after)
-        
-        lifespan = (not_after - not_before).days
-        cert_lifespans.append(lifespan)
-    
-    # Sort dates
-    issuance_dates.sort()
-    expiry_dates.sort()
-    
-    # Calculate patterns
-    renewal_pattern = analyze_renewal_patterns(issuance_dates)
-    
-    return {
-        "earliest_certificate": issuance_dates[0].isoformat() if issuance_dates else None,
-        "latest_certificate": issuance_dates[-1].isoformat() if issuance_dates else None,
-        "average_lifespan_days": sum(cert_lifespans) // len(cert_lifespans) if cert_lifespans else 0,
-        "renewal_pattern": renewal_pattern,
-        "certificates_expiring_soon": len([cert for cert in certificates if not cert.is_expired and 
-                                         datetime.fromisoformat(cert.not_after) < datetime.now() + timedelta(days=30)]),
-        "expired_certificates": len([cert for cert in certificates if cert.is_expired])
-    }
+def detect_suspicious_patterns(
+    certificates: List[CertificateInfo], domain: str, now: datetime
+) -> List[str]:
+    """Flag patterns that are genuinely observable from CT data alone."""
+    findings: List[str] = []
+    hostnames = {n for c in certificates for n in c.subject_alt_names}
+
+    # A label embedding the domain without being a subdomain of it is a
+    # common phishing-infrastructure signal.
+    base = domain.split(".")[0]
+    lookalikes = sorted(
+        n for n in hostnames
+        if base in n and not (n == domain or n.endswith("." + domain))
+    )
+    if lookalikes:
+        findings.append(
+            f"{len(lookalikes)} hostname(s) embed '{base}' without being a "
+            f"subdomain of {domain}: {', '.join(lookalikes[:5])}"
+        )
+
+    recent = [
+        c for c in certificates
+        if c.not_before != "unknown"
+        and datetime.fromisoformat(c.not_before) > now - timedelta(days=7)
+    ]
+    if len(recent) > 10:
+        findings.append(
+            f"{len(recent)} certificates issued in the last 7 days — confirm "
+            "they are all expected"
+        )
+
+    issuers = {c.issuer for c in certificates}
+    if len(issuers) > 5:
+        findings.append(
+            f"certificates issued by {len(issuers)} different CAs — a broad "
+            "issuer set can indicate unmanaged or unauthorised issuance"
+        )
+
+    return findings
 
 
-def analyze_renewal_patterns(issuance_dates: List[datetime]) -> Dict[str, Any]:
-    """Analyze certificate renewal patterns."""
-    if len(issuance_dates) < 2:
-        return {"pattern": "insufficient_data"}
-    
-    # Calculate gaps between renewals
-    gaps = []
-    for i in range(1, len(issuance_dates)):
-        gap = (issuance_dates[i] - issuance_dates[i-1]).days
-        gaps.append(gap)
-    
-    if not gaps:
-        return {"pattern": "single_certificate"}
-    
-    avg_gap = sum(gaps) // len(gaps)
-    
-    if avg_gap < 30:
-        pattern = "frequent_renewal"
-    elif avg_gap < 90:
-        pattern = "regular_renewal"
-    else:
-        pattern = "infrequent_renewal"
-    
-    return {
-        "pattern": pattern,
-        "average_renewal_gap_days": avg_gap,
-        "renewal_frequency": f"Every {avg_gap} days on average"
-    }
+def generate_recommendations(
+    subdomain_analysis: Dict[str, Any],
+    timeline: Dict[str, Any],
+    suspicious: List[str],
+) -> List[str]:
+    """Recommendations derived from the observed data, not from a template."""
+    recommendations: List[str] = []
 
-
-def generate_security_insights(certificates: List[CertificateInfo]) -> Dict[str, Any]:
-    """Generate security insights from certificate analysis."""
-    insights = {
-        "algorithm_security": {},
-        "key_strength": {},
-        "issuer_trust": {},
-        "certificate_hygiene": {}
-    }
-    
-    # Analyze algorithms
-    algorithms = {}
-    key_sizes = {}
-    weak_algorithms = []
-    
-    for cert in certificates:
-        # Track signature algorithms
-        sig_alg = cert.signature_algorithm
-        algorithms[sig_alg] = algorithms.get(sig_alg, 0) + 1
-        
-        # Check for weak algorithms
-        if "sha1" in sig_alg.lower():
-            weak_algorithms.append(cert.serial_number)
-        
-        # Track key sizes
-        if cert.key_size:
-            key_combo = f"{cert.key_algorithm}-{cert.key_size}"
-            key_sizes[key_combo] = key_sizes.get(key_combo, 0) + 1
-    
-    insights["algorithm_security"] = {
-        "signature_algorithms": algorithms,
-        "weak_algorithms_found": len(weak_algorithms),
-        "weak_algorithm_certs": weak_algorithms[:5]  # Show first 5
-    }
-    
-    insights["key_strength"] = {
-        "key_size_distribution": key_sizes,
-        "recommended_compliance": analyze_key_compliance(key_sizes)
-    }
-    
-    # Analyze issuer trust
-    self_signed_count = len([cert for cert in certificates if cert.is_self_signed])
-    insights["issuer_trust"] = {
-        "self_signed_certificates": self_signed_count,
-        "trusted_ca_percentage": ((len(certificates) - self_signed_count) / len(certificates) * 100) if certificates else 0
-    }
-    
-    # Certificate hygiene
-    expired_count = len([cert for cert in certificates if cert.is_expired])
-    insights["certificate_hygiene"] = {
-        "expired_certificates": expired_count,
-        "active_certificates": len(certificates) - expired_count,
-        "expiration_hygiene": "Good" if expired_count < len(certificates) * 0.1 else "Needs attention"
-    }
-    
-    return insights
-
-
-def analyze_key_compliance(key_sizes: Dict[str, int]) -> Dict[str, str]:
-    """Analyze key size compliance with current standards."""
-    compliance = {}
-    
-    for key_combo, count in key_sizes.items():
-        key_type, size_str = key_combo.split('-')
-        size = int(size_str)
-        
-        if key_type == "RSA":
-            if size >= 2048:
-                compliance[key_combo] = "Compliant"
-            else:
-                compliance[key_combo] = "Weak"
-        elif key_type == "ECDSA":
-            if size >= 256:
-                compliance[key_combo] = "Compliant"
-            else:
-                compliance[key_combo] = "Weak"
-        else:
-            compliance[key_combo] = "Unknown"
-    
-    return compliance
-
-
-def detect_suspicious_patterns(certificates: List[CertificateInfo], subdomain_analysis: Dict[str, Any]) -> List[str]:
-    """Detect suspicious patterns in certificates."""
-    suspicious = []
-    
-    # Check for excessive subdomains
-    subdomain_count = subdomain_analysis.get("total_subdomains", 0)
-    if subdomain_count > 50:
-        suspicious.append(f"Unusually high number of subdomains ({subdomain_count}) - possible subdomain enumeration")
-    
-    # Check for self-signed certificates
-    self_signed = [cert for cert in certificates if cert.is_self_signed]
-    if len(self_signed) > 3:
-        suspicious.append(f"Multiple self-signed certificates ({len(self_signed)}) - possible testing or malicious activity")
-    
-    # Check for rapid certificate issuance
-    recent_certs = []
-    recent_threshold = datetime.now() - timedelta(days=7)
-    
-    for cert in certificates:
-        if datetime.fromisoformat(cert.not_before) > recent_threshold:
-            recent_certs.append(cert)
-    
-    if len(recent_certs) > 10:
-        suspicious.append(f"High recent certificate issuance ({len(recent_certs)} in last 7 days) - possible automation or compromise")
-    
-    # Check for suspicious subdomain patterns
-    admin_subdomains = subdomain_analysis.get("categorized_subdomains", {}).get("admin_interfaces", [])
-    if len(admin_subdomains) > 5:
-        suspicious.append(f"Multiple admin interfaces detected ({len(admin_subdomains)}) - increased attack surface")
-    
-    # Check for development/staging exposure
-    dev_subdomains = subdomain_analysis.get("categorized_subdomains", {}).get("development", [])
-    if len(dev_subdomains) > 3:
-        suspicious.append(f"Development/staging environments exposed ({len(dev_subdomains)}) - potential information disclosure")
-    
-    # Check for weak algorithms
-    weak_certs = [cert for cert in certificates if "sha1" in cert.signature_algorithm.lower()]
-    if weak_certs:
-        suspicious.append(f"Certificates using weak SHA-1 signature algorithm ({len(weak_certs)}) - security risk")
-    
-    return suspicious
-
-
-def generate_recommendations(certificates: List[CertificateInfo], 
-                           suspicious_patterns: List[str],
-                           security_insights: Dict[str, Any]) -> List[str]:
-    """Generate security recommendations."""
-    recommendations = []
-    
-    # Certificate hygiene
-    expired_count = security_insights.get("certificate_hygiene", {}).get("expired_certificates", 0)
-    if expired_count > 0:
-        recommendations.append(f"Remove or renew {expired_count} expired certificates to maintain security hygiene")
-    
-    # Algorithm recommendations
-    weak_alg_count = security_insights.get("algorithm_security", {}).get("weak_algorithms_found", 0)
-    if weak_alg_count > 0:
-        recommendations.append("Upgrade certificates using weak signature algorithms (SHA-1) to SHA-256 or better")
-    
-    # Key size recommendations
-    key_compliance = security_insights.get("key_strength", {}).get("recommended_compliance", {})
-    weak_keys = [combo for combo, status in key_compliance.items() if status == "Weak"]
-    if weak_keys:
-        recommendations.append("Upgrade certificates with weak key sizes to meet current security standards")
-    
-    # Self-signed certificate recommendations
-    self_signed_count = security_insights.get("issuer_trust", {}).get("self_signed_certificates", 0)
-    if self_signed_count > 0:
-        recommendations.append("Replace self-signed certificates with trusted CA-issued certificates for production use")
-    
-    # Subdomain management
-    if any("subdomain" in pattern for pattern in suspicious_patterns):
-        recommendations.append("Review and minimize exposed subdomains to reduce attack surface")
-    
-    # Monitoring recommendations
-    recommendations.extend([
-        "Implement certificate expiration monitoring and automated renewal",
-        "Regularly scan CT logs for unauthorized certificates",
-        "Monitor for suspicious certificate issuance patterns",
-        "Implement Certificate Authority Authorization (CAA) DNS records"
-    ])
-    
+    if timeline["expiring_within_30_days"]:
+        recommendations.append(
+            f"{len(timeline['expiring_within_30_days'])} certificate(s) expire "
+            "within 30 days — schedule renewal"
+        )
+    if subdomain_analysis["wildcard_certificates"]:
+        recommendations.append(
+            "Wildcard certificates are in use: one key compromise covers every "
+            "hostname under it — prefer per-host certificates for sensitive "
+            "services"
+        )
+    if suspicious:
+        recommendations.append(
+            "Review the flagged issuance patterns above; CAA records constrain "
+            "which CAs may issue for this domain"
+        )
+    if subdomain_analysis["unique_hostnames"] > 50:
+        recommendations.append(
+            f"{subdomain_analysis['unique_hostnames']} hostnames are publicly "
+            "visible through CT — confirm none of them expose internal systems"
+        )
+    if not recommendations:
+        recommendations.append(
+            "No issues observable from CT data alone. Run the SSL analyzer "
+            "against live hosts to inspect key strength and protocol support."
+        )
     return recommendations
 
 
 async def execute_tool(request: CTLogScannerInput) -> CTLogScannerOutput:
-    """Execute Certificate Transparency log scanning."""
+    """Search the Certificate Transparency logs and analyse the results."""
+    now = datetime.now(timezone.utc)
+    search_timestamp = now.isoformat()
+    domain = (request.domain or "").strip().lower().rstrip(".")
+
+    empty: Dict[str, Any] = {
+        "domain": domain,
+        "certificates_found": [],
+        "subdomain_analysis": {},
+        "issuer_analysis": {},
+        "timeline_analysis": {},
+        "security_insights": {},
+        "suspicious_patterns": [],
+        "recommendations": [],
+        "total_certificates": 0,
+        "search_timestamp": search_timestamp,
+    }
+
+    if not domain or " " in domain or "/" in domain:
+        return CTLogScannerOutput(
+            **empty, success=False, message="A single valid domain name is required"
+        )
+
     try:
-        logger.info(f"Starting CT log scan for domain: {request.domain}")
-        
-        # Initialize CT log API
-        ct_api = CTLogAPI()
-        
-        # Search for certificates
-        raw_certificates = await ct_api.search_certificates(
-            request.domain,
-            request.include_subdomains,
-            request.max_results,
-            request.days_back
-        )
-        
-        # Convert to CertificateInfo objects and filter
-        certificates = []
-        for cert_data in raw_certificates:
-            cert_info = CertificateInfo(**cert_data)
-            
-            # Filter out expired certificates if not requested
-            if not request.include_expired and cert_info.is_expired:
-                continue
-                
-            certificates.append(cert_info)
-        
-        # Perform analysis
-        subdomain_analysis = analyze_subdomains(certificates)
-        issuer_analysis = analyze_issuers(certificates)
-        timeline_analysis = analyze_timeline(certificates)
-        security_insights = generate_security_insights(certificates)
-        
-        # Detect suspicious patterns
-        suspicious_patterns = detect_suspicious_patterns(certificates, subdomain_analysis)
-        
-        # Generate recommendations
-        recommendations = generate_recommendations(certificates, suspicious_patterns, security_insights)
-        
+        entries = await fetch_ct_entries(domain, request.include_subdomains)
+    except CTLogLookupError as exc:
+        logger.warning("CT lookup failed for %s: %s", domain, exc)
         return CTLogScannerOutput(
-            domain=request.domain,
-            certificates_found=certificates,
-            subdomain_analysis=subdomain_analysis,
-            issuer_analysis=issuer_analysis,
-            timeline_analysis=timeline_analysis,
-            security_insights=security_insights,
-            suspicious_patterns=suspicious_patterns,
-            recommendations=recommendations,
-            total_certificates=len(certificates),
-            search_timestamp=datetime.now().isoformat(),
-            success=True,
-            message=f"Found {len(certificates)} certificates for domain {request.domain}"
-        )
-        
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error in CT log scanner: {str(e)}")
-        return CTLogScannerOutput(
-            domain=request.domain,
-            certificates_found=[],
-            subdomain_analysis={},
-            issuer_analysis={},
-            timeline_analysis={},
-            security_insights={},
-            suspicious_patterns=[],
-            recommendations=[],
-            total_certificates=0,
-            search_timestamp=datetime.now().isoformat(),
+            **empty,
             success=False,
-            message=f"CT log scan failed: {str(e)}"
+            message=f"Certificate Transparency lookup failed: {exc}",
         )
+
+    cutoff = now - timedelta(days=request.days_back)
+    certificates: List[CertificateInfo] = []
+    for entry in entries:
+        cert = to_certificate_info(entry, now)
+        if cert is None:
+            continue
+        if cert.not_before != "unknown" and datetime.fromisoformat(cert.not_before) < cutoff:
+            continue
+        if cert.is_expired and not request.include_expired:
+            continue
+        certificates.append(cert)
+
+    # Newest first, so a truncated result set keeps the relevant end.
+    certificates.sort(key=lambda c: c.not_after, reverse=True)
+    total_matching = len(certificates)
+    certificates = certificates[: request.max_results]
+
+    subdomain_analysis = analyze_subdomains(certificates, domain)
+    issuer_analysis = analyze_issuers(certificates)
+    timeline_analysis = analyze_timeline(certificates, now)
+    suspicious = detect_suspicious_patterns(certificates, domain, now)
+
+    security_insights = {
+        "data_source": "crt.sh Certificate Transparency index",
+        "certificates_matching_query": total_matching,
+        "certificates_returned": len(certificates),
+        "truncated": total_matching > len(certificates),
+        "attack_surface_hostnames": subdomain_analysis["unique_hostnames"],
+        "note": (
+            "Key algorithm, key size, signature algorithm and SHA-256 "
+            "fingerprint are not carried by the CT index and are reported as "
+            "'unknown'. Use the SSL analyzer against a live host for those."
+        ),
+    }
+
+    return CTLogScannerOutput(
+        domain=domain,
+        certificates_found=certificates,
+        subdomain_analysis=subdomain_analysis,
+        issuer_analysis=issuer_analysis,
+        timeline_analysis=timeline_analysis,
+        security_insights=security_insights,
+        suspicious_patterns=suspicious,
+        recommendations=generate_recommendations(
+            subdomain_analysis, timeline_analysis, suspicious
+        ),
+        total_certificates=total_matching,
+        search_timestamp=search_timestamp,
+        success=True,
+        message=(
+            f"Found {total_matching} certificate(s) for {domain} in the CT logs"
+            if total_matching
+            else f"No certificates found for {domain} in the CT logs"
+        ),
+    )
