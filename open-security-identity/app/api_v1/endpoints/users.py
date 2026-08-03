@@ -30,6 +30,21 @@ router = APIRouter()
 # ADMIN USER MANAGEMENT ENDPOINTS
 # =============================================================================
 
+async def _require_platform_admin(current_user: User) -> None:
+    """Gate for platform-wide user administration.
+
+    Being OWNER/ADMIN of a team is NOT a platform role: on_after_register
+    creates a personal team and makes every new user its OWNER, so a
+    membership-based check passes for literally every registered account.
+    Platform administration requires is_superuser.
+    """
+    if not current_user.is_superuser:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superuser access required"
+        )
+
+
 @router.get("/users", response_model=List[UserResponse])
 async def list_all_users(
     current_user: User = Depends(current_active_user),
@@ -42,23 +57,9 @@ async def list_all_users(
     """
     Admin endpoint: List all users in the system.
     
-    Requires: Admin role or higher
+    Requires: superuser (platform administrator).
     """
-    # Check if user is admin (owner/admin of any team or superuser)
-    if not current_user.is_superuser:
-        # Check if user has admin role in any team
-        admin_memberships = await db.execute(
-            select(TeamMembership)
-            .where(
-                TeamMembership.user_id == current_user.id,
-                TeamMembership.role.in_([TeamRole.OWNER, TeamRole.ADMIN])
-            )
-        )
-        if not admin_memberships.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
+    await _require_platform_admin(current_user)
     
     # Build query with relationships to get team and subscription data
     query = select(User).options(
@@ -194,22 +195,9 @@ async def get_user_by_id(
     """
     Admin endpoint: Get detailed user information by ID.
     
-    Requires: Admin role or higher
+    Requires: superuser (platform administrator).
     """
-    # Check admin permissions
-    if not current_user.is_superuser:
-        admin_memberships = await db.execute(
-            select(TeamMembership)
-            .where(
-                TeamMembership.user_id == current_user.id,
-                TeamMembership.role.in_([TeamRole.OWNER, TeamRole.ADMIN])
-            )
-        )
-        if not admin_memberships.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
+    await _require_platform_admin(current_user)
     
     # Get user with relationships
     result = await db.execute(
@@ -241,22 +229,9 @@ async def update_user_status(
     """
     Admin endpoint: Activate or deactivate a user account.
     
-    Requires: Admin role or higher
+    Requires: superuser (platform administrator).
     """
-    # Check admin permissions
-    if not current_user.is_superuser:
-        admin_memberships = await db.execute(
-            select(TeamMembership)
-            .where(
-                TeamMembership.user_id == current_user.id,
-                TeamMembership.role.in_([TeamRole.OWNER, TeamRole.ADMIN])
-            )
-        )
-        if not admin_memberships.scalars().first():
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Admin access required"
-            )
+    await _require_platform_admin(current_user)
     
     # Get user
     result = await db.execute(select(User).where(User.id == user_id))
