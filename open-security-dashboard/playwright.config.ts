@@ -19,8 +19,11 @@ export default defineConfig({
   timeout: process.env.CI ? 60 * 1000 : 30 * 1000, // 60s in CI, 30s locally
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
-    /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
+    /* Base URL to use in actions like `await page.goto('/')`.
+       Overridable so the full-stack job (#103) can drive the app through the
+       gateway (https://localhost) exactly as production does, instead of
+       hitting Next directly. */
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost:3000',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
@@ -43,10 +46,13 @@ export default defineConfig({
     },
 
     /* Backend-dependent specs (#103): need the full identity+gateway stack
-       from .github/workflows/e2e-fullstack.yml behind them. The dashboard's
-       API calls go to the gateway over https://localhost with a self-signed
-       CI cert, hence ignoreHTTPSErrors. Scoped by testMatch so the plain
-       `chromium` smoke project stays backend-free. */
+       from .github/workflows/e2e-fullstack.yml behind them. The browser talks
+       only to the gateway (PLAYWRIGHT_BASE_URL=https://localhost), which
+       proxies both the dashboard and the APIs — same-origin, like production,
+       and the only topology that works: the gateway emits no CORS headers
+       (includes/cors_params.conf is a comment-only stub), so a dashboard
+       served from a different origin has every API call blocked by the
+       browser. ignoreHTTPSErrors covers the self-signed CI certificate. */
     {
       name: 'backend-chromium',
       use: { ...devices['Desktop Chrome'], ignoreHTTPSErrors: true },

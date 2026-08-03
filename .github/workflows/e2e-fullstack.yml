@@ -161,6 +161,14 @@ jobs:
           CI: 'true'
           NEXT_PUBLIC_USE_GATEWAY: 'true'
           NEXT_PUBLIC_GATEWAY_URL: https://localhost
+          # Drive the browser through the gateway, which proxies both the
+          # dashboard and the APIs — the production topology, and the only one
+          # that works: the gateway emits no CORS headers (its
+          # includes/cors_params.conf is a comment-only stub), so a dashboard
+          # served from a different origin than the API has every XHR blocked
+          # by the browser. Playwright's webServer still starts Next on :3000
+          # for the gateway (via socat) to proxy to.
+          PLAYWRIGHT_BASE_URL: https://localhost
           TEST_EMAIL: superadmin@wildbox.com
           TEST_PASSWORD: wildbox123
           # `next start` (spawned by Playwright's webServer) may fetch the
