@@ -17,6 +17,17 @@ RUN apt-get update && apt-get install -y \
     nmap \
     && rm -rf /var/lib/apt/lists/*
 
+# Trivy: the scan engine behind the container_security_scanner tool. Pinned so
+# the image is reproducible; the vulnerability DB is fetched at first run.
+# Download the release tarball directly (the install.sh path was unreliable in
+# the slim image). CI/prod build for linux/amd64 -> the Linux-64bit asset.
+ARG TRIVY_VERSION=0.72.0
+RUN curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
+    -o /tmp/trivy.tar.gz \
+    && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
+    && rm /tmp/trivy.tar.gz \
+    && trivy --version
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash --user-group wildbox
 
