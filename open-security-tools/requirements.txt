@@ -35,6 +35,11 @@ psutil==6.1.1
 celery==5.4.0
 flower==2.0.1
 
+# Pure-Python database drivers for the database_security_analyzer tool
+# (no system libraries required).
+PyMySQL==1.2.0
+pg8000==1.31.5
+
 # Development and testing (optional)
 pytest==8.3.4
 pytest-asyncio==0.24.0
