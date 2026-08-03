@@ -17,6 +17,13 @@ RUN apt-get update && apt-get install -y \
     nmap \
     && rm -rf /var/lib/apt/lists/*
 
+# Trivy: the scan engine behind the container_security_scanner tool. Pinned so
+# the image is reproducible; the vulnerability DB is fetched at first run.
+ARG TRIVY_VERSION=0.58.1
+RUN curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/v${TRIVY_VERSION}/contrib/install.sh \
+    | sh -s -- -b /usr/local/bin v${TRIVY_VERSION} \
+    && trivy --version
+
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash --user-group wildbox
 
