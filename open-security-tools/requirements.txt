@@ -24,7 +24,7 @@ beautifulsoup4==4.12.3
 requests==2.33.0
 
 # SSL/TLS analysis dependencies
-cryptography==48.0.1
+cryptography==50.0.0
 
 # Additional security and performance
 slowapi==0.1.9
