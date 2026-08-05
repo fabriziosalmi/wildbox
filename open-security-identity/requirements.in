@@ -10,7 +10,7 @@ alembic>=1.14.0,<1.15.0
 
 # Authentication and user management
 fastapi-users[sqlalchemy]>=15.0.0,<16.0.0
-python-multipart>=0.0.22,<0.1.0
+python-multipart>=0.0.31,<0.1.0
 passlib[bcrypt]>=1.7.4,<1.8.0
 
 
