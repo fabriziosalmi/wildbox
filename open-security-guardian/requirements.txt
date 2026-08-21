@@ -27,7 +27,7 @@ python-jose[cryptography]==3.5.0
 requests==2.33.0
 httpx==0.25.2
 pydantic==2.8.2
-python-dotenv==1.2.2
+python-dotenv==1.2.3
 
 # Data Processing
 pandas==2.1.4
