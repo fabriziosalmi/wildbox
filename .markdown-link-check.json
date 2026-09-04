@@ -12,6 +12,10 @@
     {
       "comment": "LibHunt bot-blocks automated requests with HTTP 403; the badge is valid in a browser.",
       "pattern": "^https://www\\.libhunt\\.com"
+    },
+    {
+      "comment": "Product Hunt bot-blocks automated requests with HTTP 403 from CI runners; the badge and its link are valid in a browser (verified 04/09/2026).",
+      "pattern": "^https://www\\.producthunt\\.com"
     }
   ],
   "replacementPatterns": [
@@ -22,7 +26,9 @@
   ],
   "httpHeaders": [
     {
-      "urls": ["https://github.com"],
+      "urls": [
+        "https://github.com"
+      ],
       "headers": {
         "Accept": "text/html"
       }
@@ -32,5 +38,12 @@
   "retryOn429": true,
   "retryCount": 3,
   "fallbackRetryDelay": "5s",
-  "aliveStatusCodes": [200, 206, 301, 302, 307, 308]
+  "aliveStatusCodes": [
+    200,
+    206,
+    301,
+    302,
+    307,
+    308
+  ]
 }
