@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hand-maintained: GitHub Pages serves docs/ as-is, there is no build step that
+     could generate this. Adding a page to docs/ means adding its URL here. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.wildbox.io/</loc></url>
+  <url><loc>https://www.wildbox.io/docs.html</loc></url>
+  <url><loc>https://www.wildbox.io/privacy.html</loc></url>
+  <url><loc>https://www.wildbox.io/api-reference.html</loc></url>
+  <url><loc>https://www.wildbox.io/api/agents-api.html</loc></url>
+  <url><loc>https://www.wildbox.io/api/responder-api.html</loc></url>
+  <url><loc>https://www.wildbox.io/api/swagger-index.html</loc></url>
+</urlset>
