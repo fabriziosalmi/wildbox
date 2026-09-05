@@ -1,0 +1,5 @@
+Contact: mailto:fabrizio.salmi@gmail.com
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en, it
+Canonical: https://www.wildbox.io/.well-known/security.txt
+Policy: https://www.wildbox.io/security/policy/

@@ -123,3 +123,7 @@ social:
 # Additional settings
 timezone: UTC
 encoding: UTF-8
+
+# Include dot-folders (required by Jekyll for RFC 9116 security.txt)
+include:
+  - ".well-known"
