@@ -1,0 +1,47 @@
+# Wildbox
+
+> An open-source, self-hosted security operations platform. Unified SIEM, SOAR, CSPM, WAF, and automated incident response in a single, community-driven solution.
+
+Wildbox provides an end-to-end security suite designed for organizations seeking full sovereignty over their security data. It combines real-time threat detection, automated playbook response, multi-cloud posture management (CSPM), web application firewalling, and local LLM-assisted threat triage without sending telemetry to external third parties.
+
+## Core Services & Architecture
+
+- **Gateway Service (`open-security-gateway`)**: Unified ingress reverse proxy, API key validation, rate limiting, and route dispatching.
+- **Identity Service (`open-security-identity`)**: RBAC, JWT authentication, user lifecycle management, and audit logging.
+- **Tools Service (`open-security-tools`)**: Security tooling runner (Nmap, nuclei, vulnerability scanners, OSINT lookups).
+- **Agents Service (`open-security-agents`)**: Autonomous AI security agents for log analysis, alert triage, and threat enrichment.
+- **Responder Service (`open-security-responder`)**: Automated SOAR playbooks, firewall rule updates, IP blacklisting, and notification dispatch.
+- **CSPM Service (`open-security-cspm`)**: Cloud security posture management across AWS, Azure, GCP, and Kubernetes.
+- **Data Service (`open-security-data`)**: High-throughput telemetry ingestion, normalization, and SIEM search engine.
+
+## Quickstart & Deployment
+
+Wildbox is fully self-hosted via Docker and Docker Compose:
+
+```bash
+git clone https://github.com/fabriziosalmi/wildbox.git
+cd wildbox
+cp .env.example .env
+docker compose up -d
+```
+
+Access the web dashboard at `http://localhost:3000` (or configured reverse proxy) and the API gateway at `http://localhost:8080`.
+
+## Documentation & References
+
+- [Wildbox Website](https://www.wildbox.io/): Official landing page and overview
+- [Documentation Portal](https://www.wildbox.io/docs.html): Architecture, configuration guides, and tutorials
+- [API Reference](https://www.wildbox.io/api-reference.html): Interactive REST API reference and schemas
+- [Quickstart Guide](https://www.wildbox.io/guides/quickstart/): Fast deployment instructions with Docker Compose
+- [Deployment Guide](https://www.wildbox.io/guides/deployment/): Production hardening, multi-node scaling, and SSL/TLS
+- [Ollama LLM Integration](https://www.wildbox.io/guides/ollama-llm/): Self-hosted AI inference for threat analysis
+- [Security Policy](https://www.wildbox.io/security/policy/): Security guidelines and vulnerability reporting
+- [Full LLM Context](https://www.wildbox.io/llms-full.txt): Comprehensive technical specifications and API details for AI models
+- [GitHub Repository](https://github.com/fabriziosalmi/wildbox): Source code, issues, and discussions
+
+## Technical Specifications
+
+- **License**: MIT License
+- **Backend Stack**: Python 3.11+, FastAPI, Uvicorn, PostgreSQL 15+, Redis 7+
+- **Security & Privacy**: Zero third-party telemetry, 100% self-hosted, air-gapped capable
+- **Author**: Fabrizio Salmi (@fabriziosalmi)

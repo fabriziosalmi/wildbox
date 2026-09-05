@@ -1,0 +1,117 @@
+# Wildbox — Comprehensive Technical Documentation & Architecture Reference
+
+## Executive Summary
+Wildbox is an open-source, self-hosted security operations platform unifying SIEM (Security Information and Event Management), SOAR (Security Orchestration, Automation, and Response), CSPM (Cloud Security Posture Management), and WAF (Web Application Firewall) into a single cohesive system. Released under the MIT license and created by Fabrizio Salmi, Wildbox is built for sovereign environments requiring zero external telemetry, air-gapped capability, and local LLM integration via Ollama.
+
+## System Architecture
+
+```
+                       ┌────────────────────────────┐
+                       │   Client / Browser / CLI   │
+                       └─────────────┬──────────────┘
+                                     │
+                                     ▼
+                     ┌────────────────────────────────┐
+                     │   HAProxy / Ingress Gateway    │
+                     │    (Port 80/443 -> 8080/3000)  │
+                     └───────────────┬────────────────┘
+                                     │
+          ┌──────────────────────────┴──────────────────────────┐
+          ▼                                                     ▼
+┌───────────────────────────┐                       ┌─────────────────────────┐
+│  open-security-dashboard  │                       │  open-security-gateway  │
+│  (Next.js / Tailwind UI)  │                       │    (FastAPI Ingress)    │
+└───────────────────────────┘                       └───────────┬─────────────┘
+                                                                │
+     ┌──────────────────┬─────────────────┬─────────────────────┼────────────────────┐
+     ▼                  ▼                 ▼                     ▼                    ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐      ┌──────────────┐     ┌──────────────┐
+│   identity   │ │    tools     │ │    agents    │      │  responder   │     │     cspm     │
+│  (Port 8001) │ │ (Port 8000)  │ │ (Port 8006)  │      │ (Port 8018)  │     │ (Port 8019)  │
+└──────┬───────┘ └──────┬───────┘ └──────┬───────┘      └──────┬───────┘     └──────┬───────┘
+       │                │                │                     │                    │
+       └────────────────┴────────────────┼─────────────────────┴────────────────────┘
+                                         │
+                                         ▼
+                             ┌───────────────────────┐
+                             │  open-security-data   │
+                             │  (Port 8002 - Ingest) │
+                             └───────────┬───────────┘
+                                         │
+                         ┌───────────────┴───────────────┐
+                         ▼                               ▼
+                 ┌───────────────┐               ┌───────────────┐
+                 │  PostgreSQL   │               │ Redis Cluster │
+                 │  (Port 5432)  │               │  (Port 6379)  │
+                 └───────────────┘               └───────────────┘
+```
+
+## Microservices Breakdown
+
+### 1. open-security-gateway (Port 8080 / Internal 8000)
+- Single entrypoint for external API requests.
+- Handles API key verification, rate limiting, route dispatching, and CORS handling.
+- Validates Authorization bearer JWT tokens issued by `open-security-identity`.
+
+### 2. open-security-identity (Port 8001)
+- User authentication, password hashing (Argon2 / bcrypt), and JWT issuance.
+- Role-based access control (RBAC): Admin, Analyst, Operator, Auditor.
+- Multi-factor authentication (MFA) and audit trails for compliance.
+
+### 3. open-security-tools (Port 8000)
+- Containerized execution engine for open-source security tools.
+- Network reconnaissance: Nmap, Masscan.
+- Vulnerability scanning: Nuclei, Nikto, Trivy.
+- DNS & OSINT utilities: WHOIS, Dig, Subfinder.
+
+### 4. open-security-agents (Port 8006)
+- Autonomous security agents performing real-time triage.
+- Integrates with local LLMs (Ollama with models like llama3, mistral, deepseek-r1) or sovereign OpenAI-compatible endpoints.
+- Log correlation, anomaly classification, and natural language threat summarization.
+
+### 5. open-security-responder (Port 8018)
+- Automated SOAR engine executing playbooks upon alert generation.
+- Automated actions: IP blocking (iptables, nftables, Cloudflare, AWS Security Groups), user account locking, container quarantine.
+- Notification dispatch: Webhooks, Slack, Discord, Matrix, Telegram, Email.
+
+### 6. open-security-cspm (Port 8019)
+- Continuous cloud security posture management.
+- Evaluates compliance against CIS Benchmarks, NIST, ISO 27001, and SOC 2.
+- Multi-cloud asset discovery across AWS, Google Cloud, Azure, and on-prem Kubernetes clusters.
+
+### 7. open-security-data (Port 8002)
+- High-throughput telemetry ingestion pipeline.
+- Accepts Syslog (RFC 5424), CEF, JSON logs, and beats agents.
+- Normalizes logs to an internal ECS (Elastic Common Schema) compatible format.
+
+## Deployment & Configuration
+
+### Prerequisites
+- Docker Engine 24.0+ & Docker Compose v2.20+
+- Minimum: 4 CPU cores, 8 GB RAM, 50 GB SSD storage
+- Recommended: 8 CPU cores, 16 GB RAM, NVMe storage
+
+### Environment Configuration (.env)
+```bash
+# General
+ENVIRONMENT=production
+DOMAIN=wildbox.io
+
+# Security Credentials
+POSTGRES_PASSWORD=<secure-password>
+POSTGRES_USER=wildbox
+POSTGRES_DB=wildbox
+JWT_SECRET_KEY=<generate-random-32-chars>
+API_KEY=<generate-random-32-chars>
+
+# LLM Configuration (Optional Local AI)
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=llama3:8b
+```
+
+## Security Posture
+- Vulnerability reporting: RFC 9116 security.txt at `https://www.wildbox.io/.well-known/security.txt`
+- Contact: `mailto:fabrizio.salmi@gmail.com`
+- License: MIT License (https://opensource.org/licenses/MIT)
+- Official Website: https://www.wildbox.io/
+- GitHub Repository: https://github.com/fabriziosalmi/wildbox

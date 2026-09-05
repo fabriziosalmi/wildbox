@@ -19,6 +19,7 @@ plugins:
   - jekyll-paginate
   - jekyll-seo-tag
   - jekyll-include-cache
+  - jekyll-sitemap
 
 # Page metadata
 collections_dir: collections
