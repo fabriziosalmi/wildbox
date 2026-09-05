@@ -6,7 +6,7 @@ Wildbox provides an end-to-end security suite designed for organizations seeking
 
 ## Core Services & Architecture
 
-- **Gateway Service (`open-security-gateway`)**: Unified ingress reverse proxy, API key validation, rate limiting, and route dispatching.
+- **Gateway Service (`open-security-gateway`)**: Built on OpenResty (NGINX + LuaJIT) for unified ingress, TLS termination, API key & JWT validation, rate limiting, and route dispatching.
 - **Identity Service (`open-security-identity`)**: RBAC, JWT authentication, user lifecycle management, and audit logging.
 - **Tools Service (`open-security-tools`)**: Security tooling runner (Nmap, nuclei, vulnerability scanners, OSINT lookups).
 - **Agents Service (`open-security-agents`)**: Autonomous AI security agents for log analysis, alert triage, and threat enrichment.
@@ -22,7 +22,7 @@ Wildbox is fully self-hosted via Docker and Docker Compose:
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 cp .env.example .env
-docker compose up -d
+docker-compose up -d
 ```
 
 Access the web dashboard at `http://localhost:3000` (or configured reverse proxy) and the API gateway at `http://localhost:8080`.
@@ -43,5 +43,6 @@ Access the web dashboard at `http://localhost:3000` (or configured reverse proxy
 
 - **License**: MIT License
 - **Backend Stack**: Python 3.11+, FastAPI, Uvicorn, PostgreSQL 15+, Redis 7+
+- **Gateway**: OpenResty (NGINX + LuaJIT)
 - **Security & Privacy**: Zero third-party telemetry, 100% self-hosted, air-gapped capable
 - **Author**: Fabrizio Salmi (@fabriziosalmi)

@@ -12,7 +12,7 @@ Wildbox is an open-source, self-hosted security operations platform unifying SIE
                                      │
                                      ▼
                      ┌────────────────────────────────┐
-                     │   HAProxy / Ingress Gateway    │
+                     │   OpenResty / Ingress Gateway  │
                      │    (Port 80/443 -> 8080/3000)  │
                      └───────────────┬────────────────┘
                                      │
@@ -20,7 +20,7 @@ Wildbox is an open-source, self-hosted security operations platform unifying SIE
           ▼                                                     ▼
 ┌───────────────────────────┐                       ┌─────────────────────────┐
 │  open-security-dashboard  │                       │  open-security-gateway  │
-│  (Next.js / Tailwind UI)  │                       │    (FastAPI Ingress)    │
+│  (Next.js / Tailwind UI)  │                       │   (OpenResty / LuaJIT)  │
 └───────────────────────────┘                       └───────────┬─────────────┘
                                                                 │
      ┌──────────────────┬─────────────────┬─────────────────────┼────────────────────┐
@@ -49,9 +49,10 @@ Wildbox is an open-source, self-hosted security operations platform unifying SIE
 ## Microservices Breakdown
 
 ### 1. open-security-gateway (Port 8080 / Internal 8000)
-- Single entrypoint for external API requests.
-- Handles API key verification, rate limiting, route dispatching, and CORS handling.
-- Validates Authorization bearer JWT tokens issued by `open-security-identity`.
+- Built on OpenResty (NGINX + LuaJIT) as a high-performance reverse proxy and security enforcer.
+- Single unified entrypoint for all external API requests.
+- Handles API key verification, rate limiting, route dispatching, plan-based gating, and CORS enforcement.
+- Validates Authorization bearer JWT tokens and injects trusted internal headers for downstream services.
 
 ### 2. open-security-identity (Port 8001)
 - User authentication, password hashing (Argon2 / bcrypt), and JWT issuance.
@@ -90,6 +91,14 @@ Wildbox is an open-source, self-hosted security operations platform unifying SIE
 - Docker Engine 24.0+ & Docker Compose v2.20+
 - Minimum: 4 CPU cores, 8 GB RAM, 50 GB SSD storage
 - Recommended: 8 CPU cores, 16 GB RAM, NVMe storage
+
+### Quickstart
+```bash
+git clone https://github.com/fabriziosalmi/wildbox.git
+cd wildbox
+cp .env.example .env
+docker-compose up -d
+```
 
 ### Environment Configuration (.env)
 ```bash
