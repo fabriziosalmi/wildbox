@@ -109,9 +109,7 @@ exclude:
   - api/README.md
   - api/TEMPLATE.md
 
-# Enable automatic sitemap
-jekyll-sitemap:
-  enabled: true
+# Sitemap is statically maintained in docs/sitemap.xml to index standalone HTML pages
 
 # SEO
 social:
