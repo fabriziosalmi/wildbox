@@ -182,10 +182,28 @@ curl http://localhost/health
 curl http://localhost:8001/health
 
 # 7. Access the platform
-# Dashboard: http://localhost:3000
-# API Documentation: http://localhost:8000/docs
-# Gateway: http://localhost
+# Gateway:           http://localhost          (the only port bound beyond localhost)
+# Dashboard:         http://localhost:3000     (127.0.0.1 only)
+# API Documentation: http://localhost:8000/docs (127.0.0.1 only)
 ```
+
+> **These addresses work on the machine running Docker, and nowhere else.**
+> Only the gateway publishes on all interfaces, on ports 80, 443 and 8080.
+> Every other service is bound to `127.0.0.1`, and PostgreSQL and Redis publish
+> nothing at all. That is deliberate: the gateway is where authentication and
+> rate limiting live, so everything from outside is meant to arrive through it.
+> To reach the dashboard from another machine, put it behind the gateway or
+> open an SSH tunnel; do not move the binding.
+
+The one service behind a profile is `automations`, which stays down until you
+ask for it:
+
+```bash
+docker-compose --profile automations up -d
+```
+
+Until then `/api/v1/automations/` returns 502, which is expected rather than
+broken.
 
 ### Default Credentials
 
@@ -237,7 +255,9 @@ FastAPI, PostgreSQL, Elasticsearch, Redis.
 ### **open-security-cspm** (In Development)
 
 Multi-cloud security posture management and compliance scanning.
-Not enabled in the default `docker-compose.yml`.
+Defined in the default `docker-compose.yml` without a profile, so it starts
+with everything else. "In development" describes the feature surface, not
+whether the container runs.
 FastAPI, Celery, Redis, Python cloud SDKs.
 
 ### **open-security-guardian**
@@ -248,7 +268,9 @@ Django, PostgreSQL, Celery, Redis.
 ### **open-security-sensor** (In Development)
 
 Endpoint monitoring and telemetry collection.
-Not enabled in the default `docker-compose.yml`.
+Defined in the default `docker-compose.yml` without a profile, so it starts
+with everything else. "In development" describes the feature surface, not
+whether the container runs.
 osquery, Python, HTTPS.
 
 ### **open-security-responder**
