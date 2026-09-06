@@ -199,7 +199,7 @@ The one service behind a profile is `automations`, which stays down until you
 ask for it:
 
 ```bash
-docker compose --profile automations up -d
+docker-compose --profile automations up -d
 ```
 
 Until then `/api/v1/automations/` returns 502, which is expected rather than
