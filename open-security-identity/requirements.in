@@ -23,7 +23,7 @@ email-validator>=2.1.0,<3.0.0
 httpx>=0.25.0,<0.26.0
 
 # Security - constrain cryptography for compatibility
-cryptography>=48.0.1,<49.0.0
+cryptography>=50.0.0,<51.0.0
 
 # Explicit security constraints for transitive deps
 starlette>=0.52.0,<1.0.0
