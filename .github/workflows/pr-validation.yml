@@ -22,12 +22,15 @@ jobs:
             echo "ERROR: docker-compose.yml is missing!"
             exit 1
           fi
-          # compose interpolation now uses ${VAR:?} for secrets (no insecure
-          # defaults), so the linter needs a .env — .env.example is exactly
-          # the documented set of required variables.
+          # compose interpolation uses ${VAR:?} for secrets (no insecure
+          # defaults), and ${VAR:?} rejects an empty value as well as an unset
+          # one -- so the template alone is not enough: its secret entries are
+          # deliberately blank. Generate them the way the documented setup does,
+          # which also proves that path still works.
           cp .env.example .env
+          python3 scripts/generate_secrets.py --force
           docker compose config --quiet
-          rm -f .env
+          rm -f .env .env.env.backup
           echo "✓ docker-compose.yml is valid"
 
   # Check for critical files
