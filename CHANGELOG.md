@@ -82,7 +82,7 @@ Read [UPGRADING.md](UPGRADING.md); it has the commands. In short:
   name and forwards the caller's as `X-Forwarded-Host`.
 - **The CSPM executive dashboard invented its numbers.** Severity was assigned
   with `random.choice(['critical','high','medium','low'])` — re-rolled on every
-  request — and the 30-day trend was synthesised by a formula that always
+  request — and the 30-day trend was synthesized by a formula that always
   improved, for accounts that had never been scanned. Severity now comes from
   the check's own metadata; no scan history means no trend.
 - **Three data-service endpoints answered 500.** `from app.schemas.api import *`
@@ -137,7 +137,7 @@ Read [UPGRADING.md](UPGRADING.md); it has the commands. In short:
   `continue-on-error: true` and `build-images` did not depend on it. Three tiers
   now block: correctness across the whole tree, full style on the shared
   package, and full style on files a change adds.
-- **The SBOM licence check does something.** It was `pip install pip-licenses`
+- **The SBOM license check does something.** It was `pip install pip-licenses`
   followed by an `echo`, under `continue-on-error`. It now reads the CycloneDX
   SBOM of the built image and fails on copyleft in language packages.
 - **The restore drill compares row counts** table by table against the source

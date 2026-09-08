@@ -5,7 +5,7 @@ install needs none of it — `make setup` covers everything here.
 
 ## Unreleased — audit remediation
 
-Five changes stop an existing deployment from starting, or change behaviour in a
+Five changes stop an existing deployment from starting, or change behavior in a
 way that is invisible until it bites. Do them in this order.
 
 ### 1. Generate the new secrets (required — the stack will not start without them)
@@ -89,7 +89,7 @@ Map each offending value to a valid one with `UPDATE`, then re-run the upgrade.
 The identity migration also rewrites `api_keys.scopes`: rows where it was `NULL`
 become an explicit `["*"]`. The permission is unchanged — "unrestricted" is now
 a value that was written rather than an absence that was inferred, because the
-old shape made the most privileged state the one an uninitialised column
+old shape made the most privileged state the one an uninitialized column
 produced.
 
 Set `RUN_MIGRATIONS_ON_STARTUP=false` if migrations are a separate deploy step
@@ -100,7 +100,7 @@ already.
 
 All six FastAPI services now resolve to the same Starlette (`1.6.0`) and FastAPI
 (`0.141.1`). Before this change the deployment ran three different Starlette
-majors, with different ASGI behaviour and different security fixes in each.
+majors, with different ASGI behavior and different security fixes in each.
 Dependency locks are hash-pinned and resolved for Linux, so a rebuild installs
 exactly the reviewed bytes.
 

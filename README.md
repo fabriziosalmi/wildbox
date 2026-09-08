@@ -185,21 +185,26 @@ curl http://localhost:8001/health
 # API Documentation: http://localhost:8000/docs (127.0.0.1 only)
 ```
 
-> **Do not hand-edit secrets.** `make generate-secrets` fills all eight of them
-> (JWT_SECRET_KEY, POSTGRES_PASSWORD, GATEWAY_INTERNAL_SECRET, API_KEY,
-> CSPM_CREDENTIAL_KEY, INITIAL_ADMIN_PASSWORD, NEXTAUTH_SECRET,
-> N8N_BASIC_AUTH_PASSWORD) with cryptographically random values and writes the
-> file with mode 0600; `make validate-secrets` refuses to let the stack start
-> with a placeholder still in place. The previous instructions here generated two
-> values by hand and named one of them `DATABASE_PASSWORD`, which nothing in the
-> project reads — the real variable is `POSTGRES_PASSWORD` — so a reader who
-> followed them shipped with the repository's published placeholder values for
-> everything else.
+> **Do not hand-edit secrets.** `make generate-secrets` fills every secret the
+> stack needs (fourteen of them, from `JWT_SECRET_KEY` to `SENSOR_API_KEY`) with
+> cryptographically random values and writes the file with mode 0600;
+> `make validate-secrets` refuses to let the stack start with a placeholder
+> still in place. The previous instructions here generated two values by hand
+> and named one of them `DATABASE_PASSWORD`, which nothing in the project reads
+> — the real variable is `POSTGRES_PASSWORD` — so a reader who followed them
+> shipped with the repository's published placeholder values for everything
+> else. The authoritative list is `secrets_map` in `scripts/generate_secrets.py`;
+> naming them here only creates something else to go stale.
+
+<!-- separates consecutive blockquotes: markdownlint reads a blank line between
+     two `>` blocks as a blank line *inside* one blockquote (MD028) -->
 
 > **For a production deployment use `make start-prod`**, which composes
 > `docker-compose.yml` with `docker-compose.prod.yml` (restart: always, log
 > rotation, tuned connection limits). Plain `make start` adds the development
 > overlay instead.
+
+<!-- separates consecutive blockquotes (MD028) -->
 
 > **These addresses work on the machine running Docker, and nowhere else.**
 > Only the gateway publishes on all interfaces, on ports 80, 443 and 8080.

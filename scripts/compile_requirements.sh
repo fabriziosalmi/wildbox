@@ -61,6 +61,16 @@ for svc in "${SERVICES[@]}"; do
 
   if [ "$CHECK_ONLY" = true ]; then
     tmp="$(mktemp)"
+    # Seed the temp file with the current lock first.
+    #
+    # uv treats the output file as a preference source: an existing pin is kept
+    # when it still satisfies requirements.in. Compiling into an empty temp file
+    # has no preferences, so it resolves everything to the newest release and
+    # then reports any lock that is not at the very latest as stale -- which is
+    # every lock, on any day a transitive dependency published. The question
+    # this check is meant to answer is narrower: does requirements.in, resolved
+    # the way the write path resolves it, still produce this lock?
+    cp "${dir}/requirements.txt" "$tmp"
     uv pip compile --quiet --generate-hashes --python-version "$PYTHON_VERSION" \
       --python-platform "$PYTHON_PLATFORM" "${dir}/requirements.in" -o "$tmp"
     # Compare ignoring the header comment, which records the invoking command.
