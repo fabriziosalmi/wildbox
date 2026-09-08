@@ -23,10 +23,10 @@ against the full stack and passes. **Several changes are user-facing — read
 Read [UPGRADING.md](UPGRADING.md); it has the commands. In short:
 
 - **New required secrets.** `CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD`,
-  `FLOWER_PASSWORD`, `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY` and
-  `SENSOR_API_KEY` are now required. Without them `docker compose config` fails,
-  or the service starts and refuses every request. `make generate-secrets FORCE=1`
-  produces them.
+  `FLOWER_PASSWORD`, `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `SENSOR_API_KEY`
+  and `DATA_SECRET_KEY` are now required. Without them `docker compose config`
+  fails, or the service starts and refuses every request.
+  `make generate-secrets FORCE=1` produces them.
 - **Rotate `API_KEY`.** The platform key was rendered into dashboard HTML and is
   to be treated as public.
 - **Run the migrations.** `identity` and `data` own alembic chains now, and the
@@ -73,8 +73,37 @@ Read [UPGRADING.md](UPGRADING.md); it has the commands. In short:
 - **Generated passwords could contain `$`,** which docker compose interpolates —
   the container received a different, truncated secret than the one in `.env`,
   silently.
+- **A freshly generated `.env` could not authenticate to its own database.**
+  The connection strings ship as
+  `postgresql://postgres:YOUR_DB_PASSWORD@postgres:5432/<db>` and nothing
+  replaced the placeholder, so PostgreSQL started with the generated password
+  while every service connected with the literal `YOUR_DB_PASSWORD`.
+  `docker compose config` accepts that happily — the values are present and
+  non-empty — so it only surfaced as `FATAL: password authentication failed`
+  once running. `validate_secrets.py` now fails when a `*DATABASE_URL` password
+  does not match `POSTGRES_PASSWORD`.
+- **Generated passwords are restricted to RFC 3986 unreserved punctuation.**
+  Beyond `$`, a password is embedded in a DSN: `@` ends the userinfo component,
+  `%` starts a percent-escape and `+` decodes as a space. Each silently produced
+  a password the database never saw.
+- **The data service and its scheduler crash-looped** on `SECRET_KEY must be set
+  in production`. Nothing passed one; `DATA_SECRET_KEY` is generated and
+  required now.
+- **The gateway could not start on Linux at all.** The dashboard upstream listed
+  `host.docker.internal:3000`, a name that exists only under Docker Desktop, and
+  nginx treats an unresolvable upstream as fatal at config load. It worked on
+  macOS for exactly the reason it failed everywhere else, CI included.
 
 ### Fixed — services unreachable or wrong
+
+- **Guardian answered every request through the gateway with a redirect loop.**
+  `SECURE_SSL_REDIRECT` is on whenever `ENVIRONMENT=production`, TLS terminates
+  at the gateway, and `SECURE_PROXY_SSL_HEADER` was never set — so Django saw an
+  insecure request and 301'd to the same URL, which arrived over HTTP again.
+- **`RATE_LIMIT_PER_HOUR` reached no service.** It is documented in
+  `.env.example` and read by the gateway's Lua handler, but nothing passed it in:
+  the limit was always the built-in 10000/hour default and setting the variable
+  had no effect anywhere.
 
 - **Guardian was unreachable through the gateway**, on every route, for every
   client. Django validates `Host` against `ALLOWED_HOSTS` before anything else
