@@ -80,19 +80,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Run Trivy security scanner
+      # Two passes, because `severity` and `format: sarif` do not combine.
+      #
+      # With a SARIF output the action logs "Building SARIF report with all
+      # severities" and drops the severity filter, so `severity: CRITICAL` plus
+      # `exit-code: 1` did not gate on criticals -- it gated on every finding at
+      # any level, of which this repository has hundreds. The first pass keeps
+      # the full picture for GitHub code scanning without failing; the second is
+      # the gate, and it is the one that decides.
+      - name: Run Trivy (SARIF for code scanning)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          exit-code: '0'
+
+      - name: Fail on critical advisories
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
           severity: 'CRITICAL'
-          # Gates on CRITICAL. This used to be exit-code: '0' with the comment
-          # "Don't fail on vulnerabilities yet", so a PR introducing a critical
-          # advisory was indistinguishable from one that did not (WILDBO-DEP-03).
-          # Starting at CRITICAL keeps the gate achievable; widen to
-          # CRITICAL,HIGH once the current HIGH backlog is triaged.
+          scanners: 'vuln'
+          # Gates. This used to be exit-code: '0' with the comment "Don't fail
+          # on vulnerabilities yet", so a PR introducing a critical advisory was
+          # indistinguishable from one that did not (WILDBO-DEP-03). Starting at
+          # CRITICAL keeps the gate achievable; widen to CRITICAL,HIGH once the
+          # current HIGH backlog is triaged.
           exit-code: '1'
           ignore-unfixed: true
 
