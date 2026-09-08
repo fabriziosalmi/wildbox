@@ -1,0 +1,15 @@
+# CI only. Publishes PostgreSQL on the runner's loopback.
+#
+# docker-compose.yml deliberately publishes no port for the database: nothing
+# outside the compose network has any business talking to it. One integration
+# test does, though -- test_data_cross_tenant seeds rows for two teams directly,
+# because the point is to prove the API refuses to read across a boundary the
+# API itself cannot be used to cross.
+#
+# Applied only by the integration-tests workflow, where the stack is ephemeral
+# and the bind is to 127.0.0.1 on a single-use runner. Never add this to a
+# deployment.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"

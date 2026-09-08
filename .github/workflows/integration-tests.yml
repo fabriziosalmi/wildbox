@@ -91,11 +91,13 @@ jobs:
         # No `. ./.env`: docker compose reads it from the project directory by
         # itself, and sourcing it as shell makes every secret a potential
         # syntax error.
-        run: docker compose up -d --wait --wait-timeout 600
+        # The extra file publishes PostgreSQL on loopback so the cross-tenant
+        # test can seed rows directly; see the comment in it.
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
 
       - name: Show what came up
         if: always()
-        run: docker compose ps
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml ps
 
       - name: Run Integration Tests
         run: |
