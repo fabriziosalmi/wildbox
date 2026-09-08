@@ -30,15 +30,23 @@ def generate_base64(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
-# Punctuation that survives a .env round-trip.
+# Punctuation that survives a .env round-trip, unquoted.
 #
-# "$" is excluded deliberately. These values are written to .env and read by
-# docker compose, which interpolates $NAME and ${NAME} -- a password containing
-# "$S46sP..." made compose warn 'The "S46sP" variable is not set' and hand the
-# container a *different, truncated* password than the one in .env, with no
-# error anywhere. Backslash, backtick and quotes are excluded for the same
-# reason: they change meaning between the file and whatever reads it.
-SAFE_PUNCTUATION = "!@#%^&*-_=+"
+# These values are written to .env, which is read by docker compose *and*
+# sourced by shell scripts and CI steps. Anything with a meaning in either
+# context is out:
+#
+#   $   compose interpolates it. A password containing "$S46sP..." made compose
+#       warn 'The "S46sP" variable is not set' and hand the container a
+#       different, truncated password than the one in .env, silently.
+#   & * ! ; | ( ) < > ` \ ' "   the shell acts on them. `. ./.env` on a value
+#       containing "&" split the line and failed with
+#       './.env: line 84: kMmH: command not found'.
+#   #   starts a comment in .env parsers when it follows whitespace.
+#
+# What is left is still a 66-character alphabet, which at 20 characters is far
+# more entropy than anything here needs.
+SAFE_PUNCTUATION = "@%^-_=+."
 
 
 def generate_password(length: int = 24) -> str:

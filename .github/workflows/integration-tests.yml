@@ -80,9 +80,10 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Start the stack
-        run: |
-          set -a; . ./.env; set +a
-          docker compose up -d --wait --wait-timeout 600
+        # No `. ./.env`: docker compose reads it from the project directory by
+        # itself, and sourcing it as shell makes every secret a potential
+        # syntax error.
+        run: docker compose up -d --wait --wait-timeout 600
 
       - name: Show what came up
         if: always()
@@ -90,11 +91,17 @@ jobs:
 
       - name: Run Integration Tests
         run: |
-          set -a; . ./.env; set +a
-          # Built here, not in `env:` above: POSTGRES_PASSWORD comes from the
-          # .env this job generated, and ${{ env.* }} is evaluated before any
-          # step runs, so it would have expanded to an empty string.
-          export DATA_DB_DSN="postgresql://postgres:${POSTGRES_PASSWORD}@localhost:5432/data"
+          # Read the two values this step needs out of .env rather than sourcing
+          # the file: `. ./.env` executes it, and a generated secret is not
+          # shell syntax.
+          env_value() { sed -n "s/^$1=//p" .env | head -1; }
+          export INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          export INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          export GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
+          export SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
+          # ${{ env.* }} is evaluated before any step runs, so it cannot carry a
+          # value this job generated.
+          export DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
           python -m pytest tests/integration/ \
             -v -rs \
             --tb=short \
