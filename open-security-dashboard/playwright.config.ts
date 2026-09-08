@@ -54,6 +54,11 @@ export default defineConfig({
     {
       name: 'backend-chromium',
       use: { ...devices['Desktop Chrome'], ignoreHTTPSErrors: true },
+      // Still only login-flow. The other three specs of #103 were measured
+      // against the running stack on 2026-09-08 and are not ready: of the 31
+      // tests in the four files, 6 passed, 4 skipped and 21 failed. Widening
+      // this would arm a red gate, which is worse than an honest gap -- the
+      // numbers and what they mean are recorded on the issue.
       testMatch: /login-flow\.spec\.ts/,
     },
 
@@ -91,7 +96,10 @@ export default defineConfig({
   /* Playwright manages the dashboard server itself.
      In CI we build first (see workflow) and serve the production build;
      locally we use the dev server and reuse one if it's already running. */
-  webServer: {
+  /* PLAYWRIGHT_SKIP_WEBSERVER: drive a dashboard that is already running --
+     the one in the compose stack -- instead of starting a second Next on the
+     same port. */
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER ? undefined : {
     command: process.env.CI ? 'npm run start' : 'npm run dev',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,

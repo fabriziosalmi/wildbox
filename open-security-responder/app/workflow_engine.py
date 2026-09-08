@@ -19,7 +19,7 @@ from dramatiq.results import Results
 from dramatiq.results.backends import RedisBackend
 
 from .models import (
-    Playbook, PlaybookStep, ExecutionStatus, 
+    Playbook, PlaybookStep, StepFailurePolicy, ExecutionStatus, step_context_key, 
     StepExecutionResult, PlaybookExecutionResult
 )
 from .config import settings
@@ -498,10 +498,19 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                 step_result.duration_seconds = (step_result.end_time - step_result.start_time).total_seconds()
                 step_result.output = action_result
                 
-                # Update context with step result
+                # Update context with step result.
+                #
+                # Keyed by id when the step has one. The key is what a later
+                # step writes in `{{ steps.<key>.output }}`, and playbooks that
+                # give their steps an id refer to them by it -- while this used
+                # to key by `name`, the display label ("🤖 AI-Powered Threat
+                # Analysis"). Every cross-step reference in all_star_e2e.yml
+                # therefore resolved to nothing, silently: conditions read as
+                # false and templates rendered empty. Playbooks without ids are
+                # unaffected, since there `name` is the identifier.
                 if "steps" not in execution_result.context:
                     execution_result.context["steps"] = {}
-                execution_result.context["steps"][step.name] = {
+                execution_result.context["steps"][step_context_key(step)] = {
                     "output": action_result,
                     "status": step_result.status,
                     "duration": step_result.duration_seconds
@@ -533,6 +542,30 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                     level="ERROR"
                 )
                 
+                # on_failure decides whether the run ends here.
+                #
+                # Four steps of playbooks/all_star_e2e.yml declare
+                # `on_failure: "continue"`. Nothing read that key -- the engine
+                # always raised -- so a playbook that asked to carry on stopped
+                # at its first enrichment failure, and the steps after it never
+                # ran. The failure is recorded either way; what changes is
+                # whether the remaining steps get their turn.
+                if step.on_failure == StepFailurePolicy.CONTINUE:
+                    if "steps" not in execution_result.context:
+                        execution_result.context["steps"] = {}
+                    execution_result.context["steps"][step_context_key(step)] = {
+                        "output": None,
+                        "status": step_result.status,
+                        "error": step_result.error,
+                        "duration": step_result.duration_seconds,
+                    }
+                    workflow_engine.add_log(
+                        run_id,
+                        f"Step '{step.name}' declares on_failure=continue; carrying on",
+                        level="WARNING",
+                    )
+                    continue
+
                 # Fail the entire execution
                 raise WorkflowExecutionError(f"Step '{step.name}' failed: {str(e)}")
         

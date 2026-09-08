@@ -7,7 +7,7 @@ Type-safe representations of playbooks, triggers, and execution state.
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, ConfigDict, Field, validator
 
 
 class TriggerType(str, Enum):
@@ -30,10 +30,39 @@ class PlaybookTrigger(BaseModel):
         use_enum_values = True
 
 
+class StepFailurePolicy(str, Enum):
+    """What to do when a step fails"""
+    STOP = "stop"
+    CONTINUE = "continue"
+
+
 class PlaybookStep(BaseModel):
     """Represents a single step in a playbook execution"""
-    
+
+    # Unknown keys are rejected, not ignored.
+    #
+    # pydantic's default is to drop them silently, and that is how
+    # playbooks/all_star_e2e.yml came to write every step's arguments under
+    # `params:` while the engine reads `input`. The playbook looked configured,
+    # loaded without a murmur, and passed nothing: every step ran with an empty
+    # input and died on "missing 2 required positional arguments". A key that
+    # does nothing must be a loading error, and the parser already turns one
+    # into a startup failure the operator can see.
+    #
+    # It follows that every field below has to be honoured somewhere. That is
+    # why retry_count is gone: it was declared here and read by nothing, so a
+    # playbook asking for retries never got them.
+    model_config = ConfigDict(extra="forbid")
+
+    id: Optional[str] = Field(
+        default=None,
+        description="Stable identifier for this step, for humans and logs"
+    )
     name: str = Field(..., description="Unique name for this step")
+    description: Optional[str] = Field(
+        default=None,
+        description="What this step does and why"
+    )
     action: str = Field(..., description="Action in format 'connector.method'")
     input: Optional[Dict[str, Any]] = Field(
         default_factory=dict,
@@ -43,13 +72,13 @@ class PlaybookStep(BaseModel):
         default=None,
         description="Jinja2 condition to evaluate before executing step"
     )
+    on_failure: StepFailurePolicy = Field(
+        default=StepFailurePolicy.STOP,
+        description="Whether a failure of this step ends the run or is recorded and skipped"
+    )
     timeout: Optional[int] = Field(
         default=300,
         description="Timeout in seconds for step execution"
-    )
-    retry_count: Optional[int] = Field(
-        default=0,
-        description="Number of retries on failure"
     )
     
     @validator('action')
@@ -65,6 +94,13 @@ class PlaybookStep(BaseModel):
 
 class Playbook(BaseModel):
     """Main playbook model representing a complete automation workflow"""
+
+    # Same reasoning as PlaybookStep: a top-level key the engine does not read
+    # must fail to load rather than be dropped. playbooks/all_star_e2e.yml
+    # carried an `output:` block mapping step results into a result document;
+    # nothing in the engine has ever rendered it, so the playbook promised an
+    # output shape it did not produce. It is tracked separately.
+    model_config = ConfigDict(extra="forbid")
     
     playbook_id: str = Field(..., description="Unique identifier for the playbook")
     name: str = Field(..., description="Human-readable name")
@@ -112,6 +148,21 @@ class ExecutionStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+def step_context_key(step: PlaybookStep) -> str:
+    """The key a step's result is filed under in the execution context.
+
+    It is the id when the step has one, and the name otherwise. This is what a
+    later step writes in `{{ steps.<key>.output }}` or in a condition.
+
+    A named function rather than the expression inline, because the two are not
+    interchangeable and the difference is invisible when it is wrong: keying by
+    `name` made every cross-step reference in a playbook that uses ids resolve
+    to nothing -- a false condition, an empty template -- with no error
+    anywhere. Named, it can be tested.
+    """
+    return step.id or step.name
 
 
 class StepExecutionResult(BaseModel):

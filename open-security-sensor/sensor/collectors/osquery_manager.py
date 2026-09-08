@@ -370,14 +370,32 @@ class OsqueryManager:
     def _get_services_query(self) -> str:
         """Get platform-specific services query"""
         if is_linux():
-            # Linux uses systemd services
+            # systemd_units exposes none of name, status, pid, path or type.
+            # Its columns are id, description, load_state, active_state,
+            # sub_state, unit_file_state, following, object_path, job_id,
+            # job_type, job_path, fragment_path, user, source_path -- so the
+            # previous query failed outright, every collection cycle, with
+            #
+            #     osquery query failed: Error: no such column: name
+            #
+            # and the service inventory was permanently empty on the platform
+            # this sensor is actually deployed on. Aliased to the names the rest
+            # of the pipeline uses. There is no pid: systemd_units does not
+            # carry one, and a fabricated column is worse than a missing one.
             return '''
-                SELECT name, status, pid, path, 'systemd' as service_type
-                FROM systemd_units 
-                WHERE type = 'service'
+                SELECT id AS name,
+                       active_state AS status,
+                       sub_state,
+                       fragment_path AS path,
+                       'systemd' AS service_type
+                FROM systemd_units
+                WHERE id LIKE '%.service'
             '''
         elif is_macos():
-            # macOS uses launchd  
+            # Unverified. The Linux query above was wrong in every column, and
+            # these two were written the same way, but this machine has no
+            # macOS or Windows osquery to check them against -- so they are
+            # left as they are rather than changed on a guess.
             return '''
                 SELECT name, status, pid, path, 'launchd' as service_type
                 FROM launchd

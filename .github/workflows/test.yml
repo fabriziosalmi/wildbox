@@ -25,6 +25,10 @@ jobs:
           - responder
           - agents
           - cspm
+          # The sensor was never in this matrix, so its unit tests -- and
+          # until now it had none -- ran nowhere. Its package is sensor/,
+          # not app/; see the coverage case below.
+          - sensor
     
     steps:
       - uses: actions/checkout@v7
@@ -57,6 +61,7 @@ jobs:
           # always empty while looking like it had been collected.
           case "${{ matrix.service }}" in
             guardian) COV="--cov=apps --cov=guardian" ;;
+            sensor)   COV="--cov=sensor" ;;
             *)        COV="--cov=app" ;;
           esac
           if [ -d tests/unit ] && [ -n "$(find tests/unit -name 'test_*.py' -print -quit)" ]; then
