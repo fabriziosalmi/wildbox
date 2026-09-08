@@ -19,17 +19,10 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
-try:
-    from schemas import (
-        CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
-        RevocationStatus, SecurityAnalysis
-    )
-except ImportError:
-    from schemas import (
-        CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
-        RevocationStatus, SecurityAnalysis
-    )
-
+from .schemas import (
+    CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
+    RevocationStatus, SecurityAnalysis
+)
 # Tool metadata
 TOOL_INFO = {
     "name": "Certificate Authority Analyzer",

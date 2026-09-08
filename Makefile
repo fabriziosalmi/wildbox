@@ -1,7 +1,7 @@
 # Wildbox Security Platform - Simplified Makefile
 # Use Docker Compose for orchestration - this is just a convenience wrapper
 
-.PHONY: help setup generate-secrets validate-secrets start stop restart logs health test clean
+.PHONY: help setup generate-secrets validate-secrets start start-prod stop restart logs health test clean backup restore-drill rotate-secrets lock
 
 # Colors
 BLUE := \033[0;34m
@@ -49,15 +49,25 @@ setup:
 
 generate-secrets:
 	@echo "$(BLUE)Generating .env with secure secrets...$(NC)"
-	@python3 scripts/generate_secrets.py
+	@python3 scripts/generate_secrets.py $(if $(FORCE),--force,)
 
 validate-secrets:
 	@echo "$(BLUE)Validating .env secrets...$(NC)"
 	@python3 scripts/validate_secrets.py
 
-start:
-	@echo "$(BLUE)Starting services...$(NC)"
-	@docker-compose up -d
+# `start` composes base + dev overlay EXPLICITLY.
+#
+# docker-compose.override.yml is Compose's automatic overlay: it applied with no
+# flag, so `make start` silently merged a file headed "Development Integration"
+# -- and dropped the prod overlay's restart: always, log rotation and resource
+# limits -- on every restart after setup.sh had done the right thing
+# (WILDBO-OPS-01). Both paths are now named in the command that is typed.
+COMPOSE_DEV  := -f docker-compose.yml -f docker-compose.dev.yml
+COMPOSE_PROD := -f docker-compose.yml -f docker-compose.prod.yml
+
+start: validate-secrets
+	@echo "$(BLUE)Starting services (development configuration)...$(NC)"
+	@docker-compose $(COMPOSE_DEV) up -d
 	@echo "$(YELLOW)Waiting for services...$(NC)"
 	@sleep 15
 	@echo ""
@@ -66,6 +76,29 @@ start:
 	@echo "  Gateway:   http://localhost"
 	@echo ""
 	@echo "Check status: make health"
+
+start-prod: validate-secrets
+	@echo "$(BLUE)Starting services (production configuration)...$(NC)"
+	@docker-compose $(COMPOSE_PROD) up -d
+	@echo "$(YELLOW)Waiting for services...$(NC)"
+	@sleep 15
+	@echo "$(GREEN)✓ Services started with docker-compose.prod.yml$(NC)"
+	@echo "Check status: make health"
+
+backup:
+	@echo "$(BLUE)Backing up PostgreSQL and Redis...$(NC)"
+	@./scripts/backup_postgres.sh
+
+restore-drill:
+	@echo "$(BLUE)Running the restore drill (backup -> restore -> verify)...$(NC)"
+	@./scripts/verify_restore.sh
+
+rotate-secrets:
+	@./scripts/rotate_secrets.sh --list
+
+lock:
+	@echo "$(BLUE)Compiling hash-pinned lockfiles for every service...$(NC)"
+	@./scripts/compile_requirements.sh
 
 stop:
 	@docker-compose down

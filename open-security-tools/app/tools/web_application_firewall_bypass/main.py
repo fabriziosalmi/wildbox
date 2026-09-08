@@ -31,17 +31,10 @@ _BLOCK_STATUS_CODES = {403, 406, 429, 501, 503}
 _MAX_REQUESTS = 200
 _CONCURRENCY = 5
 
-try:
-    from schemas import (
-        WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
-        WAFBypassTechnique
-    )
-except ImportError:
-    from schemas import (
-        WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
-        WAFBypassTechnique
-    )
-
+from .schemas import (
+    WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
+    WAFBypassTechnique
+)
 # Tool metadata
 TOOL_INFO = {
     "name": "web_application_firewall_bypass",

@@ -9,7 +9,7 @@ from urllib.parse import urljoin, urlparse
 import ssl
 import re
 
-from schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue
+from .schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue
 
 # Initialize logger
 logger = logging.getLogger(__name__)

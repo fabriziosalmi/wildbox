@@ -37,6 +37,14 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000
     SECURE_REDIRECT_EXEMPT = []
     SECURE_SSL_REDIRECT = True
+    # Without this, SECURE_SSL_REDIRECT loops. TLS terminates at the gateway,
+    # which proxies to guardian over plain HTTP, so Django sees an insecure
+    # request and 301s to https -- to the same URL, which arrives over HTTP
+    # again. Every request through the gateway became a redirect loop the moment
+    # ENVIRONMENT was production. The gateway sets X-Forwarded-Proto (see
+    # nginx/includes/proxy_params.conf) and is the only thing that can reach
+    # this service, so the header is trustworthy here.
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'

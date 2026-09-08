@@ -26,7 +26,23 @@ httpx>=0.25.0,<0.26.0
 cryptography>=48.0.1,<49.0.0
 
 # Explicit security constraints for transitive deps
-starlette>=0.52.0,<1.0.0
+# Capping Starlette below 1.0 also capped FastAPI, leaving identity on its
+# own Starlette major (WILDBO-DEP-01). Aligned with the rest of the platform.
+starlette>=1.6.0,<2.0.0
+
+# app/token_blacklist.py does `import redis.asyncio`. It was missing here: at
+# the audited commit the only importer did it inside a function, so the
+# ModuleNotFoundError surfaced as a 500 on the first authenticated request
+# instead of at start-up. logout.py imports it at module level, which turned
+# the same missing dependency into "the identity service does not start" --
+# louder, and the honest failure. The dependency was always required.
+redis>=5.0.0,<6.0.0
+
+# The service calls install_observability() and monitoring/prometheus.yml lists
+# it as a scrape target, but without this package the shared helper falls back
+# to no-op metrics and /metrics answers "prometheus_client is not installed" --
+# a target Prometheus polls forever and never gets a series from.
+prometheus-client>=0.19.0,<1.0.0
 urllib3>=2.6.3,<3.0.0
 
 # Testing

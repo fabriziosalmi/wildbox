@@ -6,7 +6,7 @@ the Wildbox API Gateway's authentication headers.
 
 Architecture:
     Browser/Client → Gateway (validates JWT/API key) → Backend Service (trusts gateway)
-    
+
 The gateway validates authentication and injects these headers:
     - X-Wildbox-User-ID: UUID of authenticated user
     - X-Wildbox-Team-ID: UUID of user's team
@@ -17,10 +17,10 @@ Security Model:
     - Backend services MUST only be accessible through the gateway
     - Direct access to backend services should be blocked at network level
     - If headers are missing, request bypassed the gateway (security violation)
-    
+
 Usage:
     from open_security_shared.gateway_auth import get_user_from_gateway_headers, GatewayUser
-    
+
     @app.get("/api/tools/whois")
     async def whois_lookup(
         domain: str,
@@ -31,11 +31,12 @@ Usage:
 """
 
 import hmac
+import logging
 import os
 from typing import Optional
-from fastapi import Header, HTTPException, status, Depends
-from pydantic import BaseModel, UUID4
-import logging
+
+from fastapi import Depends, Header, HTTPException, status
+from pydantic import UUID4, BaseModel
 
 logger = logging.getLogger(__name__)
 
@@ -43,14 +44,15 @@ logger = logging.getLogger(__name__)
 class GatewayUser(BaseModel):
     """
     User information extracted from gateway headers.
-    
+
     This represents a user that has been authenticated by the gateway.
     Backend services can trust this data without re-validating credentials.
     """
+
     user_id: UUID4
     team_id: UUID4
     role: str = "member"
-    
+
     class Config:
         frozen = True  # Immutable for security
 
@@ -63,28 +65,28 @@ async def get_user_from_gateway_headers(
 ) -> GatewayUser:
     """
     FastAPI dependency that extracts and validates user info from gateway headers.
-    
+
     This dependency should be used in all backend service endpoints that require
     authentication. It trusts that the gateway has already validated the user's
     credentials (JWT or API key).
-    
+
     Security Notes:
         - These headers should NEVER be exposed to external clients
         - The gateway must clear any X-Wildbox-* headers from incoming requests
         - Backend services should only be accessible via the gateway (network isolation)
-        
+
     Args:
         x_wildbox_user_id: User UUID injected by gateway
         x_wildbox_team_id: Team UUID injected by gateway
         x_wildbox_role: User's role in team injected by gateway
-        
+
     Returns:
         GatewayUser: Validated user information
-        
+
     Raises:
         HTTPException 403: If headers are missing (request bypassed gateway)
         HTTPException 400: If headers are malformed
-        
+
     Example:
         ```python
         @router.post("/api/tools/scan")
@@ -96,7 +98,7 @@ async def get_user_from_gateway_headers(
             # Perform scan...
         ```
     """
-    
+
     # Fail closed: without GATEWAY_INTERNAL_SECRET the service cannot verify that
     # a request actually came from the gateway, so the X-Wildbox-* headers can't
     # be trusted at all. Refuse to operate rather than trust forged headers.
@@ -112,7 +114,7 @@ async def get_user_from_gateway_headers(
             detail={
                 "error": "Service misconfigured",
                 "message": "GATEWAY_INTERNAL_SECRET is not set; the service cannot "
-                           "verify gateway origin and will not trust request headers.",
+                "verify gateway origin and will not trust request headers.",
                 "code": "GATEWAY_SECRET_NOT_CONFIGURED",
             },
         )
@@ -128,16 +130,18 @@ async def get_user_from_gateway_headers(
             detail={
                 "error": "Gateway authentication required",
                 "message": "This service must be accessed through the API gateway. "
-                          "Direct access is not permitted.",
-                "code": "GATEWAY_AUTH_REQUIRED"
-            }
+                "Direct access is not permitted.",
+                "code": "GATEWAY_AUTH_REQUIRED",
+            },
         )
 
     # Proof-of-origin: the X-Wildbox-* headers are only trustworthy when the
     # request also carries the shared gateway secret (which the gateway stamps
     # on every proxied request and clients cannot supply). Without it, a request
     # reaching the service directly with forged headers would otherwise be trusted.
-    if not x_gateway_secret or not hmac.compare_digest(x_gateway_secret, expected_secret):
+    if not x_gateway_secret or not hmac.compare_digest(
+        x_gateway_secret, expected_secret
+    ):
         logger.warning("Rejected gateway headers without a valid X-Gateway-Secret")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -147,7 +151,7 @@ async def get_user_from_gateway_headers(
                 "code": "GATEWAY_SECRET_REQUIRED",
             },
         )
-    
+
     # Validate UUIDs
     try:
         user_id = UUID4(x_wildbox_user_id)
@@ -159,10 +163,10 @@ async def get_user_from_gateway_headers(
             detail={
                 "error": "Invalid authentication headers",
                 "message": "Gateway provided malformed user/team identifiers",
-                "code": "INVALID_GATEWAY_HEADERS"
-            }
+                "code": "INVALID_GATEWAY_HEADERS",
+            },
         )
-    
+
     # Default values for optional fields
     role = x_wildbox_role or "member"
 
@@ -175,35 +179,33 @@ async def get_user_from_gateway_headers(
             detail={
                 "error": "Invalid authentication headers",
                 "message": "Gateway provided invalid user role",
-                "code": "INVALID_GATEWAY_HEADERS"
-            }
+                "code": "INVALID_GATEWAY_HEADERS",
+            },
         )
-    
-    logger.debug(f"Gateway auth successful: user={user_id}, team={team_id}, role={role}")
 
-    return GatewayUser(
-        user_id=user_id,
-        team_id=team_id,
-        role=role
+    logger.debug(
+        f"Gateway auth successful: user={user_id}, team={team_id}, role={role}"
     )
+
+    return GatewayUser(user_id=user_id, team_id=team_id, role=role)
 
 
 def require_role(*required_roles: str):
     """
     Dependency factory for role-based access control.
-    
+
     Creates a dependency that checks if the user has one of the required roles.
-    
+
     Args:
         *required_roles: One or more role names that are allowed
-        
+
     Returns:
         Dependency function that validates role
-        
+
     Example:
         ```python
         from open_security_shared.gateway_auth import get_user_from_gateway_headers, require_role
-        
+
         @router.delete("/api/teams/{team_id}/members/{user_id}")
         async def remove_member(
             team_id: str,
@@ -215,14 +217,18 @@ def require_role(*required_roles: str):
             pass
         ```
     """
-    async def role_checker(user: GatewayUser = Depends(get_user_from_gateway_headers)) -> None:
+
+    async def role_checker(
+        user: GatewayUser = Depends(get_user_from_gateway_headers),
+    ) -> None:
         if user.role not in required_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "error": "Insufficient permissions",
                     "message": f"This action requires one of these roles: {', '.join(required_roles)}",
-                    "code": "INSUFFICIENT_ROLE"
-                }
+                    "code": "INSUFFICIENT_ROLE",
+                },
             )
+
     return role_checker

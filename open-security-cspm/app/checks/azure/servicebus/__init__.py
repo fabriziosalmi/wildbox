@@ -1,1 +1,0 @@
-# Azure SERVICEBUS Security Checks\n

@@ -141,7 +141,12 @@
     <!-- API Configuration -->
     <script>
         // API Configuration with enhanced security
-        window.API_KEY = '{{ api_key }}';
+        // The service API key is deliberately NOT rendered here.
+        // These pages are reachable without gateway authentication, so emitting
+        // the key made it readable by any anonymous caller (WILDBO-AUTH-02).
+        // The key is supplied by the operator on the Settings page and kept in
+        // sessionStorage for the life of the tab.
+        window.API_KEY = '';
         window.API_CONFIG = {
             baseURL: window.location.origin,
             version: 'v1',

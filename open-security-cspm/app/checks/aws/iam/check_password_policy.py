@@ -20,7 +20,7 @@ class CheckPasswordPolicy(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
-            check_id="AWS_IAM_001",
+            check_id="AWS_IAM_003",
             title="IAM Password Policy Configured",
             description="Verify that IAM account password policy is configured with strong "
                        "password requirements including minimum length, character requirements, "

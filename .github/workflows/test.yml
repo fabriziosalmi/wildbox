@@ -51,8 +51,16 @@ jobs:
           # continue-on-error masking); a service WITHOUT them emits a visible
           # warning instead of a silent pytest exit-4. Coverage gaps for the
           # services that have no tests/unit/ are tracked in #245.
+          # --cov=app is wrong for guardian, whose code lives in apps/ and
+          # guardian/ (it is the one Django service): coverage was measured
+          # against a package that does not exist there, so its report was
+          # always empty while looking like it had been collected.
+          case "${{ matrix.service }}" in
+            guardian) COV="--cov=apps --cov=guardian" ;;
+            *)        COV="--cov=app" ;;
+          esac
           if [ -d tests/unit ] && [ -n "$(find tests/unit -name 'test_*.py' -print -quit)" ]; then
-            pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term
+            pytest tests/unit/ -v $COV --cov-report=xml --cov-report=term
           else
             echo "::warning title=No unit tests::open-security-${{ matrix.service }} has no tests/unit/ — coverage gap tracked in #245"
           fi
@@ -67,6 +75,28 @@ jobs:
           name: ${{ matrix.service }}-unit-coverage
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  shared-package-tests:
+    name: Shared Package Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install
+        run: |
+          pip install ./open-security-shared
+          pip install pytest pytest-asyncio httpx
+
+      - name: Run shared package tests
+        # open_security_shared holds gateway_auth and tenancy -- the trust and
+        # tenancy boundary for four services -- and had no tests of its own
+        # (WILDBO-TEST-03). These are pure-function tests; they need no stack.
+        run: pytest tests/shared -v -p no:cacheprovider -o addopts=""
 
   e2e-tests:
     name: E2E Tests (Playwright)
@@ -130,6 +160,9 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
+          # Findings are uploaded to the Security tab below; the gating copy of
+          # this scan runs in pr-validation.yml (WILDBO-DEP-03).
+          exit-code: '0'
       
       - name: Upload Trivy results to GitHub Security
         uses: github/codeql-action/upload-sarif@v4
@@ -150,36 +183,101 @@ jobs:
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v7
-      
+        with:
+          # Need history to diff against the base for the new-files gate.
+          fetch-depth: 0
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-      
+
       - name: Install linting tools
         run: |
-          pip install black flake8 isort mypy
-      
-      - name: Run Black
-        run: black --check open-security-*/app
+          pip install black flake8 isort
+
+      # WILDBO-QUAL-03: every step in this job used to carry
+      # continue-on-error: true, so "Code Quality" reported success no matter
+      # how many violations existed, and build-images did not even depend on it.
+      #
+      # The whole tree is not style-clean -- black would reformat 455 files and
+      # a full flake8 reports ~8200 violations -- so a single tree-wide style
+      # gate would fail every build and be switched off within a week. Instead
+      # there are three tiers, and the first two genuinely block:
+      #
+      #   1. correctness, whole tree      -- syntax errors, undefined names,
+      #                                      broken comparisons. Zero today.
+      #   2. style, open-security-shared  -- the package every service imports.
+      #                                      Clean today, kept clean.
+      #   3. style, files added by the change -- new code must be formatted, so
+      #                                      the backlog stops growing.
+      #
+      # Style on *modified* legacy files is reported but not enforced (tier 4),
+      # because touching one line of an unformatted 400-line module would
+      # otherwise force an unrelated reformat into the diff. To widen tier 2,
+      # reformat a service and add its path to that step.
+
+      # Tier 1 -- real defects, whole tree, always blocking.
+      - name: Flake8 (correctness, whole tree)
+        run: |
+          flake8 open-security-*/app open-security-*/tests scripts tests \
+            --select=E9,F63,F7,F82 \
+            --extend-exclude=build,node_modules
+
+      # Tier 2 -- full style gate on the shared package.
+      - name: Black / isort / Flake8 (shared package)
+        run: |
+          black --check open-security-shared --extend-exclude 'build/'
+          isort --check-only --profile black open-security-shared --skip build
+          flake8 open-security-shared --max-line-length=120 \
+            --extend-ignore=E203,W503 --extend-exclude=build
+
+      - name: Determine Python files added by this change
+        id: added
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)"
+          fi
+          added=$(git diff --name-only --diff-filter=A "$base" HEAD -- '*.py' | tr '\n' ' ')
+          modified=$(git diff --name-only --diff-filter=M "$base" HEAD -- '*.py' | tr '\n' ' ')
+          echo "added=$added" >> "$GITHUB_OUTPUT"
+          echo "modified=$modified" >> "$GITHUB_OUTPUT"
+          echo "Added: ${added:-none}"
+          echo "Modified: ${modified:-none}"
+
+      # Tier 3 -- new files must be clean. Blocking.
+      - name: Black / isort / Flake8 (files added by this change)
+        if: steps.added.outputs.added != ''
+        run: |
+          black --check ${{ steps.added.outputs.added }}
+          isort --check-only --profile black ${{ steps.added.outputs.added }}
+          flake8 ${{ steps.added.outputs.added }} --max-line-length=120 --extend-ignore=E203,W503
+
+      # Tier 4 -- backlog visibility on modified legacy files. Reported only.
+      - name: Style report (modified files, informational)
+        if: steps.added.outputs.modified != ''
         continue-on-error: true
-      
-      - name: Run Flake8
-        run: flake8 open-security-*/app --max-line-length=120
-        continue-on-error: true
-      
-      - name: Run isort
-        run: isort --check-only open-security-*/app
-        continue-on-error: true
+        run: |
+          echo "::group::black"
+          black --check --diff ${{ steps.added.outputs.modified }} || true
+          echo "::endgroup::"
+          echo "::group::flake8"
+          flake8 ${{ steps.added.outputs.modified }} --max-line-length=120 --extend-ignore=E203,W503 || true
+          echo "::endgroup::"
 
   build-images:
     name: Build Docker Images
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [unit-tests, e2e-tests]   # docker-compose integration job consolidated into integration-tests.yml
+    # lint is in needs so a failing quality gate actually blocks the image
+    # build; it used to be absent, which made the gate decorative twice over
+    # (WILDBO-QUAL-03).
+    needs: [unit-tests, shared-package-tests, e2e-tests, lint]
     
     strategy:
       matrix:
@@ -218,6 +316,53 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       
+      # Build the image locally first: the SBOM has to come from the image, not
+      # from the source tree. A filesystem scan lists 141 components for the
+      # data service and a licence for none of them, so a licence gate reading
+      # it can never fire (WILDBO-DEP-06).
+      - name: Build image locally for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./open-security-${{ matrix.service }}
+          build-contexts: |
+            shared=open-security-shared
+          load: true
+          push: false
+          tags: wildbox-${{ matrix.service }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        # No SBOM was produced for any image, so a consumer could not enumerate
+        # what was inside one (WILDBO-DEP-06). Scanning the image resolves the
+        # installed distributions and their licences.
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: 'wildbox-${{ matrix.service }}:scan'
+          format: 'cyclonedx'
+          output: 'sbom-${{ matrix.service }}.cdx.json'
+          exit-code: '0'
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v7
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.cdx.json
+          retention-days: 90
+
+      - name: Check dependency licences
+        # Blocking. Fails when a copyleft dependency reaches a service that
+        # ships under MIT. Scoped to language packages: the Alpine/Debian base
+        # is GPL by nature and is not linked into our code.
+        #
+        # This step used to be `pip install pip-licenses` followed by an echo,
+        # with continue-on-error on top -- it inspected nothing and could not
+        # fail (WILDBO-DEP-06, WILDBO-QUAL-03).
+        run: |
+          python scripts/check_sbom_licences.py --list sbom-${{ matrix.service }}.cdx.json
+          python scripts/check_sbom_licences.py sbom-${{ matrix.service }}.cdx.json
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -227,5 +372,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Bakes the commit into the image so it can be traced without the
+          # registry tag (WILDBO-BLD-03).
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

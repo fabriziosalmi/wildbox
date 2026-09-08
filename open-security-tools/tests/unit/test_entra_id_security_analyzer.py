@@ -14,14 +14,16 @@ import pytest
 
 os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 
-APP_DIR = Path(__file__).resolve().parents[2] / "app"
-TOOL_DIR = APP_DIR / "tools" / "entra_id_security_analyzer"
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-sys.path.insert(0, str(APP_DIR))
-sys.path.insert(0, str(TOOL_DIR))
-
-import main as entra_main  # noqa: E402
-from schemas import EntraIDSecurityAnalyzerInput  # noqa: E402
+# Tools are real packages; importing the tool directory onto sys.path and then
+# `import main` bound a module named "main" globally, which collided between test
+# files and only worked because the loader injected a bare `schemas` module
+# (WILDBO-ARCH-03/ARCH-06).
+from app.tools.entra_id_security_analyzer import main as entra_main  # noqa: E402
+from app.tools.entra_id_security_analyzer.schemas import (  # noqa: E402
+    EntraIDSecurityAnalyzerInput,
+)
 
 
 class FakeResponse:

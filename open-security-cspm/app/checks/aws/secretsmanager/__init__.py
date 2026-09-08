@@ -1,1 +1,0 @@
-# AWS SECRETSMANAGER Security Checks\n

@@ -1,5 +1,9 @@
-FROM openresty/openresty:alpine
-
+# Base image pinned by digest: a floating tag is republished upstream, so the
+# same commit built a month apart produced a different interpreter patch level,
+# a different OpenSSL and a different set of OS CVEs, with nothing recording
+# which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
+# digest bumps as reviewable PRs.
+FROM openresty/openresty:alpine@sha256:99b32fe3e411c98033114dd471440fb702992d0953ce8b6e6b5c016285ac2ab9
 # Install dependencies
 RUN apk add --no-cache curl wget && \
     mkdir -p /var/cache/nginx/wildbox_cache /var/log/nginx && \

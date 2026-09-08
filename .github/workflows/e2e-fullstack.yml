@@ -81,15 +81,24 @@ jobs:
         # unresolvable, so every absent service (including the dashboard, which
         # the browser now reaches directly, not through the gateway) gets a
         # blackhole DNS alias just to satisfy nginx's boot-time resolution.
+        #
+        # The alias list is read out of the gateway configuration rather than
+        # written here. Kept by hand it drifted: a cspm upstream was restored to
+        # the configuration, no one added the matching alias, and the gateway
+        # died at boot with 'host not found in upstream "open-security-cspm"'
+        # -- a failure about a service this test does not even exercise.
         run: |
+          aliases=$(grep -oE '^[[:space:]]*server[[:space:]]+[a-z0-9.-]+:[0-9]+' \
+                      open-security-gateway/nginx/conf.d/wildbox_gateway.conf \
+                    | awk '{print $2}' | cut -d: -f1 \
+                    | grep -vE '^(127\.|localhost$|host\.docker\.internal$|open-security-identity$)' \
+                    | sort -u)
+          echo "Upstreams to stand in for: $aliases"
+          alias_args=""
+          for a in $aliases; do alias_args="$alias_args --network-alias $a"; done
+          # shellcheck disable=SC2086
           docker run -d --name upstream-blackhole --network wildbox-e2e \
-            --network-alias open-security-data \
-            --network-alias open-security-guardian \
-            --network-alias open-security-responder \
-            --network-alias open-security-agents \
-            --network-alias open-security-tools \
-            --network-alias open-security-dashboard \
-            --network-alias dashboard \
+            $alias_args \
             alpine:3.20 sleep infinity
           docker run -d --name wildbox-gateway --network wildbox-e2e \
             --add-host host.docker.internal:host-gateway \

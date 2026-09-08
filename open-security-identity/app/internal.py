@@ -81,15 +81,46 @@ async def authorize_request(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid token payload"
                 )
+
+            # Revocation applies to gateway traffic.
+            #
+            # is_token_blacklisted() existed and was consulted only by identity's
+            # own get_current_user dependency -- which gateway-mediated requests
+            # never reach -- so a revoked token was still authorised for every
+            # service in the system (WILDBO-AUTH-01).
+            from .token_blacklist import is_token_blacklisted
+
+            jti = payload.get("jti")
+            if jti and await is_token_blacklisted(jti):
+                logger.info(f"Rejected revoked token (jti={jti})")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked",
+                )
             
-            # Get user with team info
-            result = await db.execute(
+            # Get user with team info.
+            #
+            # ORDER BY makes the selection deterministic. Without it, a user who
+            # belongs to more than one team got whichever row PostgreSQL happened
+            # to return first, so the tenant their request ran against -- and the
+            # role its permissions derived from -- could vary between two
+            # requests with the same token (WILDBO-AUTH-05).
+            #
+            # The team is preferred from the token when it carries one, so a
+            # session is bound to the team it was issued for; otherwise the
+            # oldest membership wins, which is stable.
+            token_team_id = payload.get("team_id")
+            query = (
                 select(User, Team, TeamMembership)
                 .join(TeamMembership, TeamMembership.user_id == User.id)
                 .join(Team, TeamMembership.team_id == Team.id)
                 .where(User.id == user_id)
                 .where(User.is_active == True)
             )
+            if token_team_id:
+                query = query.where(TeamMembership.team_id == token_team_id)
+            query = query.order_by(TeamMembership.joined_at.asc(), Team.id.asc())
+            result = await db.execute(query)
 
             row = result.first()
             if not row:

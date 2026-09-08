@@ -1,1 +1,0 @@
-# GCP MONITORING Security Checks\n

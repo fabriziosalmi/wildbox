@@ -4,6 +4,7 @@ Tests authentication, JWT validation, RBAC, billing integration
 """
 
 import os
+import pytest
 import requests
 import asyncio
 import time
@@ -14,10 +15,16 @@ from dotenv import load_dotenv
 load_dotenv("tests/.env")
 
 
-class IdentityServiceTester:
+class TestIdentityService:
     """Comprehensive tests for Identity Service (Port 8001)"""
 
-    def __init__(self, base_url: str = None):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = None
         self.base_url = base_url or os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001")
         self.results = []
         self.tokens = {}
@@ -25,7 +32,7 @@ class IdentityServiceTester:
 
         # Load admin credentials from environment
         self.admin_email = os.getenv("TEST_ADMIN_EMAIL", "admin@wildbox.io")
-        self.admin_password = os.getenv("TEST_ADMIN_PASSWORD", "ChangeMe123!")
+        self.admin_password = os.getenv("TEST_ADMIN_PASSWORD", "CHANGE-THIS-PASSWORD")
 
     def get_admin_token(self) -> str:
         """Get or create admin authentication token"""
@@ -63,7 +70,7 @@ class IdentityServiceTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test health endpoint responsivity"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -76,13 +83,13 @@ class IdentityServiceTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Service Health Check", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Service Health Check", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_user_registration(self) -> bool:
+    async def test_user_registration(self) -> None:
         """Test new user registration with team creation"""
         try:
             # Use .io TLD for email validation compatibility
@@ -110,13 +117,13 @@ class IdentityServiceTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
                 
             self.log_test_result("User Registration with Team Creation", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("User Registration with Team Creation", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_user_login_jwt(self) -> bool:
+    async def test_user_login_jwt(self) -> None:
         """Test login and JWT token acquisition using admin credentials"""
         try:
             # Use admin credentials for reliable login testing
@@ -144,20 +151,20 @@ class IdentityServiceTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
 
             self.log_test_result("Login and JWT Token Acquisition", passed, details)
-            return passed
+            assert passed, details
 
         except Exception as e:
             self.log_test_result("Login and JWT Token Acquisition", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_authenticated_profile(self) -> bool:
+    async def test_authenticated_profile(self) -> None:
         """Test authenticated user profile access"""
         try:
             # Get admin token (will login if needed)
             token = self.get_admin_token()
             if not token:
                 self.log_test_result("Authenticated User Profile", False, "Could not get admin token")
-                return False
+                pytest.fail('Could not get admin token')
 
             headers = {"Authorization": f"Bearer {token}"}
             response = requests.get(
@@ -175,20 +182,20 @@ class IdentityServiceTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
 
             self.log_test_result("Authenticated User Profile", passed, details)
-            return passed
+            assert passed, details
 
         except Exception as e:
             self.log_test_result("Authenticated User Profile", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_api_key_management(self) -> bool:
+    async def test_api_key_management(self) -> None:
         """Test API key creation and listing"""
         try:
             # Get admin token (will login if needed)
             token = self.get_admin_token()
             if not token:
                 self.log_test_result("API Key Management", False, "Could not get admin token")
-                return False
+                pytest.fail('Could not get admin token')
 
             headers = {
                 "Authorization": f"Bearer {token}",
@@ -209,13 +216,13 @@ class IdentityServiceTester:
 
             if response.status_code not in [200, 201]:
                 self.log_test_result("API Key Management", False, f"Create failed: HTTP {response.status_code}: {response.text[:100]}")
-                return False
+                pytest.fail(f'Create failed: HTTP {response.status_code}: {response.text[:100]}')
 
             create_result = response.json()
             api_key = create_result.get("key") or create_result.get("api_key")
             if not api_key:
                 self.log_test_result("API Key Management", False, "No API key in create response")
-                return False
+                pytest.fail('No API key in create response')
 
             self.api_keys["test_key"] = api_key
 
@@ -235,20 +242,20 @@ class IdentityServiceTester:
                 details = f"List failed: HTTP {list_response.status_code}"
 
             self.log_test_result("API Key Management", passed, details)
-            return passed
+            assert passed, details
 
         except Exception as e:
             self.log_test_result("API Key Management", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rbac_access_control(self) -> bool:
+    async def test_rbac_access_control(self) -> None:
         """Test role-based access control"""
         try:
             # Get admin token (will login if needed)
             token = self.get_admin_token()
             if not token:
                 self.log_test_result("RBAC Access Control", False, "Could not get admin token")
-                return False
+                pytest.fail('Could not get admin token')
 
             headers = {"Authorization": f"Bearer {token}"}
 
@@ -274,13 +281,13 @@ class IdentityServiceTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
 
             self.log_test_result("RBAC Access Control", passed, details)
-            return passed
+            assert passed, details
 
         except Exception as e:
             self.log_test_result("RBAC Access Control", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_logout_session_invalidation(self) -> bool:
+    async def test_logout_session_invalidation(self) -> None:
         """Test logout and session invalidation"""
         try:
             # Get a fresh token for logout testing (don't invalidate our main admin token)
@@ -296,7 +303,7 @@ class IdentityServiceTester:
 
             if login_response.status_code != 200:
                 self.log_test_result("Logout and Session Invalidation", False, "Could not get token for logout test")
-                return False
+                pytest.fail('Could not get token for logout test')
 
             temp_token = login_response.json().get("access_token")
             headers = {"Authorization": f"Bearer {temp_token}"}
@@ -328,13 +335,13 @@ class IdentityServiceTester:
                 details = f"Logout failed: {response.status_code}, Token still valid: {profile_response.status_code}"
 
             self.log_test_result("Logout and Session Invalidation", passed, details)
-            return passed
+            assert passed, details
 
         except Exception as e:
             self.log_test_result("Logout and Session Invalidation", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_billing_plan_management(self) -> bool:
+    async def test_billing_plan_management(self) -> None:
         """Test billing plan management integration"""
         try:
             # Billing endpoints may not be implemented yet - test gracefully
@@ -369,16 +376,16 @@ class IdentityServiceTester:
                 details = f"Unexpected responses - Subscription: {response.status_code}, Plans: {plans_response.status_code}"
                 
             self.log_test_result("Billing Plan Management", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Billing Plan Management", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all identity service tests"""
-    tester = IdentityServiceTester()
+    tester = TestIdentityService()
 
     # Run tests in sequence - login first to establish credentials for other tests
     tests = [

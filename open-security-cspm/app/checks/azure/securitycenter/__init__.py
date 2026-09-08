@@ -1,1 +1,0 @@
-# Azure SECURITYCENTER Security Checks\n

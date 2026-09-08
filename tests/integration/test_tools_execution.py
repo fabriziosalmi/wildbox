@@ -4,6 +4,7 @@ Tests 57+ tools, execution, plan-based protection
 """
 
 import os
+import pytest
 import requests
 import asyncio
 import time
@@ -15,10 +16,16 @@ from dotenv import load_dotenv
 load_dotenv("tests/.env")
 
 
-class ToolsExecutionTester:
+class TestToolsExecution:
     """Comprehensive tests for Security Tools Service via Gateway"""
     
-    def __init__(self, base_url: str = None):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = None
         # Use gateway by default
         self.base_url = base_url or os.getenv("GATEWAY_URL", "http://localhost")
         self.api_key = os.getenv("TEST_API_KEY", "test-api-key-for-ci-only")
@@ -39,10 +46,10 @@ class ToolsExecutionTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test tools service health (direct, not via gateway)"""
         try:
-            response = requests.get("http://localhost:8000/health", timeout=10)
+            response = requests.get(f'{os.getenv("TOOLS_SERVICE_URL", "http://localhost:8000")}/health', timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -52,13 +59,13 @@ class ToolsExecutionTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Tools Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Tools Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_tools_list(self) -> bool:
+    async def test_tools_list(self) -> None:
         """Test listing of 57+ available tools via gateway"""
         try:
             response = requests.get(
@@ -87,13 +94,13 @@ class ToolsExecutionTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
                 
             self.log_test_result("Tools List (57+ Tools Available)", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Tools List (57+ Tools Available)", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_simple_tool_execution(self) -> bool:
+    async def test_simple_tool_execution(self) -> None:
         """Test execution of simple tool (whois) via gateway"""
         try:
             # Test data for whois lookup
@@ -123,13 +130,13 @@ class ToolsExecutionTester:
                 details = f"HTTP {response.status_code}: {response.text[:100]}"
                 
             self.log_test_result("Simple Tool Execution (base64_encoder)", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Simple Tool Execution (base64_encoder)", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_plan_based_protection(self) -> bool:
+    async def test_plan_based_protection(self) -> None:
         """Test plan-based execution protection"""
         try:
             # Try to execute tools - system should either restrict based on plan or allow access
@@ -185,13 +192,13 @@ class ToolsExecutionTester:
                 passed = True
                 
             self.log_test_result("Plan-based Execution Protection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Plan-based Execution Protection", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_timeout_management(self) -> bool:
+    async def test_timeout_management(self) -> None:
         """Test timeout handling and error management"""
         try:
             # Test with url_security_scanner (a real tool that exists)
@@ -230,17 +237,17 @@ class ToolsExecutionTester:
                 details = f"Unexpected response: HTTP {response.status_code}"
                 
             self.log_test_result("Timeout and Error Management", passed, details)
-            return passed
+            assert passed, details
             
         except requests.exceptions.Timeout:
             # Timeout on our side is also acceptable - shows the system is working
             self.log_test_result("Timeout and Error Management", True, "Request timeout handled")
-            return True
+            pass
         except Exception as e:
             self.log_test_result("Timeout and Error Management", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_multiple_tool_execution(self) -> bool:
+    async def test_multiple_tool_execution(self) -> None:
         """Test execution of multiple different tools"""
         try:
             # Test various basic tools that should be available (using real tools from API)
@@ -291,16 +298,16 @@ class ToolsExecutionTester:
                 details = "No tools executed successfully"
                 
             self.log_test_result("Multiple Tool Execution", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Multiple Tool Execution", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all tools execution tests"""
-    tester = ToolsExecutionTester()
+    tester = TestToolsExecution()
     
     # Run tests in sequence
     tests = [

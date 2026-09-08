@@ -1,1 +1,0 @@
-# GCP GKE Security Checks\n

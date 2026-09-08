@@ -20,7 +20,7 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-from schemas import CertificateInfo, CTLogScannerInput, CTLogScannerOutput
+from .schemas import CertificateInfo, CTLogScannerInput, CTLogScannerOutput
 
 logger = logging.getLogger(__name__)
 

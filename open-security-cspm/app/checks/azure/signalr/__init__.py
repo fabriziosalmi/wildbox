@@ -1,1 +1,0 @@
-# Azure SIGNALR Security Checks\n

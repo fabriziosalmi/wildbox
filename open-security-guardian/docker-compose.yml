@@ -39,7 +39,14 @@ services:
       retries: 5
 
   guardian:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: >
       sh -c "python manage.py migrate &&
              python manage.py collectstatic --noinput &&
@@ -69,7 +76,14 @@ services:
         condition: service_healthy
 
   celery:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: celery -A guardian worker -l info
     volumes:
       - .:/app
@@ -86,7 +100,14 @@ services:
       - guardian
 
   celery-beat:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: celery -A guardian beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
     volumes:
       - .:/app
@@ -103,7 +124,14 @@ services:
       - guardian
 
   flower:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: celery -A guardian flower --port=5555
     ports:
       - "127.0.0.1:5555:5555"

@@ -9,18 +9,10 @@ from datetime import datetime
 from typing import Dict, Any, List
 import logging
 
-try:
-    from schemas import (
-        DNSEnumeratorInput, DNSEnumeratorOutput, DNSRecord, SubdomainInfo,
-        ZoneTransferResult, RecordType, EnumerationMode
-    )
-except ImportError:
-    from schemas import (
-        DNSEnumeratorInput, DNSEnumeratorOutput, DNSRecord, SubdomainInfo,
-        ZoneTransferResult, RecordType, EnumerationMode
-    )
-
-
+from .schemas import (
+    DNSEnumeratorInput, DNSEnumeratorOutput, DNSRecord, SubdomainInfo,
+    ZoneTransferResult, RecordType, EnumerationMode
+)
 # Tool metadata
 TOOL_INFO = {
     "name": "dns_enumerator",

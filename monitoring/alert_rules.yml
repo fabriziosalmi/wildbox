@@ -1,0 +1,46 @@
+# Alerts for the failures the audit found produce no signal today.
+groups:
+  - name: wildbox-availability
+    rules:
+      - alert: WildboxServiceDown
+        expr: up{job="wildbox-services"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} is not responding to scrapes"
+
+      - alert: WildboxHighErrorRate
+        expr: |
+          sum by (service) (rate(wildbox_http_requests_total{status=~"5.."}[5m]))
+          /
+          sum by (service) (rate(wildbox_http_requests_total[5m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.service }} is serving over 5% 5xx"
+
+  - name: wildbox-outcomes
+    rules:
+      # "We have collected nothing for three days" used to look exactly like
+      # "nothing needed collecting" (WILDBO-OBS-01).
+      - alert: WildboxNoToolExecutions
+        expr: |
+          sum(increase(wildbox_tool_executions_total[6h])) == 0
+        for: 6h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No tool has executed in six hours"
+
+      - alert: WildboxToolFailureRate
+        expr: |
+          sum(rate(wildbox_tool_executions_total{outcome="failed"}[15m]))
+          /
+          sum(rate(wildbox_tool_executions_total[15m])) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over a quarter of tool executions are failing"

@@ -6,6 +6,7 @@ import logging
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Union
+import os
 from contextlib import asynccontextmanager
 import uuid
 
@@ -20,9 +21,22 @@ import uvicorn
 import json
 
 from app.config import get_config
-from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun, TelemetryEvent, SensorMetadata
-from app.utils.database import get_db_session, create_tables
+from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
+from app.utils.database import get_db_session, run_migrations
 from app.schemas.api import *
+
+# The star import above re-binds two names that app.models also defines:
+# SensorMetadata and TelemetryEvent exist both as SQLAlchemy models and as
+# Pydantic schemas. Being later, it wins -- so every db.query(SensorMetadata)
+# below was querying a Pydantic class and every sensor row the telemetry ingest
+# path tried to create was a schema instance that never reached the database.
+# GET /api/v1/sensors answered 500 for that reason.
+#
+# The models are therefore bound to unambiguous names, and the schemas keep the
+# bare ones so response_model= still refers to a Pydantic model, as FastAPI
+# requires.
+from app.models import SensorMetadata as SensorMetadataRow  # noqa: E402
+from app.models import TelemetryEvent as TelemetryEventRow  # noqa: E402
 from app.auth import get_current_user, GatewayUser
 from open_security_shared.tenancy import team_or_global_filter
 
@@ -34,8 +48,19 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
     logger.info("Starting Open Security Data API")
-    create_tables()
-    logger.info("Database tables created/verified")
+    # Migrate, do not create_all(). create_all() emits CREATE TABLE and never
+    # ALTER TABLE, so on an existing database every column added after its
+    # first boot stays missing forever -- which is how the team_id tenancy
+    # columns went missing (WILDBO-DOM-01). run_migrations() handles both a
+    # fresh database and an existing one.
+    #
+    # Set RUN_MIGRATIONS_ON_STARTUP=false where migrations are a separate
+    # deploy step; the service then expects the schema to be at head already.
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "true").lower() in ("1", "true", "yes"):
+        run_migrations()
+        logger.info("Database schema migrated to head")
+    else:
+        logger.info("RUN_MIGRATIONS_ON_STARTUP=false; skipping migrations")
     
     yield
     
@@ -60,6 +85,15 @@ app = FastAPI(
     docs_url="/docs" if config.environment == "development" else None,
     redoc_url="/redoc" if config.environment == "development" else None
 )
+
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="data", service_version="0.1.6")
+
 
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -180,6 +214,9 @@ async def search_indicators(
         # Escape SQL LIKE wildcards in user input to prevent pattern injection
         escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         search_filter = or_(
+            # These leading-wildcard comparisons are served by the pg_trgm GIN
+            # indexes added in alembic revision 0004_trgm; without them each
+            # search sequentially scans the whole table (WILDBO-PERF-02).
             Indicator.value.ilike(f"%{escaped_q}%", escape="\\"),
             Indicator.normalized_value.ilike(f"%{escaped_q}%", escape="\\"),
             Indicator.description.ilike(f"%{escaped_q}%", escape="\\")
@@ -310,30 +347,59 @@ async def bulk_lookup(
             detail=f"Too many indicators. Maximum allowed: {config.security.max_batch_size}"
         )
     
-    results = []
-    
-    for item in request.indicators:
-        # Find matching indicators
-        query = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
-            and_(
-                Indicator.indicator_type == item.indicator_type.lower(),
-                or_(
-                    Indicator.value == item.value,
-                    Indicator.normalized_value == item.value.lower().strip()
-                ),
-                Indicator.active == True
-            )
+    # One query for the whole batch. This used to issue a separate query per
+    # requested indicator -- up to max_batch_size (1000) sequential round trips
+    # in a single request, on an endpoint whose entire purpose is batching
+    # (WILDBO-PERF-01).
+    wanted = [
+        (item.indicator_type.lower(), item.value, item.value.lower().strip())
+        for item in request.indicators
+    ]
+
+    match_clauses = [
+        and_(
+            Indicator.indicator_type == itype,
+            or_(Indicator.value == raw, Indicator.normalized_value == norm),
         )
-        
-        matches = query.all()
-        
+        for itype, raw, norm in wanted
+    ]
+
+    matches = []
+    if match_clauses:
+        matches = (
+            db.query(Indicator)
+            .filter(team_or_global_filter(Indicator, current_user))
+            .filter(Indicator.active == True)  # noqa: E712
+            .filter(or_(*match_clauses))
+            .all()
+        )
+
+    # Group the single result set back onto the requested items.
+    by_key = {}
+    for m in matches:
+        by_key.setdefault((m.indicator_type, m.value), []).append(m)
+        by_key.setdefault((m.indicator_type, m.normalized_value), []).append(m)
+
+    results = []
+    for item in request.indicators:
+        itype = item.indicator_type.lower()
+        found = by_key.get((itype, item.value)) or by_key.get(
+            (itype, item.value.lower().strip())
+        ) or []
+        # de-duplicate while preserving order
+        seen = set()
+        unique = []
+        for m in found:
+            if m.id not in seen:
+                seen.add(m.id)
+                unique.append(m)
         results.append(LookupResult(
             indicator_type=item.indicator_type,
             value=item.value,
-            found=len(matches) > 0,
-            matches=matches
+            found=len(unique) > 0,
+            matches=unique,
         ))
-    
+
     return BulkLookupResponse(
         results=results,
         total_queried=len(request.indicators),
@@ -651,6 +717,18 @@ async def ingest_telemetry_batch(
     """
     Ingest a batch of telemetry events from security sensors
     """
+    # Bound the batch. The neighbouring bulk-lookup endpoint enforces this same
+    # limit; this one iterated an unbounded list, doing a query and a write per
+    # element, capped only by nginx's 10MB body limit (WILDBO-INPT-03).
+    if len(batch.events) > config.security.max_batch_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Too many events in batch. Maximum allowed: "
+                f"{config.security.max_batch_size}"
+            ),
+        )
+
     batch_id = batch.batch_id or str(uuid.uuid4())
     ingested_at = datetime.now(timezone.utc)
     events_ingested = 0
@@ -660,12 +738,12 @@ async def ingest_telemetry_batch(
     for i, event_data in enumerate(batch.events):
         try:
             # Update or create sensor metadata
-            sensor = db.query(SensorMetadata).filter(
-                SensorMetadata.sensor_id == event_data.sensor_id
+            sensor = db.query(SensorMetadataRow).filter(
+                SensorMetadataRow.sensor_id == event_data.sensor_id
             ).first()
             
             if not sensor:
-                sensor = SensorMetadata(
+                sensor = SensorMetadataRow(
                     sensor_id=event_data.sensor_id,
                     hostname=event_data.source_host,
                     first_seen=ingested_at,
@@ -682,7 +760,7 @@ async def ingest_telemetry_batch(
                 sensor.active = True
             
             # Create telemetry event
-            telemetry_event = TelemetryEvent(
+            telemetry_event = TelemetryEventRow(
                 sensor_id=event_data.sensor_id,
                 event_type=event_data.event_type.value,
                 timestamp=event_data.timestamp,
@@ -732,20 +810,20 @@ async def get_telemetry_events(
     """
     Retrieve telemetry events with optional filtering
     """
-    query = db.query(TelemetryEvent)
+    query = db.query(TelemetryEventRow)
     
     # Apply filters
     if sensor_id:
-        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+        query = query.filter(TelemetryEventRow.sensor_id == sensor_id)
     if event_type:
-        query = query.filter(TelemetryEvent.event_type == event_type)
+        query = query.filter(TelemetryEventRow.event_type == event_type)
     if start_time:
-        query = query.filter(TelemetryEvent.timestamp >= start_time)
+        query = query.filter(TelemetryEventRow.timestamp >= start_time)
     if end_time:
-        query = query.filter(TelemetryEvent.timestamp <= end_time)
+        query = query.filter(TelemetryEventRow.timestamp <= end_time)
     
     # Apply pagination and ordering
-    events = query.order_by(desc(TelemetryEvent.timestamp)).offset(offset).limit(limit).all()
+    events = query.order_by(desc(TelemetryEventRow.timestamp)).offset(offset).limit(limit).all()
     
     return events
 
@@ -758,12 +836,12 @@ async def get_sensors(
     """
     Get information about registered sensors
     """
-    query = db.query(SensorMetadata)
+    query = db.query(SensorMetadataRow)
     
     if active_only:
-        query = query.filter(SensorMetadata.active == True)
+        query = query.filter(SensorMetadataRow.active == True)
     
-    sensors = query.order_by(desc(SensorMetadata.last_seen)).all()
+    sensors = query.order_by(desc(SensorMetadataRow.last_seen)).all()
     return sensors
 
 @app.get("/api/v1/sensors/{sensor_id}", response_model=SensorMetadata, tags=["Telemetry"])
@@ -775,8 +853,8 @@ async def get_sensor(
     """
     Get information about a specific sensor
     """
-    sensor = db.query(SensorMetadata).filter(
-        SensorMetadata.sensor_id == sensor_id
+    sensor = db.query(SensorMetadataRow).filter(
+        SensorMetadataRow.sensor_id == sensor_id
     ).first()
     
     if not sensor:
@@ -800,28 +878,28 @@ async def get_telemetry_stats(
     start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     # Base query
-    query = db.query(TelemetryEvent).filter(TelemetryEvent.timestamp >= start_time)
+    query = db.query(TelemetryEventRow).filter(TelemetryEventRow.timestamp >= start_time)
     if sensor_id:
-        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+        query = query.filter(TelemetryEventRow.sensor_id == sensor_id)
     
     # Total events
     total_events = query.count()
     
     # Events by type
     event_type_counts = db.query(
-        TelemetryEvent.event_type,
-        func.count(TelemetryEvent.id).label('count')
-    ).filter(TelemetryEvent.timestamp >= start_time)
+        TelemetryEventRow.event_type,
+        func.count(TelemetryEventRow.id).label('count')
+    ).filter(TelemetryEventRow.timestamp >= start_time)
     
     if sensor_id:
-        event_type_counts = event_type_counts.filter(TelemetryEvent.sensor_id == sensor_id)
+        event_type_counts = event_type_counts.filter(TelemetryEventRow.sensor_id == sensor_id)
     
-    event_type_counts = event_type_counts.group_by(TelemetryEvent.event_type).all()
+    event_type_counts = event_type_counts.group_by(TelemetryEventRow.event_type).all()
     
     # Active sensors
-    active_sensors = db.query(func.count(func.distinct(SensorMetadata.sensor_id))).filter(
-        SensorMetadata.active == True,
-        SensorMetadata.last_seen >= start_time
+    active_sensors = db.query(func.count(func.distinct(SensorMetadataRow.sensor_id))).filter(
+        SensorMetadataRow.active == True,
+        SensorMetadataRow.last_seen >= start_time
     ).scalar()
     
     return {

@@ -1,1 +1,0 @@
-# AWS ECR Security Checks\n

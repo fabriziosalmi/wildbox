@@ -17,7 +17,7 @@ import time
 @pytest.fixture
 def identity_base_url():
     """Identity service URL from environment"""
-    return os.getenv("IDENTITY_SERVICE_URL", "http://identity-test:8001")
+    return os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001")
 
 
 @pytest.mark.integration
@@ -119,9 +119,15 @@ class TestAPIKeyManagement:
             # Use form data for OAuth2PasswordRequestForm (fastapi-users)
             response = await client.post(
                 "/api/v1/auth/jwt/login",
+                # A third pair of hard-coded credentials
+                # ("admin@wildbox.security" / "change-this-password", after
+                # admin@wildbox.io elsewhere) that matches no deployment: these
+                # tests skipped themselves with "Admin login failed" every run.
+                # conftest normalises TEST_ADMIN_* from INITIAL_ADMIN_*, which
+                # is the account the stack provisions.
                 data={
-                    "username": "admin@wildbox.security",
-                    "password": os.getenv("ADMIN_PASSWORD", "change-this-password")
+                    "username": os.getenv("TEST_ADMIN_EMAIL", "admin@wildbox.io"),
+                    "password": os.getenv("TEST_ADMIN_PASSWORD", "CHANGE-THIS-PASSWORD"),
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"}
             )
@@ -154,8 +160,16 @@ class TestAPIKeyManagement:
         assert response.status_code in [200, 201], \
             f"API key creation failed with status {response.status_code}: {response.text}"
         data = response.json()
-        assert "api_key" in data
-        assert data["api_key"].startswith("wsk_")
+        # The field is "key" (ApiKeyResponse); "api_key" appears in no schema.
+        # These two tests skipped themselves on unusable credentials, so the
+        # wrong field name was never reached.
+        assert "key" in data, f"creation response has no key: {sorted(data)}"
+        assert data["key"].startswith("wsk_")
+        # Scopes must be an explicit list, never JSON null: "unrestricted" is a
+        # value that was written, not an absence that gets inferred.
+        assert isinstance(data.get("scopes"), list), (
+            f"scopes is {data.get('scopes')!r}, expected a list"
+        )
 
     async def test_api_key_validation(self, identity_base_url, admin_token):
         """Test that generated API keys can be used for authentication"""
@@ -176,7 +190,7 @@ class TestAPIKeyManagement:
         
         assert create_response.status_code in [200, 201], \
             f"API key creation failed: {create_response.text}"
-        api_key = create_response.json()["api_key"]
+        api_key = create_response.json()["key"]
         
         # Use API key to access protected endpoint
         # Note: API key auth may not work for /users/me - it depends on gateway config

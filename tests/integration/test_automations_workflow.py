@@ -3,16 +3,29 @@ Automations Workflow Test Module
 Tests n8n UI access, webhook execution
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
 
-class AutomationsWorkflowTester:
+class TestAutomationsWorkflow:
     """Comprehensive tests for Automations Service (Port 5678)"""
     
-    def __init__(self, base_url: str = "http://localhost:5678"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("AUTOMATIONS_URL", "http://localhost:5678")
         self.base_url = base_url
         self.results = []
         
@@ -25,7 +38,7 @@ class AutomationsWorkflowTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test automations service health"""
         try:
             # n8n typically responds on the root path
@@ -45,13 +58,13 @@ class AutomationsWorkflowTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Automations Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Automations Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_n8n_ui_access(self) -> bool:
+    async def test_n8n_ui_access(self) -> None:
         """Test n8n UI accessibility"""
         try:
             # Test n8n UI endpoints
@@ -88,13 +101,13 @@ class AutomationsWorkflowTester:
                 details = "n8n UI not accessible"
                 
             self.log_test_result("n8n UI Access", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("n8n UI Access", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_webhook_execution(self) -> bool:
+    async def test_webhook_execution(self) -> None:
         """Test workflow execution via webhook"""
         try:
             # Test webhook endpoints
@@ -145,13 +158,13 @@ class AutomationsWorkflowTester:
                 details = f"Webhook issues: responses {webhook_responses}"
                 
             self.log_test_result("Webhook Execution", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Webhook Execution", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_workflow_management_api(self) -> bool:
+    async def test_workflow_management_api(self) -> None:
         """Test workflow management API"""
         try:
             # Test n8n REST API endpoints
@@ -189,13 +202,13 @@ class AutomationsWorkflowTester:
                 details = "Workflow management API not accessible"
                 
             self.log_test_result("Workflow Management API", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Workflow Management API", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_automation_health_status(self) -> bool:
+    async def test_automation_health_status(self) -> None:
         """Test automation system health status"""
         try:
             # Test health/status endpoints
@@ -228,16 +241,16 @@ class AutomationsWorkflowTester:
                 details = f"Health check responses: {health_responses}"
                 
             self.log_test_result("Automation Health Status", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Automation Health Status", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all automations workflow tests"""
-    tester = AutomationsWorkflowTester()
+    tester = TestAutomationsWorkflow()
     
     # Run tests in sequence
     tests = [

@@ -7,21 +7,12 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 from urllib.parse import urljoin
 
-try:
-    from schemas import (
-        BlockchainSecurityAnalyzerInput, 
-        BlockchainSecurityAnalyzerOutput, 
-        SecurityVulnerability, 
-        GasOptimization
-    )
-except ImportError:
-    from schemas import (
-        BlockchainSecurityAnalyzerInput, 
-        BlockchainSecurityAnalyzerOutput, 
-        SecurityVulnerability, 
-        GasOptimization
-    )
-
+from .schemas import (
+    BlockchainSecurityAnalyzerInput, 
+    BlockchainSecurityAnalyzerOutput, 
+    SecurityVulnerability, 
+    GasOptimization
+)
 # Tool metadata
 TOOL_INFO = {
     "name": "Blockchain Security Analyzer",

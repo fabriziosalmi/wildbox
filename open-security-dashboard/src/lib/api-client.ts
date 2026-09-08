@@ -5,6 +5,8 @@ export interface ApiError {
   message: string
   status: number
   code?: string
+  /** Correlation id from the canonical error body, for matching against logs. */
+  requestId?: string
   details?: any
 }
 
@@ -54,8 +56,21 @@ class ApiClient {
         }
 
         if (error.response) {
+          const data = error.response.data as any
           apiError.status = error.response.status
-          apiError.message = (error.response.data as any)?.message || error.message || 'API Error'
+          // Services answer with the canonical shape from open_security_shared.errors:
+          //   { error: { code, message, type, request_id } }
+          // The older shapes (a top-level `message`, or FastAPI's default
+          // `detail`) are still accepted so a partially-upgraded deployment does
+          // not lose the server's explanation (WILDBO-API-01).
+          apiError.message =
+            data?.error?.message ||
+            data?.detail ||
+            data?.message ||
+            error.message ||
+            'API Error'
+          apiError.code = data?.error?.type
+          apiError.requestId = data?.error?.request_id
           apiError.details = error.response.data
 
           // Handle auth errors
@@ -156,8 +171,19 @@ class ApiClient {
   }
 }
 
-// API Clients - All requests go through Wildbox Gateway for production
-const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY === 'true'
+// API Clients - every request goes through the Wildbox Gateway.
+//
+// The gateway is the only supported topology: it is where authentication, rate
+// limiting and the X-Wildbox-* identity injection live, and the backend services
+// refuse requests that do not carry the gateway's proof-of-origin secret. The
+// previous direct-to-service wiring (NEXT_PUBLIC_*_API_URL per service) was a
+// second, untested topology that could not work against those services, so it
+// has been removed (WILDBO-ARCH-04).
+//
+// NEXT_PUBLIC_USE_GATEWAY is still honoured for local development against a
+// bare service, but it now defaults to ON rather than OFF: an unset variable
+// gives the supported deployment instead of the unsupported one.
+const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY !== 'false'
 const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
 
 // Helper function to get the correct gateway URL based on environment
@@ -213,101 +239,44 @@ export const getDataPath = (endpoint: string): string => {
   return endpoint
 }
 
-// Helper function to get the correct guardian endpoint path
-export const getGuardianPath = (endpoint: string): string => {
-  if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/guardian
-    return endpoint.replace('/api/v1/', '/')
-  }
-  return endpoint
+// The gateway mounts each service under /api/v1/<service>/ and rewrites that
+// prefix away before proxying, so a client that already has the service prefix
+// in its baseURL must not repeat /api/v1/ in the path. One helper does this for
+// every service; there is no per-service variation to encode (WILDBO-ARCH-05).
+//
+// This mirrors the gateway's route table in exactly one place. If a route's
+// rewrite rule changes, change it here -- and see the gateway route-coverage
+// test in tests/integration/test_gateway_routes.py, which asserts that every
+// base path below resolves to something other than the catch-all 404.
+const stripApiV1 = (endpoint: string): string => {
+  if (!useGateway) return endpoint
+  return endpoint.replace('/api/v1/', '/')
 }
 
-// Helper function to get the correct sensor endpoint path
-export const getSensorPath = (endpoint: string): string => {
-  if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/sensor
-    return endpoint.replace('/api/v1/', '/')
-  }
-  return endpoint
-}
+export const getGuardianPath = stripApiV1
+export const getResponderPath = stripApiV1
+export const getCSPMPath = stripApiV1
+export const getAgentsPath = stripApiV1
 
-// Helper function to get the correct responder endpoint path
-export const getResponderPath = (endpoint: string): string => {
-  if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/responder
-    return endpoint.replace('/api/v1/', '/')
-  }
-  return endpoint
-}
+// Production-ready clients. Every one addresses the gateway; the service
+// prefixes below are the gateway's route table (WILDBO-ARCH-01/ARCH-04).
+const gw = getGatewayUrl()
 
-// Helper function to get the correct CSPM endpoint path
-export const getCSPMPath = (endpoint: string): string => {
-  if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/cspm
-    return endpoint.replace('/api/v1/', '/')
-  }
-  return endpoint
-}
+export const apiClient = new ApiClient(`${gw}/api/v1`)
+export const identityClient = new ApiClient(gw) // auth endpoints live at the gateway root
+export const dataClient = new ApiClient(`${gw}/api/v1/data`)
+export const guardianClient = new ApiClient(`${gw}/api/v1/guardian`)
+export const responderClient = new ApiClient(`${gw}/api/v1/responder`)
+export const agentsClient = new ApiClient(`${gw}/api/v1/agents`)
+export const cspmClient = new ApiClient(`${gw}/api/v1/cspm`)
 
-// Helper function to get the correct agents endpoint path
-export const getAgentsPath = (endpoint: string): string => {
-  if (useGateway) {
-    // When using gateway, remove /api/v1 prefix since gateway already routes to /api/v1/agents
-    return endpoint.replace('/api/v1/', '/')
-  }
-  return endpoint
-}
-
-// Production-ready clients that always route through the gateway
-export const apiClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1`  // Changed: removed /tools to fix double-path issue
-    : (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000')
-)
-
-export const identityClient = new ApiClient(
-  useGateway 
-    ? getGatewayUrl()  // Use gateway root URL for auth endpoints
-    : (process.env.NEXT_PUBLIC_IDENTITY_API_URL || 'http://localhost:8001')
-)
-
-export const dataClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/data`
-    : (process.env.NEXT_PUBLIC_DATA_API_URL || 'http://localhost:8002')
-)
-
-export const guardianClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/guardian`
-    : (process.env.NEXT_PUBLIC_GUARDIAN_API_URL || 'http://localhost:8013')
-)
-
-export const sensorClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/sensor`
-    : (process.env.NEXT_PUBLIC_SENSOR_API_URL || 'http://localhost:8004')
-)
-
-export const responderClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/responder`
-    : (process.env.NEXT_PUBLIC_RESPONDER_API_URL || 'http://localhost:8018')
-)
-
-export const agentsClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/agents`
-    : (process.env.NEXT_PUBLIC_AGENTS_API_URL || 'http://localhost:8006')
-)
-
-export const cspmClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/cspm`
-    : (process.env.NEXT_PUBLIC_CSPM_API_URL || 'http://localhost:8019')
-)
+// NOTE: there is deliberately no sensorClient. The sensor exposes no
+// gateway-facing API in v1.0 (see the commented-out /api/v1/sensor/ block in
+// wildbox_gateway.conf); it forwards telemetry to the data service directly.
+// The client used to exist and every call it made returned the gateway's
+// catch-all 404 (WILDBO-ARCH-01).
 
 // Gateway client for direct gateway API access
-export const gatewayDataClient = new ApiClient(getGatewayUrl())
+export const gatewayDataClient = new ApiClient(gw)
 
 export default apiClient

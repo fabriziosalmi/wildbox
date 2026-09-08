@@ -7,6 +7,172 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-08
+
+Everything here was found by running the thing. A 20-category audit produced 115
+findings, all remediated; then the stack was started for the first time, which
+produced a second and larger set of defects that no amount of reading would have
+surfaced — services that could not boot, a gateway that could not reach one of
+its backends, and an executive dashboard whose headline numbers came from
+`random.choice`. The integration suite, which had never really run, now runs
+against the full stack and passes. **Several changes are user-facing — read
+[UPGRADING.md](UPGRADING.md) before deploying.**
+
+### Upgrade notes
+
+Read [UPGRADING.md](UPGRADING.md); it has the commands. In short:
+
+- **New required secrets.** `CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD`,
+  `FLOWER_PASSWORD`, `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `SENSOR_API_KEY`
+  and `DATA_SECRET_KEY` are now required. Without them `docker compose config`
+  fails, or the service starts and refuses every request.
+  `make generate-secrets FORCE=1` produces them.
+- **Rotate `API_KEY`.** The platform key was rendered into dashboard HTML and is
+  to be treated as public.
+- **Run the migrations.** `identity` and `data` own alembic chains now, and the
+  data API migrates at startup instead of calling `create_all()`. Two revisions
+  add CHECK constraints and **stop on rows that violate them** — deliberately,
+  and they name the offending values and the query that fixes them.
+- **Identity's JSON metrics moved** from `GET /metrics` (now the Prometheus text
+  exposition, like every other service) to `GET /api/v1/admin/metrics`.
+- **Rebuild the images.** All six FastAPI services now resolve to one Starlette
+  and one FastAPI; the deployment previously ran three different Starlette
+  majors.
+
+### Fixed — the platform could not start
+
+- **`docker compose build` was broken for every Python service.**
+  `additional_contexts` pointed at `../open-security-shared`, which compose
+  resolves from the project directory, so it escaped the repository. CI was
+  unaffected, which is why it went unnoticed.
+- **The tools service could not import its own entrypoint.** The shared package
+  imported `auth_utils` eagerly, which imports `jose`; services install it with
+  `--no-deps` and none pin python-jose. Names resolve lazily now (PEP 562), with
+  a test that fails if an eager import returns.
+- **The identity service could not boot**: it imports `redis` through
+  `token_blacklist` and never pinned it. At the previous release the only
+  importer did it inside a function, so it surfaced as a 500 on the first
+  authenticated request rather than at boot.
+- **The data image shipped no `alembic/` directory**, so the startup migration
+  died with `Path doesn't exist: '/app/alembic'`.
+- **The sensor image had never built**: `setup.py` opened a `README.md` excluded
+  from the build context and fed the hash-pinned lockfile to `install_requires`.
+- **The sensor lockfile could not install on Linux.** Compiled on macOS, it
+  contained `pyobjc-core`, whose build refuses to run anywhere else.
+  `compile_requirements.sh` now resolves for linux, so the same
+  `requirements.in` yields the same lock from a laptop and from CI.
+- **The gateway crash-looped whenever any upstream was absent.** nginx resolves
+  upstream hostnames at load time and treats failure as fatal; the gateway's
+  `depends_on` named five of its nine upstreams.
+- **A fresh install could not reach `docker compose up`.** `.env.template` and
+  `.env.example` had drifted into two different variable sets, with `make setup`
+  reading one and `make generate-secrets` the other; the generator replaced only
+  empty values, leaving the template's placeholders for the validator to reject;
+  and it prompted unconditionally, so the documented setup order aborted on EOF
+  and left every secret empty.
+- **Generated passwords could contain `$`,** which docker compose interpolates —
+  the container received a different, truncated secret than the one in `.env`,
+  silently.
+- **A freshly generated `.env` could not authenticate to its own database.**
+  The connection strings ship as
+  `postgresql://postgres:YOUR_DB_PASSWORD@postgres:5432/<db>` and nothing
+  replaced the placeholder, so PostgreSQL started with the generated password
+  while every service connected with the literal `YOUR_DB_PASSWORD`.
+  `docker compose config` accepts that happily — the values are present and
+  non-empty — so it only surfaced as `FATAL: password authentication failed`
+  once running. `validate_secrets.py` now fails when a `*DATABASE_URL` password
+  does not match `POSTGRES_PASSWORD`.
+- **Generated passwords are restricted to RFC 3986 unreserved punctuation.**
+  Beyond `$`, a password is embedded in a DSN: `@` ends the userinfo component,
+  `%` starts a percent-escape and `+` decodes as a space. Each silently produced
+  a password the database never saw.
+- **The data service and its scheduler crash-looped** on `SECRET_KEY must be set
+  in production`. Nothing passed one; `DATA_SECRET_KEY` is generated and
+  required now.
+- **The gateway could not start on Linux at all.** The dashboard upstream listed
+  `host.docker.internal:3000`, a name that exists only under Docker Desktop, and
+  nginx treats an unresolvable upstream as fatal at config load. It worked on
+  macOS for exactly the reason it failed everywhere else, CI included.
+
+### Fixed — services unreachable or wrong
+
+- **Guardian answered every request through the gateway with a redirect loop.**
+  `SECURE_SSL_REDIRECT` is on whenever `ENVIRONMENT=production`, TLS terminates
+  at the gateway, and `SECURE_PROXY_SSL_HEADER` was never set — so Django saw an
+  insecure request and 301'd to the same URL, which arrived over HTTP again.
+- **`RATE_LIMIT_PER_HOUR` reached no service.** It is documented in
+  `.env.example` and read by the gateway's Lua handler, but nothing passed it in:
+  the limit was always the built-in 10000/hour default and setting the variable
+  had no effect anywhere.
+
+- **Guardian was unreachable through the gateway**, on every route, for every
+  client. Django validates `Host` against `ALLOWED_HOSTS` before anything else
+  runs; the gateway forwarded the caller's. It now presents guardian its own
+  name and forwards the caller's as `X-Forwarded-Host`.
+- **The CSPM executive dashboard invented its numbers.** Severity was assigned
+  with `random.choice(['critical','high','medium','low'])` — re-rolled on every
+  request — and the 30-day trend was synthesized by a formula that always
+  improved, for accounts that had never been scanned. Severity now comes from
+  the check's own metadata; no scan history means no trend.
+- **Three data-service endpoints answered 500.** `from app.schemas.api import *`
+  after importing the models shadowed `SensorMetadata` and `TelemetryEvent`, so
+  `db.query()` was querying Pydantic classes and telemetry ingest was building
+  schema instances that never reached the database.
+- **The sensor's local API was inert**: it fails closed without an API key, the
+  shipped config had it null, and no environment variable could set it — every
+  route but `/health` answered 503.
+- **`/api/v1/tools`** (the list of tools) **was not routed**, and
+  **`/api/v1/responder/*`** mapped to the responder's root rather than `/v1/`,
+  so every documented responder path 404ed.
+- **New API keys stored JSON `null` in `scopes`**, satisfying the NOT NULL
+  constraint while restoring the ambiguity it was added to remove. Omitted
+  scopes now store `["*"]` explicitly.
+- **The rate-limit headers described two different budgets**: `Limit` advertised
+  the hourly figure while `Remaining` counted against the enforced 60-second
+  window, so a client could not compute a backoff.
+- **The gateway's development certificate had no `subjectAltName`,** which no
+  current TLS client accepts — anything talking to it had to disable
+  verification outright.
+
+### Fixed — the tests did not test
+
+- **71 test functions ended in `return passed`.** pytest ignores a return value,
+  so all of them passed unconditionally, whatever happened.
+- **`asyncio_mode` sat below the `[coverage:*]` sections** of
+  `tests/integration/pytest.ini`, so configparser filed it under coverage and
+  every async test was skipped as "no async plugin installed".
+- **The integration CI job started no gateway.** It ran five services as bare
+  processes with `GATEWAY_URL` pointing at a port nothing listened on, so the
+  reachability guard skipped every test that goes through the gateway — which is
+  most of them. It now brings the real stack up with `docker compose up --wait`.
+- **Whole test files targeted endpoints that never existed** and asserted field
+  names no schema has. They now use the documented routes, through the gateway,
+  over verified TLS, and the suite mints a real API key through the same code
+  path a client would use instead of relying on a placeholder the gateway
+  rejects.
+
+### Changed
+
+- **The CSPM check catalogue is honest.** 166 generated placeholders that
+  declared full metadata while inspecting nothing are deleted; 31 real checks
+  remain, all of which call a cloud API. Two of those 31 had never run
+  (`gcp/compute` had no `__init__.py`) and four `check_id`s were claimed by two
+  checks each, silently shadowing one another. Documentation claiming "200+
+  checks" now says 31.
+- **`DEP-01` closed**: all six FastAPI services on `starlette==1.6.0` and
+  `fastapi==0.141.1`. `pydantic==2.5.0` had been holding cspm and data three
+  Starlette majors back.
+- **The "Code Quality" CI job gates.** Every step carried
+  `continue-on-error: true` and `build-images` did not depend on it. Three tiers
+  now block: correctness across the whole tree, full style on the shared
+  package, and full style on files a change adds.
+- **The SBOM license check does something.** It was `pip install pip-licenses`
+  followed by an `echo`, under `continue-on-error`. It now reads the CycloneDX
+  SBOM of the built image and fails on copyleft in language packages.
+- **The restore drill compares row counts** table by table against the source
+  and covers all three databases; it compared table counts and skipped guardian.
+
+
 ## [0.9.0] - 2026-08-03
 
 Truthful security tooling. The headline is a catalog-wide cleanup: every tool that fabricated its results with `random` now either does real work or has been removed. Alongside it, a 360° pre-release audit produced a batch of security fixes — a privilege escalation, leaked-secret purge with CI scanning, real gateway CORS, and more. **Several changes are user-facing — read the upgrade notes.**
@@ -397,7 +563,13 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.5.5...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.8.0...v0.9.0
+[0.8.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.7.1...v0.8.0
+[0.7.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.6.2...v0.7.0
+[0.6.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.5.5...v0.6.2
 [0.5.5]: https://github.com/fabriziosalmi/wildbox/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/fabriziosalmi/wildbox/compare/v0.5.2...v0.5.4
 [0.5.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.5.0...v0.5.2

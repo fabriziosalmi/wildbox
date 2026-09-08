@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, dataClient, guardianClient, responderClient, cspmClient, sensorClient, getSensorPath, getGuardianPath, getResponderPath, getCSPMPath } from '@/lib/api-client'
+import { apiClient, dataClient, guardianClient, responderClient, cspmClient, getGuardianPath, getResponderPath, getCSPMPath } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 import { useVulnerabilityStats } from '@/hooks/use-vulnerability-stats'
 

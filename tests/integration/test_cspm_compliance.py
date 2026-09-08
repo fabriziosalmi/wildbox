@@ -3,17 +3,33 @@ CSPM Compliance Test Module
 Tests cloud security dashboard, scanning, findings management
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
 
-class CSPMComplianceTester:
+class TestCSPMCompliance:
     """Comprehensive tests for CSPM Compliance Service (Port 8019)"""
     
-    def __init__(self, base_url: str = "http://localhost:8019"):
-        self.base_url = base_url
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        # Two base URLs, because the service has two front doors.
+        #
+        # Everything but /health refuses a direct connection: the shared
+        # gateway_auth middleware answers 403 GATEWAY_AUTH_REQUIRED ("This
+        # service must be accessed through the API gateway"). Calling the
+        # service directly, as these tests did, could therefore only ever fail
+        # -- and the API paths they used did not exist either.
+        self.direct_url = os.getenv("CSPM_SERVICE_URL", "http://localhost:8019")
+        self.base_url = os.getenv("GATEWAY_URL", "https://localhost") + "/api/v1/cspm"
+        self.headers = {"X-API-Key": os.getenv("TEST_API_KEY", "")}
         self.results = []
         
     def log_test_result(self, test_name: str, passed: bool, details: str = ""):
@@ -25,10 +41,10 @@ class CSPMComplianceTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test CSPM service health"""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=10)
+            response = requests.get(f"{self.direct_url}/health", timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -38,36 +54,58 @@ class CSPMComplianceTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("CSPM Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("CSPM Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_executive_dashboard_summary(self) -> bool:
+    async def test_executive_dashboard_summary(self) -> None:
         """Test executive dashboard summary"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/dashboard/executive", timeout=15)
+            response = requests.get(f"{self.base_url}/dashboard/executive-summary", headers=self.headers, timeout=15)
             
             if response.status_code == 200:
                 dashboard_data = response.json()
                 
-                # Check for expected dashboard elements
-                expected_fields = ['compliance_score', 'total_checks', 'critical_findings', 'summary']
-                found_fields = []
-                
-                for field in expected_fields:
-                    if field in dashboard_data:
-                        found_fields.append(field)
-                
-                passed = len(found_fields) >= 2  # At least some dashboard data
-                
-                if passed:
-                    compliance_score = dashboard_data.get('compliance_score', 'unknown')
-                    total_checks = dashboard_data.get('total_checks', 'unknown')
-                    details = f"Executive dashboard: {len(found_fields)}/{len(expected_fields)} fields, compliance: {compliance_score}, checks: {total_checks}"
+                # The response's real shape (ExecutiveSummaryResponse): the
+                # posture figures live under security_posture, not at the top
+                # level. The previous expectation -- compliance_score,
+                # total_checks, critical_findings, summary as top-level keys --
+                # matched nothing the endpoint has ever returned.
+                posture = dashboard_data.get("security_posture")
+                trending = dashboard_data.get("trending_metrics")
+
+                problems = []
+                if not isinstance(posture, dict):
+                    problems.append("security_posture missing or not an object")
                 else:
-                    details = f"Incomplete dashboard: {list(dashboard_data.keys())}"
+                    for field in ("security_score", "critical_findings",
+                                  "high_findings", "compliance_frameworks"):
+                        if field not in posture:
+                            problems.append(f"security_posture.{field} missing")
+                if not isinstance(trending, list):
+                    problems.append("trending_metrics missing or not a list")
+                else:
+                    # An account with no scan history must report no trend, not
+                    # an invented one: _get_trending_metrics used to synthesise
+                    # a steadily improving curve out of nothing.
+                    scanned = (posture or {}).get("total_resources_scanned")
+                    if scanned == 0 and trending:
+                        problems.append(
+                            f"{len(trending)} trend points reported for an "
+                            "account with no scanned resources"
+                        )
+
+                passed = not problems
+                if passed:
+                    details = (
+                        f"Executive dashboard: score={posture['security_score']}, "
+                        f"critical={posture['critical_findings']}, "
+                        f"{len(trending)} trend point(s)"
+                    )
+                else:
+                    details = "; ".join(problems)
                     
             elif response.status_code in [401, 403]:
                 details = "Executive dashboard requires authentication (expected)"
@@ -77,13 +115,13 @@ class CSPMComplianceTester:
                 details = f"Dashboard endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Executive Dashboard Summary", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Executive Dashboard Summary", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_cloud_scanning_business_plus(self) -> bool:
+    async def test_cloud_scanning_business_plus(self) -> None:
         """Test cloud scanning trigger for Business+ plans"""
         try:
             # Test cloud scan trigger
@@ -95,7 +133,7 @@ class CSPMComplianceTester:
             }
             
             response = requests.post(
-                f"{self.base_url}/api/v1/scans/trigger",
+                f"{self.base_url}/scans",
                 json=scan_request,
                 timeout=15
             )
@@ -126,17 +164,17 @@ class CSPMComplianceTester:
                 details = f"Scan trigger endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Cloud Scanning for Business+ Plans", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Cloud Scanning for Business+ Plans", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_team_scoped_findings(self) -> bool:
+    async def test_team_scoped_findings(self) -> None:
         """Test team-scoped findings listing"""
         try:
             # Test findings endpoint
-            response = requests.get(f"{self.base_url}/api/v1/findings", timeout=15)
+            response = requests.get(f"{self.base_url}/compliance/findings", headers=self.headers, timeout=15)
             
             if response.status_code == 200:
                 findings = response.json()
@@ -153,17 +191,17 @@ class CSPMComplianceTester:
                 details = f"Findings endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Team-scoped Findings List", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Findings List", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_compliance_frameworks(self) -> bool:
+    async def test_compliance_frameworks(self) -> None:
         """Test compliance frameworks support"""
         try:
             # Test compliance frameworks endpoint
-            response = requests.get(f"{self.base_url}/api/v1/compliance/frameworks", timeout=10)
+            response = requests.get(f"{self.base_url}/compliance/summary", headers=self.headers, timeout=10)
             
             if response.status_code == 200:
                 frameworks = response.json()
@@ -188,17 +226,17 @@ class CSPMComplianceTester:
                 details = f"Frameworks endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Compliance Frameworks Support", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Compliance Frameworks Support", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_scan_history(self) -> bool:
+    async def test_scan_history(self) -> None:
         """Test scan history and reporting"""
         try:
             # Test scan history endpoint
-            response = requests.get(f"{self.base_url}/api/v1/scans/history", timeout=10)
+            response = requests.get(f"{self.base_url}/scans", headers=self.headers, timeout=10)
             
             if response.status_code == 200:
                 history = response.json()
@@ -215,16 +253,16 @@ class CSPMComplianceTester:
                 details = f"Scan history endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Scan History and Reporting", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Scan History and Reporting", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all CSPM compliance tests"""
-    tester = CSPMComplianceTester()
+    tester = TestCSPMCompliance()
     
     # Run tests in sequence
     tests = [

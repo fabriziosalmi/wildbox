@@ -1,1 +1,0 @@
-# Azure MONITOR Security Checks\n

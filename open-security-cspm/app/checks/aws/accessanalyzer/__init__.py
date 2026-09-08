@@ -1,1 +1,0 @@
-# AWS ACCESSANALYZER Security Checks\n

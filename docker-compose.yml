@@ -21,14 +21,27 @@ services:
       context: ./open-security-identity
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-identity
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8001:8001"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
@@ -39,8 +52,15 @@ services:
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
     depends_on:
-      - postgres
-      - wildbox-redis
+      # condition: service_healthy, not bare start-order. Compose starts a
+      # service as soon as its dependency's container exists, not when Postgres
+      # accepts connections or Redis has loaded its AOF -- so the stack
+      # converged by crash-looping, which made a real dependency failure
+      # indistinguishable from ordinary startup churn (WILDBO-REL-04).
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
     networks:
       - wildbox
     healthcheck:
@@ -50,14 +70,38 @@ services:
       retries: 3
 
   # API Service (Security Tools Platform)
+  # SCALING CAVEAT: `api` keeps its execution history, per-tool statistics and
+  # in-flight task registry in process memory (open-security-tools/app/
+  # execution_manager.py). Two replicas therefore each report only the work that
+  # landed on them: /stats and the tool statistics become per-replica views that
+  # look like the whole picture. Tool *execution* is safe to scale -- the Celery
+  # workers below are stateless and already scale -- but until that state moves
+  # to Redis, run one `api` replica. The gateway load-balances by service name,
+  # so raising this is a one-line change once the state is shared.
   api:
     build:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
-    container_name: open-security-tools
+        shared: ./open-security-shared
+    # No container_name: a fixed name makes `docker compose up --scale`
+    # fail outright, so the first scaling action an operator reaches for was
+    # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
+    # resolves upstreams by *service* name through Docker's DNS, which load-
+    # balances across replicas, so nothing depended on the fixed name.
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     security_opt:
       - no-new-privileges:true
     ports:
@@ -69,14 +113,24 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
-      # Increased rate limits for AI agent service
+      # Rate limits for the TOOLS service (this block builds ./open-security-tools;
+      # the comment here used to say "AI agent service"). The value is no longer
+      # duplicated: app/config.py declares no competing default, so this file is
+      # the single place the effective limit is set (WILDBO-CONF-03).
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
     depends_on:
-      - wildbox-redis
+      wildbox-redis:
+        condition: service_healthy
     networks:
-      - wildbox
+      wildbox:
+        aliases:
+          # Keeps the hostname the gateway's upstreams use resolvable after
+          # container_name was removed for scalability (WILDBO-SCAL-02).
+          # A network alias round-robins across replicas; a container_name
+          # cannot exist more than once.
+          - open-security-tools
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -89,9 +143,25 @@ services:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
-    container_name: open-security-tools-worker
+        shared: ./open-security-shared
+    # No container_name: a fixed name makes `docker compose up --scale`
+    # fail outright, so the first scaling action an operator reaches for was
+    # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
+    # resolves upstreams by *service* name through Docker's DNS, which load-
+    # balances across replicas, so nothing depended on the fixed name.
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
     security_opt:
       - no-new-privileges:true
     command: celery -A app.celery_app worker --loglevel=info --concurrency=4 --max-tasks-per-child=50 -I app.tasks
@@ -102,10 +172,18 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
     depends_on:
-      - wildbox-redis
-      - api
+      wildbox-redis:
+        condition: service_healthy
+      api:
+        condition: service_started
     networks:
-      - wildbox
+      wildbox:
+        aliases:
+          # Keeps the hostname the gateway's upstreams use resolvable after
+          # container_name was removed for scalability (WILDBO-SCAL-02).
+          # A network alias round-robins across replicas; a container_name
+          # cannot exist more than once.
+          - open-security-tools-worker
     healthcheck:
       test: ["CMD-SHELL", "celery -A app.celery_app inspect ping"]
       interval: 30s
@@ -118,7 +196,7 @@ services:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-tools-flower
     restart: unless-stopped
     security_opt:
@@ -127,13 +205,16 @@ services:
     ports:
       - "127.0.0.1:5555:5555"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # app.config.Settings requires API_KEY (shared with api/tools-worker);
       # without it flower crashes on startup with "api_key Field required".
       - API_KEY=${API_KEY}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
     depends_on:
-      - wildbox-redis
-      - tools-worker
+      wildbox-redis:
+        condition: service_healthy
+      tools-worker:
+        condition: service_started
     networks:
       - wildbox
     # Override the image's HEALTHCHECK (curl :8000/health) — flower serves its
@@ -150,23 +231,52 @@ services:
       context: ./open-security-data
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
-    container_name: open-security-data
+        shared: ./open-security-shared
+    # No container_name: a fixed name makes `docker compose up --scale`
+    # fail outright, so the first scaling action an operator reaches for was
+    # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
+    # resolves upstreams by *service* name through Docker's DNS, which load-
+    # balances across replicas, so nothing depended on the fixed name.
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8002:8002"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # app/config.py refuses to start without it when ENVIRONMENT is
+      # production, which .env.example sets. Nothing passed it, so a freshly
+      # generated .env produced a data service that crash-looped on
+      # "SECRET_KEY must be set in production".
+      - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     networks:
-      - wildbox
+      wildbox:
+        aliases:
+          # Keeps the hostname the gateway's upstreams use resolvable after
+          # container_name was removed for scalability (WILDBO-SCAL-02).
+          # A network alias round-robins across replicas; a container_name
+          # cannot exist more than once.
+          - open-security-data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -179,19 +289,27 @@ services:
       context: ./open-security-data
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-data-scheduler
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
     command: python -m app.scheduler.main
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # app/config.py refuses to start without it when ENVIRONMENT is
+      # production, which .env.example sets. Nothing passed it, so a freshly
+      # generated .env produced a data service that crash-looped on
+      # "SECRET_KEY must be set in production".
+      - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      - postgres
-      - data
+      postgres:
+        condition: service_healthy
+      data:
+        condition: service_started
     networks:
       - wildbox
     healthcheck:
@@ -209,6 +327,18 @@ services:
       dockerfile: Dockerfile
     container_name: open-security-gateway
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     security_opt:
       - no-new-privileges:true
     ports:
@@ -222,12 +352,17 @@ services:
       # is provided (mount real certs here in production)
       - ./open-security-gateway/ssl:/etc/ssl/wildbox
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
       - WILDBOX_ENV=${WILDBOX_ENV:-development}
       - GATEWAY_LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
       - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8001}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
+      # auth_handler.lua reads this; .env.example documents it, but nothing
+      # passed it in, so the limit was always the 10000/hour built-in default
+      # and the setting had no effect wherever it was written.
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
       # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
       # (only relevant when the optional "automations" profile is enabled).
@@ -235,12 +370,32 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
     networks:
       - wildbox
+    # Every service whose hostname appears in an `upstream` block of
+    # nginx/conf.d/wildbox_gateway.conf must be listed here.
+    #
+    # nginx resolves upstream hostnames once, when it loads the configuration,
+    # and treats a name it cannot resolve as fatal: "host not found in upstream
+    # ... " and the process exits. With `restart: unless-stopped` the gateway
+    # then crash-loops. So a single missing backend does not degrade one route,
+    # it takes the whole gateway down. This list used to name five of the nine
+    # upstreams, so `docker compose up gateway` -- or any partial stack -- left
+    # the gateway restarting forever.
+    #
+    # The same applies at runtime: stopping one backend and restarting the
+    # gateway kills it. Making a single backend non-fatal means switching
+    # proxy_pass to a variable plus `resolver 127.0.0.11`, which defers
+    # resolution to request time; that is a larger change than this one and is
+    # not done here.
     depends_on:
       - wildbox-redis
       - identity
       - guardian
       - responder
       - agents
+      - api
+      - data
+      - cspm
+      - dashboard
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -254,6 +409,18 @@ services:
       dockerfile: Dockerfile.dev
     container_name: open-security-dashboard
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     security_opt:
       - no-new-privileges:true
     ports:
@@ -263,6 +430,7 @@ services:
       - /app/node_modules
       - /app/.next
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # This stack runs the Next.js dev server (Dockerfile.dev -> next dev),
       # so NODE_ENV must be development; production here breaks dev-mode CSP/HMR.
       - NODE_ENV=${NODE_ENV:-development}
@@ -289,8 +457,11 @@ services:
       wildbox:
         aliases:
           - dashboard
+    # `gateway` deliberately absent here. It is the *browser* that talks to the
+    # gateway, not this container at start-up, and the edge created a cycle:
+    # nginx must resolve open-security-dashboard before it will load its
+    # configuration at all, so each waited for the other.
     depends_on:
-      - gateway
       - identity
     # node is always present in the image; use it (no curl in node:18-alpine).
     healthcheck:
@@ -306,6 +477,7 @@ services:
     container_name: wildbox-postgres
     restart: unless-stopped
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB:-identity}
@@ -339,7 +511,19 @@ services:
     image: redis:7-alpine
     container_name: wildbox-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    # maxmemory-policy is noeviction, NOT allkeys-lru.
+    #
+    # This instance is not a cache: it holds the only copy of CSPM scan state,
+    # responder run state and agents task ownership. Under allkeys-lru those
+    # records were silently deleted when memory filled -- a completed scan
+    # ceased to exist, and a running playbook lost the ownership key that
+    # is_run_owner fails closed on (WILDBO-DATA-04). noeviction makes an
+    # over-capacity write fail loudly so the service can report it, which is
+    # backpressure rather than data loss (WILDBO-SCAL-05).
+    #
+    # The ceiling is raised too: 512MB was shared between that authoritative
+    # state and four services' Celery/dramatiq queues.
+    command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-1gb} --maxmemory-policy noeviction --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     deploy:
       resources:
         limits:
@@ -365,15 +549,30 @@ services:
       context: ./open-security-guardian
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-guardian
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8013:8013"
     environment:
-      - SECRET_KEY=${GUARDIAN_SECRET_KEY}
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      # :? so an unset value fails compose loudly instead of starting the
+      # service with SECRET_KEY="", which Django rejects at boot anyway.
+      - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -386,8 +585,15 @@ services:
     volumes:
       - guardian_logs:/app/logs
     depends_on:
-      - postgres
-      - wildbox-redis
+      # condition: service_healthy, not bare start-order. Compose starts a
+      # service as soon as its dependency's container exists, not when Postgres
+      # accepts connections or Redis has loaded its AOF -- so the stack
+      # converged by crash-looping, which made a real dependency failure
+      # indistinguishable from ordinary startup churn (WILDBO-REL-04).
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
     networks:
       - wildbox
     healthcheck:
@@ -404,22 +610,42 @@ services:
       context: ./open-security-responder
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-responder
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8018:8018"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      - postgres
-      - wildbox-redis
+      # condition: service_healthy, not bare start-order. Compose starts a
+      # service as soon as its dependency's container exists, not when Postgres
+      # accepts connections or Redis has loaded its AOF -- so the stack
+      # converged by crash-looping, which made a real dependency failure
+      # indistinguishable from ordinary startup churn (WILDBO-REL-04).
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
     networks:
       - wildbox
     healthcheck:
@@ -438,27 +664,55 @@ services:
       context: ./open-security-cspm
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
-    container_name: open-security-cspm
+        shared: ./open-security-shared
+    # No container_name: a fixed name makes `docker compose up --scale`
+    # fail outright, so the first scaling action an operator reaches for was
+    # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
+    # resolves upstreams by *service* name through Docker's DNS, which load-
+    # balances across replicas, so nothing depended on the fixed name.
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8019:8019"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
       # on startup with a pydantic "secret_key Field required" error.
-      - SECRET_KEY=${CSPM_SECRET_KEY}
+      - SECRET_KEY=${CSPM_SECRET_KEY:?CSPM_SECRET_KEY is required}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
       - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
       - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      # Encrypts cloud credentials before they are written to Redis, so they are
+      # not recoverable from the AOF on the wildbox_redis_data volume
+      # (WILDBO-SEC-02). Required: the service refuses to start a scan without it.
+      - CSPM_CREDENTIAL_KEY=${CSPM_CREDENTIAL_KEY:?CSPM_CREDENTIAL_KEY is required}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      - wildbox-redis
+      wildbox-redis:
+        condition: service_healthy
     networks:
-      - wildbox
+      wildbox:
+        aliases:
+          # Keeps the hostname the gateway's upstreams use resolvable after
+          # container_name was removed for scalability (WILDBO-SCAL-02).
+          # A network alias round-robins across replicas; a container_name
+          # cannot exist more than once.
+          - open-security-cspm
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8019/health"]
       interval: 30s
@@ -489,14 +743,27 @@ services:
       context: ./open-security-agents
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-agents
     restart: unless-stopped
+    # Resource bound. Only postgres and redis used to carry one, so a
+    # memory-hungry tool could consume the host and take the other
+    # containers with it (WILDBO-OPS-02). Sized for ADR-001's 'Standard'
+    # tier; raise via the prod overlay for larger deployments.
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
     security_opt:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:8006:8006"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       # Claude (Anthropic) — analysis is optional; the service starts without a
       # key and analysis tasks fail gracefully until one is set.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -511,8 +778,10 @@ services:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
-      - wildbox-redis
-      - api
+      wildbox-redis:
+        condition: service_healthy
+      api:
+        condition: service_started
     networks:
       - wildbox
     healthcheck:
@@ -533,7 +802,7 @@ services:
       context: ./open-security-sensor
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
     security_opt:
@@ -541,7 +810,12 @@ services:
     ports:
       - "127.0.0.1:8004:8004"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
+      # Enables the sensor's local API. Unset, _require_auth fails closed and
+      # every route but /health answers 503, which left the sensor running and
+      # unusable.
+      - SENSOR_API_KEY=${SENSOR_API_KEY:?SENSOR_API_KEY is required}
       - PYTHONPATH=/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -582,6 +856,7 @@ services:
       # docker network by service name. Matches tools-flower (also 127.0.0.1).
       - "127.0.0.1:5678:5678"
     environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
@@ -615,8 +890,75 @@ services:
       timeout: 10s
       retries: 3
 
+  # ============================================================================
+  # Scheduled backups (profile: backup)
+  # ============================================================================
+  # Nothing used to invoke backup_postgres.sh: no compose service, no CI job, no
+  # Makefile target, no cron entry -- so the recovery point objective was
+  # "whenever a human remembers" (WILDBO-DATA-05).
+  #
+  #   docker compose --profile backup up -d
+  backup:
+    # Must match the server major in the `postgres` service above: pg_restore
+    # from a newer major can emit SQL the older server rejects, which turns a
+    # restore drill into a surprise at the worst possible moment.
+    image: postgres:15-alpine
+    profiles: ["backup"]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_HOST=wildbox-postgres
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      - REDIS_HOST=wildbox-redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      - BACKUP_DIR=/backups/postgres
+      - BACKUP_RETENTION=${BACKUP_RETENTION:-30}
+      - BACKUP_INTERVAL_SECONDS=${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./scripts:/scripts:ro
+      - wildbox_backups:/backups
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        apk add --no-cache bash redis >/dev/null 2>&1 || true
+        while true; do
+          echo "[backup] starting run at $$(date -Iseconds)"
+          bash /scripts/backup_postgres.sh || echo "[backup] FAILED"
+          sleep "$${BACKUP_INTERVAL_SECONDS}"
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - wildbox
+
+  # ============================================================================
+  # Monitoring (profile: monitoring)
+  # ============================================================================
+  # The deployed stack contained no prometheus, grafana or alertmanager, so
+  # nothing watched the system when nobody was looking at it, and every failure
+  # was found by a human noticing something (WILDBO-OBS-04). The services now
+  # expose Prometheus exposition format at /metrics.
+  #
+  #   docker compose --profile monitoring up -d
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - wildbox
+
 volumes:
   postgres_data:
+  wildbox_backups:
+  prometheus_data:
   wildbox_redis_data:
   guardian_logs:
   # Service-specific volumes

@@ -16,44 +16,29 @@ import pytest
 
 os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 
-APP_DIR = Path(__file__).resolve().parents[2] / "app"
+SERVICE_ROOT = Path(__file__).resolve().parents[2]
+APP_DIR = SERVICE_ROOT / "app"
 TOOL_DIR = APP_DIR / "tools" / "ct_log_scanner"
 
-sys.path.insert(0, str(APP_DIR))
+# The service root, not APP_DIR: `import app.tools...` needs the directory that
+# *contains* the app package on sys.path. Inserting APP_DIR itself worked only
+# under `python -m pytest`, which puts the working directory on sys.path too;
+# CI runs plain `pytest`, where it failed with
+# ModuleNotFoundError: No module named 'app'.
+sys.path.insert(0, str(SERVICE_ROOT))
 
 
-def _load(name, path, extra_modules=None):
-    """Load a tool module under a unique name.
+# Tools are real packages, so a plain import is all that is needed. This
+# file used to carry its own copy of the loader's sys.modules injection,
+# because every tool had a bare top-level `schemas` module that collided
+# across test files (WILDBO-ARCH-03/ARCH-06).
+from app.tools.ct_log_scanner import main as _tool_main  # noqa: E402
+from app.tools.ct_log_scanner import schemas as _tool_schemas  # noqa: E402
+from app import standardized_schemas as _std_schemas  # noqa: E402
 
-    Every tool package has a module literally called `schemas`, and the tool
-    code imports it as a bare top-level `from schemas import ...`. Registering
-    that name globally (sys.path.insert of the tool dir) makes the FIRST test
-    module to import win for all the others — which is why this loader
-    registers `schemas` only for the duration of the tool import and removes
-    it afterwards.
-    """
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    injected = list((extra_modules or {}).items())
-    for key, value in injected:
-        sys.modules[key] = value
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        for key, _ in injected:
-            sys.modules.pop(key, None)
-    return module
-
-
-_std = _load("ct_standardized_schemas", APP_DIR / "standardized_schemas.py")
-_schemas = _load(
-    "ct_log_scanner_schemas",
-    TOOL_DIR / "schemas.py",
-    {"standardized_schemas": _std},
-)
-ct_main = _load("ct_log_scanner_main", TOOL_DIR / "main.py", {"schemas": _schemas})
+_std = _std_schemas
+_schemas = _tool_schemas
+ct_main = _tool_main
 CTLogScannerInput = _schemas.CTLogScannerInput
 
 NOW = datetime(2026, 8, 3, tzinfo=timezone.utc)

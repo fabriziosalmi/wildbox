@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2",
     "passlib[bcrypt]>=1.7",
     "python-jose[cryptography]>=3.3",
+    "prometheus-client>=0.20",
 ]
 
 [project.optional-dependencies]

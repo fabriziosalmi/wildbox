@@ -3,7 +3,6 @@
 from pydantic_settings import BaseSettings
 from pydantic import Field, validator, SecretStr
 from typing import Optional, List, Union
-import secrets
 import os
 
 
@@ -13,7 +12,13 @@ class Settings(BaseSettings):
     # Security settings
     api_key: SecretStr = Field(..., min_length=20, description="API key for authentication")
     api_key_name: str = Field(default="X-API-Key", description="Header name for API key")
-    secret_key: SecretStr = Field(default_factory=lambda: secrets.token_urlsafe(32), description="Secret key for sessions")
+    # NOTE: there is deliberately no `secret_key` setting. One used to exist,
+    # described as "Secret key for sessions" and defaulting to a fresh
+    # secrets.token_urlsafe(32) per process -- so it differed between the API and
+    # the worker and changed on every restart, and no code ever read it. It
+    # implied session signing that does not exist (WILDBO-CONF-05). If sessions
+    # are added, declare it required (Field(..., min_length=32)) as identity and
+    # CSPM do, so a missing value fails at startup instead of being invented.
     
     # Server settings
     host: str = Field(default="127.0.0.1", description="Host to bind the server")
@@ -30,7 +35,17 @@ class Settings(BaseSettings):
     cors_allow_credentials: bool = Field(default=True, description="Allow CORS credentials")
     
     # Rate limiting
-    rate_limit_requests: int = Field(default=100, description="Requests per minute per IP")
+    execution_history_limit: int = Field(
+        default=1000,
+        ge=1,
+        description="Executions retained in the in-process history ring buffer",
+    )
+    # NOTE: docker-compose.yml supplies RATE_LIMIT_REQUESTS and its value wins,
+    # so the effective limit was 500 while this line said 100 -- two defaults for
+    # one key, in two files, with no way to print the effective configuration
+    # (WILDBO-CONF-03). This default now matches the compose value; change both
+    # together, or drop this one and make the variable required.
+    rate_limit_requests: int = Field(default=500, description="Requests per minute per IP")
     rate_limit_window: int = Field(default=60, description="Rate limit window in seconds")
     enable_rate_limiting: bool = Field(default=True, description="Enable rate limiting")
     

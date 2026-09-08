@@ -23,7 +23,7 @@ import ipaddress
 import logging
 from typing import Dict, List, Optional, Tuple
 
-from schemas import (
+from .schemas import (
     IoTDevice,
     IoTSecurityScannerInput,
     IoTSecurityScannerOutput,

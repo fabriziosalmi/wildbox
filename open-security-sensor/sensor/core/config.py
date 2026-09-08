@@ -185,6 +185,13 @@ def _apply_env_overrides(config_data: Dict[str, Any]) -> Dict[str, Any]:
         'SENSOR_LOGGING_FILE': ['logging', 'file'],
         'SENSOR_PERFORMANCE_MAX_MEMORY': ['performance', 'max_memory_mb'],
         'SENSOR_PERFORMANCE_MAX_CPU': ['performance', 'max_cpu_percent'],
+        # The local API's own key. Without it _require_auth fails closed and
+        # every route but /health answers 503 "API authentication is not
+        # configured on this sensor" -- which is what the shipped
+        # config.yaml.example (api_key: null) produced, so the sensor's entire
+        # local API was inert in the default deployment with no environment
+        # variable able to switch it on.
+        'SENSOR_API_KEY': ['network', 'api_key'],
     }
     
     for env_var, config_path in env_mappings.items():

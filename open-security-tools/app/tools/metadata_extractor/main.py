@@ -18,14 +18,8 @@ import mimetypes
 import re
 from urllib.parse import urlparse
 
-try:
-    from schemas import (MetadataExtractorInput, MetadataExtractorOutput, FileInfo,
-                         EXIFData, DocumentProperties, HiddenData, SecurityAnalysis)
-except ImportError:
-    from schemas import (MetadataExtractorInput, MetadataExtractorOutput, FileInfo,
-                        EXIFData, DocumentProperties, HiddenData, SecurityAnalysis)
-
-
+from .schemas import (MetadataExtractorInput, MetadataExtractorOutput, FileInfo,
+                     EXIFData, DocumentProperties, HiddenData, SecurityAnalysis)
 class MetadataExtractor:
     """File Metadata Extraction and Analysis Tool"""
     

@@ -3,16 +3,29 @@ Guardian Monitoring Test Module
 Tests assets, vulnerabilities, Celery task management
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
 
-class GuardianMonitoringTester:
+class TestGuardianMonitoring:
     """Comprehensive tests for Guardian Monitoring Service (Port 8013)"""
     
-    def __init__(self, base_url: str = "http://localhost:8013"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013")
         self.base_url = base_url
         self.results = []
         
@@ -25,7 +38,7 @@ class GuardianMonitoringTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test Guardian service health"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -38,13 +51,13 @@ class GuardianMonitoringTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Guardian Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Guardian Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_assets_database_access(self) -> bool:
+    async def test_assets_database_access(self) -> None:
         """Test access to assets database"""
         try:
             # Test assets endpoint
@@ -67,13 +80,13 @@ class GuardianMonitoringTester:
                 passed = True
                 
             self.log_test_result("Assets Database Access", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Assets Database Access", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_vulnerabilities_database_access(self) -> bool:
+    async def test_vulnerabilities_database_access(self) -> None:
         """Test access to vulnerabilities database"""
         try:
             # Test vulnerabilities endpoint
@@ -96,13 +109,13 @@ class GuardianMonitoringTester:
                 passed = True
                 
             self.log_test_result("Vulnerabilities Database Access", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Vulnerabilities Database Access", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_asset_creation_authorization(self) -> bool:
+    async def test_asset_creation_authorization(self) -> None:
         """Test asset creation with authorization"""
         try:
             # Test asset creation
@@ -134,13 +147,13 @@ class GuardianMonitoringTester:
                 details = f"Asset creation endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Asset Creation with Authorization", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Asset Creation with Authorization", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_celery_task_trigger(self) -> bool:
+    async def test_celery_task_trigger(self) -> None:
         """Test asynchronous Celery task triggering"""
         try:
             # Test task endpoints that might trigger Celery tasks
@@ -182,13 +195,13 @@ class GuardianMonitoringTester:
                 details = "No Celery task endpoints found"
                 
             self.log_test_result("Celery Task Triggering", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Celery Task Triggering", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_monitoring_dashboard_access(self) -> bool:
+    async def test_monitoring_dashboard_access(self) -> None:
         """Test monitoring dashboard accessibility"""
         try:
             # Test dashboard/admin endpoints
@@ -220,16 +233,16 @@ class GuardianMonitoringTester:
                 details = "No monitoring dashboard endpoints found"
                 
             self.log_test_result("Monitoring Dashboard Access", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Monitoring Dashboard Access", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all Guardian monitoring tests"""
-    tester = GuardianMonitoringTester()
+    tester = TestGuardianMonitoring()
     
     # Run tests in sequence
     tests = [

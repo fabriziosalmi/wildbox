@@ -12,6 +12,8 @@ Usage:
     make generate-secrets
 """
 
+import os
+import re
 import secrets
 import string
 import sys
@@ -28,26 +30,63 @@ def generate_base64(length: int = 32) -> str:
     return secrets.token_urlsafe(length)
 
 
+# Punctuation that survives a .env round-trip, unquoted.
+#
+# These values are written to .env, which is read by docker compose *and*
+# sourced by shell scripts and CI steps. Anything with a meaning in either
+# context is out:
+#
+#   $   compose interpolates it. A password containing "$S46sP..." made compose
+#       warn 'The "S46sP" variable is not set' and hand the container a
+#       different, truncated password than the one in .env, silently.
+#   & * ! ; | ( ) < > ` \ ' "   the shell acts on them. `. ./.env` on a value
+#       containing "&" split the line and failed with
+#       './.env: line 84: kMmH: command not found'.
+#   #   starts a comment in .env parsers when it follows whitespace.
+#
+# What is left is still a 66-character alphabet, which at 20 characters is far
+# more entropy than anything here needs.
+# RFC 3986 "unreserved" punctuation, and nothing else.
+#
+# These values have to survive three different parsers, and the intersection is
+# narrow:
+#
+#   shell   `. ./.env` executes the file, so & * ! ; | ( ) < > ` \ ' " are out.
+#           A password containing "&" failed with
+#           './.env: line 84: kMmH: command not found'.
+#   compose interpolates $NAME, so "$" is out -- with it, the container got a
+#           different, truncated password than the one in .env, silently.
+#   URL     POSTGRES_PASSWORD is embedded in postgresql://user:password@host
+#           DSNs. "@" ends the userinfo component, so a password containing one
+#           made every service fail with
+#           'FATAL: password authentication failed for user "postgres"'
+#           while the value in .env was correct. "%" starts a percent-escape
+#           and "+" decodes as a space in some drivers.
+#
+# What survives all three is A-Za-z0-9 plus -._~ : 66 characters, which at 24
+# of them is around 145 bits. Far more than anything here needs.
+SAFE_PUNCTUATION = "-._~"
+
+
 def generate_password(length: int = 24) -> str:
     """Generate strong alphanumeric password with special characters"""
-    # Use a mix of letters, digits, and safe special characters
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*-_=+"
-    
+    alphabet = string.ascii_letters + string.digits + SAFE_PUNCTUATION
+
     # Ensure password has at least one of each type
     password = [
         secrets.choice(string.ascii_uppercase),
         secrets.choice(string.ascii_lowercase),
         secrets.choice(string.digits),
-        secrets.choice("!@#$%^&*-_=+")
+        secrets.choice(SAFE_PUNCTUATION),
     ]
-    
+
     # Fill the rest with random chars
     password += [secrets.choice(alphabet) for _ in range(length - 4)]
-    
+
     # Shuffle to avoid predictable pattern
     secrets.SystemRandom().shuffle(password)
-    
-    return ''.join(password)
+
+    return "".join(password)
 
 
 def generate_api_key(prefix: str = "prod") -> str:
@@ -57,62 +96,144 @@ def generate_api_key(prefix: str = "prod") -> str:
 
 def main():
     """Main secret generation logic"""
-    
+
     # Paths
     project_root = Path(__file__).parent.parent
-    env_template_path = project_root / '.env.template'
-    env_path = project_root / '.env'
-    
+    env_template_path = project_root / ".env.template"
+    env_path = project_root / ".env"
+
     # Check if template exists
     if not env_template_path.exists():
         print(f"❌ ERROR: Template file not found: {env_template_path}")
         print("   Expected location: .env.template in project root")
         sys.exit(1)
-    
-    # Warn if .env already exists
+
+    # Warn if .env already exists.
+    #
+    # The prompt used to be unconditional, which made the documented setup
+    # order -- `cp .env.template .env` and then `make generate-secrets` --
+    # abort with "EOF when reading a line" whenever stdin was not a terminal
+    # (CI, a script, a heredoc), leaving behind a .env whose every secret was
+    # empty. --force skips the prompt; a non-interactive run without it now
+    # refuses cleanly instead of half-finishing.
     if env_path.exists():
+        force = "--force" in sys.argv or "-f" in sys.argv
         print(f"⚠️  WARNING: {env_path} already exists!")
-        response = input("   Overwrite with new secrets? This cannot be undone! (yes/no): ")
-        if response.lower() not in ['yes', 'y']:
-            print("❌ Aborted. Existing .env file preserved.")
-            sys.exit(0)
-        
+        if not force:
+            if not sys.stdin.isatty():
+                print(
+                    "❌ Refusing to overwrite a .env non-interactively.\n"
+                    "   Re-run with --force to replace it, or delete it first."
+                )
+                sys.exit(1)
+            response = input(
+                "   Overwrite with new secrets? This cannot be undone! (yes/no): "
+            )
+            if response.lower() not in ["yes", "y"]:
+                print("❌ Aborted. Existing .env file preserved.")
+                sys.exit(0)
+
         # Backup existing .env
-        backup_path = env_path.with_suffix('.env.backup')
+        backup_path = env_path.with_suffix(".env.backup")
         import shutil
+
         shutil.copy2(env_path, backup_path)
         print(f"✅ Backed up existing .env to {backup_path}")
-    
+
     print("\n🔐 Generating secure random secrets...\n")
-    
+
     # Generate all secrets
     # CodeQL[py/clear-text-storage-sensitive-data] - Intentional: This script generates secrets, must store temporarily
     secrets_map = {
-        'JWT_SECRET_KEY': generate_hex(32),
-        'POSTGRES_PASSWORD': generate_base64(32),
-        'GATEWAY_INTERNAL_SECRET': generate_hex(32),
-        'API_KEY': generate_api_key('prod'),
-        'INITIAL_ADMIN_PASSWORD': generate_password(24),
-        'N8N_BASIC_AUTH_PASSWORD': generate_password(16),
-        'N8N_ENCRYPTION_KEY': generate_hex(32),
-        'NEXTAUTH_SECRET': generate_base64(32),
-        'GRAFANA_ADMIN_PASSWORD': generate_password(16),
+        "JWT_SECRET_KEY": generate_hex(32),
+        "POSTGRES_PASSWORD": generate_base64(32),
+        "GATEWAY_INTERNAL_SECRET": generate_hex(32),
+        "API_KEY": generate_api_key("prod"),
+        "INITIAL_ADMIN_PASSWORD": generate_password(24),
+        "N8N_BASIC_AUTH_PASSWORD": generate_password(16),
+        "N8N_ENCRYPTION_KEY": generate_hex(32),
+        "NEXTAUTH_SECRET": generate_base64(32),
+        # Encrypts cloud credentials before CSPM writes them to Redis
+        # (WILDBO-SEC-02). Required; the service refuses to scan without it.
+        "CSPM_CREDENTIAL_KEY": generate_base64(32),
+        # Keys the HMAC for stored API-key digests, kept separate from
+        # JWT_SECRET_KEY so the two rotate independently (WILDBO-SEC-01).
+        "API_KEY_HASH_SECRET": generate_hex(32),
+        "GRAFANA_ADMIN_PASSWORD": generate_password(16),
+        # Both are declared ${VAR:?} in docker-compose.yml -- the stack will not
+        # start without them -- but neither was generated here, so `make setup`
+        # produced a .env that `docker compose up` rejected.
+        "REDIS_PASSWORD": generate_password(24),
+        "FLOWER_PASSWORD": generate_password(20),
+        # Passed to guardian and cspm as SECRET_KEY. Both refuse to start
+        # without one; unset, compose supplied an empty string instead.
+        "GUARDIAN_SECRET_KEY": generate_hex(32),
+        "CSPM_SECRET_KEY": generate_hex(32),
+        # Authenticates the sensor's local API; unset, it answers 503 on
+        # everything but /health.
+        "SENSOR_API_KEY": generate_hex(32),
+        "DATA_SECRET_KEY": generate_hex(32),
     }
-    
+
     # Read template
-    with open(env_template_path, 'r', encoding='utf-8') as f:
+    with open(env_template_path, "r", encoding="utf-8") as f:
         content = f.read()
-    
-    # Replace empty secret placeholders with generated values
+
+    # Replace the value of every secret this script owns, whatever is there.
+    #
+    # This used to substitute only `KEY=` followed by a newline, i.e. an empty
+    # value. The template it reads carries descriptive placeholders instead --
+    # JWT_SECRET_KEY=generate-a-secure-random-jwt-secret-key-here,
+    # REDIS_PASSWORD=CHANGE_ME_generate_a_secure_redis_password -- so those keys
+    # were left untouched and `make validate-secrets` then rejected the .env the
+    # generator had just produced. Generating a secret means replacing whatever
+    # placeholder is in the way.
+    missing = []
     for key, value in secrets_map.items():
-        # Match pattern: KEY= followed by newline (empty value)
-        # This preserves commented-out lines and lines with values
-        content = content.replace(f'{key}=\n', f'{key}={value}\n')
-    
-    # Write .env file
-    with open(env_path, 'w', encoding='utf-8') as f:
+        pattern = re.compile(rf"(?m)^{re.escape(key)}=.*$")
+        content, n = pattern.subn(f"{key}={value}", content, count=1)
+        if n == 0:
+            missing.append(key)
+    if missing:
+        # A secret this script generates but the template does not declare would
+        # silently never reach .env.
+        print(f"⚠️  Not present in the template, appending: {', '.join(missing)}")
+        content = (
+            content.rstrip("\n")
+            + "\n\n"
+            + "\n".join(f"{k}={secrets_map[k]}" for k in missing)
+            + "\n"
+        )
+
+    # Substitute the database password into the DSNs that embed it.
+    #
+    # .env.example ships four connection strings of the form
+    # postgresql://postgres:YOUR_DB_PASSWORD@postgres:5432/<db>. They are not
+    # keys in secrets_map, so filling POSTGRES_PASSWORD left every one of them
+    # holding the literal placeholder: PostgreSQL started with the generated
+    # password and every service tried to connect with "YOUR_DB_PASSWORD".
+    # `docker compose config` is happy with that -- the values are present and
+    # non-empty -- so it only surfaces as
+    #
+    #     FATAL: password authentication failed for user "postgres"
+    #
+    # once the stack is running, which is where it was found.
+    db_password = secrets_map["POSTGRES_PASSWORD"]
+    if "YOUR_DB_PASSWORD" in content:
+        content = content.replace("YOUR_DB_PASSWORD", db_password)
+
+    # Write .env with owner-only permissions.
+    #
+    # This used to be a plain open(...,'w'), so the file took the process umask
+    # -- typically 0644 -- and every local user could read the entire secret set,
+    # including GATEWAY_INTERNAL_SECRET, the only thing preventing forged
+    # identity headers (WILDBO-SEC-03). backup_postgres.sh already does this
+    # correctly for its .pgpass; the generator did not.
+    fd = os.open(env_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(content)
-    
+    os.chmod(env_path, 0o600)
+
     print("✅ Successfully generated .env with secure random secrets!\n")
     print("📊 Generated secrets:")
     print("   • JWT_SECRET_KEY")
@@ -123,24 +244,29 @@ def main():
     print("   • N8N_BASIC_AUTH_PASSWORD")
     print("   • N8N_ENCRYPTION_KEY")
     print("   • NEXTAUTH_SECRET")
+    print("   • CSPM_CREDENTIAL_KEY")
+    print("   • API_KEY_HASH_SECRET")
     print("   • GRAFANA_ADMIN_PASSWORD")
-    
+
     print("\n📋 Next steps:")
-    print("   1. Review .env and add any optional values (Stripe keys, OpenAI key, etc.)")
+    print(
+        "   1. Review .env and add any optional values (Stripe keys, OpenAI key, etc.)"
+    )
     print("   2. Run validation:  make validate-secrets")
-    print("   3. Start services:  docker-compose up -d")
-    
+    print("   3. Start services:  make start        (development)")
+    print("                       make start-prod   (production)")
+
     print("\n🔒 Security reminders:")
     print("   • NEVER commit .env to version control")
     print("   • Store production secrets in a password manager")
     print("   • Rotate secrets regularly (every 90 days recommended)")
     print("   • Change INITIAL_ADMIN_PASSWORD after first login")
-    
+
     print(f"\n✅ File created: {env_path}")
     print(f"   File size: {env_path.stat().st_size} bytes")
-    
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
@@ -149,5 +275,6 @@ if __name__ == '__main__':
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         sys.exit(1)

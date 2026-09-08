@@ -5,11 +5,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
-try:
-    from schemas import PortScannerInput, PortScannerOutput, PortScanResult
-except ImportError:
-    from schemas import PortScannerInput, PortScannerOutput, PortScanResult
-
+from .schemas import PortScannerInput, PortScannerOutput, PortScanResult
 logger = logging.getLogger(__name__)
 
 def validate_target(target: str) -> str:

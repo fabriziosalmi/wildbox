@@ -4,11 +4,7 @@ import requests
 import io
 from datetime import datetime
 from typing import List, Dict, Tuple
-try:
-    from schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
-except ImportError:
-    from schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
-
+from .schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
 # Test file configurations
 TEST_FILES = {
     # Extension bypass tests

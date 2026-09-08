@@ -3,16 +3,32 @@ Data Integration Test Module
 Tests IOC lookup, threat intel feeds, team-scoped data
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
 from typing import Dict, List, Any, Optional
 
 
-class DataIntegrationTester:
+class TestDataIntegration:
     """Comprehensive tests for Security Data Service (Port 8002)"""
     
-    def __init__(self, base_url: str = "http://localhost:8002"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        # /health is served directly; everything else goes through the gateway,
+        # which is where authentication and team scoping happen. The paths below
+        # are the ones in the service's OpenAPI document -- the previous set
+        # (/api/v1/ioc/lookup, /api/v1/feeds/status, /api/v1/data/indicators)
+        # existed nowhere, so every assertion here was a 404 dressed up as a
+        # verdict about the data service.
+        self.direct_url = os.getenv("DATA_SERVICE_URL", "http://localhost:8002")
+        self.headers = {"X-API-Key": os.getenv("TEST_API_KEY", "")}
+        base_url = os.getenv("GATEWAY_URL", "https://localhost") + "/api/v1/data"
         self.base_url = base_url
         self.results = []
         
@@ -25,10 +41,10 @@ class DataIntegrationTester:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test data service health"""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=10)
+            response = requests.get(f"{self.direct_url}/health", timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -38,21 +54,23 @@ class DataIntegrationTester:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Data Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Data Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_ioc_lookup_json_structure(self) -> bool:
+    async def test_ioc_lookup_json_structure(self) -> None:
         """Test IOC lookup with valid JSON structure"""
         try:
             # Test domain lookup
+            # BulkLookupItem: {"indicator_type": ..., "value": ...}. The old
+            # payload used "type", which the endpoint rejects.
             test_indicators = [
-                {"type": "domain", "value": "test.example.com"},
-                {"type": "ip", "value": "192.168.1.1"},
-                {"type": "hash", "value": "d41d8cd98f00b204e9800998ecf8427e"},
-                {"type": "url", "value": "https://test.example.com/path"}
+                {"indicator_type": "domain", "value": "test.example.com"},
+                {"indicator_type": "ip_address", "value": "192.168.1.1"},
+                {"indicator_type": "file_hash", "value": "d41d8cd98f00b204e9800998ecf8427e"},
+                {"indicator_type": "url", "value": "https://test.example.com/path"},
             ]
             
             successful_lookups = 0
@@ -61,9 +79,10 @@ class DataIntegrationTester:
             for indicator in test_indicators:
                 try:
                     response = requests.post(
-                        f"{self.base_url}/api/v1/ioc/lookup",
-                        json=indicator,
-                        timeout=15
+                        f"{self.base_url}/indicators/lookup",
+                        json={"indicators": [indicator]},
+                        headers=self.headers,
+                        timeout=15,
                     )
                     
                     if response.status_code == 200:
@@ -93,53 +112,67 @@ class DataIntegrationTester:
                 details = "No valid JSON responses from IOC lookups"
                 
             self.log_test_result("IOC Lookup with Valid JSON Structure", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("IOC Lookup with Valid JSON Structure", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_threat_intel_feeds(self) -> bool:
+    async def test_threat_intel_feeds(self) -> None:
         """Test threat intelligence feed status (50+ sources)"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/feeds/status", timeout=15)
+            response = requests.get(f"{self.base_url}/sources", headers=self.headers, timeout=15)
             
             if response.status_code == 200:
                 feeds_data = response.json()
                 
                 # Check for feed information
-                if isinstance(feeds_data, dict):
-                    feed_count = len(feeds_data.get('feeds', []))
-                    active_feeds = len([f for f in feeds_data.get('feeds', []) 
-                                     if f.get('status') == 'active'])
-                    
-                    # Should have multiple threat intel feeds
-                    passed = feed_count >= 5  # At least some feeds
-                    
-                    if passed:
-                        details = f"{feed_count} feeds configured, {active_feeds} active"
-                    else:
-                        details = f"Only {feed_count} feeds found, expected 50+"
-                elif isinstance(feeds_data, list):
-                    feed_count = len(feeds_data)
-                    passed = feed_count >= 5
-                    details = f"{feed_count} feeds listed"
+                # What is verifiable here is the shape of the answer, not how
+                # many sources a given deployment has configured.
+                #
+                # The assertion used to be "at least 5 feeds, expected 50+".
+                # Nothing registers a source: app/collectors/sources.py defines
+                # seven collectors, /api/v1/sources is read-only, and no
+                # seeding path exists -- so a freshly deployed data service has
+                # zero sources and this asserted a number the product cannot
+                # produce. Configured sources are a deployment's data, not an
+                # invariant of the code.
+                if isinstance(feeds_data, list):
+                    sources = feeds_data
+                elif isinstance(feeds_data, dict):
+                    sources = feeds_data.get("sources") or feeds_data.get("feeds") or []
                 else:
-                    passed = True  # Different format but response received
-                    details = f"Feed status endpoint responding: {str(feeds_data)[:100]}"
+                    sources = None
+
+                passed = sources is not None
+                if not passed:
+                    details = f"Unexpected payload type: {type(feeds_data).__name__}"
+                else:
+                    # When a deployment has sources, each must be identifiable.
+                    malformed = [
+                        src
+                        for src in sources
+                        if not isinstance(src, dict) or not src.get("name")
+                    ]
+                    passed = not malformed
+                    details = (
+                        f"{len(sources)} source(s) listed, all named"
+                        if passed
+                        else f"{len(malformed)} source(s) without a name"
+                    )
             else:
                 # Check if endpoint exists but requires auth
                 passed = response.status_code in [401, 403]
                 details = f"Feed endpoint exists (HTTP {response.status_code})"
                 
             self.log_test_result("Threat Intel Feed Status (50+ Sources)", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Threat Intel Feed Status (50+ Sources)", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_team_scoped_data_insertion(self) -> bool:
+    async def test_team_scoped_data_insertion(self) -> None:
         """Test team-scoped data insertion and retrieval"""
         try:
             # Test data insertion (may require auth)
@@ -152,9 +185,10 @@ class DataIntegrationTester:
             
             # Try to insert data
             response = requests.post(
-                f"{self.base_url}/api/v1/data/indicators",
+                f"{self.base_url}/ingest",
                 json=test_data,
-                timeout=10
+                headers=self.headers,
+                timeout=10,
             )
             
             # Check response
@@ -176,56 +210,67 @@ class DataIntegrationTester:
                 details = f"Data endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Team-scoped Data Insertion", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Data Insertion", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_data_retrieval_scoping(self) -> bool:
+    async def test_data_retrieval_scoping(self) -> None:
         """Test team-scoped data retrieval"""
         try:
-            # Test data retrieval endpoints
+            # The read endpoints the service actually publishes. The previous
+            # list (/api/v1/data/indicators, /reports, /analysis) existed
+            # nowhere, and the assertion "any response except 404 means the
+            # endpoint exists" then reduced to "at least one of three made-up
+            # paths is not a 404" -- which nothing could satisfy.
             endpoints_to_test = [
-                "/api/v1/data/indicators",
-                "/api/v1/data/reports", 
-                "/api/v1/data/analysis"
+                "/indicators/search",
+                "/sources",
+                "/stats",
             ]
-            
+
             accessible_endpoints = 0
-            
+
             for endpoint in endpoints_to_test:
                 try:
-                    response = requests.get(f"{self.base_url}{endpoint}", timeout=10)
-                    
-                    # Any response except 404 means endpoint exists
+                    response = requests.get(
+                        f"{self.base_url}{endpoint}", headers=self.headers, timeout=10
+                    )
+                    # 2xx or an auth/validation answer both prove the route is
+                    # served; a 404 proves it is not.
                     if response.status_code != 404:
                         accessible_endpoints += 1
-                        
+
                 except Exception:
                     pass
-            
-            passed = accessible_endpoints > 0
+
+            # Every one of them, not "at least one": these are the service's
+            # documented read surface, and a missing one is a regression.
+            passed = accessible_endpoints == len(endpoints_to_test)
             
             if passed:
-                details = f"{accessible_endpoints}/{len(endpoints_to_test)} data endpoints accessible"
+                details = f"{accessible_endpoints}/{len(endpoints_to_test)} data endpoints served"
             else:
-                details = "No data retrieval endpoints found"
+                details = (
+                    f"only {accessible_endpoints}/{len(endpoints_to_test)} of the "
+                    f"documented read endpoints are served: {endpoints_to_test}"
+                )
                 
             self.log_test_result("Team-scoped Data Retrieval", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Data Retrieval", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_data_api_performance(self) -> bool:
+    async def test_data_api_performance(self) -> None:
         """Test data API response performance"""
         try:
             # Test response times for data operations
             endpoints = [
                 "/health",
-                "/api/v1/feeds/status"
+                "/api/v1/sources",
             ]
             
             total_response_time = 0
@@ -260,16 +305,16 @@ class DataIntegrationTester:
                 details = "No successful requests for performance test"
                 
             self.log_test_result("Data API Performance", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Data API Performance", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all data integration tests"""
-    tester = DataIntegrationTester()
+    tester = TestDataIntegration()
     
     # Run tests in sequence
     tests = [

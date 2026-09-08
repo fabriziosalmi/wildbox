@@ -1,1 +1,0 @@
-# Azure EVENTHUB Security Checks\n

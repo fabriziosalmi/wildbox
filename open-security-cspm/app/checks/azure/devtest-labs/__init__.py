@@ -1,1 +1,0 @@
-# Azure DEVTEST-LABS Security Checks\n

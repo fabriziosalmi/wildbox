@@ -8,7 +8,14 @@ version: '3.8'
 
 services:
   cspm:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-cspm
     restart: unless-stopped
     ports:
@@ -42,7 +49,14 @@ services:
       start_period: 60s
 
   celery-worker:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-cspm-worker
     restart: unless-stopped
     command: celery -A app.worker worker --loglevel=info --concurrency=4
@@ -65,7 +79,14 @@ services:
       - no-new-privileges:true
 
   celery-beat:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-cspm-scheduler
     restart: unless-stopped
     command: celery -A app.worker beat --loglevel=info
@@ -108,7 +129,14 @@ services:
 
   # Optional: Flower for monitoring Celery tasks (dev only)
   flower:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-cspm-flower
     restart: unless-stopped
     command: celery -A app.worker flower --port=5555 --basic-auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:?FLOWER_PASSWORD must be set}

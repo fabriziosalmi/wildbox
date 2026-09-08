@@ -9,11 +9,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 import re
 
-try:
-    from schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
-except ImportError:
-    from schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
-
+from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 logger = logging.getLogger(__name__)
 
 # Tool metadata

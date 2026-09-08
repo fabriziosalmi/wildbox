@@ -7,6 +7,7 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.logging_config import get_logger
+from open_security_shared.errors import REQUEST_ID_HEADER
 
 logger = get_logger(__name__)
 
@@ -15,9 +16,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Middleware to log all HTTP requests and responses."""
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        # Generate unique request ID
-        request_id = str(uuid.uuid4())
-        
+        # Correlation id: prefer the one the gateway put on the request so a
+        # single operation can be followed across services (WILDBO-OBS-05).
+        # Only mint one when this service is the entry point.
+        request_id = (
+            getattr(request.state, "request_id", None)
+            or request.headers.get(REQUEST_ID_HEADER)
+            or str(uuid.uuid4())
+        )
+
         # Add request ID to request state
         request.state.request_id = request_id
         

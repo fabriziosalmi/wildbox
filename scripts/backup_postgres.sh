@@ -29,7 +29,11 @@ POSTGRES_USER="${POSTGRES_USER:-postgres}"
 BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
 BACKUP_RETENTION="${BACKUP_RETENTION:-30}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-DATABASES="${DATABASES:-identity,data}"
+# All three databases scripts/init-databases.sql provisions. This defaulted to
+# "identity,data", silently omitting guardian -- eight Django apps' worth of
+# assets, vulnerabilities, compliance, remediation and reporting tables
+# (WILDBO-DATA-01).
+DATABASES="${DATABASES:-identity,data,guardian}"
 UPLOAD_S3=false
 
 # Parse arguments
@@ -68,6 +72,42 @@ echo "Host: $POSTGRES_HOST:$POSTGRES_PORT"
 echo "Databases: $DATABASES"
 echo "Backup dir: $BACKUP_DIR"
 echo ""
+
+# Redis holds the only copy of CSPM scan state, responder run state and agents
+# task ownership -- nothing used to copy it out at all, so a lost volume lost
+# that state permanently (WILDBO-DATA-01).
+backup_redis() {
+  if [ "${SKIP_REDIS:-false}" = "true" ]; then
+    echo "Skipping Redis backup (SKIP_REDIS=true)"
+    return 0
+  fi
+  local host="${REDIS_HOST:-wildbox-redis}"
+  local port="${REDIS_PORT:-6379}"
+  local out="${BACKUP_DIR}/redis_${TIMESTAMP}.rdb"
+
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    echo "  WARNING: redis-cli not found; skipping Redis backup"
+    return 0
+  fi
+  if [ -z "${REDIS_PASSWORD:-}" ]; then
+    echo "  WARNING: REDIS_PASSWORD not set; skipping Redis backup"
+    return 0
+  fi
+
+  echo "Backing up Redis (BGSAVE + dump)"
+  redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning BGSAVE >/dev/null
+  # Wait for the background save to finish before copying.
+  for _ in $(seq 1 60); do
+    if [ "$(redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence \
+            | tr -d '\r' | grep '^rdb_bgsave_in_progress:' | cut -d: -f2)" = "0" ]; then
+      break
+    fi
+    sleep 1
+  done
+  redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning --rdb "$out" >/dev/null
+  gzip -f "$out"
+  echo "  Created: ${out}.gz ($(du -h "${out}.gz" | cut -f1))"
+}
 
 # Backup each database
 IFS=',' read -ra DB_ARRAY <<< "$DATABASES"
@@ -114,6 +154,8 @@ for db in "${DB_ARRAY[@]}"; do
   fi
 done
 
+backup_redis
+
 # Retention: remove backups older than BACKUP_RETENTION days
 echo ""
 echo "Cleaning up backups older than ${BACKUP_RETENTION} days..."
@@ -122,7 +164,7 @@ case "$BACKUP_DIR" in
   /backups/*|/tmp/*) ;;
   *) echo "ERROR: BACKUP_DIR must be an absolute path under /backups/ or /tmp/, got: $BACKUP_DIR"; exit 1 ;;
 esac
-DELETED=$(find "$BACKUP_DIR" -name "*.sql.gz*" -mtime +"$BACKUP_RETENTION" -delete -print | wc -l)
+DELETED=$(find "$BACKUP_DIR" \( -name "*.sql.gz*" -o -name "*.rdb.gz" \) -mtime +"$BACKUP_RETENTION" -delete -print | wc -l)
 echo "  Removed $DELETED old backup(s)"
 
 # Verify backup integrity (test decompression of latest)

@@ -1,0 +1,33 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.venv/
+venv/
+
+# Secrets: never let a developer's local .env reach a build context or a layer
+# (WILDBO-BLD-06).
+.env
+.env.*
+!.env.example
+
+# Tests and local artefacts
+.pytest_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+*.log
+logs/
+
+# Docs
+README.md
+docs/

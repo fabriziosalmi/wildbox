@@ -18,7 +18,7 @@ class CheckCloudTrailMultiRegion(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
-            check_id="AWS_CLOUDTRAIL_001",
+            check_id="AWS_CLOUDTRAIL_003",
             title="CloudTrail Multi-Region Enabled",
             description="Verify that AWS CloudTrail is enabled for all regions to ensure "
                        "comprehensive audit logging across the entire AWS account.",

@@ -20,7 +20,7 @@ class CheckSecurityGroupsOpenPorts(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
-            check_id="AWS_VPC_001",
+            check_id="AWS_VPC_003",
             title="Security Groups Restrict Access",
             description="Verify that security groups do not have unrestricted access (0.0.0.0/0) "
                        "for common ports like SSH (22), RDP (3389), or all ports. This helps "

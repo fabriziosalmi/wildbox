@@ -1,1 +1,0 @@
-# GCP KMS Security Checks\n

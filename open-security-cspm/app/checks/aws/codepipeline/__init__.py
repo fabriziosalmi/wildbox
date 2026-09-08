@@ -1,1 +1,0 @@
-# AWS CODEPIPELINE Security Checks\n

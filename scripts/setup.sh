@@ -214,10 +214,13 @@ start_services() {
 
     cd "$PROJECT_ROOT"
 
+    # Delegates to the Makefile so setup and every later restart compose the
+    # same set of files. This used to differ from `make start`, which is what
+    # setup itself tells the operator to run next (WILDBO-OPS-01).
     if [ "$DEPLOYMENT_MODE" = "prod" ]; then
-        docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+        make start-prod
     else
-        docker-compose up -d
+        make start
     fi
 
     log_success "Services started"

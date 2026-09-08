@@ -86,7 +86,16 @@ async def create_api_key(
         user_id=current_user.id,
         team_id=team.id,
         name=key_data.name,
-        scopes=key_data.scopes,
+        # Never store JSON null. The column is NOT NULL with a [] default
+        # (alembic f5a6b7c8d9e0) precisely so that "unrestricted" is a value
+        # somebody wrote rather than an absence somebody inferred -- but
+        # SQLAlchemy serialises a Python None into a JSON column as JSON null,
+        # which satisfies NOT NULL and reinstates the ambiguity. An omitted
+        # scopes list means unrestricted, and that is written as ["*"], the same
+        # value the migration gave legacy rows and the one the gateway checks
+        # for. Clients cannot request "*" themselves; the schema vocabulary
+        # rejects it.
+        scopes=key_data.scopes if key_data.scopes is not None else ["*"],
         expires_at=key_data.expires_at
     )
     

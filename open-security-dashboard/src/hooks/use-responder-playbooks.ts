@@ -13,7 +13,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient, UseQueryResult } from '@tanstack/react-query'
-import axios from 'axios'
+import { responderClient } from '@/lib/api-client'
 import Cookies from 'js-cookie'
 
 // ============================================================================
@@ -68,25 +68,11 @@ export interface PlaybookExecutionResponse {
 // API Client Configuration
 // ============================================================================
 
-const RESPONDER_BASE_URL = process.env.NEXT_PUBLIC_RESPONDER_URL || 'http://localhost:8018'
-
-// Create axios instance for Responder service
-const responderClient = axios.create({
-  baseURL: RESPONDER_BASE_URL,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Add auth interceptor to include JWT token
-responderClient.interceptors.request.use((config) => {
-  const token = Cookies.get('auth_token')
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
-  }
-  return config
-})
+// Uses the shared gateway-routed client, which already attaches the JWT in its
+// request interceptor. A local axios instance pointing at http://localhost:8018
+// used to live here: a third topology that bypassed the gateway, and one the
+// responder rejects anyway because it requires the gateway's proof-of-origin
+// secret (WILDBO-ARCH-04).
 
 // ============================================================================
 // API Functions
@@ -96,8 +82,8 @@ responderClient.interceptors.request.use((config) => {
  * Fetch all available playbooks
  */
 async function fetchPlaybooks(): Promise<PlaybookListResponse> {
-  const response = await responderClient.get('/v1/playbooks')
-  return response.data
+  // ApiClient already unwraps the axios response body.
+  return await responderClient.get<PlaybookListResponse>('/v1/playbooks')
 }
 
 /**
@@ -107,11 +93,11 @@ async function executePlaybook(
   playbookId: string,
   request: PlaybookExecutionRequest = {}
 ): Promise<PlaybookExecutionResponse> {
-  const response = await responderClient.post(
+  // ApiClient already unwraps the axios response body.
+  return await responderClient.post<PlaybookExecutionResponse>(
     `/v1/playbooks/${encodeURIComponent(playbookId)}/execute`,
     request
   )
-  return response.data
 }
 
 // ============================================================================

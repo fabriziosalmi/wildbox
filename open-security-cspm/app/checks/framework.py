@@ -72,6 +72,17 @@ class CheckMetadata(BaseModel):
     references: List[str] = Field(default_factory=list)
     remediation: str
     enabled: bool = True
+    # False for scaffolding whose execute() inspects nothing.
+    #
+    # 166 of the 204 check files used to be generated placeholders that still
+    # declared full metadata -- check_id, severity, compliance frameworks, a
+    # four-step remediation -- so the registry, the catalogue and any compliance
+    # score saw 204 checks where only 31 inspected anything (WILDBO-QUAL-01).
+    # Those files have been deleted: every check in the tree now calls a cloud
+    # API. This flag stays as the guard that keeps it that way -- scaffolding
+    # merged with implemented=False is excluded from discovery and from any
+    # compliance score, so it can never inflate the advertised capability again.
+    implemented: bool = True
 
 
 class BaseCheck(ABC):
@@ -167,6 +178,9 @@ class ScanReport(BaseModel):
     medium_findings: int = 0
     low_findings: int = 0
     info_findings: int = 0
+    # Failed checks whose check is not in the registry. Counted here rather
+    # than folded into one of the severities above.
+    unknown_severity_findings: int = 0
     compliance_score: Optional[float] = None
     results: List[CheckResult] = Field(default_factory=list)
     summary: Dict[str, Any] = Field(default_factory=dict)
@@ -184,7 +198,9 @@ class ScanReport(BaseModel):
             
             # Update severity counters for failed checks
             severity = self._get_check_severity(result.check_id)
-            if severity == CheckSeverity.CRITICAL:
+            if severity is None:
+                self.unknown_severity_findings += 1
+            elif severity == CheckSeverity.CRITICAL:
                 self.critical_findings += 1
             elif severity == CheckSeverity.HIGH:
                 self.high_findings += 1
@@ -202,10 +218,21 @@ class ScanReport(BaseModel):
         elif result.status == CheckStatus.NOT_IMPLEMENTED:
             self.not_implemented_checks += 1
     
-    def _get_check_severity(self, check_id: str) -> CheckSeverity:
-        """Get severity for a check ID. This would be enhanced with check registry."""
-        # This is a placeholder - in a real implementation, we'd look up the check metadata
-        return CheckSeverity.MEDIUM
+    def _get_check_severity(self, check_id: str) -> Optional[CheckSeverity]:
+        """Severity declared by the check, from the registry.
+
+        This returned CheckSeverity.MEDIUM unconditionally -- "a placeholder",
+        said the comment it shipped with -- so every failed check in a report
+        was counted as medium regardless of what it actually found, and the
+        critical/high tallies a reader relies on were never populated at all.
+
+        Returns None when the check is not registered; the caller counts that
+        separately instead of inventing a severity.
+        """
+        check = check_registry.get_check(check_id)
+        if check is None:
+            return None
+        return check.metadata.severity
     
     def finalize(self):
         """Finalize the report and calculate final metrics."""
@@ -237,7 +264,8 @@ class ScanReport(BaseModel):
                 "high": self.high_findings,
                 "medium": self.medium_findings,
                 "low": self.low_findings,
-                "info": self.info_findings
+                "info": self.info_findings,
+                "unknown": self.unknown_severity_findings,
             },
             "compliance_frameworks": self._get_compliance_summary(),
             "recommendations": self._get_top_recommendations()
@@ -287,9 +315,24 @@ class CheckRegistry:
             CloudProvider.GCP: [],
             CloudProvider.AZURE: []
         }
+        # Registered but not runnable: anything declaring implemented=False.
+        # Empty today (the 166 generated placeholders were deleted), and kept so
+        # that future scaffolding cannot be counted as capability
+        # (WILDBO-QUAL-01).
+        self._unimplemented: Dict[str, BaseCheck] = {}
     
     def register(self, check: BaseCheck):
-        """Register a security check."""
+        """
+        Register a security check.
+
+        Unimplemented scaffolding is recorded separately: it stays visible to
+        anyone who asks for the full catalogue, but it is not returned as a
+        runnable check and does not contribute to a compliance score
+        (WILDBO-QUAL-01).
+        """
+        if not getattr(check.metadata, "implemented", True):
+            self._unimplemented[check.metadata.check_id] = check
+            return
         self._checks[check.metadata.check_id] = check
         self._checks_by_provider[check.metadata.provider].append(check)
     
@@ -306,8 +349,25 @@ class CheckRegistry:
         return list(self._checks.values())
     
     def get_metadata(self) -> List[CheckMetadata]:
-        """Get metadata for all registered checks."""
+        """Get metadata for all runnable checks."""
         return [check.metadata for check in self._checks.values()]
+
+    def get_unimplemented(self) -> List[CheckMetadata]:
+        """Metadata for checks that exist as scaffolding only."""
+        return [check.metadata for check in self._unimplemented.values()]
+
+    def coverage(self) -> Dict[str, int]:
+        """
+        How much of the advertised catalogue actually inspects anything.
+
+        Exposed so the catalogue endpoint can report a true number instead of
+        counting scaffolding as capability (WILDBO-QUAL-01).
+        """
+        return {
+            "implemented": len(self._checks),
+            "unimplemented": len(self._unimplemented),
+            "total": len(self._checks) + len(self._unimplemented),
+        }
 
 
 # Global check registry

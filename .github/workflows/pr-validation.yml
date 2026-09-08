@@ -22,12 +22,15 @@ jobs:
             echo "ERROR: docker-compose.yml is missing!"
             exit 1
           fi
-          # compose interpolation now uses ${VAR:?} for secrets (no insecure
-          # defaults), so the linter needs a .env — .env.example is exactly
-          # the documented set of required variables.
+          # compose interpolation uses ${VAR:?} for secrets (no insecure
+          # defaults), and ${VAR:?} rejects an empty value as well as an unset
+          # one -- so the template alone is not enough: its secret entries are
+          # deliberately blank. Generate them the way the documented setup does,
+          # which also proves that path still works.
           cp .env.example .env
+          python3 scripts/generate_secrets.py --force
           docker compose config --quiet
-          rm -f .env
+          rm -f .env .env.env.backup
           echo "✓ docker-compose.yml is valid"
 
   # Check for critical files
@@ -77,15 +80,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Run Trivy security scanner
+      # Two passes, because `severity` and `format: sarif` do not combine.
+      #
+      # With a SARIF output the action logs "Building SARIF report with all
+      # severities" and drops the severity filter, so `severity: CRITICAL` plus
+      # `exit-code: 1` did not gate on criticals -- it gated on every finding at
+      # any level, of which this repository has hundreds. The first pass keeps
+      # the full picture for GitHub code scanning without failing; the second is
+      # the gate, and it is the one that decides.
+      - name: Run Trivy (SARIF for code scanning)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # Don't fail on vulnerabilities yet
+          exit-code: '0'
+
+      - name: Fail on critical advisories
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          severity: 'CRITICAL'
+          scanners: 'vuln'
+          # Gates. This used to be exit-code: '0' with the comment "Don't fail
+          # on vulnerabilities yet", so a PR introducing a critical advisory was
+          # indistinguishable from one that did not (WILDBO-DEP-03). Starting at
+          # CRITICAL keeps the gate achievable; widen to CRITICAL,HIGH once the
+          # current HIGH backlog is triaged.
+          exit-code: '1'
+          ignore-unfixed: true
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v4
@@ -104,6 +130,24 @@ jobs:
           git ls-files | grep -v "\.env\." | xargs grep -niE "secret[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
 
           echo "✓ Basic secret scan complete (review output above)"
+
+  # Dependency lockfiles must be current, and the SBOM must be producible.
+  dependency-integrity:
+    name: Dependency Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify lockfiles match requirements.in
+        # Every service ships a hash-pinned requirements.txt compiled from
+        # requirements.in. Seven of the eight used to have no lockfile at all,
+        # so the transitive tree was re-resolved at every image build
+        # (WILDBO-DEP-04/DEP-05).
+        run: ./scripts/compile_requirements.sh --check
 
   # Python linting and type checking
   python-quality:
@@ -142,13 +186,37 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install flake8 mypy pylint
+          pip install flake8 mypy
+
+      - name: Run mypy
+        # mypy and pylint were installed in all seven matrix legs and never
+        # invoked (WILDBO-QUAL-08). pylint is dropped; mypy runs, reporting
+        # rather than gating for now so the ratchet can start from a known count.
+        continue-on-error: true
+        run: |
+          cd ${{ matrix.service }}
+          mypy app --ignore-missing-imports --no-strict-optional || true
 
       - name: Run flake8
         run: |
           cd ${{ matrix.service }}
+          # Syntax errors, undefined names and f-string/comparison bugs: always fatal.
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+          # Complexity GATES. This pass used to carry --exit-zero, so its
+          # findings were printed into the log and discarded (WILDBO-QUAL-05).
+          #
+          # Complexity only. The first attempt at making this gate also enforced
+          # --max-line-length=127, which no service comes close to satisfying --
+          # between 283 and 3921 violations each -- so the "gate" would have
+          # failed every build from the moment it was armed. Complexity is a
+          # different matter: nothing in the tree exceeds 29, so 30 holds today
+          # and is a ratchet that can be tightened.
+          flake8 . --count --select=C901 --max-complexity=30 --show-source --statistics
+
+          # Line length and the rest of the style backlog: reported, not gated.
+          # Arming this needs the backlog cleared first, service by service.
+          flake8 . --count --max-line-length=127 --statistics --exit-zero
 
   # Integration test - Disabled (requires full environment setup with secrets)
   # TODO: Re-enable with proper CI environment configuration

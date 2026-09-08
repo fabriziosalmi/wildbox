@@ -14,11 +14,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import hashlib
 
-try:
-    from schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
-except ImportError:
-    from schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
-
+from .schemas import PasswordStrengthInput, PasswordStrengthOutput, PasswordAnalysis, PasswordRecommendations
 # Configure logging
 logger = logging.getLogger(__name__)
 

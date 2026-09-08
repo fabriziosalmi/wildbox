@@ -25,6 +25,10 @@ class CheckRunner:
     
     def __init__(self):
         self.loaded_checks: Dict[CloudProvider, List[BaseCheck]] = {}
+        # Checks that exist as scaffolding only. Empty in this tree -- the 166
+        # generated placeholders were deleted -- and kept so that any that
+        # reappear are counted here rather than in the advertised catalogue.
+        self.unimplemented_checks: List[BaseCheck] = []
         self._load_all_checks()
     
     def _load_all_checks(self):
@@ -54,6 +58,18 @@ class CheckRunner:
                 try:
                     check_instance = check_class()
                     check_registry.register(check_instance)
+                    if not getattr(check_instance.metadata, "implemented", True):
+                        # Scaffolding: registered so it stays visible, but kept
+                        # out of loaded_checks, which is what /api/v1/checks
+                        # counts. Without this the endpoint reports scaffolding
+                        # as capability even though the registry excludes it
+                        # from scans and scoring (WILDBO-QUAL-01).
+                        self.unimplemented_checks.append(check_instance)
+                        logger.warning(
+                            "Check %s declares implemented=False; not advertised",
+                            check_instance.metadata.check_id,
+                        )
+                        continue
                     self.loaded_checks[provider_enum].append(check_instance)
                     logger.info(f"Loaded check: {check_instance.metadata.check_id}")
                 except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
@@ -244,6 +260,15 @@ class CheckRunner:
             
             logger.error(f"Check {check_id}{region_str} failed: {e}")
     
+    def coverage(self) -> Dict[str, int]:
+        """How many advertised checks actually inspect a cloud API."""
+        implemented = sum(len(v) for v in self.loaded_checks.values())
+        return {
+            "implemented": implemented,
+            "unimplemented": len(self.unimplemented_checks),
+            "total": implemented + len(self.unimplemented_checks),
+        }
+
     def get_available_checks(
         self, 
         provider: Optional[CloudProvider] = None

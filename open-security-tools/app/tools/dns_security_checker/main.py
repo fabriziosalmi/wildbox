@@ -15,12 +15,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import re
 
-try:
-    from schemas import DNSSecurityInput, DNSSecurityOutput, DNSRecord, SecurityCheck
-except ImportError:
-    from schemas import DNSSecurityInput, DNSSecurityOutput, DNSRecord, SecurityCheck
-
-
+from .schemas import DNSSecurityInput, DNSSecurityOutput, DNSRecord, SecurityCheck
 class DNSSecurityChecker:
     """DNS Security Analysis Tool"""
     

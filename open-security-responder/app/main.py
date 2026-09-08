@@ -52,9 +52,22 @@ async def lifespan(app: FastAPI):
         # Initialize connectors (placeholder for week 2)
         logger.info("Connector registry initialized")
         
+        # Reconcile work interrupted by the previous process: a worker killed
+        # mid-run leaves its record saying RUNNING, and nothing else ever
+        # corrects it (WILDBO-REL-02).
+        try:
+            reaped = workflow_engine.reap_abandoned_runs()
+            if reaped:
+                logger.warning(f"Startup reconciliation marked {reaped} abandoned run(s) as FAILED")
+        except Exception as e:
+            # Reconciliation must never prevent the service from starting.
+            logger.error(f"Startup reconciliation failed: {e}", exc_info=True)
+
         logger.info("Open Security Responder started successfully")
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except Exception as e:
+        # Catch Exception: a Redis outage raises redis.exceptions.ConnectionError,
+        # which does not subclass the builtin ConnectionError (WILDBO-ERR-03).
         logger.error(f"Failed to start application: {e}")
         raise
     
@@ -69,15 +82,28 @@ ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 DISABLE_DOCS = ENVIRONMENT == "production"
 
 # Initialize FastAPI app
+# One version, in one place (WILDBO-API-06): the constructor said 0.1.6 and the
+# root endpoint reported 1.0.0.
+SERVICE_VERSION = "0.1.6"
+
 app = FastAPI(
     title="Open Security Responder API",
     description="SOAR (Security Orchestration, Automation and Response) microservice",
-    version="0.1.6",
+    version=SERVICE_VERSION,
     docs_url=None if DISABLE_DOCS else "/docs",
     redoc_url=None if DISABLE_DOCS else "/redoc",
     openapi_url=None if DISABLE_DOCS else "/openapi.json",
     lifespan=lifespan
 )
+
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="responder", service_version="0.1.6")
+
 
 
 # Add Security Headers Middleware
@@ -187,11 +213,14 @@ async def execute_playbook(
                 detail=f"Playbook '{playbook_id}' not found"
             )
         
-        # Start execution
-        run_id = start_execution(playbook_id, request.trigger_data)
-
-        # Record the owning team so other teams can't read or cancel this run.
-        workflow_engine.set_run_owner(run_id, current_user.team_id)
+        # Start execution. The owning team is recorded inside start_execution,
+        # before the actor message is sent, so there is no window in which a run
+        # is executing with no owner (WILDBO-DATA-06).
+        run_id = start_execution(
+            playbook_id,
+            request.trigger_data,
+            team_id=current_user.team_id,
+        )
 
         return JSONResponse(
             status_code=status.HTTP_202_ACCEPTED,
@@ -326,7 +355,7 @@ async def root():
     """Root endpoint with API information"""
     return {
         "service": "Open Security Responder",
-        "version": "1.0.0",
+        "version": SERVICE_VERSION,
         "description": "SOAR orchestration microservice",
         "docs": "/docs",
         "health": "/health",

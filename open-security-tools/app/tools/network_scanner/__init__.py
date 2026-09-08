@@ -1,1 +1,1 @@
-"""Network scanner tool package."""
+"""Tool package: network_scanner_fixed."""

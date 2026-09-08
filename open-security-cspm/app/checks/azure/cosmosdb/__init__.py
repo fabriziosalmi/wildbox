@@ -1,1 +1,0 @@
-# Azure COSMOSDB Security Checks\n

@@ -4,6 +4,7 @@ Tests RBAC, error handling, rate limiting for enterprise security
 """
 
 import os
+import pytest
 import requests
 import asyncio
 import time
@@ -14,10 +15,16 @@ from dotenv import load_dotenv
 load_dotenv("tests/.env")
 
 
-class GatewayHardeningTester:
+class TestGatewayHardening:
     """Enterprise-level security tests for Gateway"""
     
-    def __init__(self, base_url: str = None):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = None
         self.base_url = base_url or os.getenv("GATEWAY_URL", "http://localhost")
         self.admin_api_key = os.getenv("TEST_API_KEY", "test-api-key-for-ci-only")
         self.results = []
@@ -37,7 +44,7 @@ class GatewayHardeningTester:
             "timestamp": time.time()
         })
         
-    async def test_rbac_user_forbidden_admin_endpoint(self) -> bool:
+    async def test_rbac_user_forbidden_admin_endpoint(self) -> None:
         """
         Test RBAC: User role should get 403 on admin endpoints
         
@@ -67,13 +74,13 @@ class GatewayHardeningTester:
                 passed = False
                 
             self.log_test_result("RBAC: Admin Access to Protected Endpoint", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("RBAC: Admin Access to Protected Endpoint", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rbac_role_header_propagation(self) -> bool:
+    async def test_rbac_role_header_propagation(self) -> None:
         """
         Test that X-Wildbox-Role header is correctly propagated from gateway to services
         
@@ -101,13 +108,13 @@ class GatewayHardeningTester:
                 details = f"Gateway auth response: HTTP {response.status_code}"
                 
             self.log_test_result("RBAC: Role Header Propagation", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("RBAC: Role Header Propagation", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_error_handling_service_failure(self) -> bool:
+    async def test_error_handling_service_failure(self) -> None:
         """
         Test resilience: How does the system handle upstream service failures?
         
@@ -158,13 +165,13 @@ class GatewayHardeningTester:
                 details = f"Playbook execution response: HTTP {response.status_code}"
                 
             self.log_test_result("Error Handling: Service Failure Resilience", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Error Handling: Service Failure Resilience", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rate_limiting_burst_protection(self) -> bool:
+    async def test_rate_limiting_burst_protection(self) -> None:
         """
         Test rate limiting: Gateway should throttle excessive requests
         
@@ -203,13 +210,13 @@ class GatewayHardeningTester:
                 passed = True
                 
             self.log_test_result("Rate Limiting: Burst Protection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Rate Limiting: Burst Protection", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rate_limit_headers(self) -> bool:
+    async def test_rate_limit_headers(self) -> None:
         """
         Test that rate limiting headers are present in responses
         
@@ -241,13 +248,13 @@ class GatewayHardeningTester:
                 passed = True
                 
             self.log_test_result("Rate Limiting: Informational Headers", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Rate Limiting: Informational Headers", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_malicious_ip_vulnerability_creation(self) -> bool:
+    async def test_malicious_ip_vulnerability_creation(self) -> None:
         """
         Test complete security workflow: Malicious IP → Guardian vulnerability
         
@@ -307,16 +314,16 @@ class GatewayHardeningTester:
                 details = f"Playbook execution: HTTP {response.status_code}"
                 
             self.log_test_result("Security Workflow: Malicious IP Detection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Security Workflow: Malicious IP Detection", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:
     """Run all gateway hardening tests"""
-    tester = GatewayHardeningTester()
+    tester = TestGatewayHardening()
     
     # Run tests in sequence
     tests = [

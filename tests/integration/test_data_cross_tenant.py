@@ -44,7 +44,11 @@ def _seed(conn, *, team_id, value):
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             # threat_types/confidence/severity/tags are NOT NULL in the response
             # schema (pydantic defaults don't apply to a NULL read from the ORM).
-            (str(indicator_id), str(source_id), team_id, "ipv4", value, value,
+            # "ip_address", not "ipv4": IndicatorType.IP_ADDRESS is what the
+            # application writes, and revision 0003_vocab now enforces it. The
+            # fixture had been seeding a value the service itself never
+            # produces, which is exactly what the constraint exists to stop.
+            (str(indicator_id), str(source_id), team_id, "ip_address", value, value,
              Json([]), "medium", 5, Json([]),
              now, now, now, True),
         )

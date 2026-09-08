@@ -290,7 +290,15 @@ docker compose restart gateway
 1. **Explore the Dashboard** - http://localhost:3000
 2. **Test Security Tools** - http://localhost:8000/docs
 3. **Configure Automations** - http://localhost:5678
-4. **Set up Monitoring** - Configure Prometheus/Grafana (see docker-compose.prod.yml)
+4. **Set up Monitoring** - `docker compose --profile monitoring up -d` starts
+   Prometheus against `monitoring/prometheus.yml` with the alert rules in
+   `monitoring/alert_rules.yml`. Every service exposes Prometheus exposition
+   format at `/metrics`. (This step used to point at `docker-compose.prod.yml`,
+   which defines no monitoring services at all.)
+5. **Schedule backups** - `docker compose --profile backup up -d` runs
+   `scripts/backup_postgres.sh` on an interval, covering all three PostgreSQL
+   databases and Redis. Verify the backups can actually be restored with
+   `make restore-drill`.
 
 ### Advanced Usage
 

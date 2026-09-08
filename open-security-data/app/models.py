@@ -18,7 +18,7 @@ import uuid
 
 Base = declarative_base()
 
-class IndicatorType(enum.Enum):
+class IndicatorType(str, enum.Enum):
     """Types of security indicators"""
     IP_ADDRESS = "ip_address"
     DOMAIN = "domain"  
@@ -29,7 +29,7 @@ class IndicatorType(enum.Enum):
     ASN = "asn"
     VULNERABILITY = "vulnerability"
 
-class ThreatType(enum.Enum):
+class ThreatType(str, enum.Enum):
     """Types of threats"""
     MALWARE = "malware"
     PHISHING = "phishing"
@@ -42,14 +42,14 @@ class ThreatType(enum.Enum):
     NETWORK_SCAN = "network_scan"
     SUSPICIOUS = "suspicious"
 
-class ConfidenceLevel(enum.Enum):
+class ConfidenceLevel(str, enum.Enum):
     """Confidence levels for threat intelligence"""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     VERIFIED = "verified"
 
-class SourceStatus(enum.Enum):
+class SourceStatus(str, enum.Enum):
     """Status of data sources"""
     ACTIVE = "active"
     INACTIVE = "inactive"
@@ -169,6 +169,19 @@ class Indicator(Base):
         UniqueConstraint("source_id", "indicator_type", "normalized_value", 
                         name="uq_source_indicator"),
         CheckConstraint("severity >= 1 AND severity <= 10", name="ck_severity_range"),
+        # The enums above used to constrain nothing: indicator_type and
+        # confidence were free VARCHARs, so indicator_type='banana' satisfied
+        # every constraint on the table (WILDBO-DOM-08). These CHECKs put the
+        # vocabulary where it cannot be bypassed by any writer.
+        CheckConstraint(
+            "indicator_type IN ('ip_address','domain','url','file_hash','email',"
+            "'certificate','asn','vulnerability')",
+            name="ck_indicator_type_vocabulary",
+        ),
+        CheckConstraint(
+            "confidence IN ('low','medium','high','verified')",
+            name="ck_indicator_confidence_vocabulary",
+        ),
     )
 
 class Enrichment(Base):

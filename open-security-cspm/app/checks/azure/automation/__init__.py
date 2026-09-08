@@ -1,1 +1,0 @@
-# Azure AUTOMATION Security Checks\n

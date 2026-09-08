@@ -9,64 +9,47 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  # SECURITY: All secrets sourced from GitHub Secrets.
-  # Configure these in repo Settings > Secrets and variables > Actions.
-  # For initial setup, generate random values with: openssl rand -hex 32
-  #
-  # Every reference carries a `|| 'ci-fallback-...'` default: fork PRs and
-  # dependabot runs never receive repo Actions secrets, so without a fallback
-  # this job fails deterministically for every external contribution (empty
-  # JWT_SECRET_KEY fails identity's min_length=32 validation during alembic
-  # migrations — same class as the POSTGRES_HOST_AUTH_METHOD: trust
-  # accommodation below). The stack is ephemeral CI-only, like the hardcoded
-  # test SECRET_KEYs already used for the data/cspm services. Fallbacks meet
-  # the services' validators: >=32 chars, and tools' API_KEY must not contain
-  # password/secret/key/admin/test/demo/123/abc/default/wildbox/api-key.
-  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci-fallback-jwt-signing-string-for-fork-runs' }}
-  API_KEY: ${{ secrets.API_KEY || 'ci-fallback-tools-auth-value-for-fork-runs' }}
-  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}
-  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@postgres:5432/identity
-  REDIS_URL: redis://redis:6379/0
-  GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET || 'ci-fallback-gateway-proof-of-origin-value' }}
-  N8N_BASIC_AUTH_USER: admin
-  N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD || 'ci-fallback-n8n-pw' }}
-  GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'ci-fallback-grafana-pw' }}
-  NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'ci-fallback-nextauth-string-for-fork-runs' }}
+# No workflow-level env: block here, deliberately.
+#
+# There used to be one setting POSTGRES_PASSWORD, DATABASE_URL, JWT_SECRET_KEY,
+# API_KEY, GATEWAY_INTERNAL_SECRET and others from repository secrets with
+# hardcoded fallbacks. Shell environment variables win over .env in docker
+# compose interpolation, so once this job started generating its own .env the
+# two mechanisms disagreed -- and they disagreed *partially*, which is worse
+# than either alone:
+#
+#   postgres        <- POSTGRES_PASSWORD from the workflow env
+#   identity        <- DATABASE_URL from the workflow env      (matches)
+#   guardian, data  <- GUARDIAN_/DATA_DATABASE_URL from .env   (does not)
+#
+# so PostgreSQL was created with one password while guardian and data connected
+# with another, and every run ended in
+#   FATAL: password authentication failed for user "postgres"
+# with the gateway unhealthy behind them because it depends on both.
+#
+# scripts/generate_secrets.py now produces every required value, which also
+# removes the reason those fallbacks existed: a fork PR or a dependabot run
+# receives no repository secrets, and does not need any.
 
 jobs:
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
-    services:
-      postgres:
-        image: postgres:15
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}
-          POSTGRES_DB: identity
-          # Allow startup even when the secret is empty (e.g. fork PRs from the
-          # fabgpt bot, which never receive repo secrets). Ephemeral CI DB only.
-          POSTGRES_HOST_AUTH_METHOD: trust
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 5432:5432
-
-      redis:
-        image: redis:7-alpine
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-        ports:
-          - 6379:6379
+    # The whole stack, through docker compose, instead of five services started
+    # by hand with pip.
+    #
+    # The old shape started identity, tools, data, responder and cspm as bare
+    # processes and no gateway, with GATEWAY_URL pointing at a port nothing
+    # listened on. Every test that goes through the gateway -- which is most of
+    # them, because the services answer 403 GATEWAY_AUTH_REQUIRED to a direct
+    # connection -- was skipped by the reachability guard. That is how the suite
+    # stayed green for months while asserting against endpoints no service had
+    # ever published.
+    #
+    # It costs more: ten images build here. `cache-from: type=gha` in the build
+    # step below keeps the common case to a pull of cached layers.
 
     steps:
       - name: Checkout code
@@ -76,205 +59,99 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install test dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r tests/requirements.txt
+          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
 
-      - name: Wait for services
+      - name: Generate secrets
+        # Every required variable, generated the way a fresh install does it.
+        # There is no fallback secret here on purpose: a run that cannot make
+        # its own secrets should fail rather than test a half-configured stack.
         run: |
-          echo "Waiting for PostgreSQL..."
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U postgres; then
-              echo "PostgreSQL is ready"
-              break
-            fi
-            echo "Waiting for PostgreSQL... ($i/30)"
-            sleep 2
-          done
-          
-          echo "Waiting for Redis..."
-          # Use nc (netcat) instead of redis-cli which isn't available in runner
-          for i in {1..30}; do
-            if nc -z localhost 6379; then
-              echo "Redis is ready"
-              break
-            fi
-            echo "Waiting for Redis... ($i/30)"
-            sleep 2
-          done
+          cp .env.example .env
+          python3 scripts/generate_secrets.py --force
+          python3 scripts/validate_secrets.py
 
-      - name: Install Identity Service Dependencies
-        run: |
-          pip install ./open-security-shared
-          cd open-security-identity
-          pip install -r requirements.txt
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Run Identity Service Database Migrations
-        run: |
-          cd open-security-identity
-          alembic upgrade head
-        env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@localhost:5432/identity
+      - name: Raise the rate limit for the suite
+        # The gateway allows RATE_LIMIT_PER_HOUR/60 requests per minute per team
+        # (166 by default) and the suite makes several hundred with one key, so
+        # tests part-way through the run started failing with 429 -- the limiter
+        # working correctly, on a workload it was never meant to shape. Rate
+        # limiting itself is covered by test_rate_limiting, which reads the
+        # budget headers rather than trying to exhaust them.
+        # Replaced in place, not appended: .env.example already defines the
+        # key, and two definitions leave which one wins up to the reader.
+        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
 
-      - name: Start Identity Service
-        run: |
-          cd open-security-identity
-          python -m uvicorn app.main:app --host 127.0.0.1 --port 8001 &
-          IDENTITY_PID=$!
-          echo "IDENTITY_PID=$IDENTITY_PID" >> $GITHUB_ENV
-        env:
-          DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@localhost:5432/identity
-          REDIS_URL: redis://localhost:6379/0
-          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci-fallback-jwt-signing-string-for-fork-runs' }}
-          CREATE_INITIAL_ADMIN: "false"
+      - name: Start the stack
+        # No `. ./.env`: docker compose reads it from the project directory by
+        # itself, and sourcing it as shell makes every secret a potential
+        # syntax error.
+        # The extra file publishes PostgreSQL on loopback so the cross-tenant
+        # test can seed rows directly; see the comment in it.
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
 
-      - name: Install Tools Service Dependencies
-        run: |
-          pip install ./open-security-shared
-          cd open-security-tools
-          pip install -r requirements.txt
-
-      - name: Start Tools Service
-        run: |
-          cd open-security-tools
-          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 &
-          TOOLS_PID=$!
-          echo "TOOLS_PID=$TOOLS_PID" >> $GITHUB_ENV
-        env:
-          API_KEY: ${{ secrets.API_KEY || 'ci-fallback-tools-auth-value-for-fork-runs' }}
-          REDIS_URL: redis://localhost:6379/2
-
-      - name: Install Data Service Dependencies
-        run: |
-          # Isolate data's deps in their own venv: it pins different
-          # pydantic/fastapi/sqlalchemy versions than identity/tools, and
-          # installing them into the shared env would break the already-running
-          # services.
-          python -m venv /tmp/data-venv
-          /tmp/data-venv/bin/pip install --upgrade pip
-          /tmp/data-venv/bin/pip install ./open-security-shared
-          cd open-security-data
-          /tmp/data-venv/bin/pip install -r requirements.txt
-
-      - name: Start Data Service
-        run: |
-          cd open-security-data
-          /tmp/data-venv/bin/python -m uvicorn app.api.main:app --host 127.0.0.1 --port 8002 &
-          DATA_PID=$!
-          echo "DATA_PID=$DATA_PID" >> $GITHUB_ENV
-        env:
-          # Reuse the postgres "identity" database in CI (no separate DB needed);
-          # data's create_tables() lifespan hook adds its own tables on startup.
-          DATABASE_URL: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@localhost:5432/identity
-          REDIS_URL: redis://localhost:6379/1
-          SECRET_KEY: test-secret-key-for-ci-only
-          ENVIRONMENT: test
-
-      - name: Install Responder Service Dependencies
-        run: |
-          # Own venv (same rationale as data): responder pins its own
-          # dramatiq/redis/fastapi stack; keep it off the identity/tools env.
-          python -m venv /tmp/responder-venv
-          /tmp/responder-venv/bin/pip install --upgrade pip
-          /tmp/responder-venv/bin/pip install ./open-security-shared
-          cd open-security-responder
-          /tmp/responder-venv/bin/pip install -r requirements.txt
-
-      - name: Start Responder Service
-        run: |
-          # Run from the service dir so the default ./playbooks (bundled YAML)
-          # loads. uvicorn alone is enough — start_execution persists the
-          # initial run state to Redis synchronously, no Dramatiq worker needed.
-          cd open-security-responder
-          /tmp/responder-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8018 &
-          RESPONDER_PID=$!
-          echo "RESPONDER_PID=$RESPONDER_PID" >> $GITHUB_ENV
-        env:
-          REDIS_URL: redis://localhost:6379/3
-          ENVIRONMENT: test
-
-      - name: Install CSPM Service Dependencies
-        run: |
-          # Own venv (cloud SDKs + celery pin their own deps).
-          python -m venv /tmp/cspm-venv
-          /tmp/cspm-venv/bin/pip install --upgrade pip
-          /tmp/cspm-venv/bin/pip install ./open-security-shared
-          cd open-security-cspm
-          /tmp/cspm-venv/bin/pip install -r requirements.txt
-
-      - name: Start CSPM Service
-        run: |
-          cd open-security-cspm
-          /tmp/cspm-venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8019 > /tmp/cspm.log 2>&1 &
-          CSPM_PID=$!
-          echo "CSPM_PID=$CSPM_PID" >> $GITHUB_ENV
-        env:
-          REDIS_URL: redis://localhost:6379/4
-          CELERY_BROKER_URL: redis://localhost:6379/4
-          CELERY_RESULT_BACKEND: redis://localhost:6379/4
-          SECRET_KEY: test-secret-key-for-ci-only-0123456789
-          ENVIRONMENT: test
-
-      - name: Wait for all services to be healthy
-        run: |
-          # Give services a few seconds to bind to ports
-          sleep 10
-          chmod +x scripts/wait-for-services.sh
-          ./scripts/wait-for-services.sh
-        timeout-minutes: 5
-        env:
-          # Only check services actually started in CI (identity, tools, data, responder, cspm)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health/live"
-          # Skip optional services in CI (they don't exist in this environment)
-          OPTIONAL_SERVICES: ""
+      - name: Show what came up
+        if: always()
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml ps
 
       - name: Run Integration Tests
         run: |
-          pytest tests/integration/ \
-            -v \
+          # Read the two values this step needs out of .env rather than sourcing
+          # the file: `. ./.env` executes it, and a generated secret is not
+          # shell syntax.
+          env_value() { sed -n "s/^$1=//p" .env | head -1; }
+          export INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          export INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          export GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
+          export SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
+          # ${{ env.* }} is evaluated before any step runs, so it cannot carry a
+          # value this job generated.
+          export DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          python -m pytest tests/integration/ \
+            -v -rs \
             --tb=short \
-            --maxfail=3 \
-            -m "not slow" \
             --junit-xml=pytest-results.xml \
-            -c pytest.ini
+            -o addopts=""
         env:
+          # The API is served over HTTPS only: port 80 answers /health and
+          # 301-redirects everything else, so authentication cannot happen in
+          # clear. The gateway's development certificate is generated at
+          # start-up and trusted here rather than turning verification off --
+          # otherwise the suite would also pass against a gateway presenting no
+          # valid certificate, which is one of the things it exists to catch.
+          GATEWAY_URL: https://localhost
+          REQUESTS_CA_BUNDLE: ${{ github.workspace }}/open-security-gateway/ssl/wildbox.crt
           IDENTITY_SERVICE_URL: http://localhost:8001
           TOOLS_SERVICE_URL: http://localhost:8000
           DATA_SERVICE_URL: http://localhost:8002
           RESPONDER_SERVICE_URL: http://localhost:8018
           CSPM_SERVICE_URL: http://localhost:8019
-          # psycopg2 DSN for the data DB, used to seed the cross-tenant test
-          # (data has no create API). Same DB the data service runs against.
-          DATA_DB_DSN: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@localhost:5432/identity
-          TEST_API_KEY: ${{ secrets.API_KEY || 'ci-fallback-tools-auth-value-for-fork-runs' }}
-        timeout-minutes: 10
+          AGENTS_SERVICE_URL: http://localhost:8006
+          GUARDIAN_SERVICE_URL: http://localhost:8013
+          SENSOR_SERVICE_URL: http://localhost:8004
+          DASHBOARD_URL: http://localhost:3000
+        timeout-minutes: 20
 
-      - name: Dump CSPM logs on failure
+      - name: Service logs on failure
         if: failure()
-        run: |
-          echo "===== /tmp/cspm.log ====="
-          cat /tmp/cspm.log || echo "(no cspm log)"
+        run: docker compose logs --tail=200
 
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: integration-test-results
-          path: |
-            tests/integration/reports/
-            pytest-results.xml
+          path: pytest-results.xml
           retention-days: 30
 
-      - name: Stop Services
+      - name: Tear down
         if: always()
-        run: |
-          if [ ! -z "$IDENTITY_PID" ]; then kill $IDENTITY_PID || true; fi
-          if [ ! -z "$TOOLS_PID" ]; then kill $TOOLS_PID || true; fi
-          if [ ! -z "$RESPONDER_PID" ]; then kill $RESPONDER_PID || true; fi
-          if [ ! -z "$CSPM_PID" ]; then kill $CSPM_PID || true; fi
+        run: docker compose down -v
 
   security-validation:
     name: Security Validation
@@ -300,12 +177,35 @@ jobs:
 
       - name: Check for unpinned dependencies
         run: |
-          # Check for :latest Docker tags
+          # This step used to grep only for ":latest" in the compose files and
+          # then print "All Docker images pinned" -- a conclusion it had not
+          # checked, and one that was false: every Dockerfile FROM used a
+          # floating tag (WILDBO-TEST-02). It now verifies both, and its message
+          # matches what it verified.
+          fail=0
+
           if grep -r "image:.*:latest" docker-compose.yml open-security-*/docker-compose.yml | grep -v "^#"; then
-            echo "❌ Unpinned Docker images detected!"
-            exit 1
+            echo "❌ :latest image tag found in a compose file"
+            fail=1
           fi
-          echo "✅ All Docker images pinned"
+
+          # Every FROM in a Dockerfile must be digest-pinned (or reference an
+          # earlier build stage by name).
+          # -h suppresses filenames, so a "| grep -v node_modules" filter after it
+          # can never match; exclude vendored trees by path with --exclude-dir.
+          unpinned=$(grep -rhE '^FROM ' --include="Dockerfile*" \
+            --exclude-dir=node_modules --exclude-dir=.venv . \
+            | grep -vE '@sha256:' \
+            | grep -vE '^FROM [A-Za-z0-9_.-]+ AS ' \
+            | grep -vE '^FROM (base|builder|deps|runner)\b' || true)
+          if [ -n "$unpinned" ]; then
+            echo "❌ Dockerfile base images are not digest-pinned:"
+            echo "$unpinned"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "✅ Compose images carry no :latest tag and all Dockerfile base images are digest-pinned"
 
       - name: Upload Validation Report
         if: always()

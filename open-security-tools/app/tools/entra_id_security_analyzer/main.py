@@ -27,21 +27,12 @@ from typing import Any, Dict, List, Optional
 
 import aiohttp
 
-try:
-    from schemas import (
-        EntraIDSecurityAnalyzerInput,
-        EntraIDSecurityAnalyzerOutput,
-        MfaGap,
-        StaleAccount,
-    )
-except ImportError:
-    from schemas import (
-        EntraIDSecurityAnalyzerInput,
-        EntraIDSecurityAnalyzerOutput,
-        MfaGap,
-        StaleAccount,
-    )
-
+from .schemas import (
+    EntraIDSecurityAnalyzerInput,
+    EntraIDSecurityAnalyzerOutput,
+    MfaGap,
+    StaleAccount,
+)
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 LOGIN_BASE_URL = "https://login.microsoftonline.com"
 

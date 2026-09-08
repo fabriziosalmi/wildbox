@@ -6,11 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
-try:
-    from schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
-except ImportError:
-    from schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
-
+from .schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
 # Tool metadata
 TOOL_INFO = {
     "name": "threat_intelligence_aggregator",

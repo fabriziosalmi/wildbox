@@ -6,14 +6,12 @@ for all FastAPI services in the Wildbox platform.
 """
 
 import hmac
-from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
-from functools import lru_cache
+from typing import Any, Dict, Optional
 
-from fastapi import HTTPException, status, Header
+from fastapi import Header, HTTPException, status
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -54,7 +52,7 @@ class AuthConfig:
         jwt_secret_key: str,
         jwt_algorithm: str = "HS256",
         jwt_expiration_minutes: int = 60,
-        api_key_enabled: bool = True
+        api_key_enabled: bool = True,
     ):
         """
         Initialize authentication configuration.
@@ -78,7 +76,7 @@ def create_access_token(
     data: Dict[str, Any],
     secret_key: str,
     algorithm: str = "HS256",
-    expires_delta: Optional[timedelta] = None
+    expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
     Create a JWT access token.
@@ -109,9 +107,7 @@ def create_access_token(
 
 
 def verify_access_token(
-    token: str,
-    secret_key: str,
-    algorithm: str = "HS256"
+    token: str, secret_key: str, algorithm: str = "HS256"
 ) -> Dict[str, Any]:
     """
     Verify and decode a JWT access token.
@@ -130,7 +126,7 @@ def verify_access_token(
     try:
         payload = jwt.decode(token, secret_key, algorithms=[algorithm])
         return payload
-    except JWTError as e:
+    except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
@@ -138,10 +134,7 @@ def verify_access_token(
         )
 
 
-async def verify_api_key(
-    api_key: str,
-    valid_keys: list = None
-) -> bool:
+async def verify_api_key(api_key: str, valid_keys: list = None) -> bool:
     """
     Verify an API key against a list of valid keys.
 
@@ -158,21 +151,18 @@ async def verify_api_key(
     if not valid_keys:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key validation not configured"
+            detail="API key validation not configured",
         )
 
     if not any(hmac.compare_digest(api_key, valid_key) for valid_key in valid_keys):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid API key"
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
     return True
 
 
-async def get_api_key_from_header(
-    x_api_key: Optional[str] = Header(None)
-) -> str:
+async def get_api_key_from_header(x_api_key: Optional[str] = Header(None)) -> str:
     """
     Extract API key from X-API-Key header.
 
@@ -187,14 +177,13 @@ async def get_api_key_from_header(
     """
     if not x_api_key:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="X-API-Key header required"
+            status_code=status.HTTP_403_FORBIDDEN, detail="X-API-Key header required"
         )
     return x_api_key
 
 
 async def get_bearer_token_from_header(
-    authorization: Optional[str] = Header(None)
+    authorization: Optional[str] = Header(None),
 ) -> str:
     """
     Extract bearer token from Authorization header.

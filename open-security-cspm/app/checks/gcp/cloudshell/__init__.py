@@ -1,1 +1,0 @@
-# GCP CLOUDSHELL Security Checks\n

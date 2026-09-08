@@ -31,8 +31,10 @@ def test_identity_metrics(service_urls: Dict[str, str]):
     gateway_secret = os.environ.get("GATEWAY_INTERNAL_SECRET", "")
     if not gateway_secret:
         pytest.skip("GATEWAY_INTERNAL_SECRET not set (e.g. fork PR without secrets)")
+    # /api/v1/admin/metrics, not /metrics: the latter is the Prometheus text
+    # exposition. The two used to collide on one path, where the exposition won.
     response = requests.get(
-        f"{service_urls['identity']}/metrics",
+        f"{service_urls['identity']}/api/v1/admin/metrics",
         headers={"X-Gateway-Secret": gateway_secret},
         timeout=10,
     )
@@ -183,12 +185,28 @@ def test_service_response_times(service_urls: Dict[str, str]):
 
 @pytest.mark.integration
 def test_identity_version_info(service_urls: Dict[str, str]):
-    """Test that identity service returns version information"""
-    response = requests.get(f"{service_urls['identity']}/metrics", timeout=10)
-    
-    if response.status_code == 200:
-        data = response.json()
-        assert "version" in data or "service" in data
+    """Identity identifies itself on /health and exposes Prometheus metrics.
+
+    This called response.json() on /metrics. That worked only while /metrics
+    answered a JSON placeholder because prometheus_client was not installed in
+    the service; with the package present it returns the Prometheus text
+    exposition and the test raised JSONDecodeError. The exposition format is
+    what a scrape target is supposed to serve, so assert that -- and read the
+    service identity from /health, which is where it is published.
+    """
+    health = requests.get(f"{service_urls['identity']}/health", timeout=10)
+    assert health.status_code == 200
+    assert health.json().get("service"), "health response does not name the service"
+
+    metrics = requests.get(f"{service_urls['identity']}/metrics", timeout=10)
+    assert metrics.status_code == 200
+    assert metrics.headers.get("content-type", "").startswith("text/plain"), (
+        f"metrics content-type is {metrics.headers.get('content-type')!r}, "
+        "not the Prometheus text exposition"
+    )
+    assert "wildbox_http_requests_total" in metrics.text, (
+        "identity is a Prometheus scrape target but publishes no wildbox_ series"
+    )
 
 
 @pytest.mark.integration

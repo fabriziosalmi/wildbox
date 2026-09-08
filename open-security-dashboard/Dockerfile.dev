@@ -1,5 +1,9 @@
-FROM node:18-alpine
-
+# Base image pinned by digest: a floating tag is republished upstream, so the
+# same commit built a month apart produced a different interpreter patch level,
+# a different OpenSSL and a different set of OS CVEs, with nothing recording
+# which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
+# digest bumps as reviewable PRs.
+FROM node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e
 WORKDIR /app
 
 # Install dependencies

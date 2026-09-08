@@ -8,7 +8,7 @@ import json
 import uuid
 import logging
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 from jinja2 import DictLoader, TemplateSyntaxError, UndefinedError
 from jinja2.sandbox import SandboxedEnvironment, SecurityError
@@ -48,6 +48,14 @@ jinja_env = SandboxedEnvironment(
     autoescape=True,
     undefined=StrictUndefined
 )
+
+
+class ExecutionStateCorruptError(Exception):
+    """Raised when a persisted execution record exists but cannot be parsed.
+
+    Distinct from "no such run" on purpose: conflating the two let a corrupt or
+    evicted record be silently replaced by a fresh one (WILDBO-DATA-02).
+    """
 
 
 class WorkflowExecutionError(Exception):
@@ -91,17 +99,92 @@ class WorkflowEngine:
                 if step_result.get(field):
                     step_result[field] = step_result[field].isoformat()
         
-        self.redis_client.hset(key, mapping={
+        # Write and expiry in one pipeline: a crash between the hset and the
+        # expire used to leave a record with no TTL, in a Redis with a 512MB
+        # ceiling and an eviction policy that then discards other records
+        # (WILDBO-DATA-07).
+        expire_seconds = settings.execution_retention_days * 24 * 60 * 60
+        pipe = self.redis_client.pipeline()
+        pipe.hset(key, mapping={
             'data': json.dumps(data),
             'status': execution_result.status,
             'playbook_id': execution_result.playbook_id,
-            'updated_at': datetime.utcnow().isoformat()
+            'updated_at': datetime.utcnow().isoformat(),
+            # Heartbeat: lets a reaper tell an abandoned run from a live one
+            # (WILDBO-REL-02).
+            'heartbeat_at': datetime.utcnow().isoformat(),
         })
+        pipe.expire(key, expire_seconds)
+        pipe.execute()
         
-        # Set expiration based on retention policy
-        expire_seconds = settings.execution_retention_days * 24 * 60 * 60
-        self.redis_client.expire(key, expire_seconds)
-    
+
+    def reap_abandoned_runs(self, stale_after_seconds: int = 900) -> int:
+        """
+        Mark runs whose worker died as FAILED.
+
+        Nothing used to reconcile interrupted work: a worker killed mid-run --
+        an OOM, a deploy, a host restart -- left the record saying RUNNING
+        forever, because no reaper, startup sweep or lease existed anywhere and
+        the actor is declared max_retries=0 (WILDBO-REL-02). A user polling such
+        a run saw "running" indefinitely and an operator had no list of work
+        needing to be redone.
+
+        A run is considered abandoned when it is in a non-terminal state and its
+        heartbeat (refreshed by save_execution_state on every step) is older than
+        stale_after_seconds. Returns the number of runs reconciled.
+
+        Call at startup and periodically.
+        """
+        reaped = 0
+        cutoff = datetime.utcnow() - timedelta(seconds=stale_after_seconds)
+        pattern = f"{self.key_prefix}run:*"
+
+        for key in self.redis_client.scan_iter(match=pattern, count=100):
+            key_s = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
+            if key_s.endswith(":team") or key_s.endswith(":logs"):
+                continue
+
+            raw_status = self.redis_client.hget(key_s, "status")
+            if raw_status is None:
+                continue
+            status = raw_status.decode() if isinstance(raw_status, (bytes, bytearray)) else str(raw_status)
+            if status not in (ExecutionStatus.RUNNING.value, ExecutionStatus.QUEUED.value):
+                continue
+
+            raw_hb = self.redis_client.hget(key_s, "heartbeat_at") or self.redis_client.hget(key_s, "updated_at")
+            if raw_hb is None:
+                continue
+            hb = raw_hb.decode() if isinstance(raw_hb, (bytes, bytearray)) else str(raw_hb)
+            try:
+                last_seen = datetime.fromisoformat(hb)
+            except ValueError:
+                continue
+            if last_seen > cutoff:
+                continue  # still alive
+
+            run_id = key_s.rsplit("run:", 1)[-1]
+            try:
+                execution_result = self.get_execution_state(run_id)
+            except ExecutionStateCorruptError:
+                execution_result = None
+            if execution_result is None:
+                continue
+
+            execution_result.status = ExecutionStatus.FAILED
+            execution_result.end_time = datetime.utcnow()
+            execution_result.error = (
+                f"Run abandoned: no heartbeat since {hb}. The worker executing it "
+                "stopped without reporting a terminal status."
+            )
+            self.save_execution_state(run_id, execution_result)
+            self.add_log(run_id, "Run reconciled as FAILED: worker heartbeat expired", level="ERROR")
+            logger.warning(f"Reaped abandoned run {run_id} (last heartbeat {hb})")
+            reaped += 1
+
+        if reaped:
+            logger.warning(f"Reconciled {reaped} abandoned run(s)")
+        return reaped
+
     def get_execution_state(self, run_id: str) -> Optional[PlaybookExecutionResult]:
         """Retrieve execution state from Redis"""
         key = self._get_execution_key(run_id)
@@ -126,8 +209,14 @@ class WorkflowEngine:
             
             return PlaybookExecutionResult(**parsed_data)
         except (json.JSONDecodeError, ValueError) as e:
+            # Do NOT return None here: the caller cannot distinguish that from
+            # "no such run", and its documented response to a miss is to build a
+            # fresh RUNNING record and save it over the top -- committing new
+            # state over the evidence of the corruption (WILDBO-DATA-02).
             logger.error(f"Failed to parse execution state for {run_id}: {e}")
-            return None
+            raise ExecutionStateCorruptError(
+                f"Execution state for {run_id} could not be parsed: {e}"
+            ) from e
     
     def _get_owner_key(self, run_id: str) -> str:
         """Get Redis key recording which team owns an execution (tenancy)."""
@@ -140,9 +229,9 @@ class WorkflowEngine:
         it is independent of the worker rewriting the execution state.
         """
         key = self._get_owner_key(run_id)
-        self.redis_client.set(key, str(team_id))
+        # SET with an expiry in one command (WILDBO-DATA-07).
         expire_seconds = settings.execution_retention_days * 24 * 60 * 60
-        self.redis_client.expire(key, expire_seconds)
+        self.redis_client.set(key, str(team_id), ex=expire_seconds)
 
     def get_run_owner(self, run_id: str) -> Optional[str]:
         """Return the team_id that owns ``run_id``, or None if unknown."""
@@ -317,11 +406,19 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         except KeyError:
             raise WorkflowExecutionError(f"Playbook '{playbook_id}' not found")
         
-        # Load existing state from Redis (created in start_execution)
+        # Load existing state from Redis (created in start_execution).
+        # A corrupt record now raises ExecutionStateCorruptError rather than
+        # returning None, so it cannot be mistaken for a miss and overwritten
+        # with a fresh RUNNING record (WILDBO-DATA-02).
         execution_result = workflow_engine.get_execution_state(run_id)
         
         if not execution_result:
-            # Fallback: create new state if not found (shouldn't happen)
+            # Genuinely absent: the record expired, or was evicted. Create state
+            # so the run is at least tracked, and say so.
+            logger.warning(
+                f"No persisted state for run {run_id}; creating a new record. "
+                "This means the original was expired or evicted."
+            )
             execution_result = PlaybookExecutionResult(
                 run_id=run_id,
                 playbook_id=playbook_id,
@@ -416,7 +513,13 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                     f"Step '{step.name}' completed successfully in {step_result.duration_seconds:.2f}s"
                 )
                 
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            except Exception as e:
+                # Catch Exception, not five builtins.
+                #
+                # The documented failure of a step is ConnectorError, raised by
+                # connector_registry.execute_action -- and ConnectorError is a
+                # plain Exception subclass, so it skipped this handler entirely
+                # and the step was never marked FAILED (WILDBO-ERR-02).
                 # Handle step failure
                 step_result.status = ExecutionStatus.FAILED
                 step_result.end_time = datetime.utcnow()
@@ -445,7 +548,11 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
             f"Playbook execution completed successfully in {execution_result.duration_seconds:.2f}s"
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except Exception as e:
+        # Catch Exception here too. WorkflowExecutionError -- which the step
+        # handler above raises deliberately to fail the run -- is an Exception
+        # subclass, so even the designed failure path did not reach this block
+        # and the run was left persisted as RUNNING (WILDBO-ERR-02).
         # Handle execution failure
         # Ensure we have an execution_result even if error occurred early
         if 'execution_result' not in locals():
@@ -470,14 +577,33 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         logger.error(f"Playbook execution {run_id} failed: {e}")
     
     finally:
-        # Final state save (defensive - already saved in try/except blocks)
+        # Final state save. A run that reaches this block has stopped, so it must
+        # not be left saying RUNNING: if some future exception escapes both
+        # handlers above, record it as FAILED rather than persisting a lie that
+        # nothing will ever correct (WILDBO-ERR-02/WILDBO-REL-02).
         if 'execution_result' in locals():
+            if execution_result.status in (ExecutionStatus.RUNNING, ExecutionStatus.QUEUED):
+                execution_result.status = ExecutionStatus.FAILED
+                execution_result.end_time = datetime.utcnow()
+                if not getattr(execution_result, "error", None):
+                    execution_result.error = (
+                        "Execution ended without reporting a terminal status"
+                    )
+                workflow_engine.add_log(
+                    run_id,
+                    "Execution ended without a terminal status; recorded as FAILED",
+                    level="ERROR",
+                )
             workflow_engine.save_execution_state(run_id, execution_result)
     
     return execution_result.dict()
 
 
-def start_execution(playbook_id: str, trigger_data: Dict[str, Any] = None) -> str:
+def start_execution(
+    playbook_id: str,
+    trigger_data: Dict[str, Any] = None,
+    team_id: Any = None,
+) -> str:
     """
     Start a new playbook execution
     
@@ -511,6 +637,15 @@ def start_execution(playbook_id: str, trigger_data: Dict[str, Any] = None) -> st
         context={"trigger": trigger_data or {}}
     )
     workflow_engine.save_execution_state(run_id, initial_state)
+
+    # Record the owner BEFORE the work is dispatched. This used to happen in the
+    # HTTP handler after start_execution returned, so a crash in that window left
+    # a run executing with no owner key -- and because is_run_owner fails closed,
+    # no team could read or cancel it while it performed its side effects
+    # (WILDBO-DATA-06).
+    if team_id is not None:
+        workflow_engine.set_run_owner(run_id, team_id)
+
     workflow_engine.add_log(run_id, f"Playbook '{playbook.name}' queued for execution")
     
     # Start execution

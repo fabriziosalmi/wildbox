@@ -14,7 +14,12 @@ local CIRCUIT_BREAKER_TIMEOUT = 60
 -- Flat per-team rate limit (requests per hour). Plan-based tiers were removed
 -- with billing/subscriptions; this is abuse protection on top of the per-IP
 -- limit_req zones in nginx.conf.
-local RATE_LIMIT_PER_HOUR = 1000000
+-- Per-team request budget. This was 1000000/hour -- 16,666 per minute -- which
+-- no client reaches, so the only per-tenant admission control in the system
+-- never engaged and one team could consume the whole capacity within the per-IP
+-- ceiling (WILDBO-SCAL-03). 10,000/hour is roughly 2.8 req/s sustained per team,
+-- comfortable for interactive use and for the dashboard's polling.
+local RATE_LIMIT_PER_HOUR = tonumber(os.getenv("RATE_LIMIT_PER_HOUR")) or 10000
 
 -- Get gateway configuration from environment variables
 local function get_config()
@@ -219,6 +224,29 @@ local function get_cached_auth_data(cache_key)
     return nil, "cache_miss"
 end
 
+-- Purge a cached authorization decision.
+--
+-- Nothing could invalidate the cache: disabling a user, deleting an API key,
+-- changing a role or removing a team membership all took effect only when the
+-- 5-minute entry expired, and an administrator deactivating a compromised
+-- account had no way to tell how long was left (WILDBO-AUTH-03). Identity calls
+-- POST /internal/gateway/purge-auth-cache on those events.
+function _M.purge_cache_entry(token, token_type)
+    local auth_cache = ngx.shared.auth_cache
+    if not auth_cache then return false end
+    local cache_key = utils.generate_auth_cache_key(token, token_type or "bearer")
+    auth_cache:delete(cache_key)
+    return true
+end
+
+function _M.purge_all_cache()
+    local auth_cache = ngx.shared.auth_cache
+    if not auth_cache then return false end
+    auth_cache:flush_all()
+    auth_cache:flush_expired()
+    return true
+end
+
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
@@ -243,75 +271,67 @@ end
 
 -- Enhanced rate limiting with sliding window (Blueprint requirement)
 local function apply_rate_limiting(auth_data)
+    -- Fixed-window counter, O(1) per request.
+    --
+    -- This used to keep every request timestamp in the window as a JSON list:
+    -- each request decoded the list, filtered it, appended, re-encoded and wrote
+    -- it back, so per-request cost grew with the request rate and total work over
+    -- a window was quadratic in it. The component deciding whether to shed load
+    -- was therefore most expensive exactly when the system was busiest
+    -- (WILDBO-SCAL-04). A counter per fixed window is how nginx's own limit_req
+    -- works, and it lets the shared dict expire the key itself.
     local team_id = auth_data.team_id
     local limit_per_hour = RATE_LIMIT_PER_HOUR
-
-    -- Convert to requests per second for sliding window
-    local limit_per_second = limit_per_hour / 3600
-    local window_size = 60 -- 1 minute sliding window
+    local window_size = 60                       -- seconds
+    local max_requests = math.max(1, math.floor(limit_per_hour * window_size / 3600))
 
     local rate_cache = ngx.shared.rate_limit_cache
-    local key = "rate:" .. team_id
     local now = ngx.time()
+    local window = math.floor(now / window_size)
+    local key = "rate:" .. team_id .. ":" .. window
+    local reset_at = (window + 1) * window_size
 
-    -- Get current request timestamps
-    local current_data = rate_cache:get(key)
-    local requests = {}
-
-    if current_data then
-        local decoded_data, err = utils.json_decode(current_data)
-        if not err and decoded_data.requests then
-            requests = decoded_data.requests
-        end
+    -- incr with an init value creates the key when absent; the TTL is set once
+    -- so the entry disappears with its window and nothing has to prune.
+    local count, err = rate_cache:incr(key, 1, 0, window_size * 2)
+    if not count then
+        -- A full shared dict must not take the gateway down: log and allow.
+        utils.log("warn", "Rate limit counter unavailable, allowing request", {error = err})
+        return
     end
 
-    -- Remove requests outside the sliding window
-    local filtered_requests = {}
-    for _, timestamp in ipairs(requests) do
-        if now - timestamp < window_size then
-            table.insert(filtered_requests, timestamp)
-        end
-    end
+    -- Limit and Remaining must describe the same budget.
+    --
+    -- Limit reported the hourly figure (10000) while Remaining counted against
+    -- the 60-second window actually enforced (166), so a client reading both
+    -- saw "10000 allowed, 163 left" and could not compute a backoff from it.
+    -- Limit is now the window that is enforced; the hourly policy it derives
+    -- from is stated separately, in the form RFC 9239 uses.
+    ngx.header["X-RateLimit-Limit"] = tostring(max_requests)
+    ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - count))
+    ngx.header["X-RateLimit-Reset"] = tostring(reset_at)
+    ngx.header["X-RateLimit-Policy"] = tostring(limit_per_hour) .. ";w=3600"
 
-    -- Add current request
-    table.insert(filtered_requests, now)
-
-    -- Check if limit exceeded
-    local requests_in_window = #filtered_requests
-    local max_requests = limit_per_second * window_size
-
-    if requests_in_window > max_requests then
+    if count > max_requests then
         utils.log("warn", "Rate limit exceeded", {
             team_id = team_id,
-            current_requests = requests_in_window,
+            current_requests = count,
             limit = max_requests,
             window_size = window_size
         })
 
         ngx.status = ngx.HTTP_TOO_MANY_REQUESTS
         ngx.header.content_type = "application/json"
-        ngx.header["Retry-After"] = tostring(window_size)
-        ngx.header["X-RateLimit-Limit"] = tostring(limit_per_hour)
-        ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - requests_in_window))
-        ngx.header["X-RateLimit-Reset"] = tostring(now + window_size)
+        ngx.header["Retry-After"] = tostring(reset_at - now)
 
         ngx.say(utils.json_encode({
             error = "rate_limit_exceeded",
             message = "Rate limit exceeded",
             limit_per_hour = limit_per_hour,
-            retry_after_seconds = window_size
+            retry_after_seconds = reset_at - now
         }))
         ngx.exit(ngx.HTTP_TOO_MANY_REQUESTS)
     end
-
-    -- Update cache with new request list
-    local updated_data = {requests = filtered_requests}
-    rate_cache:set(key, utils.json_encode(updated_data), window_size)
-
-    -- Set rate limit headers
-    ngx.header["X-RateLimit-Limit"] = tostring(limit_per_hour)
-    ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - requests_in_window))
-    ngx.header["X-RateLimit-Reset"] = tostring(now + window_size)
 end
 
 -- Map a request (path + method) to the API-key scope it requires.
@@ -347,6 +367,12 @@ local function scopes_satisfy(granted, required)
 
     if set[required] then return true end
     if set["admin"] then return true end  -- global admin satisfies everything
+    -- "*" is the explicit unrestricted marker. Legacy keys used to carry NULL
+    -- scopes, which meant unrestricted-by-absence; alembic revision
+    -- f5a6b7c8d9e0 migrates those to ["*"] so the privileged state is a value
+    -- that was written rather than one inferred from a missing column
+    -- (WILDBO-DOM-07). Without this branch those migrated keys would be denied.
+    if set["*"] then return true end
 
     local res, action = required:match("^(.-):(.+)$")
     if not res then

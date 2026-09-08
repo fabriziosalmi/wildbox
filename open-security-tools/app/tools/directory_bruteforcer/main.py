@@ -11,26 +11,9 @@ from typing import List
 # Add parent directories to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-try:
-    from app.utils.tool_utils import RateLimiter
-    from app.config.tool_config import ToolConfig
-except ImportError:
-    # Fallback for when running as standalone
-    class RateLimiter:
-        def __init__(self, max_requests=10, time_window=60):
-            pass
-        async def acquire(self):
-            pass
-    
-    class ToolConfig:
-        DEFAULT_RATE_LIMIT = 10
-        DEFAULT_RATE_WINDOW = 60
-
-try:
-    from schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
-except ImportError:
-    from schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
-
+from ...utils.tool_utils import RateLimiter
+from ...tool_config import ToolConfig
+from .schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
 # Directory and file wordlists
 SMALL_WORDLIST = [
     "admin", "login", "dashboard", "config", "backup", "test", "dev", "api", "upload", "download",

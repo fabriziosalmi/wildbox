@@ -1,10 +1,13 @@
 from pydantic import BaseModel, Field
-from standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...input_validation import UrlField
 from typing import List, Optional, Dict, Any, Union
 
 class APISecurityTesterInput(BaseToolInput):
     """Input schema for API Security Tester tool"""
-    api_base_url: str = Field(..., description="Base URL of the API to test")
+    # UrlField: SSRF validation is part of the schema, so it runs before the
+    # tool is entered and cannot be missed by a name-based sweep (WILDBO-INPT-01).
+    api_base_url: UrlField = Field(..., description="Base URL of the API to test")
     api_specification: Optional[str] = Field(None, description="OpenAPI/Swagger specification URL or content")
     authentication_type: str = Field(default="none", description="Authentication type (none, bearer, basic, api_key)")
     authentication_value: Optional[str] = Field(None, description="Authentication token/key/credentials")
