@@ -22,8 +22,15 @@ class FakeRedis:
         self.store = {}
         self.expirations = {}
 
-    def set(self, key, value):
+    def set(self, key, value, ex=None):
+        # `ex` is part of the contract now: set_run_owner sets the value and its
+        # expiry in one command rather than SET followed by EXPIRE, which could
+        # leave a key without a TTL if the second call was lost (WILDBO-DATA-07).
+        # This double did not accept it, so the tests raised TypeError against
+        # the fixed code -- a stub that had drifted from what it stands in for.
         self.store[key] = value
+        if ex is not None:
+            self.expirations[key] = ex
 
     def get(self, key):
         value = self.store.get(key)
@@ -90,3 +97,17 @@ def test_owner_key_is_distinct_from_execution_and_logs_keys(engine):
     run_id = "run-1"
     assert engine._get_owner_key(run_id) != engine._get_execution_key(run_id)
     assert engine._get_owner_key(run_id) != engine._get_logs_key(run_id)
+
+
+def test_set_run_owner_sets_an_expiry(engine):
+    """Ownership must not outlive the run it describes.
+
+    The expiry is what stops the ownership map growing without bound, and it
+    has to be applied by the same command that writes the value: a SET whose
+    follow-up EXPIRE is lost leaves a key that never goes away.
+    """
+    engine.set_run_owner("run-with-ttl", "team-a")
+
+    key = engine._get_owner_key("run-with-ttl")
+    assert key in engine.redis_client.expirations, "owner key was written without a TTL"
+    assert engine.redis_client.expirations[key] > 0

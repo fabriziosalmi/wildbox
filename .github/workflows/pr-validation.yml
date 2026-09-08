@@ -185,13 +185,21 @@ jobs:
           cd ${{ matrix.service }}
           # Syntax errors, undefined names and f-string/comparison bugs: always fatal.
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # Complexity and line length now GATE. This pass used to carry
-          # --exit-zero, so its findings were printed into the log and discarded,
-          # which is how functions at CCN 36 passed validation unremarked
-          # (WILDBO-QUAL-05). The threshold is set just above the current worst
-          # first-party function (CCN 36) so it holds today and can be ratcheted
-          # down; lowering it is a one-line change here.
-          flake8 . --count --max-complexity=37 --max-line-length=127 --statistics
+
+          # Complexity GATES. This pass used to carry --exit-zero, so its
+          # findings were printed into the log and discarded (WILDBO-QUAL-05).
+          #
+          # Complexity only. The first attempt at making this gate also enforced
+          # --max-line-length=127, which no service comes close to satisfying --
+          # between 283 and 3921 violations each -- so the "gate" would have
+          # failed every build from the moment it was armed. Complexity is a
+          # different matter: nothing in the tree exceeds 29, so 30 holds today
+          # and is a ratchet that can be tightened.
+          flake8 . --count --select=C901 --max-complexity=30 --show-source --statistics
+
+          # Line length and the rest of the style backlog: reported, not gated.
+          # Arming this needs the backlog cleared first, service by service.
+          flake8 . --count --max-line-length=127 --statistics --exit-zero
 
   # Integration test - Disabled (requires full environment setup with secrets)
   # TODO: Re-enable with proper CI environment configuration

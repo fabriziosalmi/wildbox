@@ -16,10 +16,16 @@ import pytest
 
 os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 
-APP_DIR = Path(__file__).resolve().parents[2] / "app"
+SERVICE_ROOT = Path(__file__).resolve().parents[2]
+APP_DIR = SERVICE_ROOT / "app"
 TOOL_DIR = APP_DIR / "tools" / "iot_security_scanner"
 
-sys.path.insert(0, str(APP_DIR))
+# The service root, not APP_DIR: `import app.tools...` needs the directory that
+# *contains* the app package on sys.path. Inserting APP_DIR itself worked only
+# under `python -m pytest`, which puts the working directory on sys.path too;
+# CI runs plain `pytest`, where it failed with
+# ModuleNotFoundError: No module named 'app'.
+sys.path.insert(0, str(SERVICE_ROOT))
 
 
 # Tools are real packages, so a plain import is all that is needed. This
