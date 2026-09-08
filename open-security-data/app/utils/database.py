@@ -2,12 +2,15 @@
 Database utilities and session management
 """
 
+import logging
 from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import StaticPool
 
 from app.config import get_config
+
+logger = logging.getLogger(__name__)
 
 config = get_config()
 
@@ -100,6 +103,38 @@ def run_migrations() -> None:
     cfg = Config(os.path.join(here, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(here, "alembic"))
     command.upgrade(cfg, "head")
+
+
+def wait_for_schema(timeout: float = 120.0, interval: float = 2.0) -> bool:
+    """Block until the schema exists, for processes that do not migrate.
+
+    Only one process may run migrations -- two alembic runs against the same
+    database race on the alembic_version row -- so the API migrates and every
+    other process waits here. The scheduler used to call create_tables()
+    instead, which both raced with the API and silently produced a
+    create_all()-shaped schema that no migration would ever correct.
+
+    Returns True once the schema is present, False on timeout; the caller
+    decides whether to continue and let queries fail loudly.
+    """
+    import time
+
+    from sqlalchemy import inspect
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            if "sources" in inspect(get_engine()).get_table_names():
+                return True
+        except Exception as exc:  # database not up yet
+            logger.debug("waiting for the database: %s", exc)
+        if time.monotonic() >= deadline:
+            logger.error(
+                "schema still absent after %ss; is the data API running its "
+                "migrations?", timeout
+            )
+            return False
+        time.sleep(interval)
 
 
 def drop_tables():

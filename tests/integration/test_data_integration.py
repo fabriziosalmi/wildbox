@@ -3,6 +3,8 @@ Data Integration Test Module
 Tests IOC lookup, threat intel feeds, team-scoped data
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
@@ -18,7 +20,12 @@ class TestDataIntegration:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        base_url = "http://localhost:8002"
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("DATA_SERVICE_URL", "http://localhost:8002")
         self.base_url = base_url
         self.results = []
         
@@ -31,7 +38,7 @@ class TestDataIntegration:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test data service health"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -44,13 +51,13 @@ class TestDataIntegration:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Data Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Data Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_ioc_lookup_json_structure(self) -> bool:
+    async def test_ioc_lookup_json_structure(self) -> None:
         """Test IOC lookup with valid JSON structure"""
         try:
             # Test domain lookup
@@ -99,13 +106,13 @@ class TestDataIntegration:
                 details = "No valid JSON responses from IOC lookups"
                 
             self.log_test_result("IOC Lookup with Valid JSON Structure", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("IOC Lookup with Valid JSON Structure", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_threat_intel_feeds(self) -> bool:
+    async def test_threat_intel_feeds(self) -> None:
         """Test threat intelligence feed status (50+ sources)"""
         try:
             response = requests.get(f"{self.base_url}/api/v1/feeds/status", timeout=15)
@@ -139,13 +146,13 @@ class TestDataIntegration:
                 details = f"Feed endpoint exists (HTTP {response.status_code})"
                 
             self.log_test_result("Threat Intel Feed Status (50+ Sources)", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Threat Intel Feed Status (50+ Sources)", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_team_scoped_data_insertion(self) -> bool:
+    async def test_team_scoped_data_insertion(self) -> None:
         """Test team-scoped data insertion and retrieval"""
         try:
             # Test data insertion (may require auth)
@@ -182,13 +189,13 @@ class TestDataIntegration:
                 details = f"Data endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Team-scoped Data Insertion", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Data Insertion", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_data_retrieval_scoping(self) -> bool:
+    async def test_data_retrieval_scoping(self) -> None:
         """Test team-scoped data retrieval"""
         try:
             # Test data retrieval endpoints
@@ -219,13 +226,13 @@ class TestDataIntegration:
                 details = "No data retrieval endpoints found"
                 
             self.log_test_result("Team-scoped Data Retrieval", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Data Retrieval", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_data_api_performance(self) -> bool:
+    async def test_data_api_performance(self) -> None:
         """Test data API response performance"""
         try:
             # Test response times for data operations
@@ -266,11 +273,11 @@ class TestDataIntegration:
                 details = "No successful requests for performance test"
                 
             self.log_test_result("Data API Performance", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Data API Performance", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

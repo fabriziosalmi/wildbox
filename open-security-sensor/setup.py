@@ -15,12 +15,46 @@ except ImportError:
     __version__ = '1.0.0'
 
 # Read long description from README
-with open('README.md', 'r', encoding='utf-8') as f:
-    long_description = f.read()
+# Optional: README.md is documentation and is excluded from the Docker build
+# context, so opening it unconditionally made `pip install -e .` fail inside the
+# image with FileNotFoundError -- the package metadata should not depend on a
+# file that is not part of the package.
+try:
+    with open('README.md', 'r', encoding='utf-8') as f:
+        long_description = f.read()
+except FileNotFoundError:
+    long_description = ''
 
-# Read requirements
-with open('requirements.txt', 'r', encoding='utf-8') as f:
-    requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
+# Read requirements from requirements.in, not requirements.txt.
+#
+# requirements.txt is now a uv-compiled lockfile: every entry carries
+# `--hash=sha256:...` continuation lines, which are pip install options and not
+# requirement specifiers. Feeding those to install_requires fails metadata
+# generation outright ("must be a string or iterable of strings containing valid
+# project/version requirement specifiers"). requirements.in holds the direct
+# dependencies, which is what install_requires is supposed to describe; the
+# lockfile stays the thing the image installs.
+def _read_requirements():
+    for candidate in ('requirements.in', 'requirements.txt'):
+        try:
+            with open(candidate, 'r', encoding='utf-8') as fh:
+                lines = fh.read().splitlines()
+        except FileNotFoundError:
+            continue
+        reqs = []
+        for line in lines:
+            line = line.split('#', 1)[0].strip().rstrip('\\').strip()
+            # Skip blanks, pip options (-r, --hash, --index-url) and the hash
+            # continuations that follow a pinned requirement.
+            if not line or line.startswith('-'):
+                continue
+            reqs.append(line)
+        if reqs:
+            return reqs
+    return []
+
+
+requirements = _read_requirements()
 
 # Platform-specific requirements
 extra_requirements = {

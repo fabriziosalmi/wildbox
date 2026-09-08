@@ -28,8 +28,13 @@ numpy==1.25.2
 redis==5.0.1
 hiredis==2.2.3
 feedparser==6.0.10
-pydantic==2.5.0
-pydantic-settings==2.1.0
+# Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
+# 0.125 and Starlette at 0.50 in this service's lock, while the other services
+# resolved to Starlette 1.6 -- three Starlette majors across one deployment,
+# with the ASGI behaviour and the security fixes differing between them
+# (WILDBO-DEP-01). Ranged so the whole platform converges on one resolution.
+pydantic>=2.10.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
 python-dateutil==2.8.2
 pytz==2023.3
 click==8.1.7

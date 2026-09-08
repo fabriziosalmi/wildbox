@@ -4,6 +4,7 @@ Tests RBAC, error handling, rate limiting for enterprise security
 """
 
 import os
+import pytest
 import requests
 import asyncio
 import time
@@ -43,7 +44,7 @@ class TestGatewayHardening:
             "timestamp": time.time()
         })
         
-    async def test_rbac_user_forbidden_admin_endpoint(self) -> bool:
+    async def test_rbac_user_forbidden_admin_endpoint(self) -> None:
         """
         Test RBAC: User role should get 403 on admin endpoints
         
@@ -73,13 +74,13 @@ class TestGatewayHardening:
                 passed = False
                 
             self.log_test_result("RBAC: Admin Access to Protected Endpoint", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("RBAC: Admin Access to Protected Endpoint", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rbac_role_header_propagation(self) -> bool:
+    async def test_rbac_role_header_propagation(self) -> None:
         """
         Test that X-Wildbox-Role header is correctly propagated from gateway to services
         
@@ -107,13 +108,13 @@ class TestGatewayHardening:
                 details = f"Gateway auth response: HTTP {response.status_code}"
                 
             self.log_test_result("RBAC: Role Header Propagation", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("RBAC: Role Header Propagation", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_error_handling_service_failure(self) -> bool:
+    async def test_error_handling_service_failure(self) -> None:
         """
         Test resilience: How does the system handle upstream service failures?
         
@@ -164,13 +165,13 @@ class TestGatewayHardening:
                 details = f"Playbook execution response: HTTP {response.status_code}"
                 
             self.log_test_result("Error Handling: Service Failure Resilience", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Error Handling: Service Failure Resilience", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rate_limiting_burst_protection(self) -> bool:
+    async def test_rate_limiting_burst_protection(self) -> None:
         """
         Test rate limiting: Gateway should throttle excessive requests
         
@@ -209,13 +210,13 @@ class TestGatewayHardening:
                 passed = True
                 
             self.log_test_result("Rate Limiting: Burst Protection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Rate Limiting: Burst Protection", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rate_limit_headers(self) -> bool:
+    async def test_rate_limit_headers(self) -> None:
         """
         Test that rate limiting headers are present in responses
         
@@ -247,13 +248,13 @@ class TestGatewayHardening:
                 passed = True
                 
             self.log_test_result("Rate Limiting: Informational Headers", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Rate Limiting: Informational Headers", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_malicious_ip_vulnerability_creation(self) -> bool:
+    async def test_malicious_ip_vulnerability_creation(self) -> None:
         """
         Test complete security workflow: Malicious IP → Guardian vulnerability
         
@@ -313,11 +314,11 @@ class TestGatewayHardening:
                 details = f"Playbook execution: HTTP {response.status_code}"
                 
             self.log_test_result("Security Workflow: Malicious IP Detection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Security Workflow: Malicious IP Detection", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

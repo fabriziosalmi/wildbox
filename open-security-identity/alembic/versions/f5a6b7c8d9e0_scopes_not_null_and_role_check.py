@@ -44,6 +44,31 @@ def upgrade() -> None:
     )
 
     # 2. Constrain the membership role vocabulary.
+    #
+    # Check first: PostgreSQL would otherwise raise a bare
+    # "check constraint ... is violated by some row" naming neither the column
+    # nor the offending values. The migration rolls back cleanly either way
+    # (transactional DDL), but the operator needs to know what to fix.
+    bad = (
+        op.get_bind()
+        .execute(
+            sa.text(
+                "SELECT role, count(*) AS n FROM team_memberships "
+                "WHERE role NOT IN ('owner','admin','member') "
+                "GROUP BY role ORDER BY n DESC"
+            )
+        )
+        .fetchall()
+    )
+    if bad:
+        detail = ", ".join(f"{r.role!r} ({r.n} rows)" for r in bad)
+        raise RuntimeError(
+            f"team_memberships.role holds values outside the vocabulary: {detail}. "
+            "Map them to one of 'owner', 'admin', 'member' before migrating, e.g.\n"
+            "    UPDATE team_memberships SET role = 'member' "
+            "WHERE role = '<bad value>';"
+        )
+
     op.create_check_constraint(
         "ck_team_membership_role",
         "team_memberships",

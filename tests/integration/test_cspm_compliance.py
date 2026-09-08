@@ -3,6 +3,8 @@ CSPM Compliance Test Module
 Tests cloud security dashboard, scanning, findings management
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
@@ -18,7 +20,12 @@ class TestCSPMCompliance:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        base_url = "http://localhost:8019"
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("CSPM_SERVICE_URL", "http://localhost:8019")
         self.base_url = base_url
         self.results = []
         
@@ -31,7 +38,7 @@ class TestCSPMCompliance:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test CSPM service health"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -44,13 +51,13 @@ class TestCSPMCompliance:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("CSPM Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("CSPM Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_executive_dashboard_summary(self) -> bool:
+    async def test_executive_dashboard_summary(self) -> None:
         """Test executive dashboard summary"""
         try:
             response = requests.get(f"{self.base_url}/api/v1/dashboard/executive", timeout=15)
@@ -83,13 +90,13 @@ class TestCSPMCompliance:
                 details = f"Dashboard endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Executive Dashboard Summary", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Executive Dashboard Summary", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_cloud_scanning_business_plus(self) -> bool:
+    async def test_cloud_scanning_business_plus(self) -> None:
         """Test cloud scanning trigger for Business+ plans"""
         try:
             # Test cloud scan trigger
@@ -132,13 +139,13 @@ class TestCSPMCompliance:
                 details = f"Scan trigger endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Cloud Scanning for Business+ Plans", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Cloud Scanning for Business+ Plans", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_team_scoped_findings(self) -> bool:
+    async def test_team_scoped_findings(self) -> None:
         """Test team-scoped findings listing"""
         try:
             # Test findings endpoint
@@ -159,13 +166,13 @@ class TestCSPMCompliance:
                 details = f"Findings endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Team-scoped Findings List", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Team-scoped Findings List", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_compliance_frameworks(self) -> bool:
+    async def test_compliance_frameworks(self) -> None:
         """Test compliance frameworks support"""
         try:
             # Test compliance frameworks endpoint
@@ -194,13 +201,13 @@ class TestCSPMCompliance:
                 details = f"Frameworks endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Compliance Frameworks Support", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Compliance Frameworks Support", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_scan_history(self) -> bool:
+    async def test_scan_history(self) -> None:
         """Test scan history and reporting"""
         try:
             # Test scan history endpoint
@@ -221,11 +228,11 @@ class TestCSPMCompliance:
                 details = f"Scan history endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Scan History and Reporting", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Scan History and Reporting", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

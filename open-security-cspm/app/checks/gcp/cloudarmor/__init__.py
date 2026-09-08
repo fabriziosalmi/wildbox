@@ -1,1 +1,0 @@
-# GCP CLOUDARMOR Security Checks\n

@@ -1,1 +1,0 @@
-# AWS APPRUNNER Security Checks\n

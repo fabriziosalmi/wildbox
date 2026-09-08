@@ -51,8 +51,16 @@ jobs:
           # continue-on-error masking); a service WITHOUT them emits a visible
           # warning instead of a silent pytest exit-4. Coverage gaps for the
           # services that have no tests/unit/ are tracked in #245.
+          # --cov=app is wrong for guardian, whose code lives in apps/ and
+          # guardian/ (it is the one Django service): coverage was measured
+          # against a package that does not exist there, so its report was
+          # always empty while looking like it had been collected.
+          case "${{ matrix.service }}" in
+            guardian) COV="--cov=apps --cov=guardian" ;;
+            *)        COV="--cov=app" ;;
+          esac
           if [ -d tests/unit ] && [ -n "$(find tests/unit -name 'test_*.py' -print -quit)" ]; then
-            pytest tests/unit/ -v --cov=app --cov-report=xml --cov-report=term
+            pytest tests/unit/ -v $COV --cov-report=xml --cov-report=term
           else
             echo "::warning title=No unit tests::open-security-${{ matrix.service }} has no tests/unit/ — coverage gap tracked in #245"
           fi
@@ -308,15 +316,30 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
       
+      # Build the image locally first: the SBOM has to come from the image, not
+      # from the source tree. A filesystem scan lists 141 components for the
+      # data service and a licence for none of them, so a licence gate reading
+      # it can never fire (WILDBO-DEP-06).
+      - name: Build image locally for scanning
+        uses: docker/build-push-action@v7
+        with:
+          context: ./open-security-${{ matrix.service }}
+          build-contexts: |
+            shared=open-security-shared
+          load: true
+          push: false
+          tags: wildbox-${{ matrix.service }}:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Generate SBOM
         # No SBOM was produced for any image, so a consumer could not enumerate
-        # what was inside one, and no licence check was possible (WILDBO-DEP-06).
-        # Trivy is already in the pipeline and emits CycloneDX from the same scan
-        # that produces the SARIF.
+        # what was inside one (WILDBO-DEP-06). Scanning the image resolves the
+        # installed distributions and their licences.
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          scan-type: 'fs'
-          scan-ref: './open-security-${{ matrix.service }}'
+          scan-type: 'image'
+          image-ref: 'wildbox-${{ matrix.service }}:scan'
           format: 'cyclonedx'
           output: 'sbom-${{ matrix.service }}.cdx.json'
           exit-code: '0'
@@ -329,13 +352,16 @@ jobs:
           retention-days: 90
 
       - name: Check dependency licences
-        # Fails on a copyleft licence arriving transitively into a service whose
-        # own licence is MIT. Advisory today (continue-on-error) so the first run
-        # establishes the baseline rather than blocking every PR.
-        continue-on-error: true
+        # Blocking. Fails when a copyleft dependency reaches a service that
+        # ships under MIT. Scoped to language packages: the Alpine/Debian base
+        # is GPL by nature and is not linked into our code.
+        #
+        # This step used to be `pip install pip-licenses` followed by an echo,
+        # with continue-on-error on top -- it inspected nothing and could not
+        # fail (WILDBO-DEP-06, WILDBO-QUAL-03).
         run: |
-          python -m pip install --quiet pip-licenses
-          echo "Licence inventory recorded in the SBOM artefact above."
+          python scripts/check_sbom_licences.py --list sbom-${{ matrix.service }}.cdx.json
+          python scripts/check_sbom_licences.py sbom-${{ matrix.service }}.cdx.json
 
       - name: Build and push
         uses: docker/build-push-action@v7

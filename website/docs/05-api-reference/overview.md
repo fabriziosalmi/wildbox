@@ -142,7 +142,7 @@ Multi-cloud security posture management and compliance scanning.
 - **Documentation**: [CSPM API](/docs/api-reference/cspm)
 - **Key Features**:
   - Multi-cloud support (AWS, Azure, GCP)
-  - 200+ security checks
+  - 31 security checks (AWS, GCP, Azure)
   - Compliance frameworks (CIS, NIST, SOC2, PCI-DSS)
   - Risk-based prioritization
   - Automated remediation recommendations

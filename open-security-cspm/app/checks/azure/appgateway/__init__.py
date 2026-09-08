@@ -1,1 +1,0 @@
-# Azure APPGATEWAY Security Checks\n

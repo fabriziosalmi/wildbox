@@ -22,7 +22,7 @@
 | **guardian** | 8013 | Vulnerability management | ~2,800 | 190MB | Medium |
 | **responder** | 8018 | Incident response, playbooks | ~1,500 | 170MB | Low |
 | **agents** | 8006 | AI-powered analysis (GPT-4o) | ~2,000 | 220MB | Medium |
-| **cspm** | 8019 | Cloud security (200+ checks) | ~4,500 | 210MB | Medium |
+| **cspm** | 8019 | Cloud security (31 checks) | ~4,500 | 210MB | Medium |
 | **sensor** | 8004 | Endpoint monitoring (Rust) | ~1,200 | 80MB | Low |
 | **dashboard** | 3000 | Next.js 14 frontend | ~5,000 | 300MB | Medium |
 | **automations** | 5678 | n8n workflow automation | 0 (external) | 400MB | Low |

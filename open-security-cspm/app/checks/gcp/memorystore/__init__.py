@@ -1,1 +1,0 @@
-# GCP MEMORYSTORE Security Checks\n

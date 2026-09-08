@@ -1,1 +1,0 @@
-# GCP BINARYAUTH Security Checks\n

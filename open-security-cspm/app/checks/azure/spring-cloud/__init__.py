@@ -1,1 +1,0 @@
-# Azure SPRING-CLOUD Security Checks\n

@@ -1,1 +1,0 @@
-# Azure BATCH Security Checks\n

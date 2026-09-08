@@ -54,8 +54,13 @@ azure-mgmt-compute==30.3.0
 azure-mgmt-sql==3.0.1
 azure-mgmt-security==6.0.0
 azure-mgmt-monitor==6.0.2
-pydantic==2.5.0
-pydantic-settings==2.1.0
+# Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
+# 0.125 and Starlette at 0.50 in this service's lock, while the other services
+# resolved to Starlette 1.6 -- three Starlette majors across one deployment,
+# with the ASGI behaviour and the security fixes differing between them
+# (WILDBO-DEP-01). Ranged so the whole platform converges on one resolution.
+pydantic>=2.10.0,<3.0.0
+pydantic-settings>=2.6.0,<3.0.0
 jinja2==3.1.6
 pyyaml==6.0.1
 httpx==0.25.2

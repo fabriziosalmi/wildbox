@@ -1,1 +1,0 @@
-# AWS DATASYNC Security Checks\n

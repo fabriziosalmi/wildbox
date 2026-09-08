@@ -1,1 +1,0 @@
-# AWS MACIE Security Checks\n

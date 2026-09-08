@@ -6,6 +6,7 @@ import logging
 import re
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Union
+import os
 from contextlib import asynccontextmanager
 import uuid
 
@@ -21,7 +22,7 @@ import json
 
 from app.config import get_config
 from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun, TelemetryEvent, SensorMetadata
-from app.utils.database import get_db_session, create_tables
+from app.utils.database import get_db_session, run_migrations
 from app.schemas.api import *
 from app.auth import get_current_user, GatewayUser
 from open_security_shared.tenancy import team_or_global_filter
@@ -34,8 +35,19 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     # Startup
     logger.info("Starting Open Security Data API")
-    create_tables()
-    logger.info("Database tables created/verified")
+    # Migrate, do not create_all(). create_all() emits CREATE TABLE and never
+    # ALTER TABLE, so on an existing database every column added after its
+    # first boot stays missing forever -- which is how the team_id tenancy
+    # columns went missing (WILDBO-DOM-01). run_migrations() handles both a
+    # fresh database and an existing one.
+    #
+    # Set RUN_MIGRATIONS_ON_STARTUP=false where migrations are a separate
+    # deploy step; the service then expects the schema to be at head already.
+    if os.getenv("RUN_MIGRATIONS_ON_STARTUP", "true").lower() in ("1", "true", "yes"):
+        run_migrations()
+        logger.info("Database schema migrated to head")
+    else:
+        logger.info("RUN_MIGRATIONS_ON_STARTUP=false; skipping migrations")
     
     yield
     

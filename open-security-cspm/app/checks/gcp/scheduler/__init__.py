@@ -1,1 +1,0 @@
-# GCP SCHEDULER Security Checks\n

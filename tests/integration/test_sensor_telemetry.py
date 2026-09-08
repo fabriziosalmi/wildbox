@@ -3,6 +3,8 @@ Sensor Telemetry Test Module
 Tests osquery status, telemetry submission, remote configuration
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
@@ -18,7 +20,12 @@ class TestSensorTelemetry:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        base_url = "http://localhost:8004"
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("SENSOR_SERVICE_URL", "http://localhost:8004")
         self.base_url = base_url
         self.results = []
         
@@ -31,7 +38,7 @@ class TestSensorTelemetry:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test sensor service health"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -44,13 +51,13 @@ class TestSensorTelemetry:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Sensor Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Sensor Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_osquery_process_status(self) -> bool:
+    async def test_osquery_process_status(self) -> None:
         """Test osquery process status monitoring"""
         try:
             # Test osquery status endpoint
@@ -71,13 +78,13 @@ class TestSensorTelemetry:
                 details = f"osquery endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("osquery Process Status", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("osquery Process Status", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_telemetry_submission(self) -> bool:
+    async def test_telemetry_submission(self) -> None:
         """Test telemetry submission with certificate authentication"""
         try:
             # Test telemetry submission endpoint
@@ -115,13 +122,13 @@ class TestSensorTelemetry:
                 details = f"Telemetry endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Telemetry Submission with Certificate Auth", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Telemetry Submission with Certificate Auth", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_remote_configuration_retrieval(self) -> bool:
+    async def test_remote_configuration_retrieval(self) -> None:
         """Test remote configuration retrieval"""
         try:
             # Test configuration endpoint
@@ -139,13 +146,13 @@ class TestSensorTelemetry:
                 details = f"Configuration endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Remote Configuration Retrieval", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Remote Configuration Retrieval", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_sensor_registration(self) -> bool:
+    async def test_sensor_registration(self) -> None:
         """Test sensor registration process"""
         try:
             # Test sensor registration
@@ -177,11 +184,11 @@ class TestSensorTelemetry:
                 details = f"Registration endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("Sensor Registration", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Sensor Registration", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

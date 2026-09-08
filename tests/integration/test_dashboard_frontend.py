@@ -3,6 +3,8 @@ Dashboard Frontend Test Module
 Tests page loading, navigation, data population
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
@@ -18,7 +20,12 @@ class TestDashboardFrontend:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        base_url = "http://localhost:3000"
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("DASHBOARD_URL", "http://localhost:3000")
         self.base_url = base_url
         self.results = []
         
@@ -31,7 +38,7 @@ class TestDashboardFrontend:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test dashboard service health"""
         try:
             response = requests.get(f"{self.base_url}/", timeout=15)
@@ -49,13 +56,13 @@ class TestDashboardFrontend:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Dashboard Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Dashboard Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_page_loading_with_widgets(self) -> bool:
+    async def test_page_loading_with_widgets(self) -> None:
         """Test initial page loading with all widgets"""
         try:
             response = requests.get(f"{self.base_url}/", timeout=20)
@@ -96,13 +103,13 @@ class TestDashboardFrontend:
                 passed = False
                 
             self.log_test_result("Page Loading with All Widgets", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Page Loading with All Widgets", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_navigation_without_errors(self) -> bool:
+    async def test_navigation_without_errors(self) -> None:
         """Test complete navigation without errors"""
         try:
             # Test various dashboard routes
@@ -143,13 +150,13 @@ class TestDashboardFrontend:
                 details = f"Navigation issues: {successful_routes} successful, {error_routes} errors"
                 
             self.log_test_result("Complete Navigation without Errors", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Complete Navigation without Errors", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_data_population(self) -> bool:
+    async def test_data_population(self) -> None:
         """Test real data population and updates"""
         try:
             # Dashboard is a Next.js app that fetches data from backend services
@@ -161,7 +168,7 @@ class TestDashboardFrontend:
             if response.status_code != 200:
                 details = f"Dashboard not accessible: HTTP {response.status_code}"
                 self.log_test_result("Real Data Population", False, details)
-                return False
+                pytest.fail(details)
             
             html_content = response.text.lower()
             
@@ -187,13 +194,13 @@ class TestDashboardFrontend:
                 passed = True  # Next.js dashboard itself is working, data fetching is optional
                 
             self.log_test_result("Real Data Population", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Real Data Population", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_static_assets_loading(self) -> bool:
+    async def test_static_assets_loading(self) -> None:
         """Test static assets loading (CSS, JS, images)"""
         try:
             # Test common static asset paths
@@ -239,13 +246,13 @@ class TestDashboardFrontend:
                 details = "No static assets found"
                 
             self.log_test_result("Static Assets Loading", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Static Assets Loading", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_responsive_design(self) -> bool:
+    async def test_responsive_design(self) -> None:
         """Test responsive design elements"""
         try:
             response = requests.get(f"{self.base_url}/", timeout=10)
@@ -281,11 +288,11 @@ class TestDashboardFrontend:
                 details = f"Cannot check responsive design: HTTP {response.status_code}"
                 
             self.log_test_result("Responsive Design Elements", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Responsive Design Elements", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

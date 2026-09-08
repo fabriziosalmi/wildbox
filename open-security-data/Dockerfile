@@ -49,6 +49,12 @@ RUN pip install --no-deps /tmp/open-security-shared
 # Copy application code
 COPY app/ ./app/
 COPY manage.py ./
+# The migration scripts and their config. The API runs `alembic upgrade head`
+# at start-up, and without these the container died on boot with
+# "Path doesn't exist: '/app/alembic'" -- the schema management this service
+# gained was present in the repository and absent from the image.
+COPY alembic.ini ./
+COPY alembic/ ./alembic/
 
 # Copy config and scripts if they exist
 COPY README.md QUICKSTART.md ./

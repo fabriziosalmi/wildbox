@@ -1,1 +1,0 @@
-# AWS SSM Security Checks\n

@@ -72,14 +72,16 @@ class CheckMetadata(BaseModel):
     references: List[str] = Field(default_factory=list)
     remediation: str
     enabled: bool = True
-    # False for generated scaffolding whose execute() returns NOT_IMPLEMENTED.
+    # False for scaffolding whose execute() inspects nothing.
     #
-    # 167 of the 204 check files were placeholders that still declared full
-    # metadata -- check_id, severity, compliance frameworks, a four-step
-    # remediation -- so the registry, the catalogue and any compliance score saw
-    # 204 checks where only 37 inspected anything (WILDBO-QUAL-01). The registry
-    # excludes unimplemented checks from discovery and scoring; the catalogue
-    # reports them separately so the number is honest rather than inflated.
+    # 166 of the 204 check files used to be generated placeholders that still
+    # declared full metadata -- check_id, severity, compliance frameworks, a
+    # four-step remediation -- so the registry, the catalogue and any compliance
+    # score saw 204 checks where only 31 inspected anything (WILDBO-QUAL-01).
+    # Those files have been deleted: every check in the tree now calls a cloud
+    # API. This flag stays as the guard that keeps it that way -- scaffolding
+    # merged with implemented=False is excluded from discovery and from any
+    # compliance score, so it can never inflate the advertised capability again.
     implemented: bool = True
 
 
@@ -296,8 +298,10 @@ class CheckRegistry:
             CloudProvider.GCP: [],
             CloudProvider.AZURE: []
         }
-        # Registered but not runnable: generated placeholders whose execute()
-        # returns NOT_IMPLEMENTED (WILDBO-QUAL-01).
+        # Registered but not runnable: anything declaring implemented=False.
+        # Empty today (the 166 generated placeholders were deleted), and kept so
+        # that future scaffolding cannot be counted as capability
+        # (WILDBO-QUAL-01).
         self._unimplemented: Dict[str, BaseCheck] = {}
     
     def register(self, check: BaseCheck):

@@ -21,7 +21,7 @@ services:
       context: ./open-security-identity
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-identity
     restart: unless-stopped
     # Resource bound. Only postgres and redis used to carry one, so a
@@ -70,12 +70,20 @@ services:
       retries: 3
 
   # API Service (Security Tools Platform)
+  # SCALING CAVEAT: `api` keeps its execution history, per-tool statistics and
+  # in-flight task registry in process memory (open-security-tools/app/
+  # execution_manager.py). Two replicas therefore each report only the work that
+  # landed on them: /stats and the tool statistics become per-replica views that
+  # look like the whole picture. Tool *execution* is safe to scale -- the Celery
+  # workers below are stateless and already scale -- but until that state moves
+  # to Redis, run one `api` replica. The gateway load-balances by service name,
+  # so raising this is a one-line change once the state is shared.
   api:
     build:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     # No container_name: a fixed name makes `docker compose up --scale`
     # fail outright, so the first scaling action an operator reaches for was
     # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
@@ -135,7 +143,7 @@ services:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     # No container_name: a fixed name makes `docker compose up --scale`
     # fail outright, so the first scaling action an operator reaches for was
     # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
@@ -188,7 +196,7 @@ services:
       context: ./open-security-tools
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-tools-flower
     restart: unless-stopped
     security_opt:
@@ -223,7 +231,7 @@ services:
       context: ./open-security-data
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     # No container_name: a fixed name makes `docker compose up --scale`
     # fail outright, so the first scaling action an operator reaches for was
     # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
@@ -276,7 +284,7 @@ services:
       context: ./open-security-data
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-data-scheduler
     restart: unless-stopped
     security_opt:
@@ -348,12 +356,32 @@ services:
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
     networks:
       - wildbox
+    # Every service whose hostname appears in an `upstream` block of
+    # nginx/conf.d/wildbox_gateway.conf must be listed here.
+    #
+    # nginx resolves upstream hostnames once, when it loads the configuration,
+    # and treats a name it cannot resolve as fatal: "host not found in upstream
+    # ... " and the process exits. With `restart: unless-stopped` the gateway
+    # then crash-loops. So a single missing backend does not degrade one route,
+    # it takes the whole gateway down. This list used to name five of the nine
+    # upstreams, so `docker compose up gateway` -- or any partial stack -- left
+    # the gateway restarting forever.
+    #
+    # The same applies at runtime: stopping one backend and restarting the
+    # gateway kills it. Making a single backend non-fatal means switching
+    # proxy_pass to a variable plus `resolver 127.0.0.11`, which defers
+    # resolution to request time; that is a larger change than this one and is
+    # not done here.
     depends_on:
       - wildbox-redis
       - identity
       - guardian
       - responder
       - agents
+      - api
+      - data
+      - cspm
+      - dashboard
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost/health"]
       interval: 30s
@@ -415,8 +443,11 @@ services:
       wildbox:
         aliases:
           - dashboard
+    # `gateway` deliberately absent here. It is the *browser* that talks to the
+    # gateway, not this container at start-up, and the edge created a cycle:
+    # nginx must resolve open-security-dashboard before it will load its
+    # configuration at all, so each waited for the other.
     depends_on:
-      - gateway
       - identity
     # node is always present in the image; use it (no curl in node:18-alpine).
     healthcheck:
@@ -504,7 +535,7 @@ services:
       context: ./open-security-guardian
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-guardian
     restart: unless-stopped
     # Resource bound. Only postgres and redis used to carry one, so a
@@ -525,7 +556,9 @@ services:
       - "127.0.0.1:8013:8013"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - SECRET_KEY=${GUARDIAN_SECRET_KEY}
+      # :? so an unset value fails compose loudly instead of starting the
+      # service with SECRET_KEY="", which Django rejects at boot anyway.
+      - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
       - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
@@ -563,7 +596,7 @@ services:
       context: ./open-security-responder
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-responder
     restart: unless-stopped
     # Resource bound. Only postgres and redis used to carry one, so a
@@ -617,7 +650,7 @@ services:
       context: ./open-security-cspm
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     # No container_name: a fixed name makes `docker compose up --scale`
     # fail outright, so the first scaling action an operator reaches for was
     # unavailable in the shipped configuration (WILDBO-SCAL-02). The gateway
@@ -644,7 +677,7 @@ services:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # cspm requires SECRET_KEY (min 32 chars); without it the service crashes
       # on startup with a pydantic "secret_key Field required" error.
-      - SECRET_KEY=${CSPM_SECRET_KEY}
+      - SECRET_KEY=${CSPM_SECRET_KEY:?CSPM_SECRET_KEY is required}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
       - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
@@ -696,7 +729,7 @@ services:
       context: ./open-security-agents
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-agents
     restart: unless-stopped
     # Resource bound. Only postgres and redis used to carry one, so a
@@ -755,7 +788,7 @@ services:
       context: ./open-security-sensor
       dockerfile: Dockerfile
       additional_contexts:
-        shared: ../open-security-shared
+        shared: ./open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
     security_opt:
@@ -848,7 +881,10 @@ services:
   #
   #   docker compose --profile backup up -d
   backup:
-    image: postgres:16-alpine
+    # Must match the server major in the `postgres` service above: pg_restore
+    # from a newer major can emit SQL the older server rejects, which turns a
+    # restore drill into a surprise at the worst possible moment.
+    image: postgres:15-alpine
     profiles: ["backup"]
     restart: unless-stopped
     environment:

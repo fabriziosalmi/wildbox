@@ -4,6 +4,7 @@ Tests OpenAI connection, AI analysis, report generation
 """
 
 import os
+import pytest
 import requests
 import asyncio
 import time
@@ -44,10 +45,10 @@ class TestAgentsAI:
             "timestamp": time.time()
         })
         
-    async def test_service_health(self) -> bool:
+    async def test_service_health(self) -> None:
         """Test AI agents service health (direct)"""
         try:
-            response = requests.get("http://localhost:8006/health", timeout=10)
+            response = requests.get(f'{os.getenv("AGENTS_SERVICE_URL", "http://localhost:8006")}/health', timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -57,13 +58,13 @@ class TestAgentsAI:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("AI Agents Service Health", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("AI Agents Service Health", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_openai_connection_status(self) -> bool:
+    async def test_openai_connection_status(self) -> None:
         """Test OpenAI connection status via gateway"""
         try:
             # Gateway route: /api/v1/agents/status
@@ -99,13 +100,13 @@ class TestAgentsAI:
                 details = f"AI status endpoint status: HTTP {response.status_code}"
                 
             self.log_test_result("OpenAI Connection Status", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("OpenAI Connection Status", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_ai_analysis_with_task_id(self) -> bool:
+    async def test_ai_analysis_with_task_id(self) -> None:
         """Test AI analysis with task_id generation via gateway"""
         try:
             # Test AI analysis request - use correct schema with 'ioc' field
@@ -153,13 +154,13 @@ class TestAgentsAI:
                 details = f"AI analysis endpoint responds (HTTP {response.status_code})"
                 
             self.log_test_result("AI Analysis with Task ID", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("AI Analysis with Task ID", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_ai_report_retrieval(self) -> bool:
+    async def test_ai_report_retrieval(self) -> None:
         """Test AI report retrieval via gateway"""
         try:
             # Test report retrieval via gateway - use /api/v1/agents/tasks
@@ -205,13 +206,13 @@ class TestAgentsAI:
                 passed = True
                 
             self.log_test_result("AI Report Retrieval", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("AI Report Retrieval", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_ai_capabilities(self) -> bool:
+    async def test_ai_capabilities(self) -> None:
         """Test AI capabilities and models via gateway"""
         try:
             # Gateway route: /api/v1/agents/capabilities
@@ -247,11 +248,11 @@ class TestAgentsAI:
                 details = f"AI capabilities endpoint status: HTTP {response.status_code}"
                 
             self.log_test_result("AI Capabilities and Models", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("AI Capabilities and Models", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

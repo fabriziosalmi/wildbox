@@ -18,7 +18,8 @@ declared dependency and was never wired up (WILDBO-DOM-02).
 # file is expected to carry these two, and the next hand-written revision starts
 # from a copy of this one.
 import sqlalchemy as sa  # noqa: F401
-from alembic import op  # noqa: F401
+from alembic import op
+from app.models import Base
 
 revision = "0001_baseline"
 down_revision = None
@@ -27,10 +28,20 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Intentionally empty. The baseline exists so that 0002 and later have a
-    # parent; existing deployments are stamped with `alembic stamp 0001_baseline`
-    # and new ones reach this state via create_tables().
-    pass
+    # Create every table declared by the models, skipping any that already
+    # exist. Two callers, two behaviours, both correct:
+    #
+    #   * fresh database -- `alembic upgrade head` builds the whole schema here,
+    #     so a new deployment needs nothing but alembic. This used to be an
+    #     empty upgrade(), which meant `alembic upgrade head` on an empty
+    #     database died in 0002 with NoSuchTableError: sources.
+    #   * existing database stamped at this revision -- checkfirst makes it a
+    #     no-op and 0002 onwards apply the real deltas.
+    #
+    # The consequence is that this baseline tracks the current models rather
+    # than a frozen historical snapshot, so 0002 and 0003 must be idempotent:
+    # on a fresh database they find their changes already in place. They are.
+    Base.metadata.create_all(bind=op.get_bind(), checkfirst=True)
 
 
 def downgrade() -> None:

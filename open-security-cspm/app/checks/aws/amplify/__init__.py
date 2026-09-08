@@ -1,1 +1,0 @@
-# AWS AMPLIFY Security Checks\n

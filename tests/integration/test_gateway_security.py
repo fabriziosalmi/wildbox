@@ -3,6 +3,8 @@ Gateway Security Test Module
 Tests routing, security headers, rate limiting, circuit breaker
 """
 
+import os
+import pytest
 import requests
 import asyncio
 import time
@@ -18,7 +20,12 @@ class TestGatewaySecurity:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        base_url = "http://localhost:80"
+        # Read the same environment variable the conftest reachability guard
+        # reads. Hard-coding localhost meant the guard probed the configured
+        # address, said "reachable", and the test then connected somewhere
+        # else -- so these tests could only ever pass on a host where every
+        # service happened to be on loopback.
+        base_url = os.getenv("GATEWAY_URL", "http://localhost")
         self.base_url = base_url
         self.https_url = "https://localhost:443"
         self.results = []
@@ -32,7 +39,7 @@ class TestGatewaySecurity:
             "timestamp": time.time()
         })
         
-    async def test_gateway_health(self) -> bool:
+    async def test_gateway_health(self) -> None:
         """Test gateway health endpoint"""
         try:
             response = requests.get(f"{self.base_url}/health", timeout=10)
@@ -45,13 +52,13 @@ class TestGatewaySecurity:
                 details = f"HTTP {response.status_code}"
                 
             self.log_test_result("Gateway Health Check", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Gateway Health Check", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_routing_with_authentication(self) -> bool:
+    async def test_routing_with_authentication(self) -> None:
         """Test routing through gateway with authentication"""
         try:
             # Test routing to identity service through gateway
@@ -72,13 +79,13 @@ class TestGatewaySecurity:
                 details = "Route not found - gateway routing may be broken"
                 
             self.log_test_result("Gateway Routing with Authentication", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Gateway Routing with Authentication", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_security_headers(self) -> bool:
+    async def test_security_headers(self) -> None:
         """Test security headers (HSTS, CSP, X-Frame-Options)"""
         try:
             response = requests.get(f"{self.base_url}/", timeout=10)
@@ -117,13 +124,13 @@ class TestGatewaySecurity:
                 details = f"Missing security headers: {', '.join(missing_headers)}"
                 
             self.log_test_result("Security Headers Check", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Security Headers Check", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_http_method_restrictions(self) -> bool:
+    async def test_http_method_restrictions(self) -> None:
         """Test restriction of non-permitted HTTP methods"""
         try:
             # Test various HTTP methods
@@ -154,13 +161,13 @@ class TestGatewaySecurity:
                 details = f"Too many methods allowed: {', '.join(allowed_methods)}"
                 
             self.log_test_result("HTTP Method Restrictions", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("HTTP Method Restrictions", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_passthrough_headers(self) -> bool:
+    async def test_passthrough_headers(self) -> None:
         """Test correct pass-through headers (X-User-ID, X-Team-ID, X-Role, X-Plan)"""
         try:
             # This test checks if the gateway properly sets headers when forwarding requests
@@ -183,13 +190,13 @@ class TestGatewaySecurity:
                 details = f"Unexpected response: HTTP {response.status_code}"
                 
             self.log_test_result("Pass-through Headers Processing", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Pass-through Headers Processing", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_rate_limiting(self) -> bool:
+    async def test_rate_limiting(self) -> None:
         """Test rate limiting with burst protection"""
         try:
             # Send multiple rapid requests to test rate limiting
@@ -222,13 +229,13 @@ class TestGatewaySecurity:
                 details = f"No rate limiting detected: {successful_requests}/{requests_count} in {total_time:.2f}s"
                 
             self.log_test_result("Rate Limiting with Burst Protection", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Rate Limiting with Burst Protection", False, f"Error: {str(e)}")
-            return False
+            raise
             
-    async def test_circuit_breaker(self) -> bool:
+    async def test_circuit_breaker(self) -> None:
         """Test circuit breaker with recovery"""
         try:
             # Test circuit breaker by making requests to potentially failing endpoints
@@ -259,11 +266,11 @@ class TestGatewaySecurity:
                 details = "Circuit breaker may not be working - all services unreachable"
                 
             self.log_test_result("Circuit Breaker with Recovery", passed, details)
-            return passed
+            assert passed, details
             
         except Exception as e:
             self.log_test_result("Circuit Breaker with Recovery", False, f"Error: {str(e)}")
-            return False
+            raise
 
 
 async def run_tests() -> Dict[str, Any]:

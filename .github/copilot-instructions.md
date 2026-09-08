@@ -27,7 +27,7 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 | **guardian** | 8013 | Django vulnerability management | API Key |
 | **responder** | 8018 | FastAPI incident response & playbooks | API Key |
 | **agents** | 8006 | FastAPI AI-powered analysis (GPT-4o) | API Key |
-| **cspm** | 8019 | FastAPI cloud security (200+ checks) | API Key |
+| **cspm** | 8019 | FastAPI cloud security (31 checks) | API Key |
 | **sensor** | 8004 | Rust endpoint monitoring (osquery) | Certificate |
 | **dashboard** | 3000 | Next.js 14 frontend (App Router) | Session + JWT |
 | **automations** | 5678 | n8n workflow automation | Basic Auth |

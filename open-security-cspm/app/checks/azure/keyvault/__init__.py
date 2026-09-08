@@ -1,1 +1,0 @@
-# Azure KEYVAULT Security Checks\n

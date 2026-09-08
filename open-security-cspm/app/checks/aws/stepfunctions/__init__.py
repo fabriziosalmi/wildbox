@@ -1,1 +1,0 @@
-# AWS STEPFUNCTIONS Security Checks\n
