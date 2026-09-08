@@ -48,9 +48,34 @@ SYSTEMD_UNITS_COLUMNS = {
 }
 
 SQL_KEYWORDS = {
-    "select", "from", "where", "as", "and", "or", "not", "like", "in", "is",
-    "null", "limit", "order", "by", "group", "having", "union", "join", "on",
-    "left", "inner", "outer", "distinct", "case", "when", "then", "else", "end",
+    "select",
+    "from",
+    "where",
+    "as",
+    "and",
+    "or",
+    "not",
+    "like",
+    "in",
+    "is",
+    "null",
+    "limit",
+    "order",
+    "by",
+    "group",
+    "having",
+    "union",
+    "join",
+    "on",
+    "left",
+    "inner",
+    "outer",
+    "distinct",
+    "case",
+    "when",
+    "then",
+    "else",
+    "end",
 }
 
 
@@ -70,7 +95,11 @@ def _referenced_columns(query: str) -> set:
     # An alias introduced with AS is a name we invent, not one we read.
     aliases = set(re.findall(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", without_strings, re.I))
     words = set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", without_strings))
-    return {w for w in words if w.lower() not in SQL_KEYWORDS} - aliases - {"systemd_units"}
+    return (
+        {w for w in words if w.lower() not in SQL_KEYWORDS}
+        - aliases
+        - {"systemd_units"}
+    )
 
 
 def test_the_query_is_still_the_one_we_check():
@@ -93,11 +122,15 @@ def test_the_columns_that_never_existed_are_not_read_back(column):
     # They may appear as aliases -- `id AS name` is the point -- but never as
     # something read from the table.
     read = _referenced_columns(query)
-    assert column not in read, f"{column!r} is read from systemd_units, which has no such column"
+    assert (
+        column not in read
+    ), f"{column!r} is read from systemd_units, which has no such column"
 
 
 def test_the_alias_names_the_pipeline_expects_are_produced():
     """Downstream reads name/status/path; the aliases keep that shape."""
     query = _linux_services_query()
-    aliases = {a.lower() for a in re.findall(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", query, re.I)}
+    aliases = {
+        a.lower() for a in re.findall(r"\bAS\s+([A-Za-z_][A-Za-z0-9_]*)", query, re.I)
+    }
     assert {"name", "status", "path", "service_type"} <= aliases

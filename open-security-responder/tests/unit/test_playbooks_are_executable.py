@@ -34,10 +34,12 @@ os.environ.setdefault("SECRET_KEY", "x" * 40)
 os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "y" * 40)
 
 from app.connectors import connector_registry  # noqa: E402
-from app.models import Playbook, PlaybookStep, step_context_key  # noqa: E402
-from app.playbook_parser import PlaybookParser, PlaybookParseError  # noqa: E402
+from app.models import PlaybookStep, step_context_key  # noqa: E402
+from app.playbook_parser import PlaybookParseError, PlaybookParser  # noqa: E402
 
-PLAYBOOK_FILES = sorted(PLAYBOOKS_DIR.glob("*.yml")) + sorted(PLAYBOOKS_DIR.glob("*.yaml"))
+PLAYBOOK_FILES = sorted(PLAYBOOKS_DIR.glob("*.yml")) + sorted(
+    PLAYBOOKS_DIR.glob("*.yaml")
+)
 
 
 def _connectors():
@@ -89,7 +91,9 @@ def test_actions_exist_on_their_connector(path, playbooks):
     for step in playbook.steps:
         connector_name, action = step.action.split(".", 1)
         connector = connectors.get(connector_name)
-        assert connector is not None, f"{step.action}: no connector named {connector_name!r}"
+        assert (
+            connector is not None
+        ), f"{step.action}: no connector named {connector_name!r}"
         assert callable(
             getattr(connector, action, None)
         ), f"{step.action}: {connector_name} has no action {action!r}"
@@ -131,10 +135,12 @@ def test_cross_step_references_resolve(path, playbooks):
     """`{{ steps.X }}` must name a step of this playbook, by whatever key it gets."""
     playbook = playbooks[yaml.safe_load(path.read_text())["playbook_id"]]
     keys = {step.id or step.name for step in playbook.steps}
-    referenced = set(re.findall(r"steps\.([A-Za-z0-9_]+)", yaml.dump(playbook.model_dump())))
-    assert not (referenced - keys), (
-        f"{path.name} refers to steps that do not exist: {sorted(referenced - keys)}"
+    referenced = set(
+        re.findall(r"steps\.([A-Za-z0-9_]+)", yaml.dump(playbook.model_dump()))
     )
+    assert not (
+        referenced - keys
+    ), f"{path.name} refers to steps that do not exist: {sorted(referenced - keys)}"
 
 
 def test_validation_types_are_ones_the_connector_knows(playbooks):
@@ -153,7 +159,9 @@ def test_validation_types_are_ones_the_connector_knows(playbooks):
 
 def test_context_key_is_the_id_when_there_is_one():
     """The key the engine files a result under, and the key playbooks write."""
-    step = PlaybookStep(id="validate_ip", name="Validate IP Address", action="system.validate")
+    step = PlaybookStep(
+        id="validate_ip", name="Validate IP Address", action="system.validate"
+    )
     assert step_context_key(step) == "validate_ip"
 
 
@@ -173,7 +181,9 @@ def test_references_resolve_against_the_key_the_engine_uses(path, playbooks):
     """
     playbook = playbooks[yaml.safe_load(path.read_text())["playbook_id"]]
     keys = {step_context_key(step) for step in playbook.steps}
-    referenced = set(re.findall(r"steps\.([A-Za-z0-9_]+)", yaml.dump(playbook.model_dump())))
-    assert not (referenced - keys), (
-        f"{path.name}: {sorted(referenced - keys)} is not how the engine keys any of its steps"
+    referenced = set(
+        re.findall(r"steps\.([A-Za-z0-9_]+)", yaml.dump(playbook.model_dump()))
     )
+    assert not (
+        referenced - keys
+    ), f"{path.name}: {sorted(referenced - keys)} is not how the engine keys any of its steps"
