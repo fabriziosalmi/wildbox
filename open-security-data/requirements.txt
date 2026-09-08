@@ -871,6 +871,10 @@ dash-table==5.0.0 \
     --hash=sha256:18624d693d4c8ef2ddec99a6f167593437a7ea0bf153aa20f318c170c5bc7308 \
     --hash=sha256:19036fa352bb1c11baf38068ec62d172f0515f73ca3276c79dee49b95ddc16c9
     # via dash
+defusedxml==0.7.1 \
+    --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
+    --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
+    # via nltk
 distlib==0.4.3 \
     --hash=sha256:4b0ce306c966eb73bc3a7b6abad017c556dadd92c44701562cd528ac7fde4d5b \
     --hash=sha256:f152097224a0ae24be5a0f6bae1b9359af82133bce63f98a95f86cae1aede9ed
@@ -1769,9 +1773,9 @@ nest-asyncio==1.6.0 \
     --hash=sha256:6f172d5449aca15afd6c646851f4e31e02c598d553a667e38cafa997cfec55fe \
     --hash=sha256:87af6efd6b5e897c81050477ef65c62e2b2f35d51703cae01aff2905b1852e1c
     # via dash
-nltk==3.9.4 \
-    --hash=sha256:ed03bc098a40481310320808b2db712d95d13ca65b27372f8a403949c8b523d0 \
-    --hash=sha256:f2fa301c3a12718ce4a0e9305c5675299da5ad9e26068218b69d692fda84828f
+nltk==3.10.3 \
+    --hash=sha256:bb9327a461c3811c2fa4900e03840401f2126adfb30c0072827c433bd2444ea4 \
+    --hash=sha256:ff9598a8e20518ee0d557745890cc4435b9578489e2dcbc69c4f81fa060caf7c
     # via -r open-security-data/requirements.in
 nodeenv==1.10.0 \
     --hash=sha256:5bb13e3eed2923615535339b3c620e76779af4cb4c6a90deccc9e36b274d3827 \

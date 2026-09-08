@@ -53,6 +53,7 @@
     "minimatch": "^10.2.1",
     "lodash": "^4.17.22",
     "diff": "^7.0.0",
-    "mdast-util-to-hast": "^13.2.1"
+    "mdast-util-to-hast": "^13.2.1",
+    "websocket-driver": "^0.7.5"
   }
 }

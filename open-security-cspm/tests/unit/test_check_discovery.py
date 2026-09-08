@@ -14,9 +14,19 @@ Neither showed up while 166 generated placeholders padded the catalogue
 """
 
 import ast
+import os
 import pathlib
 
 import pytest
+
+# app.checks.runner imports app.config, which builds a Settings() at import time
+# and requires SECRET_KEY (min 32 characters) and the credential key. Without
+# them the two tests below fail at collection with a pydantic ValidationError
+# rather than telling you anything about check discovery -- which is what
+# happened in CI, where the unit-test job sets no service configuration. The
+# same pattern the tools tests use.
+os.environ.setdefault("SECRET_KEY", "test-only-secret-key-at-least-32-chars-long")
+os.environ.setdefault("CSPM_CREDENTIAL_KEY", "dGVzdC1vbmx5LWtleS1ub3QtdXNlZC1mb3ItY3J5cHRvISE=")
 
 CHECKS_DIR = pathlib.Path(__file__).resolve().parents[1] / "app" / "checks"
 

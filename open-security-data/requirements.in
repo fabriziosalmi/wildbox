@@ -56,7 +56,8 @@ plotly==5.17.0
 dash==2.15.0
 scikit-learn==1.5.0
 spacy==3.7.2
-nltk==3.9.4
+# 3.10.3: CVE-2026-79675, JVM argument injection via per-call options.
+nltk==3.10.3
 geoip2==4.8.0
 maxminddb==2.6.2
 dnspython==2.6.1
