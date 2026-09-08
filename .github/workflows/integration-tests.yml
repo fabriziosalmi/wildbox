@@ -9,30 +9,27 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  # SECURITY: All secrets sourced from GitHub Secrets.
-  # Configure these in repo Settings > Secrets and variables > Actions.
-  # For initial setup, generate random values with: openssl rand -hex 32
-  #
-  # Every reference carries a `|| 'ci-fallback-...'` default: fork PRs and
-  # dependabot runs never receive repo Actions secrets, so without a fallback
-  # this job fails deterministically for every external contribution (empty
-  # JWT_SECRET_KEY fails identity's min_length=32 validation during alembic
-  # migrations — same class as the POSTGRES_HOST_AUTH_METHOD: trust
-  # accommodation below). The stack is ephemeral CI-only, like the hardcoded
-  # test SECRET_KEYs already used for the data/cspm services. Fallbacks meet
-  # the services' validators: >=32 chars, and tools' API_KEY must not contain
-  # password/secret/key/admin/test/demo/123/abc/default/wildbox/api-key.
-  JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY || 'ci-fallback-jwt-signing-string-for-fork-runs' }}
-  API_KEY: ${{ secrets.API_KEY || 'ci-fallback-tools-auth-value-for-fork-runs' }}
-  POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}
-  DATABASE_URL: postgresql+asyncpg://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@postgres:5432/identity
-  REDIS_URL: redis://redis:6379/0
-  GATEWAY_INTERNAL_SECRET: ${{ secrets.GATEWAY_INTERNAL_SECRET || 'ci-fallback-gateway-proof-of-origin-value' }}
-  N8N_BASIC_AUTH_USER: admin
-  N8N_BASIC_AUTH_PASSWORD: ${{ secrets.N8N_BASIC_AUTH_PASSWORD || 'ci-fallback-n8n-pw' }}
-  GRAFANA_ADMIN_PASSWORD: ${{ secrets.GRAFANA_ADMIN_PASSWORD || 'ci-fallback-grafana-pw' }}
-  NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET || 'ci-fallback-nextauth-string-for-fork-runs' }}
+# No workflow-level env: block here, deliberately.
+#
+# There used to be one setting POSTGRES_PASSWORD, DATABASE_URL, JWT_SECRET_KEY,
+# API_KEY, GATEWAY_INTERNAL_SECRET and others from repository secrets with
+# hardcoded fallbacks. Shell environment variables win over .env in docker
+# compose interpolation, so once this job started generating its own .env the
+# two mechanisms disagreed -- and they disagreed *partially*, which is worse
+# than either alone:
+#
+#   postgres        <- POSTGRES_PASSWORD from the workflow env
+#   identity        <- DATABASE_URL from the workflow env      (matches)
+#   guardian, data  <- GUARDIAN_/DATA_DATABASE_URL from .env   (does not)
+#
+# so PostgreSQL was created with one password while guardian and data connected
+# with another, and every run ended in
+#   FATAL: password authentication failed for user "postgres"
+# with the gateway unhealthy behind them because it depends on both.
+#
+# scripts/generate_secrets.py now produces every required value, which also
+# removes the reason those fallbacks existed: a fork PR or a dependabot run
+# receives no repository secrets, and does not need any.
 
 jobs:
   integration-tests:
