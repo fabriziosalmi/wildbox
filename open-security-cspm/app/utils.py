@@ -64,6 +64,26 @@ def _calculate_compliance_score(scan_results: Dict[str, Any]) -> float:
     return round((passed_checks / evaluated_checks) * 100, 2)
 
 
+def _severity_for_check(check_id):
+    """Severity declared by the check that produced a finding, or None.
+
+    A CheckResult carries no severity of its own -- severity lives in the
+    check's metadata -- so it has to be looked up in the registry the runner
+    populated at start-up.
+    """
+    if not check_id:
+        return None
+    try:
+        from .checks.framework import check_registry
+    except ImportError:  # pragma: no cover - registry unavailable
+        return None
+    check = check_registry.get_check(check_id)
+    if check is None:
+        return None
+    severity = getattr(check.metadata, "severity", None)
+    return getattr(severity, "value", severity)
+
+
 def _generate_executive_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:
     """
     Generate executive summary from scan results.
@@ -86,7 +106,10 @@ def _generate_executive_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:
         "high": 0,
         "medium": 0,
         "low": 0,
-        "info": 0
+        "info": 0,
+        # Findings whose check is not registered. Kept separate so they are
+        # never silently folded into a real severity bucket.
+        "unknown": 0,
     }
     
     # Count compliance framework coverage
@@ -99,13 +122,20 @@ def _generate_executive_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:
         resource_id = result.get('resource_id', 'unknown')
         unique_resources.add(resource_id)
         
-        # Count by status and severity
+        # Count by status and severity.
+        #
+        # The severity comes from the check that produced the finding. It used
+        # to come from random.choice(['critical','high','medium','low']) -- the
+        # executive dashboard's "critical findings" figure, the headline number
+        # of a cloud security product, was a die roll that changed on every
+        # request. A finding whose check is not in the registry is counted as
+        # unknown rather than assigned a severity nobody determined.
         if result.get('status') == 'failed':
-            # This would normally come from check metadata
-            # For now, we'll simulate severity distribution
-            import random
-            severity = random.choice(['critical', 'high', 'medium', 'low'])
-            severity_counts[severity] += 1
+            severity = _severity_for_check(result.get('check_id'))
+            if severity in severity_counts:
+                severity_counts[severity] += 1
+            else:
+                severity_counts["unknown"] += 1
         
         # Track compliance frameworks
         frameworks = result.get('compliance_frameworks', [])
@@ -141,40 +171,72 @@ def _generate_executive_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:
         "medium_findings": severity_counts["medium"],
         "low_findings": severity_counts["low"],
         "info_findings": severity_counts["info"],
+        "unknown_severity_findings": severity_counts["unknown"],
         "compliance_frameworks": framework_stats,
         "recommendations_count": severity_counts["critical"] + severity_counts["high"] + severity_counts["medium"]
     }
 
 
-def _get_trending_metrics(redis_client, provider: str, account_id: str, days: int = 30) -> List[Dict[str, Any]]:
-    """
-    Get trending security metrics for the last N days.
-    """
-    try:
+def _get_trending_metrics(recent_scans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Per-day security metrics computed from the scans that actually ran.
+
+    This used to invent them:
+
         # In a real implementation, this would query historical scan data
         # For now, we'll simulate trending data
-        
-        trending_data = []
-        for i in range(days):
-            date = datetime.utcnow() - timedelta(days=i)
-            
-            # Simulate improving security scores over time
-            base_score = 65 + (i * 0.5)  # Gradual improvement
-            score = min(95, base_score + (i % 7))  # Weekly variations
-            
-            trending_data.append({
-                "date": date.strftime("%Y-%m-%d"),
-                "security_score": round(score, 1),
-                "critical_findings": max(0, 15 - i),
-                "high_findings": max(0, 25 - (i * 2)),
-                "total_findings": max(0, 100 - (i * 3))
-            })
-        
-        return list(reversed(trending_data))  # Return chronological order
-        
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Error getting trending metrics: {e}")
-        return []
+        base_score = 65 + (i * 0.5)          # Gradual improvement
+        score = min(95, base_score + (i % 7))  # Weekly variations
+
+    -- a curve that always improved, on an account that had never been scanned,
+    presented to the reader as their security posture over time. An empty
+    history now yields an empty list, which the dashboard can render as "no
+    data" rather than as reassuring progress.
+
+    ``recent_scans`` is what the executive-summary endpoint has already
+    gathered: ``{"metadata": {...}, "results": {...}}`` per scan.
+    """
+    by_date: Dict[str, Dict[str, int]] = {}
+
+    for scan in recent_scans:
+        started = (scan.get("metadata") or {}).get("started_at") or ""
+        day = started[:10]
+        if not day:
+            continue
+        bucket = by_date.setdefault(
+            day, {"critical": 0, "high": 0, "failed": 0, "passed": 0, "evaluated": 0}
+        )
+        for result in (scan.get("results") or {}).get("results", []):
+            status = result.get("status")
+            if status not in ("passed", "failed"):
+                # not_implemented / skipped / error say nothing about posture
+                continue
+            bucket["evaluated"] += 1
+            if status == "passed":
+                bucket["passed"] += 1
+                continue
+            bucket["failed"] += 1
+            severity = _severity_for_check(result.get("check_id"))
+            if severity == "critical":
+                bucket["critical"] += 1
+            elif severity == "high":
+                bucket["high"] += 1
+
+    trending = []
+    for day in sorted(by_date):
+        bucket = by_date[day]
+        evaluated = bucket["evaluated"]
+        trending.append(
+            {
+                "date": day,
+                "security_score": (
+                    round(bucket["passed"] / evaluated * 100, 1) if evaluated else 0.0
+                ),
+                "critical_findings": bucket["critical"],
+                "high_findings": bucket["high"],
+                "total_findings": bucket["failed"],
+            }
+        )
+    return trending
 
 
 def _get_resource_inventory_summary(scan_results: Dict[str, Any]) -> Dict[str, Any]:

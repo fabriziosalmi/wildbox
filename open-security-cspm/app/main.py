@@ -728,8 +728,8 @@ async def get_executive_summary(
         
         executive_summary = _generate_executive_summary({"results": all_results})
         
-        # Get trending data
-        trending_metrics = _get_trending_metrics(redis_client, provider or "all", current_user["team_id"], days)
+        # Trending data, from the same scans the summary above was built from.
+        trending_metrics = _get_trending_metrics(recent_scans)
         
         return schemas.ExecutiveSummaryResponse(
             summary_period_days=days,

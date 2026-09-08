@@ -20,13 +20,16 @@ class TestCSPMCompliance:
     def setup_method(self, method):
         # Constructor defaults, resolved here now that pytest calls
         # setup_method() with no arguments (WILDBO-TEST-01).
-        # Read the same environment variable the conftest reachability guard
-        # reads. Hard-coding localhost meant the guard probed the configured
-        # address, said "reachable", and the test then connected somewhere
-        # else -- so these tests could only ever pass on a host where every
-        # service happened to be on loopback.
-        base_url = os.getenv("CSPM_SERVICE_URL", "http://localhost:8019")
-        self.base_url = base_url
+        # Two base URLs, because the service has two front doors.
+        #
+        # Everything but /health refuses a direct connection: the shared
+        # gateway_auth middleware answers 403 GATEWAY_AUTH_REQUIRED ("This
+        # service must be accessed through the API gateway"). Calling the
+        # service directly, as these tests did, could therefore only ever fail
+        # -- and the API paths they used did not exist either.
+        self.direct_url = os.getenv("CSPM_SERVICE_URL", "http://localhost:8019")
+        self.base_url = os.getenv("GATEWAY_URL", "https://localhost") + "/api/v1/cspm"
+        self.headers = {"X-API-Key": os.getenv("TEST_API_KEY", "")}
         self.results = []
         
     def log_test_result(self, test_name: str, passed: bool, details: str = ""):
@@ -41,7 +44,7 @@ class TestCSPMCompliance:
     async def test_service_health(self) -> None:
         """Test CSPM service health"""
         try:
-            response = requests.get(f"{self.base_url}/health", timeout=10)
+            response = requests.get(f"{self.direct_url}/health", timeout=10)
             passed = response.status_code == 200
             
             if passed:
@@ -60,27 +63,49 @@ class TestCSPMCompliance:
     async def test_executive_dashboard_summary(self) -> None:
         """Test executive dashboard summary"""
         try:
-            response = requests.get(f"{self.base_url}/api/v1/dashboard/executive", timeout=15)
+            response = requests.get(f"{self.base_url}/dashboard/executive-summary", headers=self.headers, timeout=15)
             
             if response.status_code == 200:
                 dashboard_data = response.json()
                 
-                # Check for expected dashboard elements
-                expected_fields = ['compliance_score', 'total_checks', 'critical_findings', 'summary']
-                found_fields = []
-                
-                for field in expected_fields:
-                    if field in dashboard_data:
-                        found_fields.append(field)
-                
-                passed = len(found_fields) >= 2  # At least some dashboard data
-                
-                if passed:
-                    compliance_score = dashboard_data.get('compliance_score', 'unknown')
-                    total_checks = dashboard_data.get('total_checks', 'unknown')
-                    details = f"Executive dashboard: {len(found_fields)}/{len(expected_fields)} fields, compliance: {compliance_score}, checks: {total_checks}"
+                # The response's real shape (ExecutiveSummaryResponse): the
+                # posture figures live under security_posture, not at the top
+                # level. The previous expectation -- compliance_score,
+                # total_checks, critical_findings, summary as top-level keys --
+                # matched nothing the endpoint has ever returned.
+                posture = dashboard_data.get("security_posture")
+                trending = dashboard_data.get("trending_metrics")
+
+                problems = []
+                if not isinstance(posture, dict):
+                    problems.append("security_posture missing or not an object")
                 else:
-                    details = f"Incomplete dashboard: {list(dashboard_data.keys())}"
+                    for field in ("security_score", "critical_findings",
+                                  "high_findings", "compliance_frameworks"):
+                        if field not in posture:
+                            problems.append(f"security_posture.{field} missing")
+                if not isinstance(trending, list):
+                    problems.append("trending_metrics missing or not a list")
+                else:
+                    # An account with no scan history must report no trend, not
+                    # an invented one: _get_trending_metrics used to synthesise
+                    # a steadily improving curve out of nothing.
+                    scanned = (posture or {}).get("total_resources_scanned")
+                    if scanned == 0 and trending:
+                        problems.append(
+                            f"{len(trending)} trend points reported for an "
+                            "account with no scanned resources"
+                        )
+
+                passed = not problems
+                if passed:
+                    details = (
+                        f"Executive dashboard: score={posture['security_score']}, "
+                        f"critical={posture['critical_findings']}, "
+                        f"{len(trending)} trend point(s)"
+                    )
+                else:
+                    details = "; ".join(problems)
                     
             elif response.status_code in [401, 403]:
                 details = "Executive dashboard requires authentication (expected)"
@@ -108,7 +133,7 @@ class TestCSPMCompliance:
             }
             
             response = requests.post(
-                f"{self.base_url}/api/v1/scans/trigger",
+                f"{self.base_url}/scans",
                 json=scan_request,
                 timeout=15
             )
@@ -149,7 +174,7 @@ class TestCSPMCompliance:
         """Test team-scoped findings listing"""
         try:
             # Test findings endpoint
-            response = requests.get(f"{self.base_url}/api/v1/findings", timeout=15)
+            response = requests.get(f"{self.base_url}/compliance/findings", headers=self.headers, timeout=15)
             
             if response.status_code == 200:
                 findings = response.json()
@@ -176,7 +201,7 @@ class TestCSPMCompliance:
         """Test compliance frameworks support"""
         try:
             # Test compliance frameworks endpoint
-            response = requests.get(f"{self.base_url}/api/v1/compliance/frameworks", timeout=10)
+            response = requests.get(f"{self.base_url}/compliance/summary", headers=self.headers, timeout=10)
             
             if response.status_code == 200:
                 frameworks = response.json()
@@ -211,7 +236,7 @@ class TestCSPMCompliance:
         """Test scan history and reporting"""
         try:
             # Test scan history endpoint
-            response = requests.get(f"{self.base_url}/api/v1/scans/history", timeout=10)
+            response = requests.get(f"{self.base_url}/scans", headers=self.headers, timeout=10)
             
             if response.status_code == 200:
                 history = response.json()

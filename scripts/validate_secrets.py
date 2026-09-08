@@ -42,6 +42,7 @@ REQUIRED_SECRETS = [
     # Become SECRET_KEY for guardian and cspm; both refuse to start unset.
     "GUARDIAN_SECRET_KEY",
     "CSPM_SECRET_KEY",
+    "SENSOR_API_KEY",
 ]
 
 # Optional secrets (warn if missing, but don't fail)

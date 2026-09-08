@@ -798,6 +798,10 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - SENSOR_LOGGING_LEVEL=${SENSOR_LOGGING_LEVEL:-INFO}
+      # Enables the sensor's local API. Unset, _require_auth fails closed and
+      # every route but /health answers 503, which left the sensor running and
+      # unusable.
+      - SENSOR_API_KEY=${SENSOR_API_KEY:?SENSOR_API_KEY is required}
       - PYTHONPATH=/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

@@ -49,7 +49,7 @@ setup:
 
 generate-secrets:
 	@echo "$(BLUE)Generating .env with secure secrets...$(NC)"
-	@python3 scripts/generate_secrets.py
+	@python3 scripts/generate_secrets.py $(if $(FORCE),--force,)
 
 validate-secrets:
 	@echo "$(BLUE)Validating .env secrets...$(NC)"

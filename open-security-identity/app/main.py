@@ -208,9 +208,17 @@ async def health_check():
     return health_status
 
 
-@app.get("/metrics")
+@app.get("/api/v1/admin/metrics")
 async def get_metrics(request: Request):
-    """Metrics endpoint for Prometheus/monitoring. Requires gateway secret."""
+    """Business counts (users, teams, active API keys). Requires gateway secret.
+
+    Not /metrics: install_observability() registers the Prometheus text
+    exposition there, and it registers first, so this handler was shadowed and
+    the endpoint returned an exposition where callers expected JSON. Both are
+    wanted -- Prometheus scrapes /metrics (monitoring/prometheus.yml), and these
+    counts are a privileged view for operators -- so they live at separate
+    paths rather than one silently replacing the other.
+    """
     import time
     from fastapi import HTTPException, status as http_status
 

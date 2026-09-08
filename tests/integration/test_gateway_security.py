@@ -64,8 +64,13 @@ class TestGatewaySecurity:
             # Test routing to identity service through gateway
             # This would require a valid token, but we test the routing exists
             
+            # /api/v1/identity/users/me: the gateway's identity route, which
+            # answers 401 without credentials. The previous target,
+            # /api/v1/auth/me, matches no location in the gateway and no route
+            # in identity, so this test could only ever report "gateway routing
+            # may be broken" about a path nothing was ever meant to serve.
             response = requests.get(
-                f"{self.base_url}/api/v1/auth/me",
+                f"{self.base_url}/api/v1/identity/users/me",
                 timeout=10
             )
             
@@ -170,25 +175,61 @@ class TestGatewaySecurity:
     async def test_passthrough_headers(self) -> None:
         """Test correct pass-through headers (X-User-ID, X-Team-ID, X-Role, X-Plan)"""
         try:
-            # This test checks if the gateway properly sets headers when forwarding requests
-            # We'll test with a dummy token to see header handling
-            
-            headers = {"Authorization": "Bearer dummy-token-for-testing"}
-            response = requests.get(
-                f"{self.base_url}/api/v1/auth/me",
-                headers=headers,
-                timeout=10
+            # Prove the identity actually propagates, rather than reading a
+            # status code off a route that does not exist.
+            #
+            # This used to send a dummy bearer token to /api/v1/auth/me -- no
+            # such location in the gateway, no such route in identity -- and
+            # accept "401, 403 or 200" as evidence that headers were being
+            # forwarded. It was asserting nothing about headers at all.
+            #
+            # The upstreams reject any request that does not carry the gateway's
+            # X-Wildbox-* identity headers and its shared secret (the shared
+            # gateway_auth dependency answers 403 GATEWAY_AUTH_REQUIRED). So a
+            # 2xx from a protected route is only reachable if the gateway
+            # authenticated the caller and forwarded that identity: that is the
+            # pass-through, observed from outside.
+            url = f"{self.base_url}/api/v1/data/stats"
+
+            anonymous = requests.get(url, timeout=10)
+            spoofed = requests.get(
+                url,
+                headers={
+                    "X-Wildbox-User-ID": "00000000-0000-4000-8000-000000000000",
+                    "X-Wildbox-Team-ID": "00000000-0000-4000-8000-000000000001",
+                    "X-Wildbox-Role": "admin",
+                },
+                timeout=10,
             )
-            
-            # Check if the request was processed (even if it fails auth)
-            # This confirms the gateway is processing and forwarding requests
-            passed = response.status_code in [401, 403, 200]  # Valid auth responses
-            
-            if passed:
-                details = f"Gateway processes auth headers correctly (HTTP {response.status_code})"
-            else:
-                details = f"Unexpected response: HTTP {response.status_code}"
-                
+            authenticated = requests.get(
+                url,
+                headers={"X-API-Key": os.getenv("TEST_API_KEY", "")},
+                timeout=10,
+            )
+
+            problems = []
+            if anonymous.status_code not in (401, 403):
+                problems.append(
+                    f"anonymous request was not rejected (HTTP {anonymous.status_code})"
+                )
+            if spoofed.status_code not in (401, 403):
+                problems.append(
+                    "client-supplied X-Wildbox-* identity headers were accepted "
+                    f"(HTTP {spoofed.status_code})"
+                )
+            if authenticated.status_code >= 400:
+                problems.append(
+                    "authenticated request did not reach the upstream "
+                    f"(HTTP {authenticated.status_code}): identity was not forwarded"
+                )
+
+            passed = not problems
+            details = (
+                "Gateway forwards its own identity and refuses the client's"
+                if passed
+                else "; ".join(problems)
+            )
+
             self.log_test_result("Pass-through Headers Processing", passed, details)
             assert passed, details
             
@@ -199,35 +240,54 @@ class TestGatewaySecurity:
     async def test_rate_limiting(self) -> None:
         """Test rate limiting with burst protection"""
         try:
-            # Send multiple rapid requests to test rate limiting
-            requests_count = 20
-            start_time = time.time()
-            responses = []
-            
-            for i in range(requests_count):
-                try:
-                    response = requests.get(f"{self.base_url}/health", timeout=2)
-                    responses.append(response.status_code)
-                except Exception:
-                    responses.append(0)  # Timeout/error
-                    
-            end_time = time.time()
-            total_time = end_time - start_time
-            
-            # Check for rate limiting indicators
-            rate_limited = any(code in [429, 503] for code in responses)
-            successful_requests = sum(1 for code in responses if code == 200)
-            
-            # If we get rate limited OR requests are throttled (taking longer), it's working
-            requests_per_second = requests_count / total_time if total_time > 0 else float('inf')
-            
-            passed = rate_limited or requests_per_second < 50  # Reasonable throttling
-            
-            if passed:
-                details = f"Rate limiting active: {successful_requests}/{requests_count} succeeded"
+            # Prove the limiter is live by watching it count, not by trying to
+            # trip it.
+            #
+            # This used to fire 20 requests at /health and conclude "no rate
+            # limiting detected". /health is deliberately unauthenticated and
+            # unlimited -- rate-limiting a load balancer's probe is how you get
+            # taken out of rotation -- and the limiter lives in
+            # auth_handler.authenticate(), so it never ran for those requests.
+            # Tripping it for real would need max(1, RATE_LIMIT_PER_HOUR/60)
+            # requests, 166 by default, which is a load test, not this.
+            #
+            # Instead: an authenticated route must report a budget, and the
+            # remaining count must go down as requests are spent.
+            url = f"{self.base_url}/api/v1/data/stats"
+            headers = {"X-API-Key": os.getenv("TEST_API_KEY", "")}
+
+            first = requests.get(url, headers=headers, timeout=10)
+            second = requests.get(url, headers=headers, timeout=10)
+
+            limit = first.headers.get("X-RateLimit-Limit")
+            remaining_1 = first.headers.get("X-RateLimit-Remaining")
+            remaining_2 = second.headers.get("X-RateLimit-Remaining")
+            reset = first.headers.get("X-RateLimit-Reset")
+
+            if not all([limit, remaining_1, remaining_2, reset]):
+                passed = False
+                details = (
+                    "Gateway did not report a rate-limit budget on an "
+                    f"authenticated route: limit={limit!r} "
+                    f"remaining={remaining_1!r} reset={reset!r}"
+                )
+            elif int(remaining_2) >= int(remaining_1):
+                passed = False
+                details = (
+                    f"Rate-limit counter did not advance: {remaining_1} then "
+                    f"{remaining_2} -- requests are not being counted"
+                )
+            elif int(remaining_1) > int(limit):
+                # Limit and Remaining must describe the same budget.
+                passed = False
+                details = f"Remaining ({remaining_1}) exceeds Limit ({limit})"
             else:
-                details = f"No rate limiting detected: {successful_requests}/{requests_count} in {total_time:.2f}s"
-                
+                passed = True
+                details = (
+                    f"Rate limiting active: limit={limit}, "
+                    f"remaining {remaining_1} -> {remaining_2}"
+                )
+
             self.log_test_result("Rate Limiting with Burst Protection", passed, details)
             assert passed, details
             

@@ -32,7 +32,7 @@ class TestIdentityService:
 
         # Load admin credentials from environment
         self.admin_email = os.getenv("TEST_ADMIN_EMAIL", "admin@wildbox.io")
-        self.admin_password = os.getenv("TEST_ADMIN_PASSWORD", "ChangeMe123!")
+        self.admin_password = os.getenv("TEST_ADMIN_PASSWORD", "CHANGE-THIS-PASSWORD")
 
     def get_admin_token(self) -> str:
         """Get or create admin authentication token"""

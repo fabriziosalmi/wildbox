@@ -31,10 +31,62 @@ import pytest_asyncio
 # ============================================================================
 
 
+# The gateway serves the API over HTTPS only.
+#
+# conf.d/wildbox_gateway.conf answers /health on port 80 and 301-redirects
+# everything else to https -- deliberately, so authentication cannot happen over
+# an unencrypted channel. Defaulting these tests to http therefore meant every
+# request through the gateway got a 301 and every assertion about status codes,
+# headers or bodies failed for a reason unrelated to what it was testing.
+if not os.getenv("GATEWAY_URL"):
+    os.environ["GATEWAY_URL"] = "https://localhost"
+
+# Verify TLS rather than disabling it.
+#
+# The gateway generates a self-signed certificate for development, so requests
+# needs to be told to trust it; the alternative everyone reaches for --
+# verify=False -- means the suite would also pass against a gateway presenting
+# no valid certificate at all, which is precisely what these tests exist to
+# catch. requests picks REQUESTS_CA_BUNDLE up on its own.
+_DEV_CA = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "open-security-gateway",
+    "ssl",
+    "wildbox.crt",
+)
+if (
+    os.environ["GATEWAY_URL"].startswith("https://")
+    and not os.getenv("REQUESTS_CA_BUNDLE")
+    and os.path.exists(_DEV_CA)
+):
+    os.environ["REQUESTS_CA_BUNDLE"] = _DEV_CA
+
+
+# Admin credentials for the integration suite.
+#
+# Normalised here, in the environment, rather than exposed as helpers: the test
+# modules read os.getenv directly and importing across them is what let the
+# conftest reachability guard and the tests disagree about an address in the
+# first place. Setting the variables means every module sees the same values
+# with no coupling.
+#
+# The defaults were a placeholder pair ("admin@wildbox.io" /
+# "CHANGE-THIS-PASSWORD") that exists in no deployment, so every test needing an
+# authenticated session skipped with "Admin login failed - check credentials".
+# The account the stack provisions comes from INITIAL_ADMIN_EMAIL /
+# INITIAL_ADMIN_PASSWORD.
+for _test_var, _deploy_var in (
+    ("TEST_ADMIN_EMAIL", "INITIAL_ADMIN_EMAIL"),
+    ("TEST_ADMIN_PASSWORD", "INITIAL_ADMIN_PASSWORD"),
+):
+    if not os.getenv(_test_var) and os.getenv(_deploy_var):
+        os.environ[_test_var] = os.environ[_deploy_var]
+
+
 @pytest.fixture(scope="session")
 def gateway_url() -> str:
     """Base URL for gateway service"""
-    return os.getenv("GATEWAY_URL", "http://localhost")
+    return os.environ["GATEWAY_URL"]
 
 
 @pytest.fixture(scope="session")
@@ -328,8 +380,11 @@ import requests  # noqa: E402
 # how a probe against an unrelated local process on :8001 let identity tests run
 # and then fail on a hostname that does not resolve.
 _SERVICE_URLS = {
-    "gateway": _os.getenv("GATEWAY_URL", "http://localhost"),
-    "identity": _os.getenv("IDENTITY_SERVICE_URL", "http://identity-test:8001"),
+    "gateway": _os.environ["GATEWAY_URL"],
+    # localhost:8001, the port docker-compose.yml publishes. The default was
+    # "http://identity-test:8001", a hostname from a test-compose file that no
+    # longer exists, so anything relying on it resolved nowhere.
+    "identity": _os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001"),
     "tools": _os.getenv("TOOLS_SERVICE_URL", "http://localhost:8000"),
     "data": _os.getenv("DATA_SERVICE_URL", "http://localhost:8002"),
     "responder": _os.getenv("RESPONDER_SERVICE_URL", "http://localhost:8018"),
@@ -403,6 +458,63 @@ def _is_reachable(service: str) -> bool:
                 break
     _reachable_cache[service] = ok
     return ok
+
+
+def _mint_api_key() -> str:
+    """Create a real API key through identity, or return "" if that is not possible.
+
+    The suite used to authenticate with whatever was in TEST_API_KEY, defaulting
+    to the literal string "test-api-key-for-ci-only", and the platform API_KEY
+    was substituted for it locally. Neither works: the gateway validates a key
+    against the ones identity has issued, so both produced
+    {"error":"invalid_token"} and every gateway test failed on authentication
+    before reaching what it meant to assert.
+
+    Minting one here makes the suite self-provisioning -- it authenticates the
+    way a real client does, through the same code path -- instead of depending
+    on a secret someone has to place by hand.
+    """
+    import requests as _requests
+
+    identity = _os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001").rstrip("/")
+    email = _os.getenv("TEST_ADMIN_EMAIL", "")
+    password = _os.getenv("TEST_ADMIN_PASSWORD", "")
+    if not email or not password:
+        return ""
+    try:
+        login = _requests.post(
+            f"{identity}/api/v1/auth/jwt/login",
+            data={"username": email, "password": password},
+            timeout=10,
+        )
+        if login.status_code != 200:
+            return ""
+        token = login.json().get("access_token")
+        if not token:
+            return ""
+        created = _requests.post(
+            f"{identity}/api/v1/api-keys",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"name": "integration-suite"},
+            timeout=10,
+        )
+        if created.status_code not in (200, 201):
+            return ""
+        return created.json().get("key") or ""
+    except _requests.RequestException:
+        return ""
+
+
+@pytest.fixture(scope="session", autouse=True)
+def provision_api_key():
+    """Put a usable API key in TEST_API_KEY before any test reads it."""
+    existing = _os.getenv("TEST_API_KEY", "")
+    if existing and existing != "test-api-key-for-ci-only":
+        return existing
+    minted = _mint_api_key()
+    if minted:
+        _os.environ["TEST_API_KEY"] = minted
+    return minted
 
 
 def pytest_runtest_setup(item):

@@ -142,6 +142,9 @@ def main():
         # without one; unset, compose supplied an empty string instead.
         "GUARDIAN_SECRET_KEY": generate_hex(32),
         "CSPM_SECRET_KEY": generate_hex(32),
+        # Authenticates the sensor's local API; unset, it answers 503 on
+        # everything but /health.
+        "SENSOR_API_KEY": generate_hex(32),
     }
 
     # Read template

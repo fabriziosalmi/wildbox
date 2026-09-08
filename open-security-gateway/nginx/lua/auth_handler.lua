@@ -300,9 +300,17 @@ local function apply_rate_limiting(auth_data)
         return
     end
 
-    ngx.header["X-RateLimit-Limit"] = tostring(limit_per_hour)
+    -- Limit and Remaining must describe the same budget.
+    --
+    -- Limit reported the hourly figure (10000) while Remaining counted against
+    -- the 60-second window actually enforced (166), so a client reading both
+    -- saw "10000 allowed, 163 left" and could not compute a backoff from it.
+    -- Limit is now the window that is enforced; the hourly policy it derives
+    -- from is stated separately, in the form RFC 9239 uses.
+    ngx.header["X-RateLimit-Limit"] = tostring(max_requests)
     ngx.header["X-RateLimit-Remaining"] = tostring(math.max(0, max_requests - count))
     ngx.header["X-RateLimit-Reset"] = tostring(reset_at)
+    ngx.header["X-RateLimit-Policy"] = tostring(limit_per_hour) .. ";w=3600"
 
     if count > max_requests then
         utils.log("warn", "Rate limit exceeded", {

@@ -21,9 +21,22 @@ import uvicorn
 import json
 
 from app.config import get_config
-from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun, TelemetryEvent, SensorMetadata
+from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
 from app.utils.database import get_db_session, run_migrations
 from app.schemas.api import *
+
+# The star import above re-binds two names that app.models also defines:
+# SensorMetadata and TelemetryEvent exist both as SQLAlchemy models and as
+# Pydantic schemas. Being later, it wins -- so every db.query(SensorMetadata)
+# below was querying a Pydantic class and every sensor row the telemetry ingest
+# path tried to create was a schema instance that never reached the database.
+# GET /api/v1/sensors answered 500 for that reason.
+#
+# The models are therefore bound to unambiguous names, and the schemas keep the
+# bare ones so response_model= still refers to a Pydantic model, as FastAPI
+# requires.
+from app.models import SensorMetadata as SensorMetadataRow  # noqa: E402
+from app.models import TelemetryEvent as TelemetryEventRow  # noqa: E402
 from app.auth import get_current_user, GatewayUser
 from open_security_shared.tenancy import team_or_global_filter
 
@@ -725,12 +738,12 @@ async def ingest_telemetry_batch(
     for i, event_data in enumerate(batch.events):
         try:
             # Update or create sensor metadata
-            sensor = db.query(SensorMetadata).filter(
-                SensorMetadata.sensor_id == event_data.sensor_id
+            sensor = db.query(SensorMetadataRow).filter(
+                SensorMetadataRow.sensor_id == event_data.sensor_id
             ).first()
             
             if not sensor:
-                sensor = SensorMetadata(
+                sensor = SensorMetadataRow(
                     sensor_id=event_data.sensor_id,
                     hostname=event_data.source_host,
                     first_seen=ingested_at,
@@ -747,7 +760,7 @@ async def ingest_telemetry_batch(
                 sensor.active = True
             
             # Create telemetry event
-            telemetry_event = TelemetryEvent(
+            telemetry_event = TelemetryEventRow(
                 sensor_id=event_data.sensor_id,
                 event_type=event_data.event_type.value,
                 timestamp=event_data.timestamp,
@@ -797,20 +810,20 @@ async def get_telemetry_events(
     """
     Retrieve telemetry events with optional filtering
     """
-    query = db.query(TelemetryEvent)
+    query = db.query(TelemetryEventRow)
     
     # Apply filters
     if sensor_id:
-        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+        query = query.filter(TelemetryEventRow.sensor_id == sensor_id)
     if event_type:
-        query = query.filter(TelemetryEvent.event_type == event_type)
+        query = query.filter(TelemetryEventRow.event_type == event_type)
     if start_time:
-        query = query.filter(TelemetryEvent.timestamp >= start_time)
+        query = query.filter(TelemetryEventRow.timestamp >= start_time)
     if end_time:
-        query = query.filter(TelemetryEvent.timestamp <= end_time)
+        query = query.filter(TelemetryEventRow.timestamp <= end_time)
     
     # Apply pagination and ordering
-    events = query.order_by(desc(TelemetryEvent.timestamp)).offset(offset).limit(limit).all()
+    events = query.order_by(desc(TelemetryEventRow.timestamp)).offset(offset).limit(limit).all()
     
     return events
 
@@ -823,12 +836,12 @@ async def get_sensors(
     """
     Get information about registered sensors
     """
-    query = db.query(SensorMetadata)
+    query = db.query(SensorMetadataRow)
     
     if active_only:
-        query = query.filter(SensorMetadata.active == True)
+        query = query.filter(SensorMetadataRow.active == True)
     
-    sensors = query.order_by(desc(SensorMetadata.last_seen)).all()
+    sensors = query.order_by(desc(SensorMetadataRow.last_seen)).all()
     return sensors
 
 @app.get("/api/v1/sensors/{sensor_id}", response_model=SensorMetadata, tags=["Telemetry"])
@@ -840,8 +853,8 @@ async def get_sensor(
     """
     Get information about a specific sensor
     """
-    sensor = db.query(SensorMetadata).filter(
-        SensorMetadata.sensor_id == sensor_id
+    sensor = db.query(SensorMetadataRow).filter(
+        SensorMetadataRow.sensor_id == sensor_id
     ).first()
     
     if not sensor:
@@ -865,28 +878,28 @@ async def get_telemetry_stats(
     start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     # Base query
-    query = db.query(TelemetryEvent).filter(TelemetryEvent.timestamp >= start_time)
+    query = db.query(TelemetryEventRow).filter(TelemetryEventRow.timestamp >= start_time)
     if sensor_id:
-        query = query.filter(TelemetryEvent.sensor_id == sensor_id)
+        query = query.filter(TelemetryEventRow.sensor_id == sensor_id)
     
     # Total events
     total_events = query.count()
     
     # Events by type
     event_type_counts = db.query(
-        TelemetryEvent.event_type,
-        func.count(TelemetryEvent.id).label('count')
-    ).filter(TelemetryEvent.timestamp >= start_time)
+        TelemetryEventRow.event_type,
+        func.count(TelemetryEventRow.id).label('count')
+    ).filter(TelemetryEventRow.timestamp >= start_time)
     
     if sensor_id:
-        event_type_counts = event_type_counts.filter(TelemetryEvent.sensor_id == sensor_id)
+        event_type_counts = event_type_counts.filter(TelemetryEventRow.sensor_id == sensor_id)
     
-    event_type_counts = event_type_counts.group_by(TelemetryEvent.event_type).all()
+    event_type_counts = event_type_counts.group_by(TelemetryEventRow.event_type).all()
     
     # Active sensors
-    active_sensors = db.query(func.count(func.distinct(SensorMetadata.sensor_id))).filter(
-        SensorMetadata.active == True,
-        SensorMetadata.last_seen >= start_time
+    active_sensors = db.query(func.count(func.distinct(SensorMetadataRow.sensor_id))).filter(
+        SensorMetadataRow.active == True,
+        SensorMetadataRow.last_seen >= start_time
     ).scalar()
     
     return {
