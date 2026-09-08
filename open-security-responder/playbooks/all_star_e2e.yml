@@ -32,8 +32,8 @@ steps:
     name: "Validate IP Address"
     action: "system.validate"
     description: "Ensure IP address is properly formatted"
-    params:
-      type: "ipv4"
+    input:
+      type: "ip_address"
       value: "{{ trigger.ip }}"
     timeout: 5
     
@@ -42,7 +42,7 @@ steps:
     name: "🤖 AI-Powered Threat Analysis"
     action: "wildbox.analyze_ioc"
     description: "Use AI to analyze IP reputation and threat level"
-    params:
+    input:
       ioc_type: "ipv4"
       ioc_value: "{{ trigger.ip }}"
       context:
@@ -57,7 +57,7 @@ steps:
     name: "🔍 Network Port Scan"
     action: "wildbox.run_tool"
     description: "Scan common ports to identify exposed services"
-    params:
+    input:
       tool_name: "nmap"
       params:
         target: "{{ trigger.ip }}"
@@ -71,7 +71,7 @@ steps:
     name: "📋 WHOIS Information"
     action: "wildbox.run_tool"
     description: "Gather domain registration and ownership details"
-    params:
+    input:
       tool_name: "whois"
       params:
         target: "{{ trigger.ip }}"
@@ -83,7 +83,7 @@ steps:
     name: "⚖️ Aggregate Threat Assessment"
     action: "system.evaluate"
     description: "Calculate overall threat score based on all findings"
-    params:
+    input:
       condition:
         ai_verdict: "{{ steps.ai_analysis.result.verdict }}"
         ai_confidence: "{{ steps.ai_analysis.result.confidence }}"
@@ -108,7 +108,7 @@ steps:
     action: "wildbox.create_vulnerability"
     description: "Create vulnerability in Guardian if threat detected"
     condition: "{{ steps.threat_assessment.result.severity != 'low' }}"
-    params:
+    input:
       title: "All-Star Test: Potential Threat from {{ trigger.ip }}"
       description: |
         Cross-service integration test detected potential security threat.
@@ -140,28 +140,25 @@ steps:
     name: "📊 Generate Test Report"
     action: "system.create_report"
     description: "Compile comprehensive test results"
-    params:
+    # system.create_report takes (template, data). It used to be given
+    # include_steps and format, which it has no parameters for -- once inputs
+    # actually reached the connector this step raised TypeError. The steps it
+    # wanted to include are named here instead, by id.
+    input:
       template: "all_star_summary"
-      include_steps:
-        - validate_ip
-        - ai_analysis
-        - nmap_scan
-        - whois_lookup
-        - threat_assessment
-        - create_finding
-      format: "json"
+      data:
+        validate_ip: "{{ steps.validate_ip.output }}"
+        ai_analysis: "{{ steps.ai_analysis.output }}"
+        nmap_scan: "{{ steps.nmap_scan.output }}"
+        whois_lookup: "{{ steps.whois_lookup.output }}"
+        threat_assessment: "{{ steps.threat_assessment.output }}"
+        create_finding: "{{ steps.create_finding.output }}"
     timeout: 10
 
-output:
-  format: "json"
-  fields:
-    - test_ip: "{{ trigger.ip }}"
-    - ai_verdict: "{{ steps.ai_analysis.result.verdict }}"
-    - ai_confidence: "{{ steps.ai_analysis.result.confidence }}"
-    - threat_score: "{{ steps.threat_assessment.result.score }}"
-    - severity: "{{ steps.threat_assessment.result.severity }}"
-    - vulnerability_created: "{{ steps.create_finding.executed }}"
-    - vulnerability_id: "{{ steps.create_finding.result.id }}"
-    - services_tested: ["gateway", "responder", "agents", "tools", "guardian"]
-    - total_duration: "{{ execution.duration }}"
-    - status: "{{ execution.status }}"
+# No `output:` block here.
+#
+# It used to map step results into a result document, and nothing in the engine
+# has ever rendered one -- the playbook advertised a result shape it did not
+# produce. The step models now reject keys the engine does not read, so leaving
+# it would stop the service from starting. Output mapping is tracked as its own
+# piece of work.
