@@ -18,33 +18,12 @@ import os
 # Add parent directories to path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-try:
-    from app.utils.tool_utils import RateLimiter
-    from app.config.tool_config import ToolConfig
-except ImportError:
-    # Fallback for when running as standalone
-    class RateLimiter:
-        def __init__(self, max_requests=10, time_window=60):
-            pass
-        async def acquire(self):
-            pass
-    
-    class ToolConfig:
-        DEFAULT_RATE_LIMIT = 10
-        DEFAULT_RATE_WINDOW = 60
-
-try:
-    from schemas import (
-        URLSecurityInput, URLSecurityOutput, URLComponents, SecurityAnalysis,
-        RedirectAnalysis, ReputationAnalysis
-    )
-except ImportError:
-    from schemas import (
-        URLSecurityInput, URLSecurityOutput, URLComponents, SecurityAnalysis,
-        RedirectAnalysis, ReputationAnalysis
-    )
-
-
+from ...utils.tool_utils import RateLimiter
+from ...tool_config import ToolConfig
+from .schemas import (
+    URLSecurityInput, URLSecurityOutput, URLComponents, SecurityAnalysis,
+    RedirectAnalysis, ReputationAnalysis
+)
 class URLSecurityScanner:
     """URL security scanner with comprehensive threat detection"""
     

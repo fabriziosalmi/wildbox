@@ -20,6 +20,10 @@ class CheckAutomationUpdateManagement(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AZURE_AUTOMATION_001",
             title="Automation Update Management",
             description="Ensure update management is configured.",

@@ -9,10 +9,16 @@ import time
 from typing import Dict, List, Any, Optional
 
 
-class DashboardFrontendTester:
+class TestDashboardFrontend:
     """Comprehensive tests for Dashboard Frontend (Port 3000)"""
     
-    def __init__(self, base_url: str = "http://localhost:3000"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = "http://localhost:3000"
         self.base_url = base_url
         self.results = []
         
@@ -284,7 +290,7 @@ class DashboardFrontendTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all dashboard frontend tests"""
-    tester = DashboardFrontendTester()
+    tester = TestDashboardFrontend()
     
     # Run tests in sequence
     tests = [

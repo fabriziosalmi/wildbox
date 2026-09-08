@@ -29,6 +29,22 @@ Wildbox uses a **microservices architecture** with 11 distinct services orchestr
 3. **Independent scaling:** CSPM scans are CPU-heavy; Data service is I/O-heavy
 4. **Development velocity:** Teams can work on services independently (future consideration)
 
+**Accepted single points of failure:**
+
+The services are independently deployable, but they share two stateful
+dependencies and one ingress. None is replicated, and this is accepted rather
+than overlooked (WILDBO-REL-03):
+
+| Component | What stops with it | Mitigation in place |
+| --- | --- | --- |
+| **Gateway** | Everything. It is the only ingress and the only authenticator. | Health checks + `restart: unless-stopped`; a circuit breaker keeps an identity outage from hanging it. |
+| **Identity** | New authorization decisions. | The gateway caches decisions for `AUTH_CACHE_TTL` (300s), so an outage degrades gradually; the circuit breaker returns 503 rather than hanging. |
+| **Redis** | Tool execution, playbook runs, CSPM scans and AI enrichment, together. It holds the only copy of that operational state. | `--appendonly yes` and `maxmemory-policy noeviction`, so overload fails writes loudly instead of deleting records. Backed up by the `backup` compose profile. |
+| **PostgreSQL** | Authentication and threat-intelligence storage. | Health-gated startup; backed up (all three databases) with a tested restore path (`make restore-drill`). |
+
+The tools service is additionally single-instance by design; see the note on
+`ToolExecutionManager`.
+
 **Acknowledged Downsides:**
 
 - **Resource consumption:** ~4-8GB RAM baseline (see hardware requirements below)

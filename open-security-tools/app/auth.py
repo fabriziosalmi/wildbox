@@ -10,6 +10,7 @@ Two authentication modes:
    identity instead and fall back to this key only transitionally.
 """
 
+import hmac
 from typing import Optional
 
 from fastapi import HTTPException, status, Request, Header
@@ -47,7 +48,10 @@ async def get_current_user(
     # privileged actions. team_id stays the zero UUID, which under per-team
     # scoping (#178) only ever resolves to global/shared data.
     if x_api_key:
-        if x_api_key != settings.get_api_key():
+        # Constant-time comparison, matching identity's /internal/authorize and
+        # CSPM's gateway check. Ordinary != short-circuits on the first differing
+        # byte (WILDBO-SEC-05).
+        if not hmac.compare_digest(x_api_key, settings.get_api_key()):
             client = request.client.host if request and request.client else "unknown"
             logger.warning(f"Invalid API key attempt from {client}")
             raise HTTPException(

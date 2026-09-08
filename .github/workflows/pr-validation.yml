@@ -84,8 +84,14 @@ jobs:
           scan-ref: '.'
           format: 'sarif'
           output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # Don't fail on vulnerabilities yet
+          severity: 'CRITICAL'
+          # Gates on CRITICAL. This used to be exit-code: '0' with the comment
+          # "Don't fail on vulnerabilities yet", so a PR introducing a critical
+          # advisory was indistinguishable from one that did not (WILDBO-DEP-03).
+          # Starting at CRITICAL keeps the gate achievable; widen to
+          # CRITICAL,HIGH once the current HIGH backlog is triaged.
+          exit-code: '1'
+          ignore-unfixed: true
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v4
@@ -104,6 +110,24 @@ jobs:
           git ls-files | grep -v "\.env\." | xargs grep -niE "secret[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
 
           echo "✓ Basic secret scan complete (review output above)"
+
+  # Dependency lockfiles must be current, and the SBOM must be producible.
+  dependency-integrity:
+    name: Dependency Integrity
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify lockfiles match requirements.in
+        # Every service ships a hash-pinned requirements.txt compiled from
+        # requirements.in. Seven of the eight used to have no lockfile at all,
+        # so the transitive tree was re-resolved at every image build
+        # (WILDBO-DEP-04/DEP-05).
+        run: ./scripts/compile_requirements.sh --check
 
   # Python linting and type checking
   python-quality:
@@ -142,13 +166,29 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install flake8 mypy pylint
+          pip install flake8 mypy
+
+      - name: Run mypy
+        # mypy and pylint were installed in all seven matrix legs and never
+        # invoked (WILDBO-QUAL-08). pylint is dropped; mypy runs, reporting
+        # rather than gating for now so the ratchet can start from a known count.
+        continue-on-error: true
+        run: |
+          cd ${{ matrix.service }}
+          mypy app --ignore-missing-imports --no-strict-optional || true
 
       - name: Run flake8
         run: |
           cd ${{ matrix.service }}
+          # Syntax errors, undefined names and f-string/comparison bugs: always fatal.
           flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          # Complexity and line length now GATE. This pass used to carry
+          # --exit-zero, so its findings were printed into the log and discarded,
+          # which is how functions at CCN 36 passed validation unremarked
+          # (WILDBO-QUAL-05). The threshold is set just above the current worst
+          # first-party function (CCN 36) so it holds today and can be ratcheted
+          # down; lowering it is a one-line change here.
+          flake8 . --count --max-complexity=37 --max-line-length=127 --statistics
 
   # Integration test - Disabled (requires full environment setup with secrets)
   # TODO: Re-enable with proper CI environment configuration

@@ -16,6 +16,7 @@ from google.auth import default as gcp_default
 from azure.identity import DefaultAzureCredential
 
 from .config import settings
+from .credential_crypto import decrypt_credentials
 from .checks.runner import check_runner
 from .checks.framework import CloudProvider, ScanReport
 from . import schemas
@@ -152,7 +153,8 @@ def run_cspm_scan_task(
     if not cred_data:
         raise ValueError("Credentials expired or not found. Re-submit the scan.")
 
-    credentials = json.loads(cred_data)
+    # Credentials are encrypted at rest in Redis (WILDBO-SEC-02).
+    credentials = decrypt_credentials(cred_data)
     # Delete credentials from Redis immediately after retrieval
     redis_worker.delete(credential_ref)
 

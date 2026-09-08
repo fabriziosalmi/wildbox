@@ -12,7 +12,7 @@
  */
 
 import { useQuery, UseQueryResult } from '@tanstack/react-query'
-import axios from 'axios'
+import { responderClient } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -54,15 +54,10 @@ export interface PlaybookExecutionResult {
 // API Client Configuration
 // ============================================================================
 
-const RESPONDER_BASE_URL = process.env.NEXT_PUBLIC_RESPONDER_URL || 'http://localhost:8018'
-
-const responderClient = axios.create({
-  baseURL: RESPONDER_BASE_URL,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
+// Uses the shared gateway-routed client. A local axios instance pointing at
+// http://localhost:8018 used to live here: a third topology that bypassed the
+// gateway, and one the responder rejects anyway because it requires the
+// gateway's proof-of-origin secret (WILDBO-ARCH-04).
 
 // ============================================================================
 // API Functions
@@ -72,8 +67,9 @@ const responderClient = axios.create({
  * Fetch execution status by run_id
  */
 async function fetchExecutionStatus(runId: string): Promise<PlaybookExecutionResult> {
-  const response = await responderClient.get(`/v1/runs/${encodeURIComponent(runId)}`)
-  return response.data
+  return await responderClient.get<PlaybookExecutionResult>(
+    `/v1/runs/${encodeURIComponent(runId)}`
+  )
 }
 
 // ============================================================================

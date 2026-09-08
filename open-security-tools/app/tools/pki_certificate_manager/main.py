@@ -9,23 +9,13 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
 
-try:
-    from schemas import (
-        PKICertificateManagerInput, 
-        PKICertificateManagerOutput,
-        CertificateInfo,
-        CertificateValidation,
-        SecurityAnalysis
-    )
-except ImportError:
-    from schemas import (
-        PKICertificateManagerInput, 
-        PKICertificateManagerOutput,
-        CertificateInfo,
-        CertificateValidation,
-        SecurityAnalysis
-    )
-
+from .schemas import (
+    PKICertificateManagerInput, 
+    PKICertificateManagerOutput,
+    CertificateInfo,
+    CertificateValidation,
+    SecurityAnalysis
+)
 class PKICertificateManager:
     """PKI Certificate Manager - Comprehensive certificate analysis and validation"""
     

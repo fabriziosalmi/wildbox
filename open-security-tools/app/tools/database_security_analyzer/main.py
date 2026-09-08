@@ -23,7 +23,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from schemas import (
+from .schemas import (
     AuditConfiguration,
     ComplianceCheck,
     ConfigurationIssue,

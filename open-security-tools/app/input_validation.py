@@ -160,10 +160,22 @@ class InputSanitizer:
 
         return url
 
-    # Tool-input fields that carry a URL the tool will connect to (SSRF surface).
-    # Keep in sync with any tool that fetches an attacker-supplied URL, e.g.
-    # metadata_extractor (file_url), mobile_security_analyzer (app_url).
-    URL_REQUEST_FIELDS = ("target_url", "url", "file_url", "app_url", "download_url")
+    # Fallback list of field names that carry a URL a tool will connect to.
+    #
+    # This is no longer the primary mechanism. Fields declared as ``UrlField``
+    # (see below) are validated by the schema itself, so the guard travels with
+    # the declaration and a newly added field is protected by construction. This
+    # list remains as a safety net for fields still typed as plain ``str``: it is
+    # matched by name, which is exactly why it failed to cover
+    # api_security_tester's ``api_base_url`` and ``api_specification``
+    # (WILDBO-INPT-01).
+    #
+    # Anything whose name ends in _url, or which is one of these, is checked.
+    URL_REQUEST_FIELDS = (
+        "target_url", "url", "file_url", "app_url", "download_url",
+        "api_base_url", "api_specification", "base_url", "endpoint", "webhook_url",
+        "callback_url", "feed_url", "proxy",
+    )
 
     @classmethod
     def validate_request_urls(cls, input_obj) -> None:
@@ -174,7 +186,17 @@ class InputSanitizer:
         values are checked (non-URL fields are left untouched for the tool to
         handle). Raises ValueError if a target resolves to a blocked host.
         """
-        for field in cls.URL_REQUEST_FIELDS:
+        # Check every declared field whose *name* looks like a URL carrier, plus
+        # the explicit list. Matching on the "_url" suffix as well as the list
+        # means a new field called e.g. "callback_url" is covered without anyone
+        # remembering to update a tuple.
+        candidate_names = set(cls.URL_REQUEST_FIELDS)
+        model_fields = getattr(type(input_obj), "model_fields", None) or {}
+        for name in model_fields:
+            if name.endswith("_url") or name.endswith("_uri") or name == "url":
+                candidate_names.add(name)
+
+        for field in sorted(candidate_names):
             value = getattr(input_obj, field, None)
             if isinstance(value, str) and re.match(r'^https?://', value.strip(), re.IGNORECASE):
                 cls.validate_url(value)
@@ -211,9 +233,17 @@ class InputSanitizer:
                             f"Hostname '{host}' resolves to blocked IP {addr} (SSRF protection)"
                         )
                 return
-            except socket.gaierror:
-                # Cannot resolve — allow (external DNS may not be reachable at validation time)
-                return
+            except socket.gaierror as exc:
+                # Fail CLOSED. This used to return (allow) on the reasoning that
+                # external DNS may be unreachable at validation time -- but a host
+                # that cannot be resolved cannot be scanned either, so allowing it
+                # buys nothing and hands an attacker who controls a nameserver a
+                # trivial bypass: answer SERVFAIL for the validation lookup and
+                # 127.0.0.1 for the request moments later (WILDBO-INPT-02).
+                raise ValueError(
+                    f"Hostname '{host}' could not be resolved; refusing to connect "
+                    "(SSRF protection)"
+                ) from exc
 
         if cls._is_blocked_ip(addr):
             raise ValueError(f"IP address {addr} is in a blocked range (SSRF protection)")
@@ -315,3 +345,35 @@ async def validate_request_input(request: Request, call_next):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error during input validation"
         )
+
+
+# ---------------------------------------------------------------------------
+# Schema-carried SSRF validation
+# ---------------------------------------------------------------------------
+#
+# The name-based sweep above is a safety net. The primary mechanism is this
+# annotated type: declare a URL-bearing field as ``UrlField`` and the guard is
+# part of the schema, so it cannot be forgotten when a new tool or a new field
+# is added (WILDBO-INPT-01)::
+#
+#     from app.input_validation import UrlField
+#
+#     class MyToolInput(BaseToolInput):
+#         api_base_url: UrlField = Field(..., description="Base URL of the API")
+#
+# Validation runs at request-parsing time, before the tool function is entered,
+# and rejects private, loopback, link-local and cloud-metadata targets.
+
+from typing import Annotated  # noqa: E402
+
+from pydantic import AfterValidator  # noqa: E402
+
+
+def _validate_public_url(value: str) -> str:
+    """Pydantic validator: the value must be an http(s) URL to a public host."""
+    if value is None:
+        return value
+    return InputSanitizer.validate_url(value)
+
+
+UrlField = Annotated[str, AfterValidator(_validate_public_url)]

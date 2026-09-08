@@ -20,6 +20,10 @@ class CheckRedshiftPublicAccess(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AWS_REDSHIFT_002",
             title="Redshift Public Access",
             description="Ensure Redshift clusters are not publicly accessible.",

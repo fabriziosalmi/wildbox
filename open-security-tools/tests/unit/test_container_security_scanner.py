@@ -22,26 +22,17 @@ TOOL_DIR = APP_DIR / "tools" / "container_security_scanner"
 sys.path.insert(0, str(APP_DIR))
 
 
-def _load(name, path, extra_modules=None):
-    """Load a tool module under a unique name (see test_ct_log_scanner)."""
-    import importlib.util
+# Tools are real packages, so a plain import is all that is needed. This
+# file used to carry its own copy of the loader's sys.modules injection,
+# because every tool had a bare top-level `schemas` module that collided
+# across test files (WILDBO-ARCH-03/ARCH-06).
+from app.tools.container_security_scanner import main as _tool_main  # noqa: E402
+from app.tools.container_security_scanner import schemas as _tool_schemas  # noqa: E402
+from app import standardized_schemas as _std_schemas  # noqa: E402
 
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    injected = list((extra_modules or {}).items())
-    for key, value in injected:
-        sys.modules[key] = value
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        for key, _ in injected:
-            sys.modules.pop(key, None)
-    return module
-
-
-_std = _load("container_standardized_schemas", APP_DIR / "standardized_schemas.py")
-_schemas = _load("container_schemas", TOOL_DIR / "schemas.py", {"standardized_schemas": _std})
-csc = _load("container_main", TOOL_DIR / "main.py", {"schemas": _schemas})
+_std = _std_schemas
+_schemas = _tool_schemas
+csc = _tool_main
 
 
 # A real trivy `image` JSON document (shape and values as captured from

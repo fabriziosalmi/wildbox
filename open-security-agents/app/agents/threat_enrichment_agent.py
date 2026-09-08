@@ -54,19 +54,24 @@ class _StructuredReport(BaseModel):
         description="Concrete next steps for a SOC analyst, derived from the findings",
     )
 
-# Circuit breaker for Anthropic API resilience
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'open-security-shared'))
-try:
-    from circuit_breaker import CircuitBreaker, CircuitBreakerError
-    LLM_BREAKER = CircuitBreaker(
-        name="anthropic_agent",
-        failure_threshold=3,
-        timeout=120,
-        recovery_timeout=60,
-    )
-except ImportError:
-    LLM_BREAKER = None
-    CircuitBreakerError = Exception
+# Circuit breaker for Anthropic API resilience.
+#
+# Imported the way the rest of this service imports the shared package. It used
+# to be `from circuit_breaker import ...` after a sys.path insert that resolved
+# to /open-security-shared -- a path the image never creates, since the Dockerfile
+# copies the source to /tmp and pip-installs it under the name
+# open_security_shared. The ImportError branch therefore always ran, LLM_BREAKER
+# was always None, and every LLM call bypassed the breaker: exactly the
+# amplification into a failing dependency it was written to prevent
+# (WILDBO-REL-01).
+from open_security_shared.circuit_breaker import CircuitBreaker, CircuitBreakerError
+
+LLM_BREAKER = CircuitBreaker(
+    name="anthropic_agent",
+    failure_threshold=3,
+    timeout=120,
+    recovery_timeout=60,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -175,13 +180,12 @@ Begin your investigation by thinking through your approach, then systematically 
             # Prepare input for the agent
             input_text = f"Please investigate this {ioc_type} IOC: {ioc_value}"
             
-            # Execute the agent (protected by circuit breaker)
-            if LLM_BREAKER is not None:
-                result = await LLM_BREAKER.call(
-                    self.agent_executor.ainvoke, {"input": input_text}
-                )
-            else:
-                result = await self.agent_executor.ainvoke({"input": input_text})
+            # Execute the agent, protected by the circuit breaker. The
+            # `if LLM_BREAKER is not None` guard that used to wrap this was
+            # always False, so the protection never applied (WILDBO-REL-01).
+            result = await LLM_BREAKER.call(
+                self.agent_executor.ainvoke, {"input": input_text}
+            )
             
             # Extract the agent's analysis
             agent_output = result.get("output", "")

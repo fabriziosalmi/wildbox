@@ -20,6 +20,10 @@ class CheckEFSEncryptionatRest(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AWS_EFS_001",
             title="EFS Encryption at Rest",
             description="Ensure EFS filesystems have encryption at rest.",

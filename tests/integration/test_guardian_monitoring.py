@@ -9,10 +9,16 @@ import time
 from typing import Dict, List, Any, Optional
 
 
-class GuardianMonitoringTester:
+class TestGuardianMonitoring:
     """Comprehensive tests for Guardian Monitoring Service (Port 8013)"""
     
-    def __init__(self, base_url: str = "http://localhost:8013"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = "http://localhost:8013"
         self.base_url = base_url
         self.results = []
         
@@ -229,7 +235,7 @@ class GuardianMonitoringTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all Guardian monitoring tests"""
-    tester = GuardianMonitoringTester()
+    tester = TestGuardianMonitoring()
     
     # Run tests in sequence
     tests = [

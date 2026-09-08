@@ -12,12 +12,14 @@ import uuid
 import redis
 import json
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
+from .credential_crypto import encrypt_credentials
+from open_security_shared.gateway_auth import get_user_from_gateway_headers
 from .worker import celery_app, run_cspm_scan_task, get_available_checks_task, health_check_task
 from .checks.runner import check_runner
 from .checks.framework import CloudProvider
@@ -48,6 +50,15 @@ app = FastAPI(
     redoc_url=_redoc_url,
     openapi_url=_openapi_url
 )
+
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="cspm", service_version=settings.app_version)
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -115,44 +126,32 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 
-async def get_current_user(request: Request):
-    """
-    Authenticate via gateway-injected headers.
-    All requests must come through the API gateway which validates tokens
-    and injects X-Wildbox-* headers.
-    """
-    # Proof-of-origin: only the gateway (holding the shared secret) may assert
-    # identity via X-Wildbox-* headers. The service port is reachable directly,
-    # so without this a client could forge them. FAIL CLOSED: if the secret is
-    # not configured, refuse all requests rather than trusting forgeable
-    # headers (matches the gateway-auth hardening in #163).
-    _expected = os.getenv("GATEWAY_INTERNAL_SECRET")
-    if not _expected:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Gateway authentication is not configured.",
-        )
-    _provided = request.headers.get("X-Gateway-Secret", "")
-    if not hmac.compare_digest(_provided, _expected):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Direct access is not permitted; requests must traverse the gateway.",
-        )
-
-    user_id = request.headers.get("X-Wildbox-User-ID")
-    team_id = request.headers.get("X-Wildbox-Team-ID")
-
-    if not user_id or not team_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication required. Access via gateway with X-Wildbox-* headers.",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-
+# Gateway authentication.
+#
+# This used to be a hand-rolled copy of the shared dependency: it repeated the
+# secret comparison, the fail-closed branch and the header extraction, and
+# returned a plain dict where the shared one returns a GatewayUser -- so the two
+# had to be changed in lockstep and their call sites were not interchangeable
+# (WILDBO-QUAL-04). CSPM was the only service of five not using the shared code.
+#
+# A thin adapter keeps the dict shape this module's handlers expect.
+async def get_current_user(
+    x_wildbox_user_id: Optional[str] = Header(None, alias="X-Wildbox-User-ID"),
+    x_wildbox_team_id: Optional[str] = Header(None, alias="X-Wildbox-Team-ID"),
+    x_wildbox_role: Optional[str] = Header(None, alias="X-Wildbox-Role"),
+    x_gateway_secret: Optional[str] = Header(None, alias="X-Gateway-Secret"),
+) -> Dict[str, str]:
+    """Authenticate via gateway-injected headers (shared implementation)."""
+    user = await get_user_from_gateway_headers(
+        x_wildbox_user_id=x_wildbox_user_id,
+        x_wildbox_team_id=x_wildbox_team_id,
+        x_wildbox_role=x_wildbox_role,
+        x_gateway_secret=x_gateway_secret,
+    )
     return {
-        "user_id": user_id,
-        "team_id": team_id,
-        "role": request.headers.get("X-Wildbox-Role", "member")
+        "user_id": str(user.user_id),
+        "team_id": str(user.team_id),
+        "role": getattr(user, "role", "member"),
     }
 
 
@@ -242,13 +241,24 @@ async def start_scan(
         # Generate scan ID
         scan_id = str(uuid.uuid4())
         
-        # Store credentials securely in Redis with short TTL (5 min)
-        # instead of passing them through Celery task args (which are stored in Redis as plaintext)
+        # Store credentials encrypted, with a short TTL.
+        #
+        # Keeping them out of the Celery task args was the right instinct, but
+        # the replacement wrote the same plaintext to the same Redis -- which
+        # runs with --appendonly yes, so an AWS secret access key, an Azure
+        # client secret or a GCP service-account JSON landed in the AOF on the
+        # wildbox_redis_data volume and stayed there until a rewrite, outliving
+        # the 5-minute TTL and the worker's explicit delete (WILDBO-SEC-02).
+        #
+        # The models mark these fields repr=False, which protects tracebacks and
+        # logs; model_dump() ignores repr, so serialisation needed its own
+        # protection. Encryption is envelope-style with a service-held key: an
+        # attacker with the Redis volume gets ciphertext.
         cred_key = f"scan:{scan_id}:creds"
         redis_client.setex(
             cred_key,
             300,  # 5 minute TTL
-            json.dumps(scan_request.credentials.model_dump())
+            encrypt_credentials(scan_request.credentials.model_dump())
         )
 
         # Prepare scan configuration for worker (NO credentials in task args)

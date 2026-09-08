@@ -64,9 +64,42 @@ def get_db():
 
 
 def create_tables():
-    """Create all database tables"""
+    """
+    Create all database tables.
+
+    NOTE: this is for a *fresh* database only. create_all() emits CREATE TABLE
+    and never ALTER TABLE, so it cannot bring an existing database forward: any
+    column added after the database was first created stays missing forever,
+    which is what happened to the team_id tenancy columns (WILDBO-DOM-01).
+
+    Schema changes go through alembic (see open-security-data/alembic/). The
+    deployment path is:
+
+        alembic upgrade head
+
+    and for a database that predates the alembic scaffolding:
+
+        alembic stamp 0001_baseline && alembic upgrade head
+    """
     from app.models import Base
     Base.metadata.create_all(bind=get_engine())
+
+
+def run_migrations() -> None:
+    """
+    Bring the database up to head. Safe to call at startup.
+
+    Prefer this over create_tables(): it creates a fresh schema *and* migrates an
+    existing one, so the two paths cannot diverge.
+    """
+    import os
+    from alembic import command
+    from alembic.config import Config
+
+    here = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    cfg = Config(os.path.join(here, "alembic.ini"))
+    cfg.set_main_option("script_location", os.path.join(here, "alembic"))
+    command.upgrade(cfg, "head")
 
 
 def drop_tables():

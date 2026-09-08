@@ -21,6 +21,7 @@ from ...schemas import (
 )
 from ...user_manager import current_superuser, current_active_user, get_user_manager, UserManager
 from ...auth import verify_password, get_password_hash
+from ...gateway_cache import purge_gateway_auth_cache
 from ...config import settings
 
 router = APIRouter()
@@ -253,7 +254,15 @@ async def update_user_status(
     # Update status
     user.is_active = is_active
     await db.commit()
-    
+
+    if not is_active:
+        # Flush the gateway's cached authorization decisions so the
+        # deactivation takes effect now. Without this the account kept working
+        # for up to the cache TTL (default 300s) with its old role attached,
+        # and the administrator had no way to tell how long was left
+        # (WILDBO-AUTH-03).
+        await purge_gateway_auth_cache()
+
     return {"message": f"User {'activated' if is_active else 'deactivated'} successfully"}
 
 

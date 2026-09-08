@@ -306,3 +306,111 @@ def pytest_collection_modifyitems(config, items):
         
         # Mark all integration tests
         item.add_marker(pytest.mark.integration)
+
+
+# ---------------------------------------------------------------------------
+# Service reachability
+# ---------------------------------------------------------------------------
+#
+# The integration job starts a subset of the stack, and twelve of the test files
+# target services outside it. Until WILDBO-TEST-01 was fixed those files were
+# never collected, so their absence was invisible; now that they run, an
+# unreachable service must produce a visible SKIP rather than a failure that
+# says nothing about coverage (WILDBO-TEST-04).
+
+import os as _os
+
+import requests
+from urllib.parse import urlparse as _urlparse
+
+# NOTE: the defaults here must match the ones the test modules themselves use,
+# or the guard probes one address and the test connects to another -- which is
+# how a probe against an unrelated local process on :8001 let identity tests run
+# and then fail on a hostname that does not resolve.
+_SERVICE_URLS = {
+    "gateway": _os.getenv("GATEWAY_URL", "http://localhost"),
+    "identity": _os.getenv("IDENTITY_SERVICE_URL", "http://identity-test:8001"),
+    "tools": _os.getenv("TOOLS_SERVICE_URL", "http://localhost:8000"),
+    "data": _os.getenv("DATA_SERVICE_URL", "http://localhost:8002"),
+    "responder": _os.getenv("RESPONDER_SERVICE_URL", "http://localhost:8018"),
+    "cspm": _os.getenv("CSPM_SERVICE_URL", "http://localhost:8019"),
+    "agents": _os.getenv("AGENTS_SERVICE_URL", "http://localhost:8006"),
+    "guardian": _os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013"),
+    "sensor": _os.getenv("SENSOR_SERVICE_URL", "http://localhost:8004"),
+    "dashboard": _os.getenv("DASHBOARD_URL", "http://localhost:3000"),
+    "automations": _os.getenv("AUTOMATIONS_URL", "http://localhost:5678"),
+}
+
+# Which service each test module needs. Anything unlisted is assumed to need
+# only the gateway.
+_MODULE_SERVICE = {
+    "test_agents_ai": "agents",
+    "test_automations_workflow": "automations",
+    "test_cspm_compliance": "cspm",
+    "test_cspm_tenancy": "cspm",
+    "test_dashboard_frontend": "dashboard",
+    "test_data_cross_tenant": "data",
+    "test_data_integration": "data",
+    "test_data_tenancy": "data",
+    "test_gateway_hardening": "gateway",
+    "test_gateway_security": "gateway",
+    "test_guardian_monitoring": "guardian",
+    "test_identity_comprehensive": "identity",
+    "test_identity_service": "identity",
+    "test_responder_metrics": "responder",
+    "test_responder_tenancy": "responder",
+    "test_sensor_telemetry": "sensor",
+    "test_tools_execution": "tools",
+    "test_admin_auth": "identity",
+    # Module-level test functions, not classes. These were always collected and
+    # always failed locally when the stack was down; they now skip with a reason
+    # like everything else (WILDBO-TEST-04).
+    "test_ci_integration": "gateway",
+}
+
+_reachable_cache: dict = {}
+
+
+def _is_reachable(service: str) -> bool:
+    """
+    Is this Wildbox service actually up?
+
+    An HTTP health probe, not a TCP connect: a bare connect only proves that
+    *something* holds the port, which on a developer machine is routinely an
+    unrelated process, and the tests then run against it and fail for reasons
+    that have nothing to do with the code.
+    """
+    if service in _reachable_cache:
+        return _reachable_cache[service]
+    url = _SERVICE_URLS.get(service)
+    if not url:
+        _reachable_cache[service] = False
+        return False
+
+    ok = False
+    for path in ("/health", "/health/live", "/"):
+        try:
+            resp = requests.get(f"{url.rstrip('/')}{path}", timeout=3)
+        except requests.RequestException:
+            continue
+        if resp.status_code < 500:
+            # Confirm it is a Wildbox service and not whatever else is on the
+            # port: our health endpoints answer JSON, and the gateway answers
+            # its own health route.
+            ctype = resp.headers.get("content-type", "")
+            if "json" in ctype or service in ("gateway", "dashboard"):
+                ok = True
+                break
+    _reachable_cache[service] = ok
+    return ok
+
+
+def pytest_runtest_setup(item):
+    """Skip a test whose service is not running, and say which one."""
+    module = item.module.__name__.rsplit(".", 1)[-1]
+    service = _MODULE_SERVICE.get(module)
+    if service and not _is_reachable(service):
+        pytest.skip(
+            f"{service} service is not reachable at {_SERVICE_URLS.get(service)} "
+            f"- start it to run {module}"
+        )

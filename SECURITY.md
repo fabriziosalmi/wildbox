@@ -169,7 +169,13 @@ postgres:
 
 **JWT Security:**
 
-- Rotate `JWT_SECRET_KEY` regularly (every 90 days)
+- Rotate `JWT_SECRET_KEY` regularly (every 90 days) with
+  `./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY`.
+  **Set `API_KEY_HASH_SECRET` first** (`./scripts/rotate_secrets.sh --secret
+  API_KEY_HASH_SECRET --init`). Until it is set, stored API-key digests are
+  HMACs keyed by the JWT secret, so rotating the JWT key invalidates every API
+  key in the database. The rotation script refuses to proceed until the two are
+  decoupled. Rotating the JWT key always invalidates active sessions.
 - Use strong signing algorithms (RS256 for production)
 - Set appropriate token expiration (15 min access, 7 day refresh)
 - Implement token revocation (Redis denylist)
@@ -177,9 +183,14 @@ postgres:
 **API Key Management:**
 
 - Generate cryptographically secure API keys
-- Store only hashed versions in database (SHA256)
+- Store only keyed hashes in the database: HMAC-SHA256, keyed by
+  `API_KEY_HASH_SECRET`. This is stronger than the plain SHA256 previously
+  documented here -- recovering a key from a database dump also requires the
+  secret, which is not in the database.
 - Implement rate limiting (enforced at gateway)
-- Rotate keys on security events
+- Rotate keys on security events. `./scripts/rotate_secrets.sh --list` shows
+  every rotatable secret and what rotating each one costs (which services must
+  restart together, and what becomes invalid).
 
 #### 5. Rate Limiting
 
@@ -259,7 +270,7 @@ trivy image --severity HIGH,CRITICAL wildbox-gateway
 
 - **TLS/HTTPS** for all external communications
 - **Password hashing** with bcrypt (12 rounds)
-- **API key hashing** with SHA256
+- **API key hashing** with HMAC-SHA256 keyed by `API_KEY_HASH_SECRET`
 - **Database encryption** (optional, recommended for production)
 
 ### Network Security

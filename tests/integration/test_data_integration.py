@@ -9,10 +9,16 @@ import time
 from typing import Dict, List, Any, Optional
 
 
-class DataIntegrationTester:
+class TestDataIntegration:
     """Comprehensive tests for Security Data Service (Port 8002)"""
     
-    def __init__(self, base_url: str = "http://localhost:8002"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = "http://localhost:8002"
         self.base_url = base_url
         self.results = []
         
@@ -269,7 +275,7 @@ class DataIntegrationTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all data integration tests"""
-    tester = DataIntegrationTester()
+    tester = TestDataIntegration()
     
     # Run tests in sequence
     tests = [

@@ -8,13 +8,17 @@ Provides:
 - Request/Response logging
 """
 
+import logging
 import os
 from typing import List, Optional
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -84,10 +88,15 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next) -> Response:
         # Log request details (excluding sensitive headers)
         sensitive_headers = {"authorization", "x-api-key", "cookie"}
-        headers = {
-            k: v for k, v in request.headers.items()
+        safe_headers = {
+            k: v
+            for k, v in request.headers.items()
             if k.lower() not in sensitive_headers
         }
+        logger.debug(
+            "request headers (sensitive omitted)",
+            extra={"headers": safe_headers, "path": str(request.url.path)},
+        )
 
         # Process request
         response = await call_next(request)
@@ -100,7 +109,7 @@ def setup_cors(
     allowed_origins: Optional[List[str]] = None,
     allow_credentials: bool = True,
     allow_methods: List[str] = None,
-    allow_headers: List[str] = None
+    allow_headers: List[str] = None,
 ) -> None:
     """
     Setup CORS middleware with secure defaults.
@@ -148,7 +157,7 @@ def setup_cors(
 def setup_security_middleware(
     app: FastAPI,
     enable_security_headers: bool = True,
-    enable_request_logging: bool = True
+    enable_request_logging: bool = True,
 ) -> None:
     """
     Setup all security middleware for the application.

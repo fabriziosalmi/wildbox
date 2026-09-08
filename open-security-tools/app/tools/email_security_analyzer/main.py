@@ -16,19 +16,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from email.parser import HeaderParser
 from email import policy
 
-try:
-    from schemas import (
-        EmailSecurityInput, EmailSecurityOutput, SPFAnalysis, DKIMAnalysis,
-        DMARCAnalysis, EmailRouting, ReputationAnalysis, PhishingIndicators
-    )
-except ImportError:
-    from schemas import (
-        EmailSecurityInput, EmailSecurityOutput, SPFAnalysis, DKIMAnalysis,
-        DMARCAnalysis, EmailRouting, ReputationAnalysis, PhishingIndicators
-    )
-
-
-
+from .schemas import (
+    EmailSecurityInput, EmailSecurityOutput, SPFAnalysis, DKIMAnalysis,
+    DMARCAnalysis, EmailRouting, ReputationAnalysis, PhishingIndicators
+)
 # --- Real DNS lookups -------------------------------------------------------
 # SPF/DKIM/DMARC verdicts used to be produced with random.random(); they are
 # published as DNS TXT records, so they are looked up for real here. The

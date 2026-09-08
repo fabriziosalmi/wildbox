@@ -20,6 +20,10 @@ class CheckSecretManagerAccess(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="GCP_SECRET_002",
             title="Secret Manager Access",
             description="Ensure secrets have proper access controls.",

@@ -11,6 +11,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus
+from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -194,66 +195,16 @@ def execute_tool_async(
 
 
 def _load_tool_module(tool_name: str):
-    """Load a tool module dynamically."""
-    tools_dir = Path(__file__).parent / "tools"
-    tool_dir = tools_dir / tool_name
-    
-    logger.debug(f"Looking for tool in: {tool_dir}")
-    
-    if not tool_dir.exists():
-        logger.error(f"Tool directory not found: {tool_dir}")
-        return None
-    
-    main_file = tool_dir / "main.py"
-    schemas_file = tool_dir / "schemas.py"
-    
-    if not main_file.exists() or not schemas_file.exists():
-        return None
-    
-    try:
-        # Import standardized schemas first
-        standardized_schemas_path = Path(__file__).parent / "standardized_schemas.py"
-        spec = importlib.util.spec_from_file_location("standardized_schemas", standardized_schemas_path)
-        standardized_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(standardized_module)
-        
-        import sys
-        sys.modules['standardized_schemas'] = standardized_module
-        
-        # Add tool directory to sys.path temporarily for imports
-        sys.path.insert(0, str(tool_dir))
-        
-        try:
-            # Load schemas
-            schemas_spec = importlib.util.spec_from_file_location(f"{tool_name}.schemas", schemas_file)
-            schemas_module = importlib.util.module_from_spec(schemas_spec)
-            
-            # Make schemas available for main.py imports
-            sys.modules['schemas'] = schemas_module
-            schemas_spec.loader.exec_module(schemas_module)
-            
-            # Load main
-            main_spec = importlib.util.spec_from_file_location(f"{tool_name}.main", main_file)
-            main_module = importlib.util.module_from_spec(main_spec)
-            
-            # Attach schemas to main module
-            main_module.schemas = schemas_module
-            main_spec.loader.exec_module(main_module)
-            
-        finally:
-            # Clean up sys.path and sys.modules
-            if str(tool_dir) in sys.path:
-                sys.path.remove(str(tool_dir))
-            if 'schemas' in sys.modules:
-                del sys.modules['schemas']
-            if 'standardized_schemas' in sys.modules:
-                del sys.modules['standardized_schemas']
-        
-        return main_module
-        
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Failed to load tool module {tool_name}: {e}")
-        return None
+    """
+    Load a tool module for execution in the worker.
+
+    Delegates to app.tool_loader so the worker and the API process load tools
+    identically. The worker used to carry its own copy of the dynamic-import
+    logic with different sys.modules sequencing (WILDBO-ARCH-06), and it
+    re-executed three modules from disk on every task because nothing cached
+    them (WILDBO-PERF-05); importlib's module cache now handles that.
+    """
+    return _shared_load_tool_module(tool_name)
 
 
 def _find_input_schema(schemas_module, tool_name: str):

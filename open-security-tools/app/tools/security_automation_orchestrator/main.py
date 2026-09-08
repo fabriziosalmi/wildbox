@@ -5,23 +5,13 @@ import sys
 import os
 from datetime import datetime
 
-try:
-    from schemas import (
-        AutomationWorkflowInput,
-        SecurityAutomationOutput,
-        WorkflowStep,
-        WorkflowExecution,
-        AutomationMetrics
-    )
-except ImportError:
-    from schemas import (
-        AutomationWorkflowInput,
-        SecurityAutomationOutput,
-        WorkflowStep,
-        WorkflowExecution,
-        AutomationMetrics
-    )
-
+from .schemas import (
+    AutomationWorkflowInput,
+    SecurityAutomationOutput,
+    WorkflowStep,
+    WorkflowExecution,
+    AutomationMetrics
+)
 class SecurityAutomationOrchestrator:
     """Security Automation Orchestrator - Advanced workflow automation and orchestration"""
     

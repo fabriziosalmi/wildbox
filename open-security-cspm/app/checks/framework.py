@@ -72,6 +72,15 @@ class CheckMetadata(BaseModel):
     references: List[str] = Field(default_factory=list)
     remediation: str
     enabled: bool = True
+    # False for generated scaffolding whose execute() returns NOT_IMPLEMENTED.
+    #
+    # 167 of the 204 check files were placeholders that still declared full
+    # metadata -- check_id, severity, compliance frameworks, a four-step
+    # remediation -- so the registry, the catalogue and any compliance score saw
+    # 204 checks where only 37 inspected anything (WILDBO-QUAL-01). The registry
+    # excludes unimplemented checks from discovery and scoring; the catalogue
+    # reports them separately so the number is honest rather than inflated.
+    implemented: bool = True
 
 
 class BaseCheck(ABC):
@@ -287,9 +296,22 @@ class CheckRegistry:
             CloudProvider.GCP: [],
             CloudProvider.AZURE: []
         }
+        # Registered but not runnable: generated placeholders whose execute()
+        # returns NOT_IMPLEMENTED (WILDBO-QUAL-01).
+        self._unimplemented: Dict[str, BaseCheck] = {}
     
     def register(self, check: BaseCheck):
-        """Register a security check."""
+        """
+        Register a security check.
+
+        Unimplemented scaffolding is recorded separately: it stays visible to
+        anyone who asks for the full catalogue, but it is not returned as a
+        runnable check and does not contribute to a compliance score
+        (WILDBO-QUAL-01).
+        """
+        if not getattr(check.metadata, "implemented", True):
+            self._unimplemented[check.metadata.check_id] = check
+            return
         self._checks[check.metadata.check_id] = check
         self._checks_by_provider[check.metadata.provider].append(check)
     
@@ -306,8 +328,25 @@ class CheckRegistry:
         return list(self._checks.values())
     
     def get_metadata(self) -> List[CheckMetadata]:
-        """Get metadata for all registered checks."""
+        """Get metadata for all runnable checks."""
         return [check.metadata for check in self._checks.values()]
+
+    def get_unimplemented(self) -> List[CheckMetadata]:
+        """Metadata for checks that exist as scaffolding only."""
+        return [check.metadata for check in self._unimplemented.values()]
+
+    def coverage(self) -> Dict[str, int]:
+        """
+        How much of the advertised catalogue actually inspects anything.
+
+        Exposed so the catalogue endpoint can report a true number instead of
+        counting scaffolding as capability (WILDBO-QUAL-01).
+        """
+        return {
+            "implemented": len(self._checks),
+            "unimplemented": len(self._unimplemented),
+            "total": len(self._checks) + len(self._unimplemented),
+        }
 
 
 # Global check registry

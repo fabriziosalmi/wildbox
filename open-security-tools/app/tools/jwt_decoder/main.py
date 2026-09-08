@@ -13,18 +13,10 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional, Tuple
 import re
 
-try:
-    from schemas import (
-        JWTDecoderInput, JWTDecoderOutput, JWTHeader, JWTPayload, 
-        JWTSecurityAnalysis
-    )
-except ImportError:
-    from schemas import (
-        JWTDecoderInput, JWTDecoderOutput, JWTHeader, JWTPayload, 
-        JWTSecurityAnalysis
-    )
-
-
+from .schemas import (
+    JWTDecoderInput, JWTDecoderOutput, JWTHeader, JWTPayload, 
+    JWTSecurityAnalysis
+)
 class JWTDecoder:
     """JWT decoder and analyzer with security assessment"""
     

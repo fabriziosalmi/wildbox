@@ -11,7 +11,7 @@ from enum import Enum
 from typing import Optional
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, String, Text,
+    Boolean, CheckConstraint, Column, DateTime, ForeignKey, String, Text,
     UniqueConstraint, Index, JSON
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -88,6 +88,11 @@ class TeamMembership(Base):
     team_id = Column(UUID(as_uuid=True), ForeignKey("teams.id"), primary_key=True)
     
     # Role information
+    # CheckConstraint in __table_args__ below constrains this to the TeamRole
+    # vocabulary. It used to be a free String(50) whose three legal values
+    # existed only in a Python enum used to compute the default, so role='Owner'
+    # or 'superuser' was storable and every comparison against TeamRole.X.value
+    # then failed silently (WILDBO-DOM-09).
     role = Column(String(50), nullable=False, default=TeamRole.MEMBER.value)
     
     # Timestamps
@@ -97,6 +102,13 @@ class TeamMembership(Base):
     user = relationship("User", back_populates="team_memberships")
     team = relationship("Team", back_populates="memberships")
     
+    __table_args__ = (
+        CheckConstraint(
+            "role IN ('owner','admin','member')",
+            name="ck_team_membership_role",
+        ),
+    )
+
     def __repr__(self):
         return f"<TeamMembership user={self.user_id} team={self.team_id} role={self.role}>"
 
@@ -121,10 +133,14 @@ class ApiKey(Base):
     name = Column(String(255), nullable=False)  # User-provided description
     is_active = Column(Boolean, default=True, nullable=False)
     # Least-privilege scopes granted to this key (subset of the role's perms).
-    # NULL = legacy key created before scoping existed → unrestricted (back-compat);
-    # a list (incl. empty) = enforce: the gateway maps each request to a required
-    # scope and rejects keys that don't hold it.
-    scopes = Column(JSON, nullable=True)
+    #
+    # NOT NULL with a default of []. This used to be nullable, with NULL meaning
+    # "unrestricted" -- so the most privileged state was the one an uninitialised
+    # column produced, and any write path that forgot the field yielded a key the
+    # gateway would not restrict (WILDBO-DOM-07). Legacy keys are migrated to an
+    # explicit ['*'] by alembic revision f5a6b7c8d9e0, so "unrestricted" is now a
+    # value that was written rather than an absence that was inferred.
+    scopes = Column(JSON, nullable=False, server_default="[]", default=list)
     
     # Expiration and usage tracking
     expires_at = Column(DateTime(timezone=True), nullable=True)

@@ -9,8 +9,8 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../open-security-tools/app')))
 
-from tools.network_scanner.schemas import SecureNetworkScannerInput
-from tools.network_scanner.main import execute_secure_scanner
+from tools.network_scanner.secure_scan_schemas import SecureNetworkScannerInput
+from tools.network_scanner.secure_scan import execute_secure_scanner
 
 @pytest.mark.asyncio
 async def test_scan_single_ip_alive():

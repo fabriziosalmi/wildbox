@@ -215,6 +215,41 @@ Follow our [Security Policy](SECURITY.md):
 
 ---
 
+## Conventions that will bite you
+
+Three rules are load-bearing and were previously discoverable only by reading
+source (or by shipping a defect):
+
+1. **Tools are Python packages.** A tool lives at `app/tools/<name>/` with
+   `__init__.py`, `main.py` (exporting `execute_tool` and `TOOL_INFO`) and
+   `schemas.py`. Import within a tool with relative imports -- `from .schemas
+   import X`, `from ..wordlists import load_wordlist` -- and load tools only
+   through `app.tool_loader`. Never add a `sys.path` entry: the old loader did,
+   which silently disabled one tool's wordlists and made another unloadable.
+
+2. **Integration test classes must be named `Test*` and must not define
+   `__init__`.** `pytest.ini` sets `python_classes = Test*`, and pytest cannot
+   instantiate a class with a constructor. A class named `FooTester`, or one with
+   `__init__`, is collected as zero tests and your suite passes without running
+   them. Put setup in `setup_method(self, method)`.
+
+3. **Import the shared package by its installed name**: `from
+   open_security_shared.gateway_auth import ...`, never a bare module name with a
+   `sys.path` insert. The bare form resolves during local development and fails
+   inside the image, where the ImportError branch silently disables whatever it
+   guards.
+
+Every service also installs the shared error contract and observability in its
+application module:
+
+```python
+from open_security_shared.errors import install_error_handlers
+from open_security_shared.observability import install_observability
+
+install_error_handlers(app)
+install_observability(app, service_name="myservice", service_version=SERVICE_VERSION)
+```
+
 ## Service Layout
 
 Backend services are FastAPI apps under `open-security-*/`. **`open-security-identity` is the reference layout** — new services and refactors should converge on it:

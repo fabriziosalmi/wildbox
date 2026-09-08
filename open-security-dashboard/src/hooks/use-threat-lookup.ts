@@ -20,7 +20,37 @@ import { dataClient } from '@/lib/api-client'
 // TypeScript Interfaces (matching backend Pydantic schemas)
 // ============================================================================
 
-export type IOCType = 'ip_address' | 'domain' | 'file_hash' | 'unknown'
+/**
+ * Indicator types, matching the data service's IndicatorType enum exactly.
+ *
+ * This union used to list four members ('ip_address' | 'domain' | 'file_hash' |
+ * 'unknown'), silently dropping url, email, certificate, asn and vulnerability:
+ * an indicator of type 'certificate' fetched from the data service matched no
+ * member of the type that was supposed to describe it (WILDBO-DOM-06).
+ *
+ * Keep in sync with:
+ *   - open-security-data/app/models.py         (IndicatorType, the source of truth)
+ *   - open-security-data/app/schemas/api.py    (re-exports the same enum)
+ * The agents service uses a finer vocabulary for hash algorithms (md5/sha1/
+ * sha256) and IP families (ipv4/ipv6); those are a separate concern from the
+ * indicator's type and are carried in their own fields.
+ */
+export type IndicatorType =
+  | 'ip_address'
+  | 'domain'
+  | 'url'
+  | 'file_hash'
+  | 'email'
+  | 'certificate'
+  | 'asn'
+  | 'vulnerability'
+
+/**
+ * What the client can detect locally from a raw user-supplied string. A subset
+ * of IndicatorType plus 'unknown'; do NOT use it to type values coming back
+ * from the API.
+ */
+export type IOCType = Extract<IndicatorType, 'ip_address' | 'domain' | 'file_hash'> | 'unknown'
 export type ConfidenceLevel = 'low' | 'medium' | 'high' | 'verified'
 
 /**

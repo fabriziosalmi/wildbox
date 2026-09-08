@@ -20,6 +20,10 @@ class CheckLogicAppsAccessControl(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AZURE_LOGICAPPS_001",
             title="Logic Apps Access Control",
             description="Ensure Logic Apps have proper access control.",

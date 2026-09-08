@@ -14,10 +14,16 @@ from dotenv import load_dotenv
 load_dotenv("tests/.env")
 
 
-class ResponderMetricsTester:
+class TestResponderMetrics:
     """Comprehensive tests for Security Responder Service via Gateway"""
     
-    def __init__(self, base_url: str = None):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = None
         # Use gateway by default
         self.base_url = base_url or os.getenv("GATEWAY_URL", "http://localhost")
         self.api_key = os.getenv("TEST_API_KEY", "test-api-key-for-ci-only")
@@ -231,7 +237,7 @@ class ResponderMetricsTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all responder metrics tests"""
-    tester = ResponderMetricsTester()
+    tester = TestResponderMetrics()
     
     # Run tests in sequence
     tests = [

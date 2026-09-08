@@ -188,7 +188,10 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 tool_func=execute_func,
                 input_data=validated_input,
                 tool_name=tool_name,
-                timeout=getattr(validated_input, 'timeout', None)
+                timeout=getattr(validated_input, 'timeout', None),
+                # Tie the execution to the request so logs, metrics and the
+                # execution registry share one id (WILDBO-CONC-01/OBS-05).
+                execution_id=getattr(request.state, 'request_id', None),
             )
             
             if execution_result.status.value == "completed":

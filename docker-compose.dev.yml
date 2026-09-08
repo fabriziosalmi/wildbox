@@ -1,4 +1,16 @@
-# Docker Compose Override for Development Integration
+# Docker Compose DEVELOPMENT overlay
+#
+# Renamed from docker-compose.override.yml. Compose applies a file with that name
+# automatically, with no flag, so this development configuration was merged into
+# EVERY deployment started with `docker-compose up` -- including production
+# restarts, which then also dropped the prod overlay's restart: always, log
+# rotation and resource limits (WILDBO-OPS-01).
+#
+# It is now opt-in and named in the command:
+#
+#     make start        # base + this file
+#     make start-prod   # base + docker-compose.prod.yml
+#
 # Extends the main docker-compose.yml with development-specific settings
 
 services:

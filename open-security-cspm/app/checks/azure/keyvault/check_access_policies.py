@@ -20,6 +20,10 @@ class CheckKeyVaultAccessPolicies(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AZURE_KEYVAULT_003",
             title="Key Vault Access Policies",
             description="Ensure Key Vault has proper access policies.",

@@ -11,12 +11,7 @@ import math
 import re
 from typing import List, Dict, Set, Tuple
 
-try:
-    from schemas import PasswordGeneratorInput, PasswordGeneratorOutput, PasswordStrengthAnalysis
-except ImportError:
-    from schemas import PasswordGeneratorInput, PasswordGeneratorOutput, PasswordStrengthAnalysis
-
-
+from .schemas import PasswordGeneratorInput, PasswordGeneratorOutput, PasswordStrengthAnalysis
 # Tool metadata
 TOOL_INFO = {
     "name": "password_generator",

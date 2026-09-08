@@ -26,6 +26,8 @@ from starlette.requests import Request
 from starlette.responses import Response
 import redis
 from celery.result import AsyncResult
+from kombu.exceptions import OperationalError as KombuOperationalError
+from redis.exceptions import RedisError
 
 from .schemas import (
     AnalysisTaskRequest, AnalysisTaskStatus, AnalysisResult,
@@ -93,16 +95,30 @@ async def lifespan(app: FastAPI):
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 DISABLE_DOCS = ENVIRONMENT == "production"
 
+# One version, in one place. The FastAPI constructor said 0.1.6 while the root
+# endpoint reported 1.0.0, so the two things a caller can ask disagreed
+# (WILDBO-API-06).
+SERVICE_VERSION = "0.1.6"
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Open Security Agents API",
     description="AI-powered threat intelligence enrichment service",
-    version="0.1.6",
+    version=SERVICE_VERSION,
     docs_url=None if DISABLE_DOCS else "/docs",
     redoc_url=None if DISABLE_DOCS else "/redoc",
     openapi_url=None if DISABLE_DOCS else "/openapi.json",
     lifespan=lifespan
 )
+
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="agents", service_version="0.1.6")
+
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -168,7 +184,7 @@ async def health_check():
     return HealthResponse(
         status=overall_status,
         timestamp=datetime.now(timezone.utc),
-        version="0.1.6",
+        version=SERVICE_VERSION,
         services=services
     )
 
@@ -212,7 +228,9 @@ async def get_stats(user: GatewayUser = Depends(get_current_user)):
             uptime_seconds=uptime
         )
         
-    except (ConnectionError, TimeoutError) as e:
+    except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:
+        # See the note on the analyze endpoint: the library exceptions do not
+        # subclass the builtins (WILDBO-ERR-03).
         logger.error(f"Database connection error in stats: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -257,44 +275,73 @@ async def analyze_ioc(
             "status": TaskStatus.PENDING
         }
         
-        # Store task metadata in Redis
-        redis_client.setex(
+        # Write ALL of the task's Redis state before the work is dispatched, in
+        # one pipeline.
+        #
+        # This used to be: enqueue, then three separate unguarded setex/incr
+        # calls. A Redis failure after the enqueue left the analysis running on
+        # the worker while the caller got a 500 and believed nothing had
+        # started -- and because task:{id}:celery_id was never written, the
+        # result was unreachable forever (WILDBO-ERR-04). The owner record in
+        # particular must exist before anything can read the task.
+        pipe = redis_client.pipeline()
+        pipe.setex(
             f"task:{task_id}:metadata",
             settings.task_result_expires,
-            json.dumps(task_metadata)
+            json.dumps(task_metadata),
         )
-        
-        # Submit Celery task, forwarding the caller's gateway identity so tool
-        # calls run with the user's real team scope, not the legacy key (#175).
-        celery_task = run_threat_enrichment_task.delay(
-            task_id=task_id,
-            ioc=request.ioc.dict(),
-            caller={
-                "user_id": str(user.user_id),
-                "team_id": str(user.team_id),
-                "role": getattr(user, "role", "member"),
-            },
-        )
-        
-        # Store Celery task ID mapping
-        redis_client.setex(
-            f"task:{task_id}:celery_id",
-            settings.task_result_expires,
-            celery_task.id
-        )
-
-        # Store task owner for authorization checks
-        redis_client.setex(
+        pipe.setex(
             f"task:{task_id}:user_id",
             settings.task_result_expires,
-            str(user.user_id)
+            str(user.user_id),
         )
-        
-        logger.info(f"Started analysis task {task_id} for IOC type: {request.ioc.type}")
-        
-        # Increment stats
-        redis_client.incr("stats:total_analyses")
-        
+        pipe.incr("stats:total_analyses")
+        pipe.execute()
+
+        # Submit Celery task, forwarding the caller's gateway identity so tool
+        # calls run with the user's real team scope, not the legacy key (#175).
+        try:
+            celery_task = run_threat_enrichment_task.delay(
+                task_id=task_id,
+                ioc=request.ioc.dict(),
+                caller={
+                    "user_id": str(user.user_id),
+                    "team_id": str(user.team_id),
+                    "role": getattr(user, "role", "member"),
+                },
+            )
+        except Exception:
+            # Nothing was enqueued: remove the state we just wrote so a failed
+            # submission leaves no half-created task behind.
+            redis_client.delete(
+                f"task:{task_id}:metadata",
+                f"task:{task_id}:user_id",
+            )
+            raise
+
+        # The celery id is the last thing written: if this fails the task is
+        # already running, so revoke it rather than orphaning it.
+        try:
+            redis_client.setex(
+                f"task:{task_id}:celery_id",
+                settings.task_result_expires,
+                celery_task.id,
+            )
+        except Exception:
+            logger.error(
+                f"Could not record celery id for task {task_id}; revoking the "
+                "enqueued task so it does not run unreachable"
+            )
+            try:
+                celery_task.revoke(terminate=False)
+            except Exception:
+                logger.error(f"Revoke of task {task_id} also failed", exc_info=True)
+            redis_client.delete(
+                f"task:{task_id}:metadata",
+                f"task:{task_id}:user_id",
+            )
+            raise
+
         return AnalysisTaskStatus(
             task_id=task_id,
             status=TaskStatus.PENDING,
@@ -302,7 +349,12 @@ async def analyze_ioc(
             result_url=f"/v1/analyze/{task_id}"
         )
         
-    except (ConnectionError, TimeoutError) as e:
+    except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:
+        # kombu.exceptions.OperationalError (broker down) and
+        # redis.exceptions.ConnectionError (Redis down) are plain Exception
+        # subclasses -- redis's shadows the builtin name but does not inherit
+        # from it -- so this branch could never fire during the exact incident it
+        # was written for, and the caller got a bare 500 (WILDBO-ERR-03).
         logger.error(f"Task queue connection error: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -333,9 +385,24 @@ async def get_analysis_result(
                 detail="Task not found"
             )
 
-        # Verify the task belongs to the requesting user
+        # Verify the task belongs to the requesting user.
+        #
+        # Fail closed on an absent owner record. This used to read
+        # `if task_owner and ...`, so a missing key skipped the comparison
+        # entirely and any authenticated caller with the task id got the result.
+        # The preceding celery_id lookup already established that the task
+        # exists, so a missing owner is an inconsistency, not an anonymous task
+        # (WILDBO-ERR-05).
         task_owner = redis_client.get(f"task:{task_id}:user_id")
-        if task_owner and task_owner.decode() != str(user.user_id):
+        if not task_owner:
+            logger.error(
+                f"Task {task_id} has no owner record; refusing access"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Task not found"
+            )
+        if task_owner.decode() != str(user.user_id):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="You can only view your own tasks"
@@ -387,7 +454,8 @@ async def get_analysis_result(
         
     except HTTPException:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except (KombuOperationalError, RedisError, ValueError, KeyError, TypeError,
+            ConnectionError, TimeoutError) as e:
         logger.error(f"Error getting analysis result for task {task_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -447,7 +515,7 @@ async def root():
     return {
         "service": "Open Security Agents",
         "description": "AI-powered threat intelligence enrichment service",
-        "version": "1.0.0",
+        "version": SERVICE_VERSION,
         "documentation": "/docs",
         "health": "/health",
         "stats": "/stats"

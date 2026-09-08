@@ -50,7 +50,6 @@ async def index(request: Request):
         "request": request,
         "tools": tools_data,
         "title": "Open Security Tools API",
-        "api_key": settings.get_api_key()
     })
 
 
@@ -97,7 +96,6 @@ async def tool_page(request: Request, tool_name: str):
         "tool_info": tool_info,
         "input_schema": input_schema,
         "title": f"{tool_info.get('display_name', tool_name)} - Wildbox Security Tools",
-        "api_key": settings.get_api_key()
     })
 
 
@@ -157,7 +155,6 @@ async def settings_page(request: Request):
     return templates.TemplateResponse("settings.html", {
         "request": request,
         "title": "Settings - Wildbox Security Tools",
-        "api_key": settings.get_api_key()
     })
 
 

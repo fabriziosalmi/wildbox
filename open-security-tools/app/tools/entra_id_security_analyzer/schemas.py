@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
-from standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
 class EntraIDSecurityAnalyzerInput(BaseToolInput):

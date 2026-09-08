@@ -9,10 +9,16 @@ import time
 from typing import Dict, List, Any, Optional
 
 
-class GatewaySecurityTester:
+class TestGatewaySecurity:
     """Comprehensive tests for API Gateway (Port 80/443)"""
     
-    def __init__(self, base_url: str = "http://localhost:80"):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = "http://localhost:80"
         self.base_url = base_url
         self.https_url = "https://localhost:443"
         self.results = []
@@ -262,7 +268,7 @@ class GatewaySecurityTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all gateway security tests"""
-    tester = GatewaySecurityTester()
+    tester = TestGatewaySecurity()
     
     # Run tests in sequence
     tests = [

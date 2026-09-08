@@ -163,16 +163,14 @@ graph TD
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 
-# 2. Create environment file from template
-cp .env.example .env
+# 2. Create .env and fill EVERY secret with a secure random value
+make generate-secrets
 
-# 3. Generate secure secrets
-openssl rand -hex 32  # Use output for JWT_SECRET_KEY
-openssl rand -hex 32  # Use output for DATABASE_PASSWORD
-# Update .env file with generated secrets
+# 3. Check that no placeholder secret survived
+make validate-secrets
 
 # 4. Start all services
-docker-compose up -d
+make start
 
 # 5. Wait for services to initialize (2-3 minutes)
 docker-compose logs -f gateway identity
@@ -186,6 +184,22 @@ curl http://localhost:8001/health
 # Dashboard:         http://localhost:3000     (127.0.0.1 only)
 # API Documentation: http://localhost:8000/docs (127.0.0.1 only)
 ```
+
+> **Do not hand-edit secrets.** `make generate-secrets` fills all eight of them
+> (JWT_SECRET_KEY, POSTGRES_PASSWORD, GATEWAY_INTERNAL_SECRET, API_KEY,
+> CSPM_CREDENTIAL_KEY, INITIAL_ADMIN_PASSWORD, NEXTAUTH_SECRET,
+> N8N_BASIC_AUTH_PASSWORD) with cryptographically random values and writes the
+> file with mode 0600; `make validate-secrets` refuses to let the stack start
+> with a placeholder still in place. The previous instructions here generated two
+> values by hand and named one of them `DATABASE_PASSWORD`, which nothing in the
+> project reads — the real variable is `POSTGRES_PASSWORD` — so a reader who
+> followed them shipped with the repository's published placeholder values for
+> everything else.
+
+> **For a production deployment use `make start-prod`**, which composes
+> `docker-compose.yml` with `docker-compose.prod.yml` (restart: always, log
+> rotation, tuned connection limits). Plain `make start` adds the development
+> overlay instead.
 
 > **These addresses work on the machine running Docker, and nowhere else.**
 > Only the gateway publishes on all interfaces, on ports 80, 443 and 8080.

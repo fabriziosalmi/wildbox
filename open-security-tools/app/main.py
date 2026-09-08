@@ -20,19 +20,14 @@ from pydantic import ValidationError
 from app.config import settings
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, CacheControlMiddleware
-from app.exceptions import (
-    http_exception_handler,
-    validation_exception_handler,
-    pydantic_validation_exception_handler,
-    general_exception_handler,
-    starlette_http_exception_handler
-)
+from open_security_shared.errors import install_error_handlers
+from open_security_shared.observability import install_observability, metrics_response
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
 from app.api.async_router import router as async_router
 from app.web.router import router as web_router
 from app.web.router import DISCOVERED_TOOLS as web_discovered_tools
 from app.execution_manager import execution_manager
-from app.secure_execution_manager import SecureToolExecutionManager
+from app.tool_loader import discover_tools as _discover_tools
 
 # Configure logging first
 configure_logging()
@@ -40,116 +35,14 @@ logger = get_logger(__name__)
 
 def discover_tools() -> Dict[str, Any]:
     """
-    Dynamically discover security tools in the tools directory.
-    
-    Returns:
-        Dictionary mapping tool names to their modules
+    Discover the security tools available to this process.
+
+    Delegates to app.tool_loader, the single implementation of the plugin
+    contract shared with the Celery worker (WILDBO-ARCH-06). Tools are imported
+    as real packages, so relative imports inside a tool work and each tool is
+    executed once per process rather than re-imported per task.
     """
-    tools = {}
-    tools_dir = Path(__file__).parent / "tools"
-    
-    if not tools_dir.exists():
-        logger.warning("Tools directory not found")
-        return tools
-    
-    logger.info(f"Discovering tools in: {tools_dir}")
-    
-    for tool_dir in tools_dir.iterdir():
-        if not tool_dir.is_dir() or tool_dir.name.startswith('_'):
-            continue
-            
-        tool_name = tool_dir.name
-        main_file = tool_dir / "main.py"
-        schemas_file = tool_dir / "schemas.py"
-        
-        if not main_file.exists() or not schemas_file.exists():
-            logger.warning(f"Tool {tool_name} missing required files (main.py or schemas.py)")
-            continue
-        
-        try:
-            # Import the standardized_schemas module first
-            standardized_schemas_path = Path(__file__).parent / "standardized_schemas.py"
-            standardized_spec = importlib.util.spec_from_file_location("standardized_schemas", standardized_schemas_path)
-            standardized_module = importlib.util.module_from_spec(standardized_spec)
-            standardized_spec.loader.exec_module(standardized_module)
-            
-            # Import the tool's schemas module with standardized_schemas available
-            schemas_spec = importlib.util.spec_from_file_location(f"{tool_name}.schemas", schemas_file)
-            schemas_module = importlib.util.module_from_spec(schemas_spec)
-            
-            # Add standardized_schemas to sys.modules temporarily so schemas.py can import it
-            sys.modules['standardized_schemas'] = standardized_module
-            
-            # Add the tool directory to sys.path temporarily for schemas
-            sys.path.insert(0, str(tool_dir))
-            try:
-                schemas_spec.loader.exec_module(schemas_module)
-            finally:
-                sys.path.remove(str(tool_dir))
-                # Clean up the temporary standardized_schemas module from sys.modules
-                if 'standardized_schemas' in sys.modules:
-                    del sys.modules['standardized_schemas']
-            
-            # Import the tool's main module
-            spec = importlib.util.spec_from_file_location(f"{tool_name}.main", main_file)
-            main_module = importlib.util.module_from_spec(spec)
-            
-            # Add the schemas module to sys.modules temporarily so main.py can import it
-            schemas_module_name = f"{tool_name}_schemas_temp"
-            sys.modules['schemas'] = schemas_module
-            
-            # Add the tool directory to sys.path temporarily
-            sys.path.insert(0, str(tool_dir))
-            try:
-                spec.loader.exec_module(main_module)
-            finally:
-                sys.path.remove(str(tool_dir))
-                # Clean up the temporary schemas module from sys.modules
-                if 'schemas' in sys.modules:
-                    del sys.modules['schemas']
-            
-            # Attach schemas to main module for easier access
-            main_module.schemas = schemas_module
-            
-            # Validate required components
-            if not hasattr(main_module, 'execute_tool'):
-                logger.error(f"Tool {tool_name} missing execute_tool function")
-                continue
-                
-            if not hasattr(main_module, 'TOOL_INFO'):
-                logger.warning(f"Tool {tool_name} missing TOOL_INFO metadata")
-                main_module.TOOL_INFO = {
-                    "name": tool_name,
-                    "display_name": tool_name.replace("_", " ").title(),
-                    "description": "No description provided",
-                    "version": "unknown",
-                    "author": "unknown",
-                    "category": "general"
-                }
-            
-            tools[tool_name] = main_module
-            logger.info(f"Successfully loaded tool: {tool_name}")
-            
-        except Exception as e:
-            # Loading a tool runs third-party module-level code via
-            # exec_module, so any exception type is reachable — SyntaxError,
-            # IndentationError, AttributeError, NameError, OSError. None of
-            # those were caught before, and discover_tools() runs at import
-            # time inside create_app(), so a single malformed tool killed the
-            # process and took all the others down with it.
-            logger.error(
-                f"Failed to load tool {tool_name}: {type(e).__name__}: {e}",
-                exc_info=True,
-            )
-            continue
-        finally:
-            # exec_module may abort midway and leave these behind, which would
-            # make the next tool import the previous tool's schemas.
-            sys.modules.pop('schemas', None)
-            sys.modules.pop('standardized_schemas', None)
-    
-    logger.info(f"Discovered {len(tools)} tools: {list(tools.keys())}")
-    return tools
+    return _discover_tools()
 
 
 @asynccontextmanager
@@ -237,12 +130,14 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
-    # Add exception handlers
-    app.add_exception_handler(HTTPException, http_exception_handler)
-    app.add_exception_handler(RequestValidationError, validation_exception_handler)
-    app.add_exception_handler(ValidationError, pydantic_validation_exception_handler)
-    app.add_exception_handler(StarletteHTTPException, starlette_http_exception_handler)
-    app.add_exception_handler(Exception, general_exception_handler)
+    # Add exception handlers. The canonical shape lives in the shared package so
+    # every Wildbox service answers with the same body (see WILDBO-API-02); the
+    # local app.exceptions module now delegates to it.
+    install_error_handlers(app)
+
+    # Correlation id (X-Request-ID, propagated from the gateway) + Prometheus
+    # metrics at /metrics in exposition format.
+    install_observability(app, service_name="tools", service_version="0.1.6", metrics_path=None)
     
     # Discover and register tools
     discovered_tools = discover_tools()
@@ -306,10 +201,21 @@ def create_app() -> FastAPI:
             }
     
     # Metrics endpoint for observability
-    @app.get("/metrics", tags=["System"])
+    @app.get("/metrics", include_in_schema=False)
+    async def prometheus_metrics():
+        """
+        Prometheus exposition format.
+
+        This endpoint used to return hand-built JSON that no scraper could parse
+        (WILDBO-OBS-03). The JSON view an operator or the dashboard may still
+        want is unchanged and lives at /api/system/metrics.
+        """
+        return metrics_response()
+
+    @app.get("/api/system/operational-metrics", tags=["System"])
     async def get_metrics():
         """
-        Get operational metrics for the tools service.
+        Get operational metrics for the tools service as JSON.
         Returns tool execution statistics and system health metrics.
         """
         start_time = time.time()
@@ -321,12 +227,13 @@ def create_app() -> FastAPI:
             successful_executions = 0
             failed_executions = 0
             
-            # Get tool usage statistics from execution manager if available
-            if hasattr(execution_manager, 'get_execution_stats'):
-                stats = execution_manager.get_execution_stats()
-                total_executions = stats.get('total', 0)
-                successful_executions = stats.get('successful', 0)
-                failed_executions = stats.get('failed', 0)
+            # Real counters. The hasattr guard that used to wrap this checked
+            # for a method that existed nowhere, so these were reported as zero
+            # on every call (WILDBO-OBS-01).
+            stats = execution_manager.get_execution_stats()
+            total_executions = stats.get('total', 0)
+            successful_executions = stats.get('successful', 0)
+            failed_executions = stats.get('failed', 0)
             
             return {
                 "service": "tools",

@@ -28,14 +28,31 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
 
 
+def _api_key_hash_secret() -> str:
+    """
+    The key used to HMAC stored API keys.
+
+    Deliberately NOT the JWT signing key. It used to be, which meant the 90-day
+    JWT rotation SECURITY.md recommends silently invalidated every API key in
+    the database: every stored digest recomputes differently, lookups stop
+    matching, and there is no key_version column or re-hash path to carry them
+    across (WILDBO-SEC-01).
+
+    Falls back to the JWT secret when API_KEY_HASH_SECRET is unset, so existing
+    deployments keep working; set API_KEY_HASH_SECRET to decouple the two, then
+    the JWT key can be rotated without touching API keys.
+    """
+    return settings.api_key_hash_secret or settings.jwt_secret_key
+
+
 def hash_api_key(api_key: str) -> str:
     """
     Hash an API key using HMAC-SHA256 for secure storage.
     
-    Uses HMAC with the JWT secret key instead of plain SHA256 to provide:
-    - Keyed hashing (requires knowledge of the secret)
+    Uses HMAC rather than a plain SHA256 digest to provide:
+    - Keyed hashing (recovering a key from a database dump also requires the
+      secret, which is not in the database)
     - Protection against rainbow table attacks
-    - Cryptographically secure hashing suitable for sensitive data
     
     Args:
         api_key: The API key to hash
@@ -45,7 +62,7 @@ def hash_api_key(api_key: str) -> str:
     """
     # HMAC-SHA256 is a secure keyed hash function, not weak hashing
     return hmac.new(  # nosec B324
-        settings.jwt_secret_key.encode(),
+        _api_key_hash_secret().encode(),
         api_key.encode(),
         hashlib.sha256
     ).hexdigest()

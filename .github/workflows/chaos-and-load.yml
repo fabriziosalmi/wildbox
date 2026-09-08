@@ -1,0 +1,114 @@
+# Chaos and load, on a schedule.
+#
+# tests/chaos/ contains exactly the scenarios that would surface this system's
+# concurrency and resilience defects -- network partition, Redis failure,
+# connection-pool exhaustion with 100 concurrent requests, full outage -- and no
+# workflow referenced it, so it was documentation of intent rather than
+# verification (WILDBO-CONC-03). Nothing measured performance either
+# (WILDBO-PERF-03).
+#
+# Nightly rather than per-PR: these bring up the whole stack and take minutes.
+name: Chaos & Load
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: 'Which suite to run'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, chaos, load]
+
+jobs:
+  chaos:
+    name: Chaos experiments
+    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'chaos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate secrets
+        run: |
+          python3 scripts/generate_secrets.py
+          python3 scripts/validate_secrets.py
+
+      - name: Start the stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+          chmod +x scripts/wait-for-services.sh
+          ./scripts/wait-for-services.sh
+        timeout-minutes: 15
+        env:
+          SERVICES: "gateway:localhost:80:/health identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health"
+
+      - name: Install test dependencies
+        run: pip install -r tests/requirements.txt
+
+      - name: Run chaos suite
+        run: pytest tests/chaos -v --tb=short -p no:cacheprovider
+        env:
+          GATEWAY_URL: http://localhost
+
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  load:
+    name: Load baseline
+    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'load'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Generate secrets
+        run: python3 scripts/generate_secrets.py
+
+      - name: Start the stack
+        run: |
+          docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+          chmod +x scripts/wait-for-services.sh
+          ./scripts/wait-for-services.sh
+        timeout-minutes: 15
+        env:
+          SERVICES: "gateway:localhost:80:/health data:localhost:8002:/health"
+
+      - name: Install benchmark dependencies
+        run: pip install -r tests/requirements.txt
+
+      - name: Search latency baseline
+        # The first repeatable measurement this repository has had. It answers
+        # the question the performance review could not: whether the
+        # leading-wildcard ILIKE search matters at realistic data volumes
+        # (WILDBO-PERF-02/PERF-03).
+        run: python tests/perf/bench_indicator_search.py --report bench-results.json
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-results
+          path: bench-results.json
+          retention-days: 90
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

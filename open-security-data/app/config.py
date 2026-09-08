@@ -105,8 +105,12 @@ class SecurityConfig:
     jwt_expiration: int = int(os.getenv("JWT_EXPIRATION", "3600"))  # 1 hour
     
     # API Security
-    api_key_required: bool = os.getenv("API_KEY_REQUIRED", "false").lower() == "true"
-    api_key_header: str = os.getenv("API_KEY_HEADER", "X-API-Key")
+    # NOTE: API_KEY_REQUIRED / API_KEY_HEADER used to be parsed here and were
+    # read by nothing in the service (WILDBO-CONF-04). They read as a security
+    # toggle -- an operator who set API_KEY_REQUIRED=true would believe they had
+    # added a check -- so they have been removed rather than left as a decoy.
+    # Authentication for this service is the gateway proof-of-origin dependency
+    # in app/auth.py.
     
     # Input validation
     max_query_size: int = int(os.getenv("MAX_QUERY_SIZE", "10000"))

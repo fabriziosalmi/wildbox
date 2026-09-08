@@ -4,11 +4,7 @@ import socket
 import asyncio
 from datetime import datetime
 from typing import List
-try:
-    from schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
-except ImportError:
-    from schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
-
+from .schemas import SubdomainScannerInput, SubdomainScannerOutput, SubdomainResult
 # Wordlists for subdomain discovery
 SMALL_WORDLIST = ["www", "mail", "ftp", "localhost", "webmail", "smtp", "pop", "ns1", "webdisk", "ns2", "cpanel", "whm", "autodiscover", "autoconfig", "m", "imap", "test", "ns", "blog", "pop3", "dev", "www2", "admin", "forum", "news", "vpn", "ns3", "mail2", "new", "mysql", "old", "www1", "email", "img", "www3", "help", "shop", "sql", "secure", "beta", "john", "robert", "www4", "ftp2", "mssql", "ftpd", "www5", "www6", "www7", "www8", "www9", "www10"]
 

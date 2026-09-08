@@ -20,6 +20,10 @@ class CheckSecurityCommandCenterEnabled(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="GCP_SCC_001",
             title="Security Command Center Enabled",
             description="Ensure SCC is enabled.",

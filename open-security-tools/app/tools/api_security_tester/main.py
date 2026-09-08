@@ -61,7 +61,7 @@ def validate_auth_value(auth_value: str) -> str:
     
     return auth_value
 
-from schemas import (
+from .schemas import (
     APISecurityTesterInput,
     APISecurityTesterOutput,
     APIVulnerability,
@@ -70,6 +70,39 @@ from schemas import (
 )
 
 # Tool metadata
+
+# ---------------------------------------------------------------------------
+# Shared HTTP session
+# ---------------------------------------------------------------------------
+# Every probe used to open its own aiohttp.ClientSession, inside a loop nested
+# three deep (endpoints x parameters x payloads), so a scan built and tore down a
+# TCP connector and DNS cache hundreds of times and could never reuse a
+# keep-alive connection to the target (WILDBO-PERF-04).
+#
+# One session per execution is created here and closed in execute_tool's finally
+# block. aiohttp sessions are safe to share across concurrent requests.
+
+_SESSION: Optional[aiohttp.ClientSession] = None
+
+
+def _session() -> aiohttp.ClientSession:
+    """Return the execution-scoped HTTP session, creating it on first use."""
+    global _SESSION
+    if _SESSION is None or _SESSION.closed:
+        _SESSION = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30, connect=10),
+            connector=aiohttp.TCPConnector(limit=20, limit_per_host=8, ttl_dns_cache=300),
+        )
+    return _SESSION
+
+
+async def _close_session() -> None:
+    global _SESSION
+    if _SESSION is not None and not _SESSION.closed:
+        await _SESSION.close()
+    _SESSION = None
+
+
 TOOL_INFO = {
     "name": "API Security Tester",
     "description": "Comprehensive API security testing tool that identifies vulnerabilities, misconfigurations, and compliance issues against OWASP API Security Top 10",
@@ -274,6 +307,9 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
             ],
             execution_time=time.time() - start_time
         )
+    finally:
+        # One session per execution; release it with the run (WILDBO-PERF-04).
+        await _close_session()
 
 async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers: Dict, max_requests: int, wordlist_name: str = "api_common") -> List[APIEndpoint]:
     """Discover API endpoints through various methods"""
@@ -311,7 +347,8 @@ async def parse_api_specification(spec_url_or_content: str, base_url: str) -> Li
     try:
         # Try to fetch specification if it's a URL
         if spec_url_or_content.startswith('http'):
-            async with aiohttp.ClientSession() as session:
+            session = _session()
+            if True:
                 async with session.get(spec_url_or_content) as response:
                     spec_content = await response.text()
         else:
@@ -356,7 +393,8 @@ async def probe_endpoint(base_url: str, path: str, headers: Dict) -> Optional[AP
     try:
         url = urljoin(base_url, path)
         
-        async with aiohttp.ClientSession() as session:
+        session = _session()
+        if True:
             # Try GET request first
             async with session.get(url, headers=headers, timeout=10) as response:
                 if response.status < 500:  # Endpoint exists
@@ -465,7 +503,8 @@ async def test_broken_object_level_authorization(base_url: str, endpoints: List[
                     test_path = endpoint.path.replace('{id}', test_id).replace(':id', test_id)
                     url = urljoin(base_url, test_path)
                     
-                    async with aiohttp.ClientSession() as session:
+                    session = _session()
+                    if True:
                         async with session.get(url, headers=headers, timeout=10) as response:
                             if response.status == 200:
                                 # Potential unauthorized access
@@ -535,7 +574,8 @@ async def test_broken_user_authentication(base_url: str, endpoints: List[APIEndp
                     'email': 'admin@test.com'
                 }
                 
-                async with aiohttp.ClientSession() as session:
+                session = _session()
+                if True:
                     async with session.post(url, json=login_data, headers=headers, timeout=10) as response:
                         if response.status == 200:
                             try:
@@ -591,7 +631,8 @@ async def test_excessive_data_exposure(base_url: str, endpoints: List[APIEndpoin
         try:
             url = urljoin(base_url, endpoint.path)
             
-            async with aiohttp.ClientSession() as session:
+            session = _session()
+            if True:
                 async with session.get(url, headers=headers, timeout=10) as response:
                     if response.status == 200:
                         try:
@@ -648,7 +689,8 @@ async def test_rate_limiting(base_url: str, endpoints: List[APIEndpoint], header
             
             # Send rapid requests to test rate limiting
             for i in range(10):
-                async with aiohttp.ClientSession() as session:
+                session = _session()
+                if True:
                     async with session.get(url, headers=headers, timeout=5) as response:
                         request_count += 1
                         if response.status == 429:  # Rate limited
@@ -700,7 +742,8 @@ async def test_function_level_authorization(base_url: str, endpoints: List[APIEn
             try:
                 url = urljoin(base_url, endpoint.path)
                 
-                async with aiohttp.ClientSession() as session:
+                session = _session()
+                if True:
                     async with session.get(url, headers=headers_no_auth, timeout=10) as response:
                         if response.status == 200:
                             vulnerabilities.append(APIVulnerability(
@@ -751,7 +794,8 @@ async def test_mass_assignment(base_url: str, endpoints: List[APIEndpoint], head
                 for field in dangerous_fields:
                     test_data = {field: 'true', 'test_field': 'value'}
                     
-                    async with aiohttp.ClientSession() as session:
+                    session = _session()
+                    if True:
                         async with session.request(endpoint.method, url, json=test_data, headers=headers, timeout=10) as response:
                             if response.status in [200, 201]:
                                 vulnerabilities.append(APIVulnerability(
@@ -799,7 +843,8 @@ async def test_security_misconfiguration(base_url: str, endpoints: List[APIEndpo
         try:
             url = urljoin(base_url, debug_path)
             
-            async with aiohttp.ClientSession() as session:
+            session = _session()
+            if True:
                 async with session.get(url, headers=headers, timeout=10) as response:
                     if response.status == 200:
                         vulnerabilities.append(APIVulnerability(
@@ -1047,13 +1092,15 @@ async def test_injection_vulnerabilities(base_url, endpoints, headers, include_f
                     try:
                         if endpoint.method == "GET":
                             url = f"{base_url.rstrip('/')}{endpoint.path}?{param}={payload}"
-                            async with aiohttp.ClientSession() as session:
+                            session = _session()
+                            if True:
                                 async with session.get(url, headers=headers, timeout=10) as response:
                                     response_text = await response.text()
                         else:
                             url = f"{base_url.rstrip('/')}{endpoint.path}"
                             data = {param: payload}
-                            async with aiohttp.ClientSession() as session:
+                            session = _session()
+                            if True:
                                 async with session.post(url, json=data, headers=headers, timeout=10) as response:
                                     response_text = await response.text()
                         

@@ -6,11 +6,7 @@ import time
 from datetime import datetime
 from typing import List, Set, Dict
 from urllib.parse import quote_plus, urljoin
-try:
-    from schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
-except ImportError:
-    from schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
-
+from .schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
 # Email regex pattern
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
 

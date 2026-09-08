@@ -10,11 +10,7 @@ import re
 import binascii
 from typing import Optional, Dict, Any
 
-try:
-    from schemas import Base64ToolInput, Base64ToolOutput
-except ImportError:
-    from schemas import Base64ToolInput, Base64ToolOutput
-
+from .schemas import Base64ToolInput, Base64ToolOutput
 # Tool metadata
 TOOL_INFO = {
     "name": "Base64 Encoder/Decoder",

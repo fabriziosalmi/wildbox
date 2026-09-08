@@ -15,10 +15,11 @@ from enum import Enum
 
 import aiohttp
 import feedparser
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.config import get_config
-from app.models import Source, Indicator, CollectionRun
+from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
 from app.utils.database import get_db_session
 from app.utils.rate_limiter import RateLimiter
 from app.utils.validators import validate_indicator
@@ -144,7 +145,12 @@ class BaseCollector(ABC):
                         
                         result.items_collected += 1
                         
-                    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+                    except SQLAlchemyError:
+                        # A database failure is not an item-level problem: the
+                        # session is now in a failed transaction and every later
+                        # item would fail too. Let it reach the outer handler.
+                        raise
+                    except Exception as e:
                         logger.error(f"Error processing item from {self.source.name}: {e}")
                         result.items_failed += 1
                         continue
@@ -161,13 +167,31 @@ class BaseCollector(ABC):
             result.error_message = "Collection timed out"
             logger.error(f"Collection timeout for source: {self.source.name}")
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except Exception as e:
+            # Catch Exception, not a tuple of five builtins.
+            #
+            # The most likely failure of a feed collector is an HTTP error, and
+            # HTTPCollector.collect_data deliberately re-raises aiohttp.ClientError
+            # -- which is not a ValueError, KeyError, TypeError, ConnectionError or
+            # TimeoutError, so it passed straight through this handler. The finally
+            # block below then wrote a collection_run row saying status='running'
+            # with a completed_at timestamp and no error message (WILDBO-ERR-01).
+            # sqlalchemy.exc errors from the indicator writes escaped the same way.
             result.status = CollectionStatus.FAILED
             result.error_message = str(e)
             result.error_details = {"exception_type": type(e).__name__}
             logger.error(f"Collection failed for source {self.source.name}: {e}", exc_info=True)
         
         finally:
+            # A run that reaches this block has stopped, so it must not be
+            # recorded as still RUNNING. If some future exception escapes both
+            # handlers above, record it as FAILED rather than writing a
+            # completed_at next to status='running' (WILDBO-ERR-01).
+            if result.status == CollectionStatus.RUNNING:
+                result.status = CollectionStatus.FAILED
+                result.error_message = result.error_message or (
+                    "Collection ended without reporting a terminal status"
+                )
             # Update collection run record
             collection_run.completed_at = datetime.now(timezone.utc)
             collection_run.status = result.status.value
@@ -185,6 +209,67 @@ class BaseCollector(ABC):
         
         return result
     
+
+    @staticmethod
+    def _store_subtype_row(db_session: Session, indicator: "Indicator") -> None:
+        """
+        Populate the per-type row that accompanies an indicator.
+
+        The ip_addresses, domains and file_hashes tables were queried on the
+        indicator read paths and written by nothing at all, so that enrichment
+        was permanently empty and surfaced as {} rather than as an error
+        (WILDBO-DOM-03/DOM-04).
+
+        Only facts derivable from the indicator value itself are written here --
+        IP version, the domain's tld/apex/subdomain, the hash algorithm. Columns
+        that need an external lookup (asn, registrar, malware_family) are left
+        NULL for an enricher to fill; inventing them would be fabricating data.
+        """
+        value = (indicator.normalized_value or indicator.value or "").strip()
+        if not value:
+            return
+
+        itype = indicator.indicator_type
+
+        if itype == "ip_address":
+            import ipaddress as _ipaddress
+            try:
+                addr = _ipaddress.ip_address(value)
+            except ValueError:
+                logger.warning(f"Indicator {indicator.id} is not a valid IP: {value!r}")
+                return
+            db_session.add(IPAddress(
+                indicator_id=indicator.id,
+                ip_address=str(addr),
+                ip_version=addr.version,
+            ))
+
+        elif itype == "domain":
+            labels = value.lower().strip(".").split(".")
+            tld = labels[-1] if len(labels) >= 2 else None
+            apex = ".".join(labels[-2:]) if len(labels) >= 2 else value
+            subdomain = ".".join(labels[:-2]) if len(labels) > 2 else None
+            db_session.add(Domain(
+                indicator_id=indicator.id,
+                domain=value,
+                tld=tld,
+                apex_domain=apex,
+                subdomain=subdomain,
+            ))
+
+        elif itype == "file_hash":
+            hash_type = {32: "md5", 40: "sha1", 64: "sha256", 128: "sha512"}.get(len(value))
+            if hash_type is None:
+                logger.warning(
+                    f"Indicator {indicator.id} has an unrecognised hash length "
+                    f"({len(value)}); storing without a hash_type"
+                )
+            db_session.add(FileHash(
+                indicator_id=indicator.id,
+                hash_value=value,
+                hash_type=hash_type or "unknown",
+            ))
+
     async def _store_indicator(self, db_session: Session, indicator_data: Dict[str, Any], 
                              raw_data: Dict[str, Any]) -> str:
         """Store indicator in database, return 'new', 'updated', or 'skipped'"""
@@ -240,9 +325,18 @@ class BaseCollector(ABC):
                 )
                 
                 db_session.add(indicator)
+                # Flush so the indicator has an id the subtype row can reference,
+                # while staying inside this transaction: the pair commits or
+                # rolls back together and cannot diverge.
+                db_session.flush()
+                self._store_subtype_row(db_session, indicator)
                 return 'new'
                 
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except Exception as e:
+            # Catch Exception so the rollback actually runs: sqlalchemy.exc
+            # errors (an IntegrityError from uq_source_indicator, for instance)
+            # are not among the builtins this used to list, so the session was
+            # left in a failed-transaction state (WILDBO-ERR-01).
             logger.error(f"Error storing indicator: {e}")
             db_session.rollback()
             raise

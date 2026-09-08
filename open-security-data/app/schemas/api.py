@@ -8,36 +8,14 @@ from pydantic import BaseModel, Field, field_validator
 from enum import Enum
 from uuid import UUID
 
-class IndicatorType(str, Enum):
-    """Indicator type enumeration"""
-    IP_ADDRESS = "ip_address"
-    DOMAIN = "domain"
-    URL = "url"
-    FILE_HASH = "file_hash"
-    EMAIL = "email"
-    CERTIFICATE = "certificate"
-    ASN = "asn"
-    VULNERABILITY = "vulnerability"
-
-class ThreatType(str, Enum):
-    """Threat type enumeration"""
-    MALWARE = "malware"
-    PHISHING = "phishing"
-    SPAM = "spam"
-    BOTNET = "botnet"
-    EXPLOIT = "exploit"
-    VULNERABILITY = "vulnerability"
-    CERTIFICATE = "certificate"
-    DNS = "dns"
-    NETWORK_SCAN = "network_scan"
-    SUSPICIOUS = "suspicious"
-
-class ConfidenceLevel(str, Enum):
-    """Confidence level enumeration"""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    VERIFIED = "verified"
+# The vocabulary has ONE definition, in app.models, which is also what the
+# database columns are constrained to. These used to be a second, hand-maintained
+# copy with no import between them and no test comparing them (WILDBO-DOM-05).
+from app.models import (  # noqa: E402
+    ConfidenceLevel,
+    IndicatorType,
+    ThreatType,
+)
 
 class IndicatorBase(BaseModel):
     """Base indicator schema"""
@@ -99,7 +77,9 @@ class BulkLookupItem(BaseModel):
 
 class BulkLookupRequest(BaseModel):
     """Bulk lookup request schema"""
-    indicators: List[BulkLookupItem] = Field(..., description="Indicators to lookup")
+    indicators: List[BulkLookupItem] = Field(
+        ..., max_length=1000, description="Indicators to look up (max 1000)"
+    )
 
 class LookupResult(BaseModel):
     """Result for individual lookup"""
@@ -232,7 +212,12 @@ class TelemetryEvent(TelemetryEventBase):
 
 class TelemetryBatch(BaseModel):
     """Schema for batch telemetry ingestion"""
-    events: List[TelemetryEventCreate] = Field(..., description="List of telemetry events")
+    # max_length makes the limit part of the contract rather than a handler
+    # detail; the endpoint enforces config.security.max_batch_size as well
+    # (WILDBO-INPT-03).
+    events: List[TelemetryEventCreate] = Field(
+        ..., max_length=1000, description="List of telemetry events (max 1000)"
+    )
     batch_id: Optional[str] = Field(None, description="Optional batch identifier")
 
 class TelemetryBatchResponse(BaseModel):

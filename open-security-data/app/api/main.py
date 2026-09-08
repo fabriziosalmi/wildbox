@@ -61,6 +61,15 @@ app = FastAPI(
     redoc_url="/redoc" if config.environment == "development" else None
 )
 
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="data", service_version="0.1.6")
+
+
 # Security headers middleware
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -180,6 +189,9 @@ async def search_indicators(
         # Escape SQL LIKE wildcards in user input to prevent pattern injection
         escaped_q = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         search_filter = or_(
+            # These leading-wildcard comparisons are served by the pg_trgm GIN
+            # indexes added in alembic revision 0004_trgm; without them each
+            # search sequentially scans the whole table (WILDBO-PERF-02).
             Indicator.value.ilike(f"%{escaped_q}%", escape="\\"),
             Indicator.normalized_value.ilike(f"%{escaped_q}%", escape="\\"),
             Indicator.description.ilike(f"%{escaped_q}%", escape="\\")
@@ -310,30 +322,59 @@ async def bulk_lookup(
             detail=f"Too many indicators. Maximum allowed: {config.security.max_batch_size}"
         )
     
-    results = []
-    
-    for item in request.indicators:
-        # Find matching indicators
-        query = db.query(Indicator).filter(team_or_global_filter(Indicator, current_user)).filter(
-            and_(
-                Indicator.indicator_type == item.indicator_type.lower(),
-                or_(
-                    Indicator.value == item.value,
-                    Indicator.normalized_value == item.value.lower().strip()
-                ),
-                Indicator.active == True
-            )
+    # One query for the whole batch. This used to issue a separate query per
+    # requested indicator -- up to max_batch_size (1000) sequential round trips
+    # in a single request, on an endpoint whose entire purpose is batching
+    # (WILDBO-PERF-01).
+    wanted = [
+        (item.indicator_type.lower(), item.value, item.value.lower().strip())
+        for item in request.indicators
+    ]
+
+    match_clauses = [
+        and_(
+            Indicator.indicator_type == itype,
+            or_(Indicator.value == raw, Indicator.normalized_value == norm),
         )
-        
-        matches = query.all()
-        
+        for itype, raw, norm in wanted
+    ]
+
+    matches = []
+    if match_clauses:
+        matches = (
+            db.query(Indicator)
+            .filter(team_or_global_filter(Indicator, current_user))
+            .filter(Indicator.active == True)  # noqa: E712
+            .filter(or_(*match_clauses))
+            .all()
+        )
+
+    # Group the single result set back onto the requested items.
+    by_key = {}
+    for m in matches:
+        by_key.setdefault((m.indicator_type, m.value), []).append(m)
+        by_key.setdefault((m.indicator_type, m.normalized_value), []).append(m)
+
+    results = []
+    for item in request.indicators:
+        itype = item.indicator_type.lower()
+        found = by_key.get((itype, item.value)) or by_key.get(
+            (itype, item.value.lower().strip())
+        ) or []
+        # de-duplicate while preserving order
+        seen = set()
+        unique = []
+        for m in found:
+            if m.id not in seen:
+                seen.add(m.id)
+                unique.append(m)
         results.append(LookupResult(
             indicator_type=item.indicator_type,
             value=item.value,
-            found=len(matches) > 0,
-            matches=matches
+            found=len(unique) > 0,
+            matches=unique,
         ))
-    
+
     return BulkLookupResponse(
         results=results,
         total_queried=len(request.indicators),
@@ -651,6 +692,18 @@ async def ingest_telemetry_batch(
     """
     Ingest a batch of telemetry events from security sensors
     """
+    # Bound the batch. The neighbouring bulk-lookup endpoint enforces this same
+    # limit; this one iterated an unbounded list, doing a query and a write per
+    # element, capped only by nginx's 10MB body limit (WILDBO-INPT-03).
+    if len(batch.events) > config.security.max_batch_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Too many events in batch. Maximum allowed: "
+                f"{config.security.max_batch_size}"
+            ),
+        )
+
     batch_id = batch.batch_id or str(uuid.uuid4())
     ingested_at = datetime.now(timezone.utc)
     events_ingested = 0

@@ -20,6 +20,10 @@ class CheckDetectiveEnabled(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AWS_DETECTIVE_001",
             title="Detective Enabled",
             description="Ensure Detective is enabled for threat investigation.",

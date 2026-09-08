@@ -14,10 +14,16 @@ from dotenv import load_dotenv
 load_dotenv("tests/.env")
 
 
-class IdentityServiceTester:
+class TestIdentityService:
     """Comprehensive tests for Identity Service (Port 8001)"""
 
-    def __init__(self, base_url: str = None):
+    # setup_method, not __init__: pytest silently refuses to collect a
+    # class that defines a constructor. Combined with the class rename
+    # below, this is what makes these tests run at all (WILDBO-TEST-01).
+    def setup_method(self, method):
+        # Constructor defaults, resolved here now that pytest calls
+        # setup_method() with no arguments (WILDBO-TEST-01).
+        base_url = None
         self.base_url = base_url or os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001")
         self.results = []
         self.tokens = {}
@@ -378,7 +384,7 @@ class IdentityServiceTester:
 
 async def run_tests() -> Dict[str, Any]:
     """Run all identity service tests"""
-    tester = IdentityServiceTester()
+    tester = TestIdentityService()
 
     # Run tests in sequence - login first to establish credentials for other tests
     tests = [

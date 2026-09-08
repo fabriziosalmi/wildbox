@@ -20,6 +20,10 @@ class CheckCosmosDBFirewall(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AZURE_COSMOSDB_001",
             title="Cosmos DB Firewall",
             description="Ensure firewall rules are configured.",

@@ -4,11 +4,7 @@ import hashlib
 import time
 from datetime import datetime
 from typing import List, Optional
-try:
-    from schemas import HashCrackerInput, HashCrackerOutput, HashResult
-except ImportError:
-    from schemas import HashCrackerInput, HashCrackerOutput, HashResult
-
+from .schemas import HashCrackerInput, HashCrackerOutput, HashResult
 # Common passwords wordlist
 COMMON_PASSWORDS = [
     "password", "123456", "password123", "admin", "12345678", "qwerty", "123456789",

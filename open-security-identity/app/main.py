@@ -11,6 +11,7 @@ from .config import settings
 from .database import get_db
 from .api_v1.endpoints import users, api_keys, analytics, user_api_keys
 from .internal import router as internal_router
+from . import logout
 
 # Import fastapi-users components
 from .user_manager import auth_backend, fastapi_users
@@ -24,6 +25,15 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Canonical error contract + correlation id + Prometheus metrics.
+# One shape for every Wildbox service (see open_security_shared.errors).
+from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.observability import install_observability as _install_observability
+
+_install_error_handlers(app)
+_install_observability(app, service_name="identity", service_version=settings.app_version)
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -89,6 +99,15 @@ app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix=f"{settings.api_v1_prefix}/users",
     tags=["users"]
+)
+
+# Logout / token revocation (WILDBO-AUTH-01). fastapi-users' JWT strategy has no
+# server-side logout, so this supplies the write side of the blacklist that
+# /internal/authorize now consults.
+app.include_router(
+    logout.router,
+    prefix=f"{settings.api_v1_prefix}/auth",
+    tags=["authentication"]
 )
 
 # Router per reset password e verifica email (opzionali ma raccomandati)

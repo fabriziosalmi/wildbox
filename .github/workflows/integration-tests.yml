@@ -227,7 +227,12 @@ jobs:
         timeout-minutes: 5
         env:
           # Only check services actually started in CI (identity, tools, data, responder, cspm)
-          SERVICES: "identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health/live"
+          # The gateway is started too: it authenticates every request and is
+          # the subject of test_gateway_security / test_gateway_hardening, which
+          # could not run without it (WILDBO-TEST-04). Services still outside the
+          # CI stack cause their tests to SKIP with a reason rather than fail --
+          # see the reachability guard in tests/integration/conftest.py.
+          SERVICES: "gateway:localhost:80:/health identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health responder:localhost:8018:/health cspm:localhost:8019:/health/live"
           # Skip optional services in CI (they don't exist in this environment)
           OPTIONAL_SERVICES: ""
 
@@ -246,6 +251,7 @@ jobs:
           DATA_SERVICE_URL: http://localhost:8002
           RESPONDER_SERVICE_URL: http://localhost:8018
           CSPM_SERVICE_URL: http://localhost:8019
+          GATEWAY_URL: http://localhost
           # psycopg2 DSN for the data DB, used to seed the cross-tenant test
           # (data has no create API). Same DB the data service runs against.
           DATA_DB_DSN: postgresql://postgres:${{ secrets.POSTGRES_PASSWORD || 'ci-fallback-postgres-pw' }}@localhost:5432/identity
@@ -300,12 +306,35 @@ jobs:
 
       - name: Check for unpinned dependencies
         run: |
-          # Check for :latest Docker tags
+          # This step used to grep only for ":latest" in the compose files and
+          # then print "All Docker images pinned" -- a conclusion it had not
+          # checked, and one that was false: every Dockerfile FROM used a
+          # floating tag (WILDBO-TEST-02). It now verifies both, and its message
+          # matches what it verified.
+          fail=0
+
           if grep -r "image:.*:latest" docker-compose.yml open-security-*/docker-compose.yml | grep -v "^#"; then
-            echo "❌ Unpinned Docker images detected!"
-            exit 1
+            echo "❌ :latest image tag found in a compose file"
+            fail=1
           fi
-          echo "✅ All Docker images pinned"
+
+          # Every FROM in a Dockerfile must be digest-pinned (or reference an
+          # earlier build stage by name).
+          # -h suppresses filenames, so a "| grep -v node_modules" filter after it
+          # can never match; exclude vendored trees by path with --exclude-dir.
+          unpinned=$(grep -rhE '^FROM ' --include="Dockerfile*" \
+            --exclude-dir=node_modules --exclude-dir=.venv . \
+            | grep -vE '@sha256:' \
+            | grep -vE '^FROM [A-Za-z0-9_.-]+ AS ' \
+            | grep -vE '^FROM (base|builder|deps|runner)\b' || true)
+          if [ -n "$unpinned" ]; then
+            echo "❌ Dockerfile base images are not digest-pinned:"
+            echo "$unpinned"
+            fail=1
+          fi
+
+          if [ "$fail" -ne 0 ]; then exit 1; fi
+          echo "✅ Compose images carry no :latest tag and all Dockerfile base images are digest-pinned"
 
       - name: Upload Validation Report
         if: always()

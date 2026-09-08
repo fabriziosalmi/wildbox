@@ -1,4 +1,4 @@
-from standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput
 """Pydantic schemas for the port scanner tool - STANDARDIZED VERSION."""
 
 from pydantic import Field
@@ -9,7 +9,7 @@ import os
 # Add app directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../..'))
 
-from app.standardized_schemas import (
+from ...standardized_schemas import (
     BaseToolInput, 
     BaseToolOutput, 
     NetworkPort,

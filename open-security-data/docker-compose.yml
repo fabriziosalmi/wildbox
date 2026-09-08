@@ -48,6 +48,12 @@ services:
   api:
     build:
       context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
       dockerfile: Dockerfile
     container_name: securitydata-api
     environment:
@@ -80,6 +86,12 @@ services:
   scheduler:
     build:
       context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
       dockerfile: Dockerfile
     container_name: securitydata-scheduler
     environment:

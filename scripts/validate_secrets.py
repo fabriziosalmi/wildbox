@@ -17,6 +17,7 @@ Exit Codes:
 """
 
 import os
+import stat
 import sys
 import re
 from pathlib import Path
@@ -32,6 +33,9 @@ REQUIRED_SECRETS = [
     'INITIAL_ADMIN_PASSWORD',
     'NEXTAUTH_SECRET',
     'N8N_BASIC_AUTH_PASSWORD',
+    # Required since the audit remediation: without it CSPM refuses to run a
+    # scan rather than writing cloud credentials to Redis in plaintext.
+    'CSPM_CREDENTIAL_KEY',
 ]
 
 # Optional secrets (warn if missing, but don't fail)
@@ -125,6 +129,22 @@ def validate_secret(name: str, value: str) -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
+
+def check_env_permissions(env_path) -> list:
+    """The .env file must not be readable by other local users (WILDBO-SEC-03)."""
+    problems = []
+    try:
+        mode = stat.S_IMODE(os.stat(env_path).st_mode)
+    except OSError:
+        return problems
+    if mode & 0o077:
+        problems.append(
+            f"{env_path} is mode {oct(mode)}; it contains every root secret and "
+            f"must be 0600. Fix with: chmod 600 {env_path}"
+        )
+    return problems
+
+
 def main():
     """Main validation logic"""
     
@@ -146,6 +166,13 @@ def main():
     
     print(f"✅ Found .env file: {env_path}")
     print(f"   File size: {env_path.stat().st_size} bytes\n")
+
+    # File mode: the secrets are only as private as the file holding them.
+    perm_problems = check_env_permissions(env_path)
+    for problem in perm_problems:
+        print(f"❌ {problem}")
+    if perm_problems:
+        print()
     
     # Load environment variables
     env_vars = load_env_file(env_path)
@@ -230,9 +257,14 @@ def main():
             print("\n   These warnings can be ignored for local development.")
             print("   For production, ensure all optional secrets are set.")
         
+        if perm_problems:
+            # A correct secret in a world-readable file is not a secret.
+            print("\n❌ FAILED: .env permissions (see above)")
+            sys.exit(1)
+
         print("\n🚀 Ready to start:")
-        print("   docker-compose up -d")
-        
+        print("   make start")
+
         sys.exit(0)
 
 

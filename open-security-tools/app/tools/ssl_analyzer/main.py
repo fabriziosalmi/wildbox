@@ -4,11 +4,7 @@ import ssl
 import socket
 from datetime import datetime, timezone
 from typing import List, Dict
-try:
-    from schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
-except ImportError:
-    from schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
-
+from .schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
 def analyze_certificate(cert_der: bytes) -> CertificateInfo:
     """Analyze SSL certificate."""
     import cryptography.x509 as x509

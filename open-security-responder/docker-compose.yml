@@ -23,7 +23,14 @@ services:
       retries: 5
 
   responder:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: >
       sh -c "python -m dramatiq app.workflow_engine &
              uvicorn app.main:app --host 0.0.0.0 --port 8018 --reload"
@@ -50,7 +57,14 @@ services:
         condition: service_healthy
 
   dramatiq-worker:
-    build: .
+    build:
+      context: .
+    # additional_contexts is required: this service's Dockerfile does
+    # `COPY --from=shared`, which is a named build context, not a stage. Without
+    # this line `docker compose up` in this directory fails on that instruction
+    # -- which it did, for eight of the services (WILDBO-BLD-02).
+      additional_contexts:
+        shared: ../open-security-shared
     command: python -m dramatiq app.workflow_engine -p 4 -t 4
     volumes:
       - .:/app

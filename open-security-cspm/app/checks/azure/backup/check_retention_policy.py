@@ -20,6 +20,10 @@ class CheckBackupRetentionPolicy(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AZURE_BACKUP_002",
             title="Backup Retention Policy",
             description="Ensure appropriate backup retention policy.",

@@ -20,6 +20,10 @@ class CheckAWSConfigEnabled(BaseCheck):
     
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
+            # Generated scaffolding: execute() returns NOT_IMPLEMENTED and no
+            # cloud API is called. Excluded from discovery and from any
+            # compliance score by the registry (WILDBO-QUAL-01).
+            implemented=False,
             check_id="AWS_CONFIG_001",
             title="AWS Config Enabled",
             description="Ensure AWS Config is enabled.",

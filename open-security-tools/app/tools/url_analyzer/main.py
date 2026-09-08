@@ -14,14 +14,9 @@ from datetime import datetime
 import time
 import re
 
-from app.input_validation import InputSanitizer  # SSRF guard
+from ...input_validation import InputSanitizer  # SSRF guard
 
-try:
-    from schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
-except ImportError:
-    from schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
-
-
+from .schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 class URLShortenerAnalyzer:
     """URL Shortener Security Analyzer"""
     
