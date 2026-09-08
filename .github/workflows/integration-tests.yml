@@ -79,6 +79,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Raise the rate limit for the suite
+        # The gateway allows RATE_LIMIT_PER_HOUR/60 requests per minute per team
+        # (166 by default) and the suite makes several hundred with one key, so
+        # tests part-way through the run started failing with 429 -- the limiter
+        # working correctly, on a workload it was never meant to shape. Rate
+        # limiting itself is covered by test_rate_limiting, which reads the
+        # budget headers rather than trying to exhaust them.
+        # Replaced in place, not appended: .env.example already defines the
+        # key, and two definitions leave which one wins up to the reader.
+        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+
       - name: Start the stack
         # No `. ./.env`: docker compose reads it from the project directory by
         # itself, and sourcing it as shell makes every secret a potential

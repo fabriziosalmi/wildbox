@@ -256,6 +256,11 @@ services:
       - "127.0.0.1:8002:8002"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      # app/config.py refuses to start without it when ENVIRONMENT is
+      # production, which .env.example sets. Nothing passed it, so a freshly
+      # generated .env produced a data service that crash-looped on
+      # "SECRET_KEY must be set in production".
+      - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -292,6 +297,11 @@ services:
     command: python -m app.scheduler.main
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
+      # app/config.py refuses to start without it when ENVIRONMENT is
+      # production, which .env.example sets. Nothing passed it, so a freshly
+      # generated .env produced a data service that crash-looped on
+      # "SECRET_KEY must be set in production".
+      - SECRET_KEY=${DATA_SECRET_KEY:?DATA_SECRET_KEY is required}
       - DATABASE_URL=${DATA_DATABASE_URL:-${DATABASE_URL}}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -349,6 +359,10 @@ services:
       - IDENTITY_SERVICE_URL=${IDENTITY_SERVICE_URL:-http://open-security-identity:8001}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - AUTH_CACHE_TTL=${AUTH_CACHE_TTL:-300}
+      # auth_handler.lua reads this; .env.example documents it, but nothing
+      # passed it in, so the limit was always the 10000/hour built-in default
+      # and the setting had no effect wherever it was written.
+      - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
       # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
       # (only relevant when the optional "automations" profile is enabled).

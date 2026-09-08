@@ -46,7 +46,26 @@ def generate_base64(length: int = 32) -> str:
 #
 # What is left is still a 66-character alphabet, which at 20 characters is far
 # more entropy than anything here needs.
-SAFE_PUNCTUATION = "@%^-_=+."
+# RFC 3986 "unreserved" punctuation, and nothing else.
+#
+# These values have to survive three different parsers, and the intersection is
+# narrow:
+#
+#   shell   `. ./.env` executes the file, so & * ! ; | ( ) < > ` \ ' " are out.
+#           A password containing "&" failed with
+#           './.env: line 84: kMmH: command not found'.
+#   compose interpolates $NAME, so "$" is out -- with it, the container got a
+#           different, truncated password than the one in .env, silently.
+#   URL     POSTGRES_PASSWORD is embedded in postgresql://user:password@host
+#           DSNs. "@" ends the userinfo component, so a password containing one
+#           made every service fail with
+#           'FATAL: password authentication failed for user "postgres"'
+#           while the value in .env was correct. "%" starts a percent-escape
+#           and "+" decodes as a space in some drivers.
+#
+# What survives all three is A-Za-z0-9 plus -._~ : 66 characters, which at 24
+# of them is around 145 bits. Far more than anything here needs.
+SAFE_PUNCTUATION = "-._~"
 
 
 def generate_password(length: int = 24) -> str:
@@ -153,6 +172,7 @@ def main():
         # Authenticates the sensor's local API; unset, it answers 503 on
         # everything but /health.
         "SENSOR_API_KEY": generate_hex(32),
+        "DATA_SECRET_KEY": generate_hex(32),
     }
 
     # Read template
@@ -184,6 +204,23 @@ def main():
             + "\n".join(f"{k}={secrets_map[k]}" for k in missing)
             + "\n"
         )
+
+    # Substitute the database password into the DSNs that embed it.
+    #
+    # .env.example ships four connection strings of the form
+    # postgresql://postgres:YOUR_DB_PASSWORD@postgres:5432/<db>. They are not
+    # keys in secrets_map, so filling POSTGRES_PASSWORD left every one of them
+    # holding the literal placeholder: PostgreSQL started with the generated
+    # password and every service tried to connect with "YOUR_DB_PASSWORD".
+    # `docker compose config` is happy with that -- the values are present and
+    # non-empty -- so it only surfaces as
+    #
+    #     FATAL: password authentication failed for user "postgres"
+    #
+    # once the stack is running, which is where it was found.
+    db_password = secrets_map["POSTGRES_PASSWORD"]
+    if "YOUR_DB_PASSWORD" in content:
+        content = content.replace("YOUR_DB_PASSWORD", db_password)
 
     # Write .env with owner-only permissions.
     #

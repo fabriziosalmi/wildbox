@@ -43,6 +43,7 @@ REQUIRED_SECRETS = [
     "GUARDIAN_SECRET_KEY",
     "CSPM_SECRET_KEY",
     "SENSOR_API_KEY",
+    "DATA_SECRET_KEY",
 ]
 
 # Optional secrets (warn if missing, but don't fail)
@@ -140,6 +141,44 @@ def validate_secret(name: str, value: str) -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
+def check_database_urls(env_vars) -> list:
+    """The connection strings must carry the password PostgreSQL was given.
+
+    .env.example ships DSNs of the form
+    postgresql://postgres:YOUR_DB_PASSWORD@postgres:5432/<db>. Nothing checked
+    that the placeholder had been replaced, or that it had been replaced with
+    the *same* value POSTGRES_PASSWORD holds -- so a .env could pass every check
+    here, satisfy `docker compose config`, and still produce a stack where every
+    service answers
+
+        FATAL: password authentication failed for user "postgres"
+
+    which is exactly what a freshly generated .env did.
+    """
+    problems = []
+    expected = env_vars.get("POSTGRES_PASSWORD", "")
+    if not expected:
+        return problems
+
+    for name, value in env_vars.items():
+        if not name.endswith("DATABASE_URL") or not value:
+            continue
+        # postgresql[+driver]://user:password@host:port/db
+        match = re.match(r"^[a-z+]+://[^:]+:([^@]*)@", value)
+        if not match:
+            problems.append(f"{name} is not a postgresql://user:password@host DSN")
+            continue
+        password = match.group(1)
+        if password != expected:
+            hint = (
+                "still holds the template placeholder"
+                if "YOUR_" in password
+                else "does not match POSTGRES_PASSWORD"
+            )
+            problems.append(f"{name} {hint}")
+    return problems
+
+
 def check_env_permissions(env_path) -> list:
     """The .env file must not be readable by other local users (WILDBO-SEC-03)."""
     problems = []
@@ -188,9 +227,15 @@ def main():
     env_vars = load_env_file(env_path)
     print(f"📄 Loaded {len(env_vars)} environment variables\n")
 
+    # Connection strings must agree with POSTGRES_PASSWORD.
+    dsn_problems = check_database_urls(env_vars)
+
     # Validation results
     all_errors = []
     warnings = []
+
+    for problem in dsn_problems:
+        all_errors.append(problem)
 
     # Validate required secrets
     print("🔐 Validating required secrets:")
