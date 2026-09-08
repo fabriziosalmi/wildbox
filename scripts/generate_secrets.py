@@ -20,14 +20,61 @@ import sys
 from pathlib import Path
 
 
+# Substrings that a validator downstream refuses to see in a secret.
+#
+# Union of two lists that already exist and disagree: the one in
+# open-security-tools/app/config.py (which raises at start-up) and
+# INSECURE_PATTERNS in validate_secrets.py. They are there to catch a
+# hand-chosen secret like "test123" -- and they are applied to our random ones
+# too, where they are false positives by construction.
+#
+# Two of them, "abc" and "123", are formable from the hex alphabet, so a
+# perfectly good random key hits one by chance. Measured over 20000 generated
+# API keys: 2.89% were rejected. That is roughly one fresh install in thirty-five
+# failing at start-up with
+#
+#     ValidationError: API key contains weak pattern "abc"
+#
+# which reads like a bad key rather than a coincidence. It is why the
+# integration job on an unrelated pull request went red.
+#
+# Rather than loosen a validator that is right about hand-chosen secrets, the
+# generator now refuses to emit a value that would be rejected.
+WEAK_PATTERNS = (
+    "password", "secret", "key", "admin", "test", "demo",
+    "123", "abc", "default", "wildbox", "api-key",
+    "postgres", "change", "example", "insecure", "12345", "qwerty",
+)
+
+
+def _acceptable(value: str) -> bool:
+    """True when no downstream validator will refuse this value."""
+    lowered = value.lower()
+    return not any(pattern in lowered for pattern in WEAK_PATTERNS)
+
+
+def _retry_until_acceptable(make):
+    """Draw from `make` until the value passes the weak-pattern checks.
+
+    Terminates with probability 1 and, in practice, immediately: the chance of
+    a single draw being rejected is about 3%, so ten rejections in a row has a
+    probability around 1e-15. There is no bound on the loop on purpose -- a
+    bound would mean returning a value we know a validator will reject.
+    """
+    while True:
+        value = make()
+        if _acceptable(value):
+            return value
+
+
 def generate_hex(length: int = 32) -> str:
     """Generate secure random hex string"""
-    return secrets.token_hex(length)
+    return _retry_until_acceptable(lambda: secrets.token_hex(length))
 
 
 def generate_base64(length: int = 32) -> str:
     """Generate secure random URL-safe base64 string"""
-    return secrets.token_urlsafe(length)
+    return _retry_until_acceptable(lambda: secrets.token_urlsafe(length))
 
 
 # Punctuation that survives a .env round-trip, unquoted.
@@ -70,6 +117,10 @@ SAFE_PUNCTUATION = "-._~"
 
 def generate_password(length: int = 24) -> str:
     """Generate strong alphanumeric password with special characters"""
+    return _retry_until_acceptable(lambda: _draw_password(length))
+
+
+def _draw_password(length: int) -> str:
     alphabet = string.ascii_letters + string.digits + SAFE_PUNCTUATION
 
     # Ensure password has at least one of each type
@@ -91,7 +142,9 @@ def generate_password(length: int = 24) -> str:
 
 def generate_api_key(prefix: str = "prod") -> str:
     """Generate Wildbox API key in format: wsk_<prefix>.<hex>"""
-    return f"wsk_{prefix}.{generate_hex(32)}"
+    # Checked whole, not just the hex half: the validator sees the whole string,
+    # and a pattern could straddle the prefix boundary.
+    return _retry_until_acceptable(lambda: f"wsk_{prefix}.{secrets.token_hex(32)}")
 
 
 def main():

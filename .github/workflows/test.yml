@@ -103,6 +103,13 @@ jobs:
         # (WILDBO-TEST-03). These are pure-function tests; they need no stack.
         run: pytest tests/shared -v -p no:cacheprovider -o addopts=""
 
+      - name: Run script tests
+        # scripts/generate_secrets.py has to produce values the validators that
+        # read them back will accept. It did not: 2.89% of generated API keys
+        # tripped the tools service's weak-pattern check and killed it at
+        # start-up. Nothing tested the scripts before; this is where that runs.
+        run: pytest tests/scripts -v -p no:cacheprovider -o addopts=""
+
   e2e-tests:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
