@@ -1427,9 +1427,6 @@ python-dotenv==1.2.2 \
     #   -r open-security-tools/requirements.in
     #   pydantic-settings
     #   uvicorn
-python-nmap==0.7.1 \
-    --hash=sha256:f75af6b91dd8e3b0c31f869db32163f62ada686945e5b7c25f84bc0f7fad3b64
-    # via -r open-security-tools/requirements.in
 python-whois==0.9.4 \
     --hash=sha256:17d60f25524fc811a1f6a66f0298c1e5534551d7a01a77dd5f6406426da734e1 \
     --hash=sha256:77bc7347bf815d65ccd196711c29837652f07585aedad3c3c04dd885651fd7a7

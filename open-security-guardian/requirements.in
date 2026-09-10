@@ -34,7 +34,6 @@ python-dotenv==1.2.2
 pandas==2.1.4
 numpy==1.25.2
 python-dateutil==2.8.2
-python-nmap==0.7.1
 pytenable==1.7.5
 qualysapi==8.1.0
 python-libnmap==0.7.3
