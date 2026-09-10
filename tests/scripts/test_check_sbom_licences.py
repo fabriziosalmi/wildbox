@@ -20,9 +20,13 @@ from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "check_sbom_licences.py"
 
-APK = {"name": "aom-libs", "version": "3.9.0", "type": "library",
-       "licenses": [{"license": {"id": "BSD-2-Clause"}}],
-       "properties": [{"name": "aquasecurity:trivy:PkgType", "value": "alpine"}]}
+APK = {
+    "name": "aom-libs",
+    "version": "3.9.0",
+    "type": "library",
+    "licenses": [{"license": {"id": "BSD-2-Clause"}}],
+    "properties": [{"name": "aquasecurity:trivy:PkgType", "value": "alpine"}],
+}
 
 
 def pkg(name, licence, pkgtype="python-pkg"):
@@ -37,8 +41,9 @@ def pkg(name, licence, pkgtype="python-pkg"):
 def run(tmp_path, components, *args):
     p = tmp_path / "sbom.cdx.json"
     p.write_text(json.dumps({"bomFormat": "CycloneDX", "components": components}))
-    r = subprocess.run([sys.executable, str(SCRIPT), str(p), *args],
-                       capture_output=True, text=True)
+    r = subprocess.run(
+        [sys.executable, str(SCRIPT), str(p), *args], capture_output=True, text=True
+    )
     return r.returncode, r.stdout + r.stderr
 
 
@@ -48,7 +53,7 @@ def test_os_only_image_passes_and_says_why(tmp_path):
     assert rc == 0
     assert "No language packages" in out
     assert "81 with a licence" in out
-    assert "filesystem scan" not in out          # the wrong cause, previously asserted here
+    assert "filesystem scan" not in out  # the wrong cause, previously asserted here
 
 
 def test_a_filesystem_scan_is_still_rejected(tmp_path):
@@ -76,16 +81,18 @@ def test_copyleft_in_a_language_package_still_fails(tmp_path):
 
 def test_copyleft_in_the_base_image_is_ignored_by_default(tmp_path):
     """Alpine is GPL by nature and is not linked into our code."""
-    gpl_apk = dict(APK, name="alpine-baselayout",
-                   licenses=[{"license": {"id": "GPL-2.0-only"}}])
+    gpl_apk = dict(
+        APK, name="alpine-baselayout", licenses=[{"license": {"id": "GPL-2.0-only"}}]
+    )
     rc, out = run(tmp_path, [gpl_apk])
     assert rc == 0
     assert "No language packages" in out
 
 
 def test_include_os_gates_the_base_image_too(tmp_path):
-    gpl_apk = dict(APK, name="alpine-baselayout",
-                   licenses=[{"license": {"id": "GPL-2.0-only"}}])
+    gpl_apk = dict(
+        APK, name="alpine-baselayout", licenses=[{"license": {"id": "GPL-2.0-only"}}]
+    )
     rc, out = run(tmp_path, [gpl_apk], "--include-os")
     assert rc == 1
     assert "alpine-baselayout" in out
