@@ -16,6 +16,13 @@ httpx==0.27.2
 # Direct DB access for cross-tenant seeding tests (data service has no create API)
 psycopg2-binary==2.9.10
 
+# tests/chaos/test_chaos_experiments.py imports both at module level, and
+# neither was here: the chaos suite collected 0 items and errored on import,
+# so it has never actually run. `docker` drives the containers the experiments
+# kill and restart; `psutil` reads the host resource pressure they assert on.
+docker==7.2.0
+psutil==7.2.2
+
 # Async testing support
 aiohttp==3.14.1
 
