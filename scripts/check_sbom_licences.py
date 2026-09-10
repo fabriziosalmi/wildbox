@@ -113,6 +113,12 @@ def main() -> int:
 
     violations = []
     inventory: dict[str, set] = defaultdict(set)
+    # Counted across the WHOLE SBOM, before the language filter. Without these
+    # the "nothing was inspected" branch below cannot tell a broken SBOM from a
+    # service that legitimately has no language dependencies, and it used to
+    # blame the first for the second.
+    components_seen = 0
+    components_with_licences = 0
 
     for path in args.sboms:
         try:
@@ -123,6 +129,9 @@ def main() -> int:
             return 2
         skipped_os = 0
         for comp in doc.get("components", []) or []:
+            components_seen += 1
+            if licences_of(comp):
+                components_with_licences += 1
             if not args.include_os and not is_language_package(comp):
                 skipped_os += 1
                 continue
@@ -150,15 +159,39 @@ def main() -> int:
         return 1
 
     total = sum(len(v) for v in inventory.values())
-    if total == 0:
-        # A gate that inspects nothing passes for the wrong reason. Say so.
+    if total:
+        print(f"No copyleft licences found ({total} component licences checked).")
+        return 0
+
+    # Nothing was inspected. Three different reasons, and they are not the same
+    # incident: the message used to assert the last one for all of them, which
+    # sent the reader looking for a scan misconfiguration that was not there.
+    if components_seen == 0:
         print(
-            "ERROR: no licence data in the SBOM(s). A filesystem scan records "
-            "component names without licences; scan the built image instead.",
+            "ERROR: the SBOM(s) list no components at all. The image scan "
+            "produced nothing, so no licence could be checked.",
             file=sys.stderr,
         )
         return 2
-    print(f"No copyleft licences found ({total} component licences checked).")
+    if components_with_licences == 0:
+        print(
+            f"ERROR: {components_seen} component(s) in the SBOM(s) and a licence "
+            "for none of them. A filesystem scan records component names without "
+            "licences; scan the built image instead.",
+            file=sys.stderr,
+        )
+        return 2
+    # Components are there and carry licences, but none is a language package.
+    # That is what an OS-only image looks like: the gateway is OpenResty on
+    # Alpine, a config-and-Lua reverse proxy with no python/go/npm dependency,
+    # so its SBOM is 81 apk packages and nothing of ours. There is no copyleft
+    # exposure to gate, because nothing of ours is linked in.
+    print(
+        f"No language packages in the SBOM(s): {components_seen} component(s), "
+        f"{components_with_licences} with a licence, all base-image OS packages. "
+        "Nothing of ours is linked in, so there is nothing to gate. "
+        "Use --include-os to check the base image too."
+    )
     return 0
 
 
