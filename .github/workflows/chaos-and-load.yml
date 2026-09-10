@@ -49,6 +49,17 @@ jobs:
         timeout-minutes: 15
         env:
           SERVICES: "gateway:localhost:80:/health identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health"
+          # generate_secrets.py builds .env from .env.template, which sets
+          # ENVIRONMENT=production because that is what a real deployment wants.
+          # This job then layers docker-compose.dev.yml on top, and that file
+          # forces DEBUG=true for `data`. app/config.py:186 refuses the pair:
+          #
+          #   ValueError: DEBUG must be False in production
+          #
+          # so `data` crash-looped, never went healthy, and both jobs died in
+          # "Start the stack" after nine minutes of building images. The stack
+          # here IS a development stack (it is the dev override), so say so.
+          ENVIRONMENT: development
 
       - name: Install test dependencies
         run: pip install -r tests/requirements.txt
@@ -90,6 +101,17 @@ jobs:
         timeout-minutes: 15
         env:
           SERVICES: "gateway:localhost:80:/health data:localhost:8002:/health"
+          # generate_secrets.py builds .env from .env.template, which sets
+          # ENVIRONMENT=production because that is what a real deployment wants.
+          # This job then layers docker-compose.dev.yml on top, and that file
+          # forces DEBUG=true for `data`. app/config.py:186 refuses the pair:
+          #
+          #   ValueError: DEBUG must be False in production
+          #
+          # so `data` crash-looped, never went healthy, and both jobs died in
+          # "Start the stack" after nine minutes of building images. The stack
+          # here IS a development stack (it is the dev override), so say so.
+          ENVIRONMENT: development
 
       - name: Install benchmark dependencies
         run: pip install -r tests/requirements.txt
@@ -100,6 +122,14 @@ jobs:
         # leading-wildcard ILIKE search matters at realistic data volumes
         # (WILDBO-PERF-02/PERF-03).
         run: python tests/perf/bench_indicator_search.py --report bench-results.json
+
+      # Without this the failure says "1 service did not become healthy" and
+      # then suggests `docker compose logs data`, which nobody can run on a
+      # runner that no longer exists. The chaos job already had this step, and
+      # it is the only reason the cause of this failure was readable at all.
+      - name: Collect logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
 
       - name: Upload benchmark results
         if: always()
