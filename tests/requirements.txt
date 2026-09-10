@@ -21,7 +21,10 @@ psycopg2-binary==2.9.10
 # so it has never actually run. `docker` drives the containers the experiments
 # kill and restart; `psutil` reads the host resource pressure they assert on.
 docker==7.2.0
-psutil==7.2.2
+# 6.0.0 and not the current 7.x: safety==3.2.11 below pins psutil~=6.0.0, and
+# 7.x makes the whole file unresolvable ("ResolutionImpossible"). Bumping this
+# means bumping safety too.
+psutil==6.0.0
 
 # Async testing support
 aiohttp==3.14.1
