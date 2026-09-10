@@ -1735,9 +1735,6 @@ python-magic==0.4.27 \
     --hash=sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b \
     --hash=sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3
     # via -r open-security-guardian/requirements.in
-python-nmap==0.7.1 \
-    --hash=sha256:f75af6b91dd8e3b0c31f869db32163f62ada686945e5b7c25f84bc0f7fad3b64
-    # via -r open-security-guardian/requirements.in
 pytz==2026.3.post1 \
     --hash=sha256:2211d3fcf9a797d3405cac96ac7f61d80e6a644f72a3309607282fe8a2010c5d \
     --hash=sha256:dd95840dd199baea12d9cc096a1d452caa6596a1c1e4b5f3dbd1541855d5e815
