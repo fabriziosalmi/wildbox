@@ -10,6 +10,10 @@
       "pattern": "^https://www\\.youtube\\.com/watch"
     },
     {
+      "comment": "YouTube short links (youtu.be) return HTTP 403 to CI runners; valid in a browser. Companion to the youtube.com/watch pattern above.",
+      "pattern": "^https://youtu\\.be/"
+    },
+    {
       "comment": "LibHunt bot-blocks automated requests with HTTP 403; the badge is valid in a browser.",
       "pattern": "^https://www\\.libhunt\\.com"
     },
