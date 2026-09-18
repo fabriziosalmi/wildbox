@@ -84,7 +84,7 @@ total_count=${#SERVICES[@]}
 for service in "${!SERVICES[@]}"; do
     port=${SERVICES[$service]}
     if check_service "$service" "$port"; then
-        ((healthy_count++))
+        healthy_count=$((healthy_count + 1))
     fi
 done
 
@@ -107,7 +107,7 @@ for service in "${!SERVICES[@]}"; do
     port=${SERVICES[$service]}
     if check_service "$service" "$port" > /dev/null 2>&1; then
         if download_spec "$service" "$port"; then
-            ((success_count++))
+            success_count=$((success_count + 1))
         fi
     fi
 done
