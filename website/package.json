@@ -49,7 +49,6 @@
     "node": ">=20.0"
   },
   "overrides": {
-    "js-yaml": "^4.1.1",
     "minimatch": "^10.2.1",
     "lodash": "^4.17.22",
     "diff": "^7.0.0",
