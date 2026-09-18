@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <title>JWT Decoder — Decode &amp; Inspect JSON Web Tokens Online | Wildbox</title>
+    <meta name="description" content="Free JWT decoder. Paste a JSON Web Token to inspect its header, payload, and claims. Runs entirely in your browser — your token is never sent to any server.">
+    <meta name="keywords" content="jwt decoder, decode jwt, jwt token decoder, json web token, decode jwt online, jwt claims, jwt payload">
+    <meta property="og:title" content="JWT Decoder — Decode &amp; Inspect JSON Web Tokens">
+    <meta property="og:description" content="Paste a JWT to inspect its header, payload, and claims. Runs entirely in your browser — nothing is sent to a server.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.wildbox.io/tools/jwt-decoder/">
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
+    <meta name="theme-color" content="#0a0b0d">
+    <link rel="canonical" href="https://www.wildbox.io/tools/jwt-decoder/">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="JWT Decoder — Decode &amp; Inspect JSON Web Tokens">
+    <meta name="twitter:description" content="Paste a JWT to inspect its header, payload, and claims. Runs entirely in your browser.">
+    <meta name="twitter:image" content="https://www.wildbox.io/images/wildbox.png">
+
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.wildbox.io/" },
+            { "@type": "ListItem", "position": 2, "name": "Tools", "item": "https://www.wildbox.io/tools/" },
+            { "@type": "ListItem", "position": 3, "name": "JWT Decoder", "item": "https://www.wildbox.io/tools/jwt-decoder/" }
+          ]
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "Wildbox JWT Decoder",
+          "url": "https://www.wildbox.io/tools/jwt-decoder/",
+          "description": "A free, client-side JSON Web Token decoder. Inspects a JWT's header, payload, and claims entirely in the browser without sending the token to any server.",
+          "applicationCategory": "SecurityApplication",
+          "operatingSystem": "Any (web browser)",
+          "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+          "publisher": {
+            "@type": "Organization",
+            "name": "Wildbox",
+            "url": "https://www.wildbox.io/",
+            "logo": { "@type": "ImageObject", "url": "https://www.wildbox.io/images/wildbox-mark.png" }
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Is this JWT decoder safe to use?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Yes. Decoding happens entirely in your browser with JavaScript. The token is never transmitted to any server and no network request is made. Still, avoid pasting long-lived production tokens into any online tool." }
+            },
+            {
+              "@type": "Question",
+              "name": "Does decoding a JWT verify its signature?",
+              "acceptedAnswer": { "@type": "Answer", "text": "No. Decoding only base64url-decodes the header and payload, which are not encrypted and readable by anyone. Verifying the signature requires the signing secret (HMAC) or the public key (RSA/ECDSA) and must be done server-side. A decoded payload is not proof the token is valid." }
+            },
+            {
+              "@type": "Question",
+              "name": "Why can everyone read my JWT payload?",
+              "acceptedAnswer": { "@type": "Answer", "text": "A standard JWT is signed, not encrypted. The header and payload are only base64url-encoded, so anyone holding the token can read the claims. Never put secrets or sensitive personal data in a JWT payload." }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <script src="/vendor/tailwindcss/tailwind.js"></script>
+    <link rel="stylesheet" href="/assets/site.css">
+    <style>
+      .content { max-width: 46rem; }
+      .content h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; margin: 2.5rem 0 0.9rem; }
+      .content h3 { font-size: 1.15rem; font-weight: 600; margin: 1.5rem 0 0.6rem; }
+      .content p { color: var(--text-muted); line-height: 1.75; margin: 0 0 1rem; }
+      .content ul { color: var(--text-muted); line-height: 1.75; margin: 0 0 1rem 1.1rem; list-style: disc; }
+      .content a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+      .content strong { color: var(--text); }
+      .jwt-input { width: 100%; min-height: 8.5rem; resize: vertical; background: #0d0f12; border: 1px solid var(--border); border-radius: 10px; padding: 0.9rem 1rem; color: var(--text); font-family: 'SFMono-Regular', Consolas, monospace; font-size: 0.9rem; line-height: 1.6; word-break: break-all; }
+      .jwt-input:focus { outline: none; border-color: var(--accent-border); }
+      .out-pre { white-space: pre-wrap; word-break: break-word; margin: 0; padding: 1rem; color: var(--text); }
+      .panel-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+      .badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.75rem; font-weight: 600; border: 1px solid; }
+      .badge-ok { color: #4ade80; border-color: rgba(74,222,128,0.35); background: rgba(74,222,128,0.1); }
+      .badge-warn { color: #fbbf24; border-color: rgba(251,191,36,0.35); background: rgba(251,191,36,0.1); }
+      .badge-err { color: #f87171; border-color: rgba(248,113,113,0.35); background: rgba(248,113,113,0.1); }
+      .claims td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); font-size: 0.875rem; vertical-align: top; }
+      .claims td:first-child { color: var(--accent); font-family: 'SFMono-Regular', Consolas, monospace; white-space: nowrap; }
+      .claims td:nth-child(2) { color: var(--text); }
+      .claims td:last-child { color: var(--text-muted); }
+      .tok-h { color: #f87171; } .tok-p { color: #818cf8; } .tok-s { color: #4ade80; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="site-nav sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex justify-between items-center">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
+                    <span class="text-lg font-semibold tracking-tight">Wildbox</span>
+                </a>
+                <div class="hidden md:flex gap-8 items-center text-sm">
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="/api-reference.html" class="nav-link">API</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                </div>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary hidden sm:inline-flex px-4 py-2 text-sm">Get started</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+        <div class="max-w-3xl mx-auto">
+            <nav class="text-sm text-faint mb-6" aria-label="Breadcrumb">
+                <a href="/" class="nav-link">Home</a>
+                <span class="mx-2">/</span>
+                <a href="/tools/" class="nav-link">Tools</a>
+                <span class="mx-2">/</span>
+                <span class="text-muted">JWT Decoder</span>
+            </nav>
+
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-3">JWT Decoder</h1>
+            <p class="text-lg text-muted leading-relaxed mb-6">Paste a JSON Web Token to inspect its header, payload, and claims. Everything runs in your browser — <strong class="text-white">your token is never sent to a server</strong>.</p>
+
+            <!-- Tool -->
+            <div class="surface p-5 md:p-6 mb-6">
+                <div class="flex items-center justify-between mb-2">
+                    <label for="jwt-input" class="panel-label text-muted">Encoded token</label>
+                    <div class="flex gap-4 text-sm">
+                        <button id="btn-example" class="nav-link">Load example</button>
+                        <button id="btn-clear" class="nav-link">Clear</button>
+                    </div>
+                </div>
+                <textarea id="jwt-input" class="jwt-input" spellcheck="false" autocomplete="off" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0..."></textarea>
+                <div id="status" class="mt-3 text-sm"></div>
+            </div>
+
+            <div id="results" class="hidden">
+                <!-- Header -->
+                <div class="surface p-5 mb-4">
+                    <div class="panel-label mb-2" style="color:#f87171;">Header</div>
+                    <pre class="out-pre code-block" id="out-header"></pre>
+                </div>
+                <!-- Payload -->
+                <div class="surface p-5 mb-4">
+                    <div class="panel-label mb-2" style="color:#818cf8;">Payload</div>
+                    <pre class="out-pre code-block" id="out-payload"></pre>
+                    <table class="claims w-full mt-4" id="claims-table"></table>
+                </div>
+                <!-- Signature -->
+                <div class="surface p-5 mb-4">
+                    <div class="panel-label mb-2" style="color:#4ade80;">Signature</div>
+                    <pre class="out-pre code-block" id="out-signature" style="color:var(--text-muted);"></pre>
+                    <p class="text-faint text-sm mt-2" style="margin:0;">Decoding does not verify this signature. Verification needs the signing secret or public key and must happen server-side.</p>
+                </div>
+            </div>
+
+            <!-- Educational content -->
+            <div class="content">
+                <h2>What is a JWT?</h2>
+                <p>A <strong>JSON Web Token (JWT)</strong> is a compact, URL-safe token used to carry claims between two parties — most commonly for authentication and authorization. It has three parts separated by dots: <code class="inline-code">header.payload.signature</code>. The header and payload are JSON objects that are <strong>base64url-encoded, not encrypted</strong>. The signature protects them from tampering.</p>
+                <h3>The three parts</h3>
+                <ul>
+                    <li><strong>Header</strong> — the signing algorithm (<code class="inline-code">alg</code>, e.g. <code class="inline-code">HS256</code>, <code class="inline-code">RS256</code>) and token type.</li>
+                    <li><strong>Payload</strong> — the claims: registered ones like <code class="inline-code">sub</code>, <code class="inline-code">exp</code>, <code class="inline-code">iat</code>, plus your own.</li>
+                    <li><strong>Signature</strong> — an HMAC or asymmetric signature over the header and payload.</li>
+                </ul>
+                <h2>Security notes</h2>
+                <ul>
+                    <li>Anyone with the token can read the payload — <strong>never store secrets in it</strong>.</li>
+                    <li>Reject <code class="inline-code">alg: none</code> and don't let the token dictate the algorithm — a classic JWT bypass.</li>
+                    <li>Always verify the signature and the <code class="inline-code">exp</code> claim server-side before trusting a token.</li>
+                </ul>
+
+                <div class="callout surface p-5" style="border-color:var(--accent-border);background:var(--accent-soft);margin:1.5rem 0;">
+                    <p class="text-white" style="margin:0 0 0.75rem;"><strong>Need to analyze tokens at scale, not one at a time?</strong> Wildbox's self-hosted <strong>JWT analyzer</strong> flags <code class="inline-code">alg: none</code>, weak signing algorithms, and expired or long-lived tokens, and plugs into automated API security testing — on your own infrastructure.</p>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary px-5 py-2.5 text-sm">Get Wildbox on GitHub</a>
+                </div>
+
+                <h2>FAQ</h2>
+                <h3>Is this JWT decoder safe to use?</h3>
+                <p>Decoding happens entirely in your browser; the token is never transmitted and no network request is made. Even so, avoid pasting long-lived production tokens into any online tool.</p>
+                <h3>Does decoding verify the signature?</h3>
+                <p>No. Decoding only reads the base64url header and payload. Verifying needs the signing secret or public key and must be done server-side — a decoded payload is not proof the token is valid.</p>
+
+                <div class="border-t divider mt-10 pt-8">
+                    <h2 style="margin-top:0;font-size:1.25rem;">Related</h2>
+                    <ul>
+                        <li><a href="/learn/how-to-check-spf-dkim-dmarc/">How to check SPF, DKIM &amp; DMARC for a domain</a></li>
+                        <li><a href="/docs.html">Wildbox documentation</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="border-t divider px-4 sm:px-6 lg:px-8 py-14">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-7 h-7 object-contain">
+                    <span class="font-semibold">Wildbox</span>
+                </a>
+                <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="/api-reference.html" class="nav-link">API</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                    <a href="/privacy.html" class="nav-link">Privacy</a>
+                </div>
+                <p class="text-sm text-faint">&copy; 2025 Wildbox &middot; MIT</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+      (function () {
+        var EXAMPLE = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkphbmUgRG9lIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE5MDA2NTA2MjJ9.KMUFsIDTnFmyG3nMiGM6H9FNFUROf3wh7SmqJp-QV30';
+        var input = document.getElementById('jwt-input');
+        var results = document.getElementById('results');
+        var statusEl = document.getElementById('status');
+
+        function b64urlDecode(str) {
+          str = String(str).replace(/-/g, '+').replace(/_/g, '/');
+          var pad = str.length % 4;
+          if (pad) { str += '===='.slice(pad); }
+          var bin = atob(str);
+          var bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) { bytes[i] = bin.charCodeAt(i); }
+          return new TextDecoder('utf-8').decode(bytes);
+        }
+
+        function pretty(jsonStr) {
+          try { return JSON.stringify(JSON.parse(jsonStr), null, 2); }
+          catch (e) { return jsonStr; }
+        }
+
+        function fmtDate(sec) {
+          var d = new Date(sec * 1000);
+          if (isNaN(d.getTime())) { return ''; }
+          return d.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+        }
+
+        var CLAIM_NAMES = {
+          iss: 'Issuer', sub: 'Subject', aud: 'Audience', exp: 'Expires',
+          nbf: 'Not before', iat: 'Issued at', jti: 'JWT ID'
+        };
+
+        function renderClaims(payload) {
+          var table = document.getElementById('claims-table');
+          table.innerHTML = '';
+          var now = Math.floor(Date.now() / 1000);
+          Object.keys(payload).forEach(function (k) {
+            var v = payload[k];
+            var human = CLAIM_NAMES[k] || '';
+            var note = '';
+            if ((k === 'exp' || k === 'iat' || k === 'nbf') && typeof v === 'number') {
+              note = fmtDate(v);
+              if (k === 'exp') { note += v < now ? '  — EXPIRED' : '  — valid'; }
+            }
+            var val = (typeof v === 'object') ? JSON.stringify(v) : String(v);
+            var row = document.createElement('tr');
+            var c1 = document.createElement('td'); c1.textContent = k;
+            var c2 = document.createElement('td'); c2.textContent = val;
+            var c3 = document.createElement('td'); c3.textContent = human + (human && note ? ' · ' : '') + note;
+            row.appendChild(c1); row.appendChild(c2); row.appendChild(c3);
+            table.appendChild(row);
+          });
+        }
+
+        function setStatus(html) { statusEl.innerHTML = html; }
+
+        function decode() {
+          var raw = input.value.trim();
+          if (!raw) { results.classList.add('hidden'); setStatus(''); return; }
+          var parts = raw.split('.');
+          if (parts.length < 2) {
+            results.classList.add('hidden');
+            setStatus('<span class="badge badge-err">Not a JWT</span> <span class="text-muted">Expected at least two dot-separated segments.</span>');
+            return;
+          }
+          var header, payload;
+          try { header = JSON.parse(b64urlDecode(parts[0])); }
+          catch (e) { results.classList.add('hidden'); setStatus('<span class="badge badge-err">Invalid header</span> <span class="text-muted">Could not base64url-decode segment 1.</span>'); return; }
+          try { payload = JSON.parse(b64urlDecode(parts[1])); }
+          catch (e) { results.classList.add('hidden'); setStatus('<span class="badge badge-err">Invalid payload</span> <span class="text-muted">Could not base64url-decode segment 2.</span>'); return; }
+
+          document.getElementById('out-header').textContent = pretty(parts[0] ? b64urlDecode(parts[0]) : '');
+          document.getElementById('out-payload').textContent = pretty(parts[1] ? b64urlDecode(parts[1]) : '');
+          document.getElementById('out-signature').textContent = parts[2] ? parts[2] : '(none)';
+          renderClaims(payload);
+
+          // Status badges
+          var badges = [];
+          badges.push('<span class="badge badge-ok">Decoded</span>');
+          if (header && String(header.alg).toLowerCase() === 'none') {
+            badges.push('<span class="badge badge-err">alg: none</span>');
+          } else if (header && header.alg) {
+            badges.push('<span class="badge badge-ok">' + String(header.alg).replace(/[<>&]/g, '') + '</span>');
+          }
+          if (payload && typeof payload.exp === 'number') {
+            var expired = payload.exp < Math.floor(Date.now() / 1000);
+            badges.push('<span class="badge ' + (expired ? 'badge-err' : 'badge-ok') + '">' + (expired ? 'Expired' : 'Not expired') + '</span>');
+          }
+          setStatus(badges.join(' '));
+          results.classList.remove('hidden');
+        }
+
+        input.addEventListener('input', decode);
+        document.getElementById('btn-example').addEventListener('click', function () { input.value = EXAMPLE; decode(); });
+        document.getElementById('btn-clear').addEventListener('click', function () { input.value = ''; decode(); input.focus(); });
+      })();
+    </script>
+</body>
+</html>
