@@ -3,7 +3,7 @@
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM node:18-alpine@sha256:8d6421d663b4c28fd3ebc498332f249011d118945588d0a35cb9bc4b8ca09d9e
+FROM node:26-alpine@sha256:ef24c5053d50fdc3e4e56eb4e7ddb7861874ab0fdc797046ba897581deb8e868
 WORKDIR /app
 
 # Install dependencies
