@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <title>Learn — Security Guides &amp; How-Tos | Wildbox</title>
+    <meta name="description" content="Practical, vendor-neutral security guides: email authentication, TLS, DNS, web hardening and more — with the commands to check things yourself and the tools to automate them.">
+    <meta property="og:title" content="Learn — Security Guides &amp; How-Tos">
+    <meta property="og:description" content="Practical, vendor-neutral security guides with the commands to check things yourself and the tools to automate them.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://www.wildbox.io/learn/">
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
+    <meta name="theme-color" content="#0a0b0d">
+    <link rel="canonical" href="https://www.wildbox.io/learn/">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Learn — Security Guides &amp; How-Tos">
+    <meta name="twitter:description" content="Practical, vendor-neutral security guides with the commands to check things yourself.">
+    <meta name="twitter:image" content="https://www.wildbox.io/images/wildbox.png">
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.wildbox.io/" },
+            { "@type": "ListItem", "position": 2, "name": "Learn", "item": "https://www.wildbox.io/learn/" }
+          ]
+        },
+        {
+          "@type": "CollectionPage",
+          "name": "Learn — Security Guides & How-Tos",
+          "url": "https://www.wildbox.io/learn/",
+          "description": "Practical, vendor-neutral security guides with the commands to check things yourself and the tools to automate them.",
+          "isPartOf": { "@type": "WebSite", "name": "Wildbox", "url": "https://www.wildbox.io/" }
+        }
+      ]
+    }
+    </script>
+
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <script src="/vendor/tailwindcss/tailwind.js"></script>
+    <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+    <nav class="site-nav sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex justify-between items-center">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
+                    <span class="text-lg font-semibold tracking-tight">Wildbox</span>
+                </a>
+                <div class="hidden md:flex gap-8 items-center text-sm">
+                    <a href="/tools/" class="nav-link">Tools</a>
+                    <a href="/learn/" class="nav-link is-active">Learn</a>
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="/api-reference.html" class="nav-link">API</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                </div>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary hidden sm:inline-flex px-4 py-2 text-sm">Get started</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="px-4 sm:px-6 lg:px-8 py-14 md:py-20">
+        <div class="max-w-5xl mx-auto">
+            <div class="max-w-2xl mb-12">
+                <h1 class="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-4">Learn</h1>
+                <p class="text-lg text-muted leading-relaxed">Practical, vendor-neutral security guides — the commands to check things yourself, how to read the results, and how to automate them with Wildbox.</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <a href="/learn/how-to-check-spf-dkim-dmarc/" class="card p-6 block">
+                    <span class="text-xs uppercase tracking-wide text-faint font-semibold">Email security</span>
+                    <h2 class="text-lg font-semibold mt-2 mb-2">How to check SPF, DKIM &amp; DMARC</h2>
+                    <p class="text-muted text-sm leading-relaxed">Query the three DNS records with <code class="inline-code">dig</code>, read the output, and fix what sends legitimate mail to spam.</p>
+                </a>
+                <!-- Add a new card here for each guide as it ships. -->
+            </div>
+
+            <div class="border-t divider mt-14 pt-8">
+                <p class="text-muted">Looking for something interactive? Browse the <a href="/tools/" class="accent nav-link">free security tools</a>.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer class="border-t divider px-4 sm:px-6 lg:px-8 py-14">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-7 h-7 object-contain">
+                    <span class="font-semibold">Wildbox</span>
+                </a>
+                <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+                    <a href="/tools/" class="nav-link">Tools</a>
+                    <a href="/learn/" class="nav-link">Learn</a>
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                    <a href="/privacy.html" class="nav-link">Privacy</a>
+                </div>
+                <p class="text-sm text-faint">&copy; 2025 Wildbox &middot; MIT</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
