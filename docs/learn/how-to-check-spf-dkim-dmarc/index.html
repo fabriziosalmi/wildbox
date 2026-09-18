@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
+    <title>How to Check SPF, DKIM &amp; DMARC for a Domain (with dig) | Wildbox</title>
+    <meta name="description" content="Step-by-step guide to check a domain's SPF, DKIM, and DMARC records with dig, read the results, and fix the misconfigurations that send legitimate email to spam.">
+    <meta name="keywords" content="check SPF DKIM DMARC, DMARC record, SPF record, DKIM selector, email authentication, why emails go to spam, dig TXT record">
+    <meta property="og:title" content="How to Check SPF, DKIM &amp; DMARC for a Domain">
+    <meta property="og:description" content="Query SPF, DKIM, and DMARC DNS records with dig, read the results, and fix what sends legitimate mail to spam.">
+    <meta property="og:type" content="article">
+    <meta property="og:url" content="https://www.wildbox.io/learn/how-to-check-spf-dkim-dmarc/">
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
+    <meta name="theme-color" content="#0a0b0d">
+    <link rel="canonical" href="https://www.wildbox.io/learn/how-to-check-spf-dkim-dmarc/">
+    <meta name="robots" content="index, follow, max-image-preview:large">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="How to Check SPF, DKIM &amp; DMARC for a Domain">
+    <meta name="twitter:description" content="Query SPF, DKIM, and DMARC DNS records with dig, read the results, and fix what sends legitimate mail to spam.">
+    <meta name="twitter:image" content="https://www.wildbox.io/images/wildbox.png">
+
+    <!-- Schema.org JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.wildbox.io/" },
+            { "@type": "ListItem", "position": 2, "name": "Learn", "item": "https://www.wildbox.io/learn/" },
+            { "@type": "ListItem", "position": 3, "name": "Check SPF, DKIM & DMARC", "item": "https://www.wildbox.io/learn/how-to-check-spf-dkim-dmarc/" }
+          ]
+        },
+        {
+          "@type": "TechArticle",
+          "headline": "How to Check SPF, DKIM & DMARC for a Domain",
+          "description": "Step-by-step guide to check a domain's SPF, DKIM, and DMARC records with dig, read the results, and fix the misconfigurations that send legitimate email to spam.",
+          "image": "https://www.wildbox.io/images/wildbox.png",
+          "datePublished": "2026-09-18",
+          "dateModified": "2026-09-18",
+          "author": { "@type": "Person", "name": "Fabrizio Salmi", "url": "https://github.com/fabriziosalmi" },
+          "publisher": {
+            "@type": "Organization",
+            "name": "Wildbox",
+            "url": "https://www.wildbox.io/",
+            "logo": { "@type": "ImageObject", "url": "https://www.wildbox.io/images/wildbox-mark.png" }
+          },
+          "mainEntityOfPage": "https://www.wildbox.io/learn/how-to-check-spf-dkim-dmarc/"
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Why do my emails still go to spam even though SPF passes?",
+              "acceptedAnswer": { "@type": "Answer", "text": "SPF passing is not enough. Receivers increasingly require DMARC alignment, which means the domain in the visible From address must match the domain validated by SPF or DKIM. A message can pass raw SPF for the sending server while still failing DMARC because the From domain does not align. Missing DKIM and a DMARC policy of p=none also weaken deliverability." }
+            },
+            {
+              "@type": "Question",
+              "name": "What does DMARC p=none mean?",
+              "acceptedAnswer": { "@type": "Answer", "text": "p=none is monitor-only: the receiver applies no enforcement and simply reports. It is the correct first step to collect aggregate (rua) reports, but it provides no protection against spoofing. Once your legitimate senders pass, move to p=quarantine and then p=reject." }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I find the DKIM selector for a domain?",
+              "acceptedAnswer": { "@type": "Answer", "text": "You cannot enumerate DKIM selectors from DNS alone. Read the DKIM-Signature header of an email the domain actually sent and look at the s= tag, which is the selector. Then query <selector>._domainkey.<domain> for the public key." }
+            },
+            {
+              "@type": "Question",
+              "name": "How often should I check email authentication records?",
+              "acceptedAnswer": { "@type": "Answer", "text": "Check after any change to your mail provider or sending services, and then continuously. Records drift as third-party senders are added or removed, and the SPF 10-DNS-lookup limit is easy to exceed over time. Automated, scheduled checks catch regressions before they hurt deliverability." }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+
+    <script src="/vendor/tailwindcss/tailwind.js"></script>
+    <link rel="stylesheet" href="/assets/site.css">
+    <style>
+      /* Article typography — Play CDN has no typography plugin, so define the minimum here. */
+      .article { max-width: 46rem; }
+      .article h2 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.01em; margin: 2.5rem 0 0.9rem; }
+      .article h3 { font-size: 1.2rem; font-weight: 600; margin: 1.75rem 0 0.6rem; }
+      .article p { color: var(--text-muted); line-height: 1.75; margin: 0 0 1rem; }
+      .article ul { color: var(--text-muted); line-height: 1.75; margin: 0 0 1rem 1.1rem; list-style: disc; }
+      .article li { margin: 0.35rem 0; }
+      .article a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+      .article strong { color: var(--text); }
+      .article .code-block { color: var(--text); margin: 0 0 1rem; }
+      .article table { width: 100%; border-collapse: collapse; margin: 0 0 1.25rem; font-size: 0.925rem; }
+      .article th, .article td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .article th { color: var(--text); font-weight: 600; }
+      .article td { color: var(--text-muted); }
+      .callout { background: var(--accent-soft); border: 1px solid var(--accent-border); border-radius: var(--radius); padding: 1.1rem 1.25rem; margin: 1.5rem 0; }
+      .callout p { color: var(--text); margin: 0; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="site-nav sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <div class="flex justify-between items-center">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
+                    <span class="text-lg font-semibold tracking-tight">Wildbox</span>
+                </a>
+                <div class="hidden md:flex gap-8 items-center text-sm">
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="/api-reference.html" class="nav-link">API</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                </div>
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary hidden sm:inline-flex px-4 py-2 text-sm">Get started</a>
+            </div>
+        </div>
+    </nav>
+
+    <main class="px-4 sm:px-6 lg:px-8 py-12 md:py-16">
+        <div class="article mx-auto">
+            <!-- Breadcrumb -->
+            <nav class="text-sm text-faint mb-6" aria-label="Breadcrumb">
+                <a href="/" class="nav-link">Home</a>
+                <span class="mx-2">/</span>
+                <a href="/learn/" class="nav-link">Learn</a>
+                <span class="mx-2">/</span>
+                <span class="text-muted">Check SPF, DKIM &amp; DMARC</span>
+            </nav>
+
+            <h1 class="text-3xl md:text-4xl font-bold tracking-tight leading-tight mb-4">How to check SPF, DKIM, and DMARC for a domain</h1>
+            <p class="text-lg text-muted leading-relaxed mb-8">SPF, DKIM, and DMARC are three DNS records that decide whether your email is trusted or dropped in spam. This guide shows you how to read all three with <code class="inline-code">dig</code>, interpret the output, and fix the misconfigurations that hurt deliverability.</p>
+
+            <div class="callout"><p><strong>Short answer:</strong> query the domain's DNS TXT records — SPF lives at the root (<code class="inline-code">example.com</code>), DMARC at <code class="inline-code">_dmarc.example.com</code>, and DKIM at <code class="inline-code">&lt;selector&gt;._domainkey.example.com</code>. Each record type and the exact commands are below.</p></div>
+
+            <h2>What SPF, DKIM, and DMARC do</h2>
+            <table>
+                <thead><tr><th>Record</th><th>Answers the question</th><th>DNS location</th></tr></thead>
+                <tbody>
+                    <tr><td><strong>SPF</strong></td><td>Which servers are allowed to send mail for this domain?</td><td><code class="inline-code">example.com</code> (TXT)</td></tr>
+                    <tr><td><strong>DKIM</strong></td><td>Was this message signed by the domain, and is it unaltered?</td><td><code class="inline-code">&lt;selector&gt;._domainkey.example.com</code> (TXT)</td></tr>
+                    <tr><td><strong>DMARC</strong></td><td>What should a receiver do when SPF/DKIM don't align with the From domain?</td><td><code class="inline-code">_dmarc.example.com</code> (TXT)</td></tr>
+                </tbody>
+            </table>
+
+            <h2>Step 1 — Check the SPF record</h2>
+            <p>SPF is a single TXT record at the domain root that starts with <code class="inline-code">v=spf1</code>:</p>
+            <pre class="code-block p-4">$ dig +short TXT example.com
+"v=spf1 include:_spf.google.com ~all"</pre>
+            <p>Read it right to left at the end:</p>
+            <ul>
+                <li><code class="inline-code">-all</code> — hard fail: reject anything not listed. Strongest.</li>
+                <li><code class="inline-code">~all</code> — soft fail: accept but mark suspicious. Most common.</li>
+                <li><code class="inline-code">?all</code> / <code class="inline-code">+all</code> — neutral / allow-all: effectively no protection.</li>
+            </ul>
+            <p><strong>Watch the 10-lookup limit.</strong> SPF allows at most 10 DNS lookups (each <code class="inline-code">include:</code>, <code class="inline-code">a</code>, <code class="inline-code">mx</code> counts). Exceed it and SPF returns <em>permerror</em> and silently stops working — a very common cause of sudden deliverability drops.</p>
+
+            <h2>Step 2 — Check the DMARC record</h2>
+            <p>DMARC is a TXT record at the <code class="inline-code">_dmarc</code> subdomain:</p>
+            <pre class="code-block p-4">$ dig +short TXT _dmarc.example.com
+"v=DMARC1; p=reject; rua=mailto:dmarc@example.com; adkim=s; aspf=s"</pre>
+            <ul>
+                <li><code class="inline-code">p=none</code> — monitor only, no enforcement. Reporting starting point.</li>
+                <li><code class="inline-code">p=quarantine</code> — send failing mail to spam.</li>
+                <li><code class="inline-code">p=reject</code> — reject failing mail outright. The goal state.</li>
+                <li><code class="inline-code">rua=</code> — where aggregate reports are sent (turn these on early).</li>
+            </ul>
+            <p>If this record is missing entirely, the domain has no DMARC policy and is trivially spoofable.</p>
+
+            <h2>Step 3 — Check the DKIM record</h2>
+            <p>DKIM is the tricky one: the record lives under a <strong>selector</strong> you can't guess from DNS. Find it in the <code class="inline-code">DKIM-Signature</code> header of a real message the domain sent, in the <code class="inline-code">s=</code> tag:</p>
+            <pre class="code-block p-4">DKIM-Signature: v=1; a=rsa-sha256; d=example.com; s=selector1; ...</pre>
+            <p>Then query that selector:</p>
+            <pre class="code-block p-4">$ dig +short TXT selector1._domainkey.example.com
+"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQ..."</pre>
+            <p>A present <code class="inline-code">p=</code> public key means DKIM is published. An empty <code class="inline-code">p=</code> means the key was revoked.</p>
+
+            <h2>How to read the results together</h2>
+            <p>DMARC only passes when SPF <em>or</em> DKIM passes <strong>and aligns</strong> with the visible From domain. The most common reasons legitimate mail still lands in spam:</p>
+            <ul>
+                <li>DMARC is stuck at <code class="inline-code">p=none</code>, so receivers apply no trust signal.</li>
+                <li>A third-party sender (newsletter, CRM, invoicing) isn't in SPF or isn't DKIM-signing with your domain, so it fails alignment.</li>
+                <li>SPF quietly broke by exceeding the 10-lookup limit.</li>
+                <li>DKIM selector rotated and the old key was removed while messages still reference it.</li>
+            </ul>
+
+            <div class="callout"><p><strong>Doing this for many domains, repeatedly?</strong> Checking three records by hand is fine once. Across a fleet, and after every provider change, it doesn't scale.</p></div>
+
+            <h2>Automate it with Wildbox</h2>
+            <p>Wildbox is a self-hosted, open-source security platform. Its <strong>email security analyzer</strong> resolves SPF, DKIM, and DMARC for a domain in one pass, flags a permissive <code class="inline-code">+all</code> or an unenforced <code class="inline-code">p=none</code>, checks the sending IP against public DNS blocklists (DNSBL), and can run on a schedule so you catch regressions instead of discovering them from a bounce. It runs on your own infrastructure — the domains and results never leave your environment.</p>
+            <div class="flex flex-col sm:flex-row gap-3 mt-6 mb-2">
+                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="btn btn-primary px-5 py-2.5 text-sm">Get Wildbox on GitHub</a>
+                <a href="/docs.html" class="btn btn-secondary px-5 py-2.5 text-sm">Read the quick start</a>
+            </div>
+
+            <h2>FAQ</h2>
+            <h3>Why do my emails still go to spam even though SPF passes?</h3>
+            <p>SPF passing isn't enough. Receivers increasingly require DMARC <em>alignment</em> — the visible From domain must match the domain validated by SPF or DKIM. A message can pass raw SPF for the sending server yet fail DMARC because the From domain doesn't align. Missing DKIM and a <code class="inline-code">p=none</code> policy weaken this further.</p>
+            <h3>What does DMARC p=none mean?</h3>
+            <p>Monitor-only: the receiver enforces nothing and just reports. It's the right first step to collect <code class="inline-code">rua</code> aggregate reports, but it offers no anti-spoofing protection. Once your legitimate senders pass, move to <code class="inline-code">p=quarantine</code>, then <code class="inline-code">p=reject</code>.</p>
+            <h3>How do I find the DKIM selector for a domain?</h3>
+            <p>You can't enumerate selectors from DNS. Read the <code class="inline-code">DKIM-Signature</code> header of a message the domain actually sent and take the <code class="inline-code">s=</code> value, then query <code class="inline-code">&lt;selector&gt;._domainkey.&lt;domain&gt;</code>.</p>
+            <h3>How often should I check?</h3>
+            <p>After any mail-provider or sending-service change, and then continuously — records drift as senders are added, and the SPF lookup limit is easy to exceed over time.</p>
+
+            <!-- Related -->
+            <div class="border-t divider mt-12 pt-8">
+                <h2 class="text-xl font-semibold mb-4" style="margin-top:0;">Related</h2>
+                <ul class="space-y-2 text-sm">
+                    <li><a href="/tools/jwt-decoder/" class="nav-link accent">JWT Decoder</a> <span class="text-faint">— decode and inspect a JSON Web Token in your browser</span></li>
+                    <li><a href="/docs.html" class="nav-link accent">Wildbox documentation</a> <span class="text-faint">— deploy the full platform with Docker Compose</span></li>
+                </ul>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t divider px-4 sm:px-6 lg:px-8 py-14">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <a href="/" class="flex items-center gap-2.5">
+                    <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-7 h-7 object-contain">
+                    <span class="font-semibold">Wildbox</span>
+                </a>
+                <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted">
+                    <a href="/docs.html" class="nav-link">Documentation</a>
+                    <a href="/api-reference.html" class="nav-link">API</a>
+                    <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
+                    <a href="/privacy.html" class="nav-link">Privacy</a>
+                </div>
+                <p class="text-sm text-faint">&copy; 2025 Wildbox &middot; MIT</p>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
