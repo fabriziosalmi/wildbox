@@ -1,0 +1,83 @@
+name: Main Advisories
+
+# The critical-advisory check, run where it matters: on main (#430).
+#
+# Until this existed the check ran only on pull requests, so main -- the branch
+# that ships -- was the one branch never scanned, and the news of a new
+# advisory reached whoever happened to open the next PR. This runs daily and
+# on every push to main, and keeps one issue in step with what it finds:
+# opened when a critical advisory appears, updated when the list changes,
+# closed when it is empty.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: main-advisories
+  cancel-in-progress: true
+
+env:
+  TITLE: "Critical advisories on main"
+  LABEL: security
+
+jobs:
+  scan:
+    name: Critical advisories on main
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.6
+        with:
+          version: v0.70.0
+          cache: true
+
+      - name: Scan
+        run: ./scripts/critical_advisories.sh list . > "$RUNNER_TEMP/findings.tsv"
+
+      - name: Open, update or close the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          findings="$RUNNER_TEMP/findings.tsv"
+          existing="$(gh issue list --state open --label "$LABEL" --search "\"$TITLE\" in:title" \
+            --json number,title --jq ".[] | select(.title == \"$TITLE\") | .number" | head -1)"
+
+          if [ ! -s "$findings" ]; then
+            echo "No critical advisory on main." >> "$GITHUB_STEP_SUMMARY"
+            if [ -n "$existing" ]; then
+              gh issue close "$existing" --comment "None left on main as of ${GITHUB_SHA::7}."
+            fi
+            exit 0
+          fi
+
+          {
+            echo "Critical advisories with a released fix, found by Trivy on \`main\` at ${GITHUB_SHA::7}."
+            echo "Kept current by \`.github/workflows/main-advisories.yml\`; it closes this issue when the list is empty."
+            echo
+            echo "| Lockfile | Package | Installed | Advisory | Fixed in |"
+            echo "|---|---|---|---|---|"
+            while IFS=$'\t' read -r target pkg version id fix; do
+              echo "| \`$target\` | \`$pkg\` | $version | $id | $fix |"
+            done < "$findings"
+            echo
+            echo "Python pins: \`make lock-security\` or the Pip Security Upgrades workflow."
+          } > "$RUNNER_TEMP/body.md"
+
+          cat "$RUNNER_TEMP/body.md" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --title "$TITLE" --label "$LABEL" --body-file "$RUNNER_TEMP/body.md"
+          fi
