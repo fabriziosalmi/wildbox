@@ -22,6 +22,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
 
+### CI
+
+- **The critical-advisory gate now gates, and only on what a PR adds** (#430).
+  `PR Validation Summary`, the check branch protection requires, never read
+  the result of `security-scan` and did not depend on `dependency-integrity`
+  at all, so both went red on PRs that could still be merged. Both now count.
+  The critical-advisory step compares the PR against its base and fails only
+  on advisories the PR introduces; those already on `main` are reported by the
+  new `Main Advisories` workflow, daily and on every push, in one issue it
+  opens, updates and closes.
+- **Chaos experiments run on demand only** until the suite is rewritten
+  (#428). The nightly load baseline is unchanged.
+
 ## [0.10.0] - 2026-09-08
 
 Everything here was found by running the thing. A 20-category audit produced 115
