@@ -1143,7 +1143,7 @@ var ToolSearch = {
             this.searchResults.innerHTML = `
                 <div class="search-result-item text-center text-muted">
                     <i class="fas fa-search me-2"></i>
-                    No tools found for "${query}"
+                    No tools found for "${this.escapeHtml(query)}"
                     <div class="mt-2 small">
                         Try searching for categories like "scanner", "analyzer", or "network"
                     </div>
@@ -1159,13 +1159,13 @@ var ToolSearch = {
                 const highlightedDesc = this.truncateAndHighlight(tool.description, query, 80);
                 
                 html += `
-                    <div class="search-result-item hover-bg" data-url="${tool.url}" data-index="${i}">
+                    <div class="search-result-item hover-bg" data-url="${this.escapeHtml(tool.url)}" data-index="${i}">
                         <div class="d-flex align-items-start justify-content-between">
                             <div class="flex-grow-1">
                                 <div class="fw-bold text-primary mb-1">${highlightedName}</div>
                                 <div class="text-muted small mb-2">${highlightedDesc}</div>
                                 <div class="d-flex align-items-center gap-2">
-                                    <span class="badge bg-secondary text-light">${tool.category}</span>
+                                    <span class="badge bg-secondary text-light">${this.escapeHtml(tool.category)}</span>
                                     <span class="text-muted small">
                                         <i class="fas fa-rocket me-1"></i>Launch
                                     </span>
@@ -1206,15 +1206,31 @@ var ToolSearch = {
      * Highlight matching text
      */
     highlightMatches: function(text, query) {
-        const terms = query.toLowerCase().split(/\s+/);
-        let highlightedText = text;
-        
-        terms.forEach(term => {
-            const regex = new RegExp(`(${this.escapeRegex(term)})`, 'gi');
-            highlightedText = highlightedText.replace(regex, '<mark>$1</mark>');
-        });
-        
-        return highlightedText;
+        // The result is assigned to innerHTML, and both inputs are text: the
+        // query is what the user typed, and the tool names and descriptions are
+        // read back with textContent, which undoes the template's escaping. So
+        // every piece is escaped here, and only the <mark> wrappers are markup.
+        // Splitting on one alternation regex (rather than replacing term by
+        // term on an already-escaped string) keeps a term like "amp" from
+        // landing inside an entity.
+        const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+        if (terms.length === 0) {
+            return this.escapeHtml(text);
+        }
+        const regex = new RegExp(`(${terms.map(t => this.escapeRegex(t)).join('|')})`, 'gi');
+        return text
+            .split(regex)
+            .map((part, i) => (i % 2 ? `<mark>${this.escapeHtml(part)}</mark>` : this.escapeHtml(part)))
+            .join('');
+    },
+
+    /**
+     * Escape text for insertion into HTML (element content or quoted attribute)
+     */
+    escapeHtml: function(string) {
+        return String(string).replace(/[&<>"']/g, c => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[c]);
     },
     
     /**
