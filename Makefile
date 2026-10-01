@@ -1,7 +1,7 @@
 # Wildbox Security Platform - Simplified Makefile
 # Use Docker Compose for orchestration - this is just a convenience wrapper
 
-.PHONY: help setup generate-secrets validate-secrets start start-prod stop restart logs health test clean backup restore-drill rotate-secrets lock
+.PHONY: help setup generate-secrets validate-secrets start start-prod stop restart logs health test clean backup restore-drill rotate-secrets lock lock-security
 
 # Colors
 BLUE := \033[0;34m
@@ -99,6 +99,10 @@ rotate-secrets:
 lock:
 	@echo "$(BLUE)Compiling hash-pinned lockfiles for every service...$(NC)"
 	@./scripts/compile_requirements.sh
+
+lock-security:
+	@echo "$(BLUE)Upgrading pip packages with known advisories...$(NC)"
+	@./scripts/upgrade_vulnerable_requirements.sh
 
 stop:
 	@docker-compose down

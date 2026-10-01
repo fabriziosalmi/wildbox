@@ -97,21 +97,27 @@ jobs:
           output: 'trivy-results.sarif'
           exit-code: '0'
 
-      - name: Fail on critical advisories
-        uses: aquasecurity/trivy-action@v0.36.0
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.6
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          severity: 'CRITICAL'
-          scanners: 'vuln'
-          # Gates. This used to be exit-code: '0' with the comment "Don't fail
-          # on vulnerabilities yet", so a PR introducing a critical advisory was
-          # indistinguishable from one that did not (WILDBO-DEP-03). Starting at
-          # CRITICAL keeps the gate achievable; widen to CRITICAL,HIGH once the
-          # current HIGH backlog is triaged.
-          exit-code: '1'
-          ignore-unfixed: true
+          version: v0.70.0
+          cache: true
+
+      - name: Check out the base branch
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+
+      - name: Fail on critical advisories this PR introduces
+        # Gates (WILDBO-DEP-03), but only on what the PR adds (#430). Failing on
+        # every critical in the tree turned all open PRs red the day an advisory
+        # was published against something already on main, whatever they
+        # touched; those are reported on main by main-advisories.yml instead.
+        # Starting at CRITICAL keeps the gate achievable; widen to
+        # CRITICAL,HIGH once the current HIGH backlog is triaged.
+        run: ./scripts/critical_advisories.sh new . "$RUNNER_TEMP/base"
 
       - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v4
@@ -244,13 +250,20 @@ jobs:
       - validate-docker
       - validate-structure
       - security-scan
+      - dependency-integrity
       - python-quality
     if: always()
     steps:
       - name: Check validation results
+        # This job is the one branch protection requires, so a job missing from
+        # this test does not gate anything. security-scan was listed in needs
+        # but never tested, and dependency-integrity was not listed at all:
+        # both went red on PRs that could still be merged (#430).
         run: |
           if [ "${{ needs.validate-docker.result }}" != "success" ] || \
              [ "${{ needs.validate-structure.result }}" != "success" ] || \
+             [ "${{ needs.security-scan.result }}" != "success" ] || \
+             [ "${{ needs.dependency-integrity.result }}" != "success" ] || \
              [ "${{ needs.python-quality.result }}" != "success" ]; then
             echo "❌ PR validation failed. Please fix the issues above."
             exit 1
