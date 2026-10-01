@@ -13,7 +13,8 @@ tools service died with:
     ModuleNotFoundError: No module named 'jose'
 
 -- the service could not start. The names are resolved lazily now (PEP 562);
-these tests fail if an eager import comes back.
+these tests fail if an eager import comes back. (auth_utils has since moved
+from python-jose to PyJWT, so the module to watch is `jwt`.)
 """
 
 import subprocess
@@ -24,7 +25,7 @@ import pytest
 
 # Third-party modules that only some submodules need. None may be imported as a
 # side effect of importing the package or of using the light-weight helpers.
-OPTIONAL = ("jose", "opentelemetry", "redis", "sqlalchemy", "prometheus_client")
+OPTIONAL = ("jwt", "opentelemetry", "redis", "sqlalchemy", "prometheus_client")
 
 
 def _imported_after(code: str) -> set:
@@ -53,14 +54,14 @@ def test_error_helpers_do_not_pull_in_auth_dependencies():
     loaded = _imported_after(
         "from open_security_shared import install_error_handlers, error_body"
     )
-    assert "jose" not in loaded
+    assert "jwt" not in loaded
 
 
 def test_observability_helpers_do_not_pull_in_auth_dependencies():
     loaded = _imported_after(
         "from open_security_shared import install_observability, outcome_counter"
     )
-    assert "jose" not in loaded
+    assert "jwt" not in loaded
 
 
 def test_lazy_names_still_resolve():
