@@ -9,8 +9,8 @@ import hmac
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
+import jwt
 from fastapi import Header, HTTPException, status
-from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 # Password hashing context
@@ -126,7 +126,7 @@ def verify_access_token(
     try:
         payload = jwt.decode(token, secret_key, algorithms=[algorithm])
         return payload
-    except JWTError:
+    except jwt.PyJWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials",
