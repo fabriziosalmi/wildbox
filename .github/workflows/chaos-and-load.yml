@@ -25,7 +25,15 @@ on:
 jobs:
   chaos:
     name: Chaos experiments
-    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'chaos'
+    # Manual only until the suite is rewritten (#428). It went red every night
+    # for reasons that are not findings about the system: the experiments
+    # address containers by a name scheme the compose file does not use, call
+    # the gateway on port 80 where everything but /health is a 301 to HTTPS,
+    # expect a circuit breaker to open in 5 s that needs 10 failures and 60 s,
+    # and inject latency with tc in containers that lack NET_ADMIN. A nightly
+    # red that means nothing teaches everyone to ignore the nightly. The load
+    # baseline below still runs every night.
+    if: github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'chaos')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:

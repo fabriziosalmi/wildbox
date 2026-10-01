@@ -21,7 +21,8 @@ install. ``import app.main`` then died with ModuleNotFoundError: No module named
 
 With lazy resolution, ``from open_security_shared import install_error_handlers``
 imports only ``errors``; a service that wants ``verify_password`` gets
-``auth_utils`` and is expected to pin python-jose itself.
+``auth_utils`` and is expected to pin its JWT library itself (PyJWT since
+auth_utils moved off python-jose).
 """
 
 from typing import TYPE_CHECKING
