@@ -99,7 +99,6 @@ Desktop.ini
 *.md
 !README.md
 docs/
-website/
 *.rst
 
 # Docker files (prevent recursion)
