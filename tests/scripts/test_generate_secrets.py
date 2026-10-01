@@ -92,9 +92,9 @@ def test_the_generator_knows_every_pattern_validate_secrets_rejects():
     known = set(_load(GENERATOR, "wildbox_generate_secrets_3").WEAK_PATTERNS)
     # "test-" is a stricter spelling of "test", which the generator does avoid.
     unmatched = {p for p in enforced if not any(k in p or p in k for k in known)}
-    assert not unmatched, (
-        f"validate_secrets.py rejects patterns the generator does not avoid: {sorted(unmatched)}"
-    )
+    assert (
+        not unmatched
+    ), f"validate_secrets.py rejects patterns the generator does not avoid: {sorted(unmatched)}"
 
 
 def test_a_value_carrying_a_weak_pattern_is_recognised(generator):
