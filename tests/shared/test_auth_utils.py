@@ -2,7 +2,7 @@
 
 auth_utils moved from python-jose to PyJWT: python-jose pulls in ecdsa, whose
 timing advisory (CVE-2024-23342) upstream will not fix, and it was pinned in
-three services only to satisfy this module. These tests hold the behaviour
+three services only to satisfy this module. These tests hold the behavior
 that has to survive the switch: a token round-trips, and every way of
 presenting a bad one ends in the same 401.
 """
