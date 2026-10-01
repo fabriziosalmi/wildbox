@@ -19,7 +19,6 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/open-security-dashboard"
-      - "/website"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

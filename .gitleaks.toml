@@ -24,7 +24,6 @@ paths = [
   # Documentation and rendered API references are full of copy-paste curl
   # samples with "Authorization: Bearer <token>" / "X-API-Key: ..." lines.
   '''^docs/''',
-  '''^website/docs/''',
   '''README\.md$''',
   '''LLM_SETUP\.md$''',
   '''^open-security-tools/app/web/templates/''',

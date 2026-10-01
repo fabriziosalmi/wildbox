@@ -16,7 +16,6 @@ paths-ignore:
 paths:
   - 'open-security-dashboard/src/**'
   - 'open-security-automations/**'
-  - 'website/**'
 
 # Query filters
 queries:
