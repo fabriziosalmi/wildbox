@@ -1,0 +1,79 @@
+name: Pip Security Upgrades
+
+# Replaces Dependabot for pip (#420): Dependabot regenerates the hash-pinned
+# locks with pip-compile instead of uv, so none of its PRs could pass the
+# Dependency Integrity gate. This job moves only the packages with a known
+# advisory, with the same uv invocation compile_requirements.sh uses, and opens
+# (or refreshes) a single PR.
+
+on:
+  schedule:
+    - cron: '0 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: pip-security-upgrades
+  cancel-in-progress: false
+
+env:
+  BRANCH: deps/pip-security-upgrades
+
+jobs:
+  upgrade:
+    name: Upgrade vulnerable pins
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Upgrade vulnerable packages
+        run: SUMMARY_FILE="$RUNNER_TEMP/summary.md" ./scripts/upgrade_vulnerable_requirements.sh
+
+      - name: Verify the locks still match requirements.in
+        run: ./scripts/compile_requirements.sh --check
+
+      - name: Publish summary
+        run: cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open or refresh the pull request
+        env:
+          # A PR opened with GITHUB_TOKEN does not trigger other workflows, so
+          # its required checks never start. A fine-grained token with
+          # contents + pull-requests write on this repository, stored as
+          # DEPS_PR_TOKEN, avoids that; without it the PR is still opened and
+          # CI starts at the next push to the branch.
+          GH_TOKEN: ${{ secrets.DEPS_PR_TOKEN || github.token }}
+          PUSH_TOKEN: ${{ secrets.DEPS_PR_TOKEN || github.token }}
+        run: |
+          if git diff --quiet -- 'open-security-*/requirements.txt'; then
+            echo "No pin moved." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$BRANCH"
+          git add open-security-*/requirements.txt
+          git commit -m "build(deps): upgrade pip packages with known advisories"
+          git push --force "https://x-access-token:${PUSH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$BRANCH"
+
+          {
+            echo "Opened by \`.github/workflows/pip-security-upgrades.yml\`."
+            echo "Only packages with a known advisory move, to the newest version \`requirements.in\` allows."
+            echo
+            cat "$RUNNER_TEMP/summary.md"
+          } > "$RUNNER_TEMP/body.md"
+
+          if gh pr view "$BRANCH" --json state --jq .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$BRANCH" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh pr create --base main --head "$BRANCH" \
+              --title "build(deps): upgrade pip packages with known advisories" \
+              --body-file "$RUNNER_TEMP/body.md"
+          fi

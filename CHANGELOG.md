@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Python security upgrades no longer depend on Dependabot** (#420). Its pip
+  PRs regenerated the locks with pip-compile instead of uv and could never pass
+  the Dependency Integrity gate, so no Python fix had landed since 0.10.0.
+  `scripts/upgrade_vulnerable_requirements.sh` (`make lock-security`) moves only
+  the packages with a known advisory, within the ranges `requirements.in`
+  allows, and lists the rest; a weekly workflow opens the PR. This run moved 19
+  pins, among them PyJWT, urllib3, tornado, anyio and oauthlib.
+
 ## [0.10.0] - 2026-09-08
 
 Everything here was found by running the thing. A 20-category audit produced 115
