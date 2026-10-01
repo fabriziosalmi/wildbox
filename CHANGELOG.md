@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the packages with a known advisory, within the ranges `requirements.in`
   allows, and lists the rest; a weekly workflow opens the PR. This run moved 19
   pins, among them PyJWT, urllib3, tornado, anyio and oauthlib.
+- **python-jose is gone, and ecdsa with it** (#415). It was pinned in cspm, data
+  and guardian only because `open_security_shared.auth_utils` imported it, and
+  none of the three uses those helpers. It pulled in `ecdsa`, whose timing
+  advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
+  its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
 
 ## [0.10.0] - 2026-09-08
 
