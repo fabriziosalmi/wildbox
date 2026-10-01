@@ -35,6 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Chaos experiments run on demand only** until the suite is rewritten
   (#428). The nightly load baseline is unchanged.
 
+### Removed
+
+- **The Docusaurus site in `website/`** (#419). It was never the published
+  site: GitHub Pages serves `docs/` (Jekyll) from `main`, and
+  `deploy-docs.yml` last ran in November 2025, failed, and could not have
+  deployed anyway with Pages set to build from a branch. The site did not
+  build, its pages still described OpenAI and Stripe billing, and it drew
+  about fifteen Dependabot PRs. Gone with it: `deploy-docs.yml`,
+  `scripts/generate-api-specs.sh` (which only fed it) and
+  `docs/DOCUMENTATION_MIGRATION.md`.
+
 ## [0.10.0] - 2026-09-08
 
 Everything here was found by running the thing. A 20-category audit produced 115
