@@ -13,7 +13,6 @@ from datetime import timedelta
 
 import pytest
 from fastapi import HTTPException
-
 from open_security_shared.auth_utils import create_access_token, verify_access_token
 
 SECRET = "s" * 40
@@ -48,7 +47,9 @@ def test_the_caller_payload_is_not_mutated():
 
 
 def test_an_expired_token_is_refused():
-    token = create_access_token({"sub": "u"}, SECRET, expires_delta=timedelta(seconds=-5))
+    token = create_access_token(
+        {"sub": "u"}, SECRET, expires_delta=timedelta(seconds=-5)
+    )
     _expect_401(token)
 
 
