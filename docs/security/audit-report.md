@@ -1,5 +1,9 @@
 # Comprehensive Security Audit Report - Wildbox Security Platform
 
+> **Historical document (November 2024).** It describes the code as it was then;
+> file paths, line numbers, scores and statuses below no longer match `main`.
+> For what is true today, see the [Security status](status.md).
+
 ## Executive Summary
 
 This security audit identified **19 security issues** across the Wildbox Security Platform codebase, ranging from Critical to Low severity. The platform has implemented several good security practices (bcrypt password hashing, defusedxml for XXE protection, proper JWT implementation) but has notable vulnerabilities in authentication, CORS configuration, code injection risks, and hardcoded credentials in committed files.
@@ -10,7 +14,7 @@ This security audit identified **19 security issues** across the Wildbox Securit
 
 ### 1. Code Injection via eval() - Python Deserialization
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 266)
+**File**: `open-security-agents/app/main.py` (Line 266)
 **Severity**: CRITICAL
 **Risk**: Remote Code Execution (RCE)
 
@@ -33,7 +37,7 @@ task_metadata = json.loads(task_metadata_str.decode())
 
 ### 2. Hardcoded Credentials in Committed .env File
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-identity/.env`
+**File**: `open-security-identity/.env`
 **Severity**: CRITICAL
 **Risk**: Credential Exposure, Unauthorized Access
 
@@ -56,8 +60,8 @@ task_metadata = json.loads(task_metadata_str.decode())
 
 **Files**:
 
-- `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 180)
-- `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py` (Line 133)
+- `open-security-agents/app/main.py` (Line 180)
+- `open-security-responder/app/main.py` (Line 133)
 
 **Severity**: CRITICAL
 **Risk**: Unauthorized Access to Core Functionality
@@ -95,9 +99,9 @@ async def analyze_ioc(
 
 **Files**:
 
-- `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 91)
-- `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py` (Line 79)
-- `/Users/fab/GitHub/wildbox/open-security-data/app/config.py` (Line 64)
+- `open-security-agents/app/main.py` (Line 91)
+- `open-security-responder/app/main.py` (Line 79)
+- `open-security-data/app/config.py` (Line 64)
 
 **Severity**: HIGH
 **Risk**: Cross-Site Request Forgery (CSRF), Data Exfiltration
@@ -132,7 +136,7 @@ cors_origins: List[str] = field(default_factory=lambda: [
 
 ### 5. SQL Injection Risk in osquery Table Validation
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-sensor/sensor/collectors/osquery_manager.py` (Line 411)
+**File**: `open-security-sensor/sensor/collectors/osquery_manager.py` (Line 411)
 **Severity**: HIGH
 **Risk**: SQL Injection via Dynamic Table Names
 
@@ -160,8 +164,8 @@ for table in tables:
 
 **Files**:
 
-- `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py`
-- `/Users/fab/GitHub/wildbox/open-security-responder/app/main.py`
+- `open-security-agents/app/main.py`
+- `open-security-responder/app/main.py`
 
 **Severity**: HIGH
 **Risk**: Denial of Service (DoS), Resource Exhaustion
@@ -187,8 +191,8 @@ async def analyze_ioc(request: Request, ...):
 
 **Files**:
 
-- `/Users/fab/GitHub/wildbox/open-security-identity/demo.py` (Line 22)
-- `/Users/fab/GitHub/wildbox/open-security-identity/auth.py` (Line 291)
+- `open-security-identity/demo.py` (Line 22)
+- `open-security-identity/auth.py` (Line 291)
 
 **Severity**: HIGH
 **Risk**: Information Disclosure, Credentials in Logs
@@ -216,7 +220,7 @@ except Exception as e:
 
 ### 8. Insecure Default Secrets in docker-compose.yml
 
-**File**: `/Users/fab/GitHub/wildbox/docker-compose.yml` (Lines 28-36)
+**File**: `docker-compose.yml` (Lines 28-36)
 **Severity**: HIGH
 **Risk**: Data Compromise, Unauthorized Access
 
@@ -250,7 +254,7 @@ Also, change line 58 API_KEY - this looks like a real key was exposed:
 
 ### 9. Missing Input Validation on Unprotected Endpoints
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-agents/app/main.py` (Line 181)
+**File**: `open-security-agents/app/main.py` (Line 181)
 **Severity**: MEDIUM
 **Risk**: Injection Attacks, Unexpected Behavior
 
@@ -286,7 +290,7 @@ class IOC(BaseModel):
 
 ### 10. Weak Hashing Algorithms Supported (md5, sha1)
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-tools/app/tools/hash_generator/main.py` (Lines 28-65)
+**File**: `open-security-tools/app/tools/hash_generator/main.py` (Lines 28-65)
 **Severity**: MEDIUM
 **Risk**: Weak Cryptography, Compliance Issues
 
@@ -321,7 +325,7 @@ LEGACY_ALGORITHMS = {  # Only for compatibility
 
 ### 11. Missing CSRF Protection Validation
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-identity/app/config.py` (Line 40)
+**File**: `open-security-identity/app/config.py` (Line 40)
 **Severity**: MEDIUM
 **Risk**: Cross-Site Request Forgery
 
@@ -376,7 +380,7 @@ async def add_security_headers(request, call_next):
 
 ### 13. Subprocess Usage Without Input Validation
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-sensor/sensor/collectors/log_forwarder.py` (Line 281)
+**File**: `open-security-sensor/sensor/collectors/log_forwarder.py` (Line 281)
 **Severity**: MEDIUM
 **Risk**: Command Injection
 
@@ -402,7 +406,7 @@ result = subprocess.run(
 
 ### 14. Insecure Deserialization - json.loads() without validation
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-cspm/app/main.py` (Multiple lines)
+**File**: `open-security-cspm/app/main.py` (Multiple lines)
 **Severity**: MEDIUM
 **Risk**: Injection Attacks, Unexpected Type Confusion
 
@@ -433,25 +437,18 @@ except ValidationError as e:
 
 ### 15. Default Django Secret Key (Guardian)
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-guardian/guardian/settings.py` (Line 23)
+**File**: `open-security-guardian/guardian/settings.py`
 **Severity**: MEDIUM
 **Risk**: Session Hijacking, CSRF Token Forgery
 
-```python
-SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
-```
+`SECRET_KEY` was read from the environment with a hard-coded fallback, so a
+deployment that did not set it ran with a key published in the repository.
 
-**Fix**: Require environment variable:
+**Fix**: Require the environment variable and refuse to start without it.
 
-```python
-SECRET_KEY = os.getenv('SECRET_KEY')
-if not SECRET_KEY:
-    raise ValueError("SECRET_KEY environment variable must be set")
-
-# Validate it's not a default value
-if SECRET_KEY in ['your-secret-key-here-change-in-production', 'change-me']:
-    raise ValueError("SECRET_KEY must be changed from default")
-```
+**Status (checked on `main`, 2 October 2026)**: resolved. `settings.py` has no
+fallback and raises `ValueError` when `SECRET_KEY` is unset; the value comes
+from `GUARDIAN_SECRET_KEY`, generated by `scripts/generate_secrets.py`.
 
 ---
 
@@ -459,7 +456,7 @@ if SECRET_KEY in ['your-secret-key-here-change-in-production', 'change-me']:
 
 ### 16. Missing API Key Validation on Tools Endpoint
 
-**File**: `/Users/fab/GitHub/wildbox/open-security-tools/app/api/router.py` (Line 22)
+**File**: `open-security-tools/app/api/router.py` (Line 22)
 **Severity**: LOW
 **Risk**: Information Disclosure
 
@@ -476,7 +473,7 @@ async def list_tools(request: Request, api_key: str = Depends(verify_api_key)):
 
 ### 17. Debug Flag in Production
 
-**File**: `/Users/fab/GitHub/wildbox/docker-compose.yml` (Line 59)
+**File**: `docker-compose.yml` (Line 59)
 **Severity**: LOW (if DEBUG is false in production)
 **Risk**: Information Disclosure
 
@@ -495,7 +492,7 @@ if os.getenv('ENVIRONMENT') == 'production' and os.getenv('DEBUG') == 'true':
 
 ### 18. Weak Password Requirements in Demo
 
-**File**: `/Users/fab/GitHub/wildbox/tests/verify_authentication_complete.py` (Line 581)
+**File**: `tests/verify_authentication_complete.py` (Line 581)
 **Severity**: LOW
 **Risk**: Weak Authentication
 

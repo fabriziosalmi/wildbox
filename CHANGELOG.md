@@ -125,6 +125,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **The security status page says what is still wrong.** It reported every
+  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
+  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
+  networks are not segmented (the production overlay's networks are merged
+  with the flat `wildbox` network), identity's `init.sh` prints the initial
+  admin password to the log, two scanners disable TLS verification, and
+  identity and tools serve API docs in every environment. The page now lists
+  those as open issues, points at #415 for dependencies, marks unchecked
+  claims "Not verified", and says how each check was made. The 2024 and 2025
+  audit documents are marked historical; the checklist's quoted heredoc that
+  wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
+  replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
+  is no longer quoted as current. Expired version and review stamps are gone
+  from the security policy.
+- **Account lockout is reported as not enforced.** The status page counted
+  the lockout settings in `config.py` as a pass, but nothing calls
+  `record_failed_login` or `is_account_locked`; it is now a known open issue
+  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
+  (fastapi-users hashes with Argon2). The status page stops linking the
+  November 2024 audit documents, which the site no longer publishes.
+
 - **One ports table, one login flow, no published passwords.** The guides
   disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
   8006, guardian on 8001) and showed the login once as JSON and once
