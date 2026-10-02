@@ -105,6 +105,7 @@ def https_server(tmp_path_factory):
     cert_path, key_path = _write_self_signed_certificate(directory)
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(cert_path, key_path)
 
     server = ThreadingHTTPServer((HOST, 0), _Handler)

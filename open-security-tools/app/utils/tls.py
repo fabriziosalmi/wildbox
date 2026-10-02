@@ -29,11 +29,14 @@ VERIFY_SSL_DESCRIPTION = (
 def client_ssl(verify: bool) -> Union[ssl.SSLContext, bool]:
     """Value for aiohttp's ``ssl=`` argument.
 
-    ``True`` gives a default context that verifies the chain and the hostname;
-    ``False`` is returned only when the caller explicitly opted out.
+    With ``verify`` it is a default context: chain and hostname are verified
+    and TLS 1.2 is the minimum. ``False`` is returned only when the caller
+    explicitly opted out for this scan.
     """
     if verify:
-        return ssl.create_default_context()
+        context = ssl.create_default_context()
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        return context
     return False
 
 
@@ -63,6 +66,10 @@ def probe_certificate_trust(host: str, port: int, timeout: float) -> Optional[st
     protocol failure) propagate to the caller.
     """
     context = ssl.create_default_context()
+    # A host that only offers TLS 1.0/1.1 is reported as "trust not
+    # determined" (the handshake error propagates); ssl_analyzer reports the
+    # protocol version itself.
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
     try:
         with socket.create_connection((host, port), timeout=timeout) as sock:
             with context.wrap_socket(sock, server_hostname=host):
