@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **cspm leaves urllib3 1.26** (#415). urllib3 1.26.20 carried 7 advisories and
+  was held there by `google-auth==2.23.0` (`urllib3<2.0`) and
+  `botocore==1.34.0` (`urllib3<2.1`). google-auth 2.23.4 and boto3/botocore
+  1.34.63 are the first releases of the same lines that allow urllib3 2; the
+  lock now has urllib3 2.8.0 and s3transfer 0.10.4.
 
 ### CI
 
