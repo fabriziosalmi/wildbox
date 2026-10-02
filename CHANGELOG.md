@@ -57,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **click 8.3.3 in cspm and data** (#415), from 8.1.7 (1 advisory). Neither
+  service calls click itself; celery, uvicorn and black do, and their CLIs
+  behave as before. The one change seen: `python -m spacy info` in data now
+  exits with an error (typer 0.9.4, pinned by spacy 3.7.2, predates click
+  8.2); nothing in the repository imports spacy or runs its CLI.
 
 ### CI
 
