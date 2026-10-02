@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Failed-login lockout is enforced** (#509). The helpers and settings
+  existed (5 attempts, 15 minutes) but no login route called them, so every
+  account accepted unlimited password guesses. Password login now refuses an
+  account with 429 after 5 failures, for registered and unknown emails alike,
+  and a successful login clears the counter.
+
 - **identity no longer prints the initial admin password** (#493).
   `scripts/init.sh` wrote it to the container log on first start, where
   `docker logs`, log shippers and CI artifacts could read it. It now says
