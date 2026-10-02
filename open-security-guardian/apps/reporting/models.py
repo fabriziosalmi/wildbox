@@ -55,6 +55,22 @@ class ReportTemplate(models.Model):
         return self.name
 
 
+# The reports guardian can generate (#548): the report types whose data comes
+# from guardian's tables, in the formats that are actually written. A risk
+# assessment report is a fixed placeholder (an overall score of 7.5, always);
+# remediation progress, technical details, trend analysis and custom reports
+# have no data at all. A "PDF" is saved as HTML, a CSV holds one row about
+# the report itself, and an Excel file is never written. generate_report
+# fails any other report with that reason, and a schedule of one is refused.
+SUPPORTED_REPORT_TYPES = (
+    'vulnerability_summary',
+    'asset_inventory',
+    'compliance_status',
+    'executive_dashboard',
+)
+SUPPORTED_REPORT_FORMATS = ('json', 'html')
+
+
 class ReportSchedule(models.Model):
     """
     Scheduled report generation

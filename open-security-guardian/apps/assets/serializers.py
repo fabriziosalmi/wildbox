@@ -4,12 +4,16 @@ Asset Management Serializers
 Django REST Framework serializers for asset management.
 """
 
+import ipaddress
+
 from rest_framework import serializers
 from django.contrib.auth.models import User
 
+from apps.core.schedules import InvalidSchedule, schedule_timezone, validate_cron
+
 from .models import (
     Asset, Environment, BusinessFunction, AssetGroup,
-    AssetSoftware, AssetPort, AssetDiscoveryRule
+    AssetSoftware, AssetPort, AssetDiscoveryRule, IMPLEMENTED_DISCOVERY_TYPES
 )
 
 
@@ -147,19 +151,52 @@ class AssetDiscoveryRuleSerializer(serializers.ModelSerializer):
         
         discovery_type = self.initial_data.get('discovery_type')
         
+        if discovery_type is None and self.instance is not None:
+            discovery_type = self.instance.discovery_type
+
         if discovery_type == 'network_scan':
-            if 'networks' not in value:
-                raise serializers.ValidationError("Network scan requires 'networks' in target specification.")
+            networks = value.get('networks')
+            if not networks or not isinstance(networks, list):
+                raise serializers.ValidationError(
+                    "Network scan requires 'networks', a list of networks in "
+                    "CIDR notation, in target specification."
+                )
+            for network in networks:
+                # discover_assets would raise on each run otherwise.
+                try:
+                    ipaddress.ip_network(str(network), strict=False)
+                except ValueError:
+                    raise serializers.ValidationError(
+                        f"{network!r} is not a network in CIDR notation."
+                    )
         elif discovery_type == 'cloud_api':
             if 'provider' not in value:
                 raise serializers.ValidationError("Cloud API requires 'provider' in target specification.")
-        
+
+        return value
+
+    def validate_discovery_type(self, value):
+        """Refuse the discovery types that have no implementation (#548).
+
+        A rule of one of them would be scheduled and "run" without
+        discovering anything.
+        """
+        if value not in IMPLEMENTED_DISCOVERY_TYPES:
+            raise serializers.ValidationError(
+                f"{value} discovery is not implemented; supported: "
+                f"{', '.join(IMPLEMENTED_DISCOVERY_TYPES)}."
+            )
         return value
 
     def validate_schedule(self, value):
-        """Validate cron schedule format"""
-        # Basic cron validation - could be enhanced with croniter
-        parts = value.split()
-        if len(parts) != 5:
-            raise serializers.ValidationError("Schedule must be a valid cron expression (5 fields).")
+        """Five crontab fields that parse and match some time (#548)."""
+        try:
+            validate_cron(value)
+        except InvalidSchedule:
+            # A fixed message: the parser's own text is not part of the API.
+            raise serializers.ValidationError(
+                f"Schedule must be five crontab fields (minute hour "
+                f"day-of-month month day-of-week, in {schedule_timezone()}) "
+                f"that match at least one time."
+            )
         return value

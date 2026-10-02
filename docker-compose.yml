@@ -599,6 +599,9 @@ services:
       - ALLOWED_HOSTS=localhost,127.0.0.1,open-security-guardian
     volumes:
       - guardian_logs:/app/logs
+      # Generated reports: guardian-worker writes them, guardian serves
+      # their downloads (#548).
+      - guardian_media:/app/media
     depends_on:
       # condition: service_healthy, not bare start-order. Compose starts a
       # service as soon as its dependency's container exists, not when Postgres
@@ -648,6 +651,10 @@ services:
     # task is never published to a queue no worker reads (#545; a unit test
     # compares the two).
     command: celery -A guardian worker --loglevel=info --concurrency=2 -Q default,reporting,scanning,analytics
+    # The reports it generates, for guardian to serve; without the shared
+    # volume a download found no file (#548).
+    volumes:
+      - guardian_media:/app/media
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
@@ -730,6 +737,7 @@ services:
       - GUARDIAN_SCHEDULE_ASSET_INVENTORY=${GUARDIAN_SCHEDULE_ASSET_INVENTORY:-}
       - GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS=${GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS:-}
       - GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS=${GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS:-}
+      - GUARDIAN_SCHEDULE_USER_SCHEDULES=${GUARDIAN_SCHEDULE_USER_SCHEDULES:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -1110,6 +1118,7 @@ volumes:
   prometheus_data:
   wildbox_redis_data:
   guardian_logs:
+  guardian_media:
   # Service-specific volumes
   sensor_logs:
   sensor_data:

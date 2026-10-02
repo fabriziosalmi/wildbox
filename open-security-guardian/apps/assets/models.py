@@ -268,6 +268,13 @@ class AssetGroup(models.Model):
         self.assets.add(*queryset)
 
 
+# The discovery types with an implementation behind them (#548). Cloud API
+# and CMDB discovery only log "not yet implemented"; agent reports and DNS
+# zone transfers have no code at all. The API refuses rules of the others,
+# and the schedule dispatcher does not run them.
+IMPLEMENTED_DISCOVERY_TYPES = ('network_scan',)
+
+
 class AssetDiscoveryRule(models.Model):
     """Rules for automatic asset discovery"""
     name = models.CharField(max_length=100, unique=True)

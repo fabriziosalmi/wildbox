@@ -4,8 +4,21 @@ from rest_framework import serializers
 from .alert_metrics import UnsupportedAlertRule, parse_rule
 from .models import (
     ReportTemplate, ReportSchedule, Report, Dashboard, Widget,
-    ReportMetrics, AlertRule, AlertNotification
+    ReportMetrics, AlertRule, AlertNotification,
+    SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYPES,
 )
+
+
+def validate_email_list(value, not_a_list_message):
+    """A list of e-mail addresses, shared by report schedules (#548) and alert rules (#549)."""
+    if not isinstance(value, list):
+        raise serializers.ValidationError(not_a_list_message)
+    for address in value:
+        try:
+            validate_email(address)
+        except (DjangoValidationError, TypeError):
+            raise serializers.ValidationError(f"{address!r} is not an e-mail address.")
+    return value
 
 
 class ReportTemplateSerializer(serializers.ModelSerializer):
@@ -28,7 +41,33 @@ class ReportScheduleSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReportSchedule
         fields = '__all__'
-        read_only_fields = ('id', 'created_at', 'updated_at')
+        # last_run is when the dispatcher last ran it (#548).
+        read_only_fields = ('id', 'created_at', 'updated_at', 'last_run')
+
+    def validate_recipients(self, value):
+        """A list of e-mail addresses: they are sent each report (#548)."""
+        return validate_email_list(value, "Recipients must be a list of e-mail addresses.")
+
+    def validate(self, attrs):
+        """Refuse a schedule that would only ever produce failed or empty reports (#548)."""
+        attrs = super().validate(attrs)
+        template = attrs.get('template', getattr(self.instance, 'template', None))
+        report_format = attrs.get('format', getattr(self.instance, 'format', None))
+        errors = {}
+        if template is not None and template.report_type not in SUPPORTED_REPORT_TYPES:
+            errors['template'] = (
+                f"{template.get_report_type_display()} reports cannot be scheduled: "
+                "they have no data behind them. Schedulable report types: "
+                f"{', '.join(SUPPORTED_REPORT_TYPES)}."
+            )
+        if report_format is not None and report_format not in SUPPORTED_REPORT_FORMATS:
+            errors['format'] = (
+                f"{report_format} reports are not generated yet. "
+                f"Schedulable formats: {', '.join(SUPPORTED_REPORT_FORMATS)}."
+            )
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
 
 class ReportSerializer(serializers.ModelSerializer):
@@ -103,14 +142,10 @@ class AlertRuleSerializer(serializers.ModelSerializer):
         """An object; its 'recipients', if any, a list of e-mail addresses."""
         if not isinstance(value, dict):
             raise serializers.ValidationError("Must be an object.")
-        recipients = value.get('recipients', [])
-        if not isinstance(recipients, list):
-            raise serializers.ValidationError("'recipients' must be a list of e-mail addresses.")
-        for address in recipients:
-            try:
-                validate_email(address)
-            except (DjangoValidationError, TypeError):
-                raise serializers.ValidationError(f"{address!r} is not an e-mail address.")
+        validate_email_list(
+            value.get('recipients', []),
+            "'recipients' must be a list of e-mail addresses.",
+        )
         return value
 
     def validate(self, attrs):

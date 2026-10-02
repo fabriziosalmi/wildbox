@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian runs the schedules users define** (#548). Asset discovery
+  rules and report schedules were stored with a schedule nothing read. A
+  dispatcher, sent by `guardian-beat` every minute
+  (`GUARDIAN_SCHEDULE_USER_SCHEDULES`), queues each due rule's network scan
+  and each due schedule's report, once per due time: the run is claimed by
+  a conditional update of `next_run`, so overlapping sweeps cannot both
+  queue it, and missed runs are skipped rather than replayed. The work
+  behind them did not work either, and does now: every report failed
+  (templates that never existed, a signal reading a missing `tracker`
+  field, a filter on a missing `Asset.is_active`), reports written by
+  `guardian-worker` could not be downloaded from `guardian` (they now
+  share a volume), editing a report schedule answered 500, and host
+  discovery ran a `ping` binary the image does not contain (it now probes
+  with TCP). Schedules that could not run are refused at the API with a
+  400: invalid cron expressions, unimplemented discovery types, report
+  types without data, unwritten formats, and every scan schedule, since
+  guardian cannot start an external scan. Generating one of those report
+  types or formats by hand now fails with the reason, rather than
+  completing with a placeholder score, no data, or HTML named `.pdf`.
 - **Updating a compliance result or assessment works, and starts its
   follow-up** (#555). guardian's compliance signals read
   `instance.tracker`, a django-model-utils field tracker the models never

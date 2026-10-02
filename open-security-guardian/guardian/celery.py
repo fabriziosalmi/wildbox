@@ -65,6 +65,8 @@ TASK_QUEUES = {
         'apps.vulnerabilities.tasks.check_sla_violations',
         'apps.vulnerabilities.tasks.enrich_vulnerability_with_threat_intel',
         'apps.vulnerabilities.tasks.cleanup_old_vulnerability_history',
+        # Only queues other tasks, each on its own queue (#548).
+        'apps.core.tasks.dispatch_due_schedules',
         'guardian.celery.debug_task',
     ),
 }
