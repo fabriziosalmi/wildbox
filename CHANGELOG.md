@@ -7,8 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Logout now ends the session** (#475). Tokens from the login endpoint carried
+  only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
+  ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
+  dashboard only deleted its cookie, and two logins within the same second got
+  the same token. A logged-out token stayed valid at the gateway for its whole
+  lifetime. Login tokens now carry a `jti` and an `iat`, identity's own routes
+  refuse a revoked one, both logout routes revoke, and the dashboard calls
+  revocation before clearing its cookie. Tokens issued before this release
+  still lack a `jti` and expire on their own.
+- **identity could not reach Redis** (#475). Its `REDIS_URL` came from `.env`
+  without the password Redis has required since 0.10.0, so every blacklist
+  write and read failed with "Authentication required" and was swallowed:
+  even a token with a `jti` could not have been revoked. compose now builds
+  the URL with `REDIS_PASSWORD`, as it does for every other service
+  (`IDENTITY_REDIS_URL` overrides it).
+- **The gateway auth-cache purge never reached the gateway** (#475). identity
+  called it on port 80, which answers everything but `/health` with a 301, so
+  a revoked token stayed authorized from the cache for up to its TTL. The
+  endpoint now also lives on an internal listener, port 8081, not published,
+  and that is identity's default.
+
+- **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
+  `utils.http_request` ignored the caller's `timeout` because `request_uri()`
+  does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
+  Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+
 ### Security
 
+- **cryptography 50.0.2 in every service that uses it** (#415): cspm, data,
+  guardian, identity, sensor and tools were held at 48.0.1, which carries 3
+  advisories (two fixed in 49.0.0, one in 50.0.0: a padding
+  oracle in PKCS#7 decryption). Nothing else in the locks moves. 49.0.0 stops
+  publishing wheels for Intel macOS; the containers are Linux and unaffected.
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
   PRs regenerated the locks with pip-compile instead of uv and could never pass
   the Dependency Integrity gate, so no Python fix had landed since 0.10.0.
@@ -27,6 +60,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The chaos suite measures the system now** (#428). Seven experiments
+  against the stack as the integration job starts it: cached authorization
+  survives an identity outage; new tokens fail closed with 503, then
+  immediately once the breaker opens, and work again when it closes; a
+  PostgreSQL outage is reported and recovered from without a restart; a Redis
+  outage does not block login; a crashed identity or data process is
+  restarted and served again; a 200-request burst gets only 200s and 429s.
+  Back on the nightly schedule.
+
 - **The critical-advisory gate now gates, and only on what a PR adds** (#430).
   `PR Validation Summary`, the check branch protection requires, never read
   the result of `security-scan` and did not depend on `dependency-integrity`
@@ -35,8 +77,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on advisories the PR introduces; those already on `main` are reported by the
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
-- **Chaos experiments run on demand only** until the suite is rewritten
-  (#428). The nightly load baseline is unchanged.
 
 ### Removed
 
