@@ -919,6 +919,7 @@ export default function AdminPage() {
                             size="sm"
                             onClick={() => handleDeleteUser(user.id, user.email)}
                             className="text-red-600 hover:text-red-700"
+                            data-testid="delete-user"
                             title={
                               user.is_superuser
                                 ? 'Superuser account - requires force deletion confirmation'
