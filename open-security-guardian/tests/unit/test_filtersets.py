@@ -56,40 +56,16 @@ def _queryset_for(view_cls):
 
 FILTERED = _filtered_viewsets()
 
-# These already fail on Django 4.2 / django-filter 23.2, for reasons that have
-# nothing to do with the versions: their ``filterset_fields`` name fields the
-# model does not have (TypeError "'Meta.fields' must not contain non-model
-# field names") or a JSONField django-filter cannot map. Their list endpoints
-# answer 500 whenever DjangoFilterBackend runs. strict=True: fixing one turns
-# its xfail into a failure, so it has to come off this list.
-KNOWN_BROKEN = {
-    "IntegrationLogViewSet",
-    "NotificationChannelViewSet",
-    "SyncRecordViewSet",
-    "WebhookEndpointViewSet",
-    "RemediationCommentViewSet",
-    "RemediationStepViewSet",
-    "RemediationTicketViewSet",
-}
-
-
-def _param(view_cls):
-    marks = []
-    if view_cls.__qualname__ in KNOWN_BROKEN:
-        marks.append(
-            pytest.mark.xfail(
-                strict=True, reason="filterset_fields broken before Django 5.2"
-            )
-        )
-    return pytest.param(view_cls, id=view_cls.__qualname__, marks=marks)
-
 
 def test_there_are_filtered_viewsets():
     # Guards the parametrization below against silently collecting nothing.
     assert len(FILTERED) > 0
 
 
-@pytest.mark.parametrize("view_cls", [_param(c) for c in FILTERED])
+@pytest.mark.parametrize(
+    "view_cls",
+    [pytest.param(c, id=c.__qualname__) for c in FILTERED],
+)
 def test_filterset_form_builds(view_cls):
     queryset = _queryset_for(view_cls)
     if queryset is None:

@@ -15,11 +15,17 @@ from .models import (
     ExternalSystem, IntegrationMapping, SyncRecord,
     WebhookEndpoint, IntegrationLog, NotificationChannel
 )
+from .serializers import (
+    ExternalSystemSerializer, IntegrationLogSerializer,
+    IntegrationMappingSerializer, NotificationChannelSerializer,
+    SyncRecordSerializer, WebhookEndpointSerializer,
+)
 
 
 class ExternalSystemViewSet(viewsets.ModelViewSet):
     """ViewSet for managing external system integrations"""
     queryset = ExternalSystem.objects.all()
+    serializer_class = ExternalSystemSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description', 'vendor']
@@ -52,6 +58,7 @@ class ExternalSystemViewSet(viewsets.ModelViewSet):
 class IntegrationMappingViewSet(viewsets.ModelViewSet):
     """ViewSet for managing field mappings between Guardian and external systems"""
     queryset = IntegrationMapping.objects.all()
+    serializer_class = IntegrationMappingSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_fields = ['system', 'guardian_entity', 'sync_direction', 'is_active']
@@ -76,11 +83,12 @@ class IntegrationMappingViewSet(viewsets.ModelViewSet):
 class SyncRecordViewSet(viewsets.ModelViewSet):
     """ViewSet for managing synchronization records"""
     queryset = SyncRecord.objects.all()
+    serializer_class = SyncRecordSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['system', 'sync_type', 'status', 'entity_type']
-    ordering_fields = ['sync_time', 'created_at']
-    ordering = ['-sync_time']
+    filterset_fields = ['system', 'mapping', 'sync_status', 'last_sync_direction']
+    ordering_fields = ['last_sync_at', 'next_sync_at', 'created_at']
+    ordering = ['-last_sync_at']
 
     @action(detail=False, methods=['get'])
     def sync_statistics(self, request):
@@ -104,10 +112,13 @@ class SyncRecordViewSet(viewsets.ModelViewSet):
 class WebhookEndpointViewSet(viewsets.ModelViewSet):
     """ViewSet for managing webhook endpoints"""
     queryset = WebhookEndpoint.objects.all()
+    serializer_class = WebhookEndpointSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['name', 'description']
-    filterset_fields = ['system', 'is_active', 'event_types']
+    search_fields = ['name', 'endpoint_url']
+    # event_types is a JSON list; django-filter cannot build an exact filter
+    # for a JSONField, so it is not filterable here.
+    filterset_fields = ['system', 'is_active']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
 
@@ -130,12 +141,13 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
 class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for viewing integration logs"""
     queryset = IntegrationLog.objects.all()
+    serializer_class = IntegrationLogSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ['system', 'operation_type', 'log_level', 'entity_type']
-    search_fields = ['message', 'entity_id']
-    ordering_fields = ['timestamp', 'log_level']
-    ordering = ['-timestamp']
+    filterset_fields = ['system', 'operation', 'level', 'record_id']
+    search_fields = ['message', 'external_id']
+    ordering_fields = ['created_at', 'level']
+    ordering = ['-created_at']
 
     @action(detail=False, methods=['get'])
     def error_summary(self, request):
@@ -158,10 +170,13 @@ class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
 class NotificationChannelViewSet(viewsets.ModelViewSet):
     """ViewSet for managing notification channels"""
     queryset = NotificationChannel.objects.all()
+    serializer_class = NotificationChannelSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['name', 'description']
-    filterset_fields = ['channel_type', 'is_active', 'severity_levels']
+    search_fields = ['name']
+    # severity_filter is a JSON list; django-filter cannot build an exact
+    # filter for a JSONField, so it is not filterable here.
+    filterset_fields = ['channel_type', 'is_active']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
 

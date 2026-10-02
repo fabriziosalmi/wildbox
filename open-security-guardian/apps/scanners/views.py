@@ -11,7 +11,14 @@ from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
-from .models import Scanner, ScanProfile, Scan, ScanResult, ScanSchedule
+from datetime import timedelta
+
+from django.db.models import Avg, Count, Sum
+from django.utils import timezone
+
+from .models import (
+    Scan, ScanProfile, ScanResult, ScanSchedule, ScanStatus, Scanner, ScannerStatus,
+)
 from .serializers import (
     ScannerListSerializer, ScannerDetailSerializer, ScannerConnectionTestSerializer,
     ScanProfileSerializer, ScanListSerializer, ScanDetailSerializer,
@@ -50,12 +57,40 @@ class ScannerViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         """Get scanner statistics"""
+        # ScannerStatsSerializer declares every field below as required on
+        # output; returning only the scanner counts made it raise KeyError
+        # and the endpoint answered 500.
+        now = timezone.now()
         total_scanners = Scanner.objects.count()
-        active_scanners = Scanner.objects.filter(status='active').count()
+        active_scanners = Scanner.objects.filter(status=ScannerStatus.ACTIVE).count()
+        scans = Scan.objects.all()
         data = {
             'total_scanners': total_scanners,
             'active_scanners': active_scanners,
-            'inactive_scanners': total_scanners - active_scanners
+            'inactive_scanners': total_scanners - active_scanners,
+            'error_scanners': Scanner.objects.filter(status=ScannerStatus.ERROR).count(),
+            'total_scans': scans.count(),
+            'running_scans': scans.filter(status=ScanStatus.RUNNING).count(),
+            'completed_scans': scans.filter(status=ScanStatus.COMPLETED).count(),
+            'failed_scans': scans.filter(status=ScanStatus.FAILED).count(),
+            'total_vulnerabilities_found': scans.aggregate(
+                total=Sum('total_vulnerabilities_found')
+            )['total'] or 0,
+            'avg_scan_duration_minutes': (
+                scans.filter(duration_seconds__isnull=False).aggregate(
+                    avg=Avg('duration_seconds')
+                )['avg'] or 0
+            ) / 60,
+            'scanner_types': dict(
+                Scanner.objects.values_list('scanner_type')
+                .annotate(n=Count('id'))
+                .order_by()
+            ),
+            'scan_frequency': {
+                'last_24h': scans.filter(created_at__gte=now - timedelta(days=1)).count(),
+                'last_7d': scans.filter(created_at__gte=now - timedelta(days=7)).count(),
+                'last_30d': scans.filter(created_at__gte=now - timedelta(days=30)).count(),
+            },
         }
         serializer = ScannerStatsSerializer(data)
         return Response(serializer.data)

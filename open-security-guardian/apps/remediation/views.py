@@ -15,15 +15,21 @@ from .models import (
     RemediationTicket, RemediationWorkflow, RemediationStep,
     RemediationComment, RemediationTemplate, RemediationMetrics
 )
+from .serializers import (
+    RemediationCommentSerializer, RemediationStepSerializer,
+    RemediationTemplateSerializer, RemediationTicketSerializer,
+    RemediationWorkflowSerializer,
+)
 
 
 class RemediationTicketViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation tickets"""
     queryset = RemediationTicket.objects.all()
+    serializer_class = RemediationTicketSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description', 'external_ticket_id']
-    filterset_fields = ['status', 'priority', 'assigned_to', 'ticketing_system']
+    filterset_fields = ['status', 'priority', 'assigned_to', 'system']
     ordering_fields = ['created_at', 'updated_at', 'due_date', 'priority']
     ordering = ['-created_at']
 
@@ -59,11 +65,12 @@ class RemediationTicketViewSet(viewsets.ModelViewSet):
 class RemediationWorkflowViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation workflows"""
     queryset = RemediationWorkflow.objects.all()
+    serializer_class = RemediationWorkflowSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['name', 'description']
+    search_fields = ['title', 'description']
     filterset_fields = ['vulnerability', 'status', 'priority', 'assigned_to']
-    ordering_fields = ['created_at', 'updated_at', 'due_date']
+    ordering_fields = ['created_at', 'updated_at', 'planned_completion_date']
     ordering = ['-created_at']
 
     @action(detail=True, methods=['post'])
@@ -109,11 +116,12 @@ class RemediationWorkflowViewSet(viewsets.ModelViewSet):
 class RemediationStepViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation steps"""
     queryset = RemediationStep.objects.all()
+    serializer_class = RemediationStepSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description']
-    filterset_fields = ['workflow', 'status', 'assigned_to', 'step_type']
-    ordering_fields = ['order', 'created_at', 'due_date']
+    filterset_fields = ['workflow', 'status', 'assigned_to']
+    ordering_fields = ['order', 'created_at', 'completed_at']
     ordering = ['order']
 
     @action(detail=True, methods=['post'])
@@ -145,10 +153,13 @@ class RemediationStepViewSet(viewsets.ModelViewSet):
 class RemediationCommentViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation comments"""
     queryset = RemediationComment.objects.all()
+    serializer_class = RemediationCommentSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['content']
-    filterset_fields = ['ticket', 'workflow', 'author', 'comment_type']
+    # A comment belongs to a workflow, not to a ticket: reach the ticket
+    # through the workflow.
+    filterset_fields = ['workflow', 'workflow__ticket', 'author', 'comment_type']
     ordering_fields = ['created_at']
     ordering = ['-created_at']
 
@@ -160,6 +171,7 @@ class RemediationCommentViewSet(viewsets.ModelViewSet):
 class RemediationTemplateViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation templates"""
     queryset = RemediationTemplate.objects.all()
+    serializer_class = RemediationTemplateSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
