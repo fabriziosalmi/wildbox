@@ -161,19 +161,21 @@
 .page-meta a { color: var(--accent); }
 
 /* Syntax highlighting for Rouge output, from `rougify style monokai.sublime`
-   with backgrounds removed so blocks use the pre background above. */
+   with backgrounds removed so blocks use the pre background above, and the
+   comment (#75715e) and prompt (#555555) colors lightened to reach the
+   WCAG AA 4.5:1 contrast ratio on that background. */
 .highlight .gh { color: #999999; }
 .highlight .sr { color: #f6aa11; }
 .highlight .go { color: #888888; }
-.highlight .gp { color: #555555; }
+.highlight .gp { color: #888888; }
 .highlight .gs {  }
 .highlight .gu { color: #aaaaaa; }
 .highlight .nb { color: #f6aa11; }
-.highlight .cm { color: #75715e; }
-.highlight .cp { color: #75715e; }
-.highlight .c1 { color: #75715e; }
-.highlight .cs { color: #75715e; }
-.highlight .c, .highlight .ch, .highlight .cd, .highlight .cpf { color: #75715e; }
+.highlight .cm { color: #959079; }
+.highlight .cp { color: #959079; }
+.highlight .c1 { color: #959079; }
+.highlight .cs { color: #959079; }
+.highlight .c, .highlight .ch, .highlight .cd, .highlight .cpf { color: #959079; }
 .highlight .err { color: #960050; }
 .highlight .gr { color: #960050; }
 .highlight .gt { color: #960050; }

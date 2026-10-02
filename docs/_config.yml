@@ -55,6 +55,73 @@ defaults:
       path: ""
     values:
       layout: "doc"
+  # One meta description per rendered page. Without these, jekyll-seo-tag
+  # falls back to site.description and every Markdown page shares the same
+  # description. Front matter in the page itself still takes precedence.
+  - scope:
+      path: "guides/quickstart.md"
+    values:
+      description: "Run the Wildbox stack on one machine with Docker Compose, log in, and make an authenticated API call."
+  - scope:
+      path: "guides/ports.md"
+    values:
+      description: "Reference list of the ports each Wildbox service listens on and how the stack is exposed, taken from docker-compose.yml."
+  - scope:
+      path: "guides/credentials.md"
+    values:
+      description: "How Wildbox generates its secrets and administrator credentials, and how clients authenticate to the API."
+  - scope:
+      path: "guides/ollama-llm.md"
+    values:
+      description: "How AI-assisted analysis is configured in Wildbox, and why the earlier Ollama setup no longer applies."
+  - scope:
+      path: "guides/deployment.md"
+    values:
+      description: "How to run Wildbox on a server you control: requirements, configuration, TLS, backups and operations."
+  - scope:
+      path: "api/README.md"
+    values:
+      description: "Endpoint references for the Wildbox microservices, with request examples, error handling and authentication details."
+  - scope:
+      path: "api/identity/endpoints.md"
+    values:
+      description: "Routes of the Wildbox identity service: users, JWT login, API keys, teams and the gateway's authorization checks."
+  - scope:
+      path: "api/tools/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox tools service API, reached through the gateway."
+  - scope:
+      path: "api/data/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox data service API, reached through the gateway."
+  - scope:
+      path: "api/guardian/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox guardian service API, reached through the gateway."
+  - scope:
+      path: "api/responder/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox responder service API, reached through the gateway."
+  - scope:
+      path: "api/agents/endpoints.md"
+    values:
+      description: "Hand-written endpoint reference for the Wildbox agents service API, reached through the gateway."
+  - scope:
+      path: "contributing.md"
+    values:
+      description: "Engineering notes for people working on Wildbox itself, with links to the contributor documents in the repository."
+  - scope:
+      path: "security/status.md"
+    values:
+      description: "What is known about Wildbox's security today, including open issues and how each check was made."
+  - scope:
+      path: "security/policy.md"
+    values:
+      description: "The security requirements and practices Wildbox aims for; gaps are tracked on the security status page."
+  - scope:
+      path: "security/tools-service-audit.md"
+    values:
+      description: "Historical security audit of the Wildbox tools service; see the security status page for current findings."
 
 # Files kept in the repository but intentionally NOT published.
 exclude:
