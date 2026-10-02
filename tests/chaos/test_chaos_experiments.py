@@ -1,505 +1,236 @@
 """
-Chaos Engineering test suite for Wildbox microservices.
+Chaos experiments: inject one fault into the running stack, measure what the
+system does, undo the fault, measure that it recovers.
 
-Tests system resilience under failure conditions:
-- Network failures (service isolation)
-- High latency (slow dependencies)
-- Resource exhaustion (CPU, memory, connections)
-- Cascading failures (upstream service down)
+Each experiment asserts a behaviour the code actually implements, with the
+numbers taken from the code:
 
-Based on Netflix Chaos Monkey and Gremlin patterns.
+- the gateway caches an authorisation decision for AUTH_CACHE_TTL (300 s) and
+  calls identity with a 5 s timeout; after 10 failed calls its circuit breaker
+  refuses new tokens with a 503 for 60 s
+  (open-security-gateway/nginx/lua/auth_handler.lua);
+- every service runs with `restart: unless-stopped` (docker-compose.yml);
+- identity's token blacklist fails open when Redis is unreachable
+  (open-security-identity/app/token_blacklist.py).
 
-Usage:
-    pytest tests/chaos/test_chaos_identity.py -v
-    pytest tests/chaos/ --chaos-intensity=high
+Run against a stack started the way the integration job starts it; see
+.github/workflows/chaos-and-load.yml.
 """
+
+import statistics
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
-import asyncio
-import httpx
-from typing import AsyncGenerator
-import docker
-import time
-from datetime import datetime, timedelta
-import psutil
-import subprocess
+import requests
 
-# Chaos testing utilities
-class ChaosController:
-    """
-    Controls chaos experiments on Docker containers.
-    
-    Capabilities:
-    - Network partition (disconnect service)
-    - Latency injection (delay responses)
-    - Resource limits (CPU/memory throttling)
-    - Service kill (simulate crashes)
-    """
-    
-    def __init__(self):
-        self.client = docker.from_env()
-        self._original_limits = {}
-    
-    def disconnect_service(self, service_name: str):
-        """
-        Simulate network partition (service unreachable).
-        
-        Args:
-            service_name: Container name (e.g., 'wildbox-identity-1')
-        
-        Example:
-            chaos.disconnect_service('wildbox-identity-1')
-            # Identity service now unreachable
-            # Circuit breakers should trip
-        """
-        container = self.client.containers.get(service_name)
-        container.pause()
-        print(f"[CHAOS] Disconnected {service_name}")
-    
-    def reconnect_service(self, service_name: str):
-        """Restore network connectivity."""
-        container = self.client.containers.get(service_name)
-        container.unpause()
-        print(f"[CHAOS] Reconnected {service_name}")
-    
-    def inject_latency(self, service_name: str, delay_ms: int):
-        """
-        Add network latency to service.
-        
-        Args:
-            service_name: Container name
-            delay_ms: Delay in milliseconds
-        
-        Example:
-            chaos.inject_latency('wildbox-postgres-1', 500)
-            # Database queries now take +500ms
-        """
-        container = self.client.containers.get(service_name)
-        # Use tc (traffic control) to add delay
-        exec_result = container.exec_run(
-            f"tc qdisc add dev eth0 root netem delay {delay_ms}ms",
-            privileged=True
-        )
-        print(f"[CHAOS] Injected {delay_ms}ms latency to {service_name}")
-    
-    def remove_latency(self, service_name: str):
-        """Remove network latency."""
-        container = self.client.containers.get(service_name)
-        container.exec_run(
-            "tc qdisc del dev eth0 root",
-            privileged=True
-        )
-        print(f"[CHAOS] Removed latency from {service_name}")
-    
-    def limit_cpu(self, service_name: str, cpu_quota: float):
-        """
-        Throttle CPU usage.
-        
-        Args:
-            service_name: Container name
-            cpu_quota: CPU quota (0.5 = 50%, 1.0 = 100%)
-        
-        Example:
-            chaos.limit_cpu('wildbox-agents-1', 0.2)
-            # AI agents now only have 20% CPU
-        """
-        container = self.client.containers.get(service_name)
-        # Store original limits
-        if service_name not in self._original_limits:
-            self._original_limits[service_name] = container.attrs['HostConfig']
-        
-        # Update CPU quota
-        container.update(cpu_quota=int(cpu_quota * 100000))
-        print(f"[CHAOS] Limited {service_name} to {cpu_quota * 100}% CPU")
-    
-    def limit_memory(self, service_name: str, memory_mb: int):
-        """
-        Limit memory usage.
-        
-        Args:
-            service_name: Container name
-            memory_mb: Memory limit in MB
-        """
-        container = self.client.containers.get(service_name)
-        container.update(mem_limit=f"{memory_mb}m")
-        print(f"[CHAOS] Limited {service_name} to {memory_mb}MB RAM")
-    
-    def restore_limits(self, service_name: str):
-        """Restore original resource limits."""
-        if service_name in self._original_limits:
-            container = self.client.containers.get(service_name)
-            original = self._original_limits[service_name]
-            container.update(
-                cpu_quota=original.get('CpuQuota', 100000),
-                mem_limit=original.get('Memory', 0)
+from .stack import (
+    DATA_URL,
+    IDENTITY_URL,
+    fresh_token,
+    gateway_get,
+    login,
+    wait_until,
+)
+
+pytestmark = pytest.mark.chaos
+
+# auth_handler.lua
+IDENTITY_TIMEOUT_S = 5
+BREAKER_THRESHOLD = 10
+BREAKER_OPEN_S = 60
+
+
+def timed(fn, *args, **kwargs):
+    start = time.monotonic()
+    result = fn(*args, **kwargs)
+    return result, time.monotonic() - start
+
+
+def test_cached_authorisation_survives_an_identity_outage(stack):
+    """A token the gateway has already authorised keeps working while identity
+    is unreachable, for as long as the decision is cached."""
+    token = fresh_token()
+    assert gateway_get(token).status_code == 200  # warms the cache
+
+    stack.pause("identity")
+    try:
+        response, elapsed = timed(gateway_get, token)
+        assert (
+            response.status_code == 200
+        ), f"cached token refused during identity outage: {response.status_code}"
+        assert (
+            elapsed < 2
+        ), f"cached path took {elapsed:.1f}s; it should not call identity"
+    finally:
+        stack.unpause("identity")
+
+
+def test_new_tokens_fail_closed_then_fast_while_identity_is_down(stack):
+    """With identity unreachable, a token the gateway has not seen is refused
+    with 503 -- never let through, never left hanging -- and once the breaker
+    opens the refusal is immediate. When identity returns, new tokens work
+    again within the breaker's open window."""
+    attempts = BREAKER_THRESHOLD + 3
+    tokens = []
+    for _ in range(attempts):
+        # Login tokens carry no jti or iat -- only sub, aud and exp, with exp
+        # in whole seconds -- so two logins in the same second return the
+        # same token, and the gateway answers the second from its cache. The
+        # first run of this experiment measured exactly that: one "new" token
+        # let through in 0.0 s with identity paused. Space the logins out.
+        time.sleep(1.1)
+        tokens.append(fresh_token())
+    time.sleep(1.1)  # and away from the token the fixture just used
+    assert len(set(tokens)) == attempts, "login returned the same token twice"
+
+    stack.pause("identity")
+    results = []
+    try:
+        for token in tokens:
+            response, elapsed = timed(
+                gateway_get, token, timeout=IDENTITY_TIMEOUT_S * 4
             )
-            print(f"[CHAOS] Restored limits for {service_name}")
-    
-    def kill_service(self, service_name: str):
-        """Simulate service crash."""
-        container = self.client.containers.get(service_name)
-        container.kill()
-        print(f"[CHAOS] Killed {service_name}")
-    
-    def restart_service(self, service_name: str):
-        """Restart killed service."""
-        container = self.client.containers.get(service_name)
-        container.restart()
-        print(f"[CHAOS] Restarted {service_name}")
+            results.append((response.status_code, round(elapsed, 2)))
+    finally:
+        stack.unpause("identity")
+
+    print(f"\n[chaos] identity paused, new tokens: {results}")
+    statuses = [s for s, _ in results]
+    assert all(
+        s == 503 for s in statuses
+    ), f"expected 503 for every new token, got {statuses}"
+    assert all(
+        t < IDENTITY_TIMEOUT_S + 2 for _, t in results
+    ), f"a request outlived the {IDENTITY_TIMEOUT_S}s identity timeout: {results}"
+    after_breaker = [t for _, t in results[BREAKER_THRESHOLD:]]
+    assert all(
+        t < 1 for t in after_breaker
+    ), f"breaker should answer immediately after {BREAKER_THRESHOLD} failures: {results}"
+
+    recovered = wait_until(
+        lambda: gateway_get(fresh_token(), timeout=10).status_code == 200,
+        BREAKER_OPEN_S + 30,
+        2,
+    )
+    print(f"[chaos] new tokens accepted again {recovered}s after identity returned")
+    assert recovered is not None, "new tokens still refused after the breaker window"
 
 
-# Pytest fixtures
-@pytest.fixture
-def chaos():
-    """Chaos controller fixture with automatic cleanup."""
-    controller = ChaosController()
-    yield controller
-    # Cleanup: restore all limits
-    for service in controller._original_limits.keys():
-        try:
-            controller.restore_limits(service)
-        except Exception as e:
-            print(f"Warning: Could not restore {service}: {e}")
-
-
-@pytest.fixture
-async def http_client() -> AsyncGenerator[httpx.AsyncClient, None]:
-    """HTTP client for testing APIs."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        yield client
-
-
-# Chaos tests for Identity Service
-@pytest.mark.chaos
-class TestIdentityServiceChaos:
-    """
-    Chaos tests for identity service resilience.
-    
-    Validates:
-    - Circuit breakers trip on failures
-    - Graceful degradation
-    - Recovery after network restoration
-    """
-    
-    @pytest.mark.asyncio
-    async def test_identity_network_partition(self, chaos, http_client):
-        """
-        Test behavior when identity service isolated.
-        
-        Expected:
-        - Gateway detects failure
-        - Circuit breaker opens
-        - Requests fail fast (no hanging)
-        - Service recovers after reconnection
-        """
-        # Baseline: service healthy
-        response = await http_client.get("http://localhost/health")
-        assert response.status_code == 200
-        
-        # Inject chaos: disconnect identity
-        chaos.disconnect_service('wildbox-identity-1')
-        
-        # Wait for circuit breaker to detect failure
-        await asyncio.sleep(5)
-        
-        # Verify: requests fail fast (not timeout)
-        start = time.time()
-        try:
-            await http_client.get("http://localhost/api/v1/auth/me")
-            pytest.fail("Expected request to fail")
-        except httpx.RequestError:
-            duration = time.time() - start
-            assert duration < 2.0, "Circuit breaker should fail fast"
-        
-        # Restore service
-        chaos.reconnect_service('wildbox-identity-1')
-        await asyncio.sleep(10)  # Allow circuit to close
-        
-        # Verify: service recovered
-        response = await http_client.get("http://localhost/health")
-        assert response.status_code == 200
-    
-    @pytest.mark.asyncio
-    async def test_database_latency_impact(self, chaos, http_client):
-        """
-        Test behavior when database slow.
-        
-        Expected:
-        - Requests timeout appropriately
-        - Circuit breaker trips after threshold
-        - No cascade to other services
-        """
-        # Inject chaos: 500ms database latency
-        chaos.inject_latency('wildbox-postgres-1', 500)
-        
-        # Measure response times
-        response_times = []
-        for _ in range(5):
-            start = time.time()
-            try:
-                await http_client.get("http://localhost/api/v1/auth/me")
-            except Exception:
-                pass
-            duration = time.time() - start
-            response_times.append(duration)
-        
-        # Verify: latency increased
-        avg_latency = sum(response_times) / len(response_times)
-        assert avg_latency > 0.5, f"Expected >500ms, got {avg_latency:.2f}s"
-        
-        # Cleanup
-        chaos.remove_latency('wildbox-postgres-1')
-    
-    @pytest.mark.asyncio
-    async def test_cpu_exhaustion(self, chaos, http_client):
-        """
-        Test behavior when service CPU throttled.
-        
-        Expected:
-        - Slower response times
-        - Service remains functional
-        - No crashes or deadlocks
-        """
-        # Baseline response time
-        start = time.time()
-        await http_client.get("http://localhost/health")
-        baseline = time.time() - start
-        
-        # Inject chaos: limit to 20% CPU
-        chaos.limit_cpu('wildbox-identity-1', 0.2)
-        
-        # Measure degraded performance
-        start = time.time()
-        await http_client.get("http://localhost/health")
-        degraded = time.time() - start
-        
-        # Verify: slower but functional
-        assert degraded > baseline, "Expected slower response"
-        assert degraded < 10.0, "Should not hang completely"
-        
-        # Cleanup
-        chaos.restore_limits('wildbox-identity-1')
-
-
-@pytest.mark.chaos
-class TestCascadingFailures:
-    """
-    Test cascading failure scenarios.
-    
-    Validates circuit breakers prevent cascade.
-    """
-    
-    @pytest.mark.asyncio
-    async def test_upstream_service_down(self, chaos, http_client):
-        """
-        Test when upstream dependency fails.
-        
-        Scenario:
-        - Guardian depends on Data service for IOCs
-        - Data service goes down
-        - Guardian circuit breaker should trip
-        - Guardian remains functional for non-IOC operations
-        """
-        # Kill data service
-        chaos.kill_service('wildbox-data-1')
-        await asyncio.sleep(5)
-        
-        # Verify: guardian health still responds
-        # (circuit breaker prevents cascade)
-        try:
-            response = await http_client.get("http://localhost:8013/health")
-            assert response.status_code == 200
-        except Exception as e:
-            pytest.fail(f"Guardian should remain healthy: {e}")
-        
-        # Restore data service
-        chaos.restart_service('wildbox-data-1')
-        await asyncio.sleep(10)
-    
-    @pytest.mark.asyncio
-    async def test_redis_failure_graceful_degradation(self, chaos, http_client):
-        """
-        Test behavior when Redis cache unavailable.
-        
-        Expected:
-        - Cache misses don't crash service
-        - Fallback to database queries
-        - Performance degraded but functional
-        """
-        # Disconnect Redis
-        chaos.disconnect_service('wildbox-redis-1')
-        
-        # Verify: services remain functional
-        # (should fallback to database)
-        response = await http_client.get("http://localhost/health")
-        assert response.status_code == 200
-        
-        # Restore Redis
-        chaos.reconnect_service('wildbox-redis-1')
-
-
-@pytest.mark.chaos
-class TestResourceExhaustion:
-    """
-    Test resource exhaustion scenarios.
-    
-    Validates resource limits prevent OOM/crashes.
-    """
-    
-    @pytest.mark.asyncio
-    async def test_memory_limit_respected(self, chaos, http_client):
-        """
-        Test service respects memory limits.
-        
-        Expected:
-        - Service stays within memory limit
-        - No OOM kills
-        - Graceful degradation if memory pressure
-        """
-        # Limit memory to 256MB
-        chaos.limit_memory('wildbox-agents-1', 256)
-        
-        # Trigger memory-intensive operation
-        # (AI agent analysis)
-        payload = {
-            "threat_data": {
-                "indicators": ["malicious.com"] * 1000  # Large payload
-            }
-        }
-        
-        try:
-            response = await http_client.post(
-                "http://localhost:8006/api/v1/analyze",
-                json=payload,
-                timeout=30.0
-            )
-            # Should either succeed or fail gracefully
-            assert response.status_code in [200, 503]
-        except httpx.TimeoutException:
-            pytest.fail("Service should not hang on memory pressure")
-        
-        # Cleanup
-        chaos.restore_limits('wildbox-agents-1')
-    
-    @pytest.mark.asyncio
-    async def test_connection_pool_exhaustion(self, chaos, http_client):
-        """
-        Test behavior when database connections exhausted.
-        
-        Expected:
-        - New connections rejected gracefully
-        - Existing requests complete
-        - Connection pool recovers
-        """
-        # Simulate connection pool exhaustion
-        # by making many concurrent requests
-        tasks = []
-        for _ in range(100):
-            task = http_client.get("http://localhost/api/v1/auth/me")
-            tasks.append(task)
-        
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Verify: some requests may fail, but no crashes
-        success_count = sum(
-            1 for r in results 
-            if isinstance(r, httpx.Response) and r.status_code == 200
+def test_identity_reports_and_survives_a_database_outage(stack):
+    """With PostgreSQL down, identity says so in its health report and refuses
+    logins quickly; when PostgreSQL returns, identity recovers on its own,
+    without being restarted."""
+    restarts_before = stack.restart_count("identity")
+    stack.stop("postgres")
+    try:
+        unhealthy = wait_until(
+            lambda: requests.get(f"{IDENTITY_URL}/health", timeout=10)
+            .json()
+            .get("status")
+            != "healthy",
+            30,
         )
-        assert success_count > 0, "At least some requests should succeed"
+        assert (
+            unhealthy is not None
+        ), "identity /health still reports healthy with the database down"
+
+        response, elapsed = timed(login, timeout=30)
+        print(
+            f"\n[chaos] login with database down: {response.status_code} in {elapsed:.1f}s"
+        )
+        assert response.status_code != 200, "login succeeded with the database down"
+        assert (
+            response.status_code >= 500
+        ), f"database outage reported as {response.status_code}"
+        assert elapsed < 15, f"login took {elapsed:.1f}s to fail"
+    finally:
+        stack.start("postgres")
+
+    recovered = wait_until(lambda: login(timeout=10).status_code == 200, 120, 2)
+    print(f"[chaos] login works again {recovered}s after the database returned")
+    assert recovered is not None, "identity did not recover after the database returned"
+    assert (
+        stack.restart_count("identity") == restarts_before
+    ), "identity had to be restarted to recover from a database outage"
 
 
-# Chaos experiment runner
-@pytest.mark.chaos
-class TestChaosExperiments:
-    """
-    Full chaos experiments (run manually).
-    
-    Usage:
-        pytest tests/chaos/test_chaos_experiments.py::TestChaosExperiments::test_full_outage -v
-    """
-    
-    @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Manual chaos experiment")
-    async def test_full_outage_scenario(self, chaos, http_client):
-        """
-        Simulate major outage:
-        1. Database goes down
-        2. Redis goes down
-        3. Identity service killed
-        
-        Expected:
-        - Gateway remains responsive
-        - Circuit breakers trip
-        - System recovers after restoration
-        """
-        print("\n[CHAOS] Starting full outage experiment...")
-        
-        # Phase 1: Database down
-        print("[CHAOS] Phase 1: Killing database")
-        chaos.kill_service('wildbox-postgres-1')
-        await asyncio.sleep(10)
-        
-        # Phase 2: Redis down
-        print("[CHAOS] Phase 2: Killing Redis")
-        chaos.kill_service('wildbox-redis-1')
-        await asyncio.sleep(10)
-        
-        # Phase 3: Identity down
-        print("[CHAOS] Phase 3: Killing identity service")
-        chaos.kill_service('wildbox-identity-1')
-        await asyncio.sleep(10)
-        
-        # Verify: Gateway still responds with errors
+def test_redis_outage_does_not_block_authentication(stack):
+    """Redis backs identity's token blacklist and login-attempt counter, both of
+    which fail open. Logging in and calling the API must keep working."""
+    stack.stop("wildbox-redis")
+    try:
+        response, elapsed = timed(login, timeout=30)
+        print(
+            f"\n[chaos] login with redis down: {response.status_code} in {elapsed:.1f}s"
+        )
+        assert (
+            response.status_code == 200
+        ), f"login failed with redis down: {response.status_code}"
+        assert elapsed < 10, f"login took {elapsed:.1f}s with redis down"
+
+        token = response.json()["access_token"]
+        api, api_elapsed = timed(gateway_get, token)
+        assert api.status_code == 200, f"API refused with redis down: {api.status_code}"
+        assert api_elapsed < 10
+    finally:
+        stack.start("wildbox-redis")
+
+
+@pytest.mark.parametrize("service", ["identity", "data"])
+def test_a_crashed_service_is_restarted_and_serves_again(stack, service):
+    """When a service's main process dies, `restart: unless-stopped` brings the
+    container back, it becomes healthy, and the gateway routes to it again."""
+    before = stack.crash(service)
+
+    restarted = wait_until(lambda: stack.restart_count(service) > before, 60, 1)
+    assert (
+        restarted is not None
+    ), f"{service} was not restarted after its process exited"
+
+    healthy = wait_until(lambda: stack.healthy(service), 180, 2)
+    assert healthy is not None, f"{service} restarted but never became healthy"
+
+    # nginx marks an upstream failed for fail_timeout=30s after max_fails=3.
+    served = wait_until(
+        lambda: gateway_get(fresh_token(), timeout=10).status_code == 200, 90, 2
+    )
+    print(
+        f"\n[chaos] {service}: restarted in {restarted:.0f}s, healthy +{healthy:.0f}s, "
+        f"served through the gateway +{served}s"
+    )
+    assert (
+        served is not None
+    ), f"gateway did not route to {service} again after its restart"
+
+
+def test_concurrent_burst_through_the_gateway(stack):
+    """200 authenticated requests from 50 threads: every one gets an answer,
+    no answer is a server error, and the backend is still healthy afterwards.
+    429 is an acceptable answer -- the per-IP limit_req zones exist for this."""
+    token = fresh_token()
+    assert gateway_get(token).status_code == 200
+
+    def one(_):
         try:
-            response = await http_client.get("http://localhost/health")
-            print(f"[CHAOS] Gateway status: {response.status_code}")
-        except Exception as e:
-            print(f"[CHAOS] Gateway error (expected): {e}")
-        
-        # Recovery Phase 1: Restore database
-        print("[CHAOS] Recovery 1: Restarting database")
-        chaos.restart_service('wildbox-postgres-1')
-        await asyncio.sleep(20)
-        
-        # Recovery Phase 2: Restore Redis
-        print("[CHAOS] Recovery 2: Restarting Redis")
-        chaos.restart_service('wildbox-redis-1')
-        await asyncio.sleep(10)
-        
-        # Recovery Phase 3: Restore identity
-        print("[CHAOS] Recovery 3: Restarting identity")
-        chaos.restart_service('wildbox-identity-1')
-        await asyncio.sleep(30)
-        
-        # Verify: Full recovery
-        response = await http_client.get("http://localhost/health")
-        assert response.status_code == 200, "System should fully recover"
-        print("[CHAOS] Experiment complete - system recovered")
+            response, elapsed = timed(gateway_get, token, timeout=30)
+            return response.status_code, elapsed
+        except requests.RequestException as exc:
+            return type(exc).__name__, None
 
+    with ThreadPoolExecutor(max_workers=50) as pool:
+        results = list(pool.map(one, range(200)))
 
-# Pytest configuration
-def pytest_configure(config):
-    """Register chaos marker."""
-    config.addinivalue_line(
-        "markers",
-        "chaos: mark test as chaos engineering experiment"
+    statuses = {}
+    for status, _ in results:
+        statuses[status] = statuses.get(status, 0) + 1
+    latencies = sorted(t for _, t in results if t is not None)
+    p95 = latencies[int(len(latencies) * 0.95) - 1] if latencies else None
+    print(
+        f"\n[chaos] burst statuses {statuses}, median {statistics.median(latencies):.2f}s, "
+        f"p95 {p95:.2f}s"
     )
 
-
-# Example usage
-"""
-# Run all chaos tests
-pytest tests/chaos/ -v -m chaos
-
-# Run specific chaos test
-pytest tests/chaos/test_chaos_identity.py::TestIdentityServiceChaos::test_identity_network_partition -v
-
-# Run chaos experiments (manual)
-pytest tests/chaos/test_chaos_experiments.py::TestChaosExperiments::test_full_outage_scenario -v -s
-
-# Run with high chaos intensity
-pytest tests/chaos/ -v --chaos-intensity=high
-
-# View chaos test report
-pytest tests/chaos/ --html=chaos-report.html
-"""
+    assert set(statuses) <= {200, 429}, f"unexpected answers under load: {statuses}"
+    assert statuses.get(200, 0) > 0, "no request succeeded"
+    assert requests.get(f"{DATA_URL}/health", timeout=10).status_code == 200
