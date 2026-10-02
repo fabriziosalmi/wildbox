@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   system or notification channel now sets `created_by` to the
   gateway-authenticated user instead of leaving it null.
 
+- **`make start` no longer leaves the data service crash-looping.** It layers
+  `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
+  whose `ENVIRONMENT` is `production`; data refuses that combination. The
+  development overlay now sets `ENVIRONMENT=development` for data as well.
+
 - **Password change and self-deletion work again** (#501). identity's custom
   routes verified with passlib bcrypt, which cannot read the Argon2id hashes
   fastapi-users writes for every account, so they failed for every user.
@@ -191,6 +196,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens, updates and closes.
 
 ### Documentation
+
+- **README rewritten from verified facts.** It described components the
+  project no longer has (Stripe billing, OpenAI, Elasticsearch, Grafana,
+  NLTK), claimed 50+ threat feeds (there are 7) and a stale v0.8.0 roadmap,
+  and its quick start ended in a stack where `data` refused to start. The
+  new README documents the configuration CI starts on every change, an HTTPS
+  health check and login against the generated certificate, one table of
+  capabilities with real counts, and links into the published docs.
 
 - **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
   `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts

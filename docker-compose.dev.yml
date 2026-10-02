@@ -42,6 +42,11 @@ services:
     environment:
       - CORS_ENABLED=true
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
+      # This overlay is a development stack, so say so: .env from
+      # generate_secrets.py sets ENVIRONMENT=production, and data refuses
+      # DEBUG=true in production ("DEBUG must be False in production"), so
+      # `make start` left it crash-looping.
+      - ENVIRONMENT=development
       - DEBUG=true
       - LOG_LEVEL=DEBUG
       # CRITICAL: Force correct PostgreSQL password from .env
