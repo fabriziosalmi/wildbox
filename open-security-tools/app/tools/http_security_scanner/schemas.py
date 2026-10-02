@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field, HttpUrl
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...utils.tls import VERIFY_SSL_DESCRIPTION
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
@@ -27,6 +28,10 @@ class HttpSecurityScannerInput(BaseToolInput):
     check_subpaths: bool = Field(
         default=False,
         description="Check common subpaths like /admin, /api, etc."
+    )
+    verify_ssl: bool = Field(
+        default=True,
+        description=VERIFY_SSL_DESCRIPTION
     )
 
 

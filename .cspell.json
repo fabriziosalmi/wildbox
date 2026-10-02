@@ -265,6 +265,7 @@
     "gestita",
     "getattr",
     "getenv",
+    "getpeercert",
     "gitattributes",
     "github",
     "GitHub Actions",

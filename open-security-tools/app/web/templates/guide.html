@@ -1981,27 +1981,26 @@ MemoryError: Unable to allocate memory
             <h3>🌐 Network & HTTP Issues</h3>
             
             <h4>❌ SSL/TLS Errors</h4>
-            <div class="code-block"><pre># Problem: SSL certificate verification failures
-aiohttp.ClientConnectorSSLError: Cannot connect to host example.com:443 ssl:True
+            <div class="code-block"><pre># Problem: the target's certificate does not verify
+aiohttp.ClientConnectorCertificateError: Cannot connect to host example.com:443 ssl:True
+[SSLCertVerificationError: (1, '[SSL: CERTIFICATE_VERIFY_FAILED] ...')]
 
-# Solutions:
-✅ Add SSL verification options to input schema:
-   verify_ssl: bool = Field(default=True, description="Verify SSL certificates")
+# Handling:
+✅ Verify by default; honour the per-scan verify_ssl input (default True):
+   from app.utils.tls import certificate_error_message, client_ssl
 
-✅ Configure SSL context properly:
-   ssl_context = ssl.create_default_context()
-   if not verify_ssl:
-       ssl_context.check_hostname = False
-       ssl_context.verify_mode = ssl.CERT_NONE
-   
-   connector = aiohttp.TCPConnector(ssl=ssl_context)
+   connector = aiohttp.TCPConnector(ssl=client_ssl(input_data.verify_ssl))
 
-✅ Handle SSL errors gracefully:
+✅ Report the failure, with its reason, as the result of the scan:
    try:
        async with session.get(url) as response:
            return await response.text()
-   except aiohttp.ClientConnectorSSLError:
-       return {"error": "SSL verification failed", "suggestion": "Try with verify_ssl=false"}</pre></div>
+   except aiohttp.ClientConnectorCertificateError as e:
+       return {"success": False, "error_message": certificate_error_message(e, url)}
+
+❌ Do not retry without verification, and do not propose disabling it in
+   results, messages or UI: whether to set verify_ssl=false is the user's
+   decision for that scan.</pre></div>
 
             <h4>❌ Rate Limiting</h4>
             <div class="code-block"><pre># Problem: External APIs rate limiting requests

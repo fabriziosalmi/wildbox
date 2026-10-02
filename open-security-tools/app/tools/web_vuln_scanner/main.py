@@ -14,6 +14,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
+from ...utils.tls import certificate_error_message, client_ssl
 from ...tool_config import ToolConfig
 from .schemas import (
     WebVulnScannerInput, WebVulnScannerOutput, VulnerabilityFinding,
@@ -32,13 +33,18 @@ TOOL_INFO = {
 }
 
 
-async def check_security_headers(url: str, rate_limiter: RateLimiter = None) -> List[SecurityHeader]:
-    """Check for security headers in HTTP response."""
+async def check_security_headers(url: str, rate_limiter: RateLimiter = None,
+                                 verify_ssl: bool = True) -> List[SecurityHeader]:
+    """Check for security headers in HTTP response.
+
+    A TLS certificate verification failure is re-raised, not logged and
+    swallowed: the caller reports it instead of an empty header list.
+    """
     security_headers = []
     
     try:
         timeout = aiohttp.ClientTimeout(total=10)
-        connector = aiohttp.TCPConnector(ssl=False)
+        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
         
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             # Apply rate limiting if rate_limiter is provided
@@ -66,19 +72,22 @@ async def check_security_headers(url: str, rate_limiter: RateLimiter = None) -> 
                         recommendation=recommendation
                     ))
                     
+    except aiohttp.ClientConnectorCertificateError:
+        raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error checking security headers: {e}")
         
     return security_headers
 
 
-async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter: RateLimiter = None) -> List[VulnerabilityFinding]:
+async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter: RateLimiter = None,
+                                   verify_ssl: bool = True) -> List[VulnerabilityFinding]:
     """Scan for common web vulnerabilities."""
     vulnerabilities = []
     
     try:
         timeout = aiohttp.ClientTimeout(total=15)
-        connector = aiohttp.TCPConnector(ssl=False)
+        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
         
         async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
             # Test for basic XSS
@@ -100,6 +109,8 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                                 remediation="Implement proper input validation and output encoding"
                             ))
                             break
+                except aiohttp.ClientConnectorCertificateError:
+                    raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
                     logger.error(f"Error testing XSS on {url}: {e}")
                     pass
@@ -128,6 +139,8 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                     
                     if any(v.id == "SQLi-001" for v in vulnerabilities):
                         break
+                except aiohttp.ClientConnectorCertificateError:
+                    raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
                     logger.error(f"Error testing SQL injection on {test_url}: {e}")
                     pass
@@ -159,10 +172,14 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                                     evidence="Git repository files accessible",
                                     remediation="Remove .git directory from web-accessible location"
                                 ))
+                except aiohttp.ClientConnectorCertificateError:
+                    raise
                 except (aiohttp.ClientError, asyncio.TimeoutError, Exception) as e:
                     logger.error(f"Error testing information disclosure on {test_url}: {e}")
                     pass
                     
+    except aiohttp.ClientConnectorCertificateError:
+        raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Error during vulnerability scanning: {e}")
         
@@ -194,14 +211,40 @@ async def execute_tool(input_data: WebVulnScannerInput) -> WebVulnScannerOutput:
     # Initialize rate limiter
     rate_limiter = RateLimiter(max_requests=10, time_window=60)
     
-    # Get security headers
-    security_headers = await check_security_headers(input_data.target_url, rate_limiter)
-    
-    # Scan for vulnerabilities
-    vulnerabilities = await scan_for_vulnerabilities(input_data.target_url, input_data.scan_depth, rate_limiter)
+    try:
+        # Get security headers
+        security_headers = await check_security_headers(
+            input_data.target_url, rate_limiter, verify_ssl=input_data.verify_ssl
+        )
+
+        # Scan for vulnerabilities
+        vulnerabilities = await scan_for_vulnerabilities(
+            input_data.target_url, input_data.scan_depth, rate_limiter,
+            verify_ssl=input_data.verify_ssl
+        )
+    except aiohttp.ClientConnectorCertificateError as e:
+        # Reported as-is. There is no fallback to an unverified connection.
+        message = certificate_error_message(e, input_data.target_url)
+        logger.warning(message)
+        return WebVulnScannerOutput(
+            success=False,
+            error_message=message,
+            target_url=input_data.target_url,
+            scan_depth=input_data.scan_depth.value,
+            timestamp=start_time,
+            duration=(datetime.now() - start_time).total_seconds(),
+            status="tls_verification_failed",
+            pages_scanned=0,
+            ssl_info={"enabled": True, "verified": False, "error": message},
+        )
     
     # Check SSL info
     ssl_info = await check_ssl_info(input_data.target_url, rate_limiter)
+    if ssl_info.get("enabled"):
+        # Record whether the results came over a verified connection.
+        ssl_info["verified"] = input_data.verify_ssl
+        if not input_data.verify_ssl:
+            ssl_info["note"] = "Certificate verification was disabled for this scan (verify_ssl=false)"
     
     # Calculate summary
     summary = {"critical": 0, "high": 0, "medium": 0, "low": 0}
@@ -225,6 +268,7 @@ async def execute_tool(input_data: WebVulnScannerInput) -> WebVulnScannerOutput:
     duration = (datetime.now() - start_time).total_seconds()
     
     return WebVulnScannerOutput(
+        success=True,
         target_url=input_data.target_url,
         scan_depth=input_data.scan_depth.value,
         timestamp=start_time,
