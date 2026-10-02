@@ -118,13 +118,11 @@ services:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
       - DEBUG=false
-      # No CORS_ORIGINS here. identity declares cors_origins as list[str],
-      # which pydantic-settings reads from the environment as JSON only, and
-      # .env carries the comma-separated form every other service parses: the
-      # value made identity exit at import ("error parsing value for field
-      # cors_origins") and restart forever. The base file does not pass it
-      # either; identity keeps its built-in origins, and the browser reaches
-      # it through the gateway on the same origin as the dashboard.
+      # Comma-separated, like the other services; identity also accepts a
+      # JSON list. It used to read JSON only and crash-looped on this value
+      # (#531). Empty allows no cross-origin requests: the browser reaches
+      # identity through the gateway, on the dashboard's own origin.
+      - CORS_ORIGINS=${CORS_ORIGINS}
       - ENABLE_METRICS=true
       - REDIS_PASSWORD=${REDIS_PASSWORD}
     deploy:
