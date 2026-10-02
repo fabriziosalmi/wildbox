@@ -135,6 +135,15 @@ is at the top of the file.
   (`POST /api/v1/reports/templates/{id}/generate/`). If you added a periodic
   task for it in the Django admin, delete that row, or the worker logs an
   unregistered task each time beat sends it.
+- The blue/green experiment is removed: `docker-compose.blue-green.yml`,
+  `haproxy/`, the `blue_green_*.sh` scripts under `scripts/shell-scripts/`
+  and the `Blue-Green guardian tasks` workflow. It could not complete a
+  deployment for any service (#552): HAProxy routed to services the file did
+  not define, the traffic switch rewrote the config into an invalid one, and
+  the deploy script called a smoke-test script that did not exist. Nothing
+  in `docker-compose.yml` or `docker-compose.prod.yml` used it. If you kept a
+  copy, it is not maintained; deploy with `docker-compose.prod.yml` as the
+  [deployment guide](https://www.wildbox.io/guides/deployment/) describes.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -187,31 +196,7 @@ in the production overlay, sits on `data` alone.
 - `GUARDIAN_BASE_URL` (optional) prefixes the vulnerability link in the SLA
   and assignment e-mails.
 
-### 14. Blue/green: guardian runs its tasks there too (only if you use it)
-
-`docker-compose.blue-green.yml` ran guardian's API in two colors but no
-worker and no beat, so a blue/green deployment ran none of guardian's tasks.
-It now has `guardian-worker-blue` and `guardian-worker-green`, and one
-`guardian-beat` for both colors, which runs the image of the color named by
-`GUARDIAN_ACTIVE_COLOR` (`blue` when unset). `blue_green_deploy.sh guardian`
-and `blue_green_rollback.sh guardian` move the worker and the beat with the
-traffic through `scripts/shell-scripts/blue_green_guardian_tasks.sh`.
-
-- **Set `GUARDIAN_SECRET_KEY`** in the environment the file is used with;
-  guardian refuses to start without it, and the file now says so.
-- **Never start a second beat.** Do not run `guardian-beat` from
-  `docker-compose.yml` against the same database and Redis as a blue/green
-  stack.
-- **After moving guardian to green by hand**, pass
-  `GUARDIAN_ACTIVE_COLOR=green` to any later `docker compose up` that
-  includes `guardian-beat`; without it beat returns to blue's image (still a
-  single beat).
-- **Keep tasks compatible across one release.** While both colors' workers
-  run, during the switch, a task queued by one color can run on the other's
-  code, as requests already do against the shared database: change a task's
-  arguments or the tables it reads in two releases, not one.
-
-### 15. guardian's alert rules measure real data and stop repeating themselves
+### 14. guardian's alert rules measure real data and stop repeating themselves
 
 Every alert rule was evaluated against 0, whatever it named, and a rule that
 fired notified on every sweep. Rules now compute the metric they name, and
@@ -230,8 +215,7 @@ and a notification log; `guardian` applies it when it starts.
   and notifies once. The e-mail template was missing, so no alert e-mail was
   ever actually sent before; set `notification_config.recipients` on a rule,
   or `DEFAULT_NOTIFICATION_RECIPIENTS`, for them to reach someone.
-- `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (optional, `guardian-worker`, and
-  every guardian container in `docker-compose.blue-green.yml`): seconds
+- `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (optional, `guardian-worker`): seconds
   between reminders while a rule keeps firing, default 86400, or `off`.
   Anything else stops the container at start-up.
 - `trigger_count` and `last_triggered` now count and date the times a rule
@@ -262,9 +246,8 @@ describes what can be scheduled.
   disable the ones you have.
 - **A new volume, `guardian_media`**, holds generated reports, shared by
   `guardian-worker`, which writes them, and `guardian`, which serves their
-  downloads (`guardian-media` in `docker-compose.blue-green.yml`, shared by
-  both colors). Reports generated before the upgrade were never completed,
-  so there is nothing to move.
+  downloads. Reports generated before the upgrade were never completed, so
+  there is nothing to move.
 - Scheduled reports are e-mailed to the schedule's `recipients` when they
   are ready, or to `DEFAULT_NOTIFICATION_RECIPIENTS` if it has none.
 - A network scan now finds a host by TCP connection on ports 80, 443, 22 and
