@@ -29,6 +29,14 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    ignore:
+      # @types/node describes the runtime, and the runtime is the node major
+      # pinned in open-security-dashboard/Dockerfile and the CI workflows (24).
+      # A newer major types APIs that node 24 does not have. Move it by hand
+      # together with the base image.
+      - dependency-name: "@types/node"
+        update-types:
+          - "version-update:semver-major"
 
   - package-ecosystem: "docker"
     directories:

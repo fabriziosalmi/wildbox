@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The dashboard type-checks against the node it runs on** (#521):
+  `@types/node` moves from 20 to 24, the major in the Dockerfile and in
+  CI since node 24 became the base image. Dependabot no longer proposes
+  `@types/node` majors (it offered 26, which types APIs node 24 lacks);
+  the types move by hand with the base image.
+
 - **Dashboard icons are hidden from screen readers** (#520): lucide-react
   0.378 to 1.50. The icons are decorative, but only 2 of the 23 on the
   vulnerabilities page carried `aria-hidden`, so assistive technology
