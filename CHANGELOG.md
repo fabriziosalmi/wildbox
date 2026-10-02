@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the packages with a known advisory, within the ranges `requirements.in`
   allows, and lists the rest; a weekly workflow opens the PR. This run moved 19
   pins, among them PyJWT, urllib3, tornado, anyio and oauthlib.
+- **aiohttp 3.14.3 in cspm, data, sensor and tools** (#415), from 3.14.1: 3
+  advisories, among them request smuggling through WebSocket upgrades in the
+  server, which the sensor's local API runs. Patch releases, bug fixes only.
 - **python-jose is gone, and ecdsa with it** (#415). It was pinned in cspm, data
   and guardian only because `open_security_shared.auth_utils` imported it, and
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
