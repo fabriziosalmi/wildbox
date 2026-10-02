@@ -95,11 +95,9 @@ exclude:
   - api/CONTRIBUTING.md
   - api/GENERATION_GUIDE.md
   - api/TEMPLATE.md
-  # A November 2024 snapshot (19 findings) that no tool consumes and that no
-  # longer describes the code; see security/status.md for the current state.
-  - security/findings.json
 
-# The sitemap is maintained by hand in sitemap.xml.
+# sitemap.xml is generated at build time from _data/docs_nav.yml plus a fixed
+# list of standalone HTML pages.
 
 # Include dot-folders (required by Jekyll for RFC 9116 security.txt)
 include:

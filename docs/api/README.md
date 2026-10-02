@@ -18,7 +18,7 @@ service and the endpoint.
 | **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
 | **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
 | **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
-| **CSPM** | Not written yet | - |
+| **CSPM** | Not written yet. The service runs (31 checks across AWS, Azure and GCP); its routes are under `/api/v1/cspm/` | - |
 
 ## Reaching the APIs
 

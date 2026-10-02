@@ -44,11 +44,6 @@ permalink: /sitemap.xml
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://www.wildbox.io/api/swagger-index.html</loc>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
     <loc>https://www.wildbox.io/api/agents-api.html</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>

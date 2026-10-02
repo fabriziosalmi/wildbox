@@ -60,9 +60,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to the published page. The API cards that said "Coming Soon" for tools,
   identity, data and guardian link to their endpoint references, and
   `docs/api/README.md` is published at `/api/`. The dead `collections`
-  configuration, the unused remote theme, the stale `docs/index.md` and the
-  2024 `security/findings.json` snapshot are no longer published, and the
-  sitemap lists only pages the build produced.
+  configuration, the unused remote theme and the stale `docs/index.md` are
+  gone, and the sitemap lists only pages the build produced.
+- **`docs/security/findings.json` is deleted.** It was a November 2024 dump
+  with local `/Users/...` paths that contradicted the status page; nothing
+  read it. It remains in git history.
+- **`api/swagger-index.html` redirects to the API overview.** It called itself
+  the index of all APIs and listed two of six; Redoc pages for the other four
+  were not generated because no exported OpenAPI document exists for them.
 
 ### Removed
 
