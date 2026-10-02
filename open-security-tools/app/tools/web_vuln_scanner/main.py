@@ -121,7 +121,10 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                 test_url = f"{url}?id={urllib.parse.quote(payload)}"
                 try:
                     async with session.get(test_url) as response:
-                        content = await response.text().lower()
+                        # Parenthesised: `await response.text().lower()` calls
+                        # .lower() on the coroutine and raised AttributeError,
+                        # so this check never reported anything (#507).
+                        content = (await response.text()).lower()
                         sql_errors = ["mysql_fetch_array", "sql syntax", "sqlite_step"]
                         
                         for error in sql_errors:
