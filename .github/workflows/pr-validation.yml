@@ -7,6 +7,11 @@ on:
       - develop
     types: [opened, synchronize, reopened]
 
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   # Validate docker-compose configuration
   validate-docker:
@@ -74,6 +79,10 @@ jobs:
 
   # Security checks
   security-scan:
+    # Uploads the Trivy SARIF report to code scanning.
+    permissions:
+      contents: read
+      security-events: write
     name: Security Scan
     runs-on: ubuntu-latest
     steps:

@@ -21,6 +21,11 @@ on:
         type: choice
         options: [all, chaos, load]
 
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   chaos:
     name: Chaos experiments
