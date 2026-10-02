@@ -24,8 +24,7 @@ on:
 jobs:
   chaos:
     name: Chaos experiments
-    # Manual only until the rewritten suite (#428) has been green on dispatch.
-    if: github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'chaos')
+    if: github.event_name == 'schedule' || inputs.suite == 'all' || inputs.suite == 'chaos'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
