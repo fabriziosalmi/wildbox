@@ -7,6 +7,8 @@ from fastapi import Request, HTTPException, status
 from pydantic import BaseModel
 import logging
 
+from .url_guard import is_local_hostname, parse_target_url
+
 logger = logging.getLogger(__name__)
 
 class InputSanitizer:
@@ -125,38 +127,31 @@ class InputSanitizer:
 
     @classmethod
     def validate_url(cls, url: str) -> str:
-        """Validate and sanitize URL inputs. Blocks SSRF attempts."""
+        """Validate a URL that a tool will connect to. Blocks SSRF attempts.
+
+        Leading and trailing whitespace is stripped and the stripped URL is
+        returned. The structure is checked by ``parse_target_url``, the same
+        parser ``SecurityValidator.validate_url`` uses (scheme, no user info,
+        port range, no control characters or whitespace, canonical host
+        spelling), and the host is then resolved: every address it resolves
+        to must be public.
+        """
         if not isinstance(url, str):
             raise ValueError("URL must be a string")
 
         url = url.strip()
-
-        # Length check
-        if len(url) > 2048:
-            raise ValueError("URL too long")
-
-        # Only allow http/https schemes
-        if not re.match(r'^https?://', url, re.IGNORECASE):
-            raise ValueError("URL must start with http:// or https://")
-
-        # Parse the URL to extract the hostname
-        from urllib.parse import urlparse
-        parsed = urlparse(url)
-        hostname = parsed.hostname
-
-        if not hostname:
-            raise ValueError("URL must contain a valid hostname")
+        target = parse_target_url(url)
 
         # Block known dangerous hostnames
         blocked_hostnames = {
-            'localhost', 'metadata.google.internal',
+            'metadata.google.internal',
             'metadata.internal', 'instance-data',
         }
-        if hostname.lower() in blocked_hostnames:
-            raise ValueError(f"URL hostname '{hostname}' is blocked (SSRF protection)")
+        if is_local_hostname(target.host) or target.host in blocked_hostnames:
+            raise ValueError(f"URL hostname '{target.host}' is blocked (SSRF protection)")
 
         # Resolve hostname to IP and validate
-        cls._validate_ip_not_private(hostname)
+        cls._validate_ip_not_private(target.host)
 
         return url
 
@@ -259,8 +254,12 @@ class InputSanitizer:
         }
         if addr in CLOUD_METADATA_IPS:
             return True
+        # not is_global also covers ranges the flags below miss, such as
+        # shared address space (100.64.0.0/10), matching the host check in
+        # SecurityValidator._validate_public_host.
         return (
-            addr.is_private
+            not addr.is_global
+            or addr.is_private
             or addr.is_loopback
             or addr.is_link_local
             or addr.is_reserved

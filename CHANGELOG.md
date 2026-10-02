@@ -222,6 +222,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The tools service validates target URLs by parsing them** (#561).
+  `SecurityValidator.validate_url` ran the free-text injection patterns
+  over the whole URL, so it refused `http://` targets, any query string,
+  `&` in a path and hosts such as `shop.example.com` (the `sh` pattern),
+  and `sql_injection_scanner` could not scan the parameters it exists to
+  test. It also accepted what those patterns did not cover:
+  `user:pass@host`, CR/LF and other control characters, out-of-range
+  ports, and numeric host spellings that clients resolve to loopback
+  (`2130706433`, `0x7f000001`, `017700000001`, `127.1`), plus
+  `localhost.`. Both URL validators (`SecurityValidator` and
+  `InputSanitizer`, which also backs `UrlField`, `url_analyzer` and
+  `static_malware_analyzer`) now share one parser: no whitespace or
+  control characters, scheme `http` or `https`, a host and no user info,
+  port 1 to 65535, a valid (internationalized) domain name or a
+  canonical IP literal (other IPv4 spellings are refused, not
+  normalized), and no `localhost` or `*.localhost`. Free-text fields keep
+  the pattern check.
+  `InputSanitizer` now also refuses every address that is not globally
+  routable, such as `100.64.0.0/10`. `sql_injection_scanner` also
+  returns its result again: its output lacked the required `success`
+  field, so every completed scan failed validation.
+
 - **Bandit reports no medium-or-higher findings** in the service code.
   The tools service SSRF guard let every private address through over
   `https://`: `SecurityValidator._validate_public_host` raised its
