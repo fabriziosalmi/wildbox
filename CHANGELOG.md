@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`make clean` no longer prunes the whole Docker host.** It ran
+  `docker system prune -f --volumes`, deleting every unused volume and image
+  on the machine, other projects' data included; it now clears local caches
+  only. Every Makefile target uses `docker compose`, and `.env.example` no
+  longer carries a `REDIS_URL` without password that nothing reads.
+
 - **The dashboard type-checks against the node it runs on** (#521):
   `@types/node` moves from 20 to 24, the major in the Dockerfile and in
   CI since node 24 became the base image. Dependabot no longer proposes
