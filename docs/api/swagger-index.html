@@ -4,56 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Wildbox API Documentation</title>
-    <meta name="description" content="Interactive OpenAPI documentation for Wildbox security services">
+    <!--
+      This page used to be an "index of all APIs" that listed two of the six
+      services. The API overview in docs.html now lists all of them, with the
+      endpoint references and the two Redoc pages that exist. Kept as a
+      redirect so existing links keep working.
+    -->
+    <meta name="robots" content="noindex, follow">
+    <link rel="canonical" href="https://www.wildbox.io/docs.html#api-docs">
+    <meta http-equiv="refresh" content="0; url=/docs.html#api-docs">
     <link rel="icon" href="/favicon.ico">
-    <meta name="theme-color" content="#0a0b0d">
-    <script src="/vendor/tailwindcss/tailwind.js"></script>
     <link rel="stylesheet" href="/assets/site.css">
 </head>
 <body>
-    <nav class="site-nav sticky top-0 z-50">
-        <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-            <a href="/index.html" class="flex items-center gap-2.5">
-                <img src="/images/wildbox-mark.png" alt="Wildbox" class="w-8 h-8 object-contain">
-                <span class="text-lg font-semibold tracking-tight">Wildbox</span>
-            </a>
-            <div class="hidden md:flex gap-8 items-center text-sm">
-                <a href="/docs.html" class="nav-link">Documentation</a>
-                <a href="/api-reference.html" class="nav-link">API</a>
-                <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
-            </div>
-        </div>
-    </nav>
-
-    <main class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        <div class="mb-10">
-            <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-3">Interactive API documentation</h1>
-            <p class="text-muted text-lg">Each service exposes an OpenAPI 3.0 specification with full endpoint details, request and response examples, and authentication requirements.</p>
-        </div>
-
-        <div class="surface p-5 mb-10" style="border-left: 3px solid var(--accent);">
-            <p class="text-muted text-sm">Looking for a single overview? See the <a href="/api-reference.html" class="accent">API reference</a>. For live Swagger UI, run the stack and open each service's <code class="inline-code">/docs</code> endpoint.</p>
-        </div>
-
-        <div class="grid md:grid-cols-2 gap-5">
-            <div class="card p-6">
-                <h2 class="text-lg font-semibold mb-2">Agents service</h2>
-                <p class="text-muted text-sm leading-relaxed mb-5">LLM-based threat analysis and intelligence enrichment for indicators of compromise.</p>
-                <a href="agents-api.html" class="btn btn-primary px-4 py-2 text-sm">View documentation</a>
-            </div>
-            <div class="card p-6">
-                <h2 class="text-lg font-semibold mb-2">Responder service</h2>
-                <p class="text-muted text-sm leading-relaxed mb-5">Incident response playbook execution, remediation automation, and workflow management.</p>
-                <a href="responder-api.html" class="btn btn-primary px-4 py-2 text-sm">View documentation</a>
-            </div>
-        </div>
+    <main style="max-width: 40rem; margin: 4rem auto; padding: 0 16px;">
+        <h1>API documentation has moved</h1>
+        <p class="text-muted">The list of Wildbox APIs is now in the <a class="accent" href="/docs.html#api-docs">API overview</a>.</p>
     </main>
-
-    <footer class="border-t divider px-4 sm:px-6 lg:px-8 py-10 mt-8">
-        <div class="max-w-5xl mx-auto text-sm text-faint flex flex-col sm:flex-row gap-2 justify-between">
-            <p>Wildbox Security Platform &middot; <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="accent">GitHub</a></p>
-            <p>OpenAPI 3.0 &middot; MIT License &middot; <a href="/privacy.html" class="accent">Privacy &amp; legal</a></p>
-        </div>
-    </footer>
 </body>
 </html>

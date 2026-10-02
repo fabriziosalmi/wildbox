@@ -181,8 +181,20 @@ STATICFILES_DIRS = [
     BASE_DIR / 'static',
 ]
 
-# WhiteNoise configuration
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+# WhiteNoise configuration.
+# STATICFILES_STORAGE was removed in Django 5.1 and is silently ignored there:
+# static files would fall back to the plain StaticFilesStorage, without the
+# compressed, hashed copies WhiteNoise serves. STORAGES (Django >= 4.2) is the
+# replacement; "default" has to be spelled out because setting STORAGES
+# replaces Django's default for both aliases.
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 
 # Media files
 MEDIA_URL = '/media/'
