@@ -2,14 +2,14 @@
 
 **Version:** 1.0  
 **Date:** January 2025  
-**Status:** ✅ Complete (8/8 patterns)  
+**Status:** ✅ Complete (7/7 patterns)  
 **Commit:** `e2f0e74`
 
 ---
 
 ## Executive Summary
 
-Implemented **8 production-grade architectural patterns** to transform Wildbox from "vibecoding" to enterprise-grade reliability. These patterns are battle-tested by FAANG companies (Netflix, Stripe, Uber, Google) and address critical gaps in resilience, observability, and deployment safety.
+Implemented **7 production-grade architectural patterns** to transform Wildbox from "vibecoding" to enterprise-grade reliability. These patterns are battle-tested by FAANG companies (Netflix, Stripe, Uber, Google) and address critical gaps in resilience, observability, and deployment safety.
 
 **Total Impact:**
 
@@ -644,107 +644,6 @@ async def disable_flag(key: str):
 
 ---
 
-## 8. Blue/Green Deployments 🔵🟢
-
-**Files:**
-
-- `/docker-compose.blue-green.yml` (200 lines)
-- `/scripts/shell-scripts/blue_green_deploy.sh` (80 lines)
-- `/scripts/shell-scripts/blue_green_rollback.sh` (60 lines)
-- `/scripts/shell-scripts/blue_green_health.sh` (90 lines)
-- `/haproxy/haproxy.cfg` (100 lines)
-
-### Problem Solved
-
-Without blue/green deployments:
-
-- Downtime during deployments (service restarts)
-- No safe rollback (need to rebuild old version)
-- High risk deployments (all-or-nothing)
-
-### Solution
-
-HAProxy-based blue/green infrastructure:
-
-```text
-┌─────────────┐
-│   HAProxy   │ :80
-└──────┬──────┘
-       │
-   ┌───┴───────────────┐
-   │                   │
-┌──▼────────┐   ┌──────▼───┐
-│   Blue    │   │  Green   │
-│ (Current) │   │  (New)   │
-│  v0.2.0   │   │  v0.3.0  │
-│  :8101    │   │  :8201   │
-└───────────┘   └──────────┘
-```
-
-### Deployment Flow
-
-```bash
-# Step 1: Deploy new version to green
-./scripts/blue_green_deploy.sh identity 0.3.0
-
-# Behind the scenes:
-# 1. Start green environment (parallel to blue)
-# 2. Wait for green health checks (30 attempts)
-# 3. Run smoke tests on green
-# 4. Switch HAProxy to green (config reload)
-# 5. Monitor for errors (60 seconds)
-# 6. Scale down blue (keep for rollback)
-```
-
-### Instant Rollback
-
-```bash
-# If issues detected
-./scripts/blue_green_rollback.sh identity
-
-# Behind the scenes:
-# 1. Ensure blue is running
-# 2. Verify blue health
-# 3. Switch HAProxy back to blue
-# 4. Stop green environment
-```
-
-### Health Monitoring
-
-```bash
-./scripts/blue_green_health.sh
-
-# Output:
-# Blue:  ✓ HEALTHY (v0.2.0)
-# Green: ✓ HEALTHY (v0.3.0)
-# Active: GREEN (new version)
-```
-
-### HAProxy Configuration
-
-```haproxy
-backend wildbox_services
-    # Active: blue (current production)
-    server identity-blue identity-blue:8001 check
-    
-    # Standby: green (new version)
-    # server identity-green identity-green:8001 check backup
-```
-
-### Adoption Plan
-
-1. ✅ Created blue/green infrastructure files
-2. ⏳ Deploy HAProxy to production
-3. ⏳ Test blue/green deployment in staging
-4. ⏳ Create smoke test suite (`smoke_tests.sh`)
-5. ⏳ Document rollback procedures in runbook
-
-**Files to create:**
-
-- `/scripts/shell-scripts/smoke_tests.sh` - Basic API checks
-
----
-
 ## Integration Roadmap
 
 ### Phase 1: Foundation (Week 1)
@@ -804,14 +703,7 @@ backend wildbox_services
 - [ ] Build admin UI for flag management
 - [ ] Document flag usage in API reference
 
-### Phase 7: Blue/Green (Week 7)
-
-- [ ] Deploy HAProxy to production
-- [ ] Create smoke test suite
-- [ ] Test deployment in staging
-- [ ] Document rollback procedures
-
-### Phase 8: Production Validation (Week 8)
+### Phase 7: Production Validation (Week 7)
 
 - [ ] Run full chaos test suite in production
 - [ ] Validate all patterns working together
@@ -852,11 +744,6 @@ backend wildbox_services
 - **Metric:** `feature_flag_evaluations{flag="ai_analysis"}` (checks per second)
 - **Dashboard:** Show rollout percentage vs actual usage
 
-### Blue/Green
-
-- **Metric:** `deployment_duration_seconds` (time from start to switch)
-- **Target:** <5 minutes for complete deployment
-
 ---
 
 ## Operational Runbooks
@@ -887,19 +774,6 @@ backend wildbox_services
 4. Investigate bug in staging with flag re-enabled
 5. Deploy fix, re-enable flag gradually (10% → 25% → 50%)
 
-### Runbook 3: Blue/Green Rollback
-
-**Symptoms:** New version causing errors  
-**Impact:** Production degraded
-
-**Steps:**
-
-1. Run rollback: `./scripts/blue_green_rollback.sh identity`
-2. Verify health: `./scripts/blue_green_health.sh`
-3. Check Jaeger traces for root cause
-4. Fix bug in green environment
-5. Re-deploy after validation
-
 ---
 
 ## Cost Analysis
@@ -909,14 +783,12 @@ backend wildbox_services
 - **Jaeger:** ~$50/month (1 EC2 t3.medium)
 - **Redis (additional DB):** $0 (using existing Redis instance)
 - **PostgreSQL (additional tables):** $0 (using existing database)
-- **HAProxy:** $0 (containerized, no extra compute)
 
 **Total:** ~$50/month
 
 ### Engineering Time Saved
 
 - **Debugging without traces:** 2 hours/incident → 15 min (8x faster)
-- **Rollback deployments:** 30 min (rebuild) → 2 min (blue/green) (15x faster)
 - **Duplicate transaction debugging:** 1 hour → 0 (prevented by idempotency)
 
 **Annual savings:** ~200 hours engineer time = ~$40,000
@@ -945,12 +817,6 @@ backend wildbox_services
 - ✅ Flag state cached in Redis (can't be manipulated by clients)
 - ✅ Percentage rollout deterministic (can't be gamed)
 
-### Blue/Green
-
-- ✅ HAProxy stats dashboard requires authentication
-- ✅ Green environment isolated (no production traffic until validated)
-- ✅ Blue environment kept running (instant rollback)
-
 ---
 
 ## Future Enhancements
@@ -972,8 +838,7 @@ backend wildbox_services
 - **OpenTelemetry:** Official Docs - https://opentelemetry.io/docs
 - **Chaos Engineering:** Principles of Chaos - https://principlesofchaos.org
 - **Feature Flags:** LaunchDarkly Patterns - https://docs.launchdarkly.com
-- **Blue/Green:** AWS Deployment Patterns - https://docs.aws.amazon.com/whitepapers/latest/blue-green-deployments
 
 ---
 
-**Next Steps:** Follow integration roadmap (Phase 1 → Phase 8) for gradual adoption.
+**Next Steps:** Follow integration roadmap (Phase 1 → Phase 7) for gradual adoption.

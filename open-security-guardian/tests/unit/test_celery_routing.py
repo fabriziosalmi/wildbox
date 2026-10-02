@@ -18,7 +18,6 @@ from guardian.celery import TASK_QUEUES, app
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 COMPOSE_FILE = REPO_ROOT / "docker-compose.yml"
-BLUE_GREEN_FILE = REPO_ROOT / "docker-compose.blue-green.yml"
 
 
 def _registered():
@@ -95,8 +94,8 @@ def _argv(service):
     return shlex.split(command) if isinstance(command, str) else list(command)
 
 
-def _worker_queues(service="guardian-worker", path=COMPOSE_FILE):
-    argv = _argv(_services(path)[service])
+def _worker_queues(service="guardian-worker"):
+    argv = _argv(_services(COMPOSE_FILE)[service])
     return argv[argv.index("-Q") + 1].split(",")
 
 
@@ -107,37 +106,3 @@ def test_the_worker_consumes_exactly_the_routed_queues():
     queues = _worker_queues()
     assert len(queues) == len(set(queues)), queues
     assert set(queues) == set(TASK_QUEUES), queues
-
-
-@pytest.mark.skipif(
-    not BLUE_GREEN_FILE.exists(), reason="needs the repository checkout"
-)
-@pytest.mark.parametrize("color", ["blue", "green"])
-def test_each_blue_green_worker_consumes_exactly_the_routed_queues(color):
-    # docker-compose.blue-green.yml had no worker at all (#550).
-    queues = _worker_queues(f"guardian-worker-{color}", BLUE_GREEN_FILE)
-    assert len(queues) == len(set(queues)), queues
-    assert set(queues) == set(TASK_QUEUES), queues
-
-
-@pytest.mark.skipif(
-    not BLUE_GREEN_FILE.exists(), reason="needs the repository checkout"
-)
-def test_blue_green_runs_one_beat_for_both_colors():
-    # Beat has no leader election: a beat per color would send every
-    # periodic task twice while both colors run (#550).
-    services = _services(BLUE_GREEN_FILE)
-    beats = {
-        name: service
-        for name, service in services.items()
-        if "command" in service and "beat" in _argv(service)
-    }
-    assert list(beats) == ["guardian-beat"], list(beats)
-    beat = beats["guardian-beat"]
-    # A fixed container name: compose cannot scale it to two, and changing
-    # its image (the active color) replaces the one container.
-    assert beat.get("container_name")
-    assert beat["image"] == "wildbox-guardian:${GUARDIAN_ACTIVE_COLOR:-blue}"
-    # The image it may run is exactly one the colors build.
-    built = {services[f"guardian-{c}"]["image"] for c in ("blue", "green")}
-    assert built == {"wildbox-guardian:blue", "wildbox-guardian:green"}

@@ -38,22 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at `.../reports/alerts/{id}/notifications/`. The alert e-mail template
   did not exist, so no alert was ever e-mailed; it does now, to the rule's
   recipients.
-- **A blue/green deployment runs guardian's tasks, with one beat** (#550).
-  `docker-compose.blue-green.yml` ran guardian's API in two colors but no
-  worker and no beat, so nothing guardian queues or schedules ran there;
-  guardian could not even build or start from it (no shared build context,
-  no `SECRET_KEY`, no broker URL, no guardian database, a Redis without the
-  password the services send). Each color now has a worker reading every
-  routed queue, from that color's image, and one `guardian-beat` serves
-  both: beat has no leader election, so a beat per color would send every
-  periodic task twice. It runs the active color's image
-  (`GUARDIAN_ACTIVE_COLOR`), and `blue_green_guardian_tasks.sh`, called by
-  the deploy and rollback scripts, starts the new color's worker, moves beat
-  (compose stops the old container before starting the new one) and stops
-  the old worker with a warm shutdown. The deploy and rollback scripts
-  could not reach that point for guardian: they probed port 8001 on every
-  service and started green with a plain `up` of a service at 0 replicas,
-  which starts nothing.
 
 - **guardian's vulnerability history endpoint answers again.** It ordered by
   `changed_at`, which does not exist (the field is `timestamp`), so
@@ -443,14 +427,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
-- **guardian's tasks across a blue/green switch** (#550). A new workflow
-  starts guardian's part of `docker-compose.blue-green.yml`, moves its tasks
-  to green and back with the script the deploy uses, and checks after each
-  move that exactly one beat runs, on the active color's image, that the
-  active worker reads every routed queue and runs the scheduled sweep, and
-  that the old worker is stopped; it samples the beat count during each
-  switch and fails on two. The routing unit test checks the blue/green
-  workers' queues and the single beat too.
 - **A scheduled guardian task is seen to run, and on its queue** (#545).
   Integration Tests and Production Stack start guardian-beat with the
   alert-rule sweep every 15 seconds and wait, through the gateway, for a
@@ -602,9 +578,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The Ollama guide says Ollama is gone.** `guides/ollama-llm.md` described a
   local LLM container that no Compose file defines; it now documents the
   Anthropic configuration the agents service actually reads, including that
-  submitted indicators are sent to Anthropic when it is enabled. The
-  Deployment guide notes that `haproxy/` belongs to the blue/green Compose
-  file only.
+  submitted indicators are sent to Anthropic when it is enabled.
 - **One authentication reference.** The guides state, from the identity
   code, the signing algorithm (HS256), the claims, the 30-minute lifetime
   (which `.env` cannot change, because Compose does not pass it), that there
@@ -644,6 +618,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **The blue/green deployment experiment** (#552).
+  `docker-compose.blue-green.yml`, `haproxy/`, the `blue_green_*.sh`
+  scripts and the `Blue-Green guardian tasks` workflow are deleted. The
+  experiment could not complete a deployment for any service: HAProxy
+  routed to `data-blue`, `tools-blue` and `agents-blue`, which the Compose
+  file did not define, so it could not start; the traffic switch rewrote
+  `server guardian-blue …` into a line without the `server` keyword that
+  still pointed at blue; the deploy script stopped at a `smoke_tests.sh`
+  that did not exist and told the operator to run a
+  `blue_green_finalize.sh` that did not exist either; and it always
+  deployed to green, so a second deployment had no idle color. Neither
+  `docker-compose.yml` nor `docker-compose.prod.yml` used any of it. The
+  guardian worker and beat it gained in #550 go with it.
 
 - **guardian's `generate_vulnerability_reports` task** (#550). It logged a
   line and returned; nothing called or scheduled it. Reports, the
