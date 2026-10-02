@@ -5,6 +5,7 @@ Platform detection and information utilities
 import platform
 import os
 import sys
+import tempfile
 from typing import Dict, Any
 
 def get_platform_info() -> Dict[str, Any]:
@@ -79,5 +80,6 @@ def get_default_paths() -> Dict[str, str]:
             'config_dir': '/etc/security-sensor',
             'data_dir': '/var/lib/security-sensor',
             'log_dir': '/var/log/security-sensor',
-            'temp_dir': '/tmp'
+            # Honor TMPDIR instead of hard-coding /tmp.
+            'temp_dir': tempfile.gettempdir(),
         }
