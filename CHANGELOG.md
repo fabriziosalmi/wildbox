@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`make start` no longer leaves the data service crash-looping.** It layers
+  `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
+  whose `ENVIRONMENT` is `production`; data refuses that combination. The
+  development overlay now sets `ENVIRONMENT=development` for data as well.
+
+- **Password change and self-deletion work again** (#501). identity's custom
+  routes verified with passlib bcrypt, which cannot read the Argon2id hashes
+  fastapi-users writes for every account, so they failed for every user.
+  `app.auth` now uses fastapi-users' `PasswordHelper`: Argon2id for new
+  hashes, Argon2id and legacy bcrypt accepted.
+
 - **Logout now ends the session** (#475). Tokens from the login endpoint carried
   only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
   ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
@@ -36,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **identity no longer prints the initial admin password** (#493).
+  `scripts/init.sh` wrote it to the container log on first start, where
+  `docker logs`, log shippers and CI artifacts could read it. It now says
+  where the value comes from (`INITIAL_ADMIN_PASSWORD`) instead.
 
 - **cryptography 50.0.2 in every service that uses it** (#415): cspm, data,
   guardian, identity, sensor and tools were held at 48.0.1, which carries 3
@@ -150,6 +166,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The weekly pip security PR can trigger CI without a personal token.**
+  `Pip Security Upgrades` mints a one-hour GitHub App installation token,
+  scoped to this repository's contents and pull requests, when
+  `DEPS_APP_CLIENT_ID` and `DEPS_APP_PRIVATE_KEY` are configured, and falls
+  back to `GITHUB_TOKEN` otherwise. The `DEPS_PR_TOKEN` personal-token option
+  is removed.
+
 - **The chaos suite measures the system now** (#428). Seven experiments
   against the stack as the integration job starts it: cached authorization
   survives an identity outage; new tokens fail closed with 503, then
@@ -169,6 +192,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens, updates and closes.
 
 ### Documentation
+
+- **README rewritten from verified facts.** It described components the
+  project no longer has (Stripe billing, OpenAI, Elasticsearch, Grafana,
+  NLTK), claimed 50+ threat feeds (there are 7) and a stale v0.8.0 roadmap,
+  and its quick start ended in a stack where `data` refused to start. The
+  new README documents the configuration CI starts on every change, an HTTPS
+  health check and login against the generated certificate, one table of
+  capabilities with real counts, and links into the published docs.
 
 - **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
   `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
