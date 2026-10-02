@@ -2,6 +2,8 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
+from open_security_shared.gateway_auth import GatewayUser
+
 from app.auth import verify_api_key
 from app.execution_manager import ToolExecutionManager
 from app.input_validation import InputSanitizer
@@ -151,7 +153,7 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
     async def tool_endpoint(
         request: Request,
         input_data: dict = Body(...),
-        api_key: str = Depends(verify_api_key)
+        caller: GatewayUser = Depends(verify_api_key)
     ):
         """Dynamically created endpoint for the security tool."""
         
@@ -192,6 +194,10 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 # Tie the execution to the request so logs, metrics and the
                 # execution registry share one id (WILDBO-CONC-01/OBS-05).
                 execution_id=getattr(request.state, 'request_id', None),
+                # The caller the request authenticated as. Tools that act on a
+                # caller's behalf receive it and are authorized for it; they
+                # refused every API execution while it was not passed (#563).
+                user_id=str(caller.user_id),
             )
             
             if execution_result.status.value == "completed":
@@ -218,6 +224,11 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 else:
                     # Unknown type, return as is
                     return result_data
+            elif execution_result.status.value == "refused":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=execution_result.error
+                )
             elif execution_result.status.value == "timeout":
                 raise HTTPException(
                     status_code=status.HTTP_408_REQUEST_TIMEOUT,

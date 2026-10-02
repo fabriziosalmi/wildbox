@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools pass the authenticated caller to tools that act for one** (#563).
+  `sql_injection_scanner` requires a caller, but the execution manager
+  called every tool with its input alone, so every API execution of it
+  answered 500. A tool whose `execute_tool` declares `user_id` is now
+  authorized in one place, before it starts, by both the synchronous and
+  the asynchronous path: without a caller it is refused, otherwise the
+  authorization manager must allow that caller the tool's operation
+  against its `target_url`, and the tool then receives the caller. A
+  refusal answers 403 with the reason. The asynchronous endpoint passed
+  the literal caller `"anonymous"`, and the task status reported refused
+  or failed tasks as completed. The security layer no longer repeats the
+  check, which spent the one destructive test allowed per hour. The
+  policy files now load when they contain the documented `description`
+  keys, URL entries cover the URLs below them, `.example.com` no longer
+  matches every name that merely ends in `example.com`, and CIDR entries
+  match URL targets. With no policy files, which is the shipped default,
+  nobody may run the scanner; `open-security-tools/README.md` describes
+  how to grant it.
 - **guardian runs the schedules users define** (#548). Asset discovery
   rules and report schedules were stored with a schedule nothing read. A
   dispatcher, sent by `guardian-beat` every minute
