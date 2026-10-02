@@ -20,9 +20,9 @@ if this page and that file disagree, the file is right and this page is a bug.
 | Compose service | Container name | Host port | What it is | Health check |
 | --- | --- | --- | --- | --- |
 | `gateway` | `open-security-gateway` | `443`, `80`, `8080` (all interfaces) | OpenResty gateway: TLS, authentication, rate limiting, routing | `http://localhost/health` |
-| `identity` | `open-security-identity` | `127.0.0.1:8001` | Users, JWT login, API keys, teams | `http://localhost:8001/health` |
+| `identity` | `open-security-identity` | `127.0.0.1:8001` | Users, JWT (JSON Web Token) login, API keys, teams | `http://localhost:8001/health` |
 | `api` | (Compose default) | `127.0.0.1:8000` | Security tools API | `http://localhost:8000/health` |
-| `data` | (Compose default) | `127.0.0.1:8002` | Threat intelligence and IOC data | `http://localhost:8002/health` |
+| `data` | (Compose default) | `127.0.0.1:8002` | Threat intelligence and IOC (indicator of compromise) data | `http://localhost:8002/health` |
 | `sensor` | `open-security-sensor` | `127.0.0.1:8004` | Endpoint telemetry (not routed through the gateway) | `http://localhost:8004/health` |
 | `agents` | `open-security-agents` | `127.0.0.1:8006` | AI-assisted analysis | `http://localhost:8006/health` |
 | `guardian` | `open-security-guardian` | `127.0.0.1:8013` | Vulnerability and asset management | `http://localhost:8013/health` |
@@ -53,3 +53,26 @@ for port in 8001 8000 8002 8004 8006 8013 8018 8019; do
   curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:$port/health"
 done
 ```
+
+## Metrics
+
+identity, tools, data, responder, cspm and agents serve Prometheus metrics at
+`/metrics` on their own port. The endpoint has **no authentication**. What
+keeps it private is the network layout, not a credential:
+
+- the ports are bound to `127.0.0.1`, so only the Docker host reaches them;
+- the gateway does not route `/metrics` to any service.
+
+Prometheus itself (`--profile monitoring`) listens on `127.0.0.1:9090`, also
+without authentication, and scrapes the six services over the Compose network
+using `monitoring/prometheus.yml`.
+
+From the Docker host:
+
+```bash
+curl -s http://127.0.0.1:8001/metrics | head
+curl -s 'http://127.0.0.1:9090/api/v1/query?query=up'
+```
+
+Do not publish these ports beyond localhost; put an authenticating proxy in
+front if you need to reach them remotely.

@@ -26,7 +26,7 @@ the main ones are:
 | `POSTGRES_PASSWORD` | PostgreSQL superuser password |
 | `REDIS_PASSWORD` | Redis password |
 | `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `DATA_SECRET_KEY` | Per-service secret keys |
-| `CSPM_CREDENTIAL_KEY` | Encrypts cloud credentials stored by CSPM |
+| `CSPM_CREDENTIAL_KEY` | Encrypts cloud credentials stored by CSPM (cloud security posture management) |
 | `SENSOR_API_KEY` | Authenticates the sensor's local API |
 | `FLOWER_PASSWORD` | Celery Flower for the tools workers |
 | `N8N_BASIC_AUTH_PASSWORD`, `N8N_ENCRYPTION_KEY` | The optional automations service |
@@ -57,29 +57,45 @@ Read the generated password from `.env`, log in, and change it:
 sed -n 's/^INITIAL_ADMIN_PASSWORD=//p' .env
 ```
 
-Change it from the dashboard, or with the identity API
-(`POST /api/v1/identity/admin/me/change-password` through the gateway, with
-`current_password` and `new_password`; see the
-[identity reference](../api/identity/endpoints.md)).
+Change it from the dashboard, or with the fastapi-users route
+`PATCH /api/v1/identity/users/me` through the gateway, body
+`{"password": "<new password>"}`, which hashes it the same way login checks
+it. Avoid the custom `/api/v1/identity/admin/me/change-password` and
+`/admin/me/password` routes for this account: they verify and hash with
+passlib bcrypt, while accounts created by fastapi-users (the first
+administrator included) carry Argon2 hashes. See the
+[identity reference](../api/identity/endpoints.md).
 
 ---
 
-## Authenticating to the API
+## Authentication Reference
+
+This section is the one place that describes how authentication works. The
+facts come from `open-security-identity/app/` (`config.py`, `user_manager.py`,
+`logout.py`, `token_blacklist.py`) and the gateway configuration.
 
 Clients authenticate at the gateway (`https://<host>/`). Two credentials are
 accepted:
 
-- **JWT bearer token**: obtained with a form-encoded login
-  (`username`, `password`) at `POST /auth/jwt/login`; returns
-  `access_token`. Tokens expire after `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`
-  (30 minutes unless you set it); there is no refresh endpoint, so log in
-  again.
-- **API key**: sent as `X-API-Key: <key>`. Create one while logged in with
+- **JWT (JSON Web Token) bearer token** (`Authorization: Bearer <token>`), obtained with a
+  form-encoded login (`username`, `password`) at `POST /auth/jwt/login`, which
+  returns `access_token`.
+- **API key** (`X-API-Key: <key>`). Create one while logged in with
   `POST /api/v1/identity/api-keys`; the secret is shown once in the response.
 
 The complete, tested login sequence, including the TLS certificate the
 development gateway generates, is in the
 [Quick Start](quickstart.md#5-log-in-and-call-the-api).
+
+| Property | Value |
+| --- | --- |
+| Signing | HS256 with `JWT_SECRET_KEY` |
+| Claims | `sub` (user ID), `aud` (`fastapi-users:auth`), `exp`, `iat`, and a random `jti` |
+| Lifetime | 30 minutes. It is `jwt_access_token_expire_minutes` in the identity settings; `docker-compose.yml` does not pass `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` to the identity container, so setting it in `.env` alone has no effect |
+| Refresh | None. When a token expires, log in again |
+| Revocation | `POST /auth/logout` or `POST /auth/jwt/logout` with the token. Its `jti` goes on a Redis blacklist until the token would have expired; the gateway refuses it and drops it from its authorization cache, and identity's own routes refuse it too |
+| Failed logins | Not locked out. `config.py` defines a limit (5 attempts, 15 minutes) and `token_blacklist.py` has the helpers, but the login route does not call them. The gateway rate-limits `/auth/jwt/` per client address (5 requests per second, burst 3) |
+| Password hashing | Accounts created and logged in through fastapi-users use its default password helper (pwdlib: Argon2 for new hashes, bcrypt hashes still verify). The custom `/admin/me/password` and `/admin/me/change-password` routes use passlib bcrypt at its default cost, so they cannot verify an Argon2 hash |
 
 To revoke a token before it expires:
 

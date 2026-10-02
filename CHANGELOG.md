@@ -98,6 +98,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   submitted indicators are sent to Anthropic when it is enabled. The
   Deployment guide notes that `haproxy/` belongs to the blue/green Compose
   file only.
+- **One authentication reference.** The Credentials guide now states, from
+  the identity code, the signing algorithm (HS256), the claims, the 30-minute
+  lifetime (which `.env` cannot change, because Compose does not pass it), that
+  there is no refresh, both revocation routes, and that failed logins are not
+  locked out (the lockout helpers exist but nothing calls them). It also warns
+  that the `/admin/me` password routes use bcrypt and cannot verify the Argon2
+  hashes fastapi-users writes. The tools reference counts 52 loadable tools
+  instead of 54, the ports page explains how `/metrics` and Prometheus are
+  kept private (localhost binding, not authentication), the references mark
+  their example values as fictitious, and acronyms are expanded on first use.
 
 ### Removed
 

@@ -5,6 +5,9 @@
 > Paths, fields and examples may have drifted; the service's own OpenAPI
 > document is authoritative. Corrections are welcome as issues or pull
 > requests.
+>
+> All IDs, keys (such as `your-api-key`) and host names in the examples are
+> fictitious placeholders.
 
 **Gateway path**: `https://<host>/api/v1/tools/...` (proxied to the service's `/api/tools/...`)  
 **Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
@@ -14,7 +17,7 @@
 
 ## Overview
 
-The Tools Service provides a unified interface for executing 54+ security analysis tools across multiple categories including vulnerability scanning, network analysis, web application testing, and threat intelligence. It manages tool execution, monitors task status, and aggregates results from diverse security tools.
+The Tools Service provides a unified interface for executing 52 security analysis tools (the directories under `open-security-tools/app/tools` whose `main.py` defines `execute_tool`, which is what `app/tool_loader.py` loads; counted on 2 October 2026) across multiple categories including vulnerability scanning, network analysis, web application testing, and threat intelligence. It manages tool execution, monitors task status, and aggregates results from diverse security tools.
 
 ## Table of Contents
 
@@ -69,7 +72,7 @@ curl -X GET "http://localhost:8000/api/tools?category=scanner&status=active" \
 
 ```json
 {
-  "count": 54,
+  "count": 52,
   "results": [
     {
       "id": "nessus-001",
@@ -389,7 +392,7 @@ curl -X GET http://localhost:8000/api/system/info \
   "service": "Wildbox Tools Service",
   "version": "1.0.0",
   "uptime_seconds": 604800,
-  "tools_available": 54,
+  "tools_available": 52,
   "tools_active": 52,
   "tools_inactive": 2,
   "total_executions": 1500,

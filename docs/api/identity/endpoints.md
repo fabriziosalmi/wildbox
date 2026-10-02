@@ -1,7 +1,7 @@
 # Identity & Authentication Service API
 
 The identity service (`open-security-identity`, FastAPI with fastapi-users)
-owns users, JWT login, API keys and teams, and answers the gateway's
+owns users, JWT (JSON Web Token) login, API keys and teams, and answers the gateway's
 authorization checks.
 
 **Gateway path**: `https://<host>/api/v1/identity/...` (proxied to the service's `/api/v1/...`); login at `https://<host>/auth/jwt/login`  
@@ -32,9 +32,10 @@ address) and `password`. Returns:
 }
 ```
 
-Wrong credentials return 400. The token lifetime is
-`JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (30 minutes by default). There is no refresh
-endpoint; log in again when the token expires.
+Wrong credentials return 400; repeated failures are not locked out. Tokens
+are HS256 JWTs valid for 30 minutes, with no refresh endpoint. Lifetime,
+claims, revocation and password hashing are described once, in the
+[authentication reference](../../guides/credentials.md#authentication-reference).
 
 ```bash
 TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
@@ -48,7 +49,9 @@ where `ADMIN_EMAIL` and `ADMIN_PASSWORD` come from.
 
 ### Log Out
 
-`POST /api/v1/auth/logout` (gateway: `POST /auth/logout`) with
+`POST /api/v1/auth/logout` (gateway: `POST /auth/logout`), or the
+fastapi-users route `POST /api/v1/auth/jwt/logout` (gateway:
+`POST /auth/jwt/logout`), with
 `Authorization: Bearer <token>`. Adds the token's `jti` to a blacklist until
 the token would have expired, and asks the gateway to drop it from its
 authorization cache. Returns 200 whether or not the token was already revoked;
@@ -76,13 +79,19 @@ All under `/api/v1/auth` (fastapi-users):
 | PATCH | `/api/v1/users/me` | Update the authenticated user (fastapi-users) |
 | PATCH | `/api/v1/admin/me/profile` | Update profile fields |
 | PUT | `/api/v1/admin/me` | Update the authenticated user |
-| PUT | `/api/v1/admin/me/password` | Change password |
-| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` |
+| PUT | `/api/v1/admin/me/password` | Change password (passlib bcrypt; see note) |
+| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` (passlib bcrypt; see note) |
 | DELETE | `/api/v1/admin/me/account` | Delete own account |
 | GET | `/api/v1/admin/me/activity` | Own recent activity |
 
 Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
 account and need only a valid token.
+
+The two `/admin/me` password routes verify and hash with passlib bcrypt, while
+accounts created through fastapi-users (registration and the first
+administrator) are hashed with Argon2, so those routes cannot verify their
+current password. Change a password with `PATCH /api/v1/users/me` and a
+`password` field instead.
 
 ```bash
 curl -s --cacert open-security-gateway/ssl/wildbox.crt \

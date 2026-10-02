@@ -5,10 +5,13 @@
 > Paths, fields and examples may have drifted; the service's own OpenAPI
 > document is authoritative. Corrections are welcome as issues or pull
 > requests.
+>
+> All IDs, keys (such as `your-api-key`) and host names in the examples are
+> fictitious placeholders.
 
 **Gateway path**: `https://<host>/api/v1/agents/...` (proxied to the service's `/v1/...`)  
 **Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: Bearer Token (JWT) required for analysis endpoints
+**Authentication**: Bearer Token (JWT, JSON Web Token) required for analysis endpoints
 
 ---
 

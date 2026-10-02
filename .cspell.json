@@ -498,6 +498,7 @@
     "Protezione",
     "psutil",
     "psycopg",
+    "pwdlib",
     "pydantic",
     "pylint",
     "pyobjc",
