@@ -328,7 +328,10 @@ class TestIdentityService:
             # Token should be invalid after logout
             token_invalidated = profile_response.status_code == 401
 
-            passed = logout_success or token_invalidated
+            # Both, not either: a logout that answers 204 while the token keeps
+            # working is the failure this test exists to catch, and `or` let it
+            # pass (#475).
+            passed = logout_success and token_invalidated
             if passed:
                 details = f"Logout: {logout_success}, Token invalidated: {token_invalidated}"
             else:

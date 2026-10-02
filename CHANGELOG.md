@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Logout now ends the session** (#475). Tokens from the login endpoint carried
+  only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
+  ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
+  dashboard only deleted its cookie, and two logins within the same second got
+  the same token. A logged-out token stayed valid at the gateway for its whole
+  lifetime. Login tokens now carry a `jti` and an `iat`, identity's own routes
+  refuse a revoked one, both logout routes revoke, and the dashboard calls
+  revocation before clearing its cookie. Tokens issued before this release
+  still lack a `jti` and expire on their own.
+
 ### Security
 
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
