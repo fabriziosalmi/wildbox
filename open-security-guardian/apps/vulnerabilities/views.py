@@ -206,7 +206,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         vulnerability = self.get_object()
         history = VulnerabilityHistory.objects.filter(
             vulnerability=vulnerability
-        ).order_by('-changed_at')
+        ).order_by('-timestamp')
         
         serializer = VulnerabilityHistorySerializer(history, many=True)
         return Response(serializer.data)

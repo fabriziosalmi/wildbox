@@ -136,3 +136,20 @@ def test_assigning_and_unassigning_records_history():
         .values_list("old_value", "new_value")
     )
     assert changes == [("", str(user.pk)), (str(user.pk), "")]
+
+
+@pytest.mark.django_db
+def test_history_endpoint_lists_changes_newest_first(api):
+    """GET .../{id}/history/ ordered by a field that does not exist
+    (changed_at) and answered 500 for every vulnerability."""
+    user = User.objects.create(username="analyst")
+    vulnerability = _vulnerability()
+    vulnerability.assigned_to = user
+    vulnerability.save()
+
+    response = api(f"{_BASE}{vulnerability.pk}/history/")
+
+    assert response.status_code == 200, response.content[:500]
+    rows = response.json()
+    assert [row["field_name"] for row in rows] == ["assigned_to", "status"]
+    assert rows[0]["timestamp"] >= rows[1]["timestamp"]
