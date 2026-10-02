@@ -43,11 +43,28 @@ test.describe('Administration', { tag: '@backend' }, () => {
     await api.dispose()
   })
 
-  async function seedUser(): Promise<string> {
-    const email = uniqueEmail('managed')
+  async function seedUser(label = 'managed'): Promise<string> {
+    const email = uniqueEmail(label)
     await registerUser(api, { email, password: strongPassword() })
     created.push(email)
     return email
+  }
+
+  /** Emails in the user table, in the order the page shows them. */
+  async function tableEmails(page: Page): Promise<string[]> {
+    return page
+      .locator('tbody tr')
+      .evaluateAll(rows => rows.map(row => row.querySelector('td p')?.textContent?.trim() ?? ''))
+  }
+
+  /** The admin list request carrying `param=value`, as the page sends it. */
+  function usersRequest(page: Page, param: string, value: string) {
+    return page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return (
+        url.pathname === '/api/v1/identity/admin/users' && url.searchParams.get(param) === value
+      )
+    })
   }
 
   async function openAdmin(page: Page) {
@@ -130,6 +147,70 @@ test.describe('Administration', { tag: '@backend' }, () => {
 
     expect(confirmations).toHaveLength(2)
     expect(confirmations[0]).toContain(`promote ${email} to superuser`)
+  })
+
+  test('search narrows the list to the users identity matches', async ({ page }) => {
+    const wanted = await seedUser('search-hit')
+    const other = await seedUser('search-miss')
+    await openAdmin(page)
+    await expect(rowFor(page, other)).toBeVisible()
+
+    const searched = usersRequest(page, 'email_filter', wanted)
+    await page.getByLabel('Search users by email').fill(wanted)
+    const response = await searched
+    expect(response.status()).toBe(200)
+
+    await expect(rowFor(page, wanted)).toBeVisible()
+    await expect(rowFor(page, other)).toHaveCount(0)
+    const served = ((await response.json()) as Array<{ email: string }>).map(u => u.email)
+    expect(served).toEqual([wanted])
+    expect(await tableEmails(page)).toEqual(served)
+
+    // Clearing the search brings the full list back.
+    await page.getByLabel('Search users by email').fill('')
+    await expect(rowFor(page, other)).toBeVisible()
+  })
+
+  test('the status filter shows only the users identity reports in that state', async ({
+    page,
+  }) => {
+    const inactive = await seedUser('filter-inactive')
+    const active = await seedUser('filter-active')
+    const stored = await findUser(api, adminToken, inactive)
+    const deactivated = await api.patch(`/api/v1/identity/admin/users/${stored!.id}/status`, {
+      headers: bearer(adminToken),
+      params: { is_active: 'false' },
+    })
+    expect(deactivated.status(), await deactivated.text()).toBe(200)
+    await openAdmin(page)
+    await expect(rowFor(page, active)).toBeVisible()
+
+    const filtered = usersRequest(page, 'is_active', 'false')
+    await page.getByLabel('Filter users by status').selectOption('inactive')
+    const response = await filtered
+    expect(response.status()).toBe(200)
+
+    await expect(rowFor(page, inactive)).toBeVisible()
+    await expect(rowFor(page, active)).toHaveCount(0)
+    const served = (await response.json()) as Array<{ email: string; is_active: boolean }>
+    expect(served.every(u => !u.is_active)).toBe(true)
+    expect(served.map(u => u.email)).toContain(inactive)
+    expect(await tableEmails(page)).toEqual(served.map(u => u.email))
+  })
+
+  test('system health shows identity, the gateway and their dependencies', async ({ page }) => {
+    const response = await api.get('/api/v1/identity/health', { headers: bearer(adminToken) })
+    expect(response.status(), await response.text()).toBe(200)
+    const health = await response.json()
+    expect(health.checks.database.status).toBe('healthy')
+    expect(health.checks.redis.status).toBe('healthy')
+
+    await openAdmin(page)
+
+    await expect(page.getByTestId('health-identity')).toHaveText('● Online')
+    await expect(page.getByTestId('health-gateway')).toHaveText('● Online')
+    await expect(page.getByTestId('health-database')).toHaveText('● Healthy')
+    await expect(page.getByTestId('health-redis')).toHaveText('● Healthy')
   })
 
   test('deletes a user once the deletion is confirmed', async ({ page }) => {

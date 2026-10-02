@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { MainLayout } from '@/components/main-layout'
-import { identityClient } from '@/lib/api-client'
+import { identityClient, getIdentityPath, gatewayBaseUrl } from '@/lib/api-client'
 import Cookies from 'js-cookie'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -55,6 +55,81 @@ interface AdminUserData {
   }>
 }
 
+type ProbeStatus = 'online' | 'offline' | 'unknown'
+type CheckStatus = 'healthy' | 'degraded' | 'unhealthy' | 'unknown'
+
+interface SystemHealthState {
+  gatewayStatus: ProbeStatus
+  identityStatus: ProbeStatus
+  databaseStatus: CheckStatus
+  redisStatus: CheckStatus
+}
+
+/** identity's GET /health, through the gateway at /api/v1/identity/health. */
+interface IdentityHealth {
+  status?: string
+  checks?: Record<string, { status?: string } | undefined>
+}
+
+const UNKNOWN_HEALTH: SystemHealthState = {
+  gatewayStatus: 'unknown',
+  identityStatus: 'unknown',
+  databaseStatus: 'unknown',
+  redisStatus: 'unknown',
+}
+
+const SEARCH_DEBOUNCE_MS = 300
+
+/** The stat cards' counts, taken from an unfiltered user list. */
+function statsFromUsers(users: AdminUserData[]) {
+  const oneWeekAgo = new Date()
+  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
+  return {
+    totalUsers: users.length,
+    activeUsers: users.filter(u => u.is_active).length,
+    superAdmins: users.filter(u => u.is_superuser).length,
+    totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || [])).size,
+    newUsersThisWeek: users.filter(u => new Date(u.created_at) >= oneWeekAgo).length,
+  }
+}
+
+function checkStatus(value: string | undefined): CheckStatus {
+  return value === 'healthy' || value === 'degraded' || value === 'unhealthy' ? value : 'unknown'
+}
+
+const PROBE_LABELS: Record<ProbeStatus, [string, string]> = {
+  online: ['Online', 'text-green-600'],
+  offline: ['Offline', 'text-red-600'],
+  unknown: ['Checking...', 'text-muted-foreground'],
+}
+
+const CHECK_LABELS: Record<CheckStatus, [string, string]> = {
+  healthy: ['Healthy', 'text-green-600'],
+  degraded: ['Degraded', 'text-yellow-600'],
+  unhealthy: ['Unhealthy', 'text-red-600'],
+  unknown: ['Unknown', 'text-muted-foreground'],
+}
+
+function HealthRow({
+  label,
+  testId,
+  status,
+}: {
+  label: string
+  testId: string
+  status: [string, string]
+}) {
+  const [text, color] = status
+  return (
+    <div className="flex justify-between text-sm">
+      <span>{label}</span>
+      <span className={color} data-testid={testId}>
+        ● {text}
+      </span>
+    </div>
+  )
+}
+
 export default function AdminPage() {
   const { user, isLoading: authLoading } = useAuth()
   const { toast } = useToast()
@@ -63,27 +138,28 @@ export default function AdminPage() {
   // Latest fetched list, for the stats fallback: reading `users` there
   // would capture the list as it was when the callback was created.
   const usersRef = useRef<AdminUserData[]>([])
+  // Whether the stat cards hold identity's analytics, which count every user,
+  // rather than counts taken from the (at most 100-row) list.
+  const analyticsLoadedRef = useRef(false)
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  // What the user list is actually filtered by: the search box, once typing
+  // has paused (or on Enter / Search), and the status filter.
+  const [appliedSearch, setAppliedSearch] = useState('')
   const [filterActive, setFilterActive] = useState<boolean | null>(null)
+  // Responses to earlier searches that arrive late must not replace the list.
+  const usersRequestRef = useRef(0)
   const [systemStats, setSystemStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
     superAdmins: 0,
     totalTeams: 0,
     newUsersThisWeek: 0,
-    apiRequestsToday: 0,
+    // Keys used in the last 24 hours, from identity's usage summary; null
+    // when it could not be read.
+    apiKeysUsedToday: null as number | null,
   })
-  const [systemHealth, setSystemHealth] = useState({
-    avgResponseTime: null as number | null,
-    errorRate: null as number | null,
-    servicesOnline: 0,
-    totalServices: 4,
-    gatewayStatus: 'unknown',
-    identityStatus: 'unknown',
-    databaseStatus: 'unknown',
-    redisStatus: 'unknown',
-  })
+  const [systemHealth, setSystemHealth] = useState<SystemHealthState>(UNKNOWN_HEALTH)
 
   // Create user form state
   const [showCreateUser, setShowCreateUser] = useState(false)
@@ -105,164 +181,98 @@ export default function AdminPage() {
     }
   }, [authLoading, user, router])
 
+  // Debounce the search box: the list follows what is typed once typing
+  // pauses, instead of on every keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => setAppliedSearch(searchTerm.trim()), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+
   const fetchSystemHealth = useCallback(async () => {
-    try {
-      // Check health of various services. The data service is not part of
-      // the four counted below, so it is not probed here.
-      const [identityHealth, gatewayHealth] = await Promise.allSettled([
-        // Check identity service health
-        identityClient.get('/api/v1/identity/health').catch(() => null),
-        // Check gateway status (if accessible)
-        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`)
-          .then(r => r.json())
-          .catch(() => null),
-      ])
+    // Every status below comes from a response. Database and Redis are what
+    // identity's /health reports about its own dependencies; they used to be
+    // set to healthy whenever identity answered, and identity's probe went to
+    // a path that does not exist, so the card showed Offline and Unknown on a
+    // healthy stack (#559).
+    const [identityHealth, gatewayHealth] = await Promise.allSettled([
+      identityClient.get<IdentityHealth>(getIdentityPath('/api/v1/health')),
+      fetch(`${gatewayBaseUrl}/health`).then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`)
+        return response.json()
+      }),
+    ])
 
-      let servicesOnline = 0
-      const totalServices = 4
-
-      // Update service statuses
-      const identityStatus =
-        identityHealth.status === 'fulfilled' && identityHealth.value ? 'online' : 'offline'
-      const gatewayStatus =
-        gatewayHealth.status === 'fulfilled' && gatewayHealth.value ? 'online' : 'offline'
-      const databaseStatus = identityStatus === 'online' ? 'healthy' : 'unknown' // Database accessible if identity service is up
-      const redisStatus = identityStatus === 'online' ? 'connected' : 'unknown' // Redis accessible if identity service is up
-
-      if (identityStatus === 'online') servicesOnline++
-      if (gatewayStatus === 'online') servicesOnline++
-      if (databaseStatus === 'healthy') servicesOnline++
-      if (redisStatus === 'connected') servicesOnline++
-
-      // Metrics require Prometheus integration
-      // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
-      const avgResponseTime = null
-      const errorRate = null
-
-      setSystemHealth({
-        avgResponseTime,
-        errorRate,
-        servicesOnline,
-        totalServices,
-        gatewayStatus,
-        identityStatus,
-        databaseStatus,
-        redisStatus,
-      })
-    } catch (error) {
-      console.error('Failed to fetch system health:', error)
-      // Set default values if health check fails
-      setSystemHealth({
-        avgResponseTime: null,
-        errorRate: null,
-        servicesOnline: 0,
-        totalServices: 4,
-        gatewayStatus: 'unknown',
-        identityStatus: 'unknown',
-        databaseStatus: 'unknown',
-        redisStatus: 'unknown',
-      })
-    }
+    const identity = identityHealth.status === 'fulfilled' ? identityHealth.value : null
+    setSystemHealth({
+      gatewayStatus: gatewayHealth.status === 'fulfilled' ? 'online' : 'offline',
+      identityStatus: identity ? 'online' : 'offline',
+      databaseStatus: checkStatus(identity?.checks?.database?.status),
+      redisStatus: checkStatus(identity?.checks?.redis?.status),
+    })
   }, [])
 
   const fetchSystemStats = useCallback(async () => {
-    const users = usersRef.current
-    try {
-      // Fetch real system analytics from identity service
-      const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get<AdminSystemAnalytics>(
-          '/api/v1/identity/analytics/admin/system-stats?days=30'
-        ),
-        identityClient.get<AdminUsageSummary>('/api/v1/identity/analytics/admin/usage-summary'),
-      ])
+    const [systemAnalytics, usageSummary] = await Promise.allSettled([
+      identityClient.get<AdminSystemAnalytics>(
+        getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')
+      ),
+      identityClient.get<AdminUsageSummary>(
+        getIdentityPath('/api/v1/analytics/admin/usage-summary')
+      ),
+    ])
 
-      // Extract real analytics data
-      const analytics = systemAnalytics.status === 'fulfilled' ? systemAnalytics.value : null
-      const usage = usageSummary.status === 'fulfilled' ? usageSummary.value : null
+    const analytics = systemAnalytics.status === 'fulfilled' ? systemAnalytics.value : null
+    const usage = usageSummary.status === 'fulfilled' ? usageSummary.value : null
 
-      if (analytics && usage) {
-        // Use real data from analytics API
-        setSystemStats({
-          totalUsers: analytics.users.total,
-          activeUsers: analytics.users.active,
-          superAdmins: analytics.users.super_admins,
-          totalTeams: analytics.teams.total,
-          newUsersThisWeek: analytics.users.new_this_week,
-          apiRequestsToday: usage.summary.api_requests_today,
-        })
-      } else {
-        // Fallback to user data computation if analytics service is unavailable
-        setSystemStats({
-          totalUsers: users.length,
-          activeUsers: users.filter(u => u.is_active).length,
-          superAdmins: users.filter(u => u.is_superuser).length,
-          totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || []))
-            .size,
-          newUsersThisWeek: users.filter(u => {
-            const created = new Date(u.created_at)
-            const oneWeekAgo = new Date()
-            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-            return created >= oneWeekAgo
-          }).length,
-          apiRequestsToday: Math.floor(Math.random() * 1000) + 500, // Fallback mock data
-        })
-      }
-    } catch (error) {
-      console.error('Failed to fetch system stats:', error)
-      // Use data from current users list as fallback
+    if (analytics) {
+      analyticsLoadedRef.current = true
       setSystemStats({
-        totalUsers: users.length,
-        activeUsers: users.filter(u => u.is_active).length,
-        superAdmins: users.filter(u => u.is_superuser).length,
-        totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || []))
-          .size,
-        newUsersThisWeek: users.filter(u => {
-          const created = new Date(u.created_at)
-          const oneWeekAgo = new Date()
-          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
-          return created >= oneWeekAgo
-        }).length,
-        apiRequestsToday: 850, // Use a reasonable fallback instead of random
+        totalUsers: analytics.users.total,
+        activeUsers: analytics.users.active,
+        superAdmins: analytics.users.super_admins,
+        totalTeams: analytics.teams.total,
+        newUsersThisWeek: analytics.users.new_this_week,
+        apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
       })
+    } else {
+      // Without the analytics, the counts come from the unfiltered user list
+      // (see fetchUsers). Nothing is invented for what the list cannot tell.
+      analyticsLoadedRef.current = false
+      setSystemStats(prev => ({
+        ...prev,
+        ...statsFromUsers(usersRef.current),
+        apiKeysUsedToday: usage ? usage.summary.api_keys_active : null,
+      }))
     }
   }, [])
 
   const fetchUsers = useCallback(async () => {
+    const requestId = ++usersRequestRef.current
+    // identity filters the list itself: email_filter is a case-insensitive
+    // substring match on the email, is_active an exact match. The page used
+    // to ignore both controls and always load the first 100 users (#559).
+    const params: Record<string, string | number | boolean> = { limit: 100 }
+    if (appliedSearch) params.email_filter = appliedSearch
+    if (filterActive !== null) params.is_active = filterActive
+    const unfiltered = !appliedSearch && filterActive === null
+
     try {
       setIsLoading(true)
+      const data = await identityClient.get<AdminUserData[]>(
+        getIdentityPath('/api/v1/admin/users'),
+        params
+      )
+      if (requestId !== usersRequestRef.current) return
 
-      const token = Cookies.get('auth_token')
-
-      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
-      const response = await fetch(`${gatewayUrl}/api/v1/identity/admin/users?limit=100`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const data: AdminUserData[] = await response.json()
-      usersRef.current = data || []
-      setUsers(data || [])
-
-      // Update stats when users are fetched
-      if (data && Array.isArray(data)) {
-        setSystemStats(prev => ({
-          ...prev,
-          totalUsers: data.length,
-          activeUsers: data.filter(u => u.is_active).length,
-          superAdmins: data.filter(u => u.is_superuser).length,
-          totalTeams: new Set(
-            data.flatMap((u: AdminUserData) => u.team_memberships?.map(tm => tm.team_id) || [])
-          ).size,
-        }))
+      setUsers(data)
+      if (unfiltered) {
+        usersRef.current = data
+        if (!analyticsLoadedRef.current) {
+          setSystemStats(prev => ({ ...prev, ...statsFromUsers(data) }))
+        }
       }
     } catch (error) {
+      if (requestId !== usersRequestRef.current) return
       console.error('Failed to fetch users:', error)
       toast({
         title: 'Error',
@@ -270,20 +280,31 @@ export default function AdminPage() {
         variant: 'destructive',
       })
     } finally {
-      setIsLoading(false)
+      if (requestId === usersRequestRef.current) setIsLoading(false)
     }
-  }, [toast])
+  }, [toast, appliedSearch, filterActive])
 
   useEffect(() => {
     if (user?.is_superuser) {
       fetchUsers()
+    }
+  }, [user, fetchUsers])
+
+  useEffect(() => {
+    if (user?.is_superuser) {
       fetchSystemStats()
       fetchSystemHealth()
     }
-  }, [user, fetchUsers, fetchSystemStats, fetchSystemHealth])
+  }, [user, fetchSystemStats, fetchSystemHealth])
 
   const handleSearch = () => {
-    fetchUsers()
+    // Apply what is typed now, without waiting for the debounce.
+    const term = searchTerm.trim()
+    if (term === appliedSearch) {
+      fetchUsers()
+    } else {
+      setAppliedSearch(term)
+    }
   }
 
   const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
@@ -550,8 +571,7 @@ export default function AdminPage() {
 
       const token = Cookies.get('auth_token')
 
-      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
-      const response = await fetch(`${gatewayUrl}/api/v1/identity/auth/register`, {
+      const response = await fetch(`${gatewayBaseUrl}/api/v1/identity/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -576,9 +596,8 @@ export default function AdminPage() {
 
         // Update superuser status if needed
         if (createUserForm.is_superuser) {
-          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
           const superuserResponse = await fetch(
-            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`,
+            `${gatewayBaseUrl}/api/v1/identity/admin/users/${userId}/role`,
             {
               method: 'PATCH',
               headers: {
@@ -598,9 +617,8 @@ export default function AdminPage() {
 
         // Update active status if needed
         if (!createUserForm.is_active) {
-          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
           const statusResponse = await fetch(
-            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`,
+            `${gatewayBaseUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`,
             {
               method: 'PATCH',
               headers: {
@@ -770,8 +788,9 @@ export default function AdminPage() {
                   placeholder="Search users..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
-                  onKeyPress={e => e.key === 'Enter' && handleSearch()}
+                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
                   className="w-64"
+                  aria-label="Search users by email"
                 />
                 <Button onClick={handleSearch} variant="outline" size="sm">
                   Search
@@ -784,9 +803,9 @@ export default function AdminPage() {
                   onChange={e => {
                     const value = e.target.value
                     setFilterActive(value === 'all' ? null : value === 'active')
-                    setTimeout(fetchUsers, 100)
                   }}
                   className="rounded border px-2 py-1 text-sm"
+                  aria-label="Filter users by status"
                 >
                   <option value="all">All Users</option>
                   <option value="active">Active Only</option>
@@ -1090,51 +1109,27 @@ export default function AdminPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 Monitor system performance and status
               </p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Identity Service</span>
-                  <span
-                    className={
-                      systemHealth.identityStatus === 'online' ? 'text-green-600' : 'text-red-600'
-                    }
-                  >
-                    ● {systemHealth.identityStatus === 'online' ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Gateway</span>
-                  <span
-                    className={
-                      systemHealth.gatewayStatus === 'online' ? 'text-green-600' : 'text-red-600'
-                    }
-                  >
-                    ● {systemHealth.gatewayStatus === 'online' ? 'Online' : 'Offline'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Database</span>
-                  <span
-                    className={
-                      systemHealth.databaseStatus === 'healthy'
-                        ? 'text-green-600'
-                        : 'text-yellow-600'
-                    }
-                  >
-                    ● {systemHealth.databaseStatus === 'healthy' ? 'Healthy' : 'Unknown'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Redis Cache</span>
-                  <span
-                    className={
-                      systemHealth.redisStatus === 'connected'
-                        ? 'text-green-600'
-                        : 'text-yellow-600'
-                    }
-                  >
-                    ● {systemHealth.redisStatus === 'connected' ? 'Connected' : 'Unknown'}
-                  </span>
-                </div>
+              <div className="space-y-2" data-testid="system-health">
+                <HealthRow
+                  label="Identity Service"
+                  testId="health-identity"
+                  status={PROBE_LABELS[systemHealth.identityStatus]}
+                />
+                <HealthRow
+                  label="Gateway"
+                  testId="health-gateway"
+                  status={PROBE_LABELS[systemHealth.gatewayStatus]}
+                />
+                <HealthRow
+                  label="Database"
+                  testId="health-database"
+                  status={CHECK_LABELS[systemHealth.databaseStatus]}
+                />
+                <HealthRow
+                  label="Redis Cache"
+                  testId="health-redis"
+                  status={CHECK_LABELS[systemHealth.redisStatus]}
+                />
               </div>
             </Card>
 
@@ -1146,30 +1141,25 @@ export default function AdminPage() {
               <p className="mb-3 text-sm text-muted-foreground">
                 API usage and performance metrics
               </p>
+              {/* Request counts, response times and error rates are not
+                  collected yet (they need the Prometheus integration), so
+                  they read N/A instead of a number. */}
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Requests Today</span>
-                  <span className="font-medium">
-                    {systemStats.apiRequestsToday.toLocaleString()}
+                  <span>API Keys Used (24h)</span>
+                  <span className="font-medium" data-testid="api-keys-used-today">
+                    {systemStats.apiKeysUsedToday !== null
+                      ? systemStats.apiKeysUsedToday.toLocaleString()
+                      : 'N/A'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Avg Response Time</span>
-                  <span className="font-medium text-muted-foreground">
-                    {systemHealth.avgResponseTime !== null
-                      ? `${systemHealth.avgResponseTime}ms`
-                      : 'N/A'}
-                  </span>
+                  <span className="font-medium text-muted-foreground">N/A</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Error Rate</span>
-                  <span
-                    className={`font-medium ${systemHealth.errorRate !== null ? (systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600') : 'text-muted-foreground'}`}
-                  >
-                    {systemHealth.errorRate !== null
-                      ? `${systemHealth.errorRate.toFixed(1)}%`
-                      : 'N/A'}
-                  </span>
+                  <span className="font-medium text-muted-foreground">N/A</span>
                 </div>
               </div>
             </Card>

@@ -57,6 +57,10 @@ than secrets:
   read it: the browser reaches identity through the gateway, on the same
   origin as the dashboard
 - `ENVIRONMENT=production` (the template default)
+- `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
+  dashboard, and an empty value makes the dashboard call the API on the
+  origin it was loaded from. See [The dashboard's browser
+  settings](#the-dashboards-browser-settings) for when to set it
 
 Do not generate secrets by hand or copy them from documentation. The
 [Credentials guide](credentials.md) explains every generated value and how to
@@ -121,6 +125,31 @@ docker compose --profile automations up -d   # n8n workflows
 docker compose --profile monitoring up -d    # Prometheus with monitoring/alert_rules.yml
 docker compose --profile backup up -d        # scheduled PostgreSQL backups
 ```
+
+### The dashboard's browser settings
+
+The dashboard is a Next.js application, and Next.js writes every
+`NEXT_PUBLIC_*` variable into the JavaScript it sends to the browser when the
+image is **built**. The production overlay passes them as build arguments,
+read from `.env`; setting them on the running container changes nothing.
+After changing one, rebuild the dashboard image:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build dashboard
+make start-prod
+```
+
+| Variable | Default | Set it when |
+|----------|---------|-------------|
+| `NEXT_PUBLIC_GATEWAY_URL` | empty: the API is called on the dashboard's own origin | the dashboard is served from a different origin than the gateway. Use the gateway's public HTTPS origin, for example `https://api.wildbox.example.com`; it is also added to the dashboard's Content-Security-Policy `connect-src` |
+| `NEXT_PUBLIC_USE_GATEWAY` | `true` | never in production; `false` is for development against a bare service |
+| `NEXT_PUBLIC_APP_URL` | empty (`http://localhost:3000` in page metadata) | you want absolute links in the page metadata to name your host, for example `https://wildbox.example.com` |
+
+In this stack the gateway serves the dashboard and the API on one origin, so
+the defaults are what a deployment needs, whatever host name it is reached
+by. Images built before this setting existed fell back to
+`http://localhost:80`: in a browser on any other machine every API call,
+the login first, went to that machine and failed.
 
 ### Redis memory
 
@@ -361,7 +390,8 @@ make start-prod
 
 The images are built from the repository, and `make start-prod` does not
 rebuild an image that already exists: build first, or the services keep
-running the previous release.
+running the previous release. The same applies to the dashboard's
+`NEXT_PUBLIC_*` settings, which take effect only in a rebuilt image.
 
 ---
 

@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A session token alone could change the account's password** (#559).
+  fastapi-users' `PATCH /auth/users/me` applied a `password` field
+  without the current password. identity now refuses a password there
+  (`UPDATE_USER_INVALID_PASSWORD`); a user changes it through
+  `POST /api/v1/identity/admin/me/change-password`, which verifies the
+  current one. An administrator's reset of another account is unchanged.
+- **Dashboard pages that missed the backend** (#559). The team page
+  called `/auth/me` and `/api/v1/teams/{id}/members`, which the gateway
+  does not route, and never loaded; it now uses identity's
+  `/admin/me/activity` and `/admin/teams/{id}/members`, open to the
+  team's members, and no longer offers an invite (identity's endpoint
+  pretends to send one) or role changes (identity has none). The profile
+  page saved nothing (`PUT /api/v1/users/me` hit the catch-all 404); the
+  email now goes to `PATCH /auth/users/me` and the password to the
+  change-password route. Search and the status filter on `/admin` now
+  reach identity as `email_filter` and `is_active`, debounced.
+- **System Health shows real status** (#559). The gateway routes
+  `/api/v1/identity/health` to identity's `/health`, which it used to map
+  to a path that does not exist, and identity's health now checks Redis
+  as well as the database. The admin page reads Database and Redis from
+  those checks instead of assuming both healthy whenever identity
+  answered.
+- **No more invented figures in the dashboard** (#559). The home page
+  showed sample values when a service had no data or could not be
+  reached (87% compliance, 5 critical findings, 4/4 feeds, 3 alerts, an
+  IOC 192.168.1.100); each card now shows the service's answer or
+  "Unavailable", and several of its requests, which repeated `/api/v1`
+  under the service prefix, now reach the service. `/admin` showed a
+  random number of requests today, the profile page three made-up
+  activity entries and a "Strong" password badge, and the toolbox marked
+  every opened tool "completed" with a random duration; all are gone.
+- **The production dashboard image had no gateway URL** (#559).
+  `NEXT_PUBLIC_*` is compiled into the browser bundle, and the
+  Dockerfile declared no build argument for it, so every production
+  build fell back to `http://localhost:80`. The Dockerfile now takes
+  `NEXT_PUBLIC_GATEWAY_URL`, `NEXT_PUBLIC_USE_GATEWAY` and
+  `NEXT_PUBLIC_APP_URL` as build arguments, `docker-compose.prod.yml`
+  passes them from `.env`, and an unset gateway URL now means the
+  dashboard's own origin, which is where the gateway serves the API.
 - **The dashboard works through the gateway again** (#103). Signing in
   at https://localhost on a stack set up the documented way failed four
   ways at once: `.env.example` pointed the dashboard's API calls at

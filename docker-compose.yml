@@ -441,19 +441,14 @@ services:
       - NODE_ENV=${NODE_ENV:-development}
       - NEXT_PUBLIC_DEBUG=${NEXT_PUBLIC_DEBUG:-false}
       - NEXT_PUBLIC_USE_GATEWAY=true
-      # Must match the origin the dashboard is opened from. The gateway is
-      # HTTPS-only (80/8080 redirect to 443), so browser API calls go to
-      # https://localhost — same-origin, no CORS. (http://localhost:8080 caused
-      # cross-origin XHR to be blocked.)
-      - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-https://localhost}
-      - NEXT_PUBLIC_API_BASE_URL=http://localhost:80/api/v1/tools
-      - NEXT_PUBLIC_IDENTITY_API_URL=http://localhost:80/api/v1/identity
-      - NEXT_PUBLIC_DATA_API_URL=http://localhost:80/api/v1/data
-      - NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:80/api/v1/guardian
-      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_SENSOR_API_URL=http://localhost:80/api/v1/sensor
-      - NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:80/api/v1/responder
-      - NEXT_PUBLIC_AGENTS_API_URL=http://localhost:80/api/v1/agents
-      # EXCLUDED FROM v1.0: - NEXT_PUBLIC_CSPM_API_URL=http://localhost:80/api/v1/cspm
+      # Empty by default: the browser opens the dashboard through the gateway
+      # (https://localhost) and calls the API on that same origin, whatever
+      # host name it was reached by. Set it only to serve the dashboard from
+      # another origin than the gateway. The gateway is HTTPS-only (80/8080
+      # redirect to 443), so a value must be https://. The per-service
+      # NEXT_PUBLIC_*_API_URL variables that used to follow are read by
+      # nothing (WILDBO-ARCH-04, #559).
+      - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-}
       # Internal URLs for server-side requests within Docker network
       - INTERNAL_GATEWAY_URL=http://open-security-gateway:8080
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}

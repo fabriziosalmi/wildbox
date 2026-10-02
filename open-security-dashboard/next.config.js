@@ -5,6 +5,32 @@ const scriptSrc = isDev
   ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
   : "script-src 'self' 'unsafe-inline'"
 
+// The dashboard calls the gateway on its own origin ('self') unless
+// NEXT_PUBLIC_GATEWAY_URL names another one; that origin must then be allowed
+// to connect to, or the browser blocks every API call. Read at build time,
+// like the variable itself (see src/lib/api-client.ts).
+const gatewayOrigin = (() => {
+  try {
+    return process.env.NEXT_PUBLIC_GATEWAY_URL
+      ? new URL(process.env.NEXT_PUBLIC_GATEWAY_URL).origin
+      : ''
+  } catch {
+    throw new Error(
+      `NEXT_PUBLIC_GATEWAY_URL is not a URL: ${JSON.stringify(process.env.NEXT_PUBLIC_GATEWAY_URL)}`
+    )
+  }
+})()
+const connectSrc = [
+  "'self'",
+  gatewayOrigin,
+  'http://localhost:*',
+  'https://localhost:*',
+  'ws://localhost:*',
+  'wss://localhost:*',
+]
+  .filter(Boolean)
+  .join(' ')
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
@@ -39,7 +65,7 @@ const nextConfig = {
           { key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' },
           {
             key: 'Content-Security-Policy',
-            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' http://localhost:* https://localhost:* ws://localhost:* wss://localhost:*;`,
+            value: `default-src 'self'; ${scriptSrc}; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src ${connectSrc};`,
           },
         ],
       },

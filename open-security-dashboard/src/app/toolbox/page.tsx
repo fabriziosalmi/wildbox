@@ -9,7 +9,6 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Loader2,
   ExternalLink,
   Book,
   Filter,
@@ -19,7 +18,20 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, gatewayBaseUrl } from '@/lib/api-client'
+
+// A tool's own page in the tools service, through the gateway's /tools/
+// route, which accepts the dashboard's session cookie. These links used
+// NEXT_PUBLIC_API_BASE_URL, which no build set (it fell back to the tools
+// service's port on the browser's machine, http://localhost:8000) and which
+// docker-compose.yml pointed at a path that does not exist (#559).
+const toolPageUrl = (name: string) => `${gatewayBaseUrl}/tools/${encodeURIComponent(name)}`
+
+// The tools service's own /docs is not routed through the gateway; the
+// dashboard's API documentation page is.
+const API_DOCS_PATH = '/api-docs'
+
+const openInNewTab = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
 
 interface SecurityTool {
   name: string
@@ -31,13 +43,16 @@ interface SecurityTool {
   endpoint: string
 }
 
-interface ToolExecution {
+/**
+ * A tool opened from this page. The tool runs in its own tab, in the tools
+ * service's page, so this page never learns whether or when it finished: it
+ * records only that it was opened. It used to mark each entry "completed"
+ * after three seconds with a random duration of 5-34 s (#559).
+ */
+interface OpenedTool {
   id: string
   tool: string
-  status: 'running' | 'completed' | 'failed'
-  startTime: string
-  duration?: number
-  result?: unknown
+  openedAt: string
 }
 
 async function fetchSecurityTools(): Promise<SecurityTool[]> {
@@ -111,21 +126,16 @@ function ToolCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/tools/${tool.name}`, '_blank')
-              }
+              onClick={() => openInNewTab(toolPageUrl(tool.name))}
+              aria-label={`Open ${tool.display_name} in the tools service`}
             >
               <Settings className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL}/docs#/Security%20Tools/execute_${tool.name}_api_tools__tool_name__post`,
-                  '_blank'
-                )
-              }
+              onClick={() => openInNewTab(API_DOCS_PATH)}
+              aria-label="API documentation"
             >
               <Book className="h-4 w-4" />
             </Button>
@@ -136,18 +146,18 @@ function ToolCard({
   )
 }
 
-function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
-  if (executions.length === 0) {
+function OpenedToolsPanel({ opened }: { opened: OpenedTool[] }) {
+  if (opened.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Recent Executions</CardTitle>
-          <CardDescription>Tool execution history will appear here</CardDescription>
+          <CardTitle className="text-lg">Recently Opened</CardTitle>
+          <CardDescription>Tools you open will be listed here</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="py-8 text-center text-muted-foreground">
             <Clock className="mx-auto mb-4 h-12 w-12 opacity-50" />
-            <p>No recent executions</p>
+            <p>No tools opened yet</p>
           </div>
         </CardContent>
       </Card>
@@ -157,45 +167,29 @@ function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">Recent Executions</CardTitle>
-        <CardDescription>Latest tool execution results</CardDescription>
+        <CardTitle className="text-lg">Recently Opened</CardTitle>
+        <CardDescription>
+          Each tool runs in its own tab; its results are shown there
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {executions.map(execution => (
+          {opened.map(entry => (
             <div
-              key={execution.id}
+              key={entry.id}
               className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
             >
               <div className="flex items-center gap-3">
-                {execution.status === 'running' && (
-                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                )}
-                {execution.status === 'completed' && (
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                )}
-                {execution.status === 'failed' && <AlertCircle className="h-4 w-4 text-red-500" />}
-
+                <ExternalLink className="h-4 w-4 text-muted-foreground" />
                 <div>
-                  <p className="font-medium">{execution.tool}</p>
+                  <p className="font-medium">{entry.tool}</p>
                   <p className="text-sm text-muted-foreground">
-                    {new Date(execution.startTime).toLocaleTimeString()}
-                    {execution.duration && ` • ${execution.duration}s`}
+                    {new Date(entry.openedAt).toLocaleTimeString()}
                   </p>
                 </div>
               </div>
 
-              <Badge
-                variant={
-                  execution.status === 'completed'
-                    ? 'default'
-                    : execution.status === 'running'
-                      ? 'secondary'
-                      : 'destructive'
-                }
-              >
-                {execution.status}
-              </Badge>
+              <Badge variant="secondary">opened</Badge>
             </div>
           ))}
         </div>
@@ -207,7 +201,7 @@ function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
 export default function ToolboxPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [executions, setExecutions] = useState<ToolExecution[]>([])
+  const [opened, setOpened] = useState<OpenedTool[]>([])
 
   const {
     data: tools = [],
@@ -235,34 +229,16 @@ export default function ToolboxPage() {
   })
 
   const handleExecuteTool = (tool: SecurityTool) => {
-    // Create a new execution entry
-    const execution: ToolExecution = {
-      id: Date.now().toString(),
-      tool: tool.display_name,
-      status: 'running',
-      startTime: new Date().toISOString(),
-    }
+    setOpened(prev => [
+      {
+        id: `${tool.name}-${Date.now()}`,
+        tool: tool.display_name,
+        openedAt: new Date().toISOString(),
+      },
+      ...prev.slice(0, 9), // Keep last 10
+    ])
 
-    setExecutions(prev => [execution, ...prev.slice(0, 9)]) // Keep last 10
-
-    // Open the tool execution page in the API service
-    const toolUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/tools/${tool.name}`
-    window.open(toolUrl, '_blank')
-
-    // Simulate completion (in reality, this would be handled by the API)
-    setTimeout(() => {
-      setExecutions(prev =>
-        prev.map(exec =>
-          exec.id === execution.id
-            ? {
-                ...exec,
-                status: 'completed' as const,
-                duration: Math.floor(Math.random() * 30) + 5,
-              }
-            : exec
-        )
-      )
-    }, 3000)
+    openInNewTab(toolPageUrl(tool.name))
   }
 
   if (isLoading) {
@@ -326,29 +302,9 @@ export default function ToolboxPage() {
             <p className="text-muted-foreground">Execute security tools and analyze results</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/docs`,
-                  '_blank'
-                )
-              }
-            >
+            <Button variant="outline" onClick={() => openInNewTab(API_DOCS_PATH)}>
               <Book className="mr-2 h-4 w-4" />
               API Docs
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`,
-                  '_blank'
-                )
-              }
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Web Interface
             </Button>
           </div>
         </div>
@@ -401,8 +357,8 @@ export default function ToolboxPage() {
                   <Clock className="h-4 w-4 text-orange-600" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Recent Runs</p>
-                  <p className="text-xl font-bold">{executions.length}</p>
+                  <p className="text-sm text-muted-foreground">Recently Opened</p>
+                  <p className="text-xl font-bold">{opened.length}</p>
                 </div>
               </div>
             </CardContent>
@@ -472,7 +428,7 @@ export default function ToolboxPage() {
 
           {/* Execution Panel */}
           <div>
-            <ExecutionPanel executions={executions} />
+            <OpenedToolsPanel opened={opened} />
           </div>
         </div>
       </div>

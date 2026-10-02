@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
-import { identityClient } from '@/lib/api-client'
+import { identityClient, getAuthPath, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,12 +20,33 @@ interface ChangePasswordRequest {
   new_password: string
 }
 
-interface ActivityLog {
-  id: string
-  action: string
-  timestamp: string
-  ip_address?: string
-  user_agent?: string
+interface MyMembership {
+  team_id: string
+  team_name: string
+  role: string
+}
+
+// identity's minimum for a new password (PasswordChangeRequest).
+const MIN_PASSWORD_LENGTH = 12
+
+// Where the profile is saved, through the gateway. The page used to send
+// PUT /api/v1/users/me and PUT /api/v1/users/me/password, which the gateway
+// does not route, so nothing was ever saved (#559).
+//  - The email goes to fastapi-users' PATCH /auth/users/me.
+//  - The password goes to identity's change-password route, which verifies
+//    the current password; PATCH /auth/users/me refuses a password.
+const profilePath = () => getAuthPath('/api/v1/users/me')
+const changePasswordPath = () => getIdentityPath('/api/v1/admin/me/change-password')
+const myActivityPath = () => getIdentityPath('/api/v1/admin/me/activity')
+
+// fastapi-users answers some refusals with a bare error code.
+const ERROR_CODES: Record<string, string> = {
+  UPDATE_USER_EMAIL_ALREADY_EXISTS: 'That email address is already in use',
+}
+
+function saveErrorMessage(error: unknown, fallback: string): string {
+  const message = getErrorMessage(error, fallback)
+  return ERROR_CODES[message] ?? message
 }
 
 export default function ProfilePage() {
@@ -33,8 +54,8 @@ export default function ProfilePage() {
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [showPasswordForm, setShowPasswordForm] = useState(false)
-  const [activityLog, setActivityLog] = useState<ActivityLog[]>([])
-  const [activityLoading, setActivityLoading] = useState(true)
+  // undefined while loading, null when the user has no team.
+  const [membership, setMembership] = useState<MyMembership | null | undefined>(undefined)
 
   // Profile form state
   const [email, setEmail] = useState(user?.email || '')
@@ -51,56 +72,25 @@ export default function ProfilePage() {
     confirm: false,
   })
 
-  const fetchActivityLog = useCallback(async () => {
+  // /auth/users/me carries no team, so the team comes from identity's
+  // per-user summary, the same source the team page uses.
+  const fetchMembership = useCallback(async () => {
     try {
-      setActivityLoading(true)
-      // For now, create mock activity data since the endpoint might not exist yet
-      const mockLogs: ActivityLog[] = [
-        {
-          id: '1',
-          action: 'Profile updated',
-          timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          ip_address: '192.168.1.1',
-        },
-        {
-          id: '2',
-          action: 'Login successful',
-          timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-          ip_address: '192.168.1.1',
-        },
-        {
-          id: '3',
-          action: 'API key created',
-          timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-          ip_address: '192.168.1.1',
-        },
-      ]
-
-      try {
-        const logs = await identityClient.get<ActivityLog[]>('/api/v1/users/me/activity')
-        setActivityLog(logs)
-      } catch {
-        // Fallback to mock data if endpoint doesn't exist
-        setActivityLog(mockLogs)
-      }
-    } catch (error) {
-      console.error('Failed to fetch activity log:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load activity log',
-        variant: 'destructive',
-      })
-    } finally {
-      setActivityLoading(false)
+      const activity = await identityClient.get<{ team_memberships?: MyMembership[] }>(
+        myActivityPath()
+      )
+      setMembership(activity.team_memberships?.[0] ?? null)
+    } catch {
+      setMembership(undefined)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
     if (user) {
       setEmail(user.email)
-      fetchActivityLog()
+      fetchMembership()
     }
-  }, [user, fetchActivityLog])
+  }, [user, fetchMembership])
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,7 +105,7 @@ export default function ProfilePage() {
       }
 
       if (Object.keys(updateData).length > 0) {
-        await identityClient.put('/api/v1/users/me', updateData)
+        await identityClient.patch(profilePath(), updateData)
         await refetchUser()
         toast({
           title: 'Success',
@@ -130,7 +120,7 @@ export default function ProfilePage() {
     } catch (error) {
       toast({
         title: 'Error',
-        description: getErrorMessage(error, 'Failed to update profile'),
+        description: saveErrorMessage(error, 'Failed to update profile'),
         variant: 'destructive',
       })
     } finally {
@@ -150,10 +140,10 @@ export default function ProfilePage() {
       return
     }
 
-    if (passwordForm.new_password.length < 8) {
+    if (passwordForm.new_password.length < MIN_PASSWORD_LENGTH) {
       toast({
         title: 'Error',
-        description: 'Password must be at least 8 characters long',
+        description: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`,
         variant: 'destructive',
       })
       return
@@ -166,7 +156,7 @@ export default function ProfilePage() {
         new_password: passwordForm.new_password,
       }
 
-      await identityClient.put('/api/v1/users/me/password', changeData)
+      await identityClient.post(changePasswordPath(), changeData)
 
       setPasswordForm({
         current_password: '',
@@ -181,7 +171,7 @@ export default function ProfilePage() {
     } catch (error) {
       toast({
         title: 'Error',
-        description: getErrorMessage(error, 'Failed to change password'),
+        description: saveErrorMessage(error, 'Failed to change password'),
         variant: 'destructive',
       })
     } finally {
@@ -234,9 +224,9 @@ export default function ProfilePage() {
                       Super Admin
                     </Badge>
                   )}
-                  {user.team_memberships?.[0] && (
+                  {membership && (
                     <Badge variant="outline" className="border-blue-600 text-blue-600">
-                      {user.team_memberships[0].role}
+                      {membership.role}
                     </Badge>
                   )}
                 </div>
@@ -258,8 +248,12 @@ export default function ProfilePage() {
               </div>
               <div>
                 <div className="text-muted-foreground">Team</div>
-                <div className="font-medium">
-                  {user.team_memberships?.[0]?.team?.name || 'No team'}
+                <div className="font-medium" data-testid="profile-team">
+                  {membership === undefined
+                    ? 'Unavailable'
+                    : membership === null
+                      ? 'No team'
+                      : membership.team_name}
                 </div>
               </div>
             </div>
@@ -356,7 +350,7 @@ export default function ProfilePage() {
                       }
                       placeholder="Enter new password"
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
                     />
                     <button
                       type="button"
@@ -389,7 +383,7 @@ export default function ProfilePage() {
                       }
                       placeholder="Confirm new password"
                       required
-                      minLength={8}
+                      minLength={MIN_PASSWORD_LENGTH}
                     />
                     <button
                       type="button"
@@ -486,19 +480,12 @@ export default function ProfilePage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-medium">Password Strength</div>
-                  <div className="text-muted-foreground">
-                    Last changed {user?.updated_at ? formatDate(user.updated_at) : 'unknown'}
-                  </div>
+                  <div className="font-medium">Password</div>
+                  <div className="text-muted-foreground">Changing it requires the current one</div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="border-green-600 text-green-600">
-                    Strong
-                  </Badge>
-                  <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
-                    Change
-                  </Button>
-                </div>
+                <Button variant="outline" size="sm" onClick={() => setShowPasswordForm(true)}>
+                  Change
+                </Button>
               </div>
             </div>
           </Card>
@@ -507,67 +494,20 @@ export default function ProfilePage() {
         {/* Activity Log */}
         <div>
           <Card className="p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-5 w-5" />
-                <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  toast({
-                    title: 'Activity Export',
-                    description:
-                      'Full activity log export will be available soon. Currently showing recent activities.',
-                  })
-                }}
-              >
-                Export Log
-              </Button>
+            <div className="mb-4 flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              <h3 className="text-lg font-semibold text-foreground">Recent Activity</h3>
             </div>
 
-            {activityLoading ? (
-              <div className="py-8 text-center">
-                <div className="text-muted-foreground">Loading activity...</div>
+            {/* identity keeps no per-account activity log yet. This card
+                used to fill itself with three made-up entries whenever the
+                (unrouted) request failed, which was always. */}
+            <div className="py-8 text-center">
+              <div className="text-muted-foreground">Activity history is not available</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Wildbox does not record an account activity log yet
               </div>
-            ) : activityLog.length > 0 ? (
-              <div className="space-y-3">
-                {activityLog.slice(0, 10).map(log => (
-                  <div key={log.id} className="border-l-2 border-primary pb-3 pl-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-medium">{log.action}</div>
-                      <Badge variant="outline" className="text-xs">
-                        {log.ip_address}
-                      </Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground">{formatDate(log.timestamp)}</div>
-                  </div>
-                ))}
-                <div className="border-t border-border pt-3 text-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      toast({
-                        title: 'Full Activity Log',
-                        description:
-                          'Detailed activity history viewer will be available in the next update.',
-                      })
-                    }}
-                  >
-                    View All Activity
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div className="py-8 text-center">
-                <div className="text-muted-foreground">No recent activity</div>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  Activity will appear here as you use the platform
-                </div>
-              </div>
-            )}
+            </div>
           </Card>
         </div>
       </div>

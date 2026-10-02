@@ -10,10 +10,10 @@ import {
   Server,
   Users,
   Zap,
-  Clock,
   CheckCircle,
-  XCircle,
+  Clock,
   AlertCircle,
+  ListChecks,
   type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -23,451 +23,212 @@ import {
   guardianClient,
   responderClient,
   cspmClient,
+  getCSPMPath,
+  getDataPath,
   getGuardianPath,
+  getResponderPath,
 } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 import { useVulnerabilityStats } from '@/hooks/use-vulnerability-stats'
 
+/*
+ * Every number on this page comes from a service response. A card whose
+ * source did not answer says "Unavailable"; one whose source answered with
+ * nothing yet says so. The page used to fill both cases with sample values
+ * -- "87%" compliance, "5" critical findings, "4/4" feeds, "3" alerts and an
+ * IOC 192.168.1.100 -- which an empty stack displayed as real (#559).
+ */
+
+interface ThreatIntelSummary {
+  total_feeds: number
+  active_feeds: number
+  new_indicators: number
+  trends_change: number
+}
+
+interface CloudSummary {
+  total_scans: number
+  total_findings: number
+  compliance_score: number
+}
+
+interface AssetCounts {
+  total: number
+  active: number
+}
+
 interface DashboardMetrics {
-  threatIntel: {
-    totalFeeds: number
-    activeFeeds: number
-    lastUpdated: string
-    newIndicators: number
-    trendsChange: number
-  }
-  cloudSecurity: {
-    totalAccounts: number
-    complianceScore: number
-    criticalFindings: number
-    lastScan: string
-    trendsChange: number
-  }
-  endpoints: {
-    totalEndpoints: number
-    onlineEndpoints: number
-    alerts: number
-    lastActivity: string
-    trendsChange: number
-  }
-  vulnerabilities: {
-    totalVulns: number
-    criticalVulns: number
-    highVulns: number
-    resolved: number
-    trendsChange: number
-  }
-  response: {
-    totalPlaybooks: number
-    activeRuns: number
-    successRate: number
-    lastExecution: string
-  }
-  systemHealth: {
-    status: 'operational' | 'degraded' | 'down'
-    uptime: number | null
-    responseTime: number | null
-    errorRate: number | null
-  }
+  threatIntel: ThreatIntelSummary | null
+  cloud: CloudSummary | null
+  assets: AssetCounts | null
+  playbooks: number | null
+  /** Sources that answered, out of those asked. */
+  reachable: number
+  probed: number
 }
 
 interface RecentActivity {
   id: string
-  type: 'threat' | 'scan' | 'alert' | 'playbook' | 'vulnerability'
+  type: 'indicator' | 'vulnerability'
   title: string
   description: string
   timestamp: string
   severity: 'low' | 'medium' | 'high' | 'critical'
-  status: 'completed' | 'failed' | 'running' | 'pending'
 }
 
-// Loose shapes of the service responses read below. Every field is
-// optional: each service may be absent or older than the dashboard.
-interface GuardianAsset {
-  status?: string
-  last_seen?: string
-  updated_at?: string
-}
-
-interface GuardianAssetPage {
-  count?: number
-  results?: GuardianAsset[]
-}
-
-interface ThreatIntelSummary {
-  total_feeds?: number
-  active_feeds?: number
-  last_updated?: string
-  new_indicators?: number
-  trends_change?: number
+interface ActivityFeed {
+  items: RecentActivity[]
+  /** False when no activity source answered at all. */
+  available: boolean
 }
 
 interface IndicatorItem {
-  type?: string
-  value?: string
-  created_at?: string
-  severity?: RecentActivity['severity']
-}
-
-interface ScanItem {
-  provider?: string
-  account_name?: string
-  account_id?: string
-  status?: RecentActivity['status']
-  created_at?: string
-  completed_at?: string
-  critical_findings?: number
-  summary?: { critical_findings?: number }
+  id: string
+  indicator_type: string
+  value: string
+  severity: number
+  last_seen?: string | null
+  created_at?: string | null
 }
 
 interface VulnerabilityItem {
-  status?: string
-  cve_id?: string
+  id: string
   title?: string
-  severity?: RecentActivity['severity']
+  cve_id?: string | null
+  severity?: string
+  status?: string
+  asset_name?: string
   created_at?: string
-  updated_at?: string
-  asset?: { hostname?: string }
 }
+
+const settled = <T,>(result: PromiseSettledResult<T>): T | null =>
+  result.status === 'fulfilled' ? result.value : null
 
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
-  try {
-    // Fetch real data from all services
-    const [guardianAssetsRes, threatIntelRes, responderPlaybooksRes] = await Promise.allSettled([
-      // Get actual assets from Guardian
-      guardianClient.get<GuardianAssetPage>(
-        getGuardianPath('/api/v1/assets/assets/?page_size=100')
-      ),
-      // Get threat intel stats from Data service
-      dataClient.get<ThreatIntelSummary>('/api/v1/dashboard/threat-intel'),
-      // Get playbooks from Responder
-      responderClient.get<unknown>('/v1/playbooks'),
-    ])
+  const results = await Promise.allSettled([
+    dataClient.get<ThreatIntelSummary>(getDataPath('/api/v1/dashboard/threat-intel')),
+    cspmClient.get<CloudSummary>(getCSPMPath('/api/v1/dashboard/summary')),
+    guardianClient.get<{ count: number }>(getGuardianPath('/api/v1/assets/assets/?page_size=1')),
+    guardianClient.get<{ count: number }>(
+      getGuardianPath('/api/v1/assets/assets/?status=active&page_size=1')
+    ),
+    responderClient.get<{ total: number }>(getResponderPath('/api/v1/playbooks')),
+  ])
+  const [threatIntel, cloud, allAssets, activeAssets, playbooks] = results
 
-    // Vulnerability stats will be fetched separately via useVulnerabilityStats hook
-    // to avoid duplication and ensure consistency across dashboard
-    const vulnerabilities = {
-      totalVulns: 0,
-      criticalVulns: 0,
-      highVulns: 0,
-      resolved: 0,
-      trendsChange: 0,
-    }
+  const assetTotal = settled(allAssets)
+  const assetActive = settled(activeAssets)
 
-    // Process Guardian assets data for endpoints
-    const endpoints = {
-      totalEndpoints: 0,
-      onlineEndpoints: 0,
-      alerts: 3,
-      lastActivity: new Date().toISOString(),
-      trendsChange: 2.1,
-    }
-
-    if (guardianAssetsRes.status === 'fulfilled') {
-      const assetData = guardianAssetsRes.value
-      if (assetData?.results) {
-        endpoints.totalEndpoints = assetData.count || assetData.results.length
-        endpoints.onlineEndpoints = assetData.results.filter(a => a.status === 'active').length
-        // Update last activity to most recent asset activity
-        const lastSeen = assetData.results.reduce((latest: string, asset) => {
-          const seen = asset.last_seen || asset.updated_at
-          return seen && new Date(seen) > new Date(latest) ? seen : latest
-        }, new Date(0).toISOString())
-        if (lastSeen !== new Date(0).toISOString()) {
-          endpoints.lastActivity = lastSeen
-        }
-      }
-    }
-
-    // Process real threat intel data from Data service
-    let threatIntel = {
-      totalFeeds: 4,
-      activeFeeds: 4,
-      lastUpdated: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-      newIndicators: 0,
-      trendsChange: 0,
-    }
-
-    if (threatIntelRes.status === 'fulfilled') {
-      const tiData = threatIntelRes.value
-      threatIntel = {
-        totalFeeds: tiData.total_feeds || 4,
-        activeFeeds: tiData.active_feeds || 4,
-        lastUpdated: tiData.last_updated || new Date().toISOString(),
-        newIndicators: tiData.new_indicators || 0,
-        trendsChange: tiData.trends_change || 0,
-      }
-    }
-
-    // Process real responder data
-    const response = {
-      totalPlaybooks: 0,
-      activeRuns: 0,
-      successRate: 0,
-      lastExecution: new Date().toISOString(),
-    }
-
-    if (responderPlaybooksRes.status === 'fulfilled') {
-      const playbooksData = responderPlaybooksRes.value
-      if (Array.isArray(playbooksData)) {
-        response.totalPlaybooks = playbooksData.length
-      }
-    }
-
-    // Mock data for services that don't have working APIs yet
-    const cloudSecurity = {
-      totalAccounts: 12,
-      complianceScore: 87,
-      criticalFindings: 5,
-      lastScan: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      trendsChange: 3.1,
-    }
-
-    // System health metrics require Prometheus integration
-    // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
-    const systemHealth = {
-      status: 'operational' as const,
-      uptime: null, // TODO: Implement Prometheus scraper
-      responseTime: null, // TODO: Implement Prometheus scraper
-      errorRate: null, // TODO: Implement Prometheus scraper
-    }
-
-    return {
-      threatIntel,
-      cloudSecurity,
-      endpoints,
-      vulnerabilities,
-      response,
-      systemHealth,
-    }
-  } catch (error) {
-    console.error('Failed to fetch dashboard metrics:', error)
-    // Return fallback data if APIs are unavailable
-    return {
-      threatIntel: {
-        totalFeeds: 0,
-        activeFeeds: 0,
-        lastUpdated: new Date().toISOString(),
-        newIndicators: 0,
-        trendsChange: 0,
-      },
-      cloudSecurity: {
-        totalAccounts: 0,
-        complianceScore: 0,
-        criticalFindings: 0,
-        lastScan: new Date().toISOString(),
-        trendsChange: 0,
-      },
-      endpoints: {
-        totalEndpoints: 0,
-        onlineEndpoints: 0,
-        alerts: 0,
-        lastActivity: new Date().toISOString(),
-        trendsChange: 0,
-      },
-      vulnerabilities: {
-        totalVulns: 0,
-        criticalVulns: 0,
-        highVulns: 0,
-        resolved: 0,
-        trendsChange: 0,
-      },
-      response: {
-        totalPlaybooks: 0,
-        activeRuns: 0,
-        successRate: 0,
-        lastExecution: new Date().toISOString(),
-      },
-      systemHealth: {
-        status: 'down',
-        uptime: null,
-        responseTime: null,
-        errorRate: null,
-      },
-    }
+  return {
+    threatIntel: settled(threatIntel),
+    cloud: settled(cloud),
+    assets:
+      assetTotal && assetActive ? { total: assetTotal.count, active: assetActive.count } : null,
+    playbooks: settled(playbooks)?.total ?? null,
+    reachable: results.filter(r => r.status === 'fulfilled').length,
+    probed: results.length,
   }
 }
 
-async function fetchRecentActivity(): Promise<RecentActivity[]> {
-  try {
-    // Fetch recent activity from multiple services
-    const [threatIntelRes, scanResultsRes, alertsRes] = await Promise.allSettled([
-      // Fetch recent IOCs from data service
-      dataClient.get<{ results?: IndicatorItem[]; indicators?: IndicatorItem[] }>(
-        '/api/v1/indicators/search?limit=5&sort=-created_at'
-      ),
-      // Fetch recent scan results from CSMP
-      cspmClient.get<{ results?: ScanItem[]; scans?: ScanItem[] }>(
-        '/api/v1/scans?limit=3&sort=-created_at'
-      ),
-      // Fetch recent alerts from Guardian
-      guardianClient.get<{ results?: VulnerabilityItem[]; vulnerabilities?: VulnerabilityItem[] }>(
-        getGuardianPath(
-          '/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at'
-        )
-      ),
-    ])
+function indicatorSeverity(score: number): RecentActivity['severity'] {
+  if (score >= 9) return 'critical'
+  if (score >= 7) return 'high'
+  if (score >= 4) return 'medium'
+  return 'low'
+}
 
-    const activities: RecentActivity[] = []
+function vulnerabilitySeverity(severity: string | undefined): RecentActivity['severity'] {
+  return severity === 'critical' || severity === 'high' || severity === 'medium' ? severity : 'low'
+}
 
-    // Process threat intel data
-    if (threatIntelRes.status === 'fulfilled') {
-      const threatData = threatIntelRes.value
-      const indicators = threatData.results || threatData.indicators || []
-      indicators.slice(0, 2).forEach((indicator, index) => {
-        activities.push({
-          id: `threat-${index}`,
-          type: 'threat',
-          title: 'New IOC detected',
-          description: `${indicator.type?.toUpperCase()} ${indicator.value} added to threat intelligence`,
-          timestamp:
-            indicator.created_at ||
-            new Date(Date.now() - 1000 * 60 * (10 + index * 5)).toISOString(),
-          severity: indicator.severity || 'high',
-          status: 'completed',
-        })
-      })
-    }
+async function fetchRecentActivity(): Promise<ActivityFeed> {
+  const [indicatorsRes, vulnerabilitiesRes] = await Promise.allSettled([
+    dataClient.get<{ indicators: IndicatorItem[] }>(getDataPath('/api/v1/indicators/search'), {
+      limit: 3,
+    }),
+    guardianClient.get<{ results?: VulnerabilityItem[] }>(
+      getGuardianPath('/api/v1/vulnerabilities/?ordering=-created_at&page_size=3')
+    ),
+  ])
 
-    // Process CSPM scan results
-    if (scanResultsRes.status === 'fulfilled') {
-      const scanData = scanResultsRes.value
-      const scans = scanData.results || scanData.scans || []
-      scans.slice(0, 2).forEach((scan, index) => {
-        const criticalCount = scan.summary?.critical_findings || scan.critical_findings || 0
-        activities.push({
-          id: `scan-${index}`,
-          type: 'scan',
-          title: `${scan.provider?.toUpperCase() || 'Cloud'} compliance scan completed`,
-          description: `${scan.account_name || scan.account_id || 'Account'} scan found ${criticalCount} critical findings`,
-          timestamp:
-            scan.completed_at ||
-            scan.created_at ||
-            new Date(Date.now() - 1000 * 60 * (30 + index * 15)).toISOString(),
-          severity: criticalCount > 0 ? 'critical' : 'medium',
-          status: scan.status || 'completed',
-        })
-      })
-    }
+  const items: RecentActivity[] = []
 
-    // Process Guardian vulnerability alerts
-    if (alertsRes.status === 'fulfilled') {
-      const alertData = alertsRes.value
-      const vulnerabilities = alertData.results || alertData.vulnerabilities || []
-      vulnerabilities.slice(0, 2).forEach((vuln, index) => {
-        activities.push({
-          id: `vuln-${index}`,
-          type: vuln.status === 'remediated' ? 'vulnerability' : 'alert',
-          title:
-            vuln.status === 'remediated'
-              ? 'Critical vulnerability patched'
-              : 'Vulnerability alert triggered',
-          description: `${vuln.cve_id || vuln.title || 'Vulnerability'} ${vuln.status === 'remediated' ? 'remediated' : 'detected'} on ${vuln.asset?.hostname || 'system'}`,
-          timestamp:
-            vuln.updated_at ||
-            vuln.created_at ||
-            new Date(Date.now() - 1000 * 60 * (60 + index * 30)).toISOString(),
-          severity: vuln.severity || 'high',
-          status: vuln.status === 'remediated' ? 'completed' : 'pending',
-        })
-      })
-    }
+  // An entry without a timestamp is left out rather than given one.
+  for (const indicator of settled(indicatorsRes)?.indicators ?? []) {
+    const timestamp = indicator.last_seen || indicator.created_at
+    if (!timestamp) continue
+    items.push({
+      id: `indicator-${indicator.id}`,
+      type: 'indicator',
+      title: 'Threat indicator seen',
+      description: `${indicator.indicator_type.toUpperCase()} ${indicator.value}`,
+      timestamp,
+      severity: indicatorSeverity(indicator.severity),
+    })
+  }
 
-    // If no real data is available, return fallback data
-    if (activities.length === 0) {
-      return [
-        {
-          id: '1',
-          type: 'threat',
-          title: 'New IOC detected',
-          description: 'Malicious IP 192.168.1.100 added to threat intelligence',
-          timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-          severity: 'high',
-          status: 'completed',
-        },
-        {
-          id: '2',
-          type: 'scan',
-          title: 'AWS compliance scan completed',
-          description: 'Production account scan found 3 new critical findings',
-          timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          severity: 'critical',
-          status: 'completed',
-        },
-        {
-          id: '3',
-          type: 'alert',
-          title: 'Endpoint alert triggered',
-          description: 'Suspicious process detected on WORKSTATION-01',
-          timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
-          severity: 'high',
-          status: 'pending',
-        },
-      ]
-    }
+  for (const vuln of settled(vulnerabilitiesRes)?.results ?? []) {
+    if (!vuln.created_at) continue
+    const name = vuln.cve_id || vuln.title || 'Vulnerability'
+    items.push({
+      id: `vulnerability-${vuln.id}`,
+      type: 'vulnerability',
+      title: vuln.status === 'resolved' ? 'Vulnerability resolved' : 'Vulnerability recorded',
+      description: vuln.asset_name ? `${name} on ${vuln.asset_name}` : name,
+      timestamp: vuln.created_at,
+      severity: vulnerabilitySeverity(vuln.severity),
+    })
+  }
 
-    // Sort by timestamp (most recent first) and return up to 5 activities
-    return activities
+  return {
+    items: items
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-      .slice(0, 5)
-  } catch (error) {
-    console.error('Failed to fetch recent activity:', error)
-    // Return fallback data on error
-    return [
-      {
-        id: '1',
-        type: 'threat',
-        title: 'New IOC detected',
-        description: 'Malicious IP 192.168.1.100 added to threat intelligence',
-        timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
-        severity: 'high',
-        status: 'completed',
-      },
-      {
-        id: '2',
-        type: 'scan',
-        title: 'AWS compliance scan completed',
-        description: 'Production account scan found 3 new critical findings',
-        timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-        severity: 'critical',
-        status: 'completed',
-      },
-    ]
+      .slice(0, 5),
+    available: indicatorsRes.status === 'fulfilled' || vulnerabilitiesRes.status === 'fulfilled',
   }
 }
+
+const UNAVAILABLE = 'Unavailable'
 
 function MetricCard({
   title,
   value,
   description,
   icon: Icon,
-  trend,
   trendValue,
+  testId,
 }: {
   title: string
   value: string | number
   description: string
   icon: LucideIcon
-  trend?: 'up' | 'down'
+  /** A signed percentage from the service; omitted when it has none. */
   trendValue?: number
+  testId?: string
 }) {
+  const unavailable = value === UNAVAILABLE
   return (
-    <Card>
+    <Card data-testid={testId}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
+        <div
+          className={`text-2xl font-bold ${unavailable ? 'text-muted-foreground' : ''}`}
+          data-testid={testId ? `${testId}-value` : undefined}
+        >
+          {value}
+        </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{description}</span>
-          {trend && trendValue && (
+          {!unavailable && trendValue !== undefined && trendValue !== 0 && (
             <div
               className={`flex items-center gap-1 ${
-                trend === 'up' ? 'text-green-600' : 'text-red-600'
+                trendValue > 0 ? 'text-green-600' : 'text-red-600'
               }`}
             >
-              {trend === 'up' ? (
+              {trendValue > 0 ? (
                 <TrendingUp className="h-3 w-3" />
               ) : (
                 <TrendingDown className="h-3 w-3" />
@@ -482,106 +243,81 @@ function MetricCard({
 }
 
 function ActivityItem({ activity }: { activity: RecentActivity }) {
-  const getIcon = () => {
-    switch (activity.type) {
-      case 'threat':
-        return <Shield className="h-4 w-4" />
-      case 'scan':
-        return <Activity className="h-4 w-4" />
-      case 'alert':
-        return <AlertTriangle className="h-4 w-4" />
-      case 'playbook':
-        return <Zap className="h-4 w-4" />
-      case 'vulnerability':
-        return <AlertCircle className="h-4 w-4" />
-      default:
-        return <Activity className="h-4 w-4" />
-    }
-  }
-
-  const getStatusIcon = () => {
-    switch (activity.status) {
-      case 'completed':
-        return <CheckCircle className="h-3 w-3 text-green-500" />
-      case 'failed':
-        return <XCircle className="h-3 w-3 text-red-500" />
-      case 'running':
-        return <Activity className="h-3 w-3 animate-pulse text-blue-500" />
-      case 'pending':
-        return <Clock className="h-3 w-3 text-yellow-500" />
-      default:
-        return null
-    }
-  }
-
-  const getSeverityColor = () => {
-    switch (activity.severity) {
-      case 'critical':
-        return 'border-l-red-500'
-      case 'high':
-        return 'border-l-orange-500'
-      case 'medium':
-        return 'border-l-yellow-500'
-      case 'low':
-        return 'border-l-green-500'
-      default:
-        return 'border-l-gray-500'
-    }
-  }
+  const severityColor = {
+    critical: 'border-l-red-500',
+    high: 'border-l-orange-500',
+    medium: 'border-l-yellow-500',
+    low: 'border-l-green-500',
+  }[activity.severity]
 
   return (
-    <div className={`border-l-4 py-3 pl-4 ${getSeverityColor()}`}>
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-3">
-          <div className="rounded-lg bg-muted p-2">{getIcon()}</div>
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm font-medium">{activity.title}</h4>
-              {getStatusIcon()}
-            </div>
-            <p className="text-sm text-muted-foreground">{activity.description}</p>
-            <p className="text-xs text-muted-foreground">
-              {formatRelativeTime(new Date(activity.timestamp))}
-            </p>
-          </div>
+    <div className={`border-l-4 py-3 pl-4 ${severityColor}`}>
+      <div className="flex items-start gap-3">
+        <div className="rounded-lg bg-muted p-2">
+          {activity.type === 'indicator' ? (
+            <Shield className="h-4 w-4" />
+          ) : (
+            <AlertCircle className="h-4 w-4" />
+          )}
+        </div>
+        <div className="space-y-1">
+          <h4 className="text-sm font-medium">{activity.title}</h4>
+          <p className="text-sm text-muted-foreground">{activity.description}</p>
+          <p className="text-xs text-muted-foreground">
+            {formatRelativeTime(new Date(activity.timestamp))}
+          </p>
         </div>
       </div>
     </div>
   )
 }
 
-export default function DashboardPage() {
-  // Fetch vulnerability stats from dedicated hook
-  const { data: vulnStats, isLoading: vulnStatsLoading } = useVulnerabilityStats()
+function ServiceStatus({ reachable, probed }: { reachable: number; probed: number }) {
+  const all = reachable === probed
+  const none = reachable === 0
+  const [label, color, icon] = all
+    ? ['All services responding', 'bg-green-500', CheckCircle]
+    : none
+      ? ['No service responding', 'bg-red-500', AlertTriangle]
+      : ['Some services not responding', 'bg-yellow-500', Clock]
+  const Icon = icon
+  return (
+    <div className="flex items-center gap-3" data-testid="service-status">
+      <div className={`h-2 w-2 rounded-full ${color}`} />
+      <Icon className="h-4 w-4 text-muted-foreground" />
+      <span className="text-sm font-medium">{label}</span>
+      <span className="text-sm text-muted-foreground">
+        ({reachable}/{probed} sources answered)
+      </span>
+    </div>
+  )
+}
 
-  const { data: metrics, isLoading: metricsLoading } = useQuery({
+export default function DashboardPage() {
+  const vulnStats = useVulnerabilityStats()
+
+  const {
+    data: metrics,
+    isLoading: metricsLoading,
+    dataUpdatedAt,
+  } = useQuery({
     queryKey: ['dashboard-metrics'],
     queryFn: fetchDashboardMetrics,
     refetchInterval: 30000, // Refresh every 30 seconds
   })
 
-  const { data: activities, isLoading: activitiesLoading } = useQuery({
+  const { data: activity, isLoading: activitiesLoading } = useQuery({
     queryKey: ['recent-activity'],
     queryFn: fetchRecentActivity,
     refetchInterval: 60000, // Refresh every minute
   })
 
-  // Merge vulnerability stats from hook with other metrics
-  const enrichedMetrics =
-    metrics && vulnStats
-      ? {
-          ...metrics,
-          vulnerabilities: {
-            totalVulns: vulnStats.total_vulnerabilities,
-            criticalVulns: vulnStats.critical_count,
-            highVulns: vulnStats.high_count,
-            resolved: vulnStats.resolved_count,
-            trendsChange: 0, // Could be calculated from historical data
-          },
-        }
-      : metrics
+  // The stats hook shows zeros as placeholder data while it loads; those are
+  // not counts, so the page waits for the real ones and never displays them.
+  const vulnStatsPending =
+    vulnStats.isLoading || (vulnStats.isPlaceholderData && vulnStats.isFetching)
 
-  if (metricsLoading || vulnStatsLoading || !enrichedMetrics) {
+  if (metricsLoading || vulnStatsPending || !metrics) {
     return (
       <MainLayout>
         <div className="space-y-6">
@@ -604,6 +340,10 @@ export default function DashboardPage() {
     )
   }
 
+  const { threatIntel, cloud, assets, playbooks } = metrics
+  const vulns = vulnStats.isPlaceholderData || vulnStats.isError ? null : (vulnStats.data ?? null)
+  const hasScans = cloud !== null && cloud.total_scans > 0
+
   return (
     <MainLayout>
       <div className="space-y-6">
@@ -615,67 +355,26 @@ export default function DashboardPage() {
               Overview of your security posture and recent activities
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <div className="text-right text-sm">
-              <div className="font-medium">Last updated</div>
-              <div className="text-muted-foreground">{formatRelativeTime(new Date())}</div>
+          <div className="text-right text-sm">
+            <div className="font-medium">Last updated</div>
+            <div className="text-muted-foreground">
+              {formatRelativeTime(new Date(dataUpdatedAt))}
             </div>
           </div>
         </div>
 
-        {/* System Health */}
+        {/* Service status: which of the sources below answered. Uptime,
+            response times and error rates need the Prometheus integration
+            and are not shown until they exist. */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Server className="h-5 w-5" />
-              System Health
+              Data Sources
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.uptime !== null
-                    ? `${enrichedMetrics.systemHealth.uptime}%`
-                    : 'N/A'}
-                </div>
-                <div className="text-sm text-muted-foreground">Uptime</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.responseTime !== null
-                    ? `${enrichedMetrics.systemHealth.responseTime}ms`
-                    : 'N/A'}
-                </div>
-                <div className="text-sm text-muted-foreground">Response Time</div>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.errorRate !== null
-                    ? `${enrichedMetrics.systemHealth.errorRate}%`
-                    : 'N/A'}
-                </div>
-                <div className="text-sm text-muted-foreground">Error Rate</div>
-              </div>
-              <div className="text-center">
-                <div
-                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${
-                    enrichedMetrics.systemHealth.status === 'operational'
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
-                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
-                  }`}
-                >
-                  <div
-                    className={`h-2 w-2 rounded-full ${
-                      enrichedMetrics.systemHealth.status === 'operational'
-                        ? 'bg-green-500'
-                        : 'bg-red-500'
-                    }`}
-                  />
-                  {enrichedMetrics.systemHealth.status}
-                </div>
-              </div>
-            </div>
+            <ServiceStatus reachable={metrics.reachable} probed={metrics.probed} />
           </CardContent>
         </Card>
 
@@ -683,35 +382,39 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="Threat Intelligence"
-            value={`${enrichedMetrics.threatIntel.activeFeeds}/${enrichedMetrics.threatIntel.totalFeeds}`}
+            value={
+              threatIntel ? `${threatIntel.active_feeds}/${threatIntel.total_feeds}` : UNAVAILABLE
+            }
             description="Active feeds"
             icon={Shield}
-            trend="up"
-            trendValue={enrichedMetrics.threatIntel.trendsChange}
+            testId="metric-threat-feeds"
           />
           <MetricCard
             title="Cloud Compliance"
-            value={`${enrichedMetrics.cloudSecurity.complianceScore}%`}
-            description="Overall score"
+            value={
+              cloud === null
+                ? UNAVAILABLE
+                : hasScans
+                  ? `${Math.round(cloud.compliance_score)}%`
+                  : 'No scans'
+            }
+            description={hasScans ? 'Score across completed scans' : 'Run a scan to get a score'}
             icon={Activity}
-            trend="down"
-            trendValue={Math.abs(enrichedMetrics.cloudSecurity.trendsChange)}
+            testId="metric-cloud-compliance"
           />
           <MetricCard
-            title="Endpoints"
-            value={`${enrichedMetrics.endpoints.onlineEndpoints}/${enrichedMetrics.endpoints.totalEndpoints}`}
-            description="Online endpoints"
+            title="Assets"
+            value={assets ? `${assets.active}/${assets.total}` : UNAVAILABLE}
+            description="Active assets"
             icon={Server}
-            trend="up"
-            trendValue={enrichedMetrics.endpoints.trendsChange}
+            testId="metric-assets"
           />
           <MetricCard
             title="Vulnerabilities"
-            value={enrichedMetrics.vulnerabilities.criticalVulns}
-            description="Critical findings"
+            value={vulns ? vulns.critical_count : UNAVAILABLE}
+            description="Critical vulnerabilities"
             icon={AlertTriangle}
-            trend="down"
-            trendValue={Math.abs(enrichedMetrics.vulnerabilities.trendsChange)}
+            testId="metric-critical-vulns"
           />
         </div>
 
@@ -719,27 +422,32 @@ export default function DashboardPage() {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <MetricCard
             title="New IOCs"
-            value={formatNumber(enrichedMetrics.threatIntel.newIndicators)}
+            value={threatIntel ? formatNumber(threatIntel.new_indicators) : UNAVAILABLE}
             description="Last 24 hours"
             icon={Shield}
+            trendValue={threatIntel?.trends_change}
+            testId="metric-new-iocs"
           />
           <MetricCard
-            title="Critical Findings"
-            value={enrichedMetrics.cloudSecurity.criticalFindings}
-            description="Require attention"
+            title="Failed Cloud Checks"
+            value={cloud ? cloud.total_findings : UNAVAILABLE}
+            description="Across all scans"
+            icon={ListChecks}
+            testId="metric-failed-checks"
+          />
+          <MetricCard
+            title="Open Vulnerabilities"
+            value={vulns ? vulns.open_count : UNAVAILABLE}
+            description="Pending remediation"
             icon={AlertCircle}
+            testId="metric-open-vulns"
           />
           <MetricCard
-            title="Active Alerts"
-            value={enrichedMetrics.endpoints.alerts}
-            description="Pending review"
-            icon={AlertTriangle}
-          />
-          <MetricCard
-            title="Playbook Success"
-            value={`${enrichedMetrics.response.successRate}%`}
-            description="Automation rate"
+            title="Playbooks"
+            value={playbooks ?? UNAVAILABLE}
+            description="Available for response"
             icon={Zap}
+            testId="metric-playbooks"
           />
         </div>
 
@@ -748,19 +456,27 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>Latest security events and system activities</CardDescription>
+              <CardDescription>
+                Latest threat indicators and vulnerabilities recorded
+              </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {activitiesLoading
-                ? [...Array(5)].map((_, i) => (
-                    <div key={i} className="space-y-2">
-                      <div className="skeleton h-4 w-3/4" />
-                      <div className="skeleton h-3 w-1/2" />
-                    </div>
-                  ))
-                : activities?.map(activity => (
-                    <ActivityItem key={activity.id} activity={activity} />
-                  ))}
+            <CardContent className="space-y-4" data-testid="recent-activity">
+              {activitiesLoading ? (
+                [...Array(3)].map((_, i) => (
+                  <div key={i} className="space-y-2">
+                    <div className="skeleton h-4 w-3/4" />
+                    <div className="skeleton h-3 w-1/2" />
+                  </div>
+                ))
+              ) : activity && activity.items.length > 0 ? (
+                activity.items.map(item => <ActivityItem key={item.id} activity={item} />)
+              ) : (
+                <div className="py-6 text-center text-sm text-muted-foreground">
+                  {activity?.available === false
+                    ? 'Activity sources are unavailable'
+                    : 'No recent activity'}
+                </div>
+              )}
             </CardContent>
           </Card>
 

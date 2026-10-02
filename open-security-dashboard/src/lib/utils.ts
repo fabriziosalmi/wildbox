@@ -103,10 +103,6 @@ export function getStatusColor(status: string): string {
   }
 }
 
-export function generateId(): string {
-  return Math.random().toString(36).substring(2, 15)
-}
-
 export function debounce<T extends (...args: never[]) => unknown>(
   func: T,
   wait: number

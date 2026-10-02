@@ -158,13 +158,11 @@ src/
    Edit `.env.local` with your configuration:
 
    ```env
-   # API Endpoints
-   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-   NEXT_PUBLIC_DATA_API_URL=http://localhost:8002
-   NEXT_PUBLIC_GUARDIAN_API_URL=http://localhost:8003
-   NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
-   NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
-   NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8018
+   # Where the browser reaches the Wildbox gateway. Every API call goes
+   # through it. Empty means the page's own origin, which is right when
+   # the gateway serves the dashboard; set it to the gateway's origin
+   # when this dev server runs outside the stack.
+   NEXT_PUBLIC_GATEWAY_URL=https://localhost
 
    # Authentication
    NEXTAUTH_SECRET=your-secret-key
@@ -295,15 +293,21 @@ CMD ["npm", "start"]
 
 ### Environment Variables
 
-Production environment variables:
+`NEXT_PUBLIC_*` variables are compiled into the browser bundle by
+`npm run build`, so the production image takes them as build arguments
+(`docker build --build-arg NEXT_PUBLIC_GATEWAY_URL=...`); the running
+container's environment cannot change them. `docker-compose.prod.yml` passes
+them from the repository's `.env`:
 
 ```env
-NODE_ENV=production
-NEXT_PUBLIC_API_BASE_URL=https://api.wildbox.com
-NEXTAUTH_SECRET=secure-production-secret
-DATABASE_URL=postgresql://...
-REDIS_URL=redis://...
+# Empty: call the API on the dashboard's own origin (the gateway serves both)
+NEXT_PUBLIC_GATEWAY_URL=
+NEXT_PUBLIC_USE_GATEWAY=true
+# Public URL of the dashboard, for absolute links in page metadata
+NEXT_PUBLIC_APP_URL=https://wildbox.example.com
 ```
+
+See the deployment guide, "The dashboard's browser settings".
 
 ## 🔧 API Integration
 
