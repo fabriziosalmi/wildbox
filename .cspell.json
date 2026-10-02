@@ -67,6 +67,7 @@
     "blockquote",
     "blockquotes",
     "boto3",
+    "botocore",
     "Bruteforcer",
     "BSD",
     "buildx",
