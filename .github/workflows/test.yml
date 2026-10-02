@@ -284,11 +284,14 @@ jobs:
         # Every Python service's own package. Guardian's code is in apps/ and
         # guardian/, the sensor's in sensor/ and the shared package's at its
         # root, so the old `open-security-*/app` skipped all three. Reported,
-        # not gated.
+        # not gated. Medium severity and confidence and up: below that, Bandit
+        # reports patterns such as try/except/pass and string constants named
+        # like passwords, which would bury the findings worth acting on.
         timeout-minutes: 5
         run: |
           pip install --quiet "bandit[sarif]==1.8.6"
           bandit --quiet --recursive --exit-zero \
+            --severity-level medium --confidence-level medium \
             --exclude '*/tests/*,*/migrations/*' \
             --format sarif --output bandit-results.sarif \
             open-security-agents/app open-security-cspm/app \

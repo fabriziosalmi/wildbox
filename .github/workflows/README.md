@@ -38,7 +38,8 @@ Trivy and Bandit run once per pull request, in Security Scanning (`test.yml`):
 - On a pull request it then fails on a critical advisory with a released fix
   that the pull request introduces (`scripts/critical_advisories.sh new`).
   Advisories already on `main` are tracked by `main-advisories.yml` instead.
-- Bandit reports to code scanning, category `bandit`. It does not gate.
+- Bandit reports findings of medium severity and confidence and up to code
+  scanning, category `bandit`. It does not gate.
 
 ## Scheduled and manual
 
