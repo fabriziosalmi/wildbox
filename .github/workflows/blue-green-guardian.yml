@@ -1,0 +1,169 @@
+name: Blue-Green guardian tasks
+permissions:
+  contents: read
+
+# docker-compose.blue-green.yml ran guardian's API in two colors but had no
+# worker and no beat, so a blue/green deployment ran no guardian task at all
+# (#550). This job starts guardian's part of that file, moves the traffic's
+# background tasks from blue to green and back with
+# scripts/shell-scripts/blue_green_guardian_tasks.sh (what
+# blue_green_deploy.sh and blue_green_rollback.sh call), and asserts at each
+# step: one beat, never two, on the active color's image; the active
+# color's worker reading every routed queue and running the scheduled
+# sweep; the old color's worker stopped.
+#
+# HAProxy and identity are not started: the traffic switch itself is not
+# what this job tests.
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'docker-compose.blue-green.yml'
+      - 'scripts/shell-scripts/blue_green_*.sh'
+      - 'scripts/init-databases.sql'
+      - 'open-security-guardian/guardian/celery.py'
+      - 'open-security-guardian/guardian/beat.py'
+      - 'open-security-guardian/Dockerfile'
+      - '.github/workflows/blue-green-guardian.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: blue-green-guardian-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guardian-tasks:
+    name: One beat across colors; workers follow the traffic
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_FILE: docker-compose.blue-green.yml
+      COMPOSE: docker compose
+      # The alert-rule sweep every 15 s, so a scheduled run can be observed
+      # on each color within the job.
+      GUARDIAN_SCHEDULE_ALERT_RULES: "15"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Throwaway secrets
+        # Random values for this job only; the stack is torn down at the end.
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)"
+            echo "REDIS_PASSWORD=$(openssl rand -hex 16)"
+            echo "JWT_SECRET_KEY=$(openssl rand -hex 32)"
+            echo "GUARDIAN_SECRET_KEY=$(openssl rand -hex 32)"
+          } > .env
+
+      - name: The file renders
+        run: docker compose config -q
+
+      - name: Start blue (API, worker, beat)
+        run: docker compose up -d --build --wait --wait-timeout 600 guardian-blue guardian-worker-blue guardian-beat
+
+      - name: Assertion helpers
+        run: |
+          cat > "$RUNNER_TEMP/check.sh" <<'EOF'
+          set -euo pipefail
+          # check.sh <active color> <stopped color>
+          active=$1 stopped=$2
+          beats="$(docker compose ps -q guardian-beat | wc -l)"
+          echo "guardian-beat containers: $beats"
+          test "$beats" -eq 1
+          image="$(docker inspect -f '{{.Config.Image}}' "$(docker compose ps -q guardian-beat)")"
+          echo "guardian-beat image: $image"
+          test "$image" = "wildbox-guardian:$active"
+          test -z "$(docker compose ps -q "guardian-worker-$stopped")"
+          id="$(docker compose ps -q "guardian-worker-$active")"
+          test "$(echo "$id" | wc -l)" -eq 1
+          host="$(docker inspect -f '{{.Config.Hostname}}' "$id")"
+          docker exec "$id" celery -A guardian inspect active_queues --json -d "celery@$host" > queues.json
+          python3 - <<'PY'
+          import json
+          raw = open("queues.json").read()
+          (queues,) = json.loads(raw[raw.index("{"):]).values()
+          got = sorted(q["name"] for q in queues)
+          print("active worker consumes:", got)
+          assert got == ["analytics", "default", "reporting", "scanning"], got
+          PY
+          # The scheduled sweep reaches the active color's worker.
+          for _ in $(seq 1 30); do
+            if docker logs "$id" 2>&1 | grep -q 'check_all_alert_rules\[.*\] succeeded'; then
+              echo "guardian-worker-$active ran the scheduled alert-rule sweep"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "guardian-worker-$active never ran the scheduled sweep" >&2
+          exit 1
+          EOF
+
+      - name: Blue is active
+        run: bash "$RUNNER_TEMP/check.sh" blue green
+
+      - name: Cut over to green, sampling the beat count throughout
+        run: |
+          docker compose up -d --build --wait --wait-timeout 600 --scale guardian-green=1 guardian-green
+          touch "$RUNNER_TEMP/sampling"
+          (
+            while [ -e "$RUNNER_TEMP/sampling" ]; do
+              docker ps --filter "label=com.docker.compose.service=guardian-beat" \
+                --filter status=running -q | wc -l >> "$RUNNER_TEMP/beats-green.txt"
+              sleep 0.2
+            done
+          ) &
+          ./scripts/shell-scripts/blue_green_guardian_tasks.sh green
+          rm "$RUNNER_TEMP/sampling"
+          wait
+          echo "beat counts sampled during the switch: $(sort -n "$RUNNER_TEMP/beats-green.txt" | uniq -c | xargs)"
+          test "$(sort -n "$RUNNER_TEMP/beats-green.txt" | tail -1)" -le 1
+
+      - name: Green is active
+        run: bash "$RUNNER_TEMP/check.sh" green blue
+
+      - name: Roll back to blue, sampling the beat count throughout
+        run: |
+          touch "$RUNNER_TEMP/sampling"
+          (
+            while [ -e "$RUNNER_TEMP/sampling" ]; do
+              docker ps --filter "label=com.docker.compose.service=guardian-beat" \
+                --filter status=running -q | wc -l >> "$RUNNER_TEMP/beats-blue.txt"
+              sleep 0.2
+            done
+          ) &
+          ./scripts/shell-scripts/blue_green_guardian_tasks.sh blue
+          rm "$RUNNER_TEMP/sampling"
+          wait
+          echo "beat counts sampled during the switch: $(sort -n "$RUNNER_TEMP/beats-blue.txt" | uniq -c | xargs)"
+          test "$(sort -n "$RUNNER_TEMP/beats-blue.txt" | tail -1)" -le 1
+
+      - name: Blue is active again
+        run: |
+          # The logs of the blue worker restarted above still hold its runs
+          # from before the cut-over, so check.sh's sweep check is satisfied
+          # only by a run after the restart: wait for one.
+          id="$(docker compose ps -q guardian-worker-blue)"
+          since="$(docker inspect -f '{{.State.StartedAt}}' "$id")"
+          for _ in $(seq 1 30); do
+            if docker logs --since "$since" "$id" 2>&1 | grep -q 'check_all_alert_rules\[.*\] succeeded'; then
+              break
+            fi
+            sleep 2
+          done
+          docker logs --since "$since" "$id" 2>&1 | grep -q 'check_all_alert_rules\[.*\] succeeded'
+          bash "$RUNNER_TEMP/check.sh" blue green
+
+      - name: A second beat is refused
+        run: |
+          docker compose up -d --no-deps --scale guardian-beat=2 guardian-beat || true
+          test "$(docker compose ps -q guardian-beat | wc -l)" -eq 1
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

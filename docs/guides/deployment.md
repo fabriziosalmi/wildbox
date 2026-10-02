@@ -226,6 +226,13 @@ docker compose logs guardian-beat
 - Run exactly one `guardian-beat`. Beat has no leader election: a second
   instance would send every task twice. The service has a fixed container
   name, so `--scale guardian-beat=2` fails.
+- `docker-compose.blue-green.yml` keeps that rule across colors: a worker
+  per color (`guardian-worker-blue`, `guardian-worker-green`) and one
+  `guardian-beat` for both, running the image of `GUARDIAN_ACTIVE_COLOR`
+  (blue by default). `scripts/shell-scripts/blue_green_guardian_tasks.sh
+  <blue|green>`, which the deploy and rollback scripts call after switching
+  the traffic, starts the new color's worker, moves beat to the new image
+  and stops the old worker once its running tasks finish.
 - Its health check reads a heartbeat file the scheduler refreshes after every
   tick (at least every 5 seconds); the container turns unhealthy when the file
   is older than a minute, that is when beat is running but no longer

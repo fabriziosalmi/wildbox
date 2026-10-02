@@ -51,7 +51,6 @@ TASK_QUEUES = {
         'apps.reporting.tasks.check_all_alert_rules',
         'apps.reporting.tasks.cleanup_expired_reports',
         'apps.compliance.tasks.generate_compliance_report',
-        'apps.vulnerabilities.tasks.generate_vulnerability_reports',
     ),
     'analytics': (
         'apps.vulnerabilities.tasks.update_vulnerability_risk_scores',

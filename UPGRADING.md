@@ -129,6 +129,12 @@ is at the top of the file.
 - For forks that customize the dashboard: Next.js 16 renamed
   `src/middleware.ts` to `src/proxy.ts`, and `images.domains` is now
   `images.remotePatterns`.
+- guardian's `apps.vulnerabilities.tasks.generate_vulnerability_reports` is
+  gone: it did nothing, and nothing called or scheduled it. Reports, the
+  vulnerability summary included, come from report templates
+  (`POST /api/v1/reports/templates/{id}/generate/`). If you added a periodic
+  task for it in the Django admin, delete that row, or the worker logs an
+  unregistered task each time beat sends it.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -180,6 +186,30 @@ in the production overlay, sits on `data` alone.
   `guardian-worker` in `docker-compose.yml`.
 - `GUARDIAN_BASE_URL` (optional) prefixes the vulnerability link in the SLA
   and assignment e-mails.
+
+### 14. Blue/green: guardian runs its tasks there too (only if you use it)
+
+`docker-compose.blue-green.yml` ran guardian's API in two colors but no
+worker and no beat, so a blue/green deployment ran none of guardian's tasks.
+It now has `guardian-worker-blue` and `guardian-worker-green`, and one
+`guardian-beat` for both colors, which runs the image of the color named by
+`GUARDIAN_ACTIVE_COLOR` (`blue` when unset). `blue_green_deploy.sh guardian`
+and `blue_green_rollback.sh guardian` move the worker and the beat with the
+traffic through `scripts/shell-scripts/blue_green_guardian_tasks.sh`.
+
+- **Set `GUARDIAN_SECRET_KEY`** in the environment the file is used with;
+  guardian refuses to start without it, and the file now says so.
+- **Never start a second beat.** Do not run `guardian-beat` from
+  `docker-compose.yml` against the same database and Redis as a blue/green
+  stack.
+- **After moving guardian to green by hand**, pass
+  `GUARDIAN_ACTIVE_COLOR=green` to any later `docker compose up` that
+  includes `guardian-beat`; without it beat returns to blue's image (still a
+  single beat).
+- **Keep tasks compatible across one release.** While both colors' workers
+  run, during the switch, a task queued by one color can run on the other's
+  code, as requests already do against the shared database: change a task's
+  arguments or the tables it reads in two releases, not one.
 
 ## Upgrading to 0.10.0
 
