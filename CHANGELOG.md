@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   even a token with a `jti` could not have been revoked. compose now builds
   the URL with `REDIS_PASSWORD`, as it does for every other service
   (`IDENTITY_REDIS_URL` overrides it).
+- **The gateway auth-cache purge never reached the gateway** (#475). identity
+  called it on port 80, which answers everything but `/health` with a 301, so
+  a revoked token stayed authorised from the cache for up to its TTL. The
+  endpoint now also lives on an internal listener, port 8081, not published,
+  and that is identity's default.
 
 ### Security
 
