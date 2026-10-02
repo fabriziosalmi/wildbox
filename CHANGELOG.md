@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's remediation and integrations endpoints answer again** (#499).
+  All 11 list endpoints of the two apps, plus `scanners/stats/` and
+  `reports/metrics/summary/`, answered 500: `filterset_fields`, search and
+  ordering named fields the models do not have, and no endpoint in either
+  app had a serializer. Filters now use real fields, each endpoint has an
+  explicit serializer, and stored credentials (`auth_config`,
+  `secret_token`, channel `config`) are write-only. A new test GETs every
+  read route, with search and every ordering, and fails on any 5xx.
+
+- **Completing a guardian remediation step works, and creators are
+  recorded** (#516). `RemediationStep.complete_execution` called a
+  workflow method that did not exist and raised `AttributeError`; the
+  steps API's `complete` and `execute` actions only flipped the status, so
+  timings and workflow progress never moved. They now go through
+  `start_execution`/`complete_execution`, and the workflow recomputes its
+  progress from its steps. Creating a ticket, workflow, template, external
+  system or notification channel now sets `created_by` to the
+  gateway-authenticated user instead of leaving it null.
+
 - **The web vulnerability scanner's SQL injection check works** (#507). It
   read `await response.text().lower()`, which calls `.lower()` on the
   coroutine and raised before any comparison, so it never reported a finding.
