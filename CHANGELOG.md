@@ -96,6 +96,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Least-privilege workflow tokens and no exception text in API errors.**
+  Every workflow now declares `permissions: contents: read`, with
+  `security-events: write` only for the two SARIF uploads and
+  `packages: write` only for the image push on `main` (23 code-scanning
+  alerts). The tools metrics endpoint and guardian's widget test returned
+  `str(e)` to the caller; they now log it and return a generic message.
+
 - **The dashboard moves to React 19.** `react`, `react-dom` and their type
   definitions move together to 19.3 (Dependabot's #151 moved `react` alone).
   Unblocked by lucide-react 1.x.

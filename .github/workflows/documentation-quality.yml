@@ -14,6 +14,11 @@ on:
       - '**.md'
       - 'docs/**'
 
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   markdown-lint:
     name: Markdown Linting

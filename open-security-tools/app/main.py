@@ -255,13 +255,14 @@ def create_app() -> FastAPI:
                 "tools": list(discovered_tools.keys())
             }
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            # The exception text stays in the log: returning it exposed
+            # internal details (paths, settings) to the caller.
             logger.error(f"Error collecting metrics: {e}")
             return {
                 "service": "tools",
                 "version": "1.0.0",
                 "timestamp": time.time(),
                 "error": "Failed to collect metrics",
-                "details": str(e)
             }
     
     # System information endpoint
