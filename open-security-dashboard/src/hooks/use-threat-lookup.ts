@@ -14,7 +14,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { dataClient, type ApiError } from '@/lib/api-client'
+import { dataClient, getDataPath, type ApiError } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -202,27 +202,34 @@ export function detectIOCType(value: string): IOCType {
 
 // ============================================================================
 // API Functions
+//
+// dataClient's base URL already ends in the gateway's /api/v1/data prefix, so
+// the paths go through getDataPath, which drops the leading /api/v1. Without
+// it every lookup requested /api/v1/data/api/v1/<kind>/<value>, which the data
+// service answers with 404, and every indicator was reported as not found.
 // ============================================================================
 
 /**
  * Lookup IP address threat intelligence
  */
 async function lookupIP(ip: string): Promise<IPIntelligence> {
-  return dataClient.get<IPIntelligence>(`/api/v1/ips/${encodeURIComponent(ip)}`)
+  return dataClient.get<IPIntelligence>(getDataPath(`/api/v1/ips/${encodeURIComponent(ip)}`))
 }
 
 /**
  * Lookup domain threat intelligence
  */
 async function lookupDomain(domain: string): Promise<DomainIntelligence> {
-  return dataClient.get<DomainIntelligence>(`/api/v1/domains/${encodeURIComponent(domain)}`)
+  return dataClient.get<DomainIntelligence>(
+    getDataPath(`/api/v1/domains/${encodeURIComponent(domain)}`)
+  )
 }
 
 /**
  * Lookup file hash threat intelligence
  */
 async function lookupHash(hash: string): Promise<HashIntelligence> {
-  return dataClient.get<HashIntelligence>(`/api/v1/hashes/${encodeURIComponent(hash)}`)
+  return dataClient.get<HashIntelligence>(getDataPath(`/api/v1/hashes/${encodeURIComponent(hash)}`))
 }
 
 /**
