@@ -26,6 +26,38 @@ from .token_blacklist import blacklist_token
 router = APIRouter()
 
 
+async def revoke_token(token: str) -> None:
+    """Blacklist `token` by its jti and drop the gateway's cached decision.
+
+    Shared by POST /auth/logout and by the JWT strategy's destroy_token(), which
+    fastapi-users calls for POST /auth/jwt/logout -- the route the dashboard's
+    logout hook uses.
+    """
+    payload = verify_access_token(token)
+
+    jti = payload.get("jti")
+    if not jti:
+        # Only tokens issued before RevocableJWTStrategy existed lack one.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token carries no jti and cannot be revoked individually",
+        )
+
+    exp = payload.get("exp")
+    expires_at = (
+        datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
+        if exp
+        else datetime.utcnow()
+    )
+
+    await blacklist_token(jti, expires_at)
+
+    # Drop the gateway's cached decision for this token so the revocation takes
+    # effect now rather than after the cache TTL (WILDBO-AUTH-03). Best effort:
+    # the blacklist entry above is what makes it correct.
+    await purge_gateway_auth_cache(token=token, token_type="bearer")
+
+
 @router.post("/logout", status_code=status.HTTP_200_OK, tags=["authentication"])
 async def logout(authorization: Optional[str] = Header(None)):
     """
@@ -46,28 +78,5 @@ async def logout(authorization: Optional[str] = Header(None)):
         )
 
     token = authorization.split(" ", 1)[1].strip()
-    payload = verify_access_token(token)
-
-    jti = payload.get("jti")
-    if not jti:
-        # Tokens issued before jti was added cannot be revoked individually.
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Token carries no jti and cannot be revoked individually",
-        )
-
-    exp = payload.get("exp")
-    expires_at = (
-        datetime.fromtimestamp(exp, tz=timezone.utc).replace(tzinfo=None)
-        if exp
-        else datetime.utcnow()
-    )
-
-    await blacklist_token(jti, expires_at)
-
-    # Drop the gateway's cached decision for this token so the revocation takes
-    # effect now rather than after the cache TTL (WILDBO-AUTH-03). Best effort:
-    # the blacklist entry above is what makes it correct.
-    await purge_gateway_auth_cache(token=token, token_type="bearer")
-
+    await revoke_token(token)
     return {"detail": "Token revoked"}

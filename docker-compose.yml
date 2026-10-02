@@ -43,7 +43,12 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${DATABASE_URL}
-      - REDIS_URL=${REDIS_URL}
+      # Built here with the password, like every other service's. It was
+      # ${REDIS_URL} from .env -- redis://wildbox-redis:6379/0, no password --
+      # while Redis has required one since 0.10.0, so every call failed with
+      # "Authentication required": the token blacklist was never written, and
+      # logout revoked nothing (#475). The failures were logged and swallowed.
+      - REDIS_URL=${IDENTITY_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/0}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
       # Shared secret the gateway presents to /internal/authorize. Without it
       # identity returns "Service misconfigured" and ALL gateway auth fails.
