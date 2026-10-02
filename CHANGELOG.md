@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Password change and self-deletion work again** (#501). identity's custom
+  routes verified with passlib bcrypt, which cannot read the Argon2id hashes
+  fastapi-users writes for every account, so they failed for every user.
+  `app.auth` now uses fastapi-users' `PasswordHelper`: Argon2id for new
+  hashes, Argon2id and legacy bcrypt accepted.
+
 - **Logout now ends the session** (#475). Tokens from the login endpoint carried
   only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
   ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
