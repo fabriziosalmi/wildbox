@@ -99,6 +99,32 @@ jobs:
       - name: Segmentation from inside the running containers
         run: python3 scripts/check_network_segmentation.py runtime
 
+      - name: identity applies the production CORS_ORIGINS
+        # .env carries CORS_ORIGINS comma-separated; identity used to crash-loop
+        # on that form and the overlay stopped passing it (#531). A preflight
+        # from each configured origin must be allowed and one from elsewhere
+        # refused, which shows the value is parsed and applied.
+        run: |
+          preflight() {
+            curl -sS -o /dev/null -w '%{http_code}' -D headers.txt -X OPTIONS \
+              -H "Origin: $1" -H 'Access-Control-Request-Method: GET' \
+              http://localhost:8001/health
+          }
+          origins="$(sed -n 's/^CORS_ORIGINS=//p' .env | tail -1)"
+          test -n "$origins"
+          IFS=',' read -ra list <<< "$origins"
+          for origin in "${list[@]}"; do
+            origin="$(echo "$origin" | xargs)"
+            code="$(preflight "$origin")"
+            echo "allowed? $origin -> $code"
+            test "$code" = 200
+            grep -qi "^access-control-allow-origin: $origin" headers.txt
+          done
+          code="$(preflight https://not-configured.example)"
+          echo "refused? https://not-configured.example -> $code"
+          test "$code" = 400
+          ! grep -qi '^access-control-allow-origin' headers.txt
+
       - name: Run Integration Tests
         run: |
           env_value() { sed -n "s/^$1=//p" .env | head -1; }

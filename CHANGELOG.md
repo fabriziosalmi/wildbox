@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **identity reads a comma-separated `CORS_ORIGINS`** (#531). Its
+  settings declared `cors_origins` as `list[str]`, which pydantic-settings
+  decodes from the environment as JSON only, so the comma-separated value
+  in `.env` made identity exit at import and restart forever. The field
+  now accepts a JSON list or a comma-separated string; an empty value
+  allows no cross-origin requests. The production overlay passes
+  `CORS_ORIGINS` to identity again, as it does for the other services, and
+  the Production Stack workflow checks that a preflight from each
+  configured origin is allowed and one from elsewhere is refused.
+
 - **`make clean` no longer prunes the whole Docker host.** It ran
   `docker system prune -f --volumes`, deleting every unused volume and image
   on the machine, other projects' data included; it now clears local caches
