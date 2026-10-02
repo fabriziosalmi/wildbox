@@ -154,7 +154,9 @@ class TestToolsExecution:
         )
 
         assert response.status_code == 403, f"HTTP {response.status_code}: {response.text[:200]}"
-        assert "not authorized for destructive_test" in response.json().get("detail", ""), response.text[:200]
+        # The service wraps HTTP errors as {"error": {"code", "message", ...}}.
+        message = response.json().get("error", {}).get("message", "")
+        assert "not authorized for destructive_test" in message, response.text[:200]
 
     async def test_plan_based_protection(self) -> None:
         """Test plan-based execution protection"""
