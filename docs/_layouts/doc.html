@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     {% seo %}
+    {%- if page.url == "/404.html" %}
+    <meta name="robots" content="noindex">
+    {%- endif %}
     <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">

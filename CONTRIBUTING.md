@@ -18,9 +18,9 @@ We welcome contributions from the security community! This guide will help you g
 
 ### Prerequisites
 
-- **Docker** >= 20.10 and Docker Compose >= 2.0
-- **Python** >= 3.11 (for local development/testing)
-- **Node.js** >= 18.0 (for dashboard development)
+- **Docker** with the Compose plugin (`docker compose`)
+- **Python** 3.11 (the version CI uses)
+- **Node.js** 24 (the dashboard image and CI use node 24 LTS)
 - **Git** >= 2.30
 - **8GB RAM minimum** (16GB recommended for full stack)
 
@@ -35,28 +35,20 @@ cd wildbox
 # 3. Add upstream remote
 git remote add upstream https://github.com/fabriziosalmi/wildbox.git
 
-# 4. Create environment file
-cp .env.example .env
+# 4. Generate .env with random secrets (also for local development: the
+#    services reject short or weak values), then set INITIAL_ADMIN_EMAIL in it
+make generate-secrets
+make validate-secrets
 
-# 5. Generate development secrets
-# Use weak secrets for local dev, but NEVER in production
-echo "JWT_SECRET_KEY=dev-secret-change-in-production" >> .env
-echo "DATABASE_PASSWORD=dev-password" >> .env
-echo "GATEWAY_INTERNAL_SECRET=dev-gateway-secret" >> .env
+# 5. Start all services and wait until they report healthy
+docker compose up -d --wait --wait-timeout 600
 
-# 6. Start all services
-docker-compose up -d
-
-# 7. Wait for services to initialize (2-3 minutes)
-docker-compose logs -f identity gateway
-
-# 8. Verify services are running
+# 6. Verify
 curl http://localhost/health
 curl http://localhost:8001/health
 
-# 9. Access the dashboard
-# Open http://localhost:3000
-# Log in with the INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD you set in .env
+# 7. Open the dashboard at https://localhost (through the gateway) and log in
+#    with INITIAL_ADMIN_EMAIL / INITIAL_ADMIN_PASSWORD from .env
 ```
 
 ### Running Tests
@@ -72,12 +64,12 @@ curl http://localhost:8001/health
 cd open-security-identity
 pytest tests/
 
-# E2E tests (requires running services)
+# E2E tests (Playwright; requires running services)
 cd open-security-dashboard
-npm test
+npm run test:e2e
 
-# Run all tests
-make test  # See Makefile for all test commands
+# identity's and guardian's suites inside the running containers
+make test
 ```
 
 ### Working on Specific Services
@@ -208,10 +200,11 @@ git push origin feature/my-feature-name
 
 Follow our [Security Policy](SECURITY.md):
 
-1. Email: **security@wildbox.dev**
-2. Subject: `[SECURITY] Brief Description`
-3. Include: Description, reproduction steps, impact assessment
-4. Expect response within 48 hours
+1. Report it privately on GitHub (Security tab, "Report a vulnerability"), or
+   by email to the address in
+   [`security.txt`](https://www.wildbox.io/.well-known/security.txt)
+2. Include: description, reproduction steps, impact assessment
+3. Expect an acknowledgment within 48 hours
 
 ---
 

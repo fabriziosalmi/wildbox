@@ -161,7 +161,7 @@ Ports, service names and bindings are listed in one place:
 ```bash
 make lock             # recompile every service's hash-pinned requirements.txt
 make lock-security    # move only packages with known advisories
-make test             # integration tests against a running stack
+make test             # identity and guardian test suites, inside the running containers
 ```
 
 Unit tests run per service; see `.github/workflows/test.yml` for the exact
@@ -175,7 +175,8 @@ lifecycle) are indexed on the [contributor docs](https://www.wildbox.io/contribu
 | :--- | :--- |
 | Documentation portal | [wildbox.io/docs.html](https://www.wildbox.io/docs.html) |
 | Quick start (detailed) | [guides/quickstart](https://www.wildbox.io/guides/quickstart/) |
-| Credentials and authentication | [guides/credentials](https://www.wildbox.io/guides/credentials/) |
+| Credentials | [guides/credentials](https://www.wildbox.io/guides/credentials/) |
+| Authentication and sessions | [guides/authentication](https://www.wildbox.io/guides/authentication/) |
 | API reference | [wildbox.io/api](https://www.wildbox.io/api/) |
 | Upgrading between versions | [UPGRADING.md](UPGRADING.md) |
 | Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |

@@ -10,9 +10,12 @@ authorization checks.
 
 This page lists the routes registered in
 [`open-security-identity/app/main.py`](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-identity/app/main.py)
-and the modules it includes. For request and response schemas, a running
-service publishes its OpenAPI document at `/openapi.json` and Swagger UI at
-`/docs` (on its local port, not through the gateway).
+and the modules it includes. For request and response schemas, the service
+publishes its OpenAPI document at `/openapi.json`, Swagger UI at `/docs` and
+ReDoc at `/redoc` on its local port (not through the gateway), only when
+`ENVIRONMENT` is not `production`. The `.env` written by
+`make generate-secrets` sets `ENVIRONMENT=production`, so those three paths
+answer 404 in the default stack.
 
 ---
 
@@ -32,10 +35,12 @@ address) and `password`. Returns:
 }
 ```
 
-Wrong credentials return 400; repeated failures are not locked out. Tokens
-are HS256 JWTs valid for 30 minutes, with no refresh endpoint. Lifetime,
-claims, revocation and password hashing are described once, in the
-[authentication reference](../../guides/credentials.md#authentication-reference).
+Wrong credentials return 400. After 5 failed logins for the same email the
+account is locked for 15 minutes: every login, even with the right password,
+returns 429 with `Retry-After: 900`. Tokens are HS256 JWTs valid for 30
+minutes, with no refresh endpoint. Lifetime, claims, revocation, the lockout
+and password hashing are described once, in the
+[Authentication and sessions guide](../../guides/authentication.md).
 
 ```bash
 TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
@@ -55,7 +60,8 @@ fastapi-users route `POST /api/v1/auth/jwt/logout` (gateway:
 `Authorization: Bearer <token>`. Adds the token's `jti` to a blacklist until
 the token would have expired, and asks the gateway to drop it from its
 authorization cache. Returns 200 whether or not the token was already revoked;
-401 without a bearer token.
+401 without a bearer token; 400 for a token without a `jti` (issued before
+the release that added it), which expires on its own.
 
 ### Other Authentication Routes
 
@@ -79,19 +85,17 @@ All under `/api/v1/auth` (fastapi-users):
 | PATCH | `/api/v1/users/me` | Update the authenticated user (fastapi-users) |
 | PATCH | `/api/v1/admin/me/profile` | Update profile fields |
 | PUT | `/api/v1/admin/me` | Update the authenticated user |
-| PUT | `/api/v1/admin/me/password` | Change password (passlib bcrypt; see note) |
-| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` (passlib bcrypt; see note) |
-| DELETE | `/api/v1/admin/me/account` | Delete own account |
+| PUT | `/api/v1/admin/me/password` | Change password; same body as below |
+| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` |
+| DELETE | `/api/v1/admin/me/account` | Deactivate own account; body `password`, `confirm_deletion` |
 | GET | `/api/v1/admin/me/activity` | Own recent activity |
 
 Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
 account and need only a valid token.
 
-The two `/admin/me` password routes verify and hash with passlib bcrypt, while
-accounts created through fastapi-users (registration and the first
-administrator) are hashed with Argon2, so those routes cannot verify their
-current password. Change a password with `PATCH /api/v1/users/me` and a
-`password` field instead.
+Every route that sets a password hashes it with Argon2id through
+fastapi-users' `PasswordHelper`, the same helper login verifies with; bcrypt
+hashes from older releases still verify.
 
 ```bash
 curl -s --cacert open-security-gateway/ssl/wildbox.crt \
@@ -170,6 +174,7 @@ fastapi-users also registers `GET`, `PATCH` and `DELETE` on
 
 ## Related Documentation
 
-- [Credentials and authentication](../../guides/credentials.md)
+- [Authentication and sessions](../../guides/authentication.md)
+- [Credentials](../../guides/credentials.md)
 - [Quick Start](../../guides/quickstart.md)
 - [Gateway routes](https://www.wildbox.io/docs.html#gateway-routes)
