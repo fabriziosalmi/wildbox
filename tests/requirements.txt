@@ -2,8 +2,8 @@
 # Used by CI/CD pipeline and local testing
 
 # Core testing framework
-pytest==8.3.4
-pytest-asyncio==0.24.0
+pytest==9.0.3
+pytest-asyncio==1.3.0
 pytest-cov==6.0.0
 pytest-html==4.1.1
 pytest-timeout==2.3.1
@@ -21,13 +21,13 @@ psycopg2-binary==2.9.10
 # so it has never actually run. `docker` drives the containers the experiments
 # kill and restart; `psutil` reads the host resource pressure they assert on.
 docker==7.2.0
-# 6.0.0 and not the current 7.x: safety==3.2.11 below pins psutil~=6.0.0, and
-# 7.x makes the whole file unresolvable ("ResolutionImpossible"). Bumping this
-# means bumping safety too.
-psutil==6.0.0
+# Same version as the service locks. It used to be held at 6.0.0 because
+# safety==3.2.11 pinned psutil~=6.0.0; safety is no longer listed here (see
+# "Security scanning" below), so that constraint is gone.
+psutil==6.1.1
 
 # Async testing support
-aiohttp==3.14.1
+aiohttp==3.14.3
 
 # Environment management
 python-dotenv==1.2.2
@@ -36,14 +36,19 @@ python-dotenv==1.2.2
 faker==33.1.0
 
 # Code quality
-black==24.10.0
+black==26.3.1
 flake8==7.1.1
 mypy==1.13.0
 pylint==3.3.2
 
 # Security scanning
+# No `safety`: nothing that installs this file runs it (CI scans
+# dependencies with Trivy and pip-audit), and it is where this file's
+# transitive advisories came from. safety 3.2.x pinned filelock~=3.12.2
+# (CVE-2025-68146, CVE-2026-22701); every safety release that allows a fixed
+# filelock (3.6.1 and later) depends on nltk, which has an advisory with no
+# fixed release (CVE-2026-81726).
 bandit==1.8.0
-safety==3.2.11
 
 # Coverage reporting
 coverage==7.6.9
