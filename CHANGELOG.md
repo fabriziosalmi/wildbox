@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Updating a compliance result or assessment works, and starts its
+  follow-up** (#555). guardian's compliance signals read
+  `instance.tracker`, a django-model-utils field tracker the models never
+  declared (the package is not installed), so every update of an existing
+  result or assessment raised `AttributeError` and answered 500. A change is
+  now detected by comparing with the stored row before the save. A changed
+  result status or risk level recalculates the assessment's metrics and,
+  for a high or critical non-compliant result, sends the high-risk
+  notification; an assessment that starts or completes is announced, and
+  completing one recalculates its metrics. The start notice was
+  unreachable before. The tasks are queued once the change is committed,
+  and metric calculations for one assessment no longer run concurrently.
+  None of the compliance e-mail templates existed, so no compliance
+  notification, the overdue-assessment and expiring-exception reminders
+  included, was ever sent; they are now.
 - **guardian's alert rules evaluate real data and notify on changes only**
   (#549). `get_current_value_for_rule` returned 0 for every rule, so no
   rule measured anything, and a firing rule notified on every sweep (96

@@ -156,6 +156,36 @@ def _wait_for_task(task_id: str, headers: dict) -> dict:
     pytest.fail(f"task {task_id} not finished after {TASK_DEADLINE}s: {body}")
 
 
+COMPLIANCE = f"{GUARDIAN_API}/compliance"
+COMPLIANCE_FRAMEWORKS = f"{COMPLIANCE}/frameworks/"
+COMPLIANCE_CONTROLS = f"{COMPLIANCE}/controls/"
+COMPLIANCE_ASSESSMENTS = f"{COMPLIANCE}/assessments/"
+COMPLIANCE_RESULTS = f"{COMPLIANCE}/results/"
+
+
+def _wait_for_metrics(framework_id, headers, condition) -> dict:
+    """Poll a framework's latest metrics until ``condition(metrics)`` holds.
+
+    The metrics are recalculated by the guardian worker after a result
+    changes; until it has run, the endpoint answers 404 or older counts.
+    """
+    deadline = time.monotonic() + TASK_DEADLINE
+    metrics: dict = {}
+    while time.monotonic() < deadline:
+        response = requests.get(
+            f"{COMPLIANCE_FRAMEWORKS}{framework_id}/metrics/",
+            headers=headers,
+            timeout=TIMEOUT,
+        )
+        assert response.status_code in (200, 404), response.text[:300]
+        if response.status_code == 200:
+            metrics = response.json()
+            if condition(metrics):
+                return metrics
+        time.sleep(1)
+    pytest.fail(f"metrics not recalculated after {TASK_DEADLINE}s: {metrics}")
+
+
 class TestGuardianMonitoring:
     """Guardian through the paths operators and clients actually use."""
 
@@ -496,6 +526,97 @@ class TestGuardianMonitoring:
         assert anonymous.status_code == 401, anonymous.status_code
 
         _assert_page(requests.get(DASHBOARDS, headers=admin_headers, timeout=TIMEOUT))
+
+    def test_compliance_update_recalculates_metrics(self, admin_headers) -> None:
+        """Updating a compliance result answers 200 and the worker recounts.
+
+        The compliance signals read a FieldTracker the models never had, so
+        updating a result or an assessment answered 500 and its metrics were
+        never recalculated (#555).
+        """
+        framework = requests.post(
+            COMPLIANCE_FRAMEWORKS,
+            json={"name": f"it-guardian-{uuid.uuid4().hex[:12]}"},
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert framework.status_code == 201, framework.text[:300]
+        framework_id = framework.json()["id"]
+        try:
+            assessment = requests.post(
+                COMPLIANCE_ASSESSMENTS,
+                json={
+                    "name": "Integration test assessment",
+                    "framework": framework_id,
+                    "assessment_type": "self_assessment",
+                    "status": "in_progress",
+                },
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert assessment.status_code == 201, assessment.text[:300]
+            assessment_id = assessment.json()["id"]
+            results = []
+            for number in (1, 2):
+                control = requests.post(
+                    COMPLIANCE_CONTROLS,
+                    json={
+                        "framework": framework_id,
+                        "control_id": f"IT-{number}",
+                        "title": "Integration test control",
+                        "description": "Created by the integration suite.",
+                        "control_type": "technical",
+                    },
+                    headers=admin_headers,
+                    timeout=TIMEOUT,
+                )
+                assert control.status_code == 201, control.text[:300]
+                result = requests.post(
+                    COMPLIANCE_RESULTS,
+                    json={
+                        "assessment": assessment_id,
+                        "control": control.json()["id"],
+                        "status": "compliant",
+                        "risk_level": "low",
+                    },
+                    headers=admin_headers,
+                    timeout=TIMEOUT,
+                )
+                assert result.status_code == 201, result.text[:300]
+                results.append(result.json()["id"])
+
+            updated = requests.patch(
+                f"{COMPLIANCE_RESULTS}{results[0]}/",
+                json={"status": "non_compliant", "risk_level": "critical"},
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert updated.status_code == 200, updated.text[:300]
+            metrics = _wait_for_metrics(
+                framework_id,
+                admin_headers,
+                lambda m: m["non_compliant_controls"] == 1,
+            )
+            assert metrics["total_controls"] == 2, metrics
+            assert metrics["compliant_controls"] == 1, metrics
+            assert metrics["high_risk_findings"] == 1, metrics
+            assert float(metrics["compliance_percentage"]) == 50.0, metrics
+
+            completed = requests.patch(
+                f"{COMPLIANCE_ASSESSMENTS}{assessment_id}/",
+                json={"status": "completed"},
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert completed.status_code == 200, completed.text[:300]
+            assert completed.json()["status"] == "completed"
+        finally:
+            # Controls, the assessment, its results and metrics cascade.
+            requests.delete(
+                f"{COMPLIANCE_FRAMEWORKS}{framework_id}/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
 
 
 def run_tests() -> dict:
