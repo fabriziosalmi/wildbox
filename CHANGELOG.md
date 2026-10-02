@@ -146,6 +146,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The weekly pip security PR can trigger CI without a personal token.**
+  `Pip Security Upgrades` mints a one-hour GitHub App installation token,
+  scoped to this repository's contents and pull requests, when
+  `DEPS_APP_CLIENT_ID` and `DEPS_APP_PRIVATE_KEY` are configured, and falls
+  back to `GITHUB_TOKEN` otherwise. The `DEPS_PR_TOKEN` personal-token option
+  is removed.
+
 - **The chaos suite measures the system now** (#428). Seven experiments
   against the stack as the integration job starts it: cached authorization
   survives an identity outage; new tokens fail closed with 503, then
