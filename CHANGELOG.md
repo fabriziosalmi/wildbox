@@ -125,6 +125,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **One ports table, one login flow, no published passwords.** The guides
+  disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
+  8006, guardian on 8001) and showed the login once as JSON and once
+  form-encoded. `docs/guides/ports.md` now lists every service, container
+  and port from `docker-compose.yml`, and the other guides link to it. The
+  Quick Start uses the login sequence the integration tests run (form-encoded,
+  through the gateway over HTTPS, trusting the generated certificate), with no
+  time promise. The Credentials guide no longer lists `dev-api-key-123`,
+  `postgres/postgres`, `demo-password-123` or `admin/admin`, none of which the
+  stack uses; it explains `generate_secrets.py`, `INITIAL_ADMIN_*` and
+  rotation instead. The Deployment guide no longer overwrites
+  `docker-compose.yml`, replaces the gateway with a separate nginx or creates
+  databases by hand. The identity API reference is rewritten from the routes
+  the service registers; the other references get correct ports and a note
+  that they are hand-written.
+- **The Ollama guide says Ollama is gone.** `guides/ollama-llm.md` described a
+  local LLM container that no Compose file defines; it now documents the
+  Anthropic configuration the agents service actually reads, including that
+  submitted indicators are sent to Anthropic when it is enabled. The
+  Deployment guide notes that `haproxy/` belongs to the blue/green Compose
+  file only.
+- **One authentication reference.** The Credentials guide now states, from
+  the identity code, the signing algorithm (HS256), the claims, the 30-minute
+  lifetime (which `.env` cannot change, because Compose does not pass it), that
+  there is no refresh, both revocation routes, and that failed logins are not
+  locked out (the lockout helpers exist but nothing calls them). It also warns
+  that the `/admin/me` password routes use bcrypt and cannot verify the Argon2
+  hashes fastapi-users writes. The tools reference counts 52 loadable tools
+  instead of 54, the ports page explains how `/metrics` and Prometheus are
+  kept private (localhost binding, not authentication), the references mark
+  their example values as fictitious, and acronyms are expanded on first use.
+
 - **The documentation site renders Markdown at build time.** `docs.html` used
   to fetch guides from `raw.githubusercontent.com` and turn them into HTML in
   the browser with a hand-written parser, injecting the result unsanitized; a
