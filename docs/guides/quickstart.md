@@ -67,8 +67,13 @@ docker compose ps
 ```
 
 `--wait` returns once every service reports healthy, which is how CI starts
-the stack. `make start` does the same with the development overlay
-(`docker-compose.dev.yml`); `make start-prod` uses `docker-compose.prod.yml`.
+the stack. `make start` adds the development overlay
+(`docker-compose.dev.yml`) and `make start-prod` the production one
+(`docker-compose.prod.yml`); neither waits for the health checks (they pause
+15 seconds), so follow them with `docker compose ps`. `make start` calls the
+standalone `docker-compose` command: where only the Compose plugin is
+installed, use the `docker compose` commands on this page. The production
+overlay needs Compose 2.24.4 or later.
 
 To start only the core services:
 
@@ -176,6 +181,9 @@ docker compose --profile monitoring up -d    # Prometheus
 - **Login returns 400**: wrong credentials. Check `INITIAL_ADMIN_EMAIL` and
   `INITIAL_ADMIN_PASSWORD` in `.env`; the admin account is created from them
   on the identity service's first start.
+- **Login returns 429**: after 5 failed logins the account is locked for 15
+  minutes, even for the right password. Wait, or see
+  [Failed-login lockout](authentication.md#failed-login-lockout).
 - **curl fails with a certificate error**: pass
   `--cacert open-security-gateway/ssl/wildbox.crt` and use `localhost`, a name
   the development certificate covers.
@@ -189,6 +197,6 @@ docker compose --profile monitoring up -d    # Prometheus
 ## Next Steps
 
 1. [Deployment guide](deployment.md) for a production setup
-2. [Credentials and authentication](credentials.md)
+2. [Credentials](credentials.md) and [Authentication and sessions](authentication.md)
 3. [Security status](../security/status.md) and [Security policy](../security/policy.md)
 4. [API documentation](../api/README.md)
