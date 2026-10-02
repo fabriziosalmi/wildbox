@@ -1,48 +1,37 @@
 # Wildbox
 
-> An open-source, self-hosted security operations platform. Unified SIEM, SOAR, CSPM, WAF, and automated incident response in a single, community-driven solution.
+> Wildbox is an open-source (MIT), self-hosted security operations platform run with Docker Compose: an OpenResty gateway in front of Python microservices for identity, security tools, threat intelligence data, vulnerability management, cloud security posture management (CSPM), incident response playbooks and optional AI-assisted analysis, plus a Next.js dashboard. It is in an early evaluation phase.
 
-Wildbox provides an end-to-end security suite designed for organizations seeking full sovereignty over their security data. It combines real-time threat detection, automated playbook response, multi-cloud posture management (CSPM), web application firewalling, and local LLM-assisted threat triage without sending telemetry to external third parties.
+What exists today, as defined by `docker-compose.yml` in the repository. Ports, routes and counts below were taken from the code; when in doubt, the repository is authoritative. Release notes are in CHANGELOG.md.
 
-## Core Services & Architecture
+## Services
 
-- **Gateway Service (`open-security-gateway`)**: Built on OpenResty (NGINX + LuaJIT) for unified ingress, TLS termination, API key & JWT validation, rate limiting, and route dispatching.
-- **Identity Service (`open-security-identity`)**: RBAC, JWT authentication, user lifecycle management, and audit logging.
-- **Tools Service (`open-security-tools`)**: Security tooling runner (Nmap, nuclei, vulnerability scanners, OSINT lookups).
-- **Agents Service (`open-security-agents`)**: Autonomous AI security agents for log analysis, alert triage, and threat enrichment.
-- **Responder Service (`open-security-responder`)**: Automated SOAR playbooks, firewall rule updates, IP blacklisting, and notification dispatch.
-- **CSPM Service (`open-security-cspm`)**: Cloud security posture management across AWS, Azure, GCP, and Kubernetes.
-- **Data Service (`open-security-data`)**: High-throughput telemetry ingestion, normalization, and SIEM search engine.
+- **Gateway (`open-security-gateway`)**: OpenResty. The only service published beyond localhost: HTTPS on 443; ports 80 and 8080 answer `/health` and redirect everything else to HTTPS. Validates JWTs and API keys with the identity service, rate-limits per team, routes `/api/v1/<service>/` to each backend.
+- **Identity (`open-security-identity`)**: FastAPI with fastapi-users. Users, JWT login (`POST /auth/jwt/login` through the gateway, form-encoded `username`/`password`), token revocation, API keys, teams with owner/admin/member roles. Failed logins are not locked out.
+- **Tools (`open-security-tools`)**: Runs 52 security tools (scanners, analyzers, OSINT and crypto utilities) through an API, with Celery workers.
+- **Data (`open-security-data`)**: Collects threat intelligence (IOCs, denylists) from public sources on a schedule and serves lookups.
+- **Guardian (`open-security-guardian`)**: Django REST. Assets, vulnerabilities, remediation, compliance and reporting.
+- **Responder (`open-security-responder`)**: Executes YAML incident-response playbooks through connectors.
+- **CSPM (`open-security-cspm`)**: 31 cloud configuration checks across AWS, Azure and GCP.
+- **Agents (`open-security-agents`)**: Optional AI-assisted IOC analysis using the Anthropic API (Claude) when `ANTHROPIC_API_KEY` is set; submitted data is then sent to Anthropic.
+- **Sensor (`open-security-sensor`)**: Endpoint telemetry via osquery, forwarded to the data service; not routed through the gateway.
+- **Dashboard (`open-security-dashboard`)**: Next.js web UI, served through the gateway.
+- Optional Compose profiles: `automations` (n8n), `monitoring` (Prometheus), `backup` (scheduled PostgreSQL backups).
 
-## Quickstart & Deployment
+Wildbox does not include a SIEM, a WAF or a local LLM runtime.
 
-Wildbox is fully self-hosted via Docker and Docker Compose:
+## Docs
 
-```bash
-git clone https://github.com/fabriziosalmi/wildbox.git
-cd wildbox
-cp .env.example .env
-docker-compose up -d
-```
+- [Quick Start](https://www.wildbox.io/guides/quickstart/): generate secrets, start the stack, log in, call the API
+- [Service ports](https://www.wildbox.io/guides/ports/): every service, container and port
+- [Gateway routes](https://www.wildbox.io/docs.html#gateway-routes): public paths and the service behind each
+- [Credentials and authentication](https://www.wildbox.io/guides/credentials/): how secrets are generated; no default credentials exist
+- [Deployment guide](https://www.wildbox.io/guides/deployment/): production setup, TLS, backups
+- [API documentation](https://www.wildbox.io/docs.html#api-docs): per-service endpoint references
+- [Security status](https://www.wildbox.io/security/status/): known open issues and how each check was made
 
-Access the web dashboard at `http://localhost:3000` (or configured reverse proxy) and the API gateway at `http://localhost:8080`.
+## Optional
 
-## Documentation & References
-
-- [Wildbox Website](https://www.wildbox.io/): Official landing page and overview
-- [Documentation Portal](https://www.wildbox.io/docs.html): Architecture, configuration guides, and tutorials
-- [API Reference](https://www.wildbox.io/api-reference.html): Interactive REST API reference and schemas
-- [Quickstart Guide](https://www.wildbox.io/guides/quickstart/): Fast deployment instructions with Docker Compose
-- [Deployment Guide](https://www.wildbox.io/guides/deployment/): Production hardening, multi-node scaling, and SSL/TLS
-- [Ollama LLM Integration](https://www.wildbox.io/guides/ollama-llm/): Self-hosted AI inference for threat analysis
-- [Security Policy](https://www.wildbox.io/security/policy/): Security guidelines and vulnerability reporting
-- [Full LLM Context](https://www.wildbox.io/llms-full.txt): Comprehensive technical specifications and API details for AI models
-- [GitHub Repository](https://github.com/fabriziosalmi/wildbox): Source code, issues, and discussions
-
-## Technical Specifications
-
-- **License**: MIT License
-- **Backend Stack**: Python 3.11+, FastAPI, Uvicorn, PostgreSQL 15+, Redis 7+
-- **Gateway**: OpenResty (NGINX + LuaJIT)
-- **Security & Privacy**: Zero third-party telemetry, 100% self-hosted, air-gapped capable
-- **Author**: Fabrizio Salmi (@fabriziosalmi)
+- [Full context](https://www.wildbox.io/llms-full.txt): the same facts in more detail
+- [GitHub repository](https://github.com/fabriziosalmi/wildbox): source, issues, CHANGELOG.md
+- [Security policy](https://www.wildbox.io/security/policy/) and [security.txt](https://www.wildbox.io/.well-known/security.txt)
