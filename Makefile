@@ -26,9 +26,9 @@ help:
 	@echo "  make clean    - Remove temp files and caches"
 	@echo ""
 	@echo "$(YELLOW)Advanced:$(NC)"
-	@echo "  docker-compose build          - Rebuild images"
-	@echo "  docker-compose ps             - Service status"
-	@echo "  docker-compose exec [service] - Shell into service"
+	@echo "  docker compose build          - Rebuild images"
+	@echo "  docker compose ps             - Service status"
+	@echo "  docker compose exec [service] - Shell into service"
 	@echo "  ./scripts/shell-scripts/comprehensive_health_check.sh - Full diagnostics"
 	@echo ""
 	@echo "$(YELLOW)First time? Run: make setup && make start$(NC)"
@@ -67,7 +67,7 @@ COMPOSE_PROD := -f docker-compose.yml -f docker-compose.prod.yml
 
 start: validate-secrets
 	@echo "$(BLUE)Starting services (development configuration)...$(NC)"
-	@docker-compose $(COMPOSE_DEV) up -d
+	@docker compose $(COMPOSE_DEV) up -d
 	@echo "$(YELLOW)Waiting for services...$(NC)"
 	@sleep 15
 	@echo ""
@@ -108,23 +108,23 @@ lock-security:
 	@./scripts/upgrade_vulnerable_requirements.sh
 
 stop:
-	@docker-compose down
+	@docker compose down
 	@echo "$(GREEN)✓ Services stopped$(NC)"
 
 restart:
-	@docker-compose restart
+	@docker compose restart
 	@echo "$(GREEN)✓ Services restarted$(NC)"
 
 logs:
-	@docker-compose logs -f
+	@docker compose logs -f
 
 health:
 	@./scripts/shell-scripts/comprehensive_health_check.sh
 
 test:
 	@echo "$(BLUE)Running integration tests...$(NC)"
-	@docker-compose exec -T identity pytest tests/
-	@docker-compose exec -T guardian python manage.py test
+	@docker compose exec -T identity pytest tests/
+	@docker compose exec -T guardian python manage.py test
 	@echo "$(GREEN)✓ Tests complete$(NC)"
 
 clean:
@@ -132,5 +132,8 @@ clean:
 	@find . -type f -name "*.pyc" -delete
 	@find . -type d -name "__pycache__" -delete
 	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
-	@docker system prune -f --volumes
+	@# Local caches only. This used to run `docker system prune -f --volumes`,
+	@# which deletes every unused volume and image on the host, other projects'
+	@# data included. To reset this stack, including its data, run
+	@# `docker compose down -v` deliberately.
 	@echo "$(GREEN)✓ Cleanup complete$(NC)"
