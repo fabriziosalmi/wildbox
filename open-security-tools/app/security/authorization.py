@@ -263,12 +263,17 @@ class AuthorizationManager:
         whole strings, so the documented "use full URLs for web targets" form
         never matched a URL with a path or query.
         """
-        from urllib.parse import urlparse
+        from urllib.parse import unquote, urlparse
 
         if not target.startswith(('http://', 'https://')):
             return False
         try:
             parsed = urlparse(target)
+            # A path with dot segments ("/app/../admin", also percent-encoded)
+            # starts with an entry's path but resolves outside it on the
+            # server, so a path-scoped entry never covers it.
+            segments = unquote(parsed.path).replace('\\', '/').split('/')
+            dot_segments = any(seg in ('.', '..') for seg in segments)
             for entry in self.authorized_targets:
                 if not entry.startswith(('http://', 'https://')):
                     continue
@@ -278,7 +283,11 @@ class AuthorizationManager:
                 ):
                     continue
                 prefix = allowed.path.rstrip('/')
-                if not prefix or parsed.path == prefix or parsed.path.startswith(prefix + '/'):
+                if not prefix:
+                    return True
+                if dot_segments:
+                    continue
+                if parsed.path == prefix or parsed.path.startswith(prefix + '/'):
                     return True
         except ValueError:
             return False
