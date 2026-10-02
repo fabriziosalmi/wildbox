@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refuse a revoked one, both logout routes revoke, and the dashboard calls
   revocation before clearing its cookie. Tokens issued before this release
   still lack a `jti` and expire on their own.
+- **identity could not reach Redis** (#475). Its `REDIS_URL` came from `.env`
+  without the password Redis has required since 0.10.0, so every blacklist
+  write and read failed with "Authentication required" and was swallowed:
+  even a token with a `jti` could not have been revoked. compose now builds
+  the URL with `REDIS_PASSWORD`, as it does for every other service
+  (`IDENTITY_REDIS_URL` overrides it).
 
 ### Security
 
