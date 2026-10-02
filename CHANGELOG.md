@@ -71,14 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- **The dashboard's npm tree has no known advisory left**: 61 open
+- **The dashboard's npm tree has no known advisory left** (#518): 61 open
   Dependabot alerts (29 high) and 15 `npm audit` findings, down to zero.
   Patch and minor releases only, inside the existing ranges: axios 1.20.0,
   js-cookie 3.0.8, next 15.5.27, postcss 8.5.28 and eleven transitive
   packages (brace-expansion, minimatch, nanoid, picomatch, js-yaml,
   follow-redirects, browserslist, among others). Next 15 pins its own
   postcss 8.4.31; an override now dedupes it to the patched 8.5 line, the
-  one Next 16 itself ships. 47 lockfile entries move, nothing else.
+  one Next 16 itself ships. The same change takes the in-range minor
+  updates Dependabot grouped (Radix primitives, TanStack Query 5.104,
+  react-hook-form 7.89, Playwright 1.63, eslint-config-next 16.3), so the
+  lockfile is refreshed once instead of rebased sixteen times.
 
 - **Failed-login lockout is enforced** (#509). The helpers and settings
   existed (5 attempts, 15 minutes) but no login route called them, so every
