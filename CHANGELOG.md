@@ -52,6 +52,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Failed-login lockout is enforced** (#509). The helpers and settings
+  existed (5 attempts, 15 minutes) but no login route called them, so every
+  account accepted unlimited password guesses. Password login now refuses an
+  account with 429 after 5 failures, for registered and unknown emails alike,
+  and a successful login clears the counter.
+
 - **identity no longer serves its API documentation in production** (#496).
   `/docs`, `/redoc` and `/openapi.json` mapped every route, admin and
   internal ones included; like agents, responder and cspm, identity now

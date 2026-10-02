@@ -11,7 +11,7 @@ import jwt as pyjwt
 
 logger = logging.getLogger(__name__)
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request, status
 from fastapi_users import BaseUserManager, FastAPIUsers
 from fastapi_users.authentication import (
     AuthenticationBackend,
@@ -26,7 +26,12 @@ from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
 from .logout import revoke_token
-from .token_blacklist import is_token_blacklisted
+from .token_blacklist import (
+    clear_failed_logins,
+    is_account_locked,
+    is_token_blacklisted,
+    record_failed_login,
+)
 
 
 # 1. Database Adapter
@@ -105,6 +110,31 @@ auth_backend = AuthenticationBackend(
 class UserManager(BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = settings.jwt_secret_key
     verification_token_secret = settings.jwt_secret_key
+
+    async def authenticate(self, credentials):
+        """Password login with a per-account lockout (#509).
+
+        token_blacklist.py had record_failed_login / is_account_locked and
+        config had max_failed_login_attempts and account_lockout_minutes, but
+        nothing called them: every account accepted unlimited password
+        attempts. The counter is keyed by the normalised email whether or not
+        the account exists, so the 429 does not reveal which emails are
+        registered. A lock refuses even the correct password until it expires;
+        a successful login clears the counter.
+        """
+        email = (credentials.username or "").strip().lower()
+        if await is_account_locked(email):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Try again later.",
+                headers={"Retry-After": str(settings.account_lockout_minutes * 60)},
+            )
+        user = await super().authenticate(credentials)
+        if user is None:
+            await record_failed_login(email)
+            return None
+        await clear_failed_logins(email)
+        return user
 
     def parse_id(self, value):
         """Parse the user ID from string to UUID."""

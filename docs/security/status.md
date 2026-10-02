@@ -22,7 +22,6 @@ do not open a public issue.
 | --- | --- | --- |
 | Vulnerable dependencies | dashboard (npm), four unlocked Python requirement files | The hash-pinned locks of all eight Python services have no known advisory (pip-audit, 2 October 2026; [#415](https://github.com/fabriziosalmi/wildbox/issues/415) closed). Still open: about 60 npm alerts in `open-security-dashboard`, and 15 pip alerts in requirement files outside the lock system (`open-security-cspm/requirements-dev.txt`, `open-security-guardian/requirements-dev.txt`, `open-security-tools/requirements-secure.txt`, `tests/requirements.txt`). The `Main Advisories` workflow reports critical advisories on `main` daily. |
 | Network segmentation is not effective | `docker-compose.yml`, `docker-compose.prod.yml` | The production overlay defines `frontend`, `backend` and `data` networks, but Compose merges service networks with the base file, so every service also stays on the flat `wildbox` network. With both files, `docker compose config` shows the dashboard and the gateway on the same network as PostgreSQL and Redis. |
-| Failed logins are not locked out | `open-security-identity/app/token_blacklist.py` | `config.py` sets 5 attempts and 15 minutes, and `record_failed_login` / `is_account_locked` exist, but no login route calls them. The only brake is the gateway's rate limit on `/auth/jwt/` (5 requests per second per address, burst 3). |
 | API schema served regardless of environment | tools | tools always serves `/openapi.json` (its own documentation pages use it). It is reachable only on its `127.0.0.1` port, not through the gateway. identity, agents, responder and cspm disable docs, redoc and the schema in production ([#496](https://github.com/fabriziosalmi/wildbox/issues/496)). |
 
 ---
@@ -42,7 +41,7 @@ the claim against the current code; it is not a pass.
 | Gateway requires authentication on service APIs | PASS | Every `/api/v1/<service>/` location in `wildbox_gateway.conf` calls `auth_handler.authenticate()`; identity validates tokens itself |
 | Every API endpoint enforces authentication | Not verified | Not checked endpoint by endpoint behind the gateway |
 | JWT tokens revocable | PASS | `POST /auth/logout` and `POST /auth/jwt/logout` blacklist the token's `jti` in Redis; the gateway and identity's own routes refuse it (`logout.py`, `user_manager.py`) |
-| Account lockout after failed logins | **FAIL** | See "Failed logins are not locked out" above |
+| Account lockout after failed logins | PASS | After 5 failed password logins an account, registered or not, is refused with 429 for 15 minutes, whatever the password; a successful login clears the counter ([#509](https://github.com/fabriziosalmi/wildbox/issues/509)). Tested in `tests/integration/test_login_lockout.py` |
 | CORS without wildcards | PASS | No `allow_origins=["*"]` or wildcard `Access-Control-Allow-Origin` in service code or gateway config |
 | Security headers at the gateway | PASS | HSTS, `X-Frame-Options`, `X-Content-Type-Options` and `Permissions-Policy` set in `wildbox_gateway.conf` |
 | API docs disabled in production | **FAIL** | identity, agents, responder and cspm: disabled. tools still serves `/openapi.json`; see "API schema served regardless of environment" above |
