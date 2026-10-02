@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The dashboard type-checks against the node it runs on** (#521):
+  `@types/node` moves from 20 to 24, the major in the Dockerfile and in
+  CI since node 24 became the base image. Dependabot no longer proposes
+  `@types/node` majors (it offered 26, which types APIs node 24 lacks);
+  the types move by hand with the base image.
+
 - **guardian's remediation and integrations endpoints answer again** (#499).
   All 11 list endpoints of the two apps, plus `scanners/stats/` and
   `reports/metrics/summary/`, answered 500: `filterset_fields`, search and
