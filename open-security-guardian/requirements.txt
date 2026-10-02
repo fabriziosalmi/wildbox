@@ -590,9 +590,9 @@ dj-database-url==2.0.0 \
     --hash=sha256:9c9e5f7224f62635a787e9cc3c6762c9be2b19541a21e3c08fa573bd01609b4b \
     --hash=sha256:a35a9f0f43775ca6f90d819dc456233ef7bcc76b47377d5d908b75c7eb320624
     # via -r open-security-guardian/requirements.in
-django==4.2.30 \
-    --hash=sha256:4d07aaf1c62f9984842b67c2874ebbf7056a17be253860299b93ae1881faad65 \
-    --hash=sha256:4ebc7a434e3819db6cf4b399fb5b3f536310a30e8486f08b66886840be84b37c
+django==5.2.17 \
+    --hash=sha256:9d4d93be539a18ab80d058eb515900e10951e04c537c5a6b394fc49528d3251f \
+    --hash=sha256:f04fb3b36ee119e1af4fa1d397d5fd6cf12700f49321e84d4f4c642c5b1973db
     # via
     #   -r open-security-guardian/requirements.in
     #   dj-database-url
@@ -608,9 +608,9 @@ django==4.2.30 \
     #   django-timezone-field
     #   djangorestframework
     #   drf-spectacular
-django-celery-beat==2.5.0 \
-    --hash=sha256:ae460faa5ea142fba0875409095d22f6bd7bcc7377889b85e8cab5c0dfb781fe \
-    --hash=sha256:cd0a47f5958402f51ac0c715bc942ae33d7b50b4e48cba91bc3f2712be505df1
+django-celery-beat==2.8.1 \
+    --hash=sha256:da2b1c6939495c05a551717509d6e3b79444e114a027f7b77bf3727c2a39d171 \
+    --hash=sha256:dfad0201c0ac50c91a34700ef8fa0a10ee098cc7f3375fe5debed79f2204f80a
     # via -r open-security-guardian/requirements.in
 django-celery-results==2.5.1 \
     --hash=sha256:0da4cd5ecc049333e4524a23fcfc3460dfae91aa0a60f1fae4b6b2889c254e01 \
@@ -648,9 +648,9 @@ django-timezone-field==7.2.2 \
     --hash=sha256:30354d0f37462a0b9b5c289e271580a6be9b58dea30e7bf88435372882c8fa7a \
     --hash=sha256:a004d0b19fe10bf5964cb21a65b36324b16a61879e4711c0dafdf8d6253e8ebc
     # via django-celery-beat
-djangorestframework==3.15.2 \
-    --hash=sha256:2b8871b062ba1aefc2de01f773875441a961fefbf79f5eed1e32b2f096944b20 \
-    --hash=sha256:36fe88cd2d6c6bec23dca9804bab2ba5517a8bb9d8f47ebc68981b56840107ad
+djangorestframework==3.17.2 \
+    --hash=sha256:89ed713b6dc83e1539f214b7d10808ae19bb8511004beba886225da6d5c9dafa \
+    --hash=sha256:cb0546a7415d5b46c04e0f4fe0a54b2109f4fdd5e83ca773c8c6183a6493d042
     # via
     #   -r open-security-guardian/requirements.in
     #   drf-spectacular

@@ -613,6 +613,7 @@
     "starlette",
     "startapp",
     "startswith",
+    "STATICFILES",
     "Stato",
     "stessa",
     "STIX",
