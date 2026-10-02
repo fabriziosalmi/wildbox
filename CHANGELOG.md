@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Dashboard icons are hidden from screen readers** (#520): lucide-react
+  0.378 to 1.50. The icons are decorative, but only 2 of the 23 on the
+  vulnerabilities page carried `aria-hidden`, so assistive technology
+  announced unlabeled graphics; lucide 1 sets it by default. All 69 icons
+  the dashboard imports still exist under the same names and CSS classes,
+  and the pages render the same apart from four slightly redrawn glyphs.
+
 - **guardian can create vulnerabilities again** (#515). The post_save
   history entry wrote `old_value=None` into a NOT NULL column, so every
   vulnerability creation raised `IntegrityError`, and so did assigning a
