@@ -12,7 +12,7 @@ import jwt as pyjwt
 logger = logging.getLogger(__name__)
 
 from fastapi import Depends, HTTPException, Request, status
-from fastapi_users import BaseUserManager, FastAPIUsers
+from fastapi_users import BaseUserManager, FastAPIUsers, exceptions
 from fastapi_users.authentication import (
     AuthenticationBackend,
     BearerTransport,
@@ -135,6 +135,31 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
             return None
         await clear_failed_logins(email)
         return user
+
+    # Where a signed-in user changes their own password. It verifies the
+    # current one; the self-service update below refuses to.
+    CHANGE_PASSWORD_ROUTE = "POST /api/v1/admin/me/change-password"
+
+    async def update(self, user_update, user, safe: bool = False, request=None):
+        """Refuse a password in the self-service update (#559).
+
+        fastapi-users' PATCH /api/v1/users/me (the gateway's /auth/users/me)
+        calls this with safe=True and applies a `password` field as it is,
+        without asking for the current one -- so a stolen session token was
+        enough to change the password and lock the owner out. A user changes
+        their password through the change-password route instead, which
+        verifies the current password first. The superuser update
+        (PATCH /api/v1/users/{id}, safe=False) is an administrator's reset and
+        is left as it is.
+        """
+        if safe and getattr(user_update, "password", None) is not None:
+            raise exceptions.InvalidPasswordException(
+                reason=(
+                    "The password cannot be changed here. Use "
+                    f"{self.CHANGE_PASSWORD_ROUTE} with your current password."
+                )
+            )
+        return await super().update(user_update, user, safe=safe, request=request)
 
     def parse_id(self, value):
         """Parse the user ID from string to UUID."""
