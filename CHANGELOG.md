@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The dashboard no longer ships four libraries it never imports** (#519):
+  recharts, zustand, @hookform/resolvers and react-markdown. No file under
+  `src/` or `tests/` references them, and the build output is unchanged
+  without them. 99 packages leave the lockfile, along with the
+  `mdast-util-to-hast` override that existed only for react-markdown, and
+  so do the four major-version Dependabot PRs that kept proposing them.
+
 - **Failed-login lockout is enforced** (#509). The helpers and settings
   existed (5 attempts, 15 minutes) but no login route called them, so every
   account accepted unlimited password guesses. Password login now refuses an
