@@ -333,24 +333,22 @@ app/
 
         <div class="guide-section" id="authentication">
             <h2>🔐 API Authentication</h2>
-            <p>The Wildbox Security API uses API key authentication to secure all endpoints. You must include a valid API key in all requests.</p>
+            <p>The tools service accepts only requests that come through the Wildbox API gateway. The gateway authenticates the caller and forwards the identity as <code>X-Wildbox-*</code> headers with the <code>X-Gateway-Secret</code> proof of origin; a request sent to port 8000 directly is answered with 401.</p>
 
-            <h3>API Key Configuration</h3>
-            <p>The current API key is configured in the <code>.env</code> file:</p>
-            <div class="code-block"><pre>API_KEY="wildbox-security-api-key-2025"</pre></div>
+            <p>The service's own <code>API_KEY</code> setting is not a credential: the direct <code>X-API-Key</code> path was removed in #565. Send a JWT or a personal API key (created in the identity service) to the gateway instead.</p>
 
             <h3>Authentication Methods</h3>
-            <p>You can authenticate requests using either of these methods:</p>
+            <p>You can authenticate requests to the gateway using either of these methods:</p>
 
-            <h4>Method 1: Authorization Header (Recommended)</h4>
-            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/port_scanner" \
-     -H "Authorization: Bearer wildbox-security-api-key-2025" \
+            <h4>Method 1: JWT in the Authorization Header</h4>
+            <div class="code-block"><pre>curl -X POST "http://localhost/api/v1/tools/port_scanner" \
+     -H "Authorization: Bearer $WILDBOX_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"target": "example.com", "ports": "80,443"}'</pre></div>
 
-            <h4>Method 2: X-API-Key Header</h4>
-            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/port_scanner" \
-     -H "X-API-Key: wildbox-security-api-key-2025" \
+            <h4>Method 2: Personal API Key (X-API-Key)</h4>
+            <div class="code-block"><pre>curl -X POST "http://localhost/api/v1/tools/port_scanner" \
+     -H "X-API-Key: $WILDBOX_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"target": "example.com", "ports": "80,443"}'</pre></div>
 
@@ -359,18 +357,18 @@ app/
 import json
 
 # Configure API settings
-API_BASE_URL = "http://localhost:8000"
-API_KEY = "wildbox-security-api-key-2025"
+API_BASE_URL = "http://localhost"
+WILDBOX_TOKEN = "your-jwt"
 
 # Set up headers
 headers = {
-    "Authorization": f"Bearer {API_KEY}",
+    "Authorization": f"Bearer {WILDBOX_TOKEN}",
     "Content-Type": "application/json"
 }
 
 # Example: Execute a tool
 def execute_tool(tool_name: str, payload: dict):
-    url = f"{API_BASE_URL}/api/tools/{tool_name}"
+    url = f"{API_BASE_URL}/api/v1/tools/{tool_name}"
     
     try:
         response = requests.post(url, headers=headers, json=payload)
@@ -392,14 +390,14 @@ if result:
             <h3>JavaScript/Node.js Client Example</h3>
             <div class="code-block"><pre>const axios = require('axios');
 
-const API_BASE_URL = 'http://localhost:8000';
-const API_KEY = 'wildbox-security-api-key-2025';
+const API_BASE_URL = 'http://localhost';
+const WILDBOX_TOKEN = 'your-jwt';
 
 // Configure axios instance
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
-    'Authorization': `Bearer ${API_KEY}`,
+    'Authorization': `Bearer ${WILDBOX_TOKEN}`,
     'Content-Type': 'application/json'
   }
 });
@@ -407,7 +405,7 @@ const apiClient = axios.create({
 // Execute a tool
 async function executeTool(toolName, payload) {
   try {
-    const response = await apiClient.post(`/api/tools/${toolName}`, payload);
+    const response = await apiClient.post(`/api/v1/tools/${toolName}`, payload);
     return response.data;
   } catch (error) {
     console.error('API request failed:', error.response?.data || error.message);
@@ -1192,8 +1190,8 @@ class ToolLogger:
             </ul>
 
             <h3>3. Via curl Command</h3>
-            <div class="code-block"><pre>curl -X POST "http://localhost:8000/api/tools/your_tool_name" \
-     -H "X-API-Key: wildbox-security-api-key-2025" \
+            <div class="code-block"><pre>curl -X POST "http://localhost/api/v1/tools/your_tool_name" \
+     -H "X-API-Key: $WILDBOX_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{
        "target": "example.com",
@@ -1201,7 +1199,7 @@ class ToolLogger:
      }'</pre></div>
 
             <div class="info">
-                <strong>Note:</strong> You can also use the Authorization header: <code>-H "Authorization: Bearer wildbox-security-api-key-2025"</code>
+                <strong>Note:</strong> You can also send a JWT: <code>-H "Authorization: Bearer $WILDBOX_TOKEN"</code>
             </div>
 
             <h3>4. Checking Logs</h3>
@@ -2078,23 +2076,24 @@ ModuleNotFoundError: No module named 'aiohttp'
 
             <h4>❌ API Key Issues</h4>
             <div class="code-block"><pre># Problem: Authentication failures
-HTTP 401 Unauthorized: Missing API key
+HTTP 401 Unauthorized: Authentication required
 
 # Solutions:
-✅ Check .env file exists and is loaded:
-   API_KEY="wildbox-security-api-key-2025"
+✅ Call the gateway, not port 8000:
+   # Correct: http://localhost/api/v1/tools/...
+   # Wrong:   http://localhost:8000/api/tools/...
 
 ✅ Verify correct header format:
    # Correct:
-   "Authorization": "Bearer your-api-key"
-   "X-API-Key": "your-api-key"
-   
+   "Authorization": "Bearer your-jwt"
+   "X-API-Key": "your-personal-api-key"
+
    # Wrong:
-   "Authorization": "your-api-key"  # Missing "Bearer"
+   "Authorization": "your-jwt"  # Missing "Bearer"
 
 ✅ Test with curl:
-   curl -H "X-API-Key: wildbox-security-api-key-2025" \
-        http://localhost:8000/api/tools/</pre></div>
+   curl -H "X-API-Key: $WILDBOX_API_KEY" \
+        http://localhost/api/v1/tools/</pre></div>
 
             <h3>📊 Performance Issues</h3>
             
@@ -2143,7 +2142,7 @@ if __name__ == "__main__":
 import pdb; pdb.set_trace()  # Breakpoint
 
 # Check tool registration
-curl http://localhost:8000/api/tools/ | jq '.available_tools'</pre></div>
+curl http://localhost/api/v1/tools/ | jq '.available_tools'</pre></div>
 
             <h3>🆘 Getting Help</h3>
             
@@ -2438,14 +2437,14 @@ def validate_file_upload(file_data: bytes, filename: str):
 
             <h3>🔍 Testing & Debugging Commands</h3>
             <div class="code-block"><pre># Test API endpoint directly
-curl -X POST "http://localhost:8000/api/tools/my_tool" \
-     -H "X-API-Key: wildbox-security-api-key-2025" \
+curl -X POST "http://localhost/api/v1/tools/my_tool" \
+     -H "X-API-Key: $WILDBOX_API_KEY" \
      -H "Content-Type: application/json" \
      -d '{"target": "example.com"}'
 
 # Check available tools
-curl -H "X-API-Key: wildbox-security-api-key-2025" \
-     "http://localhost:8000/api/tools/" | jq
+curl -H "X-API-Key: $WILDBOX_API_KEY" \
+     "http://localhost/api/v1/tools/" | jq
 
 # View tool-specific schema
 curl "http://localhost:8000/openapi.json" | jq '.paths."/api/tools/my_tool"'

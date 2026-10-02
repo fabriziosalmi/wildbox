@@ -48,29 +48,24 @@ A robust and extensible open security API platform built with Python and FastAPI
 
 📄 **Full Security Audit Report:** [TOOLS_SERVICE_SECURITY_AUDIT.md](../TOOLS_SERVICE_SECURITY_AUDIT.md)
 
-### Dual-Mode Authentication
+### Authentication
 
-**Production Mode (Recommended):**
+Every request goes through the API gateway. The gateway authenticates the
+caller (a JWT, or a personal API key created in the identity service) and
+forwards the identity to this service as `X-Wildbox-*` headers together with
+the `X-Gateway-Secret` proof of origin. A request that reaches port 8000
+directly without those headers is answered with 401.
 
 ```bash
-# Via API Gateway with X-Wildbox-* headers
 curl http://localhost/api/v1/tools/whois_lookup \
-  -H "X-API-Key: your-api-key" \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"domain": "example.com"}'
 ```
 
-**Development Mode:**
-
-```bash
-# Direct service access with X-API-Key
-curl http://localhost:8000/api/tools/whois_lookup \
-  -H "X-API-Key: your-api-key" \
-  -H "Content-Type: application/json" \
-  -d '{"domain": "example.com"}'
-```
-
-⚠️ **Production deployment should always use the Gateway path** for centralized authentication and additional security layers.
+`$WILDBOX_API_KEY` is a personal API key (`wsk_...`); the gateway resolves it
+and does not pass it on. The service's own `API_KEY` setting is not accepted
+as a credential: the direct `X-API-Key` path was removed in #565.
 
 📚 **Authentication Guide:** [docs/GATEWAY_AUTHENTICATION_GUIDE.md](../docs/GATEWAY_AUTHENTICATION_GUIDE.md)
 
@@ -271,7 +266,8 @@ make urls         # Show useful URLs
 
 | Variable | Description | Default | Required |
 | ---------- | ------------- | --------- | ---------- |
-| `API_KEY` | API authentication key | - | ✅ |
+| `API_KEY` | Static service key, checked at startup; not accepted as a request credential | - | ✅ |
+| `GATEWAY_INTERNAL_SECRET` | Shared secret that proves a request came through the gateway | - | ✅ |
 | `SECRET_KEY` | Session secret key | auto-generated | ❌ |
 | `HOST` | Server bind address | `127.0.0.1` | ❌ |
 | `PORT` | Server port | `8000` | ❌ |
@@ -514,27 +510,25 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ### 3. API Authentication
 
-All API endpoints require authentication using either:
-
-- **Bearer Token**: `Authorization: Bearer your-api-key`
-- **API Key Header**: `X-API-Key: your-api-key`
-
-Default API key: `wildbox-security-api-key-2025` (change this in production!)
+The service accepts only requests forwarded by the API gateway (see
+[Authentication](#authentication)). The examples below go through the gateway
+at `http://localhost` with a personal API key in `$WILDBOX_API_KEY`; a JWT in
+`Authorization: Bearer <token>` works the same way.
 
 ## 📊 Using the API
 
 ### List Available Tools
 
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/tools" \
-  -H "Authorization: Bearer wildbox-security-api-key-2025"
+curl -X GET "http://localhost/api/v1/tools" \
+  -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
 ### Execute a Tool
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/tools/sample_tool" \
-  -H "Authorization: Bearer wildbox-security-api-key-2025" \
+curl -X POST "http://localhost/api/v1/tools/sample_tool" \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "target": "example.com",
@@ -546,8 +540,8 @@ curl -X POST "http://127.0.0.1:8000/api/tools/sample_tool" \
 ### Get Tool Information
 
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/tools/sample_tool/info" \
-  -H "Authorization: Bearer wildbox-security-api-key-2025"
+curl -X GET "http://localhost/api/v1/tools/sample_tool/info" \
+  -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
 ## ⚡ Asynchronous Tool Execution
@@ -586,8 +580,8 @@ Client → FastAPI (check status) → Redis → Retrieve result
 Submit a tool for asynchronous execution using the `/async` endpoint:
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
-  -H "X-API-Key: wildbox-security-api-key-2025" \
+curl -X POST "http://localhost/api/v1/tools/whois_lookup/async" \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "domain": "cloudflare.com"
@@ -606,11 +600,15 @@ curl -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
 
 ### Step 2: Check Task Status
 
+> The task endpoints (`/api/tasks/...`) are not routed by the gateway yet,
+> and the service refuses direct calls that do not come through it. The
+> examples below show the request shape.
+
 Query the task status and result using the task ID:
 
 ```bash
 curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
-  -H "X-API-Key: wildbox-security-api-key-2025"
+  -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
 **Response while task is running:**
@@ -662,7 +660,7 @@ Cancel a task that is still pending or running:
 
 ```bash
 curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
-  -H "X-API-Key: wildbox-security-api-key-2025"
+  -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
 **Response:**
@@ -680,8 +678,8 @@ curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42
 
 ```bash
 # 1. Submit WHOIS lookup task
-TASK_ID=$(curl -s -X POST "http://127.0.0.1:8000/api/tools/whois_lookup/async" \
-  -H "X-API-Key: wildbox-security-api-key-2025" \
+TASK_ID=$(curl -s -X POST "http://localhost/api/v1/tools/whois_lookup/async" \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"domain": "microsoft.com"}' | jq -r '.task_id')
 
@@ -692,7 +690,7 @@ sleep 2
 
 # 3. Retrieve result
 curl -X GET "http://127.0.0.1:8000/api/tasks/$TASK_ID" \
-  -H "X-API-Key: wildbox-security-api-key-2025" | jq
+  -H "X-API-Key: $WILDBOX_API_KEY" | jq
 ```
 
 ### Task States
@@ -1023,8 +1021,8 @@ The included `sample_tool` demonstrates:
    - Ensure the API key matches exactly
 
    ```bash
-   # Test with curl
-   curl -H "X-API-Key: your-api-key" http://localhost:8000/health
+   # Requests must come through the gateway
+   curl -H "X-API-Key: $WILDBOX_API_KEY" http://localhost/api/v1/tools
    ```
 
 3. **Import errors**:
