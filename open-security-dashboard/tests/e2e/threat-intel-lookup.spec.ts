@@ -18,7 +18,7 @@ test.describe('Threat intel lookup', { tag: '@backend' }, () => {
   async function lookUp(page: Page, value: string) {
     await lookupInput(page).fill(value)
     const response = page.waitForResponse(r => r.url().includes('/api/v1/data/'))
-    await page.getByRole('button', { name: 'Lookup' }).click()
+    await page.getByRole('button', { name: 'Lookup', exact: true }).click()
     return response
   }
 
@@ -30,7 +30,7 @@ test.describe('Threat intel lookup', { tag: '@backend' }, () => {
     await expect(page).toHaveURL(/\/threat-intel\/lookup$/)
     await expect(page.getByRole('heading', { name: 'IOC Lookup' })).toBeVisible()
     await expect(lookupInput(page)).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Lookup' })).toBeDisabled()
+    await expect(page.getByRole('button', { name: 'Lookup', exact: true })).toBeDisabled()
   })
 
   const cases = [
@@ -103,7 +103,7 @@ test.describe('Threat intel lookup', { tag: '@backend' }, () => {
 
     await lookupInput(page).fill('not an indicator!')
     await expect(page.getByText('Detected type:').locator('..')).toContainText('Unknown')
-    await page.getByRole('button', { name: 'Lookup' }).click()
+    await page.getByRole('button', { name: 'Lookup', exact: true }).click()
 
     // A real lookup afterwards: once its response is in, any request the
     // invalid input had triggered would have been recorded before it.
