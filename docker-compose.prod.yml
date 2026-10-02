@@ -1,6 +1,49 @@
 # Docker Compose Production Configuration
 # Override file for production deployments
-# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Requires Docker Compose 2.24.4 or later, for the `!override` tag below.
+#
+# Every service's `networks:` here carries `!override`. Without it Compose
+# MERGES a service's networks with the base file's, so each service stayed on
+# the flat `wildbox` network as well as the segmented ones, and the dashboard
+# and gateway could reach PostgreSQL and Redis directly (#494). `!override`
+# replaces the base list instead. Older Compose rejects the tag outright
+# rather than silently merging, so it cannot quietly fall back to flat.
+#
+# A service that is removed from `wildbox` loses the network aliases defined
+# there, so the aliases the gateway's upstreams resolve (open-security-tools,
+# open-security-data, open-security-cspm, dashboard) are declared again on the
+# network the gateway reaches them through. Names set with container_name
+# resolve on every network the container joins and need nothing extra.
+#
+# Network map, and the connection each attachment exists for:
+#
+#   frontend  gateway, dashboard
+#             browser -> gateway; dashboard SSR -> open-security-gateway:8080
+#             (INTERNAL_GATEWAY_URL); gateway -> open-security-dashboard:3000
+#   backend   gateway, identity, api, data, cspm, guardian, responder, agents,
+#   (internal) sensor, automations, prometheus
+#             gateway -> every upstream in nginx/conf.d/wildbox_gateway.conf;
+#             identity -> open-security-gateway:8081 (auth-cache purge);
+#             agents -> api:8000 (WILDBOX_API_URL); sensor ->
+#             open-security-data:8002 (config.yaml.example); prometheus ->
+#             the /metrics targets in monitoring/prometheus.yml
+#   data      postgres, wildbox-redis, and only the services whose
+#   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup
+#   egress    every service except postgres, wildbox-redis, gateway and
+#             dashboard. ICC is disabled on it, so containers on it cannot
+#             reach each other through it: it exists only so they keep
+#             outbound internet (tool execution, threat feeds, Anthropic,
+#             cloud APIs, vulnerability feeds, n8n workflows, `apk add` in
+#             backup) and their loopback-published ports. Docker publishes no
+#             port, and routes nothing out, for a container whose networks
+#             are all internal.
+#
+# Not reachable, by construction: dashboard -> postgres/redis/any backend
+# service; gateway -> postgres/redis. CI asserts both, and the whole map
+# above, with scripts/check_network_segmentation.py (workflow
+# "Production Stack").
 
 services:
   # PostgreSQL - Production Settings
@@ -10,7 +53,7 @@ services:
       # Production connection limits
       - POSTGRES_MAX_CONNECTIONS=200
       - POSTGRES_SHARED_BUFFERS=256MB
-    networks:
+    networks: !override
       - data
     deploy:
       resources:
@@ -35,7 +78,7 @@ services:
       --maxmemory-policy allkeys-lru
       --appendonly yes
       --requirepass ${REDIS_PASSWORD}
-    networks:
+    networks: !override
       - data
     deploy:
       resources:
@@ -54,9 +97,10 @@ services:
   # Identity Service - Production
   identity:
     restart: always
-    networks:
+    networks: !override
       - backend
       - data
+      - egress
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
@@ -85,9 +129,13 @@ services:
   # API Service - Production
   api:
     restart: always
-    networks:
-      - backend
-      - data
+    networks: !override
+      backend:
+        aliases:
+          # The gateway's api_service upstream and prometheus use this name.
+          - open-security-tools
+      data: {}
+      egress: {}
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
@@ -112,14 +160,21 @@ services:
   # Guardian Service - Production
   guardian:
     restart: always
-    networks:
+    networks: !override
       - backend
       - data
+      - egress
     environment:
-      - DJANGO_SETTINGS_MODULE=config.settings.production
+      # No DJANGO_SETTINGS_MODULE: this used to name
+      # config.settings.production, a module that does not exist, so gunicorn
+      # failed to import the app. guardian.settings reads every production
+      # value from the environment.
       - DEBUG=false
       - LOG_LEVEL=INFO
-      - ALLOWED_HOSTS=${ALLOWED_HOSTS}
+      # open-security-guardian is appended because the gateway sends it as the
+      # Host header (wildbox_gateway.conf); without it Django answers 400 to
+      # every proxied request.
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-localhost,127.0.0.1},open-security-guardian
       - CORS_ALLOWED_ORIGINS=${CORS_ORIGINS}
     deploy:
       resources:
@@ -138,9 +193,10 @@ services:
   # Responder Service - Production
   responder:
     restart: always
-    networks:
+    networks: !override
       - backend
       - data
+      - egress
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
@@ -164,9 +220,10 @@ services:
   # Agents Service - Production
   agents:
     restart: always
-    networks:
+    networks: !override
       - backend
       - data
+      - egress
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
@@ -191,7 +248,7 @@ services:
   # Gateway - Production (frontend + backend, NO data access)
   gateway:
     restart: always
-    networks:
+    networks: !override
       - frontend
       - backend
     environment:
@@ -222,8 +279,15 @@ services:
   # Dashboard - Production (frontend only, NO direct backend/data access)
   dashboard:
     restart: always
-    networks:
-      - frontend
+    networks: !override
+      frontend:
+        aliases:
+          # Backup server of the gateway's dashboard_service upstream.
+          - dashboard
+    # The base file bind-mounts the source tree over /app for `next dev`. In
+    # this image /app holds the standalone build (server.js), so the mount
+    # left nothing to run.
+    volumes: !reset []
     build:
       context: ./open-security-dashboard
       dockerfile: Dockerfile
@@ -246,12 +310,66 @@ services:
         max-size: "10m"
         max-file: "3"
 
-# Production network segmentation:
-#   frontend: dashboard <-> gateway (public-facing)
-#   backend:  gateway <-> microservices (internal APIs)
-#   data:     microservices <-> postgres/redis (data layer)
-# Dashboard cannot reach postgres/redis directly.
-# Gateway cannot reach postgres/redis directly.
+  # ---------------------------------------------------------------------------
+  # Services with no other production settings: networks only (see the map at
+  # the top of this file).
+  # ---------------------------------------------------------------------------
+  tools-worker:
+    networks: !override
+      data:
+        aliases:
+          - open-security-tools-worker
+      egress: {}
+
+  tools-flower:
+    networks: !override
+      - data
+      - egress
+
+  data:
+    networks: !override
+      backend:
+        aliases:
+          # The gateway's data_service upstream, sensor and prometheus.
+          - open-security-data
+      data: {}
+      egress: {}
+
+  data-scheduler:
+    networks: !override
+      - data
+      - egress
+
+  cspm:
+    networks: !override
+      backend:
+        aliases:
+          # The gateway's cspm_service upstream and prometheus.
+          - open-security-cspm
+      data: {}
+      egress: {}
+
+  sensor:
+    networks: !override
+      - backend
+      - egress
+
+  automations:
+    networks: !override
+      - backend
+      - egress
+
+  backup:
+    networks: !override
+      - data
+      - egress
+
+  prometheus:
+    networks: !override
+      - backend
+      - egress
+
+# Production network segmentation; see the map at the top of this file.
 networks:
   frontend:
     driver: bridge
@@ -270,6 +388,15 @@ networks:
     ipam:
       config:
         - subnet: 172.20.2.0/24
+  egress:
+    driver: bridge
+    driver_opts:
+      # Inter-container communication off: outbound traffic and published
+      # ports only, never a path between two services.
+      com.docker.network.bridge.enable_icc: "false"
+    ipam:
+      config:
+        - subnet: 172.20.3.0/24
 
 # Production volumes with backup labels
 volumes:

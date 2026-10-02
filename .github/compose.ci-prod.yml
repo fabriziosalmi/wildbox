@@ -1,0 +1,18 @@
+# CI only, and only on top of docker-compose.prod.yml + compose.ci-ports.yml.
+#
+# compose.ci-ports.yml publishes PostgreSQL on the runner's loopback for the
+# cross-tenant test. In production postgres is attached to the internal `data`
+# network alone, and Docker publishes no port for a container whose networks
+# are all internal, so that binding silently does nothing.
+#
+# Joining `egress` gives the port a network to be published through without
+# opening a path to the database: inter-container communication is disabled on
+# egress, so no container reaches postgres through it.
+# scripts/check_network_segmentation.py asserts exactly that (sensor, which
+# shares only egress with postgres here, must fail to connect).
+#
+# Never add this to a deployment.
+services:
+  postgres:
+    networks:
+      - egress
