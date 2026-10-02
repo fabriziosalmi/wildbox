@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { identityClient, getIdentityPath } from '@/lib/api-client'
+import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -63,18 +64,12 @@ export default function ApiKeysPage() {
     expires_at: '',
   })
 
-  useEffect(() => {
-    if (user) {
-      fetchApiKeys()
-    }
-  }, [user])
-
-  const fetchApiKeys = async () => {
+  const fetchApiKeys = useCallback(async () => {
     try {
       setIsLoading(true)
-      const keys = await identityClient.get(getIdentityPath('/api/v1/api-keys'))
+      const keys = await identityClient.get<ApiKeyWithSecret[]>(getIdentityPath('/api/v1/api-keys'))
       setApiKeys(keys)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch API keys:', error)
       toast({
         title: "Error",
@@ -84,7 +79,13 @@ export default function ApiKeysPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    if (user) {
+      fetchApiKeys()
+    }
+  }, [user, fetchApiKeys])
 
   const handleCreateApiKey = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -118,7 +119,7 @@ export default function ApiKeysPage() {
         createData.expires_at = createForm.expires_at
       }
 
-      const newKey = await identityClient.post(getIdentityPath('/api/v1/api-keys'), createData)
+      const newKey = await identityClient.post<ApiKeyWithSecret>(getIdentityPath('/api/v1/api-keys'), createData)
       
       setApiKeys(prev => [newKey, ...prev])
       setCreateForm({ name: '', scopes: [], expires_at: '' })
@@ -128,10 +129,10 @@ export default function ApiKeysPage() {
         title: "Success",
         description: "API key created successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to create API key",
+        description: getErrorMessage(error, "Failed to create API key"),
         variant: "destructive",
       })
     } finally {
@@ -152,10 +153,10 @@ export default function ApiKeysPage() {
         title: "Success",
         description: "API key deleted successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to delete API key",
+        description: getErrorMessage(error, "Failed to delete API key"),
         variant: "destructive",
       })
     }
@@ -180,7 +181,7 @@ export default function ApiKeysPage() {
         title: "Copied",
         description: "API key copied to clipboard",
       })
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to copy to clipboard",
@@ -205,11 +206,6 @@ export default function ApiKeysPage() {
   const isExpired = (expiresAt?: string) => {
     if (!expiresAt) return false
     return new Date(expiresAt) < new Date()
-  }
-
-  const maskApiKey = (key: string) => {
-    if (key.length <= 8) return key
-    return `${key.substring(0, 4)}...${key.substring(key.length - 4)}`
   }
 
   if (!user) {
@@ -363,7 +359,7 @@ export default function ApiKeysPage() {
             <Key className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-foreground mb-2">No API Keys</h3>
             <p className="text-muted-foreground mb-4">
-              You haven't created any API keys yet. Create one to get started with programmatic access.
+              You haven&apos;t created any API keys yet. Create one to get started with programmatic access.
             </p>
             <Button onClick={() => setShowCreateForm(true)} className="flex items-center gap-2">
               <Plus className="w-4 h-4" />

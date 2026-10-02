@@ -13,11 +13,12 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  type LucideIcon,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, dataClient, guardianClient, responderClient, cspmClient, getGuardianPath, getResponderPath, getCSPMPath } from '@/lib/api-client'
+import { dataClient, guardianClient, responderClient, cspmClient, getGuardianPath } from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 import { useVulnerabilityStats } from '@/hooks/use-vulnerability-stats'
 
@@ -74,6 +75,55 @@ interface RecentActivity {
   status: 'completed' | 'failed' | 'running' | 'pending'
 }
 
+// Loose shapes of the service responses read below. Every field is
+// optional: each service may be absent or older than the dashboard.
+interface GuardianAsset {
+  status?: string
+  last_seen?: string
+  updated_at?: string
+}
+
+interface GuardianAssetPage {
+  count?: number
+  results?: GuardianAsset[]
+}
+
+interface ThreatIntelSummary {
+  total_feeds?: number
+  active_feeds?: number
+  last_updated?: string
+  new_indicators?: number
+  trends_change?: number
+}
+
+interface IndicatorItem {
+  type?: string
+  value?: string
+  created_at?: string
+  severity?: RecentActivity['severity']
+}
+
+interface ScanItem {
+  provider?: string
+  account_name?: string
+  account_id?: string
+  status?: RecentActivity['status']
+  created_at?: string
+  completed_at?: string
+  critical_findings?: number
+  summary?: { critical_findings?: number }
+}
+
+interface VulnerabilityItem {
+  status?: string
+  cve_id?: string
+  title?: string
+  severity?: RecentActivity['severity']
+  created_at?: string
+  updated_at?: string
+  asset?: { hostname?: string }
+}
+
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   try {
     // Fetch real data from all services
@@ -83,11 +133,11 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       responderPlaybooksRes
     ] = await Promise.allSettled([
       // Get actual assets from Guardian  
-      guardianClient.get(getGuardianPath('/api/v1/assets/assets/?page_size=100')),
+      guardianClient.get<GuardianAssetPage>(getGuardianPath('/api/v1/assets/assets/?page_size=100')),
       // Get threat intel stats from Data service
-      dataClient.get('/api/v1/dashboard/threat-intel'),
+      dataClient.get<ThreatIntelSummary>('/api/v1/dashboard/threat-intel'),
       // Get playbooks from Responder
-      responderClient.get('/v1/playbooks')
+      responderClient.get<unknown>('/v1/playbooks')
     ])
 
     // Vulnerability stats will be fetched separately via useVulnerabilityStats hook
@@ -101,7 +151,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     // Process Guardian assets data for endpoints
-    let endpoints = {
+    const endpoints = {
       totalEndpoints: 0,
       onlineEndpoints: 0,
       alerts: 3,
@@ -110,14 +160,14 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     if (guardianAssetsRes.status === 'fulfilled') {
-      const assetData = guardianAssetsRes.value as any
+      const assetData = guardianAssetsRes.value
       if (assetData?.results) {
         endpoints.totalEndpoints = assetData.count || assetData.results.length
-        endpoints.onlineEndpoints = assetData.results.filter((a: any) => a.status === 'active').length
+        endpoints.onlineEndpoints = assetData.results.filter(a => a.status === 'active').length
         // Update last activity to most recent asset activity
-        const lastSeen = assetData.results.reduce((latest: string, asset: any) => {
-          return new Date(asset.last_seen || asset.updated_at) > new Date(latest) ? 
-            (asset.last_seen || asset.updated_at) : latest
+        const lastSeen = assetData.results.reduce((latest: string, asset) => {
+          const seen = asset.last_seen || asset.updated_at
+          return seen && new Date(seen) > new Date(latest) ? seen : latest
         }, new Date(0).toISOString())
         if (lastSeen !== new Date(0).toISOString()) {
           endpoints.lastActivity = lastSeen
@@ -135,7 +185,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     if (threatIntelRes.status === 'fulfilled') {
-      const tiData = threatIntelRes.value as any
+      const tiData = threatIntelRes.value
       threatIntel = {
         totalFeeds: tiData.total_feeds || 4,
         activeFeeds: tiData.active_feeds || 4,
@@ -146,7 +196,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     // Process real responder data
-    let response = {
+    const response = {
       totalPlaybooks: 0,
       activeRuns: 0,
       successRate: 0,
@@ -154,7 +204,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
     }
 
     if (responderPlaybooksRes.status === 'fulfilled') {
-      const playbooksData = responderPlaybooksRes.value as any
+      const playbooksData = responderPlaybooksRes.value
       if (Array.isArray(playbooksData)) {
         response.totalPlaybooks = playbooksData.length
       }
@@ -240,20 +290,24 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
     // Fetch recent activity from multiple services
     const [threatIntelRes, scanResultsRes, alertsRes] = await Promise.allSettled([
       // Fetch recent IOCs from data service
-      dataClient.get('/api/v1/indicators/search?limit=5&sort=-created_at'),
+      dataClient.get<{ results?: IndicatorItem[]; indicators?: IndicatorItem[] }>(
+        '/api/v1/indicators/search?limit=5&sort=-created_at'
+      ),
       // Fetch recent scan results from CSMP
-      cspmClient.get('/api/v1/scans?limit=3&sort=-created_at'),
+      cspmClient.get<{ results?: ScanItem[]; scans?: ScanItem[] }>('/api/v1/scans?limit=3&sort=-created_at'),
       // Fetch recent alerts from Guardian
-      guardianClient.get(getGuardianPath('/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at'))
+      guardianClient.get<{ results?: VulnerabilityItem[]; vulnerabilities?: VulnerabilityItem[] }>(
+        getGuardianPath('/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at')
+      )
     ])
 
     const activities: RecentActivity[] = []
 
     // Process threat intel data
     if (threatIntelRes.status === 'fulfilled') {
-      const threatData = threatIntelRes.value as any
+      const threatData = threatIntelRes.value
       const indicators = threatData.results || threatData.indicators || []
-      indicators.slice(0, 2).forEach((indicator: any, index: number) => {
+      indicators.slice(0, 2).forEach((indicator, index) => {
         activities.push({
           id: `threat-${index}`,
           type: 'threat',
@@ -268,9 +322,9 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
 
     // Process CSPM scan results
     if (scanResultsRes.status === 'fulfilled') {
-      const scanData = scanResultsRes.value as any
+      const scanData = scanResultsRes.value
       const scans = scanData.results || scanData.scans || []
-      scans.slice(0, 2).forEach((scan: any, index: number) => {
+      scans.slice(0, 2).forEach((scan, index) => {
         const criticalCount = scan.summary?.critical_findings || scan.critical_findings || 0
         activities.push({
           id: `scan-${index}`,
@@ -286,9 +340,9 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
 
     // Process Guardian vulnerability alerts
     if (alertsRes.status === 'fulfilled') {
-      const alertData = alertsRes.value as any
+      const alertData = alertsRes.value
       const vulnerabilities = alertData.results || alertData.vulnerabilities || []
-      vulnerabilities.slice(0, 2).forEach((vuln: any, index: number) => {
+      vulnerabilities.slice(0, 2).forEach((vuln, index) => {
         activities.push({
           id: `vuln-${index}`,
           type: vuln.status === 'remediated' ? 'vulnerability' : 'alert',
@@ -376,7 +430,7 @@ function MetricCard({
   title: string
   value: string | number
   description: string
-  icon: any
+  icon: LucideIcon
   trend?: 'up' | 'down'
   trendValue?: number
 }) {

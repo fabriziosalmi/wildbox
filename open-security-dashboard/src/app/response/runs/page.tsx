@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { 
   PlayCircle, 
@@ -100,10 +100,23 @@ function formatTimestamp(timestamp: string): string {
   return date.toLocaleString()
 }
 
+// The current time, refreshed every `intervalMs`. Reading Date.now() during
+// render is impure: the value only changed when something else re-rendered
+// the card, so a running run's elapsed time froze between refetches.
+function useNow(intervalMs: number): number {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), intervalMs)
+    return () => clearInterval(id)
+  }, [intervalMs])
+  return now
+}
+
 function RunCard({ run, onViewDetails }: { run: PlaybookRun; onViewDetails: (run: PlaybookRun) => void }) {
-  const elapsed = run.endTime 
+  const now = useNow(1000)
+  const elapsed = run.endTime
     ? Math.floor((new Date(run.endTime).getTime() - new Date(run.startTime).getTime()) / 1000)
-    : Math.floor((Date.now() - new Date(run.startTime).getTime()) / 1000)
+    : Math.floor((now - new Date(run.startTime).getTime()) / 1000)
 
   return (
     <Card className="group hover:shadow-lg transition-all duration-200">

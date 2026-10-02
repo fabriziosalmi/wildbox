@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Activity, Database, Zap, Globe } from 'lucide-react'
-import { identityClient, dataClient, getDataPath } from '@/lib/api-client'
+import { identityClient } from '@/lib/api-client'
 
 export interface SystemHealthData {
   avgResponseTime: number | null
@@ -38,80 +38,81 @@ export function SystemHealth({
     databaseStatus: 'unknown',
     redisStatus: 'unknown'
   })
-  const [isLoading, setIsLoading] = useState(true)
-
-  const fetchSystemHealth = async () => {
-    try {
-      setIsLoading(true)
-      
-      // Check health of various services
-      const [identityHealth, gatewayHealth, dataHealth] = await Promise.allSettled([
-        identityClient.get('/api/v1/identity/health').catch(() => null),
-        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`)
-          .then(r => r.json())
-          .catch(() => null),
-        dataClient.get(getDataPath('/health')).catch(() => null)
-      ])
-
-      let servicesOnline = 0
-      const totalServices = 4
-
-      // Update service statuses
-      const identityStatus = identityHealth.status === 'fulfilled' && identityHealth.value 
-        ? 'online' 
-        : 'offline'
-      const gatewayStatus = gatewayHealth.status === 'fulfilled' && gatewayHealth.value 
-        ? 'online' 
-        : 'offline'
-      const databaseStatus = identityStatus === 'online' ? 'healthy' : 'unknown'
-      const redisStatus = identityStatus === 'online' ? 'connected' : 'unknown'
-
-      if (identityStatus === 'online') servicesOnline++
-      if (gatewayStatus === 'online') servicesOnline++
-      if (databaseStatus === 'healthy') servicesOnline++
-      if (redisStatus === 'connected') servicesOnline++
-
-      // Metrics require Prometheus integration
-      // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
-      const avgResponseTime = null
-      const errorRate = null
-
-      const healthData: SystemHealthData = {
-        avgResponseTime,
-        errorRate,
-        servicesOnline,
-        totalServices,
-        gatewayStatus,
-        identityStatus,
-        databaseStatus,
-        redisStatus
-      }
-
-      setHealth(healthData)
-      onHealthUpdate?.(healthData)
-    } catch (error) {
-      console.error('Failed to fetch system health:', error)
-      
-      // Set default error state
-      const errorHealthData: SystemHealthData = {
-        avgResponseTime: null,
-        errorRate: null,
-        servicesOnline: 0,
-        totalServices: 4,
-        gatewayStatus: 'unknown',
-        identityStatus: 'unknown',
-        databaseStatus: 'unknown',
-        redisStatus: 'unknown'
-      }
-      
-      setHealth(errorHealthData)
-      onHealthUpdate?.(errorHealthData)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  // Keep the latest callback without making it a dependency of the polling
+  // effect: an inline prop would otherwise restart polling on every render.
+  const onHealthUpdateRef = useRef(onHealthUpdate)
+  useEffect(() => {
+    onHealthUpdateRef.current = onHealthUpdate
+  }, [onHealthUpdate])
 
   useEffect(() => {
+    const fetchSystemHealth = async () => {
+      try {
+        // Check health of various services. The data service is not part of
+        // the four counted below, so it is not probed here.
+        const [identityHealth, gatewayHealth] = await Promise.allSettled([
+          identityClient.get('/api/v1/identity/health').catch(() => null),
+          fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`)
+            .then(r => r.json())
+            .catch(() => null),
+        ])
+
+        let servicesOnline = 0
+        const totalServices = 4
+
+        // Update service statuses
+        const identityStatus = identityHealth.status === 'fulfilled' && identityHealth.value 
+          ? 'online' 
+          : 'offline'
+        const gatewayStatus = gatewayHealth.status === 'fulfilled' && gatewayHealth.value 
+          ? 'online' 
+          : 'offline'
+        const databaseStatus = identityStatus === 'online' ? 'healthy' : 'unknown'
+        const redisStatus = identityStatus === 'online' ? 'connected' : 'unknown'
+
+        if (identityStatus === 'online') servicesOnline++
+        if (gatewayStatus === 'online') servicesOnline++
+        if (databaseStatus === 'healthy') servicesOnline++
+        if (redisStatus === 'connected') servicesOnline++
+
+        // Metrics require Prometheus integration
+        // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
+        const avgResponseTime = null
+        const errorRate = null
+
+        const healthData: SystemHealthData = {
+          avgResponseTime,
+          errorRate,
+          servicesOnline,
+          totalServices,
+          gatewayStatus,
+          identityStatus,
+          databaseStatus,
+          redisStatus
+        }
+
+        setHealth(healthData)
+        onHealthUpdateRef.current?.(healthData)
+      } catch (error) {
+        console.error('Failed to fetch system health:', error)
+
+        // Set default error state
+        const errorHealthData: SystemHealthData = {
+          avgResponseTime: null,
+          errorRate: null,
+          servicesOnline: 0,
+          totalServices: 4,
+          gatewayStatus: 'unknown',
+          identityStatus: 'unknown',
+          databaseStatus: 'unknown',
+          redisStatus: 'unknown'
+        }
+
+        setHealth(errorHealthData)
+        onHealthUpdateRef.current?.(errorHealthData)
+      }
+    }
+
     fetchSystemHealth()
 
     if (autoRefresh) {

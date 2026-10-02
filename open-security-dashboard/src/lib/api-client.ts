@@ -7,7 +7,14 @@ export interface ApiError {
   code?: string
   /** Correlation id from the canonical error body, for matching against logs. */
   requestId?: string
-  details?: any
+  details?: unknown
+}
+
+/** Error bodies the services answer with, canonical and legacy shapes. */
+interface ErrorBody {
+  error?: { message?: string; type?: string; request_id?: string }
+  detail?: string
+  message?: string
 }
 
 class ApiClient {
@@ -56,7 +63,7 @@ class ApiClient {
         }
 
         if (error.response) {
-          const data = error.response.data as any
+          const data = error.response.data as ErrorBody | undefined
           apiError.status = error.response.status
           // Services answer with the canonical shape from open_security_shared.errors:
           //   { error: { code, message, type, request_id } }
@@ -110,23 +117,26 @@ class ApiClient {
     if (typeof window !== 'undefined' &&
         !window.location.pathname.includes('/auth') &&
         !window.location.pathname.includes('/admin')) {
+      // A full reload is intended: this runs outside React (no router here)
+      // and must drop every piece of client state tied to the dead session.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- hard reload by design
       window.location.href = '/'
     }
   }
 
   // Generic request methods
-  async get<T = any>(endpoint: string, params?: any): Promise<T> {
+  async get<T = unknown>(endpoint: string, params?: object): Promise<T> {
     const response = await this.client.get(endpoint, { params })
     return response.data
   }
 
-  async post<T = any>(endpoint: string, data?: any): Promise<T> {
+  async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.post(endpoint, data)
     return response.data
   }
 
   // Form data POST (for OAuth2 login)
-  async postForm<T = any>(endpoint: string, formData: URLSearchParams): Promise<T> {
+  async postForm<T = unknown>(endpoint: string, formData: URLSearchParams): Promise<T> {
     const response = await this.client.post(endpoint, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -135,23 +145,23 @@ class ApiClient {
     return response.data
   }
 
-  async put<T = any>(endpoint: string, data?: any): Promise<T> {
+  async put<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.put(endpoint, data)
     return response.data
   }
 
-  async patch<T = any>(endpoint: string, data?: any): Promise<T> {
+  async patch<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.patch(endpoint, data)
     return response.data
   }
 
-  async delete<T = any>(endpoint: string): Promise<T> {
+  async delete<T = unknown>(endpoint: string): Promise<T> {
     const response = await this.client.delete(endpoint)
     return response.data
   }
 
   // File upload
-  async upload<T = any>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<T> {
+  async upload<T = unknown>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<T> {
     const formData = new FormData()
     formData.append('file', file)
 

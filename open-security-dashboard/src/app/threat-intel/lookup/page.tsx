@@ -541,7 +541,7 @@ export default function ThreatIntelLookupPage() {
                         This indicator is not present in our threat intelligence database.
                       </p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        This doesn't necessarily mean it's safe - it may simply be unknown.
+                        This doesn&apos;t necessarily mean it&apos;s safe - it may simply be unknown.
                       </p>
                     </div>
                   </div>

@@ -12,9 +12,8 @@
  * - Error handling with user-friendly messages
  */
 
-import { useQuery, useMutation, useQueryClient, UseQueryResult } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { responderClient } from '@/lib/api-client'
-import Cookies from 'js-cookie'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -48,8 +47,8 @@ export interface PlaybookListResponse {
  * Request for playbook execution
  */
 export interface PlaybookExecutionRequest {
-  trigger_data?: Record<string, any>
-  context?: Record<string, any>
+  trigger_data?: Record<string, unknown>
+  context?: Record<string, unknown>
 }
 
 /**

@@ -8,8 +8,6 @@ import {
   LayoutDashboard,
   Shield,
   Wrench,
-  Cloud,
-  Monitor,
   Bug,
   Zap,
   Settings,
@@ -19,14 +17,16 @@ import {
   LogOut,
   ChevronDown,
   Crown,
+  type LucideIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
+import type { User as UserType } from '@/types'
 
 interface NavigationItem {
   name: string
   href: string
-  icon: any
+  icon: LucideIcon
   description: string
   children?: { name: string; href: string }[]
 }
@@ -109,7 +109,7 @@ const baseNavigation: NavigationItem[] = [
 ]
 
 // Function to get navigation items based on user role
-const getNavigation = (user: any): NavigationItem[] => {
+const getNavigation = (user: UserType | null): NavigationItem[] => {
   const navigation = [...baseNavigation]
   
   const isSuperuser = user?.is_superuser

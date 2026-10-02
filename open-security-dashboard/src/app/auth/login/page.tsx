@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/components/auth-provider'
-import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/lib/utils'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -52,8 +52,8 @@ export default function LoginPage() {
     try {
       await login(email, password)
       // Redirect is now handled in the auth provider login function
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Login failed. Please check your credentials.'))
     } finally {
       setIsLoading(false)
     }
@@ -165,7 +165,7 @@ export default function LoginPage() {
               </Button>
 
               <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <Link
                   href="/auth/signup"
                   className="text-blue-600 hover:text-blue-500 dark:text-blue-400 font-medium"

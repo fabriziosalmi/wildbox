@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { MainLayout } from '@/components/main-layout'
-import { identityClient, getAuthPath, getIdentityPath, dataClient, getDataPath } from '@/lib/api-client'
+import { identityClient } from '@/lib/api-client'
 import Cookies from 'js-cookie'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,17 +13,13 @@ import {
   Shield, 
   Users, 
   Search,
-  Eye,
-  Ban,
   Trash2,
-  AlertCircle,
   UserCheck,
   UserX,
   Calendar,
   Mail,
   Crown,
   Filter,
-  MoreHorizontal,
   Settings,
   Database,
   Activity,
@@ -32,8 +28,16 @@ import {
   AtSign
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { User as UserType } from '@/types'
+import type { AdminSystemAnalytics, AdminUsageSummary } from '@/types'
+import { getErrorMessage } from '@/lib/utils'
 import { useRouter } from 'next/navigation'
+
+interface CanDeleteResponse {
+  can_delete: boolean
+  can_force_delete: boolean
+  reasons: string[]
+  force_delete_info: string[]
+}
 
 interface AdminUserData {
   id: string
@@ -56,10 +60,12 @@ export default function AdminPage() {
   const { toast } = useToast()
   const router = useRouter()
   const [users, setUsers] = useState<AdminUserData[]>([])
+  // Latest fetched list, for the stats fallback: reading `users` there
+  // would capture the list as it was when the callback was created.
+  const usersRef = useRef<AdminUserData[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterActive, setFilterActive] = useState<boolean | null>(null)
-  const [selectedUsers, setSelectedUsers] = useState<string[]>([])
   const [systemStats, setSystemStats] = useState({
     totalUsers: 0,
     activeUsers: 0,
@@ -97,24 +103,15 @@ export default function AdminPage() {
     }
   }, [user, router])
 
-  useEffect(() => {
-    if (user?.is_superuser) {
-      fetchUsers()
-      fetchSystemStats()
-      fetchSystemHealth()
-    }
-  }, [user])
-
-  const fetchSystemHealth = async () => {
+  const fetchSystemHealth = useCallback(async () => {
     try {
-      // Check health of various services
-      const [identityHealth, gatewayHealth, dataHealth] = await Promise.allSettled([
+      // Check health of various services. The data service is not part of
+      // the four counted below, so it is not probed here.
+      const [identityHealth, gatewayHealth] = await Promise.allSettled([
         // Check identity service health
         identityClient.get('/api/v1/identity/health').catch(() => null),
         // Check gateway status (if accessible)
         fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`).then(r => r.json()).catch(() => null),
-        // Check data service health
-        dataClient.get(getDataPath('/health')).catch(() => null)
       ])
 
       let servicesOnline = 0
@@ -160,14 +157,15 @@ export default function AdminPage() {
         redisStatus: 'unknown'
       })
     }
-  }
+  }, [])
 
-  const fetchSystemStats = async () => {
+  const fetchSystemStats = useCallback(async () => {
+    const users = usersRef.current
     try {
       // Fetch real system analytics from identity service
       const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get('/api/v1/identity/analytics/admin/system-stats?days=30'),
-        identityClient.get('/api/v1/identity/analytics/admin/usage-summary')
+        identityClient.get<AdminSystemAnalytics>('/api/v1/identity/analytics/admin/system-stats?days=30'),
+        identityClient.get<AdminUsageSummary>('/api/v1/identity/analytics/admin/usage-summary')
       ])
       
       // Extract real analytics data
@@ -217,9 +215,9 @@ export default function AdminPage() {
         apiRequestsToday: 850 // Use a reasonable fallback instead of random
       })
     }
-  }
+  }, [])
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setIsLoading(true)
       
@@ -238,7 +236,8 @@ export default function AdminPage() {
         throw new Error(`HTTP ${response.status}`)
       }
       
-      const data = await response.json()
+      const data: AdminUserData[] = await response.json()
+      usersRef.current = data || []
       setUsers(data || [])
       
       // Update stats when users are fetched
@@ -248,10 +247,10 @@ export default function AdminPage() {
           totalUsers: data.length,
           activeUsers: data.filter(u => u.is_active).length,
           superAdmins: data.filter(u => u.is_superuser).length,
-          totalTeams: new Set(data.flatMap((u: AdminUserData) => u.team_memberships?.map((tm: any) => tm.team_id) || [])).size
+          totalTeams: new Set(data.flatMap((u: AdminUserData) => u.team_memberships?.map(tm => tm.team_id) || [])).size
         }))
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch users:', error)
       toast({
         title: "Error", 
@@ -261,7 +260,15 @@ export default function AdminPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    if (user?.is_superuser) {
+      fetchUsers()
+      fetchSystemStats()
+      fetchSystemHealth()
+    }
+  }, [user, fetchUsers, fetchSystemStats, fetchSystemHealth])
 
   const handleSearch = () => {
     fetchUsers()
@@ -277,7 +284,7 @@ export default function AdminPage() {
       })
       
       fetchUsers()
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to toggle user status:', error)
       toast({
         title: "Error",
@@ -295,7 +302,9 @@ export default function AdminPage() {
     // First check if the user can be deleted (unless forcing)
     if (!forceDelete) {
       try {
-        const checkResponse = await identityClient.get(`/api/v1/identity/admin/users/${userId}/can-delete`)
+        const checkResponse = await identityClient.get<CanDeleteResponse>(
+          `/api/v1/identity/admin/users/${userId}/can-delete`
+        )
         
         if (!checkResponse.can_delete) {
           // Check if force delete is possible
@@ -326,7 +335,7 @@ export default function AdminPage() {
         
         // If the can-delete endpoint fails (404), assume we need force delete for superusers/team owners
         const isSuperuser = targetUser?.is_superuser
-        const hasTeamOwnership = targetUser?.team_memberships?.some((m: any) => m.role === 'owner') || false
+        const hasTeamOwnership = targetUser?.team_memberships?.some(m => m.role === 'owner') || false
         
         if (isSuperuser || hasTeamOwnership) {
           let forceMessage = `Cannot verify deletion safety (server error).\n\n`
@@ -399,16 +408,13 @@ export default function AdminPage() {
       })
       
       fetchUsers()
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to delete user:', error)
       
       // Extract specific error message from the API response
-      let errorMessage = "Failed to delete user"
-      if (error.response?.data?.detail) {
-        errorMessage = error.response.data.detail
-      } else if (error.message) {
-        errorMessage = error.message
-      }
+      // The API client rejects with an ApiError whose message already
+      // carries the server's `detail`; it has no `response` to read.
+      let errorMessage = getErrorMessage(error, "Failed to delete user")
       
       // Provide more helpful error message for common cases
       if ((errorMessage.includes("owns") && errorMessage.includes("team")) || errorMessage.includes("superuser")) {
@@ -441,7 +447,7 @@ export default function AdminPage() {
       })
       
       fetchUsers()
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to promote user to superuser:', error)
       toast({
         title: "Error",
@@ -467,7 +473,7 @@ export default function AdminPage() {
       })
       
       fetchUsers()
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to demote user from superuser:', error)
       toast({
         title: "Error",
@@ -591,11 +597,11 @@ export default function AdminPage() {
       
       // Refresh users list
       fetchUsers()
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to create user:', error)
       toast({
         title: "Error",
-        description: error.message || "Failed to create user",
+        description: getErrorMessage(error, "Failed to create user"),
         variant: "destructive",
       })
     } finally {

@@ -109,7 +109,7 @@ test.describe('Login Flow - Critical Path', () => {
   // cookie set server-side); until then the gateway access log needs to be
   // made observable to pin the exact preflight/response. The page-render and
   // invalid-credential specs below run and pass.
-  test.fixme('should persist session after page reload', async ({ page, context }) => {
+  test.fixme('should persist session after page reload', async ({ page }) => {
     console.log('🔍 Test: Session persistence');
     
     await loginPage.goto();
@@ -121,9 +121,6 @@ test.describe('Login Flow - Critical Path', () => {
     await loginPage.login(testEmail, testPassword);
     await page.waitForURL(/dashboard|admin/, { timeout: 30000 });
     console.log('✅ Initial login successful');
-    
-    // Get current URL
-    const authenticatedUrl = page.url();
     
     // Reload page. domcontentloaded is enough: the URL assertions below are
     // about the server-side middleware redirect, and Next.js pages rarely

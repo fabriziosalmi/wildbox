@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/components/auth-provider'
-import { cn } from '@/lib/utils'
+import { getErrorMessage } from '@/lib/utils'
 
 export default function SignupPage() {
   const [name, setName] = useState('')
@@ -68,8 +68,8 @@ export default function SignupPage() {
       await register(email, password, name)
       // Don't redirect here - let the auth provider handle the redirect
       // to prevent race conditions
-    } catch (err: any) {
-      setError(err.message || 'Registration failed. Please try again.')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
       setIsLoading(false)
     }

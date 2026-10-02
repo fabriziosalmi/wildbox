@@ -8,7 +8,6 @@ import {
   User,
   Key,
   Users,
-  Shield,
   ArrowRight,
   Settings
 } from 'lucide-react'

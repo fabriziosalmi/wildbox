@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { identityClient } from '@/lib/api-client'
+import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -50,14 +51,7 @@ export default function ProfilePage() {
     confirm: false,
   })
 
-  useEffect(() => {
-    if (user) {
-      setEmail(user.email)
-      fetchActivityLog()
-    }
-  }, [user])
-
-  const fetchActivityLog = async () => {
+  const fetchActivityLog = useCallback(async () => {
     try {
       setActivityLoading(true)
       // For now, create mock activity data since the endpoint might not exist yet
@@ -83,13 +77,13 @@ export default function ProfilePage() {
       ]
       
       try {
-        const logs = await identityClient.get('/api/v1/users/me/activity')
+        const logs = await identityClient.get<ActivityLog[]>('/api/v1/users/me/activity')
         setActivityLog(logs)
       } catch {
         // Fallback to mock data if endpoint doesn't exist
         setActivityLog(mockLogs)
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch activity log:', error)
       toast({
         title: "Error",
@@ -99,7 +93,14 @@ export default function ProfilePage() {
     } finally {
       setActivityLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    if (user) {
+      setEmail(user.email)
+      fetchActivityLog()
+    }
+  }, [user, fetchActivityLog])
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -126,10 +127,10 @@ export default function ProfilePage() {
           description: "No changes to save",
         })
       }
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update profile",
+        description: getErrorMessage(error, "Failed to update profile"),
         variant: "destructive",
       })
     } finally {
@@ -177,10 +178,10 @@ export default function ProfilePage() {
         title: "Success",
         description: "Password changed successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to change password",
+        description: getErrorMessage(error, "Failed to change password"),
         variant: "destructive",
       })
     } finally {

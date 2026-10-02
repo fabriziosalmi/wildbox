@@ -1,7 +1,5 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from './page-objects/login-page';
-import { AdminPage } from './page-objects/admin-page';
-import { DashboardPage } from './page-objects/dashboard-page';
 
 // Test configuration - update these if needed
 const ADMIN_CREDENTIALS = {
@@ -11,13 +9,9 @@ const ADMIN_CREDENTIALS = {
 
 test.describe('Admin UI Testing (Without Backend)', () => {
   let loginPage: LoginPage;
-  let adminPage: AdminPage;
-  let dashboardPage: DashboardPage;
 
   test.beforeEach(async ({ page }) => {
     loginPage = new LoginPage(page);
-    adminPage = new AdminPage(page);
-    dashboardPage = new DashboardPage(page);
   });
 
   test('Login Form Interaction Test', async ({ page }) => {

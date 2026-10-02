@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { 
   Server, 
   Shield, 
@@ -9,9 +8,7 @@ import {
   Cloud, 
   Bug, 
   Zap, 
-  Monitor, 
   Activity, 
-  Code, 
   Copy, 
   CheckCircle,
   ExternalLink,
@@ -21,7 +18,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { gatewayDataClient, dataClient } from '@/lib/api-client'
+import { gatewayDataClient } from '@/lib/api-client'
+import { getErrorMessage } from '@/lib/utils'
 
 interface ApiEndpoint {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
@@ -36,14 +34,14 @@ interface ApiEndpoint {
     required: boolean
     description: string
   }>
-  example_response?: any
+  example_response?: Record<string, unknown>
 }
 
 interface ApiService {
   name: string
   description: string
   port: number
-  icon: React.ComponentType<any>
+  icon: React.ComponentType<{ className?: string }>
   status: 'healthy' | 'degraded' | 'down'
   endpoints: ApiEndpoint[]
 }
@@ -245,7 +243,14 @@ const apiServices: ApiService[] = [
   }
 ]
 
-async function testEndpoint(endpoint: ApiEndpoint): Promise<{ success: boolean; response?: any; error?: string }> {
+interface TestResult {
+  loading?: boolean
+  success?: boolean
+  response?: unknown
+  error?: string
+}
+
+async function testEndpoint(endpoint: ApiEndpoint): Promise<TestResult> {
   try {
     let response
     const client = gatewayDataClient // Use gateway client for testing
@@ -259,32 +264,19 @@ async function testEndpoint(endpoint: ApiEndpoint): Promise<{ success: boolean; 
     }
 
     return { success: true, response }
-  } catch (error: any) {
+  } catch (error) {
     return { 
       success: false, 
-      error: error?.response?.data?.message || error?.message || 'Unknown error'
+      // ApiError.message already carries the server's message.
+      error: getErrorMessage(error, 'Unknown error')
     }
   }
 }
 
 export default function APIDocumentation() {
   const [selectedService, setSelectedService] = useState<string>('Threat Intelligence Data')
-  const [testResults, setTestResults] = useState<Record<string, any>>({})
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
   const [copiedCode, setCopiedCode] = useState<string>('')
-
-  // Check service health
-  const { data: healthData } = useQuery({
-    queryKey: ['api-health'],
-    queryFn: async () => {
-      try {
-        const response = await dataClient.get('/health')
-        return { service: 'data', status: 'healthy', ...response }
-      } catch (error) {
-        return { service: 'data', status: 'down', error }
-      }
-    },
-    refetchInterval: 30000
-  })
 
   const handleTestEndpoint = async (endpoint: ApiEndpoint) => {
     const key = `${endpoint.method}-${endpoint.path}`
@@ -566,7 +558,7 @@ try {
                             {testResult.success ? 'Success' : 'Error'}
                           </span>
                         </div>
-                        {testResult.response && (
+                        {!!testResult.response && (
                           <pre className="text-xs bg-white p-2 rounded border overflow-x-auto">
                             {JSON.stringify(testResult.response, null, 2)}
                           </pre>

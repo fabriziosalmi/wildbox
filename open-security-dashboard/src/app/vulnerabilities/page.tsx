@@ -1,10 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { 
   Search, 
-  Filter, 
   Download, 
   Bug, 
   AlertTriangle, 
@@ -12,7 +11,6 @@ import {
   Clock,
   User,
   Calendar,
-  ChevronDown,
   Eye,
   Edit,
   Trash2,
@@ -24,11 +22,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { MainLayout } from '@/components/main-layout'
-import { guardianClient, getGuardianPath } from '@/lib/api-client'
+import { guardianClient, getGuardianPath, type ApiError } from '@/lib/api-client'
 import { formatRelativeTime } from '@/lib/utils'
 import { GuardianVulnerability } from '@/types'
 import { useAuth } from '@/components/auth-provider'
 import { useVulnerabilityStats, isEmptyStats } from '@/hooks/use-vulnerability-stats'
+
+// Nothing to subscribe to: the snapshot only differs between the server
+// render (and hydration) and the client.
+const subscribeToNothing = () => () => {}
 
 interface VulnerabilityListResponse {
   count: number
@@ -61,12 +63,10 @@ export default function VulnerabilitiesPage() {
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [pageSize] = useState(25)
-  const [mounted, setMounted] = useState(false)
-
-  // Track when component is mounted to prevent hydration mismatches
-  useEffect(() => {
-    setMounted(true)
-  }, [])
+  // False during the server render and hydration, true on the client
+  // afterwards, so the first client render matches the server HTML. Unlike
+  // setting a flag in an effect, this does not force a second render.
+  const mounted = useSyncExternalStore(subscribeToNothing, () => true, () => false)
 
   // Debug authentication state
   useEffect(() => {
@@ -124,7 +124,7 @@ export default function VulnerabilitiesPage() {
         console.log('🔍 Original path:', originalPath)
         console.log('🔍 Transformed path:', path)
         
-        const response = await guardianClient.get(path)
+        const response = await guardianClient.get<Partial<VulnerabilityListResponse>>(path)
         console.log('✅ Vulnerabilities API Response:', response)
         
         // Ensure we always return a valid object with the correct structure
@@ -137,12 +137,15 @@ export default function VulnerabilitiesPage() {
         
         console.log('✅ Returning vulnerabilities data:', data)
         return data
-      } catch (error: any) {
+      } catch (error) {
         console.error('❌ Vulnerabilities API Error:', error)
+        // The API client rejects with an ApiError: the response body is in
+        // `details`, there is no axios `response` on it.
+        const apiError = error as Partial<ApiError> | undefined
         console.error('❌ Error details:', {
-          message: error?.message,
-          status: error?.status,
-          response: error?.response?.data
+          message: apiError?.message,
+          status: apiError?.status,
+          response: apiError?.details
         })
         
         // Return default data instead of throwing to prevent undefined

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/components/auth-provider'
 import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/utils'
 
 export default function HomePage() {
   const [email, setEmail] = useState('')
@@ -34,10 +35,10 @@ export default function HomePage() {
     try {
       await login(email, password)
       // Redirect is now handled in the auth provider login function
-    } catch (err: any) {
+    } catch (err) {
       toast({
         title: "Login Failed",
-        description: err.message || 'Please check your credentials and try again.',
+        description: getErrorMessage(err, 'Please check your credentials and try again.'),
         variant: "destructive",
       })
     } finally {
@@ -152,7 +153,7 @@ export default function HomePage() {
 
             <div className="text-center">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <Link 
                   href="/auth/signup" 
                   className="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300"

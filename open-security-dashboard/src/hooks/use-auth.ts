@@ -32,6 +32,9 @@ export function useLogout() {
     mutationFn: () => identityClient.post(getAuthPath('/api/v1/auth/jwt/logout')),
     onSuccess: () => {
       queryClient.clear()
+      // A full reload is intended: it also resets the AuthProvider context,
+      // which a client-side router.push() would leave holding the old user.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- hard reload by design
       window.location.href = '/'
     },
   })

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/utils'
 import { 
-  Play, 
-  Pause, 
   CheckCircle2, 
   XCircle, 
   Clock, 
@@ -75,14 +74,7 @@ export default function CloudSecurityScansPage() {
     }
   })
 
-  useEffect(() => {
-    fetchScans()
-    // Set up polling for active scans
-    const interval = setInterval(fetchScans, 10000) // Poll every 10 seconds
-    return () => clearInterval(interval)
-  }, [])
-
-  const fetchScans = async () => {
+  const fetchScans = useCallback(async () => {
     try {
       // Since we don't have a list scans endpoint, we'll create mock data
       // In a real implementation, you'd call the API
@@ -125,7 +117,7 @@ export default function CloudSecurityScansPage() {
       ]
       
       setScans(mockScans)
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching scans:', error)
       toast({
         title: 'Error',
@@ -135,7 +127,14 @@ export default function CloudSecurityScansPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    fetchScans()
+    // Set up polling for active scans
+    const interval = setInterval(fetchScans, 10000) // Poll every 10 seconds
+    return () => clearInterval(interval)
+  }, [fetchScans])
 
   const createScan = async () => {
     try {
@@ -151,7 +150,7 @@ export default function CloudSecurityScansPage() {
         return
       }
 
-      const response = await cspmClient.post(getCSPMPath('/api/v1/scans'), newScan)
+      const response = await cspmClient.post<{ scan_id: string }>(getCSPMPath('/api/v1/scans'), newScan)
       
       toast({
         title: 'Scan Created',
@@ -167,11 +166,11 @@ export default function CloudSecurityScansPage() {
       // Refresh the scans list
       fetchScans()
       
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating scan:', error)
       toast({
         title: 'Error',
-        description: error.message || 'Failed to create scan. Please try again.',
+        description: getErrorMessage(error, 'Failed to create scan. Please try again.'),
         variant: 'destructive',
       })
     } finally {

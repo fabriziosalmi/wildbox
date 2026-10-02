@@ -1,4 +1,4 @@
-import { test, expect, Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { LoginPage } from './page-objects/login-page';
 import { AdminPage } from './page-objects/admin-page';
 import { DashboardPage } from './page-objects/dashboard-page';
@@ -253,7 +253,7 @@ test.describe('Admin Comprehensive E2E Tests', () => {
     console.log('🎉 User management edge cases test completed!');
   });
 
-  test('System Monitoring and Health Checks', async ({ page }) => {
+  test('System Monitoring and Health Checks', async () => {
     console.log('🎯 Starting system monitoring test...');
 
     // Login as admin

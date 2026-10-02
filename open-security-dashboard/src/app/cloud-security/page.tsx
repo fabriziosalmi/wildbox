@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -11,7 +11,6 @@ import {
   Shield, 
   AlertTriangle, 
   CheckCircle2, 
-  XCircle, 
   Clock,
   TrendingUp,
   TrendingDown,
@@ -68,17 +67,13 @@ export default function CloudSecurityPage() {
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       setIsLoading(true)
       
       const [dashboardResponse, executiveResponse] = await Promise.allSettled([
-        cspmClient.get(getCSPMPath('/api/v1/dashboard/summary')),
-        cspmClient.get(getCSPMPath('/api/v1/dashboard/executive-summary'))
+        cspmClient.get<DashboardSummary>(getCSPMPath('/api/v1/dashboard/summary')),
+        cspmClient.get<ExecutiveSummary>(getCSPMPath('/api/v1/dashboard/executive-summary'))
       ])
 
       if (dashboardResponse.status === 'fulfilled') {
@@ -89,7 +84,7 @@ export default function CloudSecurityPage() {
         setExecutiveSummary(executiveResponse.value)
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast({
         title: 'Error',
@@ -99,7 +94,11 @@ export default function CloudSecurityPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    fetchDashboardData()
+  }, [fetchDashboardData])
 
   const formatLastScan = (timestamp?: string) => {
     if (!timestamp) return 'Never'

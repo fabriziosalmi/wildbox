@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
 import { 
-  PlayCircle, 
   Book, 
   Activity,
   Clock,
@@ -67,7 +65,7 @@ async function fetchDashboardStats(): Promise<DashboardStats> {
   try {
     // Try to fetch real data from multiple endpoints
     const [playbooksResponse] = await Promise.allSettled([
-      responderClient.get('/v1/playbooks')
+      responderClient.get<{ total?: number }>('/v1/playbooks')
     ])
 
     let totalPlaybooks = 0
@@ -109,7 +107,7 @@ function formatTimeAgo(timestamp: string): string {
 }
 
 export default function ResponsePage() {
-  const { data: stats, isLoading, error, refetch } = useQuery({
+  const { data: stats, isLoading, refetch } = useQuery({
     queryKey: ['response-dashboard'],
     queryFn: fetchDashboardStats,
     refetchInterval: 30000,

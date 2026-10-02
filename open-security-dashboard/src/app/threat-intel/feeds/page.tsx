@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Radio, Shield, Activity, Clock, Database, ExternalLink, RefreshCw, AlertCircle, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -35,7 +34,7 @@ interface FeedStats {
 
 async function fetchFeeds(): Promise<Feed[]> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/sources?enabled_only=false'))
+    const response = await dataClient.get<Feed[]>(getDataPath('/api/v1/sources?enabled_only=false'))
     return response
   } catch (error) {
     console.error('Failed to fetch feeds:', error)
@@ -45,7 +44,7 @@ async function fetchFeeds(): Promise<Feed[]> {
 
 async function fetchFeedStats(): Promise<FeedStats> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/dashboard/threat-intel'))
+    const response = await dataClient.get<FeedStats>(getDataPath('/api/v1/dashboard/threat-intel'))
     return response
   } catch (error) {
     console.error('Failed to fetch feed stats:', error)

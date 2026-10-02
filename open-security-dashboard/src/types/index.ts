@@ -93,7 +93,7 @@ export interface DashboardSettings {
 }
 
 // API Response Types
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean
   data: T
   message?: string
@@ -129,7 +129,7 @@ export interface IOC {
   lastSeen: Date
   sources: string[]
   tags: string[]
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
 }
 
 export interface IOCLookupResult {
@@ -172,7 +172,7 @@ export interface WhoisData {
   creationDate: Date
   expirationDate: Date
   nameServers: string[]
-  contacts: Record<string, any>
+  contacts: Record<string, unknown>
 }
 
 export interface CertificateData {
@@ -259,13 +259,13 @@ export interface ToolParameter {
   type: 'string' | 'number' | 'boolean' | 'array' | 'file'
   description: string
   required: boolean
-  default?: any
+  default?: unknown
   validation?: ValidationRule[]
 }
 
 export interface ValidationRule {
   type: 'regex' | 'range' | 'enum' | 'custom'
-  value: any
+  value: unknown
   message: string
 }
 
@@ -277,8 +277,8 @@ export interface ToolExecution {
   startTime: Date
   endTime?: Date
   duration?: number
-  input: Record<string, any>
-  output?: any
+  input: Record<string, unknown>
+  output?: unknown
   error?: string
   userId: string
 }
@@ -304,7 +304,7 @@ export interface PlaybookParameter {
   type: string
   description: string
   required: boolean
-  default?: any
+  default?: unknown
 }
 
 export interface PlaybookStep {
@@ -313,7 +313,7 @@ export interface PlaybookStep {
   type: 'action' | 'condition' | 'loop' | 'parallel'
   action?: string
   condition?: string
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
   onSuccess?: string
   onFailure?: string
   timeout?: number
@@ -322,7 +322,7 @@ export interface PlaybookStep {
 export interface PlaybookTrigger {
   type: 'manual' | 'scheduled' | 'webhook' | 'alert'
   condition: string
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
 }
 
 export interface PlaybookRun {
@@ -334,9 +334,9 @@ export interface PlaybookRun {
   endTime?: Date
   duration?: number
   trigger: string
-  input: Record<string, any>
+  input: Record<string, unknown>
   steps: PlaybookStepExecution[]
-  output?: any
+  output?: unknown
   error?: string
   userId: string
 }
@@ -347,8 +347,8 @@ export interface PlaybookStepExecution {
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
   startTime?: Date
   endTime?: Date
-  input?: any
-  output?: any
+  input?: unknown
+  output?: unknown
   error?: string
   logs: string[]
 }
@@ -384,7 +384,7 @@ export interface EndpointAlert {
   status: 'open' | 'investigating' | 'resolved' | 'false_positive'
   assignee?: string
   tags: string[]
-  metadata: Record<string, any>
+  metadata: Record<string, unknown>
 }
 
 // AI Agents Types
@@ -405,8 +405,8 @@ export interface AnalysisTask {
   type: 'ioc_analysis' | 'threat_hunting' | 'incident_analysis' | 'compliance_check'
   status: 'pending' | 'running' | 'completed' | 'failed'
   priority: 'low' | 'medium' | 'high' | 'critical'
-  input: any
-  output?: any
+  input: unknown
+  output?: unknown
   progress: number
   steps: AnalysisStep[]
   startTime: Date
@@ -421,7 +421,7 @@ export interface AnalysisStep {
   description: string
   status: 'pending' | 'running' | 'completed' | 'failed'
   progress: number
-  output?: any
+  output?: unknown
   error?: string
 }
 
@@ -514,7 +514,7 @@ export interface DashboardWidget {
   type: 'metric' | 'chart' | 'table' | 'alert' | 'status'
   title: string
   position: { x: number; y: number; w: number; h: number }
-  config: Record<string, any>
+  config: Record<string, unknown>
   dataSource: string
   refreshInterval: number
   lastUpdated: Date
@@ -571,7 +571,26 @@ export interface FormField {
   placeholder?: string
   required?: boolean
   validation?: ValidationRule[]
-  options?: { label: string; value: any }[]
+  options?: { label: string; value: unknown }[]
   description?: string
-  defaultValue?: any
+  defaultValue?: unknown
+}
+
+// Identity service admin analytics (/api/v1/identity/analytics/admin/*)
+export interface AdminSystemAnalytics {
+  users: {
+    total: number
+    active: number
+    super_admins: number
+    new_this_week: number
+  }
+  teams: {
+    total: number
+  }
+}
+
+export interface AdminUsageSummary {
+  summary: {
+    api_requests_today: number
+  }
 }

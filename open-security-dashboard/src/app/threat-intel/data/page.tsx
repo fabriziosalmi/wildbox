@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Database, Activity, TrendingUp, AlertTriangle, Shield, Globe, Hash, Mail, Server, Eye, Filter, Download, RefreshCcw } from 'lucide-react'
+import { Search, Database, Activity, TrendingUp, Shield, Globe, Hash, Mail, Server, Eye, Filter, Download, RefreshCcw } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -26,7 +26,7 @@ interface Indicator {
   expires_at?: string
   active: boolean
   source_id: string
-  indicator_metadata: Record<string, any>
+  indicator_metadata: Record<string, unknown>
   created_at: string
   updated_at: string
 }
@@ -62,7 +62,7 @@ interface SourceInfo {
 
 async function fetchSystemStats(): Promise<SystemStats> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/stats'))
+    const response = await dataClient.get<SystemStats>(getDataPath('/api/v1/stats'))
     return response
   } catch (error) {
     console.error('Failed to fetch system stats:', error)
@@ -72,7 +72,7 @@ async function fetchSystemStats(): Promise<SystemStats> {
 
 async function fetchSources(): Promise<SourceInfo[]> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/sources'))
+    const response = await dataClient.get<SourceInfo[]>(getDataPath('/api/v1/sources'))
     return response
   } catch (error) {
     console.error('Failed to fetch sources:', error)
@@ -108,7 +108,9 @@ async function searchIndicators(params: {
     if (params.limit) searchParams.append('limit', params.limit.toString())
     if (params.offset) searchParams.append('offset', params.offset.toString())
 
-    const response = await dataClient.get(getDataPath(`/api/v1/indicators/search?${searchParams.toString()}`))
+    const response = await dataClient.get<IndicatorSearchResponse>(
+      getDataPath(`/api/v1/indicators/search?${searchParams.toString()}`)
+    )
     return response
   } catch (error) {
     console.error('Failed to search indicators:', error)
@@ -120,7 +122,7 @@ export default function ThreatIntelligenceData() {
   const [searchTerm, setSearchTerm] = useState('')
   const [indicatorType, setIndicatorType] = useState<string>('all')
   const [confidence, setConfidence] = useState<string>('all')
-  const [severityRange, setSeverityRange] = useState<{ min: number; max: number }>({ min: 1, max: 10 })
+  const [severityRange] = useState<{ min: number; max: number }>({ min: 1, max: 10 })
   const [selectedSource, setSelectedSource] = useState<string>('all')
   const [activeOnly, setActiveOnly] = useState(true)
   const [offset, setOffset] = useState(0)

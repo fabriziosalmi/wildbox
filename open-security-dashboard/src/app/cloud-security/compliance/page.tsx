@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -14,7 +14,6 @@ import {
   XCircle, 
   AlertTriangle,
   Search,
-  Filter,
   Download,
   RefreshCw,
   TrendingUp,
@@ -70,17 +69,13 @@ export default function CompliancePage() {
   const [searchTerm, setSearchTerm] = useState('')
   const { toast } = useToast()
 
-  useEffect(() => {
-    fetchComplianceData()
-  }, [])
-
-  const fetchComplianceData = async () => {
+  const fetchComplianceData = useCallback(async () => {
     try {
       setIsLoading(true)
       
       const [summaryResponse, findingsResponse] = await Promise.allSettled([
-        cspmClient.get(getCSPMPath('/api/v1/compliance/summary')),
-        cspmClient.get(getCSPMPath('/api/v1/compliance/findings'))
+        cspmClient.get<ComplianceSummary>(getCSPMPath('/api/v1/compliance/summary')),
+        cspmClient.get<ComplianceFinding[]>(getCSPMPath('/api/v1/compliance/findings'))
       ])
 
       if (summaryResponse.status === 'fulfilled') {
@@ -183,7 +178,7 @@ export default function CompliancePage() {
         ])
       }
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error fetching compliance data:', error)
       toast({
         title: 'Error',
@@ -193,7 +188,11 @@ export default function CompliancePage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    fetchComplianceData()
+  }, [fetchComplianceData])
 
   const getStatusIcon = (status: string) => {
     switch (status) {

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Cookies from 'js-cookie'
-import { User } from '@/types'
+import { LoginResponse, User } from '@/types'
 import { identityClient, getAuthPath } from '@/lib/api-client'
 
 interface AuthContextType {
@@ -68,7 +68,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       formData.append('username', email)
       formData.append('password', password)
 
-      const response = await identityClient.postForm(getAuthPath('/api/v1/auth/jwt/login'), formData)
+      const response = await identityClient.postForm<LoginResponse>(getAuthPath('/api/v1/auth/jwt/login'), formData)
       const { access_token } = response
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)
@@ -77,7 +77,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       // Fetch user data separately using the correct FastAPI Users endpoint
-      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+      const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
       setUser(userData)
 
       // Redirect immediately after successful login to prevent race conditions
@@ -89,7 +89,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const register = async (email: string, password: string, name: string) => {
     try {
-      const response = await identityClient.post(getAuthPath('/api/v1/auth/register'), { email, password, name })
+      const response = await identityClient.post<LoginResponse>(getAuthPath('/api/v1/auth/register'), {
+        email,
+        password,
+        name,
+      })
       const { access_token } = response
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)
@@ -98,7 +102,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       // Fetch user data separately using the correct FastAPI Users endpoint
-      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+      const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
       setUser(userData)
 
       // Redirect immediately after successful registration
@@ -138,9 +142,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (typeof window === 'undefined') return
 
     try {
-      const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+      const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
       setUser(userData)
-    } catch (error) {
+    } catch {
       // Clear auth silently and let the page handle the redirect
       Cookies.remove('auth_token')
       setUser(null)
@@ -161,15 +165,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (token) {
           try {
             // Always fetch fresh user data to ensure we have the latest info
-            const userData = await identityClient.get(getAuthPath('/api/v1/users/me'))
+            const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
             setUser(userData)
-          } catch (error) {
+          } catch {
             // Token is invalid, clear it silently without redirect
             Cookies.remove('auth_token')
             setUser(null)
           }
         }
-      } catch (error) {
+      } catch {
         // Auth initialization error - non-fatal
       } finally {
         setIsLoading(false)

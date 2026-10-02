@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { identityClient } from '@/lib/api-client'
+import type { AdminSystemAnalytics, AdminUsageSummary } from '@/types'
 
 export interface SystemStatsData {
   totalUsers: number
@@ -31,15 +32,15 @@ export function useSystemStats(userCount: number = 0): UseSystemStatsReturn {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
-  const fetchSystemStats = async () => {
+  const fetchSystemStats = useCallback(async () => {
     try {
       setIsLoading(true)
       setError(null)
       
       // Fetch real system analytics from identity service
       const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get('/api/v1/identity/analytics/admin/system-stats?days=30'),
-        identityClient.get('/api/v1/identity/analytics/admin/usage-summary')
+        identityClient.get<AdminSystemAnalytics>('/api/v1/identity/analytics/admin/system-stats?days=30'),
+        identityClient.get<AdminUsageSummary>('/api/v1/identity/analytics/admin/usage-summary')
       ])
       
       // Extract real analytics data
@@ -84,11 +85,11 @@ export function useSystemStats(userCount: number = 0): UseSystemStatsReturn {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [userCount])
 
   useEffect(() => {
     fetchSystemStats()
-  }, [userCount])
+  }, [fetchSystemStats])
 
   return {
     stats,

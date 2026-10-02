@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { identityClient, getAuthPath } from '@/lib/api-client'
+import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -11,14 +12,11 @@ import {
   Users, 
   Plus, 
   Trash2, 
-  Mail,
-  Calendar,
   AlertCircle,
   Crown,
   Shield,
   User,
   Settings,
-  UserPlus,
   Edit
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
@@ -65,23 +63,19 @@ export default function TeamPage() {
     name: '',
   })
 
-  useEffect(() => {
-    if (user) {
-      fetchTeamData()
-    }
-  }, [user])
-
-  const fetchTeamData = async () => {
+  const fetchTeamData = useCallback(async () => {
     try {
       setIsLoading(true)
-      const userData = await identityClient.get(getAuthPath('/api/v1/auth/me'))
+      const userData = await identityClient.get<UserType>(getAuthPath('/api/v1/auth/me'))
       
       if (userData.team_memberships && userData.team_memberships.length > 0) {
         const primaryMembership = userData.team_memberships[0]
         const canManage = ['owner', 'admin'].includes(primaryMembership.role)
         
         // Get detailed team information with all members
-        const teamMembers = await identityClient.get(`/api/v1/teams/${primaryMembership.team_id}/members`)
+        const teamMembers = await identityClient.get<TeamData['members']>(
+          `/api/v1/teams/${primaryMembership.team_id}/members`
+        )
         
         setTeamData({
           team: primaryMembership.team,
@@ -93,7 +87,7 @@ export default function TeamPage() {
           name: primaryMembership.team.name
         })
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to fetch team data:', error)
       toast({
         title: "Error",
@@ -103,7 +97,13 @@ export default function TeamPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    if (user) {
+      fetchTeamData()
+    }
+  }, [user, fetchTeamData])
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -134,10 +134,10 @@ export default function TeamPage() {
         title: "Success",
         description: "User invited successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to invite user",
+        description: getErrorMessage(error, "Failed to invite user"),
         variant: "destructive",
       })
     } finally {
@@ -169,10 +169,10 @@ export default function TeamPage() {
         title: "Success",
         description: "Team updated successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update team",
+        description: getErrorMessage(error, "Failed to update team"),
         variant: "destructive",
       })
     }
@@ -190,10 +190,10 @@ export default function TeamPage() {
         title: "Success",
         description: "Member role updated successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to update member role",
+        description: getErrorMessage(error, "Failed to update member role"),
         variant: "destructive",
       })
     }
@@ -213,10 +213,10 @@ export default function TeamPage() {
         title: "Success",
         description: "Member removed successfully",
       })
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: "Error",
-        description: error.message || "Failed to remove member",
+        description: getErrorMessage(error, "Failed to remove member"),
         variant: "destructive",
       })
     }

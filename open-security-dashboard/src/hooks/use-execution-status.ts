@@ -11,7 +11,7 @@
  * - Step-level execution details
  */
 
-import { useQuery, UseQueryResult } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { responderClient } from '@/lib/api-client'
 
 // ============================================================================
@@ -29,7 +29,7 @@ export interface StepExecutionResult {
   start_time: string | null
   end_time: string | null
   duration_seconds: number | null
-  output: any
+  output: unknown
   error: string | null
 }
 
@@ -45,8 +45,8 @@ export interface PlaybookExecutionResult {
   end_time: string | null
   duration_seconds: number | null
   step_results: StepExecutionResult[]
-  trigger_data: Record<string, any>
-  context: Record<string, any>
+  trigger_data: Record<string, unknown>
+  context: Record<string, unknown>
   error: string | null
 }
 
@@ -81,17 +81,6 @@ async function fetchExecutionStatus(runId: string): Promise<PlaybookExecutionRes
  */
 export function isTerminalStatus(status: ExecutionStatus): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled'
-}
-
-/**
- * Calculate polling interval based on status
- * - Active executions: 2 seconds
- * - Terminal states: No polling
- */
-function getPollingInterval(data: PlaybookExecutionResult | undefined): number | false {
-  if (!data) return 2000 // Poll if no data yet
-  
-  return isTerminalStatus(data.status) ? false : 2000
 }
 
 // ============================================================================

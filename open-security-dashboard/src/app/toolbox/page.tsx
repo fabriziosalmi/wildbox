@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { 
   Search, 
@@ -37,7 +37,7 @@ interface ToolExecution {
   status: 'running' | 'completed' | 'failed'
   startTime: string
   duration?: number
-  result?: any
+  result?: unknown
 }
 
 async function fetchSecurityTools(): Promise<SecurityTool[]> {
@@ -45,7 +45,7 @@ async function fetchSecurityTools(): Promise<SecurityTool[]> {
     // Use the gateway-aware API client
     // apiClient base URL is http://localhost:80/api/v1 (when using gateway)
     // Calling /tools results in full path: /api/v1/tools
-    const response = await apiClient.get('/tools')
+    const response = await apiClient.get<SecurityTool[]>('/tools')
     return response
   } catch (error) {
     console.error('Failed to fetch security tools:', error)

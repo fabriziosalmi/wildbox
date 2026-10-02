@@ -1,6 +1,5 @@
 'use client'
 
-import { useAuth } from '@/components/auth-provider'
 import { MainLayout } from '@/components/main-layout'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -9,7 +8,6 @@ import {
   User,
   Key,
   Users,
-  Shield,
   Settings as SettingsIcon
 } from 'lucide-react'
 
@@ -39,7 +37,6 @@ interface SettingsLayoutProps {
 }
 
 export default function SettingsLayout({ children }: SettingsLayoutProps) {
-  const { user } = useAuth()
   const pathname = usePathname()
 
   // Use base settings navigation only - admin is now in main nav

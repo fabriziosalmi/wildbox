@@ -13,7 +13,6 @@ import {
   Play,
   Search,
   Filter,
-  CheckCircle,
   XCircle
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -138,7 +137,7 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
       JSON.parse(triggerData)
       setError(null)
       onExecute(triggerData)
-    } catch (e) {
+    } catch {
       setError('Invalid JSON format')
     }
   }
@@ -185,7 +184,7 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950 p-3 rounded-md">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             <span>
-              Execution will start asynchronously. You'll be redirected to the runs page to monitor progress.
+              Execution will start asynchronously. You&apos;ll be redirected to the runs page to monitor progress.
             </span>
           </div>
         </div>
@@ -228,7 +227,7 @@ export default function PlaybooksPage() {
   // Use custom hooks
   const { playbooks, total, isLoading, error, refetch } = useResponderPlaybooks()
   
-  const { execute, data: executionData, isLoading: isExecuting, isSuccess } = usePlaybookExecution({
+  const { execute, isLoading: isExecuting } = usePlaybookExecution({
     onSuccess: (response) => {
       // Save to history
       addExecutionToHistory({
