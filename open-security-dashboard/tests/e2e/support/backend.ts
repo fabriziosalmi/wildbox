@@ -176,6 +176,35 @@ export function readSeed(): SeedData {
   return JSON.parse(fs.readFileSync(SEED_FILE, 'utf8')) as SeedData
 }
 
+/** Puts a session in a browser context, as signing in would. */
+export async function startSession(context: BrowserContext, token: string) {
+  await context.addCookies(storageStateFor(token).cookies)
+}
+
+/**
+ * A fresh account for a test that changes it (email, password) or tries a
+ * wrong password on it, so the shared accounts and the admin's lockout
+ * counter are never touched.
+ */
+export async function throwawayAccount(
+  api: APIRequestContext,
+  label: string
+): Promise<Account & { id: string; token: string }> {
+  const account = { email: uniqueEmail(label), password: strongPassword() }
+  const registered = await registerUser(api, account)
+  return { ...account, id: registered.id, token: await apiLogin(api, account) }
+}
+
+/** Status of a password login, for checking which password an account has. */
+export async function loginStatus(api: APIRequestContext, account: Account): Promise<number> {
+  const response = await withAuthRateLimit(() =>
+    api.post('/auth/jwt/login', {
+      form: { username: account.email, password: account.password },
+    })
+  )
+  return response.status()
+}
+
 /** The token the dashboard currently holds in its cookie, if any. */
 export async function sessionToken(context: BrowserContext): Promise<string | undefined> {
   const cookies = await context.cookies()
