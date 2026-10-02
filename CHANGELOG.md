@@ -113,11 +113,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   disabled. The new `Production Stack` workflow renders the configuration,
   starts it, runs the integration suite against it and probes the
   segmentation from inside the containers
-  (`scripts/check_network_segmentation.py`). Starting it also exposed two
-  overlay defects, now fixed: guardian was pointed at a settings module
-  that does not exist and lost the hostname the gateway sends from
-  `ALLOWED_HOSTS`, and the dashboard's development bind mount hid the
-  production build.
+  (`scripts/check_network_segmentation.py`). Starting it also exposed three
+  overlay defects that kept the production stack from coming up, now fixed:
+  guardian was pointed at a settings module that does not exist and lost
+  the hostname the gateway sends from `ALLOWED_HOSTS`; identity was given
+  `CORS_ORIGINS` in the comma-separated form it cannot parse and exited at
+  start-up; and the dashboard's development bind mount hid the production
+  build.
 
 - **The dashboard moves to React 19.** `react`, `react-dom` and their type
   definitions move together to 19.3 (Dependabot's #151 moved `react` alone).
