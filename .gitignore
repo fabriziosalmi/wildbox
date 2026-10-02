@@ -102,3 +102,6 @@ open-security-tools/security_fixes_backup_*/
 .coverage
 tests/reports/junit.xml
 open-security-dashboard/test-results/
+# The Docusaurus site was removed from the repository; GitHub Pages builds
+# docs/ with Jekyll. A leftover local website/ directory must not come back.
+website/

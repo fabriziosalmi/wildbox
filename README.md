@@ -328,7 +328,7 @@ Next.js, TypeScript, Tailwind CSS, TanStack Query.
 ### Backend
 
 - **FastAPI** - Python async web framework
-- **Django 4.2 LTS** - Python web framework
+- **Django 5.2 LTS** - Python web framework
 - **OpenResty** - Nginx + LuaJIT
 - **PostgreSQL 15** - Relational database
 - **Redis 7** - In-memory data store for caching and queues

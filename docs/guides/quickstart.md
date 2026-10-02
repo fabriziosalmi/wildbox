@@ -1,31 +1,33 @@
 # Wildbox Quick Start Guide
 
-**Get Wildbox running in 5 minutes**
+Run the whole Wildbox stack on one machine with Docker Compose, log in, and
+make an authenticated API call.
 
-> **📢 Early Evaluation Phase**: Wildbox is actively seeking community feedback, bug reports, and feature suggestions. [Report issues](https://github.com/fabriziosalmi/wildbox/issues) and [share feedback](https://github.com/fabriziosalmi/wildbox/discussions) to help us build the mature platform the community needs.
+How long this takes depends mostly on building the images the first time,
+which can take a while on a slow machine or connection.
+
+> **Early evaluation phase**: Wildbox is actively seeking feedback.
+> [Report issues](https://github.com/fabriziosalmi/wildbox/issues) and
+> [share feedback](https://github.com/fabriziosalmi/wildbox/discussions).
 
 ---
 
-## ⚡ Prerequisites
+## Prerequisites
 
-Before starting, ensure you have installed:
-
-- **Docker**: [Install Docker](https://docs.docker.com/get-docker/) (Desktop or Server)
-- **Docker Compose**: [Install Docker Compose](https://docs.docker.com/compose/install/)
-- **Git**: [Install Git](https://git-scm.com/)
-- **Minimum Resources**: 8GB RAM, 20GB disk space
-
-**Check installations:**
+- **Docker** with the Compose plugin (`docker compose`):
+  [Install Docker](https://docs.docker.com/get-docker/)
+- **Git**, **Python 3** (to generate secrets), **curl** and **jq**
+- **Resources**: 8 GB RAM minimum (16 GB recommended), 20 GB of free disk
 
 ```bash
 docker --version
-docker compose --version
-git --version
+docker compose version
+python3 --version
 ```
 
 ---
 
-## 📥 1. Clone the Repository
+## 1. Clone the Repository
 
 ```bash
 git clone https://github.com/fabriziosalmi/wildbox.git
@@ -34,356 +36,159 @@ cd wildbox
 
 ---
 
-## 2. Configure Environment
+## 2. Generate `.env`
 
-Create environment files for each service:
+Do not write secrets by hand. `scripts/generate_secrets.py` reads
+`.env.template`, fills every secret the stack needs with a random value and
+writes `.env` with mode 0600; `scripts/validate_secrets.py` refuses a `.env`
+that still contains a placeholder.
 
 ```bash
-# Copy example environment files
-cp .env.example .env
-
-# For sensitive data, use secure values:
-# Edit .env and add your actual credentials
-nano .env
+make generate-secrets    # python3 scripts/generate_secrets.py
+make validate-secrets    # python3 scripts/validate_secrets.py
 ```
 
-**Essential environment variables:**
+`generate_secrets.py` asks before replacing an existing `.env` (it keeps a
+backup). Then open `.env` and set `INITIAL_ADMIN_EMAIL` to the address you
+want for the first administrator. `INITIAL_ADMIN_PASSWORD` has already been
+generated; leave it as it is. See the
+[Credentials guide](credentials.md) for what each value is for.
 
-```env
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:secure_password@postgres:5432/wildbox
-
-# API Gateway
-API_KEY=your-secure-api-key-here
-
-# Claude (Anthropic) — optional; enables AI threat analysis
-ANTHROPIC_API_KEY=sk-ant-your-actual-key
-
-# JWT Security
-JWT_SECRET_KEY=your-secure-jwt-secret-min-32-chars
-
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-```
+Optional: set `ANTHROPIC_API_KEY` in `.env` to enable AI analysis in the
+agents service. Everything else works without it.
 
 ---
 
-## 🐳 3. Start All Services
-
-### Option A: Run Everything (Recommended for First-Time Users)
+## 3. Start the Stack
 
 ```bash
-# Start all services in the background
-docker compose up -d
-
-# Check service status
+docker compose up -d --wait --wait-timeout 600
 docker compose ps
-
-# View logs
-docker compose logs -f
-
-# Stop everything
-docker compose down
 ```
 
-### Option B: Run Specific Services
+`--wait` returns once every service reports healthy, which is how CI starts
+the stack. `make start` does the same with the development overlay
+(`docker-compose.dev.yml`); `make start-prod` uses `docker-compose.prod.yml`.
+
+To start only the core services:
 
 ```bash
-# Start only the core (gateway, identity, tools API) plus datastores
-docker compose up -d postgres wildbox-redis gateway identity api
-
-# Or start individual services
-docker compose up -d postgres wildbox-redis
-
-# Wait for databases to be ready
-sleep 10
-
-# Then start application services
-docker compose up -d identity api
+docker compose up -d --wait postgres wildbox-redis identity api gateway
 ```
+
+The service names are the ones in `docker-compose.yml`; the
+[Service ports](ports.md) page lists all of them with their ports.
 
 ---
 
-## 4. Verify Installation
+## 4. Verify
 
-Once services are running, verify they're healthy:
+The gateway is the public entry point. Port 80 answers `/health` and redirects
+everything else to HTTPS:
 
 ```bash
-# Check API health
-curl http://localhost:8000/health
-curl http://localhost:8001/health
-curl http://localhost:8006/health
-
-# Expected response:
-# {"status":"healthy","timestamp":"...","version":"..."}
+curl -s http://localhost/health
 ```
+
+Each backend also answers `/health` on its own port, bound to `127.0.0.1`
+only; the loop on the [Service ports](ports.md#checking-the-stack) page checks
+all of them.
 
 ---
 
-## 🌐 5. Access the Dashboard
+## 5. Log In and Call the API
 
-Open your browser and navigate to:
+The gateway serves the API over HTTPS. On first start it generates a
+self-signed development certificate in `open-security-gateway/ssl/`; pass it
+to curl with `--cacert` rather than turning verification off.
 
-| Service | URL | Default Credentials |
-| --------- | ----- | ------------------- |
-| **Dashboard** | http://localhost:3000 | Set via `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD` in `.env` |
-| **API Docs** | http://localhost:8000/docs | N/A |
+This is the same sequence the integration tests use: a form-encoded login
+(fields `username` and `password`) that returns `access_token`, then a bearer
+token on every call.
+
+```bash
+# Read the admin credentials out of .env without sourcing it
+# (a generated secret is not necessarily valid shell).
+env_value() { sed -n "s/^$1=//p" .env | head -1; }
+ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+CA=open-security-gateway/ssl/wildbox.crt
+
+TOKEN=$(curl -s --cacert "$CA" -X POST https://localhost/auth/jwt/login \
+  --data-urlencode "username=$ADMIN_EMAIL" \
+  --data-urlencode "password=$ADMIN_PASSWORD" | jq -r .access_token)
+
+# Who am I?
+curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/identity/users/me | jq .
+
+# List the security tools
+curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/tools | jq .
+```
+
+The other APIs follow the same pattern under `/api/v1/data/`,
+`/api/v1/guardian/`, `/api/v1/responder/`, `/api/v1/agents/` and
+`/api/v1/cspm/`; see the
+[gateway routes table](https://www.wildbox.io/docs.html#gateway-routes) and
+the [API documentation](../api/README.md).
+
+### Dashboard
+
+Open `https://localhost/` (through the gateway) and log in with the same
+`INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. Change the password after
+the first login.
 
 ---
 
-## 🔑 6. First-Time Login
-
-### Dashboard Access
+## 6. Common Tasks
 
 ```bash
-# Get initial admin token
-curl -X POST http://localhost:8001/auth/jwt/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "$INITIAL_ADMIN_EMAIL",
-    "password": "$INITIAL_ADMIN_PASSWORD"
-  }'
-
-# Use the returned token for API requests
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/dashboard
-```
-
-### Reset Admin Password (if needed)
-
-```bash
-# Access the identity service shell
-docker compose exec identity bash
-
-# Reset password
-python -c "
-from app.models import User
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=['bcrypt'])
-hashed = pwd_context.hash('new-password-here')
-# Update in database manually or through admin script
-"
-```
-
----
-
-## 7. Common Tasks
-
-### View Service Logs
-
-```bash
-# All services
-docker compose logs -f
-
-# Specific service
+# Logs
 docker compose logs -f identity
-docker compose logs -f agents
+docker compose logs --tail=100 gateway
 
-# Last 100 lines
-docker compose logs --tail=100 identity
-```
-
-### Run Database Migrations
-
-```bash
-# For PostgreSQL-based services
-docker compose exec identity \
-  alembic upgrade head
-
-docker compose exec data \
-  alembic upgrade head
-```
-
-### Execute Commands in Running Containers
-
-```bash
-# Access a service shell
+# Shell inside a service
 docker compose exec identity bash
-docker compose exec agents bash
 
-# Run a specific command
-docker compose exec -T postgres psql -U postgres -d wildbox -c "SELECT COUNT(*) FROM users;"
-```
-
-### Test API Endpoints
-
-```bash
-# Get authentication token
-TOKEN=$(curl -s -X POST http://localhost:8001/auth/jwt/login \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "username=$INITIAL_ADMIN_EMAIL&password=$INITIAL_ADMIN_PASSWORD" | jq -r '.access_token')
-
-# Make authenticated requests
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/v1/indicators
-curl -H "Authorization: Bearer $TOKEN" http://localhost:8006/v1/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"ioc": {"type": "ip", "value": "8.8.8.8"}}'
-```
-
----
-
-## 8. Monitoring & Health Checks
-
-### Dashboard Status
-
-```bash
-# Get overall health
-curl http://localhost:8000/health | jq .
-
-# Get detailed service status
-curl http://localhost:8000/stats | jq .
-```
-
-### Database Connectivity
-
-```bash
-# Check PostgreSQL
-docker compose exec postgres pg_isready -U postgres
-
-# Check Redis
-docker compose exec wildbox-redis redis-cli ping
-```
-
-### Memory & Disk Usage
-
-```bash
-# Check container resource usage
-docker stats
-
-# Check disk usage
-docker system df
-```
-
----
-
-## 9. Troubleshooting
-
-### Services Won't Start
-
-```bash
-# Check error logs
-docker compose logs identity
-
-# Rebuild images
-docker compose build --no-cache
-
-# Restart services
-docker compose restart
-
-# Full reset (WARNING: Deletes data)
-docker compose down -v
-docker compose up -d
-```
-
-### Can't Connect to API
-
-```bash
-# Verify services are running
-docker compose ps
-
-# Check if ports are open
-netstat -an | grep 8000
-lsof -i :8000
-
-# Test connectivity
-curl -v http://localhost:8000/health
-```
-
-### Database Connection Issues
-
-```bash
-# Check PostgreSQL logs
-docker compose logs postgres
-
-# Verify database exists
-docker compose exec postgres psql -U postgres -l
-
-# Check Redis connection
-docker compose exec wildbox-redis redis-cli info
-```
-
-### Out of Memory or Disk Space
-
-```bash
-# Clean up unused images/volumes
-docker system prune -a
-
-# Check disk usage
-du -sh ./*
-
-# Reduce log retention
+# Stop, keeping data
 docker compose down
-# Edit docker-compose.yml and adjust volumes
+
+# Stop and DELETE all data volumes
+docker compose down -v
 ```
 
----
-
-## 10. Next Steps
-
-After successful deployment:
-
-1. **Security Hardening**: Review [remediation checklist](../security/remediation-checklist.md)
-2. **Full Documentation**: See [README.md](../../README.md) for comprehensive information
-3. **API Documentation**: Visit http://localhost:8000/docs for interactive API docs
-4. **Monitoring Setup**: Configure Grafana dashboards and alerting rules
-5. **Integration**: Set up external integrations (Slack, email, webhooks, etc.)
-6. **Custom Playbooks**: Create YAML-based automation playbooks in [open-security-responder](https://github.com/fabriziosalmi/wildbox/tree/main/open-security-responder)
-
----
-
-## 11. Production Deployment
-
-For production use:
+Optional services stay down until you ask for them:
 
 ```bash
-# 1. Secure all credentials in .env.production
-cp .env .env.production
-nano .env.production
-
-# 2. Use production docker compose
-docker compose -f docker-compose.yml \
-               -f docker-compose.prod.yml \
-               up -d
-
-# 3. Enable SSL/TLS on the gateway
-# Configure certificates for the gateway service (see haproxy/ and docker-compose.prod.yml)
-
-# 4. Set up monitoring and alerting
-# Configure Prometheus retention and Grafana alerts
-
-# 5. Enable backups
-# Set up automated PostgreSQL and Redis backups
-
-# 6. Security hardening
-# Review and implement SECURITY_REMEDIATION_CHECKLIST.md
+docker compose --profile automations up -d   # n8n workflows
+docker compose --profile monitoring up -d    # Prometheus
 ```
 
 ---
 
-## 🆘 Support & Troubleshooting
+## 7. Troubleshooting
 
-- **Documentation**: [README.md](../../README.md)
-- **Security Issues**: [Security Policy](../security/policy.md)
-- **API Docs**: http://localhost:8000/docs (when running)
-- **GitHub Issues**: https://github.com/fabriziosalmi/wildbox/issues
-
----
-
-## Quick Reference
-
-| Command | Purpose |
-| --------- | --------- |
-| `docker compose up -d` | Start all services |
-| `docker compose down` | Stop all services |
-| `docker compose logs -f` | View live logs |
-| `docker compose ps` | Show running services |
-| `docker compose exec <service> bash` | Access service shell |
-| `docker compose restart <service>` | Restart specific service |
-| `docker compose build` | Rebuild images |
+- **A service is unhealthy**: `docker compose ps` shows which;
+  `docker compose logs <service>` shows why.
+- **The stack refuses to start with "... is required"**: a secret is missing
+  from `.env`. Run `make validate-secrets`.
+- **Login returns 400**: wrong credentials. Check `INITIAL_ADMIN_EMAIL` and
+  `INITIAL_ADMIN_PASSWORD` in `.env`; the admin account is created from them
+  on the identity service's first start.
+- **curl fails with a certificate error**: pass
+  `--cacert open-security-gateway/ssl/wildbox.crt` and use `localhost`, a name
+  the development certificate covers.
+- **A request on port 80 returns 301**: expected. Only `/health` is served
+  over HTTP; use `https://localhost`.
+- See [TROUBLESHOOTING.md](https://github.com/fabriziosalmi/wildbox/blob/main/TROUBLESHOOTING.md)
+  for more.
 
 ---
 
-**Happy Securing!**
+## Next Steps
 
-For questions or issues, refer to the comprehensive [README.md](../../README.md) or open an issue on GitHub.
+1. [Deployment guide](deployment.md) for a production setup
+2. [Credentials and authentication](credentials.md)
+3. [Security status](../security/status.md) and [Security policy](../security/policy.md)
+4. [API documentation](../api/README.md)

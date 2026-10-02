@@ -1,656 +1,203 @@
 # Deployment Guide
 
-**For Wildbox Security Platform**
+How to run Wildbox on a server you control. Wildbox is in an early evaluation
+phase: it is suitable for testing, staging and community deployments, and
+real-world deployment feedback is welcome in
+[Discussions](https://github.com/fabriziosalmi/wildbox/discussions) and
+[Issues](https://github.com/fabriziosalmi/wildbox/issues).
 
-**Status**: Ready for Evaluation & Community Testing
-**Maturity**: Early Evaluation Phase - Suitable for Testing, Staging, and Community Deployments
-
-This guide covers deploying Wildbox in various environments. As the platform enters the evaluation phase, real-world deployment feedback is crucial for refining production-grade procedures.
-
-> **📢 Community Feedback Welcome**: Encountered deployment challenges? Found a configuration that works well? [Share your experiences](https://github.com/fabriziosalmi/wildbox/discussions) and [report issues](https://github.com/fabriziosalmi/wildbox/issues). Your real-world insights help us build better deployment procedures.
-
----
-
-## Table of Contents
-
-1. [Pre-Deployment](#pre-deployment)
-2. [Infrastructure Setup](#infrastructure-setup)
-3. [Secret Management](#secret-management)
-4. [Database Setup](#database-setup)
-5. [Service Deployment](#service-deployment)
-6. [SSL/TLS Configuration](#ssltls-configuration)
-7. [Monitoring & Logging](#monitoring--logging)
-8. [Backup & Recovery](#backup--recovery)
-9. [Post-Deployment](#post-deployment)
-10. [Troubleshooting](#troubleshooting)
+This guide builds on the [Quick Start](quickstart.md); read it first. Ports
+and service names are listed once, in [Service ports](ports.md).
 
 ---
 
-## Pre-Deployment
+## 1. Server Requirements
 
-### 1. Requirements Checklist
+- Linux with Docker Engine 20.10+ and the Compose plugin
+- 8 GB RAM minimum (16 GB recommended), 50 GB SSD
+- A DNS name for the server and a TLS certificate for it
+- Somewhere off the server to keep backups
 
-- [ ] Linux server (Ubuntu 22.04 LTS or CentOS 8+)
-- [ ] Docker Engine 20.10+
-- [ ] Docker Compose 2.0+
-- [ ] Minimum 8GB RAM
-- [ ] Minimum 50GB SSD storage
-- [ ] Static IP address
-- [ ] Domain name with DNS configured
-- [ ] SSL certificate (Let's Encrypt or commercial)
-- [ ] Backup storage (AWS S3, GCS, or on-premise)
-
-### 2. Pre-Flight Checks
+Open only what the gateway needs. Every other service is bound to `127.0.0.1`
+by `docker-compose.yml`, and PostgreSQL and Redis publish nothing:
 
 ```bash
-# Verify system requirements
-docker --version
-docker-compose --version
-uname -a
-
-# Check resources
-free -h
-df -h
-nproc
-
-# Verify network
-ping 8.8.8.8
-curl -I https://example.com
-```
-
-### 3. Security Review
-
-```bash
-# Review security documentation
-cat docs/security/policy.md
-cat SECURITY_REMEDIATION_CHECKLIST.md
-
-# Verify no secrets in git
-git log -S "password" --all
-git log -S "secret" --all
-git log -S "api_key" --all
-```
-
----
-
-## Infrastructure Setup
-
-### 1. System Hardening
-
-```bash
-# Update system packages
-sudo apt update && sudo apt upgrade -y
-
-# Install security tools
-sudo apt install -y ufw fail2ban certbot python3-certbot-nginx
-
-# Configure firewall
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
-sudo ufw allow 22/tcp    # SSH (restrict to specific IPs if possible)
-sudo ufw allow 80/tcp    # HTTP
-sudo ufw allow 443/tcp   # HTTPS
+sudo ufw allow 22/tcp     # SSH; restrict to your addresses if you can
+sudo ufw allow 443/tcp    # HTTPS through the gateway
+sudo ufw allow 80/tcp     # optional: /health and the redirect to HTTPS
 sudo ufw enable
-
-# Enable fail2ban
-sudo systemctl enable fail2ban
-sudo systemctl start fail2ban
 ```
 
-### 2. Create Application User
+Docker publishes ports through its own iptables rules, which can bypass ufw.
+That is why the backend ports are bound to `127.0.0.1` in the Compose file;
+do not change those bindings.
+
+---
+
+## 2. Get the Code and Generate Secrets
 
 ```bash
-# Create non-root user
-sudo useradd -m -s /bin/bash wildbox
-sudo usermod -aG docker wildbox
-
-# Set up home directory
-sudo mkdir -p /home/wildbox/data
-sudo chown wildbox:wildbox /home/wildbox/data
-sudo chmod 750 /home/wildbox/data
-
-# Switch to new user
-sudo -u wildbox -i
-```
-
-### 3. Clone Repository
-
-```bash
-cd /home/wildbox
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
+make generate-secrets
+make validate-secrets
+```
+
+Then edit `.env` and set the values that describe your deployment rather
+than secrets:
+
+- `INITIAL_ADMIN_EMAIL`: the first administrator's login
+- `CORS_ORIGINS`: the HTTPS origins that may call the API, for example
+  `https://wildbox.example.com` (here and below, replace `wildbox.example.com`,
+  a name reserved for documentation, with your host name)
+- `ENVIRONMENT=production` (the template default)
+
+Do not generate secrets by hand or copy them from documentation. The
+[Credentials guide](credentials.md) explains every generated value and how to
+rotate it.
+
+---
+
+## 3. TLS Certificate
+
+The gateway reads its certificate from `open-security-gateway/ssl/`, mounted
+at `/etc/ssl/wildbox/`:
+
+- `open-security-gateway/ssl/wildbox.crt`: certificate, with the full chain
+- `open-security-gateway/ssl/wildbox.key`: private key
+
+If neither file exists when the gateway starts, it generates a self-signed
+development certificate there. For a real deployment, put your certificate in
+place before the first start, for example from Let's Encrypt:
+
+```bash
+sudo certbot certonly --standalone -d wildbox.example.com
+sudo install -m 0644 /etc/letsencrypt/live/wildbox.example.com/fullchain.pem \
+  open-security-gateway/ssl/wildbox.crt
+sudo install -m 0600 /etc/letsencrypt/live/wildbox.example.com/privkey.pem \
+  open-security-gateway/ssl/wildbox.key
+```
+
+TLS terminates at the gateway; no other proxy is needed in front of it. The
+`haproxy/` directory in the repository belongs to the blue/green experiment in
+`docker-compose.blue-green.yml` and is not used by `docker-compose.yml` or
+`docker-compose.prod.yml`.
+
+`certbot --standalone` needs port 80 free, so run it before the stack starts or
+stop the gateway while it renews. After replacing the files, restart the
+gateway: `docker compose restart gateway`.
+
+---
+
+## 4. Start the Stack
+
+`make start-prod` composes `docker-compose.yml` with `docker-compose.prod.yml`
+(`restart: always`, log rotation, tuned connection limits):
+
+```bash
+make start-prod
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+```
+
+Databases are created by `scripts/init-databases.sql` on PostgreSQL's first
+start, and the identity service creates the first administrator from
+`INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD`. Nothing needs to be created
+by hand.
+
+Optional services:
+
+```bash
+docker compose --profile automations up -d   # n8n workflows
+docker compose --profile monitoring up -d    # Prometheus with monitoring/alert_rules.yml
+docker compose --profile backup up -d        # scheduled PostgreSQL backups
 ```
 
 ---
 
-## Secret Management
-
-### 1. Generate Secure Secrets
+## 5. Verify
 
 ```bash
-#!/bin/bash
-# Generate all required secrets
-
-echo "Generating secrets..."
-
-# JWT Secret (32+ characters)
-JWT_SECRET=$(openssl rand -hex 32)
-echo "JWT_SECRET=$JWT_SECRET"
-
-# API Key
-API_KEY=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-echo "API_KEY=$API_KEY"
-
-# Database Password
-DB_PASSWORD=$(openssl rand -base64 32)
-echo "DB_PASSWORD=$DB_PASSWORD"
-
-# Gateway Secret
-GATEWAY_SECRET=$(openssl rand -hex 32)
-echo "GATEWAY_SECRET=$GATEWAY_SECRET"
-
-# Stripe Keys (from Stripe dashboard)
-# STRIPE_SECRET_KEY=sk_live_XXXXX
-# STRIPE_PUBLIC_KEY=pk_live_XXXXX
-
-# Save to .env.production (NEVER commit this!)
-cat > .env.production << ENV
-# Database
-DATABASE_URL=postgresql+asyncpg://postgres:${DB_PASSWORD}@postgres:5432/wildbox
-DATA_DATABASE_URL=postgresql://secdata:${DB_PASSWORD}@postgres:5432/data
-POSTGRES_PASSWORD=${DB_PASSWORD}
-
-# Redis
-REDIS_URL=redis://redis:6379/0
-
-# Security
-JWT_SECRET_KEY=${JWT_SECRET}
-API_KEY=${API_KEY}
-GATEWAY_INTERNAL_SECRET=${GATEWAY_SECRET}
-
-# OpenAI (if using AI features)
-OPENAI_API_KEY=sk_your_actual_key
-
-# Stripe (if using billing)
-STRIPE_SECRET_KEY=sk_live_your_key
-STRIPE_PUBLIC_KEY=pk_live_your_key
-
-# Environment
-ENVIRONMENT=production
-LOG_LEVEL=INFO
-DEBUG=false
-
-# CORS (set to your domain)
-CORS_ORIGINS=https://your-domain.com,https://app.your-domain.com
-
-# Admin Account
-INITIAL_ADMIN_EMAIL=admin@your-domain.com
-INITIAL_ADMIN_PASSWORD=$(openssl rand -base64 24)
-
-# Monitoring
-PROMETHEUS_ENABLED=true
-GRAFANA_ADMIN_PASSWORD=$(openssl rand -base64 24)
-ENV
-
-chmod 600 .env.production
-echo ".env.production created successfully"
+curl -s http://localhost/health                      # gateway
+curl -sI https://wildbox.example.com/ | head -20     # TLS and security headers
 ```
 
-### 2. Store Secrets Securely
-
-```bash
-# Option 1: Use environment variable file (secure)
-source .env.production
-export $(cat .env.production | xargs)
-
-# Option 2: Use secret management system
-# AWS Secrets Manager
-# HashiCorp Vault
-# Kubernetes Secrets
-
-# Verify secrets are NOT in shell history
-history -c
-```
+Then log in through the gateway with the sequence in the
+[Quick Start](quickstart.md#5-log-in-and-call-the-api), using your host name
+and dropping `--cacert` once the certificate is publicly trusted. The health
+loop on the [Service ports](ports.md#checking-the-stack) page checks every
+backend from the server itself.
 
 ---
 
-## Database Setup
+## 6. Backups and Restore
 
-### 1. Prepare PostgreSQL
+`scripts/backup_postgres.sh` writes `pg_dump` archives of every database,
+with optional GPG encryption (`GPG_RECIPIENT`) and S3 upload (`--upload-s3`,
+`S3_BUCKET`). `scripts/restore_postgres.sh` restores them, and
+`scripts/verify_restore.sh` is a drill: back up, restore into scratch
+databases, check the data, clean up.
 
-```bash
-# Create data directory
-sudo mkdir -p /data/postgres
-sudo chown wildbox:wildbox /data/postgres
-sudo chmod 700 /data/postgres
-
-# Create backup directory
-sudo mkdir -p /data/backups
-sudo chown wildbox:wildbox /data/backups
-```
-
-### 2. Initialize Databases
+The `backup` Compose profile runs the backup script in a container on the
+Compose network every `BACKUP_INTERVAL_SECONDS` (one day by default) and keeps
+`BACKUP_RETENTION` days of archives in the `wildbox_backups` volume:
 
 ```bash
-# Start PostgreSQL service
-docker-compose up -d postgres
-
-# Wait for startup
-sleep 10
-
-# Create databases
-docker-compose exec postgres psql -U postgres -c "CREATE DATABASE wildbox;"
-docker-compose exec postgres psql -U postgres -c "CREATE DATABASE data;"
-
-# Create dedicated users
-docker-compose exec postgres psql -U postgres << SQL
-CREATE USER wildbox_app WITH PASSWORD '${DB_PASSWORD}';
-CREATE USER data_app WITH PASSWORD '${DB_PASSWORD}';
-
-GRANT CONNECT ON DATABASE wildbox TO wildbox_app;
-GRANT CONNECT ON DATABASE data TO data_app;
-SQL
-
-# Run migrations
-docker-compose exec open-security-identity alembic upgrade head
-docker-compose exec open-security-data alembic upgrade head
+docker compose --profile backup up -d backup
+docker compose logs backup
 ```
 
-### 3. Configure Backups
+`make backup` and `make restore-drill` run the same scripts from the host.
+They connect to `POSTGRES_HOST` (default `wildbox-postgres`), which the
+default Compose file does not publish to the host, so run them from a machine
+or container that can reach the database.
 
-```bash
-# Create backup script
-cat > /home/wildbox/backup.sh << 'SCRIPT'
-#!/bin/bash
-
-BACKUP_DIR=/data/backups
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-DB_PASSWORD=${DATABASE_PASSWORD}
-
-# Backup PostgreSQL
-docker-compose exec postgres pg_dump -U postgres wildbox | \
-  gzip > ${BACKUP_DIR}/wildbox_${TIMESTAMP}.sql.gz
-
-docker-compose exec postgres pg_dump -U postgres data | \
-  gzip > ${BACKUP_DIR}/data_${TIMESTAMP}.sql.gz
-
-# Backup Redis (if persistent)
-docker-compose exec redis redis-cli BGSAVE
-docker cp $(docker-compose ps -q redis):/data/dump.rdb ${BACKUP_DIR}/redis_${TIMESTAMP}.rdb
-
-# Upload to cloud storage (AWS S3 example)
-aws s3 cp ${BACKUP_DIR}/ s3://your-backup-bucket/$(hostname)/ --recursive
-
-# Keep last 30 days of local backups
-find ${BACKUP_DIR} -mtime +30 -delete
-
-echo "Backup completed: ${BACKUP_DIR}/wildbox_${TIMESTAMP}.sql.gz"
-SCRIPT
-
-chmod +x /home/wildbox/backup.sh
-
-# Schedule daily backups
-(crontab -l 2>/dev/null; echo "0 2 * * * /home/wildbox/backup.sh") | crontab -
-```
+Copy the archives off the server: a backup on the same disk is not a backup.
+Run the restore drill on a schedule; a restore that has never been tested is
+not one either.
 
 ---
 
-## Service Deployment
+## 7. Monitoring
 
-### 1. Prepare Environment
+The `monitoring` profile starts Prometheus on `127.0.0.1:9090` with the
+scrape configuration in `monitoring/prometheus.yml` and the alert rules in
+`monitoring/alert_rules.yml`. There is no Grafana in `docker-compose.yml`;
+connect your own if you want dashboards.
 
-```bash
-# Go to application directory
-cd /home/wildbox/wildbox
-
-# Load environment variables
-export $(cat .env.production | xargs)
-
-# Verify secrets are set
-env | grep JWT_SECRET
-env | grep API_KEY
-```
-
-### 2. Build and Start Services
-
-```bash
-# Build images
-docker-compose build
-
-# Start services (in background)
-docker-compose up -d
-
-# Wait for services to be healthy
-sleep 30
-
-# Check service status
-docker-compose ps
-
-# Verify health checks
-curl http://localhost:8000/health
-curl http://localhost:8001/health
-curl http://localhost:8006/health
-```
-
-### 3. Initialize Admin User
-
-```bash
-# Create admin user if not auto-created
-docker-compose exec open-security-identity python << PYTHON
-from app.models import User
-from app.db import SessionLocal
-from app.auth import get_password_hash
-
-db = SessionLocal()
-admin_email = os.getenv("INITIAL_ADMIN_EMAIL")
-admin_password = os.getenv("INITIAL_ADMIN_PASSWORD")
-
-if not db.query(User).filter(User.email == admin_email).first():
-    admin = User(
-        email=admin_email,
-        hashed_password=get_password_hash(admin_password),
-        is_active=True,
-        is_admin=True
-    )
-    db.add(admin)
-    db.commit()
-    print(f"Admin user created: {admin_email}")
-else:
-    print(f"Admin user already exists: {admin_email}")
-PYTHON
-```
+Container logs are rotated by the production overlay; read them with
+`docker compose logs <service>`.
 
 ---
 
-## SSL/TLS Configuration
-
-### 1. Obtain Certificate
+## 8. Updating
 
 ```bash
-# Using Let's Encrypt with Certbot
-sudo certbot certonly --standalone -d your-domain.com -d app.your-domain.com
-
-# Certificate locations:
-# /etc/letsencrypt/live/your-domain.com/fullchain.pem
-# /etc/letsencrypt/live/your-domain.com/privkey.pem
+git pull
+make validate-secrets       # new releases can add required secrets
+make start-prod
 ```
 
-### 2. Configure Nginx
-
-```bash
-# Update nginx configuration
-cat > /home/wildbox/wildbox/nginx-config.conf << 'NGINX'
-server {
-    listen 80;
-    server_name your-domain.com;
-    return 301 https://$server_name$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name your-domain.com;
-
-    ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
-
-    # Strong SSL configuration
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-
-    # Security headers
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options "DENY" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-
-    # CORS
-    add_header Access-Control-Allow-Origin "https://your-domain.com" always;
-    add_header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS" always;
-
-    location / {
-        proxy_pass http://localhost:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-NGINX
-```
-
-### 3. Enable Auto-Renewal
-
-```bash
-# Set up cron for certificate renewal
-sudo systemctl enable certbot.timer
-sudo systemctl start certbot.timer
-
-# Test renewal
-sudo certbot renew --dry-run
-```
-
----
-
-## Monitoring & Logging
-
-### 1. Configure Logging
-
-```bash
-# Create logging directory
-sudo mkdir -p /var/log/wildbox
-sudo chown wildbox:wildbox /var/log/wildbox
-
-# Docker logging
-cat > /home/wildbox/wildbox/docker-compose.yml << 'YAML'
-version: '3.9'
-services:
-  # ... services ...
-  logging:
-    driver: "json-file"
-    options:
-      max-size: "10m"
-      max-file: "3"
-YAML
-```
-
-### 2. Set Up Monitoring
-
-```bash
-# Prometheus is already configured in docker-compose
-# Access at: http://localhost:9090
-
-# Grafana is configured
-# Access at: http://localhost:3001
-# Default: admin/admin (change immediately!)
-
-# Create dashboards
-# - Service health
-# - API response times
-# - Error rates
-# - Resource usage
-```
-
-### 3. Alerting
-
-```yaml
-# Configure Prometheus alerts
-groups:
-  - name: Wildbox Alerts
-    rules:
-      - alert: ServiceDown
-        expr: up{job="wildbox"} == 0
-        for: 5m
-        annotations:
-          summary: "Service {{ $labels.job }} is down"
-
-      - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
-        for: 10m
-        annotations:
-          summary: "High error rate detected"
-
-      - alert: HighDiskUsage
-        expr: node_filesystem_avail_bytes / node_filesystem_size_bytes < 0.1
-        annotations:
-          summary: "Disk usage critical"
-```
-
----
-
-## Backup & Recovery
-
-### 1. Test Backups
-
-```bash
-# Run backup
-/home/wildbox/backup.sh
-
-# Verify backup
-ls -lh /data/backups/
-
-# Test restore (on separate server)
-gunzip < wildbox_TIMESTAMP.sql.gz | psql -U postgres wildbox
-```
-
-### 2. Recovery Procedure
-
-```bash
-# 1. Stop services
-docker-compose down
-
-# 2. Restore database
-gunzip < /data/backups/wildbox_TIMESTAMP.sql.gz | docker-compose exec -T postgres psql -U postgres wildbox
-
-# 3. Restart services
-docker-compose up -d
-
-# 4. Verify health
-docker-compose ps
-curl http://localhost:8000/health
-```
-
----
-
-## Post-Deployment
-
-### 1. Verify All Services
-
-```bash
-# Health checks
-for port in 3000 8000 8001 8002 8006 8013 8018; do
-  echo "Checking port $port..."
-  curl -s http://localhost:$port/health | jq .
-done
-```
-
-### 2. Security Verification
-
-```bash
-# Verify SSL/TLS
-openssl s_client -connect your-domain.com:443
-
-# Check security headers
-curl -I https://your-domain.com
-# Should show HSTS, X-Frame-Options, etc.
-
-# Test CORS
-curl -H "Origin: https://your-domain.com" https://your-domain.com/health
-```
-
-### 3. Documentation
-
-```bash
-# Document deployment
-cat > /home/wildbox/DEPLOYMENT_NOTES.md << 'NOTES'
-# Deployment Notes
-
-## Date: $(date)
-## Server: $(hostname)
-## IP: $(hostname -I)
-
-### Deployed Services
-- Frontend: https://your-domain.com
-- API: https://api.your-domain.com
-- Admin: https://admin.your-domain.com
-
-### Credentials Stored
-- Admin credentials: [Location]
-- Database backups: /data/backups
-- SSL certificates: /etc/letsencrypt
-
-### Maintenance Tasks
-- [ ] Backup verification (weekly)
-- [ ] Security updates (monthly)
-- [ ] Certificate renewal (automatic)
-- [ ] Log rotation (automatic)
-- [ ] Performance review (monthly)
-NOTES
-```
+Read the upgrade notes for your target version in
+[CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md)
+before pulling.
 
 ---
 
 ## Troubleshooting
 
-### Service Not Starting
-
-```bash
-# Check logs
-docker-compose logs service-name
-
-# Common issues:
-# 1. Port already in use
-sudo lsof -i :8000
-
-# 2. Database not ready
-docker-compose logs postgres
-
-# 3. Memory issues
-free -h
-```
-
-### Database Connection Issues
-
-```bash
-# Test connection
-docker-compose exec postgres psql -U postgres -c "SELECT 1"
-
-# Check password
-docker-compose exec postgres psql -U wildbox_app -d wildbox -c "SELECT 1"
-
-# Verify network
-docker network ls
-docker network inspect wildbox_wildbox
-```
-
-### Performance Issues
-
-```bash
-# Check resource usage
-docker stats
-
-# Check slow queries
-docker-compose exec postgres psql -U postgres << SQL
-SELECT query, calls, mean_time FROM pg_stat_statements
-ORDER BY mean_time DESC LIMIT 10;
-SQL
-
-# Monitor real-time
-watch -n 1 docker stats
-```
-
----
+- **A container keeps restarting**: `docker compose logs <service>`; a missing
+  secret is reported by name.
+- **Clients get certificate errors**: check that `wildbox.crt` contains the
+  full chain and matches your host name.
+- **Requests on port 80 return 301**: expected; only `/health` is served over
+  HTTP.
+- **PostgreSQL**:
+  `docker compose exec postgres psql -U postgres -c 'SELECT 1'`.
 
 ## Support
 
-- **Documentation**: [Security Policy](../security/policy.md), [Quick Start](quickstart.md)
-- **Issues**: https://github.com/fabriziosalmi/wildbox/issues
-- **Security**: fabrizio.salmi@gmail.com
-
----
-
-**Deployment Guide Version**: 1.0
-**Last Updated**: November 7, 2024
-**Next Review**: February 7, 2025
+- [Security policy](../security/policy.md) and [Security status](../security/status.md)
+- [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
+- Security reports: see [SECURITY.md](https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY.md)
