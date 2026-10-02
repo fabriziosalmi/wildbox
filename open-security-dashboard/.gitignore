@@ -70,3 +70,6 @@ pnpm-lock.yaml
 # Temporary folders
 tmp/
 temp/
+
+# Playwright sessions written by tests/e2e/backend.setup.ts (live tokens)
+/tests/e2e/.auth/
