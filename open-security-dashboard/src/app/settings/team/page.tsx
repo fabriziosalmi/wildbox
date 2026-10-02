@@ -2,25 +2,43 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
-import { identityClient, getAuthPath } from '@/lib/api-client'
+import { identityClient, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Users, Plus, Trash2, AlertCircle, Crown, Shield, User, Settings, Edit } from 'lucide-react'
+import { Users, Trash2, AlertCircle, Crown, Shield, User, Settings, Edit } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { Team, TeamMembership, User as UserType } from '@/types'
 
-interface TeamData {
-  team: Team
-  members: (TeamMembership & { user: UserType })[]
-  canManage: boolean
+type TeamRole = 'owner' | 'admin' | 'member'
+
+/** One entry of GET /admin/me/activity's team_memberships (identity). */
+interface MyMembership {
+  team_id: string
+  team_name: string
+  role: TeamRole
+  joined_at: string
 }
 
-interface InviteUserRequest {
-  email: string
-  role: 'admin' | 'member'
+/** One entry of GET /admin/teams/{id}/members (identity). */
+interface TeamMember {
+  user_id: string
+  team_id: string
+  role: TeamRole
+  joined_at: string
+  user: {
+    id: string
+    email: string
+    is_active: boolean
+    created_at: string
+  }
+}
+
+interface TeamData {
+  membership: MyMembership
+  members: TeamMember[]
+  canManage: boolean
 }
 
 const roleIcons = {
@@ -35,19 +53,23 @@ const roleColors = {
   member: 'text-gray-600',
 }
 
+// identity's team routes, through the gateway. The page used to call
+// /auth/me and /api/v1/teams/..., which the gateway does not route: the first
+// fell through to the dashboard, the second to the catch-all 404, so the page
+// never loaded (#559). Both routes below are open to any member of the team;
+// renaming it and removing members are limited to its owners and admins by
+// identity itself.
+const myActivityPath = () => getIdentityPath('/api/v1/admin/me/activity')
+const teamPath = (teamId: string) =>
+  getIdentityPath(`/api/v1/admin/teams/${encodeURIComponent(teamId)}`)
+
 export default function TeamPage() {
   const { user } = useAuth()
   const { toast } = useToast()
   const [teamData, setTeamData] = useState<TeamData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isInviting, setIsInviting] = useState(false)
-  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [showEditTeam, setShowEditTeam] = useState(false)
-
-  const [inviteForm, setInviteForm] = useState({
-    email: '',
-    role: 'member' as 'admin' | 'member',
-  })
 
   const [teamEditForm, setTeamEditForm] = useState({
     name: '',
@@ -56,38 +78,34 @@ export default function TeamPage() {
   const fetchTeamData = useCallback(async () => {
     try {
       setIsLoading(true)
-      const userData = await identityClient.get<UserType>(getAuthPath('/api/v1/auth/me'))
+      setLoadError(null)
+      const activity = await identityClient.get<{ team_memberships?: MyMembership[] }>(
+        myActivityPath()
+      )
+      const membership = activity.team_memberships?.[0]
 
-      if (userData.team_memberships && userData.team_memberships.length > 0) {
-        const primaryMembership = userData.team_memberships[0]
-        const canManage = ['owner', 'admin'].includes(primaryMembership.role)
-
-        // Get detailed team information with all members
-        const teamMembers = await identityClient.get<TeamData['members']>(
-          `/api/v1/teams/${primaryMembership.team_id}/members`
-        )
-
-        setTeamData({
-          team: primaryMembership.team,
-          members: teamMembers,
-          canManage,
-        })
-
-        setTeamEditForm({
-          name: primaryMembership.team.name,
-        })
+      if (!membership) {
+        setTeamData(null)
+        return
       }
-    } catch (error) {
-      console.error('Failed to fetch team data:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to load team information',
-        variant: 'destructive',
+
+      const members = await identityClient.get<TeamMember[]>(
+        `${teamPath(membership.team_id)}/members`
+      )
+
+      setTeamData({
+        membership,
+        members,
+        canManage: membership.role === 'owner' || membership.role === 'admin',
       })
+      setTeamEditForm({ name: membership.team_name })
+    } catch (error) {
+      setTeamData(null)
+      setLoadError(getErrorMessage(error, 'Failed to load team information'))
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
     if (user) {
@@ -95,48 +113,9 @@ export default function TeamPage() {
     }
   }, [user, fetchTeamData])
 
-  const handleInviteUser = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!inviteForm.email.trim()) {
-      toast({
-        title: 'Error',
-        description: 'Email address is required',
-        variant: 'destructive',
-      })
-      return
-    }
-
-    setIsInviting(true)
-    try {
-      const inviteData: InviteUserRequest = {
-        email: inviteForm.email.trim(),
-        role: inviteForm.role,
-      }
-
-      await identityClient.post(`/api/v1/teams/${teamData?.team.id}/invite`, inviteData)
-
-      setInviteForm({ email: '', role: 'member' })
-      setShowInviteForm(false)
-      await fetchTeamData() // Refresh team data
-
-      toast({
-        title: 'Success',
-        description: 'User invited successfully',
-      })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: getErrorMessage(error, 'Failed to invite user'),
-        variant: 'destructive',
-      })
-    } finally {
-      setIsInviting(false)
-    }
-  }
-
   const handleUpdateTeam = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!teamData) return
 
     if (!teamEditForm.name.trim()) {
       toast({
@@ -148,7 +127,7 @@ export default function TeamPage() {
     }
 
     try {
-      await identityClient.put(`/api/v1/teams/${teamData?.team.id}`, {
+      await identityClient.put(teamPath(teamData.membership.team_id), {
         name: teamEditForm.name.trim(),
       })
 
@@ -168,34 +147,16 @@ export default function TeamPage() {
     }
   }
 
-  const handleUpdateMemberRole = async (userId: string, newRole: 'admin' | 'member') => {
-    try {
-      await identityClient.patch(`/api/v1/teams/${teamData?.team.id}/members/${userId}/role`, {
-        role: newRole,
-      })
-
-      await fetchTeamData()
-
-      toast({
-        title: 'Success',
-        description: 'Member role updated successfully',
-      })
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: getErrorMessage(error, 'Failed to update member role'),
-        variant: 'destructive',
-      })
-    }
-  }
-
   const handleRemoveMember = async (userId: string, userName: string) => {
+    if (!teamData) return
     if (!confirm(`Are you sure you want to remove ${userName} from the team?`)) {
       return
     }
 
     try {
-      await identityClient.delete(`/api/v1/teams/${teamData?.team.id}/members/${userId}`)
+      await identityClient.delete(
+        `${teamPath(teamData.membership.team_id)}/members/${encodeURIComponent(userId)}`
+      )
 
       await fetchTeamData()
 
@@ -241,16 +202,33 @@ export default function TeamPage() {
     )
   }
 
+  if (loadError) {
+    return (
+      <div className="flex h-64 items-center justify-center" role="alert">
+        <div className="text-center">
+          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
+          <p className="font-medium text-foreground">Could not load the team</p>
+          <p className="mt-1 text-sm text-muted-foreground">{loadError}</p>
+          <Button variant="outline" size="sm" className="mt-4" onClick={() => fetchTeamData()}>
+            Try again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (!teamData) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="text-center">
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-          <p className="text-muted-foreground">No team found</p>
+          <p className="text-muted-foreground">You are not a member of any team</p>
         </div>
       </div>
     )
   }
+
+  const { membership, members } = teamData
 
   return (
     <div className="max-w-4xl">
@@ -261,20 +239,14 @@ export default function TeamPage() {
             <p className="mt-2 text-muted-foreground">Manage your team members and settings</p>
           </div>
           {teamData.canManage && (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowEditTeam(true)}
-                className="flex items-center gap-2"
-              >
-                <Edit className="h-4 w-4" />
-                Edit Team
-              </Button>
-              <Button onClick={() => setShowInviteForm(true)} className="flex items-center gap-2">
-                <Plus className="h-4 w-4" />
-                Invite Member
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={() => setShowEditTeam(true)}
+              className="flex items-center gap-2"
+            >
+              <Edit className="h-4 w-4" />
+              Edit Team
+            </Button>
           )}
         </div>
       </div>
@@ -286,9 +258,11 @@ export default function TeamPage() {
             <Users className="h-8 w-8 text-white" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-foreground">{teamData.team.name}</h2>
+            <h2 className="text-xl font-semibold text-foreground" data-testid="team-name">
+              {membership.team_name}
+            </h2>
             <div className="text-muted-foreground">
-              {teamData.members.length} member{teamData.members.length !== 1 ? 's' : ''}
+              {members.length} member{members.length !== 1 ? 's' : ''}
             </div>
           </div>
         </div>
@@ -296,31 +270,33 @@ export default function TeamPage() {
         {/* Team Stats */}
         <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
           <div className="rounded-lg border border-border p-3 text-center">
-            <div className="text-lg font-semibold">{teamData.members.length}</div>
+            <div className="text-lg font-semibold" data-testid="team-member-count">
+              {members.length}
+            </div>
             <div className="text-sm text-muted-foreground">Total Members</div>
           </div>
           <div className="rounded-lg border border-border p-3 text-center">
             <div className="text-lg font-semibold">
-              {teamData.members.filter(m => m.role === 'admin').length}
+              {members.filter(m => m.role === 'admin').length}
             </div>
             <div className="text-sm text-muted-foreground">Admins</div>
           </div>
           <div className="rounded-lg border border-border p-3 text-center">
             <div className="text-lg font-semibold">
-              {teamData.members.filter(m => m.role === 'owner').length}
+              {members.filter(m => m.role === 'owner').length}
             </div>
             <div className="text-sm text-muted-foreground">Owners</div>
           </div>
           <div className="rounded-lg border border-border p-3 text-center">
-            <div className="text-lg font-semibold text-green-600">Active</div>
-            <div className="text-sm text-muted-foreground">Status</div>
+            <div className="text-lg font-semibold">{getRoleDisplayName(membership.role)}</div>
+            <div className="text-sm text-muted-foreground">Your Role</div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div className="text-muted-foreground">Created</div>
-            <div className="font-medium">{formatDate(teamData.team.created_at)}</div>
+            <div className="text-muted-foreground">You joined</div>
+            <div className="font-medium">{formatDate(membership.joined_at)}</div>
           </div>
         </div>
       </Card>
@@ -355,69 +331,21 @@ export default function TeamPage() {
         </Card>
       )}
 
-      {/* Invite Member Form */}
-      {showInviteForm && teamData.canManage && (
-        <Card className="mb-6 p-6">
-          <h3 className="mb-4 text-lg font-semibold text-foreground">Invite Team Member</h3>
-
-          <form onSubmit={handleInviteUser} className="space-y-4">
-            <div>
-              <label htmlFor="email" className="mb-2 block text-sm font-medium text-foreground">
-                Email Address
-              </label>
-              <Input
-                id="email"
-                type="email"
-                value={inviteForm.email}
-                onChange={e => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="user@example.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="role" className="mb-2 block text-sm font-medium text-foreground">
-                Role
-              </label>
-              <select
-                id="role"
-                value={inviteForm.role}
-                onChange={e =>
-                  setInviteForm(prev => ({ ...prev, role: e.target.value as 'admin' | 'member' }))
-                }
-                className="w-full rounded-md border border-border bg-background px-3 py-2"
-              >
-                <option value="member">Member</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-
-            <div className="flex gap-2">
-              <Button type="submit" disabled={isInviting}>
-                {isInviting ? 'Inviting...' : 'Send Invitation'}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setShowInviteForm(false)}>
-                Cancel
-              </Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
       {/* Team Members */}
       <Card className="p-6">
         <h3 className="mb-4 text-lg font-semibold text-foreground">Team Members</h3>
 
         <div className="space-y-4">
-          {teamData.members.map(member => {
-            const RoleIcon = roleIcons[member.role as keyof typeof roleIcons]
-            const roleColor = roleColors[member.role as keyof typeof roleColors]
+          {members.map(member => {
+            const RoleIcon = roleIcons[member.role] ?? User
+            const roleColor = roleColors[member.role] ?? roleColors.member
             const isCurrentUser = member.user_id === user.id
-            const canModify = teamData.canManage && !isCurrentUser && member.role !== 'owner'
+            const canRemove = teamData.canManage && !isCurrentUser && member.role !== 'owner'
 
             return (
               <div
                 key={member.user_id}
+                data-testid="team-member"
                 className="flex items-center justify-between rounded-lg border border-border p-4"
               >
                 <div className="flex items-center gap-3">
@@ -441,35 +369,16 @@ export default function TeamPage() {
                   </div>
                 </div>
 
-                {canModify && (
-                  <div className="flex items-center gap-2">
-                    {member.role === 'member' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleUpdateMemberRole(member.user_id, 'admin')}
-                      >
-                        Promote to Admin
-                      </Button>
-                    )}
-                    {member.role === 'admin' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleUpdateMemberRole(member.user_id, 'member')}
-                      >
-                        Demote to Member
-                      </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleRemoveMember(member.user_id, member.user.email)}
-                      className="text-red-600 hover:text-red-700"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                {canRemove && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleRemoveMember(member.user_id, member.user.email)}
+                    className="text-red-600 hover:text-red-700"
+                    aria-label={`Remove ${member.user.email}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
             )
@@ -477,7 +386,7 @@ export default function TeamPage() {
         </div>
       </Card>
 
-      {/* Role Information */}
+      {/* Role Information: what identity enforces today. */}
       <Card className="mt-6 p-6">
         <div className="mb-4 flex items-center gap-3">
           <Settings className="h-8 w-8 text-blue-500" />
@@ -492,10 +401,9 @@ export default function TeamPage() {
                 <h4 className="font-medium text-foreground">Owner</h4>
               </div>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Full team management</li>
-                <li>• Add/remove members</li>
-                <li>• Change member roles</li>
-                <li>• Delete team</li>
+                <li>• Rename the team</li>
+                <li>• Remove admins and members</li>
+                <li>• View all members</li>
               </ul>
             </div>
 
@@ -505,11 +413,9 @@ export default function TeamPage() {
                 <h4 className="font-medium text-foreground">Admin</h4>
               </div>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Add/remove members</li>
-                <li>• Change member roles</li>
-                <li>• Manage team settings</li>
-                <li>• Access all tools</li>
-                <li>• View all data</li>
+                <li>• Rename the team</li>
+                <li>• Remove admins and members</li>
+                <li>• View all members</li>
               </ul>
             </div>
 
@@ -519,10 +425,7 @@ export default function TeamPage() {
                 <h4 className="font-medium text-foreground">Member</h4>
               </div>
               <ul className="space-y-1 text-muted-foreground">
-                <li>• Access assigned tools</li>
-                <li>• View shared data</li>
-                <li>• Create reports</li>
-                <li>• Basic team features</li>
+                <li>• View all members</li>
               </ul>
             </div>
           </div>
