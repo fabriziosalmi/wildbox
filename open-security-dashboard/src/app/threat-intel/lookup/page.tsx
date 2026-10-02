@@ -420,7 +420,10 @@ export default function ThreatIntelLookupPage() {
 
   // Determine if we should show results section
   const showResults = searchValue.length > 0
-  const detectedType = searchValue ? detectIOCType(searchValue) : 'unknown'
+  // The helper under the input describes what is being typed, not the last
+  // value searched: it read searchValue, so it said "Unknown" until the first
+  // lookup and then kept describing that one.
+  const detectedType = inputValue.trim() ? detectIOCType(inputValue) : 'unknown'
 
   return (
     <MainLayout>

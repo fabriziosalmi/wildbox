@@ -1,5 +1,16 @@
 import { defineConfig, devices } from '@playwright/test'
 
+/* Specs that need the live stack (identity, data, gateway) behind the
+   dashboard, and the setup that prepares the stack for them. The frontend
+   smoke projects ignore these files; backend-chromium runs nothing else. */
+const BACKEND_FILES = [
+  /backend\.setup\.ts/,
+  /login-flow\.spec\.ts/,
+  /admin-comprehensive\.spec\.ts/,
+  /settings-management\.spec\.ts/,
+  /threat-intel-lookup\.spec\.ts/,
+]
+
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
@@ -13,8 +24,10 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
-  /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: 'html',
+  /* Reporter to use. See https://playwright.dev/docs/test-reporters
+     The list reporter puts every test and its outcome in the CI log; the
+     HTML report is uploaded as an artifact. */
+  reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'html',
   /* Increased timeout for CI environments where services need time to start */
   timeout: process.env.CI ? 60 * 1000 : 30 * 1000, // 60s in CI, 30s locally
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -40,36 +53,49 @@ export default defineConfig({
 
   /* Configure projects for major browsers */
   projects: [
+    /* Frontend smoke: backend-free by design. Everything tagged @backend, and
+       the setup that seeds the stack for it, stays out of these projects. */
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      grepInvert: /@backend/,
+      testIgnore: BACKEND_FILES,
     },
 
-    /* Backend-dependent specs (#103): need the full identity+gateway stack
-       from .github/workflows/e2e-fullstack.yml behind them. The browser loads
-       the dashboard from Playwright's own Next server (http://localhost:3000)
-       and its XHRs go cross-origin to the gateway at https://localhost — now
-       allowed by the gateway's CORS allowlist. ignoreHTTPSErrors covers the
-       self-signed CI certificate on the gateway. */
+    /* Backend-dependent specs (#103). They run against the full compose stack
+       of .github/workflows/e2e-fullstack.yml, with the dashboard served by the
+       gateway the way a user reaches it (https://localhost), so its API calls
+       are same-origin. ignoreHTTPSErrors covers the gateway's self-signed
+       development certificate.
+
+       backend-setup signs in through the API, registers the accounts the
+       specs use and checks that the seeded threat-intel rows are visible, so a
+       broken stack fails once, in setup, instead of once per test. */
+    {
+      name: 'backend-setup',
+      testMatch: /backend\.setup\.ts/,
+      use: { ignoreHTTPSErrors: true },
+    },
     {
       name: 'backend-chromium',
       use: { ...devices['Desktop Chrome'], ignoreHTTPSErrors: true },
-      // Still only login-flow. The other three specs of #103 were measured
-      // against the running stack on 2026-09-08 and are not ready: of the 31
-      // tests in the four files, 6 passed, 4 skipped and 21 failed. Widening
-      // this would arm a red gate, which is worse than an honest gap -- the
-      // numbers and what they mean are recorded on the issue.
-      testMatch: /login-flow\.spec\.ts/,
+      dependencies: ['backend-setup'],
+      grep: /@backend/,
+      testMatch: BACKEND_FILES.slice(1),
     },
 
     {
       name: 'firefox',
       use: { ...devices['Desktop Firefox'] },
+      grepInvert: /@backend/,
+      testIgnore: BACKEND_FILES,
     },
 
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
+      grepInvert: /@backend/,
+      testIgnore: BACKEND_FILES,
     },
 
     /* Test against mobile viewports. */
