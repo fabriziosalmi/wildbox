@@ -112,13 +112,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Skip during SSR
     if (typeof window === 'undefined') return
 
-    // Clear auth cookie
-    Cookies.remove('auth_token')
+    const finish = () => {
+      // Clear auth cookie
+      Cookies.remove('auth_token')
 
-    setUser(null)
+      setUser(null)
 
-    // Use replace to prevent going back to authenticated state
-    router.replace('/auth/login')
+      // Use replace to prevent going back to authenticated state
+      router.replace('/auth/login')
+    }
+
+    // Revoke the token server-side before forgetting it. Deleting the cookie
+    // alone left the session valid at the gateway for the rest of the token's
+    // lifetime, for anyone who had copied it. The request carries the token
+    // from the cookie, so it has to go out first; a failure must not keep the
+    // user logged in locally, hence finish() either way.
+    identityClient
+      .post(getAuthPath('/api/v1/auth/jwt/logout'))
+      .catch(() => undefined)
+      .finally(finish)
   }
 
   const refetchUser = async () => {

@@ -4,7 +4,10 @@ FastAPI Users configuration and user management logic.
 
 import logging
 import uuid
+from datetime import datetime, timezone
 from typing import Optional
+
+import jwt as pyjwt
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +18,15 @@ from fastapi_users.authentication import (
     BearerTransport,
     JWTStrategy,
 )
+from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
+from .logout import revoke_token
+from .token_blacklist import is_token_blacklisted
 
 
 # 1. Database Adapter
@@ -33,12 +39,54 @@ bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 
 
 # 3. JWT Strategy (come vengono creati e letti i token)
+class RevocableJWTStrategy(JWTStrategy):
+    """fastapi-users' JWT strategy, with tokens that logout can actually revoke.
+
+    The stock strategy writes {sub, aud, exp} and nothing else, and its
+    destroy_token() raises "A JWT can't be invalidated". So the tokens the
+    login endpoint hands out had no jti for the blacklist to key on:
+    POST /auth/logout answered 400 for every one of them, POST /auth/jwt/logout
+    (what the dashboard's logout hook calls) revoked nothing, and a session
+    stayed open for the token's whole lifetime after the user logged out. With
+    exp in whole seconds, two logins in the same second also returned the very
+    same token, so they could not be told apart either.
+
+    Here every token gets a random jti and an iat; read_token() refuses a
+    blacklisted jti, so identity's own routes honour revocation as the gateway
+    already does (/internal/authorize); destroy_token() revokes.
+    """
+
+    async def write_token(self, user) -> str:
+        data = {
+            "sub": str(user.id),
+            "aud": self.token_audience,
+            "jti": uuid.uuid4().hex,
+            "iat": datetime.now(timezone.utc),
+        }
+        return generate_jwt(data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm)
+
+    async def read_token(self, token, user_manager):
+        if token is None:
+            return None
+        try:
+            data = decode_jwt(token, self.decode_key, self.token_audience, algorithms=[self.algorithm])
+        except pyjwt.PyJWTError:
+            return None
+        jti = data.get("jti")
+        if jti and await is_token_blacklisted(jti):
+            return None
+        return await super().read_token(token, user_manager)
+
+    async def destroy_token(self, token: str, user) -> None:
+        await revoke_token(token)
+
+
 def get_jwt_strategy() -> JWTStrategy:
     """
     Creates a new JWT strategy instance for each request.
     This function is called by FastAPI Users as a dependency.
     """
-    return JWTStrategy(
+    return RevocableJWTStrategy(
         secret=settings.jwt_secret_key,
         lifetime_seconds=settings.jwt_access_token_expire_minutes * 60,
         token_audience=["fastapi-users:auth"]
