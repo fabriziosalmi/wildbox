@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **agents moves to LangChain 1.x** (#415). langchain 0.3.30,
+  langchain-anthropic 0.3.22, langchain-core 0.3.86 and
+  langchain-text-splitters 0.3.11 carried 6 advisories between them. The agent
+  keeps its `AgentExecutor` loop, now from `langchain-classic` 1.0.8; prompts,
+  messages and `@tool` come from langchain-core 1.6.6; langchain-anthropic is
+  1.4.6. `langchain-community`, never imported, is gone. One visible change:
+  the analyst notes passed to the structured report are now the model's text,
+  where 0.3 passed the string form of a list of content blocks.
 
 ### CI
 
