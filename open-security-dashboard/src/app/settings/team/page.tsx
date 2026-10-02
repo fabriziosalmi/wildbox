@@ -8,17 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Users, 
-  Plus, 
-  Trash2, 
-  AlertCircle,
-  Crown,
-  Shield,
-  User,
-  Settings,
-  Edit
-} from 'lucide-react'
+import { Users, Plus, Trash2, AlertCircle, Crown, Shield, User, Settings, Edit } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { Team, TeamMembership, User as UserType } from '@/types'
 
@@ -41,7 +31,7 @@ const roleIcons = {
 
 const roleColors = {
   owner: 'text-yellow-600',
-  admin: 'text-blue-600', 
+  admin: 'text-blue-600',
   member: 'text-gray-600',
 }
 
@@ -53,12 +43,12 @@ export default function TeamPage() {
   const [isInviting, setIsInviting] = useState(false)
   const [showInviteForm, setShowInviteForm] = useState(false)
   const [showEditTeam, setShowEditTeam] = useState(false)
-  
+
   const [inviteForm, setInviteForm] = useState({
     email: '',
     role: 'member' as 'admin' | 'member',
   })
-  
+
   const [teamEditForm, setTeamEditForm] = useState({
     name: '',
   })
@@ -67,32 +57,32 @@ export default function TeamPage() {
     try {
       setIsLoading(true)
       const userData = await identityClient.get<UserType>(getAuthPath('/api/v1/auth/me'))
-      
+
       if (userData.team_memberships && userData.team_memberships.length > 0) {
         const primaryMembership = userData.team_memberships[0]
         const canManage = ['owner', 'admin'].includes(primaryMembership.role)
-        
+
         // Get detailed team information with all members
         const teamMembers = await identityClient.get<TeamData['members']>(
           `/api/v1/teams/${primaryMembership.team_id}/members`
         )
-        
+
         setTeamData({
           team: primaryMembership.team,
           members: teamMembers,
-          canManage
+          canManage,
         })
-        
+
         setTeamEditForm({
-          name: primaryMembership.team.name
+          name: primaryMembership.team.name,
         })
       }
     } catch (error) {
       console.error('Failed to fetch team data:', error)
       toast({
-        title: "Error",
-        description: "Failed to load team information",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to load team information',
+        variant: 'destructive',
       })
     } finally {
       setIsLoading(false)
@@ -107,12 +97,12 @@ export default function TeamPage() {
 
   const handleInviteUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!inviteForm.email.trim()) {
       toast({
-        title: "Error",
-        description: "Email address is required",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Email address is required',
+        variant: 'destructive',
       })
       return
     }
@@ -125,20 +115,20 @@ export default function TeamPage() {
       }
 
       await identityClient.post(`/api/v1/teams/${teamData?.team.id}/invite`, inviteData)
-      
+
       setInviteForm({ email: '', role: 'member' })
       setShowInviteForm(false)
       await fetchTeamData() // Refresh team data
-      
+
       toast({
-        title: "Success",
-        description: "User invited successfully",
+        title: 'Success',
+        description: 'User invited successfully',
       })
     } catch (error) {
       toast({
-        title: "Error",
-        description: getErrorMessage(error, "Failed to invite user"),
-        variant: "destructive",
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to invite user'),
+        variant: 'destructive',
       })
     } finally {
       setIsInviting(false)
@@ -147,33 +137,33 @@ export default function TeamPage() {
 
   const handleUpdateTeam = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!teamEditForm.name.trim()) {
       toast({
-        title: "Error",
-        description: "Team name is required",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Team name is required',
+        variant: 'destructive',
       })
       return
     }
 
     try {
       await identityClient.put(`/api/v1/teams/${teamData?.team.id}`, {
-        name: teamEditForm.name.trim()
+        name: teamEditForm.name.trim(),
       })
-      
+
       setShowEditTeam(false)
       await fetchTeamData()
-      
+
       toast({
-        title: "Success",
-        description: "Team updated successfully",
+        title: 'Success',
+        description: 'Team updated successfully',
       })
     } catch (error) {
       toast({
-        title: "Error",
-        description: getErrorMessage(error, "Failed to update team"),
-        variant: "destructive",
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to update team'),
+        variant: 'destructive',
       })
     }
   }
@@ -181,20 +171,20 @@ export default function TeamPage() {
   const handleUpdateMemberRole = async (userId: string, newRole: 'admin' | 'member') => {
     try {
       await identityClient.patch(`/api/v1/teams/${teamData?.team.id}/members/${userId}/role`, {
-        role: newRole
+        role: newRole,
       })
-      
+
       await fetchTeamData()
-      
+
       toast({
-        title: "Success",
-        description: "Member role updated successfully",
+        title: 'Success',
+        description: 'Member role updated successfully',
       })
     } catch (error) {
       toast({
-        title: "Error",
-        description: getErrorMessage(error, "Failed to update member role"),
-        variant: "destructive",
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to update member role'),
+        variant: 'destructive',
       })
     }
   }
@@ -206,18 +196,18 @@ export default function TeamPage() {
 
     try {
       await identityClient.delete(`/api/v1/teams/${teamData?.team.id}/members/${userId}`)
-      
+
       await fetchTeamData()
-      
+
       toast({
-        title: "Success",
-        description: "Member removed successfully",
+        title: 'Success',
+        description: 'Member removed successfully',
       })
     } catch (error) {
       toast({
-        title: "Error",
-        description: getErrorMessage(error, "Failed to remove member"),
-        variant: "destructive",
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to remove member'),
+        variant: 'destructive',
       })
     }
   }
@@ -232,9 +222,9 @@ export default function TeamPage() {
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
           <p className="text-muted-foreground">Please log in to view team settings</p>
         </div>
       </div>
@@ -243,7 +233,7 @@ export default function TeamPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-center">
           <div className="text-muted-foreground">Loading team information...</div>
         </div>
@@ -253,9 +243,9 @@ export default function TeamPage() {
 
   if (!teamData) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex h-64 items-center justify-center">
         <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+          <AlertCircle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
           <p className="text-muted-foreground">No team found</p>
         </div>
       </div>
@@ -268,9 +258,7 @@ export default function TeamPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Team Settings</h1>
-            <p className="text-muted-foreground mt-2">
-              Manage your team members and settings
-            </p>
+            <p className="mt-2 text-muted-foreground">Manage your team members and settings</p>
           </div>
           {teamData.canManage && (
             <div className="flex gap-2">
@@ -279,11 +267,11 @@ export default function TeamPage() {
                 onClick={() => setShowEditTeam(true)}
                 className="flex items-center gap-2"
               >
-                <Edit className="w-4 h-4" />
+                <Edit className="h-4 w-4" />
                 Edit Team
               </Button>
               <Button onClick={() => setShowInviteForm(true)} className="flex items-center gap-2">
-                <Plus className="w-4 h-4" />
+                <Plus className="h-4 w-4" />
                 Invite Member
               </Button>
             </div>
@@ -292,10 +280,10 @@ export default function TeamPage() {
       </div>
 
       {/* Team Overview */}
-      <Card className="p-6 mb-6">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
-            <Users className="w-8 h-8 text-white" />
+      <Card className="mb-6 p-6">
+        <div className="mb-6 flex items-center gap-4">
+          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-600">
+            <Users className="h-8 w-8 text-white" />
           </div>
           <div>
             <h2 className="text-xl font-semibold text-foreground">{teamData.team.name}</h2>
@@ -306,21 +294,25 @@ export default function TeamPage() {
         </div>
 
         {/* Team Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="text-center p-3 border border-border rounded-lg">
-            <div className="font-semibold text-lg">{teamData.members.length}</div>
+        <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="rounded-lg border border-border p-3 text-center">
+            <div className="text-lg font-semibold">{teamData.members.length}</div>
             <div className="text-sm text-muted-foreground">Total Members</div>
           </div>
-          <div className="text-center p-3 border border-border rounded-lg">
-            <div className="font-semibold text-lg">{teamData.members.filter(m => m.role === 'admin').length}</div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <div className="text-lg font-semibold">
+              {teamData.members.filter(m => m.role === 'admin').length}
+            </div>
             <div className="text-sm text-muted-foreground">Admins</div>
           </div>
-          <div className="text-center p-3 border border-border rounded-lg">
-            <div className="font-semibold text-lg">{teamData.members.filter(m => m.role === 'owner').length}</div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <div className="text-lg font-semibold">
+              {teamData.members.filter(m => m.role === 'owner').length}
+            </div>
             <div className="text-sm text-muted-foreground">Owners</div>
           </div>
-          <div className="text-center p-3 border border-border rounded-lg">
-            <div className="font-semibold text-lg text-green-600">Active</div>
+          <div className="rounded-lg border border-border p-3 text-center">
+            <div className="text-lg font-semibold text-green-600">Active</div>
             <div className="text-sm text-muted-foreground">Status</div>
           </div>
         </div>
@@ -335,33 +327,27 @@ export default function TeamPage() {
 
       {/* Edit Team Form */}
       {showEditTeam && teamData.canManage && (
-        <Card className="p-6 mb-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Edit Team</h3>
-          
+        <Card className="mb-6 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-foreground">Edit Team</h3>
+
           <form onSubmit={handleUpdateTeam} className="space-y-4">
             <div>
-              <label htmlFor="team-name" className="block text-sm font-medium text-foreground mb-2">
+              <label htmlFor="team-name" className="mb-2 block text-sm font-medium text-foreground">
                 Team Name
               </label>
               <Input
                 id="team-name"
                 type="text"
                 value={teamEditForm.name}
-                onChange={(e) => setTeamEditForm(prev => ({ ...prev, name: e.target.value }))}
+                onChange={e => setTeamEditForm(prev => ({ ...prev, name: e.target.value }))}
                 placeholder="Enter team name"
                 required
               />
             </div>
 
             <div className="flex gap-2">
-              <Button type="submit">
-                Save Changes
-              </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setShowEditTeam(false)}
-              >
+              <Button type="submit">Save Changes</Button>
+              <Button type="button" variant="outline" onClick={() => setShowEditTeam(false)}>
                 Cancel
               </Button>
             </div>
@@ -371,33 +357,35 @@ export default function TeamPage() {
 
       {/* Invite Member Form */}
       {showInviteForm && teamData.canManage && (
-        <Card className="p-6 mb-6">
-          <h3 className="text-lg font-semibold text-foreground mb-4">Invite Team Member</h3>
-          
+        <Card className="mb-6 p-6">
+          <h3 className="mb-4 text-lg font-semibold text-foreground">Invite Team Member</h3>
+
           <form onSubmit={handleInviteUser} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-foreground mb-2">
+              <label htmlFor="email" className="mb-2 block text-sm font-medium text-foreground">
                 Email Address
               </label>
               <Input
                 id="email"
                 type="email"
                 value={inviteForm.email}
-                onChange={(e) => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
+                onChange={e => setInviteForm(prev => ({ ...prev, email: e.target.value }))}
                 placeholder="user@example.com"
                 required
               />
             </div>
 
             <div>
-              <label htmlFor="role" className="block text-sm font-medium text-foreground mb-2">
+              <label htmlFor="role" className="mb-2 block text-sm font-medium text-foreground">
                 Role
               </label>
               <select
                 id="role"
                 value={inviteForm.role}
-                onChange={(e) => setInviteForm(prev => ({ ...prev, role: e.target.value as 'admin' | 'member' }))}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background"
+                onChange={e =>
+                  setInviteForm(prev => ({ ...prev, role: e.target.value as 'admin' | 'member' }))
+                }
+                className="w-full rounded-md border border-border bg-background px-3 py-2"
               >
                 <option value="member">Member</option>
                 <option value="admin">Admin</option>
@@ -408,11 +396,7 @@ export default function TeamPage() {
               <Button type="submit" disabled={isInviting}>
                 {isInviting ? 'Inviting...' : 'Send Invitation'}
               </Button>
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setShowInviteForm(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setShowInviteForm(false)}>
                 Cancel
               </Button>
             </div>
@@ -422,29 +406,32 @@ export default function TeamPage() {
 
       {/* Team Members */}
       <Card className="p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Team Members</h3>
-        
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Team Members</h3>
+
         <div className="space-y-4">
-          {teamData.members.map((member) => {
+          {teamData.members.map(member => {
             const RoleIcon = roleIcons[member.role as keyof typeof roleIcons]
             const roleColor = roleColors[member.role as keyof typeof roleColors]
             const isCurrentUser = member.user_id === user.id
             const canModify = teamData.canManage && !isCurrentUser && member.role !== 'owner'
-            
+
             return (
-              <div key={member.user_id} className="flex items-center justify-between p-4 border border-border rounded-lg">
+              <div
+                key={member.user_id}
+                className="flex items-center justify-between rounded-lg border border-border p-4"
+              >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-gradient-to-br from-gray-500 to-gray-700 rounded-full flex items-center justify-center">
-                    <User className="w-5 h-5 text-white" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gray-500 to-gray-700">
+                    <User className="h-5 w-5 text-white" />
                   </div>
                   <div>
                     <div className="font-medium text-foreground">
                       {member.user.email}
                       {isCurrentUser && <span className="text-muted-foreground"> (You)</span>}
                     </div>
-                    <div className="flex items-center gap-2 mt-1">
+                    <div className="mt-1 flex items-center gap-2">
                       <Badge variant="outline" className={roleColor}>
-                        <RoleIcon className="w-3 h-3 mr-1" />
+                        <RoleIcon className="mr-1 h-3 w-3" />
                         {getRoleDisplayName(member.role)}
                       </Badge>
                       <span className="text-sm text-muted-foreground">
@@ -480,7 +467,7 @@ export default function TeamPage() {
                       onClick={() => handleRemoveMember(member.user_id, member.user.email)}
                       className="text-red-600 hover:text-red-700"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 )}
@@ -491,33 +478,33 @@ export default function TeamPage() {
       </Card>
 
       {/* Role Information */}
-      <Card className="p-6 mt-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Settings className="w-8 h-8 text-blue-500" />
+      <Card className="mt-6 p-6">
+        <div className="mb-4 flex items-center gap-3">
+          <Settings className="h-8 w-8 text-blue-500" />
           <h3 className="text-lg font-semibold text-foreground">Role Permissions</h3>
         </div>
-        
+
         <div className="space-y-4 text-sm">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Crown className="w-5 h-5 text-yellow-600" />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-lg border border-border p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Crown className="h-5 w-5 text-yellow-600" />
                 <h4 className="font-medium text-foreground">Owner</h4>
               </div>
-              <ul className="text-muted-foreground space-y-1">
+              <ul className="space-y-1 text-muted-foreground">
                 <li>• Full team management</li>
                 <li>• Add/remove members</li>
                 <li>• Change member roles</li>
                 <li>• Delete team</li>
               </ul>
             </div>
-            
-            <div className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="w-5 h-5 text-blue-600" />
+
+            <div className="rounded-lg border border-border p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <Shield className="h-5 w-5 text-blue-600" />
                 <h4 className="font-medium text-foreground">Admin</h4>
               </div>
-              <ul className="text-muted-foreground space-y-1">
+              <ul className="space-y-1 text-muted-foreground">
                 <li>• Add/remove members</li>
                 <li>• Change member roles</li>
                 <li>• Manage team settings</li>
@@ -525,13 +512,13 @@ export default function TeamPage() {
                 <li>• View all data</li>
               </ul>
             </div>
-            
-            <div className="border border-border rounded-lg p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <User className="w-5 h-5 text-gray-600" />
+
+            <div className="rounded-lg border border-border p-4">
+              <div className="mb-2 flex items-center gap-2">
+                <User className="h-5 w-5 text-gray-600" />
                 <h4 className="font-medium text-foreground">Member</h4>
               </div>
-              <ul className="text-muted-foreground space-y-1">
+              <ul className="space-y-1 text-muted-foreground">
                 <li>• Access assigned tools</li>
                 <li>• View shared data</li>
                 <li>• Create reports</li>

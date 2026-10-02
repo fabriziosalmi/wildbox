@@ -1,18 +1,18 @@
 'use client'
 
 import { useState } from 'react'
-import { 
-  Server, 
-  Shield, 
-  Database, 
-  Cloud, 
-  Bug, 
-  Zap, 
-  Activity, 
-  Copy, 
+import {
+  Server,
+  Shield,
+  Database,
+  Cloud,
+  Bug,
+  Zap,
+  Activity,
+  Copy,
   CheckCircle,
   ExternalLink,
-  AlertCircle
+  AlertCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -60,7 +60,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/health',
         description: 'Health check endpoint',
         requires_auth: false,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'GET',
@@ -76,12 +76,12 @@ const apiServices: ApiService[] = [
             domain: 38940,
             file_hash: 25850,
             url: 18650,
-            email: 12750
+            email: 12750,
           },
           total_sources: 15,
           active_sources: 12,
-          recent_collections: 42
-        }
+          recent_collections: 42,
+        },
       },
       {
         method: 'GET',
@@ -92,12 +92,27 @@ const apiServices: ApiService[] = [
         plan_required: 'Free',
         parameters: [
           { name: 'q', type: 'string', required: false, description: 'Search query' },
-          { name: 'indicator_type', type: 'string', required: false, description: 'Filter by type' },
+          {
+            name: 'indicator_type',
+            type: 'string',
+            required: false,
+            description: 'Filter by type',
+          },
           { name: 'confidence', type: 'string', required: false, description: 'Confidence level' },
-          { name: 'min_severity', type: 'number', required: false, description: 'Minimum severity (1-10)' },
-          { name: 'limit', type: 'number', required: false, description: 'Results limit (max 10000)' },
-          { name: 'offset', type: 'number', required: false, description: 'Pagination offset' }
-        ]
+          {
+            name: 'min_severity',
+            type: 'number',
+            required: false,
+            description: 'Minimum severity (1-10)',
+          },
+          {
+            name: 'limit',
+            type: 'number',
+            required: false,
+            description: 'Results limit (max 10000)',
+          },
+          { name: 'offset', type: 'number', required: false, description: 'Pagination offset' },
+        ],
       },
       {
         method: 'GET',
@@ -105,7 +120,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/indicators/{indicator_id}',
         description: 'Get detailed information about a specific indicator',
         requires_auth: true,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'POST',
@@ -113,7 +128,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/indicators/lookup',
         description: 'Bulk lookup of indicators',
         requires_auth: true,
-        plan_required: 'Business'
+        plan_required: 'Business',
       },
       {
         method: 'GET',
@@ -121,7 +136,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/ips/{ip_address}',
         description: 'Get intelligence about an IP address',
         requires_auth: true,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'GET',
@@ -129,7 +144,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/domains/{domain}',
         description: 'Get intelligence about a domain',
         requires_auth: true,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'GET',
@@ -137,7 +152,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/hashes/{file_hash}',
         description: 'Get intelligence about a file hash',
         requires_auth: true,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'GET',
@@ -145,7 +160,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/sources',
         description: 'List data sources and their status',
         requires_auth: true,
-        plan_required: 'Business'
+        plan_required: 'Business',
       },
       {
         method: 'GET',
@@ -153,7 +168,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/feeds/realtime',
         description: 'Real-time threat intelligence feed (NDJSON stream)',
         requires_auth: true,
-        plan_required: 'Business'
+        plan_required: 'Business',
       },
       {
         method: 'GET',
@@ -161,9 +176,9 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/data/dashboard/threat-intel',
         description: 'Dashboard metrics for threat intelligence',
         requires_auth: true,
-        plan_required: 'Free'
-      }
-    ]
+        plan_required: 'Free',
+      },
+    ],
   },
   {
     name: 'Cloud Security (CSPM)',
@@ -178,9 +193,9 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/cspm/dashboard/executive-summary',
         description: 'Executive dashboard summary with compliance scores',
         requires_auth: true,
-        plan_required: 'Business'
-      }
-    ]
+        plan_required: 'Business',
+      },
+    ],
   },
   {
     name: 'Vulnerability Management',
@@ -195,9 +210,9 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/guardian/reports/dashboards/1/data/',
         description: 'Dashboard vulnerability data and metrics',
         requires_auth: true,
-        plan_required: 'Free'
-      }
-    ]
+        plan_required: 'Free',
+      },
+    ],
   },
   {
     name: 'Response Automation',
@@ -212,9 +227,9 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/responder/metrics',
         description: 'Response automation metrics and playbook stats',
         requires_auth: true,
-        plan_required: 'Business'
-      }
-    ]
+        plan_required: 'Business',
+      },
+    ],
   },
   {
     name: 'Identity & Authentication',
@@ -229,7 +244,7 @@ const apiServices: ApiService[] = [
         gateway_path: '/auth/login',
         description: 'User authentication',
         requires_auth: false,
-        plan_required: 'Free'
+        plan_required: 'Free',
       },
       {
         method: 'GET',
@@ -237,10 +252,10 @@ const apiServices: ApiService[] = [
         gateway_path: '/api/v1/identity/user/profile',
         description: 'Get user profile information',
         requires_auth: true,
-        plan_required: 'Free'
-      }
-    ]
-  }
+        plan_required: 'Free',
+      },
+    ],
+  },
 ]
 
 interface TestResult {
@@ -265,10 +280,10 @@ async function testEndpoint(endpoint: ApiEndpoint): Promise<TestResult> {
 
     return { success: true, response }
   } catch (error) {
-    return { 
-      success: false, 
+    return {
+      success: false,
       // ApiError.message already carries the server's message.
-      error: getErrorMessage(error, 'Unknown error')
+      error: getErrorMessage(error, 'Unknown error'),
     }
   }
 }
@@ -295,11 +310,11 @@ export default function APIDocumentation() {
   const generateCurlCommand = (endpoint: ApiEndpoint) => {
     const baseUrl = 'https://api.wildbox.local'
     let curl = `curl -X ${endpoint.method} "${baseUrl}${endpoint.gateway_path}"`
-    
+
     if (endpoint.requires_auth) {
       curl += ` \\\n  -H "Authorization: Bearer YOUR_TOKEN"`
     }
-    
+
     curl += ` \\\n  -H "Content-Type: application/json"`
 
     if (endpoint.method === 'POST' && endpoint.path.includes('lookup')) {
@@ -330,7 +345,7 @@ try {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">API Documentation</h1>
-          <p className="text-muted-foreground mt-2">
+          <p className="mt-2 text-muted-foreground">
             Complete API reference for all Wildbox security services with gateway integration
           </p>
         </div>
@@ -345,11 +360,14 @@ try {
             <CardDescription>Real-time status of all API services</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {apiServices.map((service) => {
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {apiServices.map(service => {
                 const Icon = service.icon
                 return (
-                  <div key={service.name} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div
+                    key={service.name}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
                     <div className="flex items-center gap-3">
                       <Icon className="h-5 w-5 text-blue-500" />
                       <div>
@@ -357,7 +375,7 @@ try {
                         <div className="text-sm text-muted-foreground">Port {service.port}</div>
                       </div>
                     </div>
-                    <Badge 
+                    <Badge
                       variant={service.status === 'healthy' ? 'default' : 'destructive'}
                       className={service.status === 'healthy' ? 'bg-green-500' : ''}
                     >
@@ -377,32 +395,26 @@ try {
             <CardDescription>Select a service to view its endpoints</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {apiServices.map((service) => {
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {apiServices.map(service => {
                 const Icon = service.icon
                 const isSelected = selectedService === service.name
                 return (
-                  <div 
+                  <div
                     key={service.name}
-                    className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                    className={`cursor-pointer rounded-lg border p-4 transition-colors ${
                       isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
                     }`}
                     onClick={() => setSelectedService(service.name)}
                   >
                     <div className="flex items-start gap-3">
-                      <Icon className="h-6 w-6 text-blue-500 mt-1" />
+                      <Icon className="mt-1 h-6 w-6 text-blue-500" />
                       <div>
                         <h3 className="font-semibold">{service.name}</h3>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {service.description}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Badge variant="outline">
-                            {service.endpoints.length} endpoints
-                          </Badge>
-                          <Badge variant="outline">
-                            Port {service.port}
-                          </Badge>
+                        <p className="mt-1 text-sm text-muted-foreground">{service.description}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Badge variant="outline">{service.endpoints.length} endpoints</Badge>
+                          <Badge variant="outline">Port {service.port}</Badge>
                         </div>
                       </div>
                     </div>
@@ -421,9 +433,7 @@ try {
                 <selectedServiceData.icon className="h-5 w-5" />
                 {selectedServiceData.name} - API Endpoints
               </CardTitle>
-              <CardDescription>
-                {selectedServiceData.description}
-              </CardDescription>
+              <CardDescription>{selectedServiceData.description}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {selectedServiceData.endpoints.map((endpoint, index) => {
@@ -433,35 +443,37 @@ try {
                 const jsKey = `js-${index}`
 
                 return (
-                  <div key={index} className="border rounded-lg p-4 space-y-4">
+                  <div key={index} className="space-y-4 rounded-lg border p-4">
                     {/* Endpoint Header */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Badge 
+                        <Badge
                           className={`${
-                            endpoint.method === 'GET' ? 'bg-green-500' :
-                            endpoint.method === 'POST' ? 'bg-blue-500' :
-                            endpoint.method === 'PUT' ? 'bg-yellow-500' :
-                            endpoint.method === 'DELETE' ? 'bg-red-500' :
-                            'bg-gray-500'
+                            endpoint.method === 'GET'
+                              ? 'bg-green-500'
+                              : endpoint.method === 'POST'
+                                ? 'bg-blue-500'
+                                : endpoint.method === 'PUT'
+                                  ? 'bg-yellow-500'
+                                  : endpoint.method === 'DELETE'
+                                    ? 'bg-red-500'
+                                    : 'bg-gray-500'
                           } text-white`}
                         >
                           {endpoint.method}
                         </Badge>
-                        <code className="text-sm bg-gray-100 px-2 py-1 rounded">
+                        <code className="rounded bg-gray-100 px-2 py-1 text-sm">
                           {endpoint.gateway_path}
                         </code>
                         {endpoint.requires_auth && (
                           <Badge variant="outline">
-                            <Shield className="h-3 w-3 mr-1" />
+                            <Shield className="mr-1 h-3 w-3" />
                             Auth Required
                           </Badge>
                         )}
-                        <Badge variant="outline">
-                          {endpoint.plan_required}+
-                        </Badge>
+                        <Badge variant="outline">{endpoint.plan_required}+</Badge>
                       </div>
-                      
+
                       {endpoint.method === 'GET' && (
                         <Button
                           size="sm"
@@ -474,14 +486,12 @@ try {
                     </div>
 
                     {/* Description */}
-                    <p className="text-sm text-muted-foreground">
-                      {endpoint.description}
-                    </p>
+                    <p className="text-sm text-muted-foreground">{endpoint.description}</p>
 
                     {/* Parameters */}
                     {endpoint.parameters && (
                       <div>
-                        <h5 className="font-medium mb-2">Parameters</h5>
+                        <h5 className="mb-2 font-medium">Parameters</h5>
                         <div className="space-y-2">
                           {endpoint.parameters.map((param, paramIndex) => (
                             <div key={paramIndex} className="grid grid-cols-4 gap-2 text-sm">
@@ -502,7 +512,7 @@ try {
                     <div className="space-y-3">
                       {/* cURL Example */}
                       <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="mb-2 flex items-center justify-between">
                           <h5 className="font-medium">cURL Example</h5>
                           <Button
                             size="sm"
@@ -516,14 +526,14 @@ try {
                             )}
                           </Button>
                         </div>
-                        <pre className="text-xs bg-gray-900 text-white p-3 rounded overflow-x-auto">
+                        <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
                           {generateCurlCommand(endpoint)}
                         </pre>
                       </div>
 
                       {/* JavaScript Example */}
                       <div>
-                        <div className="flex items-center justify-between mb-2">
+                        <div className="mb-2 flex items-center justify-between">
                           <h5 className="font-medium">JavaScript Example</h5>
                           <Button
                             size="sm"
@@ -537,7 +547,7 @@ try {
                             )}
                           </Button>
                         </div>
-                        <pre className="text-xs bg-gray-900 text-white p-3 rounded overflow-x-auto">
+                        <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
                           {generateJavaScriptCode(endpoint)}
                         </pre>
                       </div>
@@ -545,10 +555,14 @@ try {
 
                     {/* Test Results */}
                     {testResult && (
-                      <div className={`p-3 rounded ${
-                        testResult.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-                      } border`}>
-                        <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className={`rounded p-3 ${
+                          testResult.success
+                            ? 'border-green-200 bg-green-50'
+                            : 'border-red-200 bg-red-50'
+                        } border`}
+                      >
+                        <div className="mb-2 flex items-center gap-2">
                           {testResult.success ? (
                             <CheckCircle className="h-4 w-4 text-green-500" />
                           ) : (
@@ -559,14 +573,12 @@ try {
                           </span>
                         </div>
                         {!!testResult.response && (
-                          <pre className="text-xs bg-white p-2 rounded border overflow-x-auto">
+                          <pre className="overflow-x-auto rounded border bg-white p-2 text-xs">
                             {JSON.stringify(testResult.response, null, 2)}
                           </pre>
                         )}
                         {testResult.error && (
-                          <div className="text-sm text-red-600">
-                            {testResult.error}
-                          </div>
+                          <div className="text-sm text-red-600">{testResult.error}</div>
                         )}
                       </div>
                     )}
@@ -574,8 +586,8 @@ try {
                     {/* Example Response */}
                     {endpoint.example_response && (
                       <div>
-                        <h5 className="font-medium mb-2">Example Response</h5>
-                        <pre className="text-xs bg-gray-100 p-3 rounded overflow-x-auto">
+                        <h5 className="mb-2 font-medium">Example Response</h5>
+                        <pre className="overflow-x-auto rounded bg-gray-100 p-3 text-xs">
                           {JSON.stringify(endpoint.example_response, null, 2)}
                         </pre>
                       </div>
@@ -599,10 +611,10 @@ try {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
               <div>
-                <h4 className="font-semibold mb-2">Gateway Benefits</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
+                <h4 className="mb-2 font-semibold">Gateway Benefits</h4>
+                <ul className="space-y-1 text-sm text-muted-foreground">
                   <li>• Unified authentication across all services</li>
                   <li>• Rate limiting</li>
                   <li>• SSL termination and security headers</li>
@@ -611,8 +623,8 @@ try {
                 </ul>
               </div>
               <div>
-                <h4 className="font-semibold mb-2">Authentication</h4>
-                <ul className="text-sm space-y-1 text-muted-foreground">
+                <h4 className="mb-2 font-semibold">Authentication</h4>
+                <ul className="space-y-1 text-sm text-muted-foreground">
                   <li>• Include Bearer token in Authorization header</li>
                   <li>• Tokens are validated against identity service</li>
                   <li>• Rate limits are applied per user/team</li>
@@ -621,7 +633,7 @@ try {
             </div>
 
             <div>
-              <h4 className="font-semibold mb-2">Gateway URL Structure</h4>
+              <h4 className="mb-2 font-semibold">Gateway URL Structure</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <Badge variant="outline">Base URL</Badge>
@@ -645,13 +657,13 @@ try {
             <div className="flex gap-2">
               <Button variant="outline" asChild>
                 <a href="https://api.wildbox.local/docs" target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="h-4 w-4 mr-2" />
+                  <ExternalLink className="mr-2 h-4 w-4" />
                   Gateway API Docs
                 </a>
               </Button>
               <Button variant="outline" asChild>
                 <a href="/auth/login" target="_blank" rel="noopener noreferrer">
-                  <Shield className="h-4 w-4 mr-2" />
+                  <Shield className="mr-2 h-4 w-4" />
                   Get API Token
                 </a>
               </Button>

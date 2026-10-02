@@ -1,5 +1,5 @@
-import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { type ClassValue, clsx } from 'clsx'
+import { twMerge } from 'tailwind-merge'
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
@@ -37,27 +37,27 @@ export function formatRelativeTime(date: Date): string {
   if (diffInSeconds < 60) {
     return 'Just now'
   }
-  
+
   const diffInMinutes = Math.floor(diffInSeconds / 60)
   if (diffInMinutes < 60) {
     return `${diffInMinutes}m ago`
   }
-  
+
   const diffInHours = Math.floor(diffInMinutes / 60)
   if (diffInHours < 24) {
     return `${diffInHours}h ago`
   }
-  
+
   const diffInDays = Math.floor(diffInHours / 24)
   if (diffInDays < 7) {
     return `${diffInDays}d ago`
   }
-  
+
   const diffInWeeks = Math.floor(diffInDays / 7)
   if (diffInWeeks < 4) {
     return `${diffInWeeks}w ago`
   }
-  
+
   const diffInMonths = Math.floor(diffInDays / 30)
   return `${diffInMonths}mo ago`
 }
@@ -112,7 +112,7 @@ export function debounce<T extends (...args: never[]) => unknown>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null
-  
+
   return (...args: Parameters<T>) => {
     if (timeout !== null) {
       clearTimeout(timeout)
@@ -126,7 +126,7 @@ export function throttle<T extends (...args: never[]) => unknown>(
   wait: number
 ): (...args: Parameters<T>) => void {
   let inThrottle: boolean
-  
+
   return (...args: Parameters<T>) => {
     if (!inThrottle) {
       func(...args)
@@ -137,14 +137,14 @@ export function throttle<T extends (...args: never[]) => unknown>(
 }
 
 export function sanitizeInput(input: string): string {
-  let output = input.replace(/[<>]/g, '');
+  let output = input.replace(/[<>]/g, '')
   // Repeat these replacements until the string no longer changes to avoid incomplete multi-character sanitization
-  let prev;
+  let prev
   do {
-    prev = output;
-    output = output.replace(/javascript:/gi, '').replace(/on\w+=/gi, '');
-  } while (output !== prev);
-  return output.trim();
+    prev = output
+    output = output.replace(/javascript:/gi, '').replace(/on\w+=/gi, '')
+  } while (output !== prev)
+  return output.trim()
 }
 
 export function validateEmail(email: string): boolean {
@@ -153,13 +153,15 @@ export function validateEmail(email: string): boolean {
 }
 
 export function validateIP(ip: string): boolean {
-  const ipv4Regex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
+  const ipv4Regex =
+    /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/
   const ipv6Regex = /^(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$/
   return ipv4Regex.test(ip) || ipv6Regex.test(ip)
 }
 
 export function validateDomain(domain: string): boolean {
-  const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](?:\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])*$/
+  const domainRegex =
+    /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9](?:\.[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9])*$/
   return domainRegex.test(domain)
 }
 

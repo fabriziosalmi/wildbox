@@ -7,7 +7,7 @@ A comprehensive security operations center and threat intelligence platform buil
 The Wildbox Security Dashboard is the central command center for the Wildbox security suite, providing a unified interface to manage and monitor all security operations including:
 
 - **Threat Intelligence**: IOC lookups, threat feeds management
-- **Cloud Security**: CSPM scans and compliance monitoring  
+- **Cloud Security**: CSPM scans and compliance monitoring
 - **Endpoint Management**: Agent deployment and monitoring
 - **Vulnerability Management**: Security findings and remediation tracking
 - **Response Automation**: Playbook execution and incident response
@@ -145,7 +145,7 @@ src/
    npm install
    # or
    yarn install
-   # or  
+   # or
    pnpm install
    ```
 
@@ -165,7 +165,7 @@ src/
    NEXT_PUBLIC_SENSOR_API_URL=http://localhost:8003
    NEXT_PUBLIC_RESPONDER_API_URL=http://localhost:8004
    NEXT_PUBLIC_AGENTS_API_URL=http://localhost:8018
-   
+
    # Authentication
    NEXTAUTH_SECRET=your-secret-key
    NEXTAUTH_URL=http://localhost:3000
@@ -311,14 +311,14 @@ The dashboard integrates with multiple Wildbox microservices:
 
 ### Service Endpoints
 
-| Service | Port | Purpose |
-| --------- | ------ | --------- |
-| open-security-tools | 8000 | Security tools execution |
-| open-security-data | 8002 | Threat intelligence data |
-| open-security-guardian | 8003 | Vulnerability management |
-| open-security-sensor | 8004 | Endpoint management |
-| open-security-responder | 8018 | Response automation |
-| open-security-agents | 8006 | AI-powered analysis |
+| Service                 | Port | Purpose                  |
+| ----------------------- | ---- | ------------------------ |
+| open-security-tools     | 8000 | Security tools execution |
+| open-security-data      | 8002 | Threat intelligence data |
+| open-security-guardian  | 8003 | Vulnerability management |
+| open-security-sensor    | 8004 | Endpoint management      |
+| open-security-responder | 8018 | Response automation      |
+| open-security-agents    | 8006 | AI-powered analysis      |
 
 ### API Client Features
 

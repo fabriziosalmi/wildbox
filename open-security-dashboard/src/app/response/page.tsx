@@ -2,8 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import { 
-  Book, 
+import {
+  Book,
   Activity,
   Clock,
   CheckCircle,
@@ -12,7 +12,7 @@ import {
   ChevronRight,
   Zap,
   AlertTriangle,
-  TrendingUp
+  TrendingUp,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -58,14 +58,14 @@ const mockStats: DashboardStats = {
       status: 'failed',
       startTime: new Date(Date.now() - 120000).toISOString(),
     },
-  ]
+  ],
 }
 
 async function fetchDashboardStats(): Promise<DashboardStats> {
   try {
     // Try to fetch real data from multiple endpoints
     const [playbooksResponse] = await Promise.allSettled([
-      responderClient.get<{ total?: number }>('/v1/playbooks')
+      responderClient.get<{ total?: number }>('/v1/playbooks'),
     ])
 
     let totalPlaybooks = 0
@@ -76,7 +76,7 @@ async function fetchDashboardStats(): Promise<DashboardStats> {
     // For now, return mock data with real playbook count
     return {
       ...mockStats,
-      totalPlaybooks
+      totalPlaybooks,
     }
   } catch (error) {
     console.warn('API not available, using mock data:', error)
@@ -89,7 +89,7 @@ function getStatusIcon(status: string, size = 'h-4 w-4') {
     case 'completed':
       return <CheckCircle className={`${size} text-green-500`} />
     case 'running':
-      return <Loader2 className={`${size} text-blue-500 animate-spin`} />
+      return <Loader2 className={`${size} animate-spin text-blue-500`} />
     case 'failed':
       return <XCircle className={`${size} text-red-500`} />
     default:
@@ -99,7 +99,7 @@ function getStatusIcon(status: string, size = 'h-4 w-4') {
 
 function formatTimeAgo(timestamp: string): string {
   const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)
-  
+
   if (seconds < 60) return `${seconds}s ago`
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
@@ -107,7 +107,11 @@ function formatTimeAgo(timestamp: string): string {
 }
 
 export default function ResponsePage() {
-  const { data: stats, isLoading, refetch } = useQuery({
+  const {
+    data: stats,
+    isLoading,
+    refetch,
+  } = useQuery({
     queryKey: ['response-dashboard'],
     queryFn: fetchDashboardStats,
     refetchInterval: 30000,
@@ -117,7 +121,7 @@ export default function ResponsePage() {
     <MainLayout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Response & Automation</h1>
             <p className="text-muted-foreground">
@@ -137,12 +141,12 @@ export default function ResponsePage() {
             {[...Array(4)].map((_, i) => (
               <Card key={i} className="animate-pulse">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
-                  <div className="h-4 w-4 bg-gray-200 rounded"></div>
+                  <div className="h-4 w-1/2 rounded bg-gray-200"></div>
+                  <div className="h-4 w-4 rounded bg-gray-200"></div>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-8 bg-gray-200 rounded w-1/3 mb-1"></div>
-                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  <div className="mb-1 h-8 w-1/3 rounded bg-gray-200"></div>
+                  <div className="h-3 w-1/2 rounded bg-gray-200"></div>
                 </CardContent>
               </Card>
             ))}
@@ -156,9 +160,7 @@ export default function ResponsePage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.totalPlaybooks || 0}</div>
-                <p className="text-xs text-muted-foreground">
-                  Available security workflows
-                </p>
+                <p className="text-xs text-muted-foreground">Available security workflows</p>
               </CardContent>
             </Card>
 
@@ -169,9 +171,7 @@ export default function ResponsePage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{stats?.totalRuns || 0}</div>
-                <p className="text-xs text-muted-foreground">
-                  Executions this month
-                </p>
+                <p className="text-xs text-muted-foreground">Executions this month</p>
               </CardContent>
             </Card>
 
@@ -182,9 +182,7 @@ export default function ResponsePage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-blue-600">{stats?.runningNow || 0}</div>
-                <p className="text-xs text-muted-foreground">
-                  Active executions
-                </p>
+                <p className="text-xs text-muted-foreground">Active executions</p>
               </CardContent>
             </Card>
 
@@ -195,9 +193,7 @@ export default function ResponsePage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold text-green-600">{stats?.successRate || 0}%</div>
-                <p className="text-xs text-muted-foreground">
-                  Last 30 days
-                </p>
+                <p className="text-xs text-muted-foreground">Last 30 days</p>
               </CardContent>
             </Card>
           </div>
@@ -205,19 +201,17 @@ export default function ResponsePage() {
 
         {/* Quick Actions */}
         <div className="grid gap-6 md:grid-cols-2">
-          <Card className="group hover:shadow-lg transition-all duration-200">
+          <Card className="group transition-all duration-200 hover:shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Book className="h-5 w-5 text-blue-600" />
                 Playbooks
               </CardTitle>
-              <CardDescription>
-                View and execute automated response workflows
-              </CardDescription>
+              <CardDescription>View and execute automated response workflows</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
+                <div className="flex items-center justify-between text-sm">
                   <span>Available playbooks</span>
                   <Badge variant="outline">{stats?.totalPlaybooks || 0}</Badge>
                 </div>
@@ -231,19 +225,17 @@ export default function ResponsePage() {
             </CardContent>
           </Card>
 
-          <Card className="group hover:shadow-lg transition-all duration-200">
+          <Card className="group transition-all duration-200 hover:shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Activity className="h-5 w-5 text-green-600" />
                 Execution History
               </CardTitle>
-              <CardDescription>
-                Monitor and review playbook run history
-              </CardDescription>
+              <CardDescription>Monitor and review playbook run history</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
+                <div className="flex items-center justify-between text-sm">
                   <span>Total runs</span>
                   <Badge variant="outline">{stats?.totalRuns || 0}</Badge>
                 </div>
@@ -265,15 +257,16 @@ export default function ResponsePage() {
               <Clock className="h-5 w-5" />
               Recent Activity
             </CardTitle>
-            <CardDescription>
-              Latest playbook executions and their status
-            </CardDescription>
+            <CardDescription>Latest playbook executions and their status</CardDescription>
           </CardHeader>
           <CardContent>
             {stats?.recentRuns && stats.recentRuns.length > 0 ? (
               <div className="space-y-3">
-                {stats.recentRuns.map((run) => (
-                  <div key={run.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                {stats.recentRuns.map(run => (
+                  <div
+                    key={run.id}
+                    className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                  >
                     <div className="flex items-center gap-3">
                       {getStatusIcon(run.status)}
                       <div>
@@ -282,20 +275,24 @@ export default function ResponsePage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <Badge className={
-                        run.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        run.status === 'running' ? 'bg-blue-100 text-blue-800' :
-                        'bg-red-100 text-red-800'
-                      }>
+                      <Badge
+                        className={
+                          run.status === 'completed'
+                            ? 'bg-green-100 text-green-800'
+                            : run.status === 'running'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-red-100 text-red-800'
+                        }
+                      >
                         {run.status}
                       </Badge>
-                      <p className="text-sm text-muted-foreground mt-1">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         {formatTimeAgo(run.startTime)}
                       </p>
                     </div>
                   </div>
                 ))}
-                <div className="pt-2 border-t">
+                <div className="border-t pt-2">
                   <Link href="/response/runs">
                     <Button variant="outline" className="w-full">
                       View All Runs
@@ -305,9 +302,9 @@ export default function ResponsePage() {
                 </div>
               </div>
             ) : (
-              <div className="text-center py-8">
-                <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No recent activity</h3>
+              <div className="py-8 text-center">
+                <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <h3 className="mb-2 text-lg font-semibold">No recent activity</h3>
                 <p className="text-muted-foreground">
                   No playbook runs have been executed recently.
                 </p>

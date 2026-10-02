@@ -9,9 +9,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { 
-  Shield, 
-  Users, 
+import {
+  Shield,
+  Users,
   Search,
   Trash2,
   UserCheck,
@@ -25,7 +25,7 @@ import {
   Activity,
   UserPlus,
   Lock,
-  AtSign
+  AtSign,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import type { AdminSystemAnalytics, AdminUsageSummary } from '@/types'
@@ -72,7 +72,7 @@ export default function AdminPage() {
     superAdmins: 0,
     totalTeams: 0,
     newUsersThisWeek: 0,
-    apiRequestsToday: 0
+    apiRequestsToday: 0,
   })
   const [systemHealth, setSystemHealth] = useState({
     avgResponseTime: null as number | null,
@@ -82,9 +82,9 @@ export default function AdminPage() {
     gatewayStatus: 'unknown',
     identityStatus: 'unknown',
     databaseStatus: 'unknown',
-    redisStatus: 'unknown'
+    redisStatus: 'unknown',
   })
-  
+
   // Create user form state
   const [showCreateUser, setShowCreateUser] = useState(false)
   const [isCreatingUser, setIsCreatingUser] = useState(false)
@@ -92,7 +92,7 @@ export default function AdminPage() {
     email: '',
     password: '',
     is_superuser: false,
-    is_active: true
+    is_active: true,
   })
 
   // Check if user is superuser
@@ -111,15 +111,19 @@ export default function AdminPage() {
         // Check identity service health
         identityClient.get('/api/v1/identity/health').catch(() => null),
         // Check gateway status (if accessible)
-        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`).then(r => r.json()).catch(() => null),
+        fetch(`${process.env.NEXT_PUBLIC_GATEWAY_URL || ''}/health`)
+          .then(r => r.json())
+          .catch(() => null),
       ])
 
       let servicesOnline = 0
       const totalServices = 4
 
       // Update service statuses
-      const identityStatus = identityHealth.status === 'fulfilled' && identityHealth.value ? 'online' : 'offline'
-      const gatewayStatus = gatewayHealth.status === 'fulfilled' && gatewayHealth.value ? 'online' : 'offline'
+      const identityStatus =
+        identityHealth.status === 'fulfilled' && identityHealth.value ? 'online' : 'offline'
+      const gatewayStatus =
+        gatewayHealth.status === 'fulfilled' && gatewayHealth.value ? 'online' : 'offline'
       const databaseStatus = identityStatus === 'online' ? 'healthy' : 'unknown' // Database accessible if identity service is up
       const redisStatus = identityStatus === 'online' ? 'connected' : 'unknown' // Redis accessible if identity service is up
 
@@ -141,7 +145,7 @@ export default function AdminPage() {
         gatewayStatus,
         identityStatus,
         databaseStatus,
-        redisStatus
+        redisStatus,
       })
     } catch (error) {
       console.error('Failed to fetch system health:', error)
@@ -154,7 +158,7 @@ export default function AdminPage() {
         gatewayStatus: 'unknown',
         identityStatus: 'unknown',
         databaseStatus: 'unknown',
-        redisStatus: 'unknown'
+        redisStatus: 'unknown',
       })
     }
   }, [])
@@ -164,14 +168,16 @@ export default function AdminPage() {
     try {
       // Fetch real system analytics from identity service
       const [systemAnalytics, usageSummary] = await Promise.allSettled([
-        identityClient.get<AdminSystemAnalytics>('/api/v1/identity/analytics/admin/system-stats?days=30'),
-        identityClient.get<AdminUsageSummary>('/api/v1/identity/analytics/admin/usage-summary')
+        identityClient.get<AdminSystemAnalytics>(
+          '/api/v1/identity/analytics/admin/system-stats?days=30'
+        ),
+        identityClient.get<AdminUsageSummary>('/api/v1/identity/analytics/admin/usage-summary'),
       ])
-      
+
       // Extract real analytics data
       const analytics = systemAnalytics.status === 'fulfilled' ? systemAnalytics.value : null
       const usage = usageSummary.status === 'fulfilled' ? usageSummary.value : null
-      
+
       if (analytics && usage) {
         // Use real data from analytics API
         setSystemStats({
@@ -180,7 +186,7 @@ export default function AdminPage() {
           superAdmins: analytics.users.super_admins,
           totalTeams: analytics.teams.total,
           newUsersThisWeek: analytics.users.new_this_week,
-          apiRequestsToday: usage.summary.api_requests_today
+          apiRequestsToday: usage.summary.api_requests_today,
         })
       } else {
         // Fallback to user data computation if analytics service is unavailable
@@ -188,14 +194,15 @@ export default function AdminPage() {
           totalUsers: users.length,
           activeUsers: users.filter(u => u.is_active).length,
           superAdmins: users.filter(u => u.is_superuser).length,
-          totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || [])).size,
+          totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || []))
+            .size,
           newUsersThisWeek: users.filter(u => {
             const created = new Date(u.created_at)
             const oneWeekAgo = new Date()
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
             return created >= oneWeekAgo
           }).length,
-          apiRequestsToday: Math.floor(Math.random() * 1000) + 500 // Fallback mock data
+          apiRequestsToday: Math.floor(Math.random() * 1000) + 500, // Fallback mock data
         })
       }
     } catch (error) {
@@ -205,14 +212,15 @@ export default function AdminPage() {
         totalUsers: users.length,
         activeUsers: users.filter(u => u.is_active).length,
         superAdmins: users.filter(u => u.is_superuser).length,
-        totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || [])).size,
+        totalTeams: new Set(users.flatMap(u => u.team_memberships?.map(tm => tm.team_id) || []))
+          .size,
         newUsersThisWeek: users.filter(u => {
           const created = new Date(u.created_at)
           const oneWeekAgo = new Date()
           oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
           return created >= oneWeekAgo
         }).length,
-        apiRequestsToday: 850 // Use a reasonable fallback instead of random
+        apiRequestsToday: 850, // Use a reasonable fallback instead of random
       })
     }
   }, [])
@@ -220,7 +228,7 @@ export default function AdminPage() {
   const fetchUsers = useCallback(async () => {
     try {
       setIsLoading(true)
-      
+
       const token = Cookies.get('auth_token')
 
       const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
@@ -228,18 +236,18 @@ export default function AdminPage() {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-        }
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       })
-      
+
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`)
       }
-      
+
       const data: AdminUserData[] = await response.json()
       usersRef.current = data || []
       setUsers(data || [])
-      
+
       // Update stats when users are fetched
       if (data && Array.isArray(data)) {
         setSystemStats(prev => ({
@@ -247,15 +255,17 @@ export default function AdminPage() {
           totalUsers: data.length,
           activeUsers: data.filter(u => u.is_active).length,
           superAdmins: data.filter(u => u.is_superuser).length,
-          totalTeams: new Set(data.flatMap((u: AdminUserData) => u.team_memberships?.map(tm => tm.team_id) || [])).size
+          totalTeams: new Set(
+            data.flatMap((u: AdminUserData) => u.team_memberships?.map(tm => tm.team_id) || [])
+          ).size,
         }))
       }
     } catch (error) {
       console.error('Failed to fetch users:', error)
       toast({
-        title: "Error", 
-        description: "Failed to load users",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to load users',
+        variant: 'destructive',
       })
     } finally {
       setIsLoading(false)
@@ -276,46 +286,52 @@ export default function AdminPage() {
 
   const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      await identityClient.patch(`/api/v1/identity/admin/users/${userId}/status?is_active=${!currentStatus}`)
-      
+      await identityClient.patch(
+        `/api/v1/identity/admin/users/${userId}/status?is_active=${!currentStatus}`
+      )
+
       toast({
-        title: "Success",
+        title: 'Success',
         description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`,
       })
-      
+
       fetchUsers()
     } catch (error) {
       console.error('Failed to toggle user status:', error)
       toast({
-        title: "Error",
-        description: "Failed to update user status",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to update user status',
+        variant: 'destructive',
       })
     }
   }
 
-  const handleDeleteUser = async (userId: string, userEmail: string, forceDelete: boolean = false) => {
+  const handleDeleteUser = async (
+    userId: string,
+    userEmail: string,
+    forceDelete: boolean = false
+  ) => {
     // Check if this is a superuser (except primary superadmin)
     const targetUser = users.find(u => u.id === userId)
     const isSuperuser = targetUser?.is_superuser
-    
+
     // First check if the user can be deleted (unless forcing)
     if (!forceDelete) {
       try {
         const checkResponse = await identityClient.get<CanDeleteResponse>(
           `/api/v1/identity/admin/users/${userId}/can-delete`
         )
-        
+
         if (!checkResponse.can_delete) {
           // Check if force delete is possible
           if (checkResponse.can_force_delete) {
             let forceMessage = `User cannot be deleted normally.\n\nReasons:\n• ${checkResponse.reasons.join('\n• ')}\n\n`
-            
+
             forceMessage += `As a superadmin, you can FORCE DELETE this user which will:\n• ${checkResponse.force_delete_info.join('\n• ')}\n\n`
             forceMessage += `Do you want to FORCE DELETE this user?`
-            
+
             const forceConfirm = confirm(forceMessage)
-            
+
             if (forceConfirm) {
               return handleDeleteUser(userId, userEmail, true)
             }
@@ -323,72 +339,75 @@ export default function AdminPage() {
           } else {
             // Cannot delete at all
             toast({
-              title: "Cannot Delete User",
+              title: 'Cannot Delete User',
               description: `User cannot be deleted:\n\n• ${checkResponse.reasons.join('\n• ')}`,
-              variant: "destructive",
+              variant: 'destructive',
             })
             return
           }
         }
       } catch (error) {
         console.error('Failed to check if user can be deleted:', error)
-        
+
         // If the can-delete endpoint fails (404), assume we need force delete for superusers/team owners
         const isSuperuser = targetUser?.is_superuser
-        const hasTeamOwnership = targetUser?.team_memberships?.some(m => m.role === 'owner') || false
-        
+        const hasTeamOwnership =
+          targetUser?.team_memberships?.some(m => m.role === 'owner') || false
+
         if (isSuperuser || hasTeamOwnership) {
           let forceMessage = `Cannot verify deletion safety (server error).\n\n`
-          
+
           if (isSuperuser) {
             forceMessage += `This user is a superuser. `
           }
           if (hasTeamOwnership) {
             forceMessage += `This user may own teams. `
           }
-          
+
           forceMessage += `\nAs a superadmin, you can FORCE DELETE this user.\n\n`
           forceMessage += `Do you want to FORCE DELETE this user?`
-          
+
           const forceConfirm = confirm(forceMessage)
-          
+
           if (forceConfirm) {
             return handleDeleteUser(userId, userEmail, true)
           }
           return
         }
-        
+
         // Show warning but allow to continue for regular users
         toast({
-          title: "Warning",
-          description: "Could not verify if user can be deleted safely. Proceeding with caution.",
-          variant: "destructive",
+          title: 'Warning',
+          description: 'Could not verify if user can be deleted safely. Proceeding with caution.',
+          variant: 'destructive',
         })
       }
     }
 
     // Different confirmation messages for normal vs force delete
-    let confirmMessage = ""
-    
+    let confirmMessage = ''
+
     if (forceDelete) {
       confirmMessage = `FORCE DELETE: Are you sure you want to force delete ${userEmail}?\n\n`
-      
+
       if (isSuperuser) {
         confirmMessage += `This will:\n- Remove superuser privileges\n- Permanently delete the user account\n`
       } else {
         confirmMessage += `This will:\n- Permanently remove the user account\n`
       }
-      
-      confirmMessage += `- Transfer team ownership to other admins/members\n` +
-                       `- Delete teams with no other members\n` +
-                       `- Delete all their API keys\n\n` +
-                       `This action cannot be undone!`
+
+      confirmMessage +=
+        `- Transfer team ownership to other admins/members\n` +
+        `- Delete teams with no other members\n` +
+        `- Delete all their API keys\n\n` +
+        `This action cannot be undone!`
     } else {
-      confirmMessage = `Are you sure you want to delete ${userEmail}?\n\n` +
-                      `This action cannot be undone and will:\n` +
-                      `- Permanently remove the user account\n` +
-                      `- Remove them from all teams\n` +
-                      `- Delete all their API keys`
+      confirmMessage =
+        `Are you sure you want to delete ${userEmail}?\n\n` +
+        `This action cannot be undone and will:\n` +
+        `- Permanently remove the user account\n` +
+        `- Remove them from all teams\n` +
+        `- Delete all their API keys`
     }
 
     if (!confirm(confirmMessage)) {
@@ -396,63 +415,71 @@ export default function AdminPage() {
     }
 
     try {
-      const deleteUrl = forceDelete 
+      const deleteUrl = forceDelete
         ? `/api/v1/identity/admin/users/${userId}?force=true`
         : `/api/v1/identity/admin/users/${userId}`
-        
+
       await identityClient.delete(deleteUrl)
-      
+
       toast({
-        title: "Success",
+        title: 'Success',
         description: `User ${userEmail} ${forceDelete ? 'force ' : ''}deleted successfully`,
       })
-      
+
       fetchUsers()
     } catch (error) {
       console.error('Failed to delete user:', error)
-      
+
       // Extract specific error message from the API response
       // The API client rejects with an ApiError whose message already
       // carries the server's `detail`; it has no `response` to read.
-      let errorMessage = getErrorMessage(error, "Failed to delete user")
-      
+      let errorMessage = getErrorMessage(error, 'Failed to delete user')
+
       // Provide more helpful error message for common cases
-      if ((errorMessage.includes("owns") && errorMessage.includes("team")) || errorMessage.includes("superuser")) {
+      if (
+        (errorMessage.includes('owns') && errorMessage.includes('team')) ||
+        errorMessage.includes('superuser')
+      ) {
         if (!forceDelete) {
-          errorMessage += "\n\nAs a superadmin, you can force delete users who own teams or have superuser privileges. Try again and choose 'Force Delete' when prompted."
+          errorMessage +=
+            "\n\nAs a superadmin, you can force delete users who own teams or have superuser privileges. Try again and choose 'Force Delete' when prompted."
         }
       }
-      
+
       toast({
-        title: "Cannot Delete User",
+        title: 'Cannot Delete User',
         description: errorMessage,
-        variant: "destructive",
+        variant: 'destructive',
       })
     }
   }
 
   const handlePromoteToSuperuser = async (userId: string, userEmail: string) => {
-    if (!confirm(`Are you sure you want to promote ${userEmail} to superuser? This will give them full administrative access.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to promote ${userEmail} to superuser? This will give them full administrative access.`
+      )
+    ) {
       return
     }
 
     try {
       await identityClient.patch(`/api/v1/identity/admin/users/${userId}/role`, {
-        is_superuser: true
+        is_superuser: true,
       })
-      
+
       toast({
-        title: "Success",
+        title: 'Success',
         description: `User ${userEmail} promoted to superuser successfully`,
       })
-      
+
       fetchUsers()
     } catch (error) {
       console.error('Failed to promote user to superuser:', error)
       toast({
-        title: "Error",
-        description: "Failed to promote user to superuser",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to promote user to superuser',
+        variant: 'destructive',
       })
     }
   }
@@ -464,33 +491,33 @@ export default function AdminPage() {
 
     try {
       await identityClient.patch(`/api/v1/identity/admin/users/${userId}/role`, {
-        is_superuser: false
+        is_superuser: false,
       })
-      
+
       toast({
-        title: "Success",
+        title: 'Success',
         description: `Superuser privileges removed from ${userEmail} successfully`,
       })
-      
+
       fetchUsers()
     } catch (error) {
       console.error('Failed to demote user from superuser:', error)
       toast({
-        title: "Error",
-        description: "Failed to update user privileges",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Failed to update user privileges',
+        variant: 'destructive',
       })
     }
   }
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!createUserForm.email || !createUserForm.password) {
       toast({
-        title: "Error",
-        description: "Email and password are required",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Email and password are required',
+        variant: 'destructive',
       })
       return
     }
@@ -499,9 +526,9 @@ export default function AdminPage() {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(createUserForm.email)) {
       toast({
-        title: "Error",
-        description: "Please enter a valid email address",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Please enter a valid email address',
+        variant: 'destructive',
       })
       return
     }
@@ -509,16 +536,16 @@ export default function AdminPage() {
     // Password length validation
     if (createUserForm.password.length < 8) {
       toast({
-        title: "Error",
-        description: "Password must be at least 8 characters long",
-        variant: "destructive",
+        title: 'Error',
+        description: 'Password must be at least 8 characters long',
+        variant: 'destructive',
       })
       return
     }
 
     try {
       setIsCreatingUser(true)
-      
+
       const token = Cookies.get('auth_token')
 
       const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
@@ -526,12 +553,12 @@ export default function AdminPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           email: createUserForm.email,
-          password: createUserForm.password
-        })
+          password: createUserForm.password,
+        }),
       })
 
       if (!response.ok) {
@@ -544,37 +571,43 @@ export default function AdminPage() {
       // If user should be a superuser or inactive, update via admin endpoint
       if (createUserForm.is_superuser || !createUserForm.is_active) {
         const userId = newUser.id
-        
+
         // Update superuser status if needed
         if (createUserForm.is_superuser) {
           const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
-          const superuserResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              is_superuser: true
-            })
-          })
-          
+          const superuserResponse = await fetch(
+            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                is_superuser: true,
+              }),
+            }
+          )
+
           if (!superuserResponse.ok) {
             console.warn('Failed to set superuser status for new user')
           }
         }
-        
+
         // Update active status if needed
         if (!createUserForm.is_active) {
           const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
-          const statusResponse = await fetch(`${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`, {
-            method: 'PATCH',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
+          const statusResponse = await fetch(
+            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`,
+            {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
             }
-          })
-          
+          )
+
           if (!statusResponse.ok) {
             console.warn('Failed to set inactive status for new user')
           }
@@ -582,27 +615,27 @@ export default function AdminPage() {
       }
 
       toast({
-        title: "Success",
+        title: 'Success',
         description: `User ${createUserForm.email} created successfully`,
       })
-      
+
       // Reset form and close modal
       setCreateUserForm({
         email: '',
         password: '',
         is_superuser: false,
-        is_active: true
+        is_active: true,
       })
       setShowCreateUser(false)
-      
+
       // Refresh users list
       fetchUsers()
     } catch (error) {
       console.error('Failed to create user:', error)
       toast({
-        title: "Error",
-        description: getErrorMessage(error, "Failed to create user"),
-        variant: "destructive",
+        title: 'Error',
+        description: getErrorMessage(error, 'Failed to create user'),
+        variant: 'destructive',
       })
     } finally {
       setIsCreatingUser(false)
@@ -615,7 +648,7 @@ export default function AdminPage() {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   }
 
@@ -636,75 +669,88 @@ export default function AdminPage() {
 
   return (
     <MainLayout>
-      <div className="max-w-7xl mx-auto space-y-6">
+      <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center">
-              <Crown className="w-6 h-6 text-white" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-red-500 to-red-600">
+              <Crown className="h-6 w-6 text-white" />
             </div>
             <div>
               <h1 className="text-3xl font-bold text-foreground">System Administration</h1>
-              <p className="text-muted-foreground">
-                Manage users, teams, and system settings
-              </p>
+              <p className="text-muted-foreground">Manage users, teams, and system settings</p>
             </div>
           </div>
-          <Badge variant="outline" className="text-red-600 border-red-600">
-            <Shield className="w-3 h-3 mr-1" />
+          <Badge variant="outline" className="border-red-600 text-red-600">
+            <Shield className="mr-1 h-3 w-3" />
             Super Admin Access
           </Badge>
         </div>
 
         {/* Admin Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6" data-testid="admin-stats-cards">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-4" data-testid="admin-stats-cards">
           <Card className="p-6" data-testid="total-users-card">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-                <Users className="w-6 h-6 text-blue-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
+                <Users className="h-6 w-6 text-blue-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Users</p>
-                <p className="text-2xl font-bold" data-testid="total-users-value">{systemStats.totalUsers}</p>
-                <p className="text-xs text-muted-foreground">+{systemStats.newUsersThisWeek} this week</p>
+                <p className="text-2xl font-bold" data-testid="total-users-value">
+                  {systemStats.totalUsers}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  +{systemStats.newUsersThisWeek} this week
+                </p>
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-6" data-testid="active-users-card">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-                <UserCheck className="w-6 h-6 text-green-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+                <UserCheck className="h-6 w-6 text-green-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Active Users</p>
-                <p className="text-2xl font-bold" data-testid="active-users-value">{systemStats.activeUsers}</p>
-                <p className="text-xs text-muted-foreground">{Math.round((systemStats.activeUsers / Math.max(systemStats.totalUsers, 1)) * 100)}% of total</p>
+                <p className="text-2xl font-bold" data-testid="active-users-value">
+                  {systemStats.activeUsers}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {Math.round(
+                    (systemStats.activeUsers / Math.max(systemStats.totalUsers, 1)) * 100
+                  )}
+                  % of total
+                </p>
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-6" data-testid="super-admins-card">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-                <Shield className="w-6 h-6 text-orange-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900">
+                <Shield className="h-6 w-6 text-orange-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Super Admins</p>
-                <p className="text-2xl font-bold" data-testid="super-admins-value">{systemStats.superAdmins}</p>
+                <p className="text-2xl font-bold" data-testid="super-admins-value">
+                  {systemStats.superAdmins}
+                </p>
                 <p className="text-xs text-muted-foreground">System administrators</p>
               </div>
             </div>
           </Card>
-          
+
           <Card className="p-6" data-testid="total-teams-card">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-                <Activity className="w-6 h-6 text-purple-600" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
+                <Activity className="h-6 w-6 text-purple-600" />
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Total Teams</p>
-                <p className="text-2xl font-bold" data-testid="total-teams-value">{systemStats.totalTeams}</p>
+                <p className="text-2xl font-bold" data-testid="total-teams-value">
+                  {systemStats.totalTeams}
+                </p>
                 <p className="text-xs text-muted-foreground">Active organizations</p>
               </div>
             </div>
@@ -713,16 +759,16 @@ export default function AdminPage() {
 
         {/* User Management */}
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex items-center justify-between">
             <h2 className="text-xl font-semibold">User Management</h2>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <Search className="w-4 h-4 text-muted-foreground" />
+                <Search className="h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search users..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  onKeyPress={e => e.key === 'Enter' && handleSearch()}
                   className="w-64"
                 />
                 <Button onClick={handleSearch} variant="outline" size="sm">
@@ -730,15 +776,15 @@ export default function AdminPage() {
                 </Button>
               </div>
               <div className="flex items-center gap-2">
-                <Filter className="w-4 h-4 text-muted-foreground" />
+                <Filter className="h-4 w-4 text-muted-foreground" />
                 <select
                   value={filterActive === null ? 'all' : filterActive ? 'active' : 'inactive'}
-                  onChange={(e) => {
+                  onChange={e => {
                     const value = e.target.value
                     setFilterActive(value === 'all' ? null : value === 'active')
                     setTimeout(fetchUsers, 100)
                   }}
-                  className="border rounded px-2 py-1 text-sm"
+                  className="rounded border px-2 py-1 text-sm"
                 >
                   <option value="all">All Users</option>
                   <option value="active">Active Only</option>
@@ -750,33 +796,36 @@ export default function AdminPage() {
 
           {isLoading ? (
             <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+              <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-primary"></div>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-3 font-medium">User</th>
-                    <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-left p-3 font-medium">Teams</th>
-                    <th className="text-left p-3 font-medium">Created</th>
-                    <th className="text-left p-3 font-medium">Actions</th>
+                    <th className="p-3 text-left font-medium">User</th>
+                    <th className="p-3 text-left font-medium">Status</th>
+                    <th className="p-3 text-left font-medium">Teams</th>
+                    <th className="p-3 text-left font-medium">Created</th>
+                    <th className="p-3 text-left font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
+                  {users.map(user => (
                     <tr key={user.id} className="border-b hover:bg-muted/50">
                       <td className="p-3">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                            <Mail className="w-4 h-4 text-primary-foreground" />
+                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+                            <Mail className="h-4 w-4 text-primary-foreground" />
                           </div>
                           <div>
                             <p className="font-medium">{user.email}</p>
                             {user.is_superuser && (
-                              <Badge variant="outline" className="text-xs text-red-600 border-red-600 mt-1">
-                                <Crown className="w-3 h-3 mr-1" />
+                              <Badge
+                                variant="outline"
+                                className="mt-1 border-red-600 text-xs text-red-600"
+                              >
+                                <Crown className="mr-1 h-3 w-3" />
                                 Super Admin
                               </Badge>
                             )}
@@ -784,21 +833,21 @@ export default function AdminPage() {
                         </div>
                       </td>
                       <td className="p-3">
-                        <Badge variant={user.is_active ? "default" : "secondary"}>
-                          {user.is_active ? "Active" : "Inactive"}
+                        <Badge variant={user.is_active ? 'default' : 'secondary'}>
+                          {user.is_active ? 'Active' : 'Inactive'}
                         </Badge>
                       </td>
                       <td className="p-3">
                         <div className="space-y-1">
-                          {user.team_memberships?.map((membership) => (
-                            <Badge 
-                              key={membership.team_id} 
-                              variant={membership.role === 'owner' ? "default" : "outline"} 
-                              className={`text-xs ${membership.role === 'owner' ? 'bg-blue-100 text-blue-800 border-blue-200' : ''}`}
+                          {user.team_memberships?.map(membership => (
+                            <Badge
+                              key={membership.team_id}
+                              variant={membership.role === 'owner' ? 'default' : 'outline'}
+                              className={`text-xs ${membership.role === 'owner' ? 'border-blue-200 bg-blue-100 text-blue-800' : ''}`}
                             >
                               {membership.team_name} ({membership.role})
                               {membership.role === 'owner' && (
-                                <Crown className="w-3 h-3 ml-1 inline" />
+                                <Crown className="ml-1 inline h-3 w-3" />
                               )}
                             </Badge>
                           ))}
@@ -806,7 +855,7 @@ export default function AdminPage() {
                             <span className="text-sm text-muted-foreground">No teams</span>
                           )}
                           {isTeamOwner(user) && (
-                            <div className="text-xs text-blue-600 mt-1">
+                            <div className="mt-1 text-xs text-blue-600">
                               Owns {getOwnedTeamsCount(user)} team(s)
                             </div>
                           )}
@@ -814,12 +863,12 @@ export default function AdminPage() {
                       </td>
                       <td className="p-3">
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Calendar className="w-4 h-4" />
+                          <Calendar className="h-4 w-4" />
                           {formatDate(user.created_at)}
                         </div>
                       </td>
                       <td className="p-3">
-                        <div className="flex items-center gap-2 flex-wrap">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             variant="outline"
                             size="sm"
@@ -828,17 +877,17 @@ export default function AdminPage() {
                           >
                             {user.is_active ? (
                               <>
-                                <UserX className="w-4 h-4 mr-1" />
+                                <UserX className="mr-1 h-4 w-4" />
                                 Deactivate
                               </>
                             ) : (
                               <>
-                                <UserCheck className="w-4 h-4 mr-1" />
+                                <UserCheck className="mr-1 h-4 w-4" />
                                 Activate
                               </>
                             )}
                           </Button>
-                          
+
                           {!user.is_superuser && (
                             <Button
                               variant="outline"
@@ -847,11 +896,11 @@ export default function AdminPage() {
                               className="text-blue-600 hover:text-blue-700"
                               title="Promote to Super Admin"
                             >
-                              <Crown className="w-4 h-4 mr-1" />
+                              <Crown className="mr-1 h-4 w-4" />
                               Promote
                             </Button>
                           )}
-                          
+
                           {user.is_superuser && (
                             <Button
                               variant="outline"
@@ -860,11 +909,11 @@ export default function AdminPage() {
                               className="text-orange-600 hover:text-orange-700"
                               title="Remove Super Admin privileges"
                             >
-                              <UserX className="w-4 h-4 mr-1" />
+                              <UserX className="mr-1 h-4 w-4" />
                               Demote
                             </Button>
                           )}
-                          
+
                           <Button
                             variant="outline"
                             size="sm"
@@ -872,13 +921,13 @@ export default function AdminPage() {
                             className="text-red-600 hover:text-red-700"
                             title={
                               user.is_superuser
-                                ? "Superuser account - requires force deletion confirmation"
+                                ? 'Superuser account - requires force deletion confirmation'
                                 : isTeamOwner(user)
-                                ? `User owns ${getOwnedTeamsCount(user)} team(s). As superadmin, you can force delete to automatically handle team ownership.`
-                                : "Delete user permanently"
+                                  ? `User owns ${getOwnedTeamsCount(user)} team(s). As superadmin, you can force delete to automatically handle team ownership.`
+                                  : 'Delete user permanently'
                             }
                           >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </td>
@@ -886,11 +935,9 @@ export default function AdminPage() {
                   ))}
                 </tbody>
               </table>
-              
+
               {users.length === 0 && (
-                <div className="text-center py-8 text-muted-foreground">
-                  No users found
-                </div>
+                <div className="py-8 text-center text-muted-foreground">No users found</div>
               )}
             </div>
           )}
@@ -898,31 +945,31 @@ export default function AdminPage() {
 
         {/* Create User Section */}
         <Card className="p-6">
-          <div className="flex items-center justify-between mb-6">
+          <div className="mb-6 flex items-center justify-between">
             <h2 className="text-xl font-semibold">Create New User</h2>
-            <Button 
+            <Button
               onClick={() => setShowCreateUser(!showCreateUser)}
-              variant={showCreateUser ? "outline" : "default"}
+              variant={showCreateUser ? 'outline' : 'default'}
             >
-              <UserPlus className="w-4 h-4 mr-2" />
+              <UserPlus className="mr-2 h-4 w-4" />
               {showCreateUser ? 'Cancel' : 'Create User'}
             </Button>
           </div>
 
           {showCreateUser && (
-            <form onSubmit={handleCreateUser} className="space-y-4 max-w-md">
+            <form onSubmit={handleCreateUser} className="max-w-md space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium" htmlFor="email">
                   Email Address *
                 </label>
                 <div className="relative">
-                  <AtSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
                     placeholder="user@example.com"
                     value={createUserForm.email}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, email: e.target.value }))}
+                    onChange={e => setCreateUserForm(prev => ({ ...prev, email: e.target.value }))}
                     className="pl-10"
                     required
                   />
@@ -934,13 +981,15 @@ export default function AdminPage() {
                   Password *
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     id="password"
                     type="password"
                     placeholder="••••••••"
                     value={createUserForm.password}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, password: e.target.value }))}
+                    onChange={e =>
+                      setCreateUserForm(prev => ({ ...prev, password: e.target.value }))
+                    }
                     className="pl-10"
                     minLength={8}
                     required
@@ -956,7 +1005,9 @@ export default function AdminPage() {
                   <input
                     type="checkbox"
                     checked={createUserForm.is_active}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, is_active: e.target.checked }))}
+                    onChange={e =>
+                      setCreateUserForm(prev => ({ ...prev, is_active: e.target.checked }))
+                    }
                     className="rounded border-gray-300"
                   />
                   <span className="text-sm font-medium">User Active</span>
@@ -967,7 +1018,9 @@ export default function AdminPage() {
                   <input
                     type="checkbox"
                     checked={createUserForm.is_superuser}
-                    onChange={(e) => setCreateUserForm(prev => ({ ...prev, is_superuser: e.target.checked }))}
+                    onChange={e =>
+                      setCreateUserForm(prev => ({ ...prev, is_superuser: e.target.checked }))
+                    }
                     className="rounded border-gray-300"
                   />
                   <span className="text-sm font-medium">Super Admin</span>
@@ -976,25 +1029,21 @@ export default function AdminPage() {
               </div>
 
               <div className="flex gap-3 pt-4">
-                <Button 
-                  type="submit" 
-                  disabled={isCreatingUser}
-                  className="flex items-center gap-2"
-                >
+                <Button type="submit" disabled={isCreatingUser} className="flex items-center gap-2">
                   {isCreatingUser ? (
                     <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-white"></div>
                       Creating...
                     </>
                   ) : (
                     <>
-                      <UserPlus className="w-4 h-4" />
+                      <UserPlus className="h-4 w-4" />
                       Create User
                     </>
                   )}
                 </Button>
-                <Button 
-                  type="button" 
+                <Button
+                  type="button"
                   variant="outline"
                   onClick={() => {
                     setShowCreateUser(false)
@@ -1002,7 +1051,7 @@ export default function AdminPage() {
                       email: '',
                       password: '',
                       is_superuser: false,
-                      is_active: true
+                      is_active: true,
                     })
                   }}
                 >
@@ -1013,13 +1062,13 @@ export default function AdminPage() {
           )}
 
           {!showCreateUser && (
-            <div className="text-center py-8 border-2 border-dashed border-muted rounded-lg">
-              <UserPlus className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">
+            <div className="rounded-lg border-2 border-dashed border-muted py-8 text-center">
+              <UserPlus className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+              <p className="mb-4 text-muted-foreground">
                 Create new users manually with custom permissions
               </p>
               <Button onClick={() => setShowCreateUser(true)} variant="outline">
-                <UserPlus className="w-4 h-4 mr-2" />
+                <UserPlus className="mr-2 h-4 w-4" />
                 Create New User
               </Button>
             </div>
@@ -1028,101 +1077,127 @@ export default function AdminPage() {
 
         {/* System Settings */}
         <Card className="p-6">
-          <h2 className="text-xl font-semibold mb-4">System Management</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="p-4 border-2 border-dashed border-muted">
-              <div className="flex items-center gap-3 mb-2">
-                <Database className="w-5 h-5 text-muted-foreground" />
+          <h2 className="mb-4 text-xl font-semibold">System Management</h2>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <Card className="border-2 border-dashed border-muted p-4">
+              <div className="mb-2 flex items-center gap-3">
+                <Database className="h-5 w-5 text-muted-foreground" />
                 <h3 className="font-medium">System Health</h3>
               </div>
-              <p className="text-sm text-muted-foreground mb-3">
+              <p className="mb-3 text-sm text-muted-foreground">
                 Monitor system performance and status
               </p>
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span>Identity Service</span>
-                  <span className={systemHealth.identityStatus === 'online' ? 'text-green-600' : 'text-red-600'}>
-                    ●  {systemHealth.identityStatus === 'online' ? 'Online' : 'Offline'}
+                  <span
+                    className={
+                      systemHealth.identityStatus === 'online' ? 'text-green-600' : 'text-red-600'
+                    }
+                  >
+                    ● {systemHealth.identityStatus === 'online' ? 'Online' : 'Offline'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Gateway</span>
-                  <span className={systemHealth.gatewayStatus === 'online' ? 'text-green-600' : 'text-red-600'}>
-                    ●  {systemHealth.gatewayStatus === 'online' ? 'Online' : 'Offline'}
+                  <span
+                    className={
+                      systemHealth.gatewayStatus === 'online' ? 'text-green-600' : 'text-red-600'
+                    }
+                  >
+                    ● {systemHealth.gatewayStatus === 'online' ? 'Online' : 'Offline'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Database</span>
-                  <span className={systemHealth.databaseStatus === 'healthy' ? 'text-green-600' : 'text-yellow-600'}>
-                    ●  {systemHealth.databaseStatus === 'healthy' ? 'Healthy' : 'Unknown'}
+                  <span
+                    className={
+                      systemHealth.databaseStatus === 'healthy'
+                        ? 'text-green-600'
+                        : 'text-yellow-600'
+                    }
+                  >
+                    ● {systemHealth.databaseStatus === 'healthy' ? 'Healthy' : 'Unknown'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Redis Cache</span>
-                  <span className={systemHealth.redisStatus === 'connected' ? 'text-green-600' : 'text-yellow-600'}>
-                    ●  {systemHealth.redisStatus === 'connected' ? 'Connected' : 'Unknown'}
-                  </span>
-                </div>
-              </div>
-            </Card>
-            
-            <Card className="p-4 border-2 border-dashed border-muted">
-              <div className="flex items-center gap-3 mb-2">
-                <Activity className="w-5 h-5 text-muted-foreground" />
-                <h3 className="font-medium">Usage Analytics</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                API usage and performance metrics
-              </p>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span>Requests Today</span>
-                  <span className="font-medium">{systemStats.apiRequestsToday.toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Avg Response Time</span>
-                  <span className="font-medium text-muted-foreground">
-                    {systemHealth.avgResponseTime !== null ? `${systemHealth.avgResponseTime}ms` : 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Error Rate</span>
-                  <span className={`font-medium ${systemHealth.errorRate !== null ? (systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600') : 'text-muted-foreground'}`}>
-                    {systemHealth.errorRate !== null ? `${systemHealth.errorRate.toFixed(1)}%` : 'N/A'}
+                  <span
+                    className={
+                      systemHealth.redisStatus === 'connected'
+                        ? 'text-green-600'
+                        : 'text-yellow-600'
+                    }
+                  >
+                    ● {systemHealth.redisStatus === 'connected' ? 'Connected' : 'Unknown'}
                   </span>
                 </div>
               </div>
             </Card>
 
-            <Card className="p-4 border-2 border-dashed border-muted">
-              <div className="flex items-center gap-3 mb-2">
-                <Settings className="w-5 h-5 text-muted-foreground" />
-                <h3 className="font-medium">Admin Actions</h3>
+            <Card className="border-2 border-dashed border-muted p-4">
+              <div className="mb-2 flex items-center gap-3">
+                <Activity className="h-5 w-5 text-muted-foreground" />
+                <h3 className="font-medium">Usage Analytics</h3>
               </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                System administration tools
+              <p className="mb-3 text-sm text-muted-foreground">
+                API usage and performance metrics
               </p>
               <div className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <div className="flex justify-between text-sm">
+                  <span>Requests Today</span>
+                  <span className="font-medium">
+                    {systemStats.apiRequestsToday.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Avg Response Time</span>
+                  <span className="font-medium text-muted-foreground">
+                    {systemHealth.avgResponseTime !== null
+                      ? `${systemHealth.avgResponseTime}ms`
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Error Rate</span>
+                  <span
+                    className={`font-medium ${systemHealth.errorRate !== null ? (systemHealth.errorRate < 1 ? 'text-green-600' : systemHealth.errorRate < 5 ? 'text-yellow-600' : 'text-red-600') : 'text-muted-foreground'}`}
+                  >
+                    {systemHealth.errorRate !== null
+                      ? `${systemHealth.errorRate.toFixed(1)}%`
+                      : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="border-2 border-dashed border-muted p-4">
+              <div className="mb-2 flex items-center gap-3">
+                <Settings className="h-5 w-5 text-muted-foreground" />
+                <h3 className="font-medium">Admin Actions</h3>
+              </div>
+              <p className="mb-3 text-sm text-muted-foreground">System administration tools</p>
+              <div className="space-y-2">
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={() => fetchSystemHealth()}
                 >
-                  <Activity className="w-4 h-4 mr-2" />
+                  <Activity className="mr-2 h-4 w-4" />
                   Refresh Health
                 </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
+                <Button
+                  variant="outline"
+                  size="sm"
                   className="w-full justify-start"
                   onClick={() => fetchSystemStats()}
                 >
-                  <Database className="w-4 h-4 mr-2" />
+                  <Database className="mr-2 h-4 w-4" />
                   Refresh Stats
                 </Button>
                 <Button variant="outline" size="sm" className="w-full justify-start">
-                  <Settings className="w-4 h-4 mr-2" />
+                  <Settings className="mr-2 h-4 w-4" />
                   System Config
                 </Button>
               </div>

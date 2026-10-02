@@ -14,11 +14,11 @@ export function useUser() {
 // Custom hook for updating user profile
 export function useUpdateUser() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
-    mutationFn: (userData: Partial<User>) => 
+    mutationFn: (userData: Partial<User>) =>
       identityClient.put<User>(getAuthPath('/api/v1/users/me'), userData),
-    onSuccess: (updatedUser) => {
+    onSuccess: updatedUser => {
       queryClient.setQueryData(['user'], updatedUser)
     },
   })
@@ -27,7 +27,7 @@ export function useUpdateUser() {
 // Custom hook for logout
 export function useLogout() {
   const queryClient = useQueryClient()
-  
+
   return useMutation({
     mutationFn: () => identityClient.post(getAuthPath('/api/v1/auth/jwt/logout')),
     onSuccess: () => {

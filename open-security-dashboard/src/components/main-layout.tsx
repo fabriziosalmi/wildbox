@@ -111,7 +111,7 @@ const baseNavigation: NavigationItem[] = [
 // Function to get navigation items based on user role
 const getNavigation = (user: UserType | null): NavigationItem[] => {
   const navigation = [...baseNavigation]
-  
+
   const isSuperuser = user?.is_superuser
 
   // Add admin navigation for superusers as a separate top-level item
@@ -123,7 +123,7 @@ const getNavigation = (user: UserType | null): NavigationItem[] => {
       description: 'System administration',
     })
   }
-  
+
   return navigation
 }
 
@@ -142,9 +142,7 @@ export function MainLayout({ children }: MainLayoutProps) {
 
   const toggleExpanded = (name: string) => {
     setExpandedItems(prev =>
-      prev.includes(name)
-        ? prev.filter(item => item !== name)
-        : [...prev, name]
+      prev.includes(name) ? prev.filter(item => item !== name) : [...prev, name]
     )
   }
 
@@ -173,11 +171,11 @@ export function MainLayout({ children }: MainLayoutProps) {
   // If authentication is still loading, show loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <Shield className="w-16 h-16 text-primary mx-auto mb-4 animate-pulse" />
-          <h1 className="text-2xl font-bold mb-2">Wildbox Security</h1>
-          <p className="text-muted-foreground mb-6">Loading...</p>
+          <Shield className="mx-auto mb-4 h-16 w-16 animate-pulse text-primary" />
+          <h1 className="mb-2 text-2xl font-bold">Wildbox Security</h1>
+          <p className="mb-6 text-muted-foreground">Loading...</p>
         </div>
       </div>
     )
@@ -186,14 +184,14 @@ export function MainLayout({ children }: MainLayoutProps) {
   // If not authenticated, redirect to login (but only after loading is complete)
   if (!isLoading && !isAuthenticated) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <Shield className="w-16 h-16 text-primary mx-auto mb-4" />
-          <h1 className="text-2xl font-bold mb-2">Wildbox Security</h1>
-          <p className="text-muted-foreground mb-6">Please log in to continue</p>
-          <Link 
+          <Shield className="mx-auto mb-4 h-16 w-16 text-primary" />
+          <h1 className="mb-2 text-2xl font-bold">Wildbox Security</h1>
+          <p className="mb-6 text-muted-foreground">Please log in to continue</p>
+          <Link
             href="/"
-            className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-primary-foreground transition-colors hover:bg-primary/90"
           >
             Go to Login
           </Link>
@@ -205,16 +203,18 @@ export function MainLayout({ children }: MainLayoutProps) {
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
-      <div className={cn(
-        "fixed inset-y-0 left-0 z-50 w-64 bg-card border-r transform transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0",
-        sidebarOpen ? "translate-x-0" : "-translate-x-full"
-      )}>
-        <div className="flex flex-col h-full">
+      <div
+        className={cn(
+          'fixed inset-y-0 left-0 z-50 w-64 transform border-r bg-card transition-transform duration-200 ease-in-out lg:static lg:inset-0 lg:translate-x-0',
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+      >
+        <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex items-center h-16 px-6 border-b">
+          <div className="flex h-16 items-center border-b px-6">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-                <Shield className="w-5 h-5 text-white" />
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+                <Shield className="h-5 w-5 text-white" />
               </div>
               <div>
                 <h1 className="text-lg font-bold text-foreground">Wildbox</h1>
@@ -224,20 +224,20 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto scrollbar-thin">
-            {navigation.map((item) => (
+          <nav className="scrollbar-thin flex-1 space-y-2 overflow-y-auto px-4 py-6">
+            {navigation.map(item => (
               <div key={item.name}>
                 {item.children ? (
                   <div>
                     <button
                       onClick={() => toggleExpanded(item.name)}
                       className={cn(
-                        "nav-item w-full justify-between",
-                        isActive(item.href) && "active"
+                        'nav-item w-full justify-between',
+                        isActive(item.href) && 'active'
                       )}
                     >
                       <div className="flex items-center gap-3">
-                        <item.icon className="w-5 h-5" />
+                        <item.icon className="h-5 w-5" />
                         <div className="text-left">
                           <div className="text-sm font-medium">{item.name}</div>
                           <div className="text-xs text-muted-foreground">{item.description}</div>
@@ -245,20 +245,20 @@ export function MainLayout({ children }: MainLayoutProps) {
                       </div>
                       <ChevronDown
                         className={cn(
-                          "w-4 h-4 transition-transform",
-                          expandedItems.includes(item.name) && "rotate-180"
+                          'h-4 w-4 transition-transform',
+                          expandedItems.includes(item.name) && 'rotate-180'
                         )}
                       />
                     </button>
                     {expandedItems.includes(item.name) && (
                       <div className="ml-8 mt-2 space-y-1">
-                        {item.children.map((child) => (
+                        {item.children.map(child => (
                           <Link
                             key={child.href}
                             href={child.href}
                             className={cn(
-                              "block px-3 py-2 text-sm rounded-md transition-colors hover:bg-accent",
-                              isActive(child.href) && "bg-primary text-primary-foreground"
+                              'block rounded-md px-3 py-2 text-sm transition-colors hover:bg-accent',
+                              isActive(child.href) && 'bg-primary text-primary-foreground'
                             )}
                           >
                             {child.name}
@@ -270,12 +270,9 @@ export function MainLayout({ children }: MainLayoutProps) {
                 ) : (
                   <Link
                     href={item.href}
-                    className={cn(
-                      "nav-item w-full",
-                      isActive(item.href) && "active"
-                    )}
+                    className={cn('nav-item w-full', isActive(item.href) && 'active')}
                   >
-                    <item.icon className="w-5 h-5" />
+                    <item.icon className="h-5 w-5" />
                     <div>
                       <div className="text-sm font-medium">{item.name}</div>
                       <div className="text-xs text-muted-foreground">{item.description}</div>
@@ -287,17 +284,17 @@ export function MainLayout({ children }: MainLayoutProps) {
           </nav>
 
           {/* User Profile */}
-          <div className="p-4 border-t">
-            <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors">
-              <Link href="/settings/profile" className="flex items-center gap-3 flex-1">
-                <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
-                  <User className="w-4 h-4 text-primary-foreground" />
+          <div className="border-t p-4">
+            <div className="flex items-center gap-3 rounded-lg p-2 transition-colors hover:bg-accent">
+              <Link href="/settings/profile" className="flex flex-1 items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary">
+                  <User className="h-4 w-4 text-primary-foreground" />
                 </div>
                 <div className="flex-1">
                   <div className="text-sm font-medium">{user?.email || 'User'}</div>
-                  <div className="flex items-center gap-1 mt-1">
+                  <div className="mt-1 flex items-center gap-1">
                     <Badge variant="outline" className={`text-xs ${getRoleBadgeColor()}`}>
-                      {user?.is_superuser && <Crown className="w-3 h-3 mr-1" />}
+                      {user?.is_superuser && <Crown className="mr-1 h-3 w-3" />}
                       {getUserRole()}
                     </Badge>
                   </div>
@@ -305,10 +302,10 @@ export function MainLayout({ children }: MainLayoutProps) {
               </Link>
               <button
                 onClick={handleLogout}
-                className="p-1 rounded hover:bg-destructive/10 transition-colors"
+                className="rounded p-1 transition-colors hover:bg-destructive/10"
                 title="Logout"
               >
-                <LogOut className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+                <LogOut className="h-4 w-4 text-muted-foreground hover:text-destructive" />
               </button>
             </div>
           </div>
@@ -316,17 +313,17 @@ export function MainLayout({ children }: MainLayoutProps) {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="h-16 bg-card border-b flex items-center justify-between px-6">
+        <header className="flex h-16 items-center justify-between border-b bg-card px-6">
           <div className="flex items-center gap-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 rounded-md hover:bg-accent"
+              className="rounded-md p-2 hover:bg-accent lg:hidden"
             >
-              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            
+
             {/* Global search, notifications and the system-status pill are
                 hidden until they're backed by real data — showing a static
                 badge / always-green "operational" pill / dead search box made
@@ -335,15 +332,13 @@ export function MainLayout({ children }: MainLayoutProps) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
+        <main className="flex-1 overflow-auto p-6">{children}</main>
       </div>
 
       {/* Mobile sidebar overlay */}
       {sidebarOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}

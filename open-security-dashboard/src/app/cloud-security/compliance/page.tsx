@@ -5,13 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
-import { 
-  Shield, 
-  CheckCircle2, 
-  XCircle, 
+import {
+  Shield,
+  CheckCircle2,
+  XCircle,
   AlertTriangle,
   Search,
   Download,
@@ -19,7 +25,7 @@ import {
   TrendingUp,
   TrendingDown,
   Info,
-  Construction
+  Construction,
 } from 'lucide-react'
 
 interface ComplianceFramework {
@@ -72,10 +78,10 @@ export default function CompliancePage() {
   const fetchComplianceData = useCallback(async () => {
     try {
       setIsLoading(true)
-      
+
       const [summaryResponse, findingsResponse] = await Promise.allSettled([
         cspmClient.get<ComplianceSummary>(getCSPMPath('/api/v1/compliance/summary')),
-        cspmClient.get<ComplianceFinding[]>(getCSPMPath('/api/v1/compliance/findings'))
+        cspmClient.get<ComplianceFinding[]>(getCSPMPath('/api/v1/compliance/findings')),
       ])
 
       if (summaryResponse.status === 'fulfilled') {
@@ -97,7 +103,7 @@ export default function CompliancePage() {
               passed_controls: 43,
               failed_controls: 8,
               compliance_percentage: 84.3,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
+              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
             },
             {
               name: 'NIST Cybersecurity Framework',
@@ -107,7 +113,7 @@ export default function CompliancePage() {
               passed_controls: 97,
               failed_controls: 11,
               compliance_percentage: 89.8,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString()
+              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
             },
             {
               name: 'PCI DSS',
@@ -117,13 +123,13 @@ export default function CompliancePage() {
               passed_controls: 67,
               failed_controls: 11,
               compliance_percentage: 85.9,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 1).toISOString()
-            }
+              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 1).toISOString(),
+            },
           ],
           trend: {
             direction: 'up',
-            percentage: 2.4
-          }
+            percentage: 2.4,
+          },
         })
       }
 
@@ -145,7 +151,7 @@ export default function CompliancePage() {
             severity: 'high',
             description: 'CloudTrail is not enabled in all AWS regions',
             remediation: 'Enable CloudTrail in all regions to ensure comprehensive logging',
-            last_checked: new Date(Date.now() - 1000 * 60 * 30).toISOString()
+            last_checked: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
           },
           {
             finding_id: 'finding-002',
@@ -159,7 +165,7 @@ export default function CompliancePage() {
             severity: 'medium',
             description: 'Access control policy meets NIST requirements',
             remediation: 'Continue monitoring access control policies',
-            last_checked: new Date(Date.now() - 1000 * 60 * 15).toISOString()
+            last_checked: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
           },
           {
             finding_id: 'finding-003',
@@ -173,11 +179,10 @@ export default function CompliancePage() {
             severity: 'critical',
             description: 'S3 bucket may contain unencrypted cardholder data',
             remediation: 'Enable encryption at rest for all S3 buckets containing cardholder data',
-            last_checked: new Date(Date.now() - 1000 * 60 * 45).toISOString()
-          }
+            last_checked: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+          },
         ])
       }
-
     } catch (error) {
       console.error('Error fetching compliance data:', error)
       toast({
@@ -197,13 +202,13 @@ export default function CompliancePage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'passed':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />
+        return <CheckCircle2 className="h-4 w-4 text-green-500" />
       case 'failed':
-        return <XCircle className="w-4 h-4 text-red-500" />
+        return <XCircle className="h-4 w-4 text-red-500" />
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />
+        return <AlertTriangle className="h-4 w-4 text-yellow-500" />
       default:
-        return <Info className="w-4 h-4 text-blue-500" />
+        return <Info className="h-4 w-4 text-blue-500" />
     }
   }
 
@@ -213,11 +218,13 @@ export default function CompliancePage() {
       high: 'bg-orange-100 text-orange-800 border-orange-200',
       medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
       low: 'bg-blue-100 text-blue-800 border-blue-200',
-      info: 'bg-gray-100 text-gray-800 border-gray-200'
+      info: 'bg-gray-100 text-gray-800 border-gray-200',
     }
-    
+
     return (
-      <Badge className={severityColors[severity as keyof typeof severityColors] || severityColors.info}>
+      <Badge
+        className={severityColors[severity as keyof typeof severityColors] || severityColors.info}
+      >
         {severity.toUpperCase()}
       </Badge>
     )
@@ -226,10 +233,11 @@ export default function CompliancePage() {
   const filteredFindings = findings.filter(finding => {
     const matchesFramework = selectedFramework === 'all' || finding.framework === selectedFramework
     const matchesSeverity = selectedSeverity === 'all' || finding.severity === selectedSeverity
-    const matchesSearch = searchTerm === '' || 
+    const matchesSearch =
+      searchTerm === '' ||
       finding.control_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       finding.resource_id.toLowerCase().includes(searchTerm.toLowerCase())
-    
+
     return matchesFramework && matchesSeverity && matchesSearch
   })
 
@@ -247,11 +255,11 @@ export default function CompliancePage() {
           {[...Array(4)].map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardHeader>
-                <div className="h-4 bg-muted rounded mb-2" />
-                <div className="h-3 bg-muted rounded w-3/4" />
+                <div className="mb-2 h-4 rounded bg-muted" />
+                <div className="h-3 w-3/4 rounded bg-muted" />
               </CardHeader>
               <CardContent>
-                <div className="h-8 bg-muted rounded" />
+                <div className="h-8 rounded bg-muted" />
               </CardContent>
             </Card>
           ))}
@@ -266,13 +274,14 @@ export default function CompliancePage() {
       <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Construction className="w-6 h-6 text-amber-600" />
+            <Construction className="h-6 w-6 text-amber-600" />
             <div>
               <CardTitle className="text-amber-900 dark:text-amber-100">
                 Coming in Future Release
               </CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Compliance module is planned for post-v1.0 release. This feature will include comprehensive compliance monitoring across multiple security frameworks.
+                Cloud Compliance module is planned for post-v1.0 release. This feature will include
+                comprehensive compliance monitoring across multiple security frameworks.
               </CardDescription>
             </div>
           </div>
@@ -289,11 +298,11 @@ export default function CompliancePage() {
         </div>
         <div className="flex items-center gap-2">
           <Button onClick={fetchComplianceData} variant="outline" size="sm">
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
           <Button variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
+            <Download className="mr-2 h-4 w-4" />
             Export Report
           </Button>
         </div>
@@ -309,11 +318,11 @@ export default function CompliancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{summary.overall_score}%</div>
-              <p className="text-xs text-muted-foreground flex items-center">
+              <p className="flex items-center text-xs text-muted-foreground">
                 {summary.trend.direction === 'up' ? (
-                  <TrendingUp className="w-3 h-3 mr-1 text-green-500" />
+                  <TrendingUp className="mr-1 h-3 w-3 text-green-500" />
                 ) : (
-                  <TrendingDown className="w-3 h-3 mr-1 text-red-500" />
+                  <TrendingDown className="mr-1 h-3 w-3 text-red-500" />
                 )}
                 {summary.trend.percentage}% from last month
               </p>
@@ -340,9 +349,7 @@ export default function CompliancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{summary.non_compliant_resources}</div>
-              <p className="text-xs text-muted-foreground">
-                require attention
-              </p>
+              <p className="text-xs text-muted-foreground">require attention</p>
             </CardContent>
           </Card>
 
@@ -353,9 +360,7 @@ export default function CompliancePage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{summary.frameworks.length}</div>
-              <p className="text-xs text-muted-foreground">
-                active frameworks
-              </p>
+              <p className="text-xs text-muted-foreground">active frameworks</p>
             </CardContent>
           </Card>
         </div>
@@ -366,15 +371,13 @@ export default function CompliancePage() {
         <Card>
           <CardHeader>
             <CardTitle>Compliance Frameworks</CardTitle>
-            <CardDescription>
-              Current compliance status across security frameworks
-            </CardDescription>
+            <CardDescription>Current compliance status across security frameworks</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
               {summary.frameworks.map((framework, index) => (
-                <div key={index} className="border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
+                <div key={index} className="rounded-lg border p-4">
+                  <div className="mb-2 flex items-center justify-between">
                     <div>
                       <h3 className="font-semibold">{framework.name}</h3>
                       <p className="text-sm text-muted-foreground">{framework.description}</p>
@@ -392,9 +395,9 @@ export default function CompliancePage() {
                       Last assessed: {formatDate(framework.last_assessment)}
                     </span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full" 
+                  <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
+                    <div
+                      className="h-2 rounded-full bg-blue-600"
                       style={{ width: `${framework.compliance_percentage}%` }}
                     />
                   </div>
@@ -409,18 +412,16 @@ export default function CompliancePage() {
       <Card>
         <CardHeader>
           <CardTitle>Compliance Findings</CardTitle>
-          <CardDescription>
-            Detailed compliance findings and recommendations
-          </CardDescription>
+          <CardDescription>Detailed compliance findings and recommendations</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-4 mb-4">
+          <div className="mb-4 flex flex-wrap gap-4">
             <div className="flex items-center gap-2">
-              <Search className="w-4 h-4 text-muted-foreground" />
+              <Search className="h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search controls, resources..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={e => setSearchTerm(e.target.value)}
                 className="w-64"
               />
             </div>
@@ -430,7 +431,7 @@ export default function CompliancePage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Frameworks</SelectItem>
-                {summary?.frameworks.map((framework) => (
+                {summary?.frameworks.map(framework => (
                   <SelectItem key={framework.name} value={framework.name}>
                     {framework.name}
                   </SelectItem>
@@ -453,21 +454,21 @@ export default function CompliancePage() {
           </div>
 
           {/* Findings Table */}
-          <div className="border rounded-lg">
+          <div className="rounded-lg border">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    <th className="text-left p-3 font-medium">Status</th>
-                    <th className="text-left p-3 font-medium">Control</th>
-                    <th className="text-left p-3 font-medium">Resource</th>
-                    <th className="text-left p-3 font-medium">Severity</th>
-                    <th className="text-left p-3 font-medium">Framework</th>
-                    <th className="text-left p-3 font-medium">Last Checked</th>
+                    <th className="p-3 text-left font-medium">Status</th>
+                    <th className="p-3 text-left font-medium">Control</th>
+                    <th className="p-3 text-left font-medium">Resource</th>
+                    <th className="p-3 text-left font-medium">Severity</th>
+                    <th className="p-3 text-left font-medium">Framework</th>
+                    <th className="p-3 text-left font-medium">Last Checked</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredFindings.map((finding) => (
+                  {filteredFindings.map(finding => (
                     <tr key={finding.finding_id} className="border-b hover:bg-muted/50">
                       <td className="p-3">
                         <div className="flex items-center gap-2">
@@ -478,20 +479,20 @@ export default function CompliancePage() {
                       <td className="p-3">
                         <div>
                           <div className="font-medium">{finding.control_id}</div>
-                          <div className="text-sm text-muted-foreground">{finding.control_title}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {finding.control_title}
+                          </div>
                         </div>
                       </td>
                       <td className="p-3">
                         <div>
                           <div className="font-mono text-sm">{finding.resource_type}</div>
-                          <div className="text-xs text-muted-foreground truncate max-w-48">
+                          <div className="max-w-48 truncate text-xs text-muted-foreground">
                             {finding.resource_id}
                           </div>
                         </div>
                       </td>
-                      <td className="p-3">
-                        {getSeverityBadge(finding.severity)}
-                      </td>
+                      <td className="p-3">{getSeverityBadge(finding.severity)}</td>
                       <td className="p-3">
                         <Badge variant="outline">{finding.framework}</Badge>
                       </td>
@@ -503,9 +504,9 @@ export default function CompliancePage() {
                 </tbody>
               </table>
             </div>
-            
+
             {filteredFindings.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="py-8 text-center text-muted-foreground">
                 No compliance findings found matching the current filters.
               </div>
             )}

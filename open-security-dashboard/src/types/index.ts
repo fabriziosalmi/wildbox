@@ -567,7 +567,17 @@ export interface TimeSeriesData {
 export interface FormField {
   name: string
   label: string
-  type: 'text' | 'email' | 'password' | 'number' | 'select' | 'multiselect' | 'textarea' | 'checkbox' | 'radio' | 'file'
+  type:
+    | 'text'
+    | 'email'
+    | 'password'
+    | 'number'
+    | 'select'
+    | 'multiselect'
+    | 'textarea'
+    | 'checkbox'
+    | 'radio'
+    | 'file'
   placeholder?: string
   required?: boolean
   validation?: ValidationRule[]

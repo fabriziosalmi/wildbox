@@ -1,11 +1,11 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Shield, 
-  AlertTriangle, 
+import {
+  TrendingUp,
+  TrendingDown,
+  Shield,
+  AlertTriangle,
   Activity,
   Server,
   Users,
@@ -18,7 +18,13 @@ import {
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { MainLayout } from '@/components/main-layout'
-import { dataClient, guardianClient, responderClient, cspmClient, getGuardianPath } from '@/lib/api-client'
+import {
+  dataClient,
+  guardianClient,
+  responderClient,
+  cspmClient,
+  getGuardianPath,
+} from '@/lib/api-client'
 import { formatNumber, formatRelativeTime } from '@/lib/utils'
 import { useVulnerabilityStats } from '@/hooks/use-vulnerability-stats'
 
@@ -127,17 +133,15 @@ interface VulnerabilityItem {
 async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
   try {
     // Fetch real data from all services
-    const [
-      guardianAssetsRes,
-      threatIntelRes,
-      responderPlaybooksRes
-    ] = await Promise.allSettled([
-      // Get actual assets from Guardian  
-      guardianClient.get<GuardianAssetPage>(getGuardianPath('/api/v1/assets/assets/?page_size=100')),
+    const [guardianAssetsRes, threatIntelRes, responderPlaybooksRes] = await Promise.allSettled([
+      // Get actual assets from Guardian
+      guardianClient.get<GuardianAssetPage>(
+        getGuardianPath('/api/v1/assets/assets/?page_size=100')
+      ),
       // Get threat intel stats from Data service
       dataClient.get<ThreatIntelSummary>('/api/v1/dashboard/threat-intel'),
       // Get playbooks from Responder
-      responderClient.get<unknown>('/v1/playbooks')
+      responderClient.get<unknown>('/v1/playbooks'),
     ])
 
     // Vulnerability stats will be fetched separately via useVulnerabilityStats hook
@@ -147,7 +151,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       criticalVulns: 0,
       highVulns: 0,
       resolved: 0,
-      trendsChange: 0
+      trendsChange: 0,
     }
 
     // Process Guardian assets data for endpoints
@@ -156,7 +160,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       onlineEndpoints: 0,
       alerts: 3,
       lastActivity: new Date().toISOString(),
-      trendsChange: 2.1
+      trendsChange: 2.1,
     }
 
     if (guardianAssetsRes.status === 'fulfilled') {
@@ -181,7 +185,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       activeFeeds: 4,
       lastUpdated: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
       newIndicators: 0,
-      trendsChange: 0
+      trendsChange: 0,
     }
 
     if (threatIntelRes.status === 'fulfilled') {
@@ -191,7 +195,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
         activeFeeds: tiData.active_feeds || 4,
         lastUpdated: tiData.last_updated || new Date().toISOString(),
         newIndicators: tiData.new_indicators || 0,
-        trendsChange: tiData.trends_change || 0
+        trendsChange: tiData.trends_change || 0,
       }
     }
 
@@ -200,7 +204,7 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       totalPlaybooks: 0,
       activeRuns: 0,
       successRate: 0,
-      lastExecution: new Date().toISOString()
+      lastExecution: new Date().toISOString(),
     }
 
     if (responderPlaybooksRes.status === 'fulfilled') {
@@ -216,16 +220,16 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       complianceScore: 87,
       criticalFindings: 5,
       lastScan: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-      trendsChange: 3.1
+      trendsChange: 3.1,
     }
 
     // System health metrics require Prometheus integration
     // See docs/OBSERVABILITY_ROADMAP.md for implementation plan
     const systemHealth = {
       status: 'operational' as const,
-      uptime: null,  // TODO: Implement Prometheus scraper
-      responseTime: null,  // TODO: Implement Prometheus scraper
-      errorRate: null  // TODO: Implement Prometheus scraper
+      uptime: null, // TODO: Implement Prometheus scraper
+      responseTime: null, // TODO: Implement Prometheus scraper
+      errorRate: null, // TODO: Implement Prometheus scraper
     }
 
     return {
@@ -234,9 +238,8 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
       endpoints,
       vulnerabilities,
       response,
-      systemHealth
+      systemHealth,
     }
-
   } catch (error) {
     console.error('Failed to fetch dashboard metrics:', error)
     // Return fallback data if APIs are unavailable
@@ -246,41 +249,41 @@ async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
         activeFeeds: 0,
         lastUpdated: new Date().toISOString(),
         newIndicators: 0,
-        trendsChange: 0
+        trendsChange: 0,
       },
       cloudSecurity: {
         totalAccounts: 0,
         complianceScore: 0,
         criticalFindings: 0,
         lastScan: new Date().toISOString(),
-        trendsChange: 0
+        trendsChange: 0,
       },
       endpoints: {
         totalEndpoints: 0,
         onlineEndpoints: 0,
         alerts: 0,
         lastActivity: new Date().toISOString(),
-        trendsChange: 0
+        trendsChange: 0,
       },
       vulnerabilities: {
         totalVulns: 0,
         criticalVulns: 0,
         highVulns: 0,
         resolved: 0,
-        trendsChange: 0
+        trendsChange: 0,
       },
       response: {
         totalPlaybooks: 0,
         activeRuns: 0,
         successRate: 0,
-        lastExecution: new Date().toISOString()
+        lastExecution: new Date().toISOString(),
       },
       systemHealth: {
         status: 'down',
         uptime: null,
         responseTime: null,
-        errorRate: null
-      }
+        errorRate: null,
+      },
     }
   }
 }
@@ -294,11 +297,15 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
         '/api/v1/indicators/search?limit=5&sort=-created_at'
       ),
       // Fetch recent scan results from CSMP
-      cspmClient.get<{ results?: ScanItem[]; scans?: ScanItem[] }>('/api/v1/scans?limit=3&sort=-created_at'),
+      cspmClient.get<{ results?: ScanItem[]; scans?: ScanItem[] }>(
+        '/api/v1/scans?limit=3&sort=-created_at'
+      ),
       // Fetch recent alerts from Guardian
       guardianClient.get<{ results?: VulnerabilityItem[]; vulnerabilities?: VulnerabilityItem[] }>(
-        getGuardianPath('/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at')
-      )
+        getGuardianPath(
+          '/api/v1/vulnerabilities/?limit=3&severity=critical,high&ordering=-created_at'
+        )
+      ),
     ])
 
     const activities: RecentActivity[] = []
@@ -313,9 +320,11 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
           type: 'threat',
           title: 'New IOC detected',
           description: `${indicator.type?.toUpperCase()} ${indicator.value} added to threat intelligence`,
-          timestamp: indicator.created_at || new Date(Date.now() - 1000 * 60 * (10 + index * 5)).toISOString(),
+          timestamp:
+            indicator.created_at ||
+            new Date(Date.now() - 1000 * 60 * (10 + index * 5)).toISOString(),
           severity: indicator.severity || 'high',
-          status: 'completed'
+          status: 'completed',
         })
       })
     }
@@ -331,9 +340,12 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
           type: 'scan',
           title: `${scan.provider?.toUpperCase() || 'Cloud'} compliance scan completed`,
           description: `${scan.account_name || scan.account_id || 'Account'} scan found ${criticalCount} critical findings`,
-          timestamp: scan.completed_at || scan.created_at || new Date(Date.now() - 1000 * 60 * (30 + index * 15)).toISOString(),
+          timestamp:
+            scan.completed_at ||
+            scan.created_at ||
+            new Date(Date.now() - 1000 * 60 * (30 + index * 15)).toISOString(),
           severity: criticalCount > 0 ? 'critical' : 'medium',
-          status: scan.status || 'completed'
+          status: scan.status || 'completed',
         })
       })
     }
@@ -346,11 +358,17 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
         activities.push({
           id: `vuln-${index}`,
           type: vuln.status === 'remediated' ? 'vulnerability' : 'alert',
-          title: vuln.status === 'remediated' ? 'Critical vulnerability patched' : 'Vulnerability alert triggered',
+          title:
+            vuln.status === 'remediated'
+              ? 'Critical vulnerability patched'
+              : 'Vulnerability alert triggered',
           description: `${vuln.cve_id || vuln.title || 'Vulnerability'} ${vuln.status === 'remediated' ? 'remediated' : 'detected'} on ${vuln.asset?.hostname || 'system'}`,
-          timestamp: vuln.updated_at || vuln.created_at || new Date(Date.now() - 1000 * 60 * (60 + index * 30)).toISOString(),
+          timestamp:
+            vuln.updated_at ||
+            vuln.created_at ||
+            new Date(Date.now() - 1000 * 60 * (60 + index * 30)).toISOString(),
           severity: vuln.severity || 'high',
-          status: vuln.status === 'remediated' ? 'completed' : 'pending'
+          status: vuln.status === 'remediated' ? 'completed' : 'pending',
         })
       })
     }
@@ -365,7 +383,7 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
           description: 'Malicious IP 192.168.1.100 added to threat intelligence',
           timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
           severity: 'high',
-          status: 'completed'
+          status: 'completed',
         },
         {
           id: '2',
@@ -374,7 +392,7 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
           description: 'Production account scan found 3 new critical findings',
           timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
           severity: 'critical',
-          status: 'completed'
+          status: 'completed',
         },
         {
           id: '3',
@@ -383,8 +401,8 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
           description: 'Suspicious process detected on WORKSTATION-01',
           timestamp: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
           severity: 'high',
-          status: 'pending'
-        }
+          status: 'pending',
+        },
       ]
     }
 
@@ -392,7 +410,6 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
     return activities
       .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       .slice(0, 5)
-
   } catch (error) {
     console.error('Failed to fetch recent activity:', error)
     // Return fallback data on error
@@ -404,7 +421,7 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
         description: 'Malicious IP 192.168.1.100 added to threat intelligence',
         timestamp: new Date(Date.now() - 1000 * 60 * 10).toISOString(),
         severity: 'high',
-        status: 'completed'
+        status: 'completed',
       },
       {
         id: '2',
@@ -413,19 +430,19 @@ async function fetchRecentActivity(): Promise<RecentActivity[]> {
         description: 'Production account scan found 3 new critical findings',
         timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
         severity: 'critical',
-        status: 'completed'
-      }
+        status: 'completed',
+      },
     ]
   }
 }
 
-function MetricCard({ 
-  title, 
-  value, 
-  description, 
-  icon: Icon, 
-  trend, 
-  trendValue 
+function MetricCard({
+  title,
+  value,
+  description,
+  icon: Icon,
+  trend,
+  trendValue,
 }: {
   title: string
   value: string | number
@@ -437,9 +454,7 @@ function MetricCard({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">
-          {title}
-        </CardTitle>
+        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <Icon className="h-4 w-4 text-muted-foreground" />
       </CardHeader>
       <CardContent>
@@ -447,9 +462,11 @@ function MetricCard({
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{description}</span>
           {trend && trendValue && (
-            <div className={`flex items-center gap-1 ${
-              trend === 'up' ? 'text-green-600' : 'text-red-600'
-            }`}>
+            <div
+              className={`flex items-center gap-1 ${
+                trend === 'up' ? 'text-green-600' : 'text-red-600'
+              }`}
+            >
               {trend === 'up' ? (
                 <TrendingUp className="h-3 w-3" />
               ) : (
@@ -467,42 +484,56 @@ function MetricCard({
 function ActivityItem({ activity }: { activity: RecentActivity }) {
   const getIcon = () => {
     switch (activity.type) {
-      case 'threat': return <Shield className="h-4 w-4" />
-      case 'scan': return <Activity className="h-4 w-4" />
-      case 'alert': return <AlertTriangle className="h-4 w-4" />
-      case 'playbook': return <Zap className="h-4 w-4" />
-      case 'vulnerability': return <AlertCircle className="h-4 w-4" />
-      default: return <Activity className="h-4 w-4" />
+      case 'threat':
+        return <Shield className="h-4 w-4" />
+      case 'scan':
+        return <Activity className="h-4 w-4" />
+      case 'alert':
+        return <AlertTriangle className="h-4 w-4" />
+      case 'playbook':
+        return <Zap className="h-4 w-4" />
+      case 'vulnerability':
+        return <AlertCircle className="h-4 w-4" />
+      default:
+        return <Activity className="h-4 w-4" />
     }
   }
 
   const getStatusIcon = () => {
     switch (activity.status) {
-      case 'completed': return <CheckCircle className="h-3 w-3 text-green-500" />
-      case 'failed': return <XCircle className="h-3 w-3 text-red-500" />
-      case 'running': return <Activity className="h-3 w-3 text-blue-500 animate-pulse" />
-      case 'pending': return <Clock className="h-3 w-3 text-yellow-500" />
-      default: return null
+      case 'completed':
+        return <CheckCircle className="h-3 w-3 text-green-500" />
+      case 'failed':
+        return <XCircle className="h-3 w-3 text-red-500" />
+      case 'running':
+        return <Activity className="h-3 w-3 animate-pulse text-blue-500" />
+      case 'pending':
+        return <Clock className="h-3 w-3 text-yellow-500" />
+      default:
+        return null
     }
   }
 
   const getSeverityColor = () => {
     switch (activity.severity) {
-      case 'critical': return 'border-l-red-500'
-      case 'high': return 'border-l-orange-500'
-      case 'medium': return 'border-l-yellow-500'
-      case 'low': return 'border-l-green-500'
-      default: return 'border-l-gray-500'
+      case 'critical':
+        return 'border-l-red-500'
+      case 'high':
+        return 'border-l-orange-500'
+      case 'medium':
+        return 'border-l-yellow-500'
+      case 'low':
+        return 'border-l-green-500'
+      default:
+        return 'border-l-gray-500'
     }
   }
 
   return (
-    <div className={`border-l-4 pl-4 py-3 ${getSeverityColor()}`}>
+    <div className={`border-l-4 py-3 pl-4 ${getSeverityColor()}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-3">
-          <div className="p-2 bg-muted rounded-lg">
-            {getIcon()}
-          </div>
+          <div className="rounded-lg bg-muted p-2">{getIcon()}</div>
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <h4 className="text-sm font-medium">{activity.title}</h4>
@@ -522,7 +553,7 @@ function ActivityItem({ activity }: { activity: RecentActivity }) {
 export default function DashboardPage() {
   // Fetch vulnerability stats from dedicated hook
   const { data: vulnStats, isLoading: vulnStatsLoading } = useVulnerabilityStats()
-  
+
   const { data: metrics, isLoading: metricsLoading } = useQuery({
     queryKey: ['dashboard-metrics'],
     queryFn: fetchDashboardMetrics,
@@ -536,16 +567,19 @@ export default function DashboardPage() {
   })
 
   // Merge vulnerability stats from hook with other metrics
-  const enrichedMetrics = metrics && vulnStats ? {
-    ...metrics,
-    vulnerabilities: {
-      totalVulns: vulnStats.total_vulnerabilities,
-      criticalVulns: vulnStats.critical_count,
-      highVulns: vulnStats.high_count,
-      resolved: vulnStats.resolved_count,
-      trendsChange: 0 // Could be calculated from historical data
-    }
-  } : metrics
+  const enrichedMetrics =
+    metrics && vulnStats
+      ? {
+          ...metrics,
+          vulnerabilities: {
+            totalVulns: vulnStats.total_vulnerabilities,
+            criticalVulns: vulnStats.critical_count,
+            highVulns: vulnStats.high_count,
+            resolved: vulnStats.resolved_count,
+            trendsChange: 0, // Could be calculated from historical data
+          },
+        }
+      : metrics
 
   if (metricsLoading || vulnStatsLoading || !enrichedMetrics) {
     return (
@@ -557,9 +591,9 @@ export default function DashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {[...Array(8)].map((_, i) => (
               <Card key={i}>
-                <CardHeader className="skeleton h-4 mb-2" />
+                <CardHeader className="skeleton mb-2 h-4" />
                 <CardContent>
-                  <div className="skeleton h-8 mb-2" />
+                  <div className="skeleton mb-2 h-8" />
                   <div className="skeleton h-4" />
                 </CardContent>
               </Card>
@@ -584,9 +618,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <div className="text-right text-sm">
               <div className="font-medium">Last updated</div>
-              <div className="text-muted-foreground">
-                {formatRelativeTime(new Date())}
-              </div>
+              <div className="text-muted-foreground">{formatRelativeTime(new Date())}</div>
             </div>
           </div>
         </div>
@@ -603,31 +635,43 @@ export default function DashboardPage() {
             <div className="grid gap-4 md:grid-cols-4">
               <div className="text-center">
                 <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.uptime !== null ? `${enrichedMetrics.systemHealth.uptime}%` : 'N/A'}
+                  {enrichedMetrics.systemHealth.uptime !== null
+                    ? `${enrichedMetrics.systemHealth.uptime}%`
+                    : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Uptime</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.responseTime !== null ? `${enrichedMetrics.systemHealth.responseTime}ms` : 'N/A'}
+                  {enrichedMetrics.systemHealth.responseTime !== null
+                    ? `${enrichedMetrics.systemHealth.responseTime}ms`
+                    : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Response Time</div>
               </div>
               <div className="text-center">
                 <div className="text-2xl font-bold text-muted-foreground">
-                  {enrichedMetrics.systemHealth.errorRate !== null ? `${enrichedMetrics.systemHealth.errorRate}%` : 'N/A'}
+                  {enrichedMetrics.systemHealth.errorRate !== null
+                    ? `${enrichedMetrics.systemHealth.errorRate}%`
+                    : 'N/A'}
                 </div>
                 <div className="text-sm text-muted-foreground">Error Rate</div>
               </div>
               <div className="text-center">
-                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium ${
-                  enrichedMetrics.systemHealth.status === 'operational' 
-                    ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
-                    : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
-                }`}>
-                  <div className={`w-2 h-2 rounded-full ${
-                    enrichedMetrics.systemHealth.status === 'operational' ? 'bg-green-500' : 'bg-red-500'
-                  }`} />
+                <div
+                  className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ${
+                    enrichedMetrics.systemHealth.status === 'operational'
+                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100'
+                      : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
+                  }`}
+                >
+                  <div
+                    className={`h-2 w-2 rounded-full ${
+                      enrichedMetrics.systemHealth.status === 'operational'
+                        ? 'bg-green-500'
+                        : 'bg-red-500'
+                    }`}
+                  />
                   {enrichedMetrics.systemHealth.status}
                 </div>
               </div>
@@ -704,36 +748,30 @@ export default function DashboardPage() {
           <Card>
             <CardHeader>
               <CardTitle>Recent Activity</CardTitle>
-              <CardDescription>
-                Latest security events and system activities
-              </CardDescription>
+              <CardDescription>Latest security events and system activities</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {activitiesLoading ? (
-                [...Array(5)].map((_, i) => (
-                  <div key={i} className="space-y-2">
-                    <div className="skeleton h-4 w-3/4" />
-                    <div className="skeleton h-3 w-1/2" />
-                  </div>
-                ))
-              ) : (
-                activities?.map((activity) => (
-                  <ActivityItem key={activity.id} activity={activity} />
-                ))
-              )}
+              {activitiesLoading
+                ? [...Array(5)].map((_, i) => (
+                    <div key={i} className="space-y-2">
+                      <div className="skeleton h-4 w-3/4" />
+                      <div className="skeleton h-3 w-1/2" />
+                    </div>
+                  ))
+                : activities?.map(activity => (
+                    <ActivityItem key={activity.id} activity={activity} />
+                  ))}
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>Quick Actions</CardTitle>
-              <CardDescription>
-                Common security operations and tools
-              </CardDescription>
+              <CardDescription>Common security operations and tools</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3">
-                <button className="flex items-center gap-3 p-3 text-left rounded-lg border hover:bg-accent transition-colors">
+                <button className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent">
                   <Shield className="h-5 w-5 text-blue-500" />
                   <div>
                     <div className="font-medium">IOC Lookup</div>
@@ -742,31 +780,25 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </button>
-                <button className="flex items-center gap-3 p-3 text-left rounded-lg border hover:bg-accent transition-colors">
+                <button className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent">
                   <Activity className="h-5 w-5 text-green-500" />
                   <div>
                     <div className="font-medium">Run Cloud Scan</div>
-                    <div className="text-sm text-muted-foreground">
-                      Start compliance assessment
-                    </div>
+                    <div className="text-sm text-muted-foreground">Start compliance assessment</div>
                   </div>
                 </button>
-                <button className="flex items-center gap-3 p-3 text-left rounded-lg border hover:bg-accent transition-colors">
+                <button className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent">
                   <Zap className="h-5 w-5 text-purple-500" />
                   <div>
                     <div className="font-medium">Execute Playbook</div>
-                    <div className="text-sm text-muted-foreground">
-                      Automated response workflow
-                    </div>
+                    <div className="text-sm text-muted-foreground">Automated response workflow</div>
                   </div>
                 </button>
-                <button className="flex items-center gap-3 p-3 text-left rounded-lg border hover:bg-accent transition-colors">
+                <button className="flex items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent">
                   <Users className="h-5 w-5 text-orange-500" />
                   <div>
                     <div className="font-medium">AI Analysis</div>
-                    <div className="text-sm text-muted-foreground">
-                      Intelligent threat hunting
-                    </div>
+                    <div className="text-sm text-muted-foreground">Intelligent threat hunting</div>
                   </div>
                 </button>
               </div>

@@ -1,10 +1,10 @@
 /**
  * Custom hook for Responder SOAR playbook management
- * 
+ *
  * Provides type-safe access to the Responder service playbook APIs:
  * - GET /v1/playbooks - List all available playbooks
  * - POST /v1/playbooks/{id}/execute - Execute a playbook
- * 
+ *
  * Features:
  * - Automatic playbook listing with caching
  * - Playbook execution with mutation tracking
@@ -108,27 +108,27 @@ export interface UseResponderPlaybooksResult {
    * List of available playbooks
    */
   playbooks: PlaybookSummary[]
-  
+
   /**
    * Total number of playbooks
    */
   total: number
-  
+
   /**
    * Whether the query is currently loading
    */
   isLoading: boolean
-  
+
   /**
    * Error object if query failed
    */
   error: Error | null
-  
+
   /**
    * Whether query has succeeded
    */
   isSuccess: boolean
-  
+
   /**
    * Refetch function to manually reload playbooks
    */
@@ -137,11 +137,11 @@ export interface UseResponderPlaybooksResult {
 
 /**
  * Hook to fetch and manage SOAR playbooks
- * 
+ *
  * @example
  * ```tsx
  * const { playbooks, total, isLoading } = useResponderPlaybooks()
- * 
+ *
  * return (
  *   <div>
  *     <h1>Playbooks ({total})</h1>
@@ -159,7 +159,7 @@ export function useResponderPlaybooks(): UseResponderPlaybooksResult {
     staleTime: 5 * 60 * 1000, // 5 minutes - playbooks don't change often
     gcTime: 10 * 60 * 1000, // 10 minutes cache retention
   })
-  
+
   return {
     playbooks: query.data?.playbooks || [],
     total: query.data?.total || 0,
@@ -179,7 +179,7 @@ export interface UsePlaybookExecutionOptions {
    * Callback fired when execution starts successfully
    */
   onSuccess?: (response: PlaybookExecutionResponse) => void
-  
+
   /**
    * Callback fired when execution fails
    */
@@ -191,27 +191,27 @@ export interface UsePlaybookExecutionResult {
    * Mutation function to execute a playbook
    */
   execute: (playbookId: string, request?: PlaybookExecutionRequest) => void
-  
+
   /**
    * Latest execution response (includes run_id)
    */
   data: PlaybookExecutionResponse | undefined
-  
+
   /**
    * Whether execution is in progress
    */
   isLoading: boolean
-  
+
   /**
    * Error if execution failed
    */
   error: Error | null
-  
+
   /**
    * Whether execution succeeded
    */
   isSuccess: boolean
-  
+
   /**
    * Reset mutation state
    */
@@ -220,7 +220,7 @@ export interface UsePlaybookExecutionResult {
 
 /**
  * Hook to execute SOAR playbooks with mutation tracking
- * 
+ *
  * @example
  * ```tsx
  * const { execute, data, isLoading } = usePlaybookExecution({
@@ -229,7 +229,7 @@ export interface UsePlaybookExecutionResult {
  *     // Navigate to runs page or show status
  *   }
  * })
- * 
+ *
  * const handleExecute = () => {
  *   execute('triage_ip', {
  *     trigger_data: { ip: '8.8.8.8' }
@@ -241,29 +241,29 @@ export function usePlaybookExecution(
   options: UsePlaybookExecutionOptions = {}
 ): UsePlaybookExecutionResult {
   const queryClient = useQueryClient()
-  
+
   const mutation = useMutation<
     PlaybookExecutionResponse,
     Error,
     { playbookId: string; request: PlaybookExecutionRequest }
   >({
     mutationFn: ({ playbookId, request }) => executePlaybook(playbookId, request),
-    onSuccess: (data) => {
+    onSuccess: data => {
       // Invalidate runs list if it exists
       queryClient.invalidateQueries({ queryKey: ['responder-runs'] })
-      
+
       // Call user callback
       if (options.onSuccess) {
         options.onSuccess(data)
       }
     },
-    onError: (error) => {
+    onError: error => {
       if (options.onError) {
         options.onError(error)
       }
     },
   })
-  
+
   return {
     execute: (playbookId: string, request: PlaybookExecutionRequest = {}) => {
       mutation.mutate({ playbookId, request })
@@ -293,8 +293,10 @@ export function getTagColor(tag: string): string {
     phishing: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100',
     notification: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100',
   }
-  
-  return colorMap[tag.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
+
+  return (
+    colorMap[tag.toLowerCase()] || 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-100'
+  )
 }
 
 /**
@@ -317,15 +319,15 @@ export function filterPlaybooks(
   searchTerm: string
 ): PlaybookSummary[] {
   if (!searchTerm) return playbooks
-  
+
   const term = searchTerm.toLowerCase()
-  
+
   return playbooks.filter(
-    (pb) =>
+    pb =>
       pb.name.toLowerCase().includes(term) ||
       pb.description.toLowerCase().includes(term) ||
       pb.playbook_id.toLowerCase().includes(term) ||
-      pb.tags.some((tag) => tag.toLowerCase().includes(term))
+      pb.tags.some(tag => tag.toLowerCase().includes(term))
   )
 }
 
@@ -336,16 +338,16 @@ export function groupPlaybooksByTag(
   playbooks: PlaybookSummary[]
 ): Record<string, PlaybookSummary[]> {
   const grouped: Record<string, PlaybookSummary[]> = {}
-  
-  playbooks.forEach((playbook) => {
-    playbook.tags.forEach((tag) => {
+
+  playbooks.forEach(playbook => {
+    playbook.tags.forEach(tag => {
       if (!grouped[tag]) {
         grouped[tag] = []
       }
       grouped[tag].push(playbook)
     })
   })
-  
+
   return grouped
 }
 
@@ -354,8 +356,8 @@ export function groupPlaybooksByTag(
  */
 export function getAllTags(playbooks: PlaybookSummary[]): string[] {
   const tags = new Set<string>()
-  playbooks.forEach((pb) => {
-    pb.tags.forEach((tag) => tags.add(tag))
+  playbooks.forEach(pb => {
+    pb.tags.forEach(tag => tags.add(tag))
   })
   return Array.from(tags).sort()
 }

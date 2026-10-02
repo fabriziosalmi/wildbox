@@ -40,7 +40,7 @@ This comprehensive end-to-end testing suite uses Playwright to simulate real adm
    ```bash
    # Start the dashboard
    npm run dev
-   
+
    # Start other services (identity, gateway, etc.)
    # Check docker-compose or individual service startup commands
    ```
@@ -191,7 +191,7 @@ export default defineConfig({
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
   },
-});
+})
 ```
 
 ## 🐛 Debugging
@@ -267,20 +267,20 @@ npx playwright test --reporter=junit
 
 ```typescript
 test('New Admin Feature', async ({ page }) => {
-  const loginPage = new LoginPage(page);
-  const adminPage = new AdminPage(page);
-  
+  const loginPage = new LoginPage(page)
+  const adminPage = new AdminPage(page)
+
   // Login
-  await loginPage.goto();
-  await loginPage.login('superadmin@wildbox.com', 'superadmin123');
-  
+  await loginPage.goto()
+  await loginPage.login('superadmin@wildbox.com', 'superadmin123')
+
   // Test your feature
-  await adminPage.goto();
+  await adminPage.goto()
   // ... test logic
-  
+
   // Assertions
-  await expect(page.locator('...')).toBeVisible();
-});
+  await expect(page.locator('...')).toBeVisible()
+})
 ```
 
 ## 🎯 Best Practices
@@ -310,8 +310,8 @@ The tests create temporary users with timestamps to avoid conflicts:
 ```typescript
 const TEST_USER_CREDENTIALS = {
   email: `test-user-${Date.now()}@wildbox.com`,
-  password: 'testpassword123'
-};
+  password: 'testpassword123',
+}
 ```
 
 ## 🚀 Advanced Features

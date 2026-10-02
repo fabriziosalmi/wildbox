@@ -37,7 +37,7 @@ class ApiClient {
   private setupInterceptors() {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
-      (config) => {
+      config => {
         // All services (incl. Guardian) authenticate via the gateway with the
         // user's JWT; the gateway validates it and forwards X-Wildbox-* headers.
         // Guardian no longer uses a browser-exposed API key (#113).
@@ -48,7 +48,7 @@ class ApiClient {
 
         return config
       },
-      (error) => {
+      error => {
         return Promise.reject(error)
       }
     )
@@ -71,11 +71,7 @@ class ApiClient {
           // `detail`) are still accepted so a partially-upgraded deployment does
           // not lose the server's explanation (WILDBO-API-01).
           apiError.message =
-            data?.error?.message ||
-            data?.detail ||
-            data?.message ||
-            error.message ||
-            'API Error'
+            data?.error?.message || data?.detail || data?.message || error.message || 'API Error'
           apiError.code = data?.error?.type
           apiError.requestId = data?.error?.request_id
           apiError.details = error.response.data
@@ -83,9 +79,11 @@ class ApiClient {
           // Handle auth errors
           if (error.response.status === 401) {
             // Only trigger auth error handling for non-admin pages and if not already on auth page
-            if (typeof window !== 'undefined' && 
-                !window.location.pathname.includes('/admin') &&
-                !window.location.pathname.includes('/auth')) {
+            if (
+              typeof window !== 'undefined' &&
+              !window.location.pathname.includes('/admin') &&
+              !window.location.pathname.includes('/auth')
+            ) {
               this.handleAuthError()
             }
           }
@@ -112,11 +110,13 @@ class ApiClient {
 
     // Clear auth cookie for non-gateway auth errors
     Cookies.remove('auth_token')
-    
+
     // Redirect to login if we're not already there and not on an admin page
-    if (typeof window !== 'undefined' &&
-        !window.location.pathname.includes('/auth') &&
-        !window.location.pathname.includes('/admin')) {
+    if (
+      typeof window !== 'undefined' &&
+      !window.location.pathname.includes('/auth') &&
+      !window.location.pathname.includes('/admin')
+    ) {
       // A full reload is intended: this runs outside React (no router here)
       // and must drop every piece of client state tied to the dead session.
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- hard reload by design
@@ -161,7 +161,11 @@ class ApiClient {
   }
 
   // File upload
-  async upload<T = unknown>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<T> {
+  async upload<T = unknown>(
+    endpoint: string,
+    file: File,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
     const formData = new FormData()
     formData.append('file', file)
 
@@ -169,7 +173,7 @@ class ApiClient {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      onUploadProgress: (progressEvent) => {
+      onUploadProgress: progressEvent => {
         if (onProgress && progressEvent.total) {
           const progress = (progressEvent.loaded / progressEvent.total) * 100
           onProgress(Math.round(progress))

@@ -1,11 +1,11 @@
 /**
  * Custom hook for IOC (Indicator of Compromise) threat intelligence lookups
- * 
+ *
  * Provides type-safe access to the Data service threat intel APIs:
  * - /api/v1/ips/{ip}
  * - /api/v1/domains/{domain}
  * - /api/v1/hashes/{hash}
- * 
+ *
  * Features:
  * - Automatic IOC type detection
  * - Intelligent caching (30s stale time)
@@ -36,14 +36,7 @@ import { dataClient, type ApiError } from '@/lib/api-client'
  * indicator's type and are carried in their own fields.
  */
 export type IndicatorType =
-  | 'ip_address'
-  | 'domain'
-  | 'url'
-  | 'file_hash'
-  | 'email'
-  | 'certificate'
-  | 'asn'
-  | 'vulnerability'
+  'ip_address' | 'domain' | 'url' | 'file_hash' | 'email' | 'certificate' | 'asn' | 'vulnerability'
 
 /**
  * What the client can detect locally from a raw user-supplied string. A subset
@@ -149,7 +142,7 @@ export interface ThreatLookupError {
 export function isValidIPv4(value: string): boolean {
   const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
   if (!ipv4Regex.test(value)) return false
-  
+
   const parts = value.split('.')
   return parts.every(part => {
     const num = parseInt(part, 10)
@@ -182,7 +175,7 @@ export function isValidHash(value: string): boolean {
   const md5Regex = /^[a-fA-F0-9]{32}$/
   const sha1Regex = /^[a-fA-F0-9]{40}$/
   const sha256Regex = /^[a-fA-F0-9]{64}$/
-  
+
   return md5Regex.test(value) || sha1Regex.test(value) || sha256Regex.test(value)
 }
 
@@ -191,19 +184,19 @@ export function isValidHash(value: string): boolean {
  */
 export function detectIOCType(value: string): IOCType {
   const trimmed = value.trim().toLowerCase()
-  
+
   if (isValidIPv4(trimmed) || isValidIPv6(trimmed)) {
     return 'ip_address'
   }
-  
+
   if (isValidDomain(trimmed)) {
     return 'domain'
   }
-  
+
   if (isValidHash(trimmed)) {
     return 'file_hash'
   }
-  
+
   return 'unknown'
 }
 
@@ -251,12 +244,12 @@ export interface UseThreatLookupOptions {
    * IOC value to lookup (IP, domain, or hash)
    */
   iocValue?: string
-  
+
   /**
    * Optional: Specify IOC type explicitly (auto-detected if not provided)
    */
   iocType?: IOCType
-  
+
   /**
    * Whether to enable the query (default: true if iocValue provided)
    */
@@ -268,32 +261,32 @@ export interface UseThreatLookupResult {
    * Threat intelligence data (null if not found or error)
    */
   data: ThreatIntelligence | null
-  
+
   /**
    * Detected or specified IOC type
    */
   iocType: IOCType
-  
+
   /**
    * Whether the query is currently loading
    */
   isLoading: boolean
-  
+
   /**
    * Error object if query failed
    */
   error: LookupError | null
-  
+
   /**
    * Whether IOC was not found (404 response)
    */
   isNotFound: boolean
-  
+
   /**
    * Whether query has succeeded at least once
    */
   isSuccess: boolean
-  
+
   /**
    * Refetch function to manually trigger lookup
    */
@@ -302,23 +295,23 @@ export interface UseThreatLookupResult {
 
 /**
  * Custom hook for IOC threat intelligence lookups
- * 
+ *
  * @example
  * ```tsx
  * // IP lookup
- * const { data, isLoading, error, isNotFound } = useThreatLookup({ 
- *   iocValue: '8.8.8.8' 
+ * const { data, isLoading, error, isNotFound } = useThreatLookup({
+ *   iocValue: '8.8.8.8'
  * })
- * 
+ *
  * // Domain lookup with manual type specification
- * const result = useThreatLookup({ 
+ * const result = useThreatLookup({
  *   iocValue: 'malicious-domain.evil',
  *   iocType: 'domain'
  * })
- * 
+ *
  * // Controlled query (enable manually)
  * const [searchValue, setSearchValue] = useState('')
- * const result = useThreatLookup({ 
+ * const result = useThreatLookup({
  *   iocValue: searchValue,
  *   enabled: searchValue.length > 0
  * })
@@ -326,17 +319,17 @@ export interface UseThreatLookupResult {
  */
 export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreatLookupResult {
   const { iocValue, iocType: explicitType, enabled = true } = options
-  
+
   // Detect IOC type if not explicitly provided
   const detectedType = iocValue ? detectIOCType(iocValue) : 'unknown'
   const iocType = explicitType || detectedType
-  
+
   // Determine query function based on IOC type
   const queryFn = async (): Promise<ThreatIntelligence> => {
     if (!iocValue) {
       throw new Error('No IOC value provided')
     }
-    
+
     switch (iocType) {
       case 'ip_address':
         return lookupIP(iocValue)
@@ -348,7 +341,7 @@ export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreat
         throw new Error(`Unknown IOC type: ${iocType}. Please provide a valid IP, domain, or hash.`)
     }
   }
-  
+
   // Execute query with TanStack Query
   const query = useQuery<ThreatIntelligence, LookupError>({
     queryKey: ['threat-lookup', iocType, iocValue],
@@ -363,10 +356,10 @@ export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreat
       return failureCount < 2
     },
   })
-  
+
   // Detect 404 errors (IOC not found in database)
   const isNotFound = isNotFoundError(query.error)
-  
+
   return {
     data: query.data || null,
     iocType,
@@ -395,7 +388,7 @@ export function getMaxSeverity(indicators?: ThreatIndicator[]): number {
  */
 export function getAllThreatTypes(indicators?: ThreatIndicator[]): string[] {
   if (!indicators || indicators.length === 0) return []
-  
+
   const allTypes = indicators.flatMap(ind => ind.threat_types || [])
   return Array.from(new Set(allTypes))
 }

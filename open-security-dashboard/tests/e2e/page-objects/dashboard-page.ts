@@ -1,28 +1,28 @@
-import { Page, Locator } from '@playwright/test';
+import { Page, Locator } from '@playwright/test'
 
 export class DashboardPage {
-  readonly page: Page;
-  readonly sidebar: Locator;
-  readonly mainContent: Locator;
-  readonly userMenu: Locator;
-  readonly navigationLinks: Locator;
+  readonly page: Page
+  readonly sidebar: Locator
+  readonly mainContent: Locator
+  readonly userMenu: Locator
+  readonly navigationLinks: Locator
 
   constructor(page: Page) {
-    this.page = page;
-    this.sidebar = page.locator('nav, .sidebar, aside').first();
-    this.mainContent = page.locator('main, .main-content').first();
-    this.userMenu = page.locator('[data-testid="user-menu"], .user-menu').first();
-    this.navigationLinks = page.locator('nav a, .nav-link');
+    this.page = page
+    this.sidebar = page.locator('nav, .sidebar, aside').first()
+    this.mainContent = page.locator('main, .main-content').first()
+    this.userMenu = page.locator('[data-testid="user-menu"], .user-menu').first()
+    this.navigationLinks = page.locator('nav a, .nav-link')
   }
 
   async goto() {
-    await this.page.goto('/dashboard');
-    await this.page.waitForLoadState('domcontentloaded');
+    await this.page.goto('/dashboard')
+    await this.page.waitForLoadState('domcontentloaded')
   }
 
   async waitForDashboardLoad() {
     // Wait for dashboard elements to be visible
-    await this.page.waitForSelector('h1, h2, .dashboard', { timeout: 10000 });
+    await this.page.waitForSelector('h1, h2, .dashboard', { timeout: 10000 })
   }
 
   async navigateToPage(pageName: string) {
@@ -30,55 +30,55 @@ export class DashboardPage {
       `a[href*="${pageName.toLowerCase()}"]`,
       `a:has-text("${pageName}")`,
       `.nav-link:has-text("${pageName}")`,
-      `[data-testid="${pageName.toLowerCase()}-nav"]`
-    ];
+      `[data-testid="${pageName.toLowerCase()}-nav"]`,
+    ]
 
     for (const selector of linkSelectors) {
       try {
-        const link = this.page.locator(selector).first();
+        const link = this.page.locator(selector).first()
         if (await link.isVisible({ timeout: 2000 })) {
-          await link.click();
-          await this.page.waitForLoadState('domcontentloaded');
-          return;
+          await link.click()
+          await this.page.waitForLoadState('domcontentloaded')
+          return
         }
       } catch {
-        continue;
+        continue
       }
     }
 
     // If no direct link found, try clicking on navigation items
-    const navItems = await this.navigationLinks.all();
+    const navItems = await this.navigationLinks.all()
     for (const item of navItems) {
-      const text = await item.textContent();
+      const text = await item.textContent()
       if (text && text.toLowerCase().includes(pageName.toLowerCase())) {
-        await item.click();
-        await this.page.waitForLoadState('domcontentloaded');
-        return;
+        await item.click()
+        await this.page.waitForLoadState('domcontentloaded')
+        return
       }
     }
 
-    throw new Error(`Could not find navigation link for ${pageName}`);
+    throw new Error(`Could not find navigation link for ${pageName}`)
   }
 
   async getAllNavigationLinks(): Promise<string[]> {
-    const links = await this.navigationLinks.all();
-    const linkTexts = [];
-    
+    const links = await this.navigationLinks.all()
+    const linkTexts = []
+
     for (const link of links) {
-      const text = await link.textContent();
+      const text = await link.textContent()
       if (text && text.trim()) {
-        linkTexts.push(text.trim());
+        linkTexts.push(text.trim())
       }
     }
-    
-    return linkTexts;
+
+    return linkTexts
   }
 
   async isUserMenuVisible(): Promise<boolean> {
     try {
-      return await this.userMenu.isVisible({ timeout: 2000 });
+      return await this.userMenu.isVisible({ timeout: 2000 })
     } catch {
-      return false;
+      return false
     }
   }
 
@@ -89,92 +89,92 @@ export class DashboardPage {
       'button:has-text("Sign Out")',
       'a:has-text("Logout")',
       'a:has-text("Sign Out")',
-      '[data-testid="logout"]'
-    ];
+      '[data-testid="logout"]',
+    ]
 
     for (const selector of logoutSelectors) {
       try {
-        const element = this.page.locator(selector).first();
+        const element = this.page.locator(selector).first()
         if (await element.isVisible({ timeout: 2000 })) {
-          await element.click();
-          await this.page.waitForURL(/auth\/login/, { timeout: 5000 });
-          return;
+          await element.click()
+          await this.page.waitForURL(/auth\/login/, { timeout: 5000 })
+          return
         }
       } catch {
-        continue;
+        continue
       }
     }
 
     // If no logout button found, try user menu
     if (await this.userMenu.isVisible()) {
-      await this.userMenu.click();
-      await this.page.waitForTimeout(500);
-      
+      await this.userMenu.click()
+      await this.page.waitForTimeout(500)
+
       for (const selector of logoutSelectors) {
         try {
-          const element = this.page.locator(selector).first();
+          const element = this.page.locator(selector).first()
           if (await element.isVisible({ timeout: 1000 })) {
-            await element.click();
-            await this.page.waitForURL(/auth\/login/, { timeout: 5000 });
-            return;
+            await element.click()
+            await this.page.waitForURL(/auth\/login/, { timeout: 5000 })
+            return
           }
         } catch {
-          continue;
+          continue
         }
       }
     }
 
     // Fallback: clear cookies and navigate to login
-    await this.page.context().clearCookies();
-    await this.page.goto('/auth/login');
+    await this.page.context().clearCookies()
+    await this.page.goto('/auth/login')
   }
 
   async getCurrentPageTitle(): Promise<string> {
-    const titleSelectors = ['h1', 'h2', '[data-testid="page-title"]', '.page-title'];
-    
+    const titleSelectors = ['h1', 'h2', '[data-testid="page-title"]', '.page-title']
+
     for (const selector of titleSelectors) {
       try {
-        const element = this.page.locator(selector).first();
-        const text = await element.textContent({ timeout: 2000 });
+        const element = this.page.locator(selector).first()
+        const text = await element.textContent({ timeout: 2000 })
         if (text && text.trim()) {
-          return text.trim();
+          return text.trim()
         }
       } catch {
-        continue;
+        continue
       }
     }
-    
-    return await this.page.title() || 'Unknown Page';
+
+    return (await this.page.title()) || 'Unknown Page'
   }
 
   async getPageContent(): Promise<string[]> {
     // Get main content sections
     const contentSelectors = [
       '.card h3',
-      '.card h4', 
+      '.card h4',
       '.card p',
       '.grid .p-6 p',
       'main h1',
       'main h2',
-      'main h3'
-    ];
+      'main h3',
+    ]
 
-    const content = [];
-    
+    const content = []
+
     for (const selector of contentSelectors) {
       try {
-        const elements = await this.page.locator(selector).all();
+        const elements = await this.page.locator(selector).all()
         for (const element of elements) {
-          const text = await element.textContent();
+          const text = await element.textContent()
           if (text && text.trim()) {
-            content.push(text.trim());
+            content.push(text.trim())
           }
         }
       } catch {
-        continue;
+        continue
       }
     }
-    
-    return content;
+
+    return content
   }
 }

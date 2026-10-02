@@ -25,14 +25,13 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 // never stored, so the post-login /users/me call and redirect never ran. In
 // production the dashboard is served over HTTPS, so this stays true.
 function authCookieOptions(): Cookies.CookieAttributes {
-  const secure =
-    typeof window !== 'undefined' && window.location.protocol === 'https:'
+  const secure = typeof window !== 'undefined' && window.location.protocol === 'https:'
   return { expires: 7, secure, sameSite: 'strict' }
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  
+
   // Check if we're on the client side and context is available
   if (typeof window === 'undefined' || context === undefined) {
     // Return a default state for SSR or when outside provider
@@ -46,7 +45,7 @@ export function useAuth() {
       refetchUser: async () => {},
     }
   }
-  
+
   return context
 }
 
@@ -68,7 +67,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       formData.append('username', email)
       formData.append('password', password)
 
-      const response = await identityClient.postForm<LoginResponse>(getAuthPath('/api/v1/auth/jwt/login'), formData)
+      const response = await identityClient.postForm<LoginResponse>(
+        getAuthPath('/api/v1/auth/jwt/login'),
+        formData
+      )
       const { access_token } = response
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)
@@ -89,11 +91,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const register = async (email: string, password: string, name: string) => {
     try {
-      const response = await identityClient.post<LoginResponse>(getAuthPath('/api/v1/auth/register'), {
-        email,
-        password,
-        name,
-      })
+      const response = await identityClient.post<LoginResponse>(
+        getAuthPath('/api/v1/auth/register'),
+        {
+          email,
+          password,
+          name,
+        }
+      )
       const { access_token } = response
 
       // Store token in cookie only (no localStorage to reduce XSS attack surface)

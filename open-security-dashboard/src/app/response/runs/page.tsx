@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { 
-  PlayCircle, 
-  Clock, 
+import {
+  PlayCircle,
+  Clock,
   CheckCircle,
   XCircle,
   AlertCircle,
@@ -16,7 +16,7 @@ import {
   Eye,
   Loader2,
   Calendar,
-  Timer
+  Timer,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -54,7 +54,7 @@ function getStatusIcon(status: string) {
     case 'completed':
       return <CheckCircle className="h-5 w-5 text-green-500" />
     case 'running':
-      return <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />
+      return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
     case 'failed':
       return <XCircle className="h-5 w-5 text-red-500" />
     case 'cancelled':
@@ -81,7 +81,7 @@ function getStatusColor(status: string): string {
 
 function formatDuration(seconds?: number): string {
   if (!seconds) return 'N/A'
-  
+
   if (seconds < 60) {
     return `${seconds}s`
   } else if (seconds < 3600) {
@@ -112,29 +112,31 @@ function useNow(intervalMs: number): number {
   return now
 }
 
-function RunCard({ run, onViewDetails }: { run: PlaybookRun; onViewDetails: (run: PlaybookRun) => void }) {
+function RunCard({
+  run,
+  onViewDetails,
+}: {
+  run: PlaybookRun
+  onViewDetails: (run: PlaybookRun) => void
+}) {
   const now = useNow(1000)
   const elapsed = run.endTime
     ? Math.floor((new Date(run.endTime).getTime() - new Date(run.startTime).getTime()) / 1000)
     : Math.floor((now - new Date(run.startTime).getTime()) / 1000)
 
   return (
-    <Card className="group hover:shadow-lg transition-all duration-200">
+    <Card className="group transition-all duration-200 hover:shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-lg font-semibold group-hover:text-blue-600 transition-colors">
+            <CardTitle className="text-lg font-semibold transition-colors group-hover:text-blue-600">
               {run.playbookName}
             </CardTitle>
-            <CardDescription className="text-sm">
-              Run ID: {run.id}
-            </CardDescription>
+            <CardDescription className="text-sm">Run ID: {run.id}</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             {getStatusIcon(run.status)}
-            <Badge className={getStatusColor(run.status)}>
-              {run.status}
-            </Badge>
+            <Badge className={getStatusColor(run.status)}>{run.status}</Badge>
           </div>
         </div>
       </CardHeader>
@@ -147,9 +149,9 @@ function RunCard({ run, onViewDetails }: { run: PlaybookRun; onViewDetails: (run
                 <span>Progress</span>
                 <span>{run.progress}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              <div className="h-2 w-full rounded-full bg-gray-200">
+                <div
+                  className="h-2 rounded-full bg-blue-600 transition-all duration-300"
                   style={{ width: `${run.progress}%` }}
                 />
               </div>
@@ -158,7 +160,7 @@ function RunCard({ run, onViewDetails }: { run: PlaybookRun; onViewDetails: (run
 
           {/* Error message */}
           {run.error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+            <div className="rounded-md border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-800">{run.error}</p>
             </div>
           )}
@@ -184,14 +186,14 @@ function RunCard({ run, onViewDetails }: { run: PlaybookRun; onViewDetails: (run
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2 border-t">
+          <div className="flex gap-2 border-t pt-2">
             <Button
               onClick={() => onViewDetails(run)}
               variant="outline"
               size="sm"
               className="flex-1"
             >
-              <Eye className="h-4 w-4 mr-2" />
+              <Eye className="mr-2 h-4 w-4" />
               View Details
             </Button>
             {run.status === 'running' && (
@@ -217,39 +219,46 @@ export default function RunsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
-  const { data: runsData, isLoading, error, refetch } = useQuery({
+  const {
+    data: runsData,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
     queryKey: ['playbook-runs'],
     queryFn: fetchRuns,
     refetchInterval: 5000, // Refetch every 5 seconds for real-time updates
   })
 
-  const filteredRuns = runsData?.runs?.filter((run) => {
-    const matchesSearch = run.playbookName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         run.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         run.userId.toLowerCase().includes(searchTerm.toLowerCase())
-    
-    const matchesStatus = statusFilter === 'all' || run.status === statusFilter
-    
-    return matchesSearch && matchesStatus
-  }) || []
+  const filteredRuns =
+    runsData?.runs?.filter(run => {
+      const matchesSearch =
+        run.playbookName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        run.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        run.userId.toLowerCase().includes(searchTerm.toLowerCase())
+
+      const matchesStatus = statusFilter === 'all' || run.status === statusFilter
+
+      return matchesSearch && matchesStatus
+    }) || []
 
   const handleViewDetails = (run: PlaybookRun) => {
     // TODO: Implement run details modal or navigation
     console.log('View run details:', run.id)
-    alert(`Run Details: ${run.id}\n\nThis would show detailed execution logs and step-by-step results.`)
+    alert(
+      `Run Details: ${run.id}\n\nThis would show detailed execution logs and step-by-step results.`
+    )
   }
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Failed to load runs</h3>
-        <p className="text-muted-foreground mb-4">
+      <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
+        <AlertCircle className="mb-4 h-12 w-12 text-red-500" />
+        <h3 className="mb-2 text-lg font-semibold">Failed to load runs</h3>
+        <p className="mb-4 text-muted-foreground">
           Unable to connect to the Response service. Showing demo data.
         </p>
-        <Button onClick={() => refetch()}>
-          Try Again
-        </Button>
+        <Button onClick={() => refetch()}>Try Again</Button>
       </div>
     )
   }
@@ -257,33 +266,31 @@ export default function RunsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Playbook Runs</h1>
-          <p className="text-muted-foreground">
-            Monitor and manage playbook execution history
-          </p>
+          <p className="text-muted-foreground">Monitor and manage playbook execution history</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="px-3 py-1">
-            <Activity className="h-4 w-4 mr-1" />
+            <Activity className="mr-1 h-4 w-4" />
             {runsData?.total || 0} runs
           </Badge>
           <Button onClick={() => refetch()} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
+            <RefreshCw className="mr-2 h-4 w-4" />
             Refresh
           </Button>
         </div>
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
           <Input
             placeholder="Search runs..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
@@ -291,8 +298,8 @@ export default function RunsPage() {
           <Filter className="h-4 w-4 text-muted-foreground" />
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+            onChange={e => setStatusFilter(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All statuses</option>
             <option value="running">Running</option>
@@ -305,7 +312,7 @@ export default function RunsPage() {
 
       {/* Runs Grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex min-h-[300px] items-center justify-center">
           <div className="flex items-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Loading runs...</span>
@@ -313,20 +320,16 @@ export default function RunsPage() {
         </div>
       ) : filteredRuns.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredRuns.map((run) => (
-            <RunCard
-              key={run.id}
-              run={run}
-              onViewDetails={handleViewDetails}
-            />
+          {filteredRuns.map(run => (
+            <RunCard key={run.id} run={run} onViewDetails={handleViewDetails} />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
-          <PlayCircle className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No runs found</h3>
+        <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
+          <PlayCircle className="mb-4 h-12 w-12 text-muted-foreground" />
+          <h3 className="mb-2 text-lg font-semibold">No runs found</h3>
           <p className="text-muted-foreground">
-            {searchTerm || statusFilter !== 'all' 
+            {searchTerm || statusFilter !== 'all'
               ? 'Try adjusting your search or filter criteria.'
               : 'No playbook runs have been executed yet.'}
           </p>

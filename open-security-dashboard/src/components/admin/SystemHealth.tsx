@@ -23,10 +23,10 @@ interface SystemHealthProps {
   refreshInterval?: number
 }
 
-export function SystemHealth({ 
-  onHealthUpdate, 
-  autoRefresh = false, 
-  refreshInterval = 30000 
+export function SystemHealth({
+  onHealthUpdate,
+  autoRefresh = false,
+  refreshInterval = 30000,
 }: SystemHealthProps) {
   const [health, setHealth] = useState<SystemHealthData>({
     avgResponseTime: null,
@@ -36,7 +36,7 @@ export function SystemHealth({
     gatewayStatus: 'unknown',
     identityStatus: 'unknown',
     databaseStatus: 'unknown',
-    redisStatus: 'unknown'
+    redisStatus: 'unknown',
   })
   // Keep the latest callback without making it a dependency of the polling
   // effect: an inline prop would otherwise restart polling on every render.
@@ -61,12 +61,10 @@ export function SystemHealth({
         const totalServices = 4
 
         // Update service statuses
-        const identityStatus = identityHealth.status === 'fulfilled' && identityHealth.value 
-          ? 'online' 
-          : 'offline'
-        const gatewayStatus = gatewayHealth.status === 'fulfilled' && gatewayHealth.value 
-          ? 'online' 
-          : 'offline'
+        const identityStatus =
+          identityHealth.status === 'fulfilled' && identityHealth.value ? 'online' : 'offline'
+        const gatewayStatus =
+          gatewayHealth.status === 'fulfilled' && gatewayHealth.value ? 'online' : 'offline'
         const databaseStatus = identityStatus === 'online' ? 'healthy' : 'unknown'
         const redisStatus = identityStatus === 'online' ? 'connected' : 'unknown'
 
@@ -88,7 +86,7 @@ export function SystemHealth({
           gatewayStatus,
           identityStatus,
           databaseStatus,
-          redisStatus
+          redisStatus,
         }
 
         setHealth(healthData)
@@ -105,7 +103,7 @@ export function SystemHealth({
           gatewayStatus: 'unknown',
           identityStatus: 'unknown',
           databaseStatus: 'unknown',
-          redisStatus: 'unknown'
+          redisStatus: 'unknown',
         }
 
         setHealth(errorHealthData)
@@ -134,7 +132,9 @@ export function SystemHealth({
     }
   }
 
-  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+  const getStatusBadgeVariant = (
+    status: string
+  ): 'default' | 'secondary' | 'destructive' | 'outline' => {
     switch (status) {
       case 'online':
       case 'healthy':
@@ -148,12 +148,12 @@ export function SystemHealth({
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
-              <Globe className="w-5 h-5 text-purple-600" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100 dark:bg-purple-900">
+              <Globe className="h-5 w-5 text-purple-600" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Gateway</p>
@@ -171,8 +171,8 @@ export function SystemHealth({
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
-              <Activity className="w-5 h-5 text-blue-600" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900">
+              <Activity className="h-5 w-5 text-blue-600" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Identity Service</p>
@@ -190,8 +190,8 @@ export function SystemHealth({
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
-              <Database className="w-5 h-5 text-green-600" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900">
+              <Database className="h-5 w-5 text-green-600" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Database</p>
@@ -209,8 +209,8 @@ export function SystemHealth({
       <Card className="p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-lg flex items-center justify-center">
-              <Zap className="w-5 h-5 text-orange-600" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900">
+              <Zap className="h-5 w-5 text-orange-600" />
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Redis Cache</p>
@@ -219,9 +219,7 @@ export function SystemHealth({
               </p>
             </div>
           </div>
-          <Badge variant={getStatusBadgeVariant(health.redisStatus)}>
-            {health.redisStatus}
-          </Badge>
+          <Badge variant={getStatusBadgeVariant(health.redisStatus)}>{health.redisStatus}</Badge>
         </div>
       </Card>
     </div>
