@@ -15,6 +15,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `@types/node` majors (it offered 26, which types APIs node 24 lacks);
   the types move by hand with the base image.
 
+- **Dashboard icons are hidden from screen readers** (#520): lucide-react
+  0.378 to 1.50. The icons are decorative, but only 2 of the 23 on the
+  vulnerabilities page carried `aria-hidden`, so assistive technology
+  announced unlabeled graphics; lucide 1 sets it by default. All 69 icons
+  the dashboard imports still exist under the same names and CSS classes,
+  and the pages render the same apart from four slightly redrawn glyphs.
+
+- **guardian can create vulnerabilities again** (#515). The post_save
+  history entry wrote `old_value=None` into a NOT NULL column, so every
+  vulnerability creation raised `IntegrityError`, and so did assigning a
+  user or clearing the assignment. A missing value is now stored as `''`,
+  the column's own empty value. No migration.
+
+- **guardian's vulnerability templates and assessments are reachable**
+  (#514). The router registered the empty prefix first, so
+  `/api/v1/vulnerabilities/templates/` and `.../assessments/` were served
+  as a vulnerability lookup and answered 404. The named prefixes are now
+  registered before it.
+
 - **guardian's remediation and integrations endpoints answer again** (#499).
   All 11 list endpoints of the two apps, plus `scanners/stats/` and
   `reports/metrics/summary/`, answered 500: `filterset_fields`, search and
@@ -76,6 +95,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **The dashboard no longer ships four libraries it never imports** (#519):
+  recharts, zustand, @hookform/resolvers and react-markdown. No file under
+  `src/` or `tests/` references them, and the build output is unchanged
+  without them. 99 packages leave the lockfile, along with the
+  `mdast-util-to-hast` override that existed only for react-markdown, and
+  so do the four major-version Dependabot PRs that kept proposing them.
+
+- **The dashboard's npm tree has no known advisory left** (#518): 61 open
+  Dependabot alerts (29 high) and 15 `npm audit` findings, down to zero.
+  Patch and minor releases only, inside the existing ranges: axios 1.20.0,
+  js-cookie 3.0.8, next 15.5.27, postcss 8.5.28 and eleven transitive
+  packages (brace-expansion, minimatch, nanoid, picomatch, js-yaml,
+  follow-redirects, browserslist, among others). Next 15 pins its own
+  postcss 8.4.31; an override now dedupes it to the patched 8.5 line, the
+  one Next 16 itself ships. The same change takes the in-range minor
+  updates Dependabot grouped (Radix primitives, TanStack Query 5.104,
+  react-hook-form 7.89, Playwright 1.63, eslint-config-next 16.3), so the
+  lockfile is refreshed once instead of rebased sixteen times.
 
 - **Failed-login lockout is enforced** (#509). The helpers and settings
   existed (5 attempts, 15 minutes) but no login route called them, so every
