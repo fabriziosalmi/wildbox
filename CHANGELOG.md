@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoint now also lives on an internal listener, port 8081, not published,
   and that is identity's default.
 
+- **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
+  `utils.http_request` ignored the caller's `timeout` because `request_uri()`
+  does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
+  Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+
 ### Security
 
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
@@ -47,6 +52,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The chaos suite measures the system now** (#428). Seven experiments
+  against the stack as the integration job starts it: cached authorization
+  survives an identity outage; new tokens fail closed with 503, then
+  immediately once the breaker opens, and work again when it closes; a
+  PostgreSQL outage is reported and recovered from without a restart; a Redis
+  outage does not block login; a crashed identity or data process is
+  restarted and served again; a 200-request burst gets only 200s and 429s.
+  Back on the nightly schedule.
+
 - **The critical-advisory gate now gates, and only on what a PR adds** (#430).
   `PR Validation Summary`, the check branch protection requires, never read
   the result of `security-scan` and did not depend on `dependency-integrity`
@@ -55,8 +69,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on advisories the PR introduces; those already on `main` are reported by the
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
-- **Chaos experiments run on demand only** until the suite is rewritten
-  (#428). The nightly load baseline is unchanged.
 
 ### Removed
 
