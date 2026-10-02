@@ -528,6 +528,7 @@
     "README",
     "realpath",
     "redis",
+    "REDISCLI",
     "Redoc",
     "Redocly",
     "reflog",

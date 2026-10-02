@@ -7,12 +7,12 @@ What exists today, as defined by `docker-compose.yml` in the repository. Ports, 
 ## Services
 
 - **Gateway (`open-security-gateway`)**: OpenResty. The only service published beyond localhost: HTTPS on 443; ports 80 and 8080 answer `/health` and redirect everything else to HTTPS. Validates JWTs and API keys with the identity service, rate-limits per team, routes `/api/v1/<service>/` to each backend.
-- **Identity (`open-security-identity`)**: FastAPI with fastapi-users. Users, JWT login (`POST /auth/jwt/login` through the gateway, form-encoded `username`/`password`), token revocation, API keys, teams with owner/admin/member roles. Failed logins are not locked out.
+- **Identity (`open-security-identity`)**: FastAPI with fastapi-users. Users, JWT login (`POST /auth/jwt/login` through the gateway, form-encoded `username`/`password`), token revocation (`POST /auth/logout`), API keys, teams with owner/admin/member roles. After 5 failed logins an email is locked out for 15 minutes (429 with `Retry-After`).
 - **Tools (`open-security-tools`)**: Runs 52 security tools (scanners, analyzers, OSINT and crypto utilities) through an API, with Celery workers.
 - **Data (`open-security-data`)**: Collects threat intelligence (IOCs, denylists) from public sources on a schedule and serves lookups.
 - **Guardian (`open-security-guardian`)**: Django REST. Assets, vulnerabilities, remediation, compliance and reporting.
 - **Responder (`open-security-responder`)**: Executes YAML incident-response playbooks through connectors.
-- **CSPM (`open-security-cspm`)**: 31 cloud configuration checks across AWS, Azure and GCP.
+- **CSPM (`open-security-cspm`)**: 31 cloud configuration checks: 22 for AWS against live accounts; the Azure and GCP checks run on sample data.
 - **Agents (`open-security-agents`)**: Optional AI-assisted IOC analysis using the Anthropic API (Claude) when `ANTHROPIC_API_KEY` is set; submitted data is then sent to Anthropic.
 - **Sensor (`open-security-sensor`)**: Endpoint telemetry via osquery, forwarded to the data service; not routed through the gateway.
 - **Dashboard (`open-security-dashboard`)**: Next.js web UI, served through the gateway.
@@ -25,7 +25,8 @@ Wildbox does not include a SIEM, a WAF or a local LLM runtime.
 - [Quick Start](https://www.wildbox.io/guides/quickstart/): generate secrets, start the stack, log in, call the API
 - [Service ports](https://www.wildbox.io/guides/ports/): every service, container and port
 - [Gateway routes](https://www.wildbox.io/docs.html#gateway-routes): public paths and the service behind each
-- [Credentials and authentication](https://www.wildbox.io/guides/credentials/): how secrets are generated; no default credentials exist
+- [Credentials](https://www.wildbox.io/guides/credentials/): how secrets are generated; no default credentials exist
+- [Authentication and sessions](https://www.wildbox.io/guides/authentication/): login, token lifetime, logout and revocation, failed-login lockout
 - [Deployment guide](https://www.wildbox.io/guides/deployment/): production setup, TLS, backups
 - [API documentation](https://www.wildbox.io/docs.html#api-docs): per-service endpoint references
 - [Security status](https://www.wildbox.io/security/status/): known open issues and how each check was made

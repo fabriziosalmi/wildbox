@@ -19,6 +19,21 @@
 
 The Tools Service provides a unified interface for executing 52 security analysis tools (the directories under `open-security-tools/app/tools` whose `main.py` defines `execute_tool`, which is what `app/tool_loader.py` loads; counted on 2 October 2026) across multiple categories including vulnerability scanning, network analysis, web application testing, and threat intelligence. It manages tool execution, monitors task status, and aggregates results from diverse security tools.
 
+### TLS Certificate Verification
+
+Tools that connect over HTTPS verify the certificate chain and the host name.
+When verification fails, the scan returns `success: false` with the reason
+(for example `self-signed certificate`) and sends no further request; it does
+not retry without verification. Every tool's input accepts `verify_ssl`
+(default `true`). Setting it to `false` lets that one scan read content from
+whoever answers the connection, including an interceptor, so its results can
+no longer be trusted.
+
+`ssl_analyzer`, `ca_analyzer` and `pki_certificate_manager` exist to inspect
+certificates, including broken ones: they read the certificate over an
+unverified handshake, also attempt a verified one, and report an untrusted
+certificate as a finding.
+
 ## Table of Contents
 
 - [Authentication](#authentication)
