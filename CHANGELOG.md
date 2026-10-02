@@ -57,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **pytest 9 and black 26.3.1 in the service locks** (#415). pytest 7.4 and
+  8.3 (one advisory: predictable `/tmp/pytest-of-<user>` directories) move
+  to 9.0.3 in six services and 9.1.1 in identity (which keeps a range), with
+  pytest-asyncio 1.3.0, the first release that accepts pytest 9. black 24
+  (2 advisories) moves to 26.3.1 in data,
+  guardian, identity and sensor. Dev tools only: no runtime code changes, and
+  the Code Quality job already ran an unpinned black.
+
 - **agents moves to LangChain 1.x** (#415). langchain 0.3.30,
   langchain-anthropic 0.3.22, langchain-core 0.3.86 and
   langchain-text-splitters 0.3.11 carried 6 advisories between them. The agent
