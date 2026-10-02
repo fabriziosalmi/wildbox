@@ -19,6 +19,7 @@ jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 2.9 min
     strategy:
       matrix:
         python-version: ["3.11"]
@@ -45,6 +46,7 @@ jobs:
           cache: 'pip'
       
       - name: Install dependencies for ${{ matrix.service }}
+        timeout-minutes: 5  # observed max 0.9 min
         run: |
           cd open-security-${{ matrix.service }}
           # Python services import open_security_shared; install it so unit
@@ -89,6 +91,7 @@ jobs:
   shared-package-tests:
     name: Shared Package Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.4 min
     steps:
       - uses: actions/checkout@v7
 
@@ -98,6 +101,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install
+        timeout-minutes: 5
         run: |
           pip install ./open-security-shared
           pip install pytest pytest-asyncio httpx
@@ -118,6 +122,7 @@ jobs:
   e2e-tests:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # observed max 8.3 min (Playwright's apt dependencies)
     
     steps:
       - uses: actions/checkout@v7
@@ -130,11 +135,13 @@ jobs:
           cache-dependency-path: open-security-dashboard/package-lock.json
       
       - name: Install dependencies
+        timeout-minutes: 5
         run: |
           cd open-security-dashboard
           npm ci
       
       - name: Install Playwright Browsers
+        timeout-minutes: 15  # see e2e-fullstack.yml: once 8.0 min on apt mirrors
         run: |
           cd open-security-dashboard
           npx playwright install --with-deps chromium
@@ -168,6 +175,7 @@ jobs:
     # Prettier and TypeScript checks ran nowhere and drifted (#528).
     name: Dashboard Lint / Format / Types
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.8 min
     defaults:
       run:
         working-directory: open-security-dashboard
@@ -183,6 +191,7 @@ jobs:
           cache-dependency-path: open-security-dashboard/package-lock.json
 
       - name: Install dependencies
+        timeout-minutes: 5
         run: npm ci
 
       - name: ESLint
@@ -201,6 +210,7 @@ jobs:
       security-events: write
     name: Security Scanning
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.7 min
     
     steps:
       - uses: actions/checkout@v7
@@ -235,6 +245,7 @@ jobs:
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.4 min
 
     steps:
       - uses: actions/checkout@v7
@@ -329,6 +340,7 @@ jobs:
       packages: write
     name: Build Docker Images
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # observed max 6.3 min
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # lint is in needs so a failing quality gate actually blocks the image
     # build; it used to be absent, which made the gate decorative twice over

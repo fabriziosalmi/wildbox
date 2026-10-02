@@ -35,7 +35,7 @@ jobs:
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35  # observed max 11.7 min (54 green runs)
 
     # The whole stack, through docker compose, instead of five services started
     # by hand with pip.
@@ -61,6 +61,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install test dependencies
+        timeout-minutes: 5
         run: |
           pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
 
@@ -94,6 +95,9 @@ jobs:
         # The extra file publishes PostgreSQL on loopback so the cross-tenant
         # test can seed rows directly; see the comment in it.
         run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
+        # Image builds (about 5 min) plus --wait-timeout above (10 min) and a
+        # margin; observed max 8.2 min.
+        timeout-minutes: 20
         env:
           # guardian-beat sends the alert-rule sweep every 15 s instead of
           # every 15 minutes, so that test_scheduled_task_runs_on_its_own can
@@ -175,6 +179,7 @@ jobs:
   security-validation:
     name: Security Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.2 min
     
     steps:
       - name: Checkout code

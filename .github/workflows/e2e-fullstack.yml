@@ -161,6 +161,9 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: open-security-dashboard
+        # Usually under a minute; once 8.0 min on apt mirrors. Bounded so a
+        # stalled mirror fails here, not at the job's 25-minute limit.
+        timeout-minutes: 15
         run: npx playwright install --with-deps chromium
 
       - name: Build dashboard (gateway-wired)

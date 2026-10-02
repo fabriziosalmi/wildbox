@@ -32,6 +32,7 @@ jobs:
   scan:
     name: Critical advisories on main
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.3 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

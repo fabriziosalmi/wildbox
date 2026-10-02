@@ -17,6 +17,7 @@ jobs:
   validate-docker:
     name: Validate Docker Compose
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.8 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -42,6 +43,7 @@ jobs:
   validate-structure:
     name: Validate Project Structure
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.9 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -85,6 +87,7 @@ jobs:
       security-events: write
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 1.2 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -150,6 +153,7 @@ jobs:
   dependency-integrity:
     name: Dependency Integrity
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.3 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -168,6 +172,7 @@ jobs:
   python-quality:
     name: Python Code Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 1.7 min
     strategy:
       matrix:
         service:
@@ -196,6 +201,7 @@ jobs:
             ${{ runner.os }}-pip-
 
       - name: Install dependencies
+        timeout-minutes: 5  # observed max 1.2 min
         run: |
           cd ${{ matrix.service }}
           if [ -f requirements.txt ]; then
@@ -255,6 +261,7 @@ jobs:
   pr-validation-summary:
     name: PR Validation Summary
     runs-on: ubuntu-latest
+    timeout-minutes: 5  # observed max 0.1 min
     needs:
       - validate-docker
       - validate-structure
