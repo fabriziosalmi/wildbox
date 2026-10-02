@@ -2,6 +2,8 @@
 FastAPI application for Open Security Identity service.
 """
 
+import os
+
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,13 +19,20 @@ from . import logout
 from .user_manager import auth_backend, fastapi_users
 from .schemas import UserRead, UserCreate, UserUpdate
 
+# Interactive API documentation and the OpenAPI schema are served in
+# development only, as agents, responder and cspm already do. identity served
+# /docs and /redoc unconditionally, publishing its full route map, including
+# admin and internal endpoints, in production (#496).
+DISABLE_DOCS = os.getenv("ENVIRONMENT", "development") == "production"
+
 # Create FastAPI application
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Identity, authentication, and authorization service for Wildbox Security Suite",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=None if DISABLE_DOCS else "/docs",
+    redoc_url=None if DISABLE_DOCS else "/redoc",
+    openapi_url=None if DISABLE_DOCS else "/openapi.json",
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.
