@@ -18,7 +18,7 @@ service and the endpoint.
 | **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
 | **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
 | **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
-| **CSPM** | Not written yet. The service runs (31 checks across AWS, Azure and GCP); its routes are under `/api/v1/cspm/` | - |
+| **CSPM** | Not written yet. The service runs 31 checks (22 for AWS against live accounts; Azure and GCP on sample data); its routes are under `/api/v1/cspm/` | - |
 
 ## Reaching the APIs
 
@@ -35,7 +35,9 @@ To authenticate, log in with a form-encoded `POST /auth/jwt/login` (fields
 `X-API-Key` header. The [Quick Start](../guides/quickstart.md) shows the
 complete sequence.
 
-The interactive overview is the [API reference page](../api-reference.html).
+Login, tokens, logout and the failed-login lockout are described in the
+[Authentication and sessions guide](../guides/authentication.md). The
+[API reference page](../api-reference.html) is a one-page overview.
 
 ## Creating API Documentation
 

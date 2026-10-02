@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`make clean` no longer prunes the whole Docker host.** It ran
+  `docker system prune -f --volumes`, deleting every unused volume and image
+  on the machine, other projects' data included; it now clears local caches
+  only. Every Makefile target uses `docker compose`, and `.env.example` no
+  longer carries a `REDIS_URL` without password that nothing reads.
+
 - **The dashboard type-checks against the node it runs on** (#521):
   `@types/node` moves from 20 to 24, the major in the Dockerfile and in
   CI since node 24 became the base image. Dependabot no longer proposes
@@ -57,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read `await response.text().lower()`, which calls `.lower()` on the
   coroutine and raised before any comparison, so it never reported a finding.
 
-- **`make start` no longer leaves the data service crash-looping.** It layers
+- **`make start` no longer leaves the data service crash-looping** (#506). It layers
   `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
   whose `ENVIRONMENT` is `production`; data refuses that combination. The
   development overlay now sets `ENVIRONMENT=development` for data as well.
@@ -88,6 +94,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a revoked token stayed authorized from the cache for up to its TTL. The
   endpoint now also lives on an internal listener, port 8081, not published,
   and that is identity's default.
+
+- **responder playbooks fail loudly instead of doing nothing** (#417). The
+  shipped all-star playbook passed every step's arguments under `params:`,
+  which the engine never reads, so each step ran with an empty input; steps
+  referred to each other by `id` while the engine keyed them by `name`; and
+  `on_failure: continue` was read by nothing. The engine now keys steps by id
+  (name when there is none) and honours `on_failure: continue`; the playbook
+  models reject unknown keys, so a playbook with a key the engine ignores
+  stops the responder at start-up with the file and key named. `retry_count`,
+  never honoured, is removed from the model.
+- **The sensor's Linux service inventory is collected** (#417). Its osquery
+  query asked `systemd_units` for columns the table does not have, so every
+  collection cycle failed with "no such column: name". The query now uses the
+  table's real columns.
+- **Generated secrets no longer fail the services' own checks** (#422).
+  `scripts/generate_secrets.py` could emit a key containing a pattern the
+  tools service rejects as weak (`abc`, `123`), so about one fresh install in
+  thirty-five failed at start-up. The generator now refuses such values.
 
 - **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
   `utils.http_request` ignored the caller's `timeout` because `request_uri()`
@@ -144,11 +168,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   alerts). The tools metrics endpoint and guardian's widget test returned
   `str(e)` to the caller; they now log it and return a generic message.
 
-- **The dashboard moves to React 19.** `react`, `react-dom` and their type
+- **The dashboard moves to React 19** (#526). `react`, `react-dom` and their type
   definitions move together to 19.3 (Dependabot's #151 moved `react` alone).
   Unblocked by lucide-react 1.x.
 
-- **Gateway base image refreshed** to the current `openresty/openresty:alpine`
+- **Gateway base image refreshed** (#525) to the current `openresty/openresty:alpine`
   digest (OpenResty 1.31.1.1). Dependabot no longer proposes Node.js major
   bumps of the dashboard image: it stays on the active LTS line, which is
   changed by hand.
@@ -206,8 +230,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Dependency Integrity gate, so no Python fix had landed since 0.10.0.
   `scripts/upgrade_vulnerable_requirements.sh` (`make lock-security`) moves only
   the packages with a known advisory, within the ranges `requirements.in`
-  allows, and lists the rest; a weekly workflow opens the PR. This run moved 19
-  pins, among them PyJWT, urllib3, tornado, anyio and oauthlib.
+  allows, and lists the rest; a weekly workflow opens the PR, and the pip entry
+  is gone from `.github/dependabot.yml`. This run moved 19 pins, among them
+  PyJWT, urllib3, tornado, anyio and oauthlib.
 - **aiohttp 3.14.3 in cspm, data, sensor and tools** (#415), from 3.14.1: 3
   advisories, among them request smuggling through WebSocket upgrades in the
   server, which the sensor's local API runs. Patch releases, bug fixes only.
@@ -307,7 +332,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pip-audit reports nothing for any of them, transitive dependencies
   included.
 
+- **The dashboard image runs node 24 LTS** (#462), from node 18, out of
+  support since April 2025. The image stays pinned by digest; CI moves from
+  node 20 to 24 as well.
+
+- **The tools service's search no longer injects HTML** (#464). It built its
+  results with `innerHTML` from the typed query and from tool names and
+  descriptions read back with `textContent`, which undoes the template's
+  escaping, so markup in either was executed (CodeQL `js/xss-through-dom`).
+  Every piece is now escaped and only the `<mark>` highlights are markup.
+
 ### CI
+
+- **The license gate blames the right cause** (#429). It reported "no license
+  data in the SBOM" for the gateway image, whose SBOM is complete but holds no
+  language packages, only Alpine ones the gate deliberately ignores. Its first
+  correct run found `python-nmap` (see Removed).
+- **The sensor's tests run in CI** (#417); the service had never been in the
+  unit-test matrix.
 
 - **The weekly pip security PR can trigger CI without a personal token.**
   `Pip Security Upgrades` mints a one-hour GitHub App installation token,
@@ -336,7 +378,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
-- **README rewritten from verified facts.** It described components the
+- **An Authentication and sessions guide, and the operator documents
+  re-checked against today's code.** `guides/authentication.md` covers login,
+  token lifetime, logout and revocation (including the gateway's internal
+  port 8081 and what fails open when Redis is down), the failed-login lockout
+  and how to lift it, and how the gateway behaves when identity is down.
+  `UPGRADING.md` gains a section for this release. `SECURITY.md` gave a
+  reporting address (`security@wildbox.dev`) that is not the one in
+  `security.txt`, recommended refresh tokens and bcrypt, and ran a script that
+  does not exist; it now points to private GitHub reporting and the
+  `security.txt` contact. `TROUBLESHOOTING.md` created an admin with the
+  password `admin123` through modules identity does not have, and told
+  readers to `FLUSHALL` Redis, which holds CSPM, responder and agents state;
+  it is rewritten. `SETUP_GUIDE.md`, a drifted second quick start with
+  default n8n credentials, now points to the maintained guides.
+  `api-reference.html` documented a JSON login, `/auth/refresh` and identity
+  on port 8000; it is now an overview of authentication and the gateway path
+  of each service.
+
+- **SEO pilot pages** (#433, #435): `/learn/how-to-check-spf-dkim-dmarc/` and
+  a client-side `/tools/jwt-decoder/`, with `/learn/` and `/tools/` hubs
+  linked from the homepage navigation.
+
+- **README rewritten from verified facts** (#505). It described components the
   project no longer has (Stripe billing, OpenAI, Elasticsearch, Grafana,
   NLTK), claimed 50+ threat feeds (there are 7) and a stale v0.8.0 roadmap,
   and its quick start ended in a stack where `data` refused to start. The
@@ -371,30 +435,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The privacy notice is indexable.** It is a complete, dated legal page
   listed in the sitemap, so `noindex` contradicted the sitemap; it now has
   `index, follow` and a canonical URL.
-- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
-  loads its vendored Tailwind from a root-relative path like the other pages,
-  and the llms files no longer claim account lockout, which identity does not
-  enforce.
+- **The homepage, hubs and privacy notice link `security.txt`**, and the
+  homepage loads its vendored Tailwind from a root-relative path like the
+  other pages.
 
-- **The security status page says what is still wrong.** It reported every
-  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
-  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
-  networks are not segmented (the production overlay's networks are merged
-  with the flat `wildbox` network), identity's `init.sh` prints the initial
-  admin password to the log, two scanners disable TLS verification, and
-  identity and tools serve API docs in every environment. The page now lists
-  those as open issues, points at #415 for dependencies, marks unchecked
-  claims "Not verified", and says how each check was made. The 2024 and 2025
+- **The security status page says what is still wrong** (#491). It
+  reported every finding "Fixed", every check "PASS" and "99% of known
+  vulnerabilities resolved" as of v0.5.5. Re-checked against `main`, it now
+  lists the failures as open issues (several were fixed later in this
+  release: the logged admin password, TLS verification in the scanners,
+  identity's API docs in production, the login lockout), points at #415 for
+  dependencies, marks unchecked claims "Not verified", and says how each
+  check was made. The 2024 and 2025
   audit documents are marked historical; the checklist's quoted heredoc that
   wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
   replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
   is no longer quoted as current. Expired version and review stamps are gone
   from the security policy.
-- **Account lockout is reported as not enforced.** The status page counted
-  the lockout settings in `config.py` as a pass, but nothing calls
-  `record_failed_login` or `is_account_locked`; it is now a known open issue
-  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
-  (fastapi-users hashes with Argon2). The status page stops linking the
+- **The security policy no longer claims bcrypt with 12+ rounds**
+  (fastapi-users hashes with Argon2id), and the status page stops linking the
   November 2024 audit documents, which the site no longer publishes.
 
 - **One ports table, one login flow, no published passwords.** The guides
@@ -418,13 +477,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   submitted indicators are sent to Anthropic when it is enabled. The
   Deployment guide notes that `haproxy/` belongs to the blue/green Compose
   file only.
-- **One authentication reference.** The Credentials guide now states, from
-  the identity code, the signing algorithm (HS256), the claims, the 30-minute
-  lifetime (which `.env` cannot change, because Compose does not pass it), that
-  there is no refresh, both revocation routes, and that failed logins are not
-  locked out (the lockout helpers exist but nothing calls them). It also warns
-  that the `/admin/me` password routes use bcrypt and cannot verify the Argon2
-  hashes fastapi-users writes. The tools reference counts 52 loadable tools
+- **One authentication reference.** The guides state, from the identity
+  code, the signing algorithm (HS256), the claims, the 30-minute lifetime
+  (which `.env` cannot change, because Compose does not pass it), that there
+  is no refresh, and both revocation routes. The tools reference counts 52 loadable tools
   instead of 54, the ports page explains how `/metrics` and Prometheus are
   kept private (localhost binding, not authentication), the references mark
   their example values as fictitious, and acronyms are expanded on first use.
@@ -460,6 +516,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **python-nmap** (#431), a GPL-3.0 package declared by tools and guardian
+  and imported by nothing. The services use the `nmap` binary, which stays.
 
 - **The Docusaurus site in `website/`** (#419). It was never the published
   site: GitHub Pages serves `docs/` (Jekyll) from `main`, and

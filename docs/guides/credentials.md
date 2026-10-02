@@ -1,4 +1,4 @@
-# Credentials and Authentication
+# Credentials
 
 Wildbox ships with **no default credentials**. Every secret, and the first
 administrator's password, is generated on your machine when you create `.env`.
@@ -57,52 +57,19 @@ Read the generated password from `.env`, log in, and change it:
 sed -n 's/^INITIAL_ADMIN_PASSWORD=//p' .env
 ```
 
-Change it from the dashboard, or with the fastapi-users route
-`PATCH /api/v1/identity/users/me` through the gateway, body
-`{"password": "<new password>"}`, which hashes it the same way login checks
-it. Avoid the custom `/api/v1/identity/admin/me/change-password` and
-`/admin/me/password` routes for this account: they verify and hash with
-passlib bcrypt, while accounts created by fastapi-users (the first
-administrator included) carry Argon2 hashes. See the
-[identity reference](../api/identity/endpoints.md).
+Change it from the dashboard, or through the gateway with
+`PATCH /api/v1/identity/users/me` and the body
+`{"password": "<new password>"}`. The
+[Authentication guide](authentication.md#passwords) lists the other password
+routes; all of them hash with Argon2id.
 
 ---
 
 ## Authentication Reference
 
-This section is the one place that describes how authentication works. The
-facts come from `open-security-identity/app/` (`config.py`, `user_manager.py`,
-`logout.py`, `token_blacklist.py`) and the gateway configuration.
-
-Clients authenticate at the gateway (`https://<host>/`). Two credentials are
-accepted:
-
-- **JWT (JSON Web Token) bearer token** (`Authorization: Bearer <token>`), obtained with a
-  form-encoded login (`username`, `password`) at `POST /auth/jwt/login`, which
-  returns `access_token`.
-- **API key** (`X-API-Key: <key>`). Create one while logged in with
-  `POST /api/v1/identity/api-keys`; the secret is shown once in the response.
-
-The complete, tested login sequence, including the TLS certificate the
-development gateway generates, is in the
-[Quick Start](quickstart.md#5-log-in-and-call-the-api).
-
-| Property | Value |
-| --- | --- |
-| Signing | HS256 with `JWT_SECRET_KEY` |
-| Claims | `sub` (user ID), `aud` (`fastapi-users:auth`), `exp`, `iat`, and a random `jti` |
-| Lifetime | 30 minutes. It is `jwt_access_token_expire_minutes` in the identity settings; `docker-compose.yml` does not pass `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` to the identity container, so setting it in `.env` alone has no effect |
-| Refresh | None. When a token expires, log in again |
-| Revocation | `POST /auth/logout` or `POST /auth/jwt/logout` with the token. Its `jti` goes on a Redis blacklist until the token would have expired; the gateway refuses it and drops it from its authorization cache, and identity's own routes refuse it too |
-| Failed logins | Not locked out. `config.py` defines a limit (5 attempts, 15 minutes) and `token_blacklist.py` has the helpers, but the login route does not call them. The gateway rate-limits `/auth/jwt/` per client address (5 requests per second, burst 3) |
-| Password hashing | Accounts created and logged in through fastapi-users use its default password helper (pwdlib: Argon2 for new hashes, bcrypt hashes still verify). The custom `/admin/me/password` and `/admin/me/change-password` routes use passlib bcrypt at its default cost, so they cannot verify an Argon2 hash |
-
-To revoke a token before it expires:
-
-```bash
-curl -s --cacert open-security-gateway/ssl/wildbox.crt -X POST \
-  -H "Authorization: Bearer $TOKEN" https://localhost/auth/logout
-```
+How login, tokens, logout and revocation, and the failed-login lockout work
+is described in one place: the
+[Authentication and sessions guide](authentication.md).
 
 ---
 
@@ -138,6 +105,9 @@ The procedure and the reasoning behind it are in
 
 - **Login returns 400**: wrong email or password. If the account was created
   with an earlier `.env`, the password is the one from that file.
+- **Login returns 429 with `Retry-After`**: the account is locked for 15
+  minutes after 5 failed logins, even for the right password; see
+  [Failed-login lockout](authentication.md#failed-login-lockout).
 - **`make validate-secrets` fails**: a placeholder is still in `.env`; run
   `make generate-secrets` again (it backs up the old file first).
 - **An API key stopped working after a rotation**: `./scripts/rotate_secrets.sh --list`

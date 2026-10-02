@@ -53,7 +53,9 @@ than secrets:
 - `INITIAL_ADMIN_EMAIL`: the first administrator's login
 - `CORS_ORIGINS`: the HTTPS origins that may call the API, for example
   `https://wildbox.example.com` (here and below, replace `wildbox.example.com`,
-  a name reserved for documentation, with your host name)
+  a name reserved for documentation, with your host name). identity does not
+  read it: the browser reaches identity through the gateway, on the same
+  origin as the dashboard
 - `ENVIRONMENT=production` (the template default)
 
 Do not generate secrets by hand or copy them from documentation. The
@@ -235,15 +237,20 @@ Container logs are rotated by the production overlay; read them with
 
 ## 8. Updating
 
+Read the notes for your target version in
+[UPGRADING.md](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md)
+before pulling; they list what an existing deployment has to do.
+
 ```bash
 git pull
 make validate-secrets       # new releases can add required secrets
+docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 make start-prod
 ```
 
-Read the upgrade notes for your target version in
-[CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md)
-before pulling.
+The images are built from the repository, and `make start-prod` does not
+rebuild an image that already exists: build first, or the services keep
+running the previous release.
 
 ---
 
