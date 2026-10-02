@@ -31,11 +31,19 @@ on:
 # removes the reason those fallbacks existed: a fork PR or a dependabot run
 # receives no repository secrets, and does not need any.
 
+# One run per pull request: a new push cancels the run it supersedes. Any
+# other event (push to main, schedule, dispatch) gets a group of its own,
+# so it is never cancelled -- not even while pending, which a shared group
+# with cancel-in-progress: false would still do to a queued run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   integration-tests:
     name: Run Integration Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35  # observed max 11.7 min (54 green runs)
 
     # The whole stack, through docker compose, instead of five services started
     # by hand with pip.
@@ -48,8 +56,8 @@ jobs:
     # stayed green for months while asserting against endpoints no service had
     # ever published.
     #
-    # It costs more: ten images build here. `cache-from: type=gha` in the build
-    # step below keeps the common case to a pull of cached layers.
+    # It costs more: ten images build here. The "Build the images" step reads
+    # and writes their layers through the GitHub Actions cache.
 
     steps:
       - name: Checkout code
@@ -61,6 +69,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install test dependencies
+        timeout-minutes: 5
         run: |
           pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
 
@@ -75,6 +84,26 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+
+      - name: Expose the Actions cache to BuildKit
+        # The gha cache backend authenticates with the runner's cache token
+        # and URLs, which only JavaScript actions receive (docker/build-push-
+        # action does the same internally).
+        uses: actions/github-script@v9
+        with:
+          script: |
+            for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL',
+                                'ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+              if (process.env[name]) core.exportVariable(name, process.env[name]);
+            }
+
+      - name: Build the images
+        # Separate from start-up so its duration is the build alone. The
+        # cache file adds cache_from/cache_to per image; see the comment in it.
+        timeout-minutes: 20
+        run: |
+          docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml \
+            -f .github/compose.ci-cache.yml build
 
       - name: Raise the rate limit for the suite
         # The gateway allows RATE_LIMIT_PER_HOUR/60 requests per minute per team
@@ -94,6 +123,9 @@ jobs:
         # The extra file publishes PostgreSQL on loopback so the cross-tenant
         # test can seed rows directly; see the comment in it.
         run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
+        # --wait-timeout above (10 min) and a margin. Before the build had a
+        # step of its own this step took up to 8.2 min, builds included.
+        timeout-minutes: 15
         env:
           # guardian-beat sends the alert-rule sweep every 15 s instead of
           # every 15 minutes, so that test_scheduled_task_runs_on_its_own can
@@ -115,13 +147,14 @@ jobs:
           # the file: `. ./.env` executes it, and a generated secret is not
           # shell syntax.
           env_value() { sed -n "s/^$1=//p" .env | head -1; }
-          export INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
-          export INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
-          export GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
-          export SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
-          # ${{ env.* }} is evaluated before any step runs, so it cannot carry a
-          # value this job generated.
-          export DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
+          SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
+          # An `env` context expression is evaluated before any step runs, so
+          # it cannot carry a value this job generated.
+          DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN
           python -m pytest tests/integration/ \
             -v -rs \
             --tb=short \
@@ -175,6 +208,7 @@ jobs:
   security-validation:
     name: Security Validation
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.2 min
     
     steps:
       - name: Checkout code

@@ -1,0 +1,10 @@
+# actionlint configuration (https://github.com/rhysd/actionlint).
+paths:
+  .github/workflows/pip-security-upgrades.yml:
+    ignore:
+      # actionlint 1.7.12 still carries the v1 inputs of
+      # actions/create-github-app-token, where app-id was required. v3
+      # declares client-id and deprecates app-id ("Use 'client-id' instead"),
+      # so these two findings are about actionlint's copy, not the workflow.
+      - 'missing input "app-id" which is required by action "actions/create-github-app-token@v3"'
+      - 'input "client-id" is not defined in action "actions/create-github-app-token@v3"'

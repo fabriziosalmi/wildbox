@@ -25,10 +25,19 @@ on:
 permissions:
   contents: read
 
+# One run per pull request: a new push cancels the run it supersedes. Any
+# other event (push to main, schedule, dispatch) gets a group of its own,
+# so it is never cancelled -- not even while pending, which a shared group
+# with cancel-in-progress: false would still do to a queued run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   luacheck:
     name: Luacheck (OpenResty Lua)
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.8 min
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

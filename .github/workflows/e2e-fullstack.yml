@@ -19,6 +19,14 @@ env:
   ADMIN_EMAIL: superadmin@wildbox.com
   ADMIN_PASSWORD: wildbox123
 
+# One run per pull request: a new push cancels the run it supersedes. Any
+# other event (push to main, schedule, dispatch) gets a group of its own,
+# so it is never cancelled -- not even while pending, which a shared group
+# with cancel-in-progress: false would still do to a queued run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   e2e-fullstack:
     # Restores the backend-dependent Playwright flows (#103) on a real stack:
@@ -161,6 +169,9 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: open-security-dashboard
+        # Usually under a minute; once 8.0 min on apt mirrors. Bounded so a
+        # stalled mirror fails here, not at the job's 25-minute limit.
+        timeout-minutes: 15
         run: npx playwright install --with-deps chromium
 
       - name: Build dashboard (gateway-wired)

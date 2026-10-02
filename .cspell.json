@@ -379,6 +379,8 @@
     "Logstash",
     "lookback",
     "lua",
+    "luacheck",
+    "luacheckrc",
     "Lynis",
     "maintanibile",
     "makemigrations",
