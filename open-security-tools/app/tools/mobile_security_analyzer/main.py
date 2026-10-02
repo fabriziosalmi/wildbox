@@ -2,7 +2,6 @@ import base64
 import logging
 import time
 import zipfile
-import xml.etree.ElementTree as ET
 import re
 import hashlib
 from datetime import datetime
@@ -13,28 +12,6 @@ from io import BytesIO
 
 # Initialize logger
 logger = logging.getLogger(__name__)
-
-# Configure secure XML parser to prevent XXE attacks
-try:
-    import defusedxml.ElementTree as DefusedET
-    # Use defusedxml if available for security
-    safe_xml_parse = DefusedET.parse
-    safe_xml_fromstring = DefusedET.fromstring
-except ImportError:
-    # Fallback to built-in with security measures
-    def safe_xml_parse(source):
-        parser = ET.XMLParser()
-        # Disable external entity processing
-        parser.parser.DefaultHandler = lambda data: None
-        parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
-        return ET.parse(source, parser)
-    
-    def safe_xml_fromstring(text):
-        parser = ET.XMLParser()
-        # Disable external entity processing
-        parser.parser.DefaultHandler = lambda data: None
-        parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
-        return ET.fromstring(text, parser)
 
 from .schemas import (
     MobileSecurityAnalyzerInput,

@@ -216,12 +216,14 @@ class DataProcessor:
         
         for item in items_to_process:
             # Enrich IP addresses
+            # B104 false positives below: '0.0.0.0' is compared with addresses
+            # read from the host, to skip unspecified ones; nothing binds to it.
             remote_address = item.get('remote_address')
-            if remote_address and remote_address != '0.0.0.0':
+            if remote_address and remote_address != '0.0.0.0':  # nosec B104
                 item['remote_address_info'] = await self._get_ip_info(remote_address)
             
             local_address = item.get('local_address')
-            if local_address and local_address not in ['0.0.0.0', '127.0.0.1', '::1']:
+            if local_address and local_address not in ['0.0.0.0', '127.0.0.1', '::1']:  # nosec B104
                 item['local_address_info'] = await self._get_ip_info(local_address)
             
             # Categorize connection
@@ -357,7 +359,9 @@ class DataProcessor:
         if any(susp in cmdline for susp in ['download', 'invoke-expression', 'iex', 'base64']):
             indicators.append('download_execution')
         
-        if '/tmp' in path or 'temp' in path:
+        # B108 false positive: '/tmp' is matched against the process path
+        # to flag execution from a temporary directory; nothing touches it.
+        if '/tmp' in path or 'temp' in path:  # nosec B108
             indicators.append('temp_execution')
         
         if not process_data.get('on_disk', True):
@@ -395,7 +399,8 @@ class DataProcessor:
             return 'user_data'
         elif '/var/log/' in path_lower:
             return 'log_file'
-        elif '/tmp/' in path_lower or 'temp' in path_lower:
+        # B108 false positive: path classification only, as above.
+        elif '/tmp/' in path_lower or 'temp' in path_lower:  # nosec B108
             return 'temporary'
         else:
             return 'other'
@@ -413,8 +418,8 @@ class DataProcessor:
         if '/etc/' in path_lower and 'content' in changes:
             return 'high'
         
-        # Temporary file execution
-        if '/tmp/' in path_lower or 'temp' in path_lower:
+        # Temporary file execution (B108 false positive: path matching only)
+        if '/tmp/' in path_lower or 'temp' in path_lower:  # nosec B108
             return 'medium'
         
         return 'low'

@@ -315,9 +315,11 @@ async def internal_error_handler(request: Request, exc):
 
 
 if __name__ == "__main__":
+    # Binding all interfaces is intended: this entry point runs the service
+    # inside its container, where it is reached through the container network.
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
+        host="0.0.0.0",  # nosec B104
         port=settings.port,
         reload=settings.debug
     )

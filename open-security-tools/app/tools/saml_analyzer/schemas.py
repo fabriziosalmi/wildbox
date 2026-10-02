@@ -20,10 +20,10 @@ class SAMLFinding(BaseModel):
 class SAMLAnalyzerOutput(BaseToolOutput):
     """Output schema for SAML Analyzer tool"""
     is_valid: bool
-    issuer: Optional[str]
-    subject: Optional[str]
-    not_before: Optional[str]
-    not_after: Optional[str]
+    issuer: Optional[str] = None
+    subject: Optional[str] = None
+    not_before: Optional[str] = None
+    not_after: Optional[str] = None
     attributes: Dict[str, Any]
     signature_valid: bool
     encrypted: bool

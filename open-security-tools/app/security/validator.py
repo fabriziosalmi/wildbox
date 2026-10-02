@@ -244,15 +244,20 @@ class SecurityValidator:
     def _validate_public_host(cls, hostname: str) -> None:
         """Validate that hostname is not a private/local address."""
         try:
-            # Try to parse as IP address first
             ip = ipaddress.ip_address(hostname)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
-                raise ValueError("Private/local IP addresses not allowed")
         except ValueError:
-            # Not an IP address, check for local hostnames
-            local_hostnames = ['localhost', '127.0.0.1', '::1', '0.0.0.0']
-            if hostname.lower() in local_hostnames:
+            # Not an IP literal: refuse the names that always mean this host.
+            # IP literals such as 127.0.0.1 or 0.0.0.0 are covered below.
+            if hostname.lower() == "localhost":
                 raise ValueError("Local hostnames not allowed")
+            return
+        # Raised outside the try above: inside it, this error was swallowed by
+        # the "not an IP address" branch and every private address passed.
+        # Only globally routable unicast addresses are allowed: is_global is
+        # False for private, loopback, link-local, unspecified, shared
+        # (100.64.0.0/10) and reserved ranges, and for IPv4-mapped forms.
+        if not ip.is_global or ip.is_multicast:
+            raise ValueError("Private/local IP addresses not allowed")
     
     @classmethod
     def _validate_dict_recursive(cls, data: Dict[str, Any], max_depth: int = 5) -> None:

@@ -46,3 +46,40 @@ def test_private_and_local_hosts_blocked(url):
 def test_bad_schemes_and_empty_blocked(url):
     with pytest.raises(ValueError):
         SecurityValidator.validate_url(url)
+
+
+# The cases above use http://, which the dangerous-pattern check refuses on its
+# own, so they never reach the host check. Over https:// the host check is the
+# only guard: a private address used to pass because the "private" error was
+# raised inside the try whose except branch treated it as "not an IP literal".
+@pytest.mark.parametrize("url", [
+    "https://10.0.0.5/",
+    "https://192.168.1.10:8443/x",
+    "https://127.0.0.1/admin",
+    "https://169.254.169.254/latest/meta-data/",
+    "https://0.0.0.0:8000/",
+    "https://[::]/",
+    "https://[::1]/",
+    "https://localhost/",
+    "https://100.64.0.1/",  # shared address space (carrier-grade NAT)
+    "https://224.0.0.1/",  # multicast
+    "https://[::ffff:10.0.0.1]/",  # IPv4-mapped private address
+    "https://[fd00::1]/",  # unique local IPv6
+])
+def test_private_and_local_hosts_blocked_over_https(url):
+    with pytest.raises(ValueError, match="(Private/local IP|Local hostnames)"):
+        SecurityValidator.validate_url(url)
+
+
+def test_private_hosts_pass_when_explicitly_allowed():
+    url = "https://10.0.0.5/"
+    assert SecurityValidator.validate_url(url, allow_private=True) == url
+
+
+@pytest.mark.parametrize("url", [
+    "https://8.8.8.8/",
+    "https://[2606:4700:4700::1111]/",
+    "https://example.com/",
+])
+def test_public_hosts_pass_over_https(url):
+    assert SecurityValidator.validate_url(url) == url

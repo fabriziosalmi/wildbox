@@ -48,7 +48,9 @@ class Settings(BaseSettings):
     )
     
     # API configuration
-    api_host: str = Field(default="0.0.0.0", env="API_HOST")
+    # Binding all interfaces is intended: the service runs in a container and
+    # is reached through the container network. Override with API_HOST if needed.
+    api_host: str = Field(default="0.0.0.0", env="API_HOST")  # nosec B104
     api_port: int = Field(default=8018, env="API_PORT")
     api_key: Optional[str] = Field(default=None, env="API_KEY")
     

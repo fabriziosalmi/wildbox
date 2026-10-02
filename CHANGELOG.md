@@ -222,6 +222,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Bandit reports no medium-or-higher findings** in the service code.
+  The tools service SSRF guard let every private address through over
+  `https://`: `SecurityValidator._validate_public_host` raised its
+  "private address" error inside the `try` whose `except ValueError`
+  meant "not an IP literal", so the error was swallowed and only the
+  names `localhost`, `127.0.0.1`, `::1` and `0.0.0.0` were refused.
+  `10.0.0.0/8`, `192.168.0.0/16`, `169.254.169.254` and `::` are now
+  refused too. The SAML analyzer parses responses with defusedxml only
+  (the standard-library fallback is gone) and reports a DTD, entity
+  declaration or external reference as a critical "Forbidden XML
+  Construct" instead of expanding it; the tool also no longer imports
+  `lxml`, which the service does not install, and its results validate
+  again. The mobile analyzer's unused XML helpers are removed. MD5 and
+  SHA-1 used as sample identifiers and certificate fingerprints are
+  marked `usedforsecurity=False`, and the sensor's default temporary
+  directory follows `TMPDIR`. The remaining reports (binding `0.0.0.0`
+  inside containers, `/tmp` matched as a substring, the SHA-1
+  certificate fingerprint) are annotated with `# nosec` and the reason.
+
 - **Production Redis no longer evicts authoritative state** (#530):
   `docker-compose.prod.yml` replaced the base file's
   `--maxmemory-policy noeviction` with `allkeys-lru` at 512 MB, so under

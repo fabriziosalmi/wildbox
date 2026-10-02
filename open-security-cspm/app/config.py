@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, env="DEBUG")
     
     # Server configuration
-    host: str = Field(default="0.0.0.0", env="HOST")
+    # Binding all interfaces is intended: the service runs in a container and
+    # is reached through the container network. Override with HOST if needed.
+    host: str = Field(default="0.0.0.0", env="HOST")  # nosec B104
     port: int = Field(default=8019, env="PORT")
     workers: int = Field(default=4, env="WORKERS")
     
