@@ -13,8 +13,8 @@
  * - TypeScript interfaces matching backend schemas
  */
 
-import { useQuery, UseQueryResult } from '@tanstack/react-query'
-import { dataClient } from '@/lib/api-client'
+import { useQuery } from '@tanstack/react-query'
+import { dataClient, type ApiError } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -71,7 +71,7 @@ export interface ThreatIndicator {
   expires_at: string | null
   active: boolean
   source_id: string
-  indicator_metadata: Record<string, any>
+  indicator_metadata: Record<string, unknown>
   created_at: string | null
   updated_at: string | null
 }
@@ -215,24 +215,31 @@ export function detectIOCType(value: string): IOCType {
  * Lookup IP address threat intelligence
  */
 async function lookupIP(ip: string): Promise<IPIntelligence> {
-  const response = await dataClient.get(`/api/v1/ips/${encodeURIComponent(ip)}`)
-  return response.data
+  return dataClient.get<IPIntelligence>(`/api/v1/ips/${encodeURIComponent(ip)}`)
 }
 
 /**
  * Lookup domain threat intelligence
  */
 async function lookupDomain(domain: string): Promise<DomainIntelligence> {
-  const response = await dataClient.get(`/api/v1/domains/${encodeURIComponent(domain)}`)
-  return response.data
+  return dataClient.get<DomainIntelligence>(`/api/v1/domains/${encodeURIComponent(domain)}`)
 }
 
 /**
  * Lookup file hash threat intelligence
  */
 async function lookupHash(hash: string): Promise<HashIntelligence> {
-  const response = await dataClient.get(`/api/v1/hashes/${encodeURIComponent(hash)}`)
-  return response.data
+  return dataClient.get<HashIntelligence>(`/api/v1/hashes/${encodeURIComponent(hash)}`)
+}
+
+/**
+ * The API client rejects with an ApiError carrying the HTTP status; an
+ * unknown IOC type is rejected with a plain Error before any request.
+ */
+type LookupError = Error | ApiError
+
+function isNotFoundError(error: LookupError | null): boolean {
+  return error !== null && 'status' in error && error.status === 404
 }
 
 // ============================================================================
@@ -275,7 +282,7 @@ export interface UseThreatLookupResult {
   /**
    * Error object if query failed
    */
-  error: Error | null
+  error: LookupError | null
   
   /**
    * Whether IOC was not found (404 response)
@@ -343,24 +350,22 @@ export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreat
   }
   
   // Execute query with TanStack Query
-  const query = useQuery<ThreatIntelligence, Error>({
+  const query = useQuery<ThreatIntelligence, LookupError>({
     queryKey: ['threat-lookup', iocType, iocValue],
     queryFn,
     enabled: enabled && !!iocValue && iocType !== 'unknown',
     staleTime: 30000, // 30 seconds - threat intel changes slowly
     gcTime: 5 * 60 * 1000, // 5 minutes - keep in cache
-    retry: (failureCount, error: any) => {
+    retry: (failureCount, error) => {
       // Don't retry on 404 (IOC not found)
-      if (error?.response?.status === 404) return false
+      if (isNotFoundError(error)) return false
       // Retry up to 2 times for other errors
       return failureCount < 2
     },
   })
   
   // Detect 404 errors (IOC not found in database)
-  const isNotFound = query.error ? 
-    (query.error as any)?.response?.status === 404 : 
-    false
+  const isNotFound = isNotFoundError(query.error)
   
   return {
     data: query.data || null,
