@@ -52,6 +52,7 @@ EXPECTED_NETWORKS = {
     "tools-worker": {"data", "egress"},
     "tools-flower": {"data", "egress"},
     "guardian-worker": {"data", "egress"},
+    "guardian-beat": {"data"},
     "data-scheduler": {"data", "egress"},
     "backup": {"data", "egress"},
     "postgres": {"data"},
@@ -91,6 +92,8 @@ MUST_CONNECT = [
     ("guardian", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("guardian-worker", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("guardian-worker", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
+    ("guardian-beat", "wildbox-postgres", 5432, "DATABASE_URL (PeriodicTask rows)"),
+    ("guardian-beat", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
     ("responder", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("responder", "wildbox-redis", 6379, "REDIS_URL"),
     ("cspm", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
@@ -122,6 +125,13 @@ MUST_NOT_CONNECT = [
         "flower is on data and egress only",
     ),
     ("postgres", "github.com", 443, "data is internal: no route out"),
+    ("guardian-beat", "github.com", 443, "beat is on data alone: no route out"),
+    (
+        "guardian-beat",
+        "open-security-gateway",
+        8080,
+        "beat is on data alone, not backend",
+    ),
 ]
 
 # Runs inside the container with "$0"=host "$1"=port. Exit 0: TCP connection

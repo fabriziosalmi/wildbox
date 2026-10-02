@@ -8,6 +8,8 @@ import json
 import logging
 from datetime import timedelta
 
+from apps.core.locks import single_instance
+
 logger = logging.getLogger(__name__)
 
 
@@ -534,6 +536,7 @@ def send_alert_notification(rule, current_value):
 
 
 @shared_task
+@single_instance
 def check_all_alert_rules():
     """
     Check all active alert rules

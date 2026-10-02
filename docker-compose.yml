@@ -644,9 +644,10 @@ services:
           memory: 256M
     security_opt:
       - no-new-privileges:true
-    # -Q: the default queue plus every queue guardian/celery.py routes to, so
-    # a routed task is never published to a queue no worker reads.
-    command: celery -A guardian worker --loglevel=info --concurrency=2 -Q default,reporting,scanning,analytics,queue_management
+    # -Q: exactly the queues in guardian/celery.py TASK_QUEUES, so a routed
+    # task is never published to a queue no worker reads (#545; a unit test
+    # compares the two).
+    command: celery -A guardian worker --loglevel=info --concurrency=2 -Q default,reporting,scanning,analytics
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
@@ -656,6 +657,9 @@ services:
       - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Prefix of the links in the SLA and assignment e-mails; empty gives
+      # relative links (guardian/settings.py BASE_URL).
+      - GUARDIAN_BASE_URL=${GUARDIAN_BASE_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -670,6 +674,77 @@ services:
       test: ["CMD-SHELL", "celery -A guardian inspect ping -d celery@$$HOSTNAME"]
       interval: 30s
       timeout: 15s
+      retries: 3
+      start_period: 30s
+
+  # Guardian Celery beat: sends guardian's periodic tasks (SLA check,
+  # alert rules, cleanups, compliance reminders) to guardian-worker on the
+  # schedule in open-security-guardian/guardian/schedule.py (#545). Each
+  # interval can be changed with the GUARDIAN_SCHEDULE_* variable below; see
+  # docs/guides/deployment.md. It reads the schedule from PostgreSQL
+  # (django-celery-beat) and publishes to Redis, and talks to nothing else.
+  #
+  # Exactly one instance. Beat has no leader election: two of them would
+  # each send every task, so every reminder would go out twice.
+  # container_name makes `--scale guardian-beat=2` fail instead.
+  guardian-beat:
+    build:
+      context: ./open-security-guardian
+      dockerfile: Dockerfile
+      additional_contexts:
+        shared: ./open-security-shared
+    container_name: open-security-guardian-beat
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          cpus: '0.05'
+          memory: 128M
+    security_opt:
+      - no-new-privileges:true
+    # The scheduler is django-celery-beat's DatabaseScheduler plus a
+    # heartbeat file for the health check (guardian/beat.py).
+    command: celery -A guardian beat --loglevel=info --scheduler guardian.beat:HeartbeatDatabaseScheduler
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
+      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Empty means the default in guardian/schedule.py. Read when beat
+      # starts: restart guardian-beat after changing one.
+      - GUARDIAN_SCHEDULE_SLA_CHECK=${GUARDIAN_SCHEDULE_SLA_CHECK:-}
+      - GUARDIAN_SCHEDULE_ALERT_RULES=${GUARDIAN_SCHEDULE_ALERT_RULES:-}
+      - GUARDIAN_SCHEDULE_RISK_SCORES=${GUARDIAN_SCHEDULE_RISK_SCORES:-}
+      - GUARDIAN_SCHEDULE_REPORT_CLEANUP=${GUARDIAN_SCHEDULE_REPORT_CLEANUP:-}
+      - GUARDIAN_SCHEDULE_HISTORY_CLEANUP=${GUARDIAN_SCHEDULE_HISTORY_CLEANUP:-}
+      - GUARDIAN_SCHEDULE_ASSET_INVENTORY=${GUARDIAN_SCHEDULE_ASSET_INVENTORY:-}
+      - GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS=${GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS:-}
+      - GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS=${GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
+      # guardian applies the migrations, django-celery-beat's tables
+      # included; beat's own migrate is then a no-op.
+      guardian:
+        condition: service_healthy
+    networks:
+      - wildbox
+    healthcheck:
+      # The scheduler loop, not just the process: beat touches this file
+      # after every tick (at least every 5 s), so a stale file means a beat
+      # that is up but no longer scheduling anything.
+      test: ["CMD", "python", "-c", "import os, sys, time; sys.exit(time.time() - os.stat('/tmp/guardian-beat.heartbeat').st_mtime > 60)"]
+      interval: 30s
+      timeout: 10s
       retries: 3
       start_period: 30s
 

@@ -146,7 +146,40 @@ of date. To drop that backlog first, run, with the old stack still up:
 docker compose exec guardian celery -A guardian purge -f
 ```
 
-No `celery beat` is added: guardian defines no periodic schedule.
+Its periodic tasks are scheduled by `guardian-beat`, below.
+
+### 13. guardian schedules its periodic tasks (`guardian-beat`, one instance)
+
+guardian's periodic tasks (SLA check, alert rules, risk-score recalculation,
+cleanup of expired reports and old history, asset inventory, compliance
+reminders) were never scheduled, so none of them ran. A new service,
+`guardian-beat`, sends them to `guardian-worker` on the schedule in
+`open-security-guardian/guardian/schedule.py`. It uses guardian's image and,
+in the production overlay, sits on `data` alone.
+
+- **Run exactly one.** A second `guardian-beat` would send every task twice.
+  The service has a fixed container name, so scaling it fails; do not run
+  another beat for guardian elsewhere.
+- **Expect the first runs.** Within 15 minutes of the upgrade the SLA check
+  e-mails the assignee of every vulnerability already past its due date (once
+  per vulnerability per 24 hours), and every active alert rule whose
+  condition holds notifies. The first nightly runs mark assets not seen for
+  30 days inactive, delete reports past their expiry and vulnerability
+  history older than a year, and the first 08:00 run reminds about every
+  overdue compliance assessment. To hold any of them back, set its variable
+  to `off` before starting the stack.
+- **Change an interval with its variable**, not in the Django admin: every
+  `GUARDIAN_SCHEDULE_*` value (seconds, five crontab fields in UTC, or `off`)
+  is written over the admin's value each time `guardian-beat` starts. The
+  defaults and the reasons for them are in the
+  [deployment guide](https://www.wildbox.io/guides/deployment/#guardians-scheduled-tasks).
+- Tasks now go to the queue meant for them (`scanning`, `reporting`,
+  `analytics`, `default`) instead of all to `default`, and `guardian-worker`
+  no longer listens on `queue_management`, a queue no task ever used. If you
+  run your own guardian workers, give them the same `-Q` list as
+  `guardian-worker` in `docker-compose.yml`.
+- `GUARDIAN_BASE_URL` (optional) prefixes the vulnerability link in the SLA
+  and assignment e-mails.
 
 ## Upgrading to 0.10.0
 
