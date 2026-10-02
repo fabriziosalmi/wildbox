@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`make start` no longer leaves the data service crash-looping.** It layers
+  `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
+  whose `ENVIRONMENT` is `production`; data refuses that combination. The
+  development overlay now sets `ENVIRONMENT=development` for data as well.
+
 - **Logout now ends the session** (#475). Tokens from the login endpoint carried
   only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
   ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
