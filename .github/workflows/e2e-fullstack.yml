@@ -32,7 +32,7 @@ jobs:
     # origin and quarantined every test past the login form because of it.
     name: E2E Full-Stack (Playwright @backend)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30  # observed 9.3 min green (stack build 7.1, specs 0.7)
 
     steps:
       - name: Checkout code
@@ -79,11 +79,12 @@ jobs:
       - name: Install Playwright browsers
         working-directory: open-security-dashboard
         # Usually under a minute; once 8.0 min on apt mirrors. Bounded so a
-        # stalled mirror fails here, not at the job's 25-minute limit.
+        # stalled mirror fails here, not at the job's limit.
         timeout-minutes: 15
         run: npx playwright install --with-deps chromium
 
       - name: Start the stack
+        timeout-minutes: 20
         run: docker compose up -d --wait --wait-timeout 600
 
       - name: Show what came up
@@ -117,6 +118,7 @@ jobs:
 
       - name: Run the @backend Playwright specs
         working-directory: open-security-dashboard
+        timeout-minutes: 15
         env:
           CI: 'true'
           PLAYWRIGHT_SKIP_WEBSERVER: '1'
