@@ -528,12 +528,22 @@ services:
     #
     # The ceiling is raised too: 512MB was shared between that authoritative
     # state and four services' Celery/dramatiq queues.
+    #
+    # docker-compose.prod.yml inherits this command; it used to replace it
+    # with allkeys-lru (#530). scripts/check_redis_config.py asserts the
+    # rendered production configuration keeps it.
     command: redis-server --appendonly yes --maxmemory ${REDIS_MAXMEMORY:-1gb} --maxmemory-policy noeviction --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     deploy:
       resources:
         limits:
           cpus: '1.0'
-          memory: 1G
+          # At least twice REDIS_MAXMEMORY. maxmemory bounds the dataset, not
+          # the process: an AOF rewrite forks, and copy-on-write under writes
+          # can double the resident memory. With the limit equal to maxmemory
+          # the kernel OOM-killed Redis (exit 137) before noeviction ever
+          # refused a write; at 1.5x it was killed during a rewrite; at 2x it
+          # refused writes with OOM errors and stayed up (#530).
+          memory: ${REDIS_MEMORY_LIMIT:-2g}
         reservations:
           cpus: '0.25'
           memory: 128M

@@ -84,21 +84,22 @@ services:
         max-file: "3"
 
   # Redis - Production Settings
+  #
+  # No `command` and no memory limit here: both come from docker-compose.yml.
+  # This block used to set `--maxmemory-policy allkeys-lru` with 512mb, which
+  # let Redis silently evict the token blacklist (a revoked token worked
+  # again), the failed-login lockout counters, Celery/Dramatiq queues and
+  # results, and the scan and run state the base file keeps under noeviction
+  # (#530). Size it with REDIS_MAXMEMORY and REDIS_MEMORY_LIMIT (at least
+  # twice REDIS_MAXMEMORY); scripts/check_redis_config.py checks both.
   wildbox-redis:
     restart: always
-    command: >
-      redis-server
-      --maxmemory 512mb
-      --maxmemory-policy allkeys-lru
-      --appendonly yes
-      --requirepass ${REDIS_PASSWORD}
     networks: !override
       - data
     deploy:
       resources:
         limits:
           cpus: '1'
-          memory: 512M
         reservations:
           cpus: '0.5'
           memory: 256M
