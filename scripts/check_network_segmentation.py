@@ -121,7 +121,10 @@ MUST_NOT_CONNECT = [
 ]
 
 # Runs inside the container with "$0"=host "$1"=port. Exit 0: TCP connection
-# established; 2: name does not resolve; 3: resolved, connection failed.
+# established; 11: name does not resolve; 12: resolved, connection failed;
+# 13: no probing tool in the image. Codes a shell can produce on its own (1, 2,
+# 126, 127) are deliberately not results: a broken probe must fail the check,
+# never pass a "must not connect" assertion.
 # Uses whichever of python3 / node / curl / bash the image has.
 PROBE = r"""
 h="$0"; p="$1"
@@ -132,38 +135,40 @@ h, p = sys.argv[1], int(sys.argv[2])
 try:
     socket.getaddrinfo(h, p)
 except socket.gaierror:
-    sys.exit(2)
+    sys.exit(11)
 try:
     socket.create_connection((h, p), timeout=4).close()
 except OSError:
-    sys.exit(3)
+    sys.exit(12)
 ' "$h" "$p"
 elif command -v node >/dev/null 2>&1; then
   exec node -e '
 const [h, p] = process.argv.slice(1);
 require("dns").lookup(h, (e) => {
-  if (e) process.exit(2);
+  if (e) process.exit(11);
   const s = require("net").connect({ host: h, port: +p });
-  s.setTimeout(4000, () => process.exit(3));
+  s.setTimeout(4000, () => process.exit(12));
   s.on("connect", () => process.exit(0));
-  s.on("error", () => process.exit(3));
+  s.on("error", () => process.exit(12));
 });
 ' "$h" "$p"
-else
+elif command -v curl >/dev/null 2>&1; then
   t=$(curl -s -o /dev/null -w "%{time_connect}" --connect-timeout 4 -m 6 "http://$h:$p/")
   rc=$?
-  [ "$rc" -eq 6 ] && exit 2
-  case "$t" in ""|0|0.0*) exit 3 ;; esac
+  [ "$rc" -eq 6 ] && exit 11
+  # time_connect is 0 unless the TCP handshake completed (whatever the
+  # protocol made of the reply afterwards).
+  awk -v t="${t:-0}" 'BEGIN { exit !(t + 0 > 0) }' || exit 12
   exit 0
 elif command -v bash >/dev/null 2>&1; then
-  getent hosts "$h" >/dev/null || exit 2
-  timeout 4 bash -c "exec 3<>/dev/tcp/$h/$p" 2>/dev/null || exit 3
+  getent hosts "$h" >/dev/null || exit 11
+  timeout 4 bash -c "exec 3<>/dev/tcp/$h/$p" 2>/dev/null || exit 12
   exit 0
 fi
-exit 4
+exit 13
 """
 
-RESULT = {0: "connected", 2: "does not resolve", 3: "connection failed"}
+RESULT = {0: "connected", 11: "does not resolve", 12: "connection failed"}
 
 
 def compose_config(env_file):
