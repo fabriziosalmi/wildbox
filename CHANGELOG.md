@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's periodic tasks run, and its tasks reach their queues**
+  (#545). guardian used django-celery-beat but scheduled nothing and ran
+  no beat, so the SLA check, alert rules, risk-score recalculation,
+  report and history cleanup, asset inventory and compliance reminders
+  never ran on their own. A `guardian-beat` service (one instance) now
+  sends them on a schedule defined in `guardian/schedule.py`, each
+  interval overridable with a `GUARDIAN_SCHEDULE_*` variable; runs expire
+  instead of piling up, and the notifying sweeps skip a run while one is
+  in progress. Its health check reads a heartbeat the scheduler refreshes
+  on every tick. The task routes were globs such as `reporting.tasks.*`
+  that matched no registered name (`apps.reporting.tasks.*`), so every
+  task went to `default`; each task is now routed by name, a unit test
+  fails for a task without a queue, and `GET
+  /api/v1/guardian/tasks/{task_id}/` reports the queue a task was
+  delivered on. Two of the scheduled tasks could not have run anyway:
+  the SLA check and the history cleanup filtered on a field that does not
+  exist (`changed_at`), and the SLA e-mail read an undefined
+  `settings.BASE_URL` (now `GUARDIAN_BASE_URL`).
 - **guardian's Celery tasks run** (#537). guardian queued tasks (port
   scans of new assets, threat-intel enrichment, alert-rule checks, report
   generation) but no service consumed its queue, so none of them ever ran.
@@ -374,6 +392,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **A scheduled guardian task is seen to run, and on its queue** (#545).
+  Integration Tests and Production Stack start guardian-beat with the
+  alert-rule sweep every 15 seconds and wait, through the gateway, for a
+  rule's trigger count to move with nothing else starting a sweep; the
+  alert sweep and an asset port scan must report the `reporting` and
+  `scanning` queues. Production Stack also checks the queues the running
+  worker consumes and that there is one beat container.
 - **The dashboard is linted, format-checked and type-checked in CI**
   (#528). `npm run lint` used `next lint`, gone in Next.js 16, with a
   legacy `.eslintrc.json` ESLint 9 cannot load; it now runs the ESLint

@@ -39,6 +39,10 @@ jobs:
       # stack. compose.ci-ports.yml and compose.ci-prod.yml publish PostgreSQL
       # on loopback for the cross-tenant test; see the comments in both.
       COMPOSE_FILE: docker-compose.yml:docker-compose.prod.yml:.github/compose.ci-ports.yml:.github/compose.ci-prod.yml
+      # guardian-beat sends the alert-rule sweep every 15 s instead of every
+      # 15 minutes, so the integration suite can watch a scheduled run happen
+      # (#545). The suite reads it too, to size its deadline.
+      GUARDIAN_SCHEDULE_ALERT_RULES: "15"
 
     steps:
       - name: Checkout code
@@ -98,6 +102,26 @@ jobs:
 
       - name: Segmentation from inside the running containers
         run: python3 scripts/check_network_segmentation.py runtime
+
+      - name: guardian-worker consumes the routed queues; guardian-beat is alone
+        # The queues the running worker actually reads, against the ones
+        # guardian/celery.py routes to (#545); and one beat container, since
+        # a second would send every periodic task twice.
+        run: |
+          docker compose exec -T guardian-worker sh -c \
+            'celery -A guardian inspect active_queues --json -d "celery@$HOSTNAME"' > queues.json
+          python3 - <<'EOF'
+          import json
+          raw = open("queues.json").read()
+          replies = json.loads(raw[raw.index("{"):])
+          (queues,) = replies.values()
+          got = sorted(q["name"] for q in queues)
+          print("guardian-worker consumes:", got)
+          assert got == ["analytics", "default", "reporting", "scanning"], got
+          EOF
+          beats="$(docker compose ps -q guardian-beat | wc -l)"
+          echo "guardian-beat containers: $beats"
+          test "$beats" -eq 1
 
       - name: identity applies the production CORS_ORIGINS
         # .env carries CORS_ORIGINS comma-separated; identity used to crash-loop

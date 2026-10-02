@@ -30,8 +30,10 @@
 #             open-security-data:8002 (config.yaml.example); prometheus ->
 #             the /metrics targets in monitoring/prometheus.yml
 #   data      postgres, wildbox-redis, and only the services whose
-#   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup
-#   egress    tools-worker, tools-flower, guardian-worker, data-scheduler,
+#   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup.
+#             guardian-beat is on data alone: it reads its schedule from
+#             PostgreSQL and publishes to Redis, and needs nothing else
+#   egress   tools-worker, tools-flower, guardian-worker, data-scheduler,
 #             backup: the services on `data` alone, which would otherwise have
 #             no outbound internet (tool execution, port scans, threat feeds,
 #             `apk add` in backup) and no loopback port (flower). Inter-container communication is
@@ -348,6 +350,22 @@ services:
     networks: !override
       - data
       - egress
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # The scheduler reads PeriodicTask rows from PostgreSQL and publishes to
+  # Redis; it runs no task itself, so it has no reason to reach anything
+  # outside data. One instance only (see docker-compose.yml).
+  guardian-beat:
+    restart: always
+    networks: !override
+      - data
     environment:
       - DEBUG=false
       - LOG_LEVEL=INFO

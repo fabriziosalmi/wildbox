@@ -178,6 +178,61 @@ With the stack running,
 scripts/check_redis_config.py runtime --env-file .env` reads the live settings
 and the applied limit and prints the memory in use and its peak.
 
+### guardian's scheduled tasks
+
+`guardian-beat` sends guardian's periodic tasks to `guardian-worker`. The
+schedule is defined in `open-security-guardian/guardian/schedule.py`; when
+`guardian-beat` starts it writes each entry into django-celery-beat's
+`PeriodicTask` table, where the Django admin shows it. Crontab times are in
+`CELERY_TIMEZONE`, UTC unless set.
+
+| Task | Default | Why | Variable |
+| --- | --- | --- | --- |
+| SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. Each vulnerability is notified at most once every 24 hours, however often the check runs | `GUARDIAN_SCHEDULE_SLA_CHECK` |
+| Alert rules | every 15 minutes | A firing rule notifies on every evaluation (there is no repeat suppression yet), so a shorter interval sends more mail: 96 a day per firing rule at 15 minutes, 288 at 5 | `GUARDIAN_SCHEDULE_ALERT_RULES` |
+| Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits and threat-intel enrichment already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
+| Expired report cleanup | daily, 03:00 | Reports expire 30 days after generation; a day's precision is enough | `GUARDIAN_SCHEDULE_REPORT_CLEANUP` |
+| Vulnerability history cleanup | daily, 03:30 | One year of history is kept; running daily keeps each deletion to one day of rows | `GUARDIAN_SCHEDULE_HISTORY_CLEANUP` |
+| Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |
+| Overdue compliance assessments | daily, 08:00 | Sends one reminder per overdue assessment on every run, at the start of the working day | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
+| Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and reminds on every run: weekly gives about four reminders per exception, daily would give thirty | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
+
+To change one, set its variable in `.env` and restart the scheduler:
+
+```bash
+# Every 10 minutes; five crontab fields; or off.
+GUARDIAN_SCHEDULE_SLA_CHECK=600
+GUARDIAN_SCHEDULE_REPORT_CLEANUP="15 1 * * *"
+GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS=off
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d guardian-beat
+docker compose logs guardian-beat
+```
+
+- A value is a number of seconds, five crontab fields (`minute hour
+  day-of-month month day-of-week`) or `off`, which disables the task. An
+  invalid value stops `guardian-beat` at start-up with the variable's name in
+  the error.
+- The variables are the source of truth. An edit to one of these entries in
+  the Django admin lasts until `guardian-beat` restarts, when the configured
+  value is written back.
+- A run that is still queued when the next one is due (for the daily and
+  weekly tasks, an hour after its slot) is dropped rather than run late, so a
+  worker that was down does not come back to a burst of identical reminders.
+  The sweeps that send notifications or rewrite every vulnerability also skip
+  a run while another one is still in progress.
+- Run exactly one `guardian-beat`. Beat has no leader election: a second
+  instance would send every task twice. The service has a fixed container
+  name, so `--scale guardian-beat=2` fails.
+- Its health check reads a heartbeat file the scheduler refreshes after every
+  tick (at least every 5 seconds); the container turns unhealthy when the file
+  is older than a minute, that is when beat is running but no longer
+  scheduling.
+- The SLA and assignment e-mails prefix their vulnerability link with
+  `GUARDIAN_BASE_URL`; unset, the link is a relative path.
+
 ---
 
 ## 5. Verify

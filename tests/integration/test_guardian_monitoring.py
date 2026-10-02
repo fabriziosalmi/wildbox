@@ -32,7 +32,8 @@ GUARDIAN_API = f"{GATEWAY_URL}/api/v1/guardian"
 ASSETS = f"{GUARDIAN_API}/assets/assets/"
 VULNERABILITIES = f"{GUARDIAN_API}/vulnerabilities/"
 DASHBOARDS = f"{GUARDIAN_API}/reports/dashboards/"
-ALERT_CHECK_ALL = f"{GUARDIAN_API}/reports/alerts/check_all/"
+ALERTS = f"{GUARDIAN_API}/reports/alerts/"
+ALERT_CHECK_ALL = f"{ALERTS}check_all/"
 TASKS = f"{GUARDIAN_API}/tasks/"
 
 TIMEOUT = 15
@@ -246,6 +247,64 @@ class TestGuardianMonitoring:
         status = _wait_for_task(task_id, admin_headers)
         assert status["state"] == "SUCCESS", status
         assert status["successful"] is True, status
+        # Delivered on the queue guardian/celery.py routes it to. Until #545
+        # the routes matched no task name and everything went to default.
+        assert status["queue"] == "reporting", status
+
+    def test_scheduled_task_runs_on_its_own(self, admin_headers) -> None:
+        """guardian-beat sends the alert-rule sweep without anyone asking.
+
+        Nothing scheduled guardian's periodic tasks until #545. The rule
+        created here fires on every evaluation, and a sweep that is not in
+        test mode records that in trigger_count; nothing in this test starts
+        a sweep, so the count can only move if beat sent one and the worker
+        ran it. CI runs the sweep every GUARDIAN_SCHEDULE_ALERT_RULES
+        seconds (15) instead of the default 15 minutes.
+        """
+        interval = os.getenv("GUARDIAN_SCHEDULE_ALERT_RULES", "")
+        if not interval.isdigit() or not 0 < int(interval) <= 60:
+            message = (
+                "start the stack with GUARDIAN_SCHEDULE_ALERT_RULES at 60 s or "
+                "less, and set it for the suite too"
+            )
+            if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
+                pytest.fail(message, pytrace=False)
+            pytest.skip(message)
+
+        payload = {
+            "name": f"it-guardian-beat-{uuid.uuid4().hex[:12]}",
+            "data_source": "integration-test",
+            "condition_type": "threshold",
+            "operator": "eq",
+            # guardian evaluates every rule against 0 for now
+            # (reporting/tasks.py get_current_value_for_rule), so this fires.
+            "threshold_value": 0,
+        }
+        created = requests.post(
+            ALERTS, json=payload, headers=admin_headers, timeout=TIMEOUT
+        )
+        assert created.status_code == 201, created.text[:300]
+        rule = created.json()
+        assert rule["trigger_count"] == 0, rule
+        try:
+            deadline = time.monotonic() + max(TASK_DEADLINE, 3 * int(interval))
+            while time.monotonic() < deadline:
+                current = requests.get(
+                    f"{ALERTS}{rule['id']}/", headers=admin_headers, timeout=TIMEOUT
+                )
+                assert current.status_code == 200, current.text[:300]
+                rule = current.json()
+                if rule["trigger_count"] > 0:
+                    break
+                time.sleep(2)
+            assert (
+                rule["trigger_count"] > 0
+            ), f"no scheduled sweep evaluated the rule within the deadline: {rule}"
+            assert rule["last_triggered"], rule
+        finally:
+            requests.delete(
+                f"{ALERTS}{rule['id']}/", headers=admin_headers, timeout=TIMEOUT
+            )
 
     def test_asset_scan_runs(self, admin_headers) -> None:
         """POST .../assets/{id}/scan/ queues a port scan that completes.
@@ -273,6 +332,8 @@ class TestGuardianMonitoring:
             ), f"{response.status_code} {response.text[:300]}"
             status = _wait_for_task(response.json()["task_id"], admin_headers)
             assert status["state"] == "SUCCESS", status
+            # Port scans run on the scanning queue (#545).
+            assert status["queue"] == "scanning", status
         finally:
             requests.delete(
                 f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT

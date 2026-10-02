@@ -327,8 +327,23 @@ CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 1000
 
-# Celery Beat (scheduled tasks)
-CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Store each task's name, worker and delivery queue with its result, so that
+# GET /api/v1/tasks/{id}/ can report which queue a task was delivered on
+# (#545). The result backend also keeps the task's arguments then; they are
+# the ones already on the broker, in the same Redis, and expire with the
+# result (one day). The endpoint returns the state and the queue only.
+CELERY_RESULT_EXTENDED = True
+
+# Celery Beat (scheduled tasks). guardian-beat runs the scheduler below; it
+# writes CELERY_BEAT_SCHEDULE into django-celery-beat's PeriodicTask rows when
+# it starts. Every entry, its default and its environment override are in
+# guardian/schedule.py (#545).
+from guardian.schedule import build_beat_schedule  # noqa: E402
+
+# django-celery-beat's DatabaseScheduler, plus the heartbeat file the
+# container health check reads (guardian/beat.py).
+CELERY_BEAT_SCHEDULER = 'guardian.beat:HeartbeatDatabaseScheduler'
+CELERY_BEAT_SCHEDULE = build_beat_schedule()
 
 # =============================================================================
 # LOGGING CONFIGURATION
@@ -451,6 +466,12 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() == 'true'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', 'guardian@wildbox.dev')
+
+# Prefix of the vulnerability links in notification e-mails. The SLA check
+# and the assignment notice read it, and it was never defined, so both raised
+# AttributeError as soon as they had someone to notify (#545). Unset, the
+# links are relative paths.
+BASE_URL = os.getenv('GUARDIAN_BASE_URL', '').rstrip('/')
 
 # Notification settings
 NOTIFICATION_SETTINGS = {

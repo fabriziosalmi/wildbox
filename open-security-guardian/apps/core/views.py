@@ -97,18 +97,24 @@ class TaskStatusView(APIView):
     worker has picked up (or an unknown id), then STARTED, SUCCESS, FAILURE
     or RETRY. Only the state is returned, never the task's return value or
     traceback, which may carry data the caller is not entitled to.
+
+    ``queue`` is the queue the task was delivered on, once a worker has
+    taken it (CELERY_RESULT_EXTENDED), and null before: it shows that a task
+    went where guardian/celery.py routes it (#545).
     """
 
     def get(self, request, task_id):
         from guardian.celery import app as celery_app
 
-        state = celery_app.AsyncResult(str(task_id)).state
+        result = celery_app.AsyncResult(str(task_id))
+        state = result.state
         ready = state in ('SUCCESS', 'FAILURE', 'REVOKED')
         return Response({
             'task_id': str(task_id),
             'state': state,
             'ready': ready,
             'successful': state == 'SUCCESS' if ready else None,
+            'queue': result.queue,
         })
 
 

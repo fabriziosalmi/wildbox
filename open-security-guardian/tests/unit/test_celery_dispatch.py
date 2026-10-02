@@ -93,20 +93,23 @@ def test_scan_needs_an_admin(client):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "state,ready,successful",
+    "state,ready,successful,queue",
     [
-        ("PENDING", False, None),
-        ("STARTED", False, None),
-        ("RETRY", False, None),
-        ("SUCCESS", True, True),
-        ("FAILURE", True, False),
+        # No worker has taken it, so no delivery queue is recorded yet.
+        ("PENDING", False, None, None),
+        ("STARTED", False, None, "scanning"),
+        ("RETRY", False, None, "scanning"),
+        ("SUCCESS", True, True, "reporting"),
+        ("FAILURE", True, False, "default"),
     ],
 )
-def test_task_status_reports_the_backend_state(client, state, ready, successful):
+def test_task_status_reports_the_backend_state(client, state, ready, successful, queue):
     task_id = str(uuid.uuid4())
     with mock.patch(
         "guardian.celery.app.AsyncResult",
-        return_value=SimpleNamespace(state=state, result="secret"),
+        return_value=SimpleNamespace(
+            state=state, result="secret", queue=queue, args=["secret"]
+        ),
     ) as async_result:
         response = client.get(
             f"/api/v1/tasks/{task_id}/", secure=True, **_headers(role="member")
@@ -118,6 +121,7 @@ def test_task_status_reports_the_backend_state(client, state, ready, successful)
         "state": state,
         "ready": ready,
         "successful": successful,
+        "queue": queue,
     }
     async_result.assert_called_once_with(task_id)
 

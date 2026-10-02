@@ -2,6 +2,7 @@ from celery import shared_task
 from django.utils import timezone
 from django.db.models import Count, Q
 from .models import ComplianceAssessment, ComplianceResult, ComplianceMetrics
+from apps.core.locks import single_instance
 from apps.core.utils import send_notification
 import logging
 
@@ -120,6 +121,7 @@ def send_compliance_notification(notification_type, object_id, data):
 
 
 @shared_task
+@single_instance
 def check_overdue_assessments():
     """
     Check for overdue assessments and send notifications
@@ -153,6 +155,7 @@ def check_overdue_assessments():
 
 
 @shared_task
+@single_instance
 def check_expiring_exceptions():
     """
     Check for exceptions expiring in the next 30 days

@@ -13,6 +13,8 @@ import logging
 import requests
 from datetime import timedelta
 
+from apps.core.locks import single_instance
+
 from .models import (
     Vulnerability, VulnerabilityStatus, VulnerabilityHistory,
     VulnerabilityAssessment
@@ -22,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3)
+@single_instance
 def update_vulnerability_risk_scores(self, vulnerability_ids=None):
     """
     Recalculate risk scores for vulnerabilities
@@ -184,6 +187,7 @@ def scan_vulnerability_remediation(self, vulnerability_id):
 
 
 @shared_task
+@single_instance
 def check_sla_violations():
     """
     Check for SLA violations and send notifications
@@ -203,7 +207,7 @@ def check_sla_violations():
             recent_notification = VulnerabilityHistory.objects.filter(
                 vulnerability=vuln,
                 change_reason__icontains='SLA violation notification',
-                changed_at__gte=now - timedelta(hours=24)
+                timestamp__gte=now - timedelta(hours=24)
             ).exists()
             
             if not recent_notification:
@@ -338,7 +342,7 @@ def cleanup_old_vulnerability_history():
         cutoff_date = timezone.now() - timedelta(days=365)  # Keep 1 year of history
         
         deleted_count = VulnerabilityHistory.objects.filter(
-            changed_at__lt=cutoff_date
+            timestamp__lt=cutoff_date
         ).delete()[0]
         
         logger.info(f"Cleaned up {deleted_count} old vulnerability history entries")
