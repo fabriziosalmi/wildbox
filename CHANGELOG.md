@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The web vulnerability scanner's SQL injection check works** (#507). It
+  read `await response.text().lower()`, which calls `.lower()` on the
+  coroutine and raised before any comparison, so it never reported a finding.
+
 - **`make start` no longer leaves the data service crash-looping.** It layers
   `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
   whose `ENVIRONMENT` is `production`; data refuses that combination. The
