@@ -103,6 +103,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits with an error (typer 0.9.4, pinned by spacy 3.7.2, predates click
   8.2); nothing in the repository imports spacy or runs its CLI.
 
+- **cspm drops the cloud SDKs it never imported, and protobuf with them**
+  (#415). requirements.in pinned 23 `google-*` packages besides google-auth
+  and seven `azure-mgmt-*` packages; the service imports only `google.auth`
+  and `azure.identity` (in `app/worker.py`), and every GCP and Azure check
+  runs on sample data, naming its SDK only in a comment. The 2023
+  google-cloud releases require `protobuf<5`, which held protobuf at 4.25.9
+  (PYSEC-2026-1805, fixed in 5.29.6). With them gone protobuf, grpcio and
+  google-api-core leave the lock entirely: 128 packages become 73, and
+  pip-audit reports nothing for cspm. boto3, botocore, google-auth and
+  azure-identity stay at the same versions.
+
 ### CI
 
 - **The chaos suite measures the system now** (#428). Seven experiments
