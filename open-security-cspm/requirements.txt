@@ -156,66 +156,13 @@ attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
     # via aiohttp
-azure-common==1.1.28 \
-    --hash=sha256:4ac0cd3214e36b6a1b6a442686722a5d8cc449603aa833f3f0f40bda836704a3 \
-    --hash=sha256:5c12d3dcf4ec20599ca6b0d3e09e86e146353d443e7fcc050c9a19c1f9df20ad
-    # via
-    #   azure-mgmt-compute
-    #   azure-mgmt-monitor
-    #   azure-mgmt-network
-    #   azure-mgmt-resource
-    #   azure-mgmt-security
-    #   azure-mgmt-sql
-    #   azure-mgmt-storage
 azure-core==1.41.0 \
     --hash=sha256:522b4011e8180b1a3dcd2024396a4e7fe9ac37fb8597db47163d230b5efe892d \
     --hash=sha256:f46ff5dfcd230f25cf1c19e8a34b8dc08a337b2503e268bb600a16c00db8ad5a
-    # via
-    #   azure-identity
-    #   azure-mgmt-core
-    #   msrest
+    # via azure-identity
 azure-identity==1.16.1 \
     --hash=sha256:6d93f04468f240d59246d8afde3091494a5040d4f141cad0f49fc0c399d0d91e \
     --hash=sha256:8fb07c25642cd4ac422559a8b50d3e77f73dcc2bbfaba419d06d6c9d7cff6726
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-compute==30.3.0 \
-    --hash=sha256:73845529ebee3ba1e9f5d3963f5b1f9108c950948faa8ab2206b1d62eb7f036c \
-    --hash=sha256:e529786340f862aa6a218a7ad6a5beb6b9fb55833c5caa0851cc3314d0493b63
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-core==1.6.0 \
-    --hash=sha256:0460d11e85c408b71c727ee1981f74432bc641bb25dfcf1bb4e90a49e776dbc4 \
-    --hash=sha256:b26232af857b021e61d813d9f4ae530465255cb10b3dde945ad3743f7a58e79c
-    # via
-    #   azure-mgmt-compute
-    #   azure-mgmt-monitor
-    #   azure-mgmt-network
-    #   azure-mgmt-resource
-    #   azure-mgmt-security
-    #   azure-mgmt-sql
-    #   azure-mgmt-storage
-azure-mgmt-monitor==6.0.2 \
-    --hash=sha256:5ffbf500e499ab7912b1ba6d26cef26480d9ae411532019bb78d72562196e07b \
-    --hash=sha256:fe4cf41e6680b74a228f81451dc5522656d599c6f343ecf702fc790fda9a357b
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-network==25.2.0 \
-    --hash=sha256:114c4292d223b1d1e247b41af65b8d5a3793567e6adbfa230772055223f4182a \
-    --hash=sha256:c76181e79d689df40b8160c4ffa8dd2bbf6ba064ed4d164fdefd8fb53b781641
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-resource==23.0.1 \
-    --hash=sha256:c2ba6cfd99df95f55f36eadc4245e3dc713257302a1fd0277756d94bd8cb28e0 \
-    --hash=sha256:f185eec72bbc39f42bcb83ae6f1bad744f0e3f20a12d9b2b3e70d16c74ad9cc0
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-security==6.0.0 \
-    --hash=sha256:c88570003ac8138c59e6e549e2d8bb6a6c7057c496303d8c33392fdfe05f294c \
-    --hash=sha256:ceafc1869899067110bd830c5cc98bc9b8f32d8ea840ca1f693b1a5f52a5f8b0
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-sql==3.0.1 \
-    --hash=sha256:129042cc011225e27aee6ef2697d585fa5722e5d1aeb0038af6ad2451a285457 \
-    --hash=sha256:1d1dd940d4d41be4ee319aad626341251572a5bf4a2addec71779432d9a1381f
-    # via -r open-security-cspm/requirements.in
-azure-mgmt-storage==21.1.0 \
-    --hash=sha256:593f2544fc4f05750c4fe7ca4d83c32ea1e9d266e57899bbf79ce5940124e8cc \
-    --hash=sha256:d6d3c0e917c988bc9ed0472477d3ef3f90886009eb1d97a711944f8375630162
     # via -r open-security-cspm/requirements.in
 billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
@@ -246,7 +193,6 @@ certifi==2026.7.22 \
     # via
     #   httpcore
     #   httpx
-    #   msrest
     #   requests
 cffi==2.1.1 \
     --hash=sha256:046bfc24911b37851ee1b51aab8bffe713d89c68c6a057b09484ce9fd5f69b4e \
@@ -749,311 +695,10 @@ frozenlist==1.8.0 \
     # via
     #   aiohttp
     #   aiosignal
-google-api-core==2.30.3 \
-    --hash=sha256:a85761ba72c444dad5d611c2220633480b2b6be2521eca69cca2dbb3ffd6bfe8 \
-    --hash=sha256:e601a37f148585319b26db36e219df68c5d07b6382cff2d580e83404e44d641b
-    # via
-    #   google-api-python-client
-    #   google-cloud-access-context-manager
-    #   google-cloud-appengine-logging
-    #   google-cloud-asset
-    #   google-cloud-bigquery
-    #   google-cloud-binary-authorization
-    #   google-cloud-compute
-    #   google-cloud-container
-    #   google-cloud-core
-    #   google-cloud-dataflow-client
-    #   google-cloud-firestore
-    #   google-cloud-functions
-    #   google-cloud-kms
-    #   google-cloud-logging
-    #   google-cloud-monitoring
-    #   google-cloud-org-policy
-    #   google-cloud-os-config
-    #   google-cloud-pubsub
-    #   google-cloud-redis
-    #   google-cloud-resource-manager
-    #   google-cloud-scheduler
-    #   google-cloud-secret-manager
-    #   google-cloud-securitycenter
-    #   google-cloud-service-usage
-    #   google-cloud-storage
-    #   grafeas
-google-api-python-client==2.108.0 \
-    --hash=sha256:6396efca83185fb205c0abdbc1c2ee57b40475578c6af37f6d0e30a639aade99 \
-    --hash=sha256:9d1327213e388943ebcd7db5ce6e7f47987a7e6874e3e1f6116010eea4a0e75d
-    # via -r open-security-cspm/requirements.in
 google-auth==2.23.4 \
     --hash=sha256:79905d6b1652187def79d491d6e23d0cbb3a21d3c7ba0dbaa9c8a01906b13ff3 \
     --hash=sha256:d4bbc92fe4b8bfd2f3e8d88e5ba7085935da208ee38a134fc280e7ce682a05f2
-    # via
-    #   -r open-security-cspm/requirements.in
-    #   google-api-core
-    #   google-api-python-client
-    #   google-auth-httplib2
-    #   google-auth-oauthlib
-    #   google-cloud-appengine-logging
-    #   google-cloud-binary-authorization
-    #   google-cloud-core
-    #   google-cloud-org-policy
-    #   google-cloud-os-config
-    #   google-cloud-scheduler
-    #   google-cloud-service-usage
-    #   google-cloud-storage
-    #   grafeas
-google-auth-httplib2==0.2.0 \
-    --hash=sha256:38aa7badf48f974f1eb9861794e9c0cb2a0511a4ec0679b1f886d108f5640e05 \
-    --hash=sha256:b65a0a2123300dd71281a7bf6e64d65a0759287df52729bdd1ae2e47dc311a3d
-    # via
-    #   -r open-security-cspm/requirements.in
-    #   google-api-python-client
-google-auth-oauthlib==1.1.0 \
-    --hash=sha256:089c6e587d36f4803ac7e0720c045c6a8b1fd1790088b8424975b90d0ee61c12 \
-    --hash=sha256:83ea8c3b0881e453790baff4448e8a6112ac8778d1de9da0b68010b843937afb
     # via -r open-security-cspm/requirements.in
-google-cloud-access-context-manager==0.6.0 \
-    --hash=sha256:760267fba1f8be8636e2a8d7c302027f310260fff8051c46b8b09b97d5468ee0 \
-    --hash=sha256:e1e62fe16fa3b1520afddf7023df9c261adbec7eb744f0a1be75306516e93d4f
-    # via google-cloud-asset
-google-cloud-appengine-logging==1.10.0 \
-    --hash=sha256:193675caaf062c41688a3e2c744b73614db82408bc7fb060353b6878d7134492 \
-    --hash=sha256:b5563e76010a36e6adf1cc489620c29ee4fb3b986b006d237e9a061eb0f0abb7
-    # via google-cloud-logging
-google-cloud-asset==3.19.1 \
-    --hash=sha256:0c8eb7f2c736e47bc8b9505ee0d25a8dad9ca678ef47980d64c5bf68d98226e8 \
-    --hash=sha256:466774d471d539386a4b07e7a08ad368c8f1a8716e19c2808f02a9de10f84b9a
-    # via -r open-security-cspm/requirements.in
-google-cloud-audit-log==0.6.0 \
-    --hash=sha256:4dd343683c0bb31187ebef3426803f13159e950fbea3fe60a864855cfed959b8 \
-    --hash=sha256:8c5ecbc341ad3b3daf776981f6d7fd7ab5ff5a29c5dce3172c669b570e0f6717
-    # via google-cloud-logging
-google-cloud-bigquery==3.12.0 \
-    --hash=sha256:1af93c5c28a18b13190bce479b793aaae56c0ecf7e1da73b4ba5798eca054a07 \
-    --hash=sha256:e68851addfe0394ab7662bd58aa0e5a4527e7156568cc0410129ccb8a460a009
-    # via -r open-security-cspm/requirements.in
-google-cloud-binary-authorization==1.13.2 \
-    --hash=sha256:70fed0a83882c6e38cabfd6780ccb622d26acfc70580bbbb0f5de506c79e3937 \
-    --hash=sha256:acdd841d4525b3dca4a304edc45bedfb8d6a3671a3fc27719550768493fe1b98
-    # via -r open-security-cspm/requirements.in
-google-cloud-compute==1.15.0 \
-    --hash=sha256:9eb39cae22c32c89c20c7e4f44635a7c5985a558c89f279e0f6e97edeb291e8f \
-    --hash=sha256:fa675aeaf04c627a442cd3032196d6f36ad68443ba327c9767a6bfbc40a42b21
-    # via -r open-security-cspm/requirements.in
-google-cloud-container==2.31.0 \
-    --hash=sha256:3c6ac6dbd6b9b6ae35867f33cc959d032e038eed4ee593d8859f8272c06b6806 \
-    --hash=sha256:e0b81756b6bfe7321acc844bf9985b48d8dc9eb68f4acff3d8f43e5586fb77b3
-    # via -r open-security-cspm/requirements.in
-google-cloud-core==2.7.0 \
-    --hash=sha256:874aaf89765db87a9b911b7a2ca7c5068554868eed9e75c7766affe342a2913d \
-    --hash=sha256:c18a250904cfdda021eb3ae8b8238c9f9ca272a4cbbfb5cba946b3fe3022eed1
-    # via
-    #   google-cloud-bigquery
-    #   google-cloud-dns
-    #   google-cloud-firestore
-    #   google-cloud-logging
-    #   google-cloud-storage
-google-cloud-dataflow-client==0.8.4 \
-    --hash=sha256:638a7a97cefa0f1f1918eb1403e2c34f9efe748d71787f7d668fd15993b92400 \
-    --hash=sha256:80f95f8ba02cc1515c2856fc1d2959504b2e119622644499da1d4faa96161714
-    # via -r open-security-cspm/requirements.in
-google-cloud-dns==0.34.1 \
-    --hash=sha256:44fa62ee93c51c6c57216058d92d2a9116b713a4a871a9d16a3a83b99e30c1f9 \
-    --hash=sha256:827a747e12caae587af01e259bb333935efe6e925d6de99e6b572da6bbc9cf4a
-    # via -r open-security-cspm/requirements.in
-google-cloud-firestore==2.13.1 \
-    --hash=sha256:8b9ace47f8aeb561a6fd74620a7335e30c48a25e18dfedbd0d7923695768d156 \
-    --hash=sha256:bd14d2eb9ae358d21058ce091c13dea11917e26f1c43738a51e9cea8b49b4f38
-    # via -r open-security-cspm/requirements.in
-google-cloud-functions==1.13.3 \
-    --hash=sha256:3feae38559ba5fde1b2669b6622fa5b195c3914dbdadb0321c9c06c008bf805b \
-    --hash=sha256:db89aa97b98f7b13c80091fa8f93daf3f1c53030a65096d3fee4bfca9472c5e2
-    # via -r open-security-cspm/requirements.in
-google-cloud-kms==2.19.1 \
-    --hash=sha256:1275f2e7f08ee1106e094ec39f721af383814d94a8d123cf84bc0e9e0129562e \
-    --hash=sha256:89add70a92d45c9f7700610774368e89d4046a05243150276f65182be92dcca7
-    # via -r open-security-cspm/requirements.in
-google-cloud-logging==3.8.0 \
-    --hash=sha256:c868b276b021cf5f32b6e8356b6cb3666357d149ad0fd798076043a5ec7ed988 \
-    --hash=sha256:fdd916e59a84aa8c02e8148d7fdd3b3b623c57b0c1ff71f43297ce8e50fc1eab
-    # via -r open-security-cspm/requirements.in
-google-cloud-monitoring==2.16.0 \
-    --hash=sha256:3d1851009312ada5e8abf20ff761af8474b753060ab6e0b7d6ec47bc11f2b136 \
-    --hash=sha256:5e7a7161ca48b534e4f9b62f2e210364f7a1cde1ac21503089a0daedfa079441
-    # via -r open-security-cspm/requirements.in
-google-cloud-org-policy==1.18.0 \
-    --hash=sha256:41e330cfc833863d10a6b5f5ffaa2a12d0fe2f08fa03d619faaad744ae8d922b \
-    --hash=sha256:c0fc063963b48eafff711bca96aa9a08c1598635d92ddf2a4c0178614981ce8c
-    # via google-cloud-asset
-google-cloud-os-config==1.25.0 \
-    --hash=sha256:1b6f5f1da1f80f5796ca6098428324b2f32275e21b29ac08aa127e614c8dcb89 \
-    --hash=sha256:2e02717d6a0dabe8f6ebf7b9b37eb28b5f70e3358bd7caf0cddbcf843b303da1
-    # via google-cloud-asset
-google-cloud-pubsub==2.18.4 \
-    --hash=sha256:32eb61fd4c1dc6c842f594d69d9afa80544e3b327aa640a164eb6fb0201eaf2d \
-    --hash=sha256:f32144ad9ed32331a80a2f8379a3ca7526bbc01e7bd76de2e8ab52e492d21f50
-    # via -r open-security-cspm/requirements.in
-google-cloud-redis==2.13.1 \
-    --hash=sha256:4be94499fba167e5bcc6f1a9f284c72c5efc87ed839fddade3d5f4eaac29b1c9 \
-    --hash=sha256:52d4f5cf9ccccdcefe5e1a9cc79bbbec84bc182f0a68d3a962cb59f0196b1467
-    # via -r open-security-cspm/requirements.in
-google-cloud-resource-manager==1.10.4 \
-    --hash=sha256:2ba56ba8e5280cd425bd63620da48b78da2cd299ece58a71f0f2ce3a32d56f99 \
-    --hash=sha256:456b25ddda3d4cd27488a72736bbc3af04d713ae2fe3655c01b66a339d28d679
-    # via -r open-security-cspm/requirements.in
-google-cloud-scheduler==2.13.4 \
-    --hash=sha256:3355cb360e0b76a5c3b858109d8f1dbba59824f54f6ca6e9cd2f31db85dfb9f1 \
-    --hash=sha256:d74030b4a8cb8b959764fa4aecaa3c79677a67b449de61bd934600220f396026
-    # via -r open-security-cspm/requirements.in
-google-cloud-secret-manager==2.16.4 \
-    --hash=sha256:371dc72f9145af323e8a813c8e50380e6ac4bd6a5dbcd42dcf3162d8f37e5080 \
-    --hash=sha256:5031c45dd84dc584d91ee0baae2bbd5df6710efe0c42719ee370a3ab62aaf618
-    # via -r open-security-cspm/requirements.in
-google-cloud-securitycenter==1.23.1 \
-    --hash=sha256:1a51687a27c4c4d4bba5dfaf0e7616b0658f343910e129a71459d39ec8d337a4 \
-    --hash=sha256:711abfd25934256f1ff3bdd868aa52b797b18b2a56d17a92557af490c360f4b2
-    # via -r open-security-cspm/requirements.in
-google-cloud-service-usage==1.13.1 \
-    --hash=sha256:783a1f9983a2fa604ecbe22f8b0373242e15dc487b0f94728a05bec6a58c11d4 \
-    --hash=sha256:d5c147d2b8c6d87a8332974f53060043830ed420212dd4c1faba290bb3141de0
-    # via -r open-security-cspm/requirements.in
-google-cloud-storage==2.10.0 \
-    --hash=sha256:934b31ead5f3994e5360f9ff5750982c5b6b11604dc072bc452c25965e076dc7 \
-    --hash=sha256:9433cf28801671de1c80434238fb1e7e4a1ba3087470e90f70c928ea77c2b9d7
-    # via -r open-security-cspm/requirements.in
-google-crc32c==1.8.0 \
-    --hash=sha256:014a7e68d623e9a4222d663931febc3033c5c7c9730785727de2a81f87d5bab8 \
-    --hash=sha256:01f126a5cfddc378290de52095e2c7052be2ba7656a9f0caf4bcd1bfb1833f8a \
-    --hash=sha256:0470b8c3d73b5f4e3300165498e4cf25221c7eb37f1159e221d1825b6df8a7ff \
-    --hash=sha256:119fcd90c57c89f30040b47c211acee231b25a45d225e3225294386f5d258288 \
-    --hash=sha256:14f87e04d613dfa218d6135e81b78272c3b904e2a7053b841481b38a7d901411 \
-    --hash=sha256:17446feb05abddc187e5441a45971b8394ea4c1b6efd88ab0af393fd9e0a156a \
-    --hash=sha256:19b40d637a54cb71e0829179f6cb41835f0fbd9e8eb60552152a8b52c36cbe15 \
-    --hash=sha256:2a3dc3318507de089c5384cc74d54318401410f82aa65b2d9cdde9d297aca7cb \
-    --hash=sha256:3b9776774b24ba76831609ffbabce8cdf6fa2bd5e9df37b594221c7e333a81fa \
-    --hash=sha256:3cc0c8912038065eafa603b238abf252e204accab2a704c63b9e14837a854962 \
-    --hash=sha256:3d488e98b18809f5e322978d4506373599c0c13e6c5ad13e53bb44758e18d215 \
-    --hash=sha256:3ebb04528e83b2634857f43f9bb8ef5b2bbe7f10f140daeb01b58f972d04736b \
-    --hash=sha256:450dc98429d3e33ed2926fc99ee81001928d63460f8538f21a5d6060912a8e27 \
-    --hash=sha256:4b8286b659c1335172e39563ab0a768b8015e88e08329fa5321f774275fc3113 \
-    --hash=sha256:57a50a9035b75643996fbf224d6661e386c7162d1dfdab9bc4ca790947d1007f \
-    --hash=sha256:61f58b28e0b21fcb249a8247ad0db2e64114e201e2e9b4200af020f3b6242c9f \
-    --hash=sha256:6f35aaffc8ccd81ba3162443fabb920e65b1f20ab1952a31b13173a67811467d \
-    --hash=sha256:71734788a88f551fbd6a97be9668a0020698e07b2bf5b3aa26a36c10cdfb27b2 \
-    --hash=sha256:864abafe7d6e2c4c66395c1eb0fe12dc891879769b52a3d56499612ca93b6092 \
-    --hash=sha256:86cfc00fe45a0ac7359e5214a1704e51a99e757d0272554874f419f79838c5f7 \
-    --hash=sha256:87b0072c4ecc9505cfa16ee734b00cd7721d20a0f595be4d40d3d21b41f65ae2 \
-    --hash=sha256:87fa445064e7db928226b2e6f0d5304ab4cd0339e664a4e9a25029f384d9bb93 \
-    --hash=sha256:89c17d53d75562edfff86679244830599ee0a48efc216200691de8b02ab6b2b8 \
-    --hash=sha256:8b3f68782f3cbd1bce027e48768293072813469af6a61a86f6bb4977a4380f21 \
-    --hash=sha256:a428e25fb7691024de47fecfbff7ff957214da51eddded0da0ae0e0f03a2cf79 \
-    --hash=sha256:b0d1a7afc6e8e4635564ba8aa5c0548e3173e41b6384d7711a9123165f582de2 \
-    --hash=sha256:ba6aba18daf4d36ad4412feede6221414692f44d17e5428bdd81ad3fc1eee5dc \
-    --hash=sha256:cb5c869c2923d56cb0c8e6bcdd73c009c36ae39b652dbe46a05eb4ef0ad01454 \
-    --hash=sha256:d511b3153e7011a27ab6ee6bb3a5404a55b994dc1a7322c0b87b29606d9790e2 \
-    --hash=sha256:db3fe8eaf0612fc8b20fa21a5f25bd785bc3cd5be69f8f3412b0ac2ffd49e733 \
-    --hash=sha256:e6584b12cb06796d285d09e33f63309a09368b9d806a551d8036a4207ea43697 \
-    --hash=sha256:f4b51844ef67d6cf2e9425983274da75f18b1597bb2c998e1c0a0e8d46f8f651 \
-    --hash=sha256:f639065ea2042d5c034bf258a9f085eaa7af0cd250667c0635a3118e8f92c69c
-    # via google-resumable-media
-google-resumable-media==2.10.2 \
-    --hash=sha256:1de441703cd298d75a419bfdc0066e9fc7b0a1de630df96eea8ce8f5c759358c \
-    --hash=sha256:e3cedc827a4ea41e216582d74346f1fb9fceb625a8c3c53912f2ca1d663334d7
-    # via
-    #   google-cloud-bigquery
-    #   google-cloud-storage
-googleapis-common-protos==1.75.0 \
-    --hash=sha256:53a062ff3c32552fbd62c11fe23768b78e4ddf0494d5e5fd97d3f4689c75fbbd \
-    --hash=sha256:961ed60399c457ceb0ee8f285a84c870aabc9c6a832b9d37bb281b5bebde43ed
-    # via
-    #   google-api-core
-    #   google-cloud-audit-log
-    #   grpc-google-iam-v1
-    #   grpcio-status
-grafeas==1.23.0 \
-    --hash=sha256:2b0d5a461f967919d9890e32aacd2742f05137bbf754c09c2a832db463fa253a \
-    --hash=sha256:2c44fc4e4b26d4aa34ec2d647f247d0cb94bf10ea52c33332875a27ac7dd7391
-    # via google-cloud-binary-authorization
-grpc-google-iam-v1==0.14.4 \
-    --hash=sha256:392b3796947ed6334e61171d9ab06bf7eb357f554e5fc7556ad7aab6d0e17038 \
-    --hash=sha256:412facc320fcbd94034b4df3d557662051d4d8adfa86e0ddb4dca70a3f739964
-    # via
-    #   google-cloud-asset
-    #   google-cloud-functions
-    #   google-cloud-kms
-    #   google-cloud-logging
-    #   google-cloud-pubsub
-    #   google-cloud-resource-manager
-    #   google-cloud-secret-manager
-    #   google-cloud-securitycenter
-grpcio==1.83.1 \
-    --hash=sha256:0468b627f2987c9a77f7580030207cbd85457ffe52998beff4f0b5c38c58a72c \
-    --hash=sha256:05ba265193fbd9f63355311ec7567bba32a72aeb8e9fd7b3443e4fcad87b0750 \
-    --hash=sha256:0d07661944477517b12a239e18720c8d9038f80a62f2c56260fae80327f43d2a \
-    --hash=sha256:0f736f8359cf7cb8d0914a290999765a4342b0c35f01adc6e3ba24598f9d62b7 \
-    --hash=sha256:145b0050d24eb38accd9dc7ae09a3c09b8e7330159f3cfb46b1dba8711d50c42 \
-    --hash=sha256:16138031a47b771860a16a975b53087f4fd5bbdbb2c03a188c5d90ad65d2bdae \
-    --hash=sha256:179368d9361854616ce6f397d4716e07480129652752fcbcfc5a7260455ad6f2 \
-    --hash=sha256:1fea1ae4795d4790579995a4dd5e20e7494d358e29a340e8368dab9723264328 \
-    --hash=sha256:20d944d967843f8183f9f23d5916388362e5f8eeeae855bbe4354d906dc9f31b \
-    --hash=sha256:2110059146fb0ea216e1ffddb29377b5cc2fd412a5b0a92e102616bd5edf18c2 \
-    --hash=sha256:215cec07d11176507387bda4bf2751816e880f9bff8dc1ca524bfbb8ed8f2fad \
-    --hash=sha256:2a141f7bfc1601a0942405a8af6334ab21ba1dd0fa49b8427686df7beebd374d \
-    --hash=sha256:2e57af456385491a76e13c4aada8c8f43a8e47051e06ea97a9dbe2a49654e6db \
-    --hash=sha256:34f1841fc6d1d76f8a2d74177eafa2d1ec7d7e039633488c9fcc1b375a1fc165 \
-    --hash=sha256:47e6934ad38779271e2e7cc5f78a63a407cf3d98114c65c1fdbcd3f5a716f29b \
-    --hash=sha256:4910b62f7d12197160bfb7de06d876d64dd12d43483e8292f98f49ca09b628d9 \
-    --hash=sha256:4e7c1468cf37cca17ab18bc8072901eed8daeb81685589ccd07988e5a750ee67 \
-    --hash=sha256:547645f02499c972f3edec9be4db9997f1d03df307c1c199772342ed6d8b3c6d \
-    --hash=sha256:55656318d5dd387077396dffb929171ca3966e24bfead9a6c5dba9f889062cb4 \
-    --hash=sha256:583bf2e8255040a4a312f9572dfe62a05271437b149550e1a536d5c47d2d1e8a \
-    --hash=sha256:5acd14c6ddf047de62cbf8745b11103ea91abbf57d1b8edd5395ccd9fcd13abb \
-    --hash=sha256:5ccc26715fd4defca5e129e280dd883b1737b65045ec50ffe22ce42104089519 \
-    --hash=sha256:5cce1d9fe2887239f054dc9c314597e04f33d2e6bd3150a91c4946d7e5be5d98 \
-    --hash=sha256:623c87c6d4a1cb30d82c4e896f95477050f2e01b4a1f8cf91ff2b1abdf89c457 \
-    --hash=sha256:65c5a7210911ffe0f67b1cdc5308f9854b6d1f1b345e3e49ab7cac1ba50fa346 \
-    --hash=sha256:72578aa07a4008f17521ef52debcc3acfd1e2c5426243bc3ffb56a38bfe610b7 \
-    --hash=sha256:7b94174cbca93316888f805efbeb08f1c020f7b7493d2d50cc4f6b64ebb7e8bd \
-    --hash=sha256:7d43e3bd2b7d749c2dbd41c2cc83d550c3343d299a19acbbba9e37ad8c11fa8e \
-    --hash=sha256:81bbf35a46bf8cad2dfbb2eccc19c711befb58b288acb534bbcd0d74283202a6 \
-    --hash=sha256:8b3c87ca908296bf125f841d3e1a2225a2b39aaa8ed7a57e7ccde465ee519bab \
-    --hash=sha256:8d228e253b77865efcbdd7b5894ca882c9e0ea98c02b7d20582e61ded8dfd4b5 \
-    --hash=sha256:907a5e5afb31f7a46376afc1a1edddd7afa00a74bbbc5b78979bbc34479581f6 \
-    --hash=sha256:947d945f52e8ecf3cafd2bb7113502a16ccfda3e12c854443094de32d83ad432 \
-    --hash=sha256:9cee6fcbf2eb57c4b49451787bfa87be8efc1ca02a0b327dd4b54d44502e362b \
-    --hash=sha256:9daf5acf4fc9d5f5627229969c2580a91e511779d76e4ccdeb9f4770f05d8bc2 \
-    --hash=sha256:9e703effe3ae779925c82ac24fdb82cf4105e1096810151ed9501c5f34546b9c \
-    --hash=sha256:a2aea8bd6e0a34f12cbaddb7bb70bec836818789fa5c7ab7572c6b745396a2d4 \
-    --hash=sha256:a4a87dc86b0393257a11eb11e911c4c3456cbacd1c1ab9e9441060d9a3ad126b \
-    --hash=sha256:a6a282e81530cead60bbd752cc04950a57f224379e9821495d6a35bd5ce9b1f4 \
-    --hash=sha256:abce7d43ec29cd39230fa8339de1a07643b55adc412a454850fbd875349950ff \
-    --hash=sha256:b59eaaeeb03dde0a2708095fb50f1afa94f11dc1b459bb7790b53bfb8cf95153 \
-    --hash=sha256:b74f2a1d9ab1dfa3e263ef33d581613679b78d0884babf11671af26e45570ead \
-    --hash=sha256:b7ace1f740b36fcd451a1bb96f71ee7650e60b308822baeb66a023965bc27f4b \
-    --hash=sha256:c0f3f20c90e72a171917ae65706500b096a1c3eb5f162c3ce702a2e25635f132 \
-    --hash=sha256:c12e1fc59c6dc26d10d9144453ddc6cbfe4cd4c31e874ed2d0132f88e685eb8b \
-    --hash=sha256:c7e9e19413d43077d5a5c77b02ff82610209088e8f98da929347bc03d4c848d1 \
-    --hash=sha256:d0dda8af248f6971555e1d4425f64864ce4e7369c5f8ef57c3e82a9bef77e22f \
-    --hash=sha256:e256f95a40e3b0183a98556fb7164d24b97eeb353123ccabfcba94712b35ee2a \
-    --hash=sha256:e572da3e247b28a98f46636d33c756e81ffb0f5def96c231ba45332333060595 \
-    --hash=sha256:e844cdb25c3c93c7572e0a37137c12305efea493be4eb65801b3ee93f180c186 \
-    --hash=sha256:f732feb060ef57c1a040c24cee072ba9fab99bd0a7d2c916ef3f1c4d84b98974
-    # via
-    #   google-api-core
-    #   google-cloud-appengine-logging
-    #   google-cloud-bigquery
-    #   google-cloud-org-policy
-    #   google-cloud-os-config
-    #   google-cloud-pubsub
-    #   googleapis-common-protos
-    #   grafeas
-    #   grpc-google-iam-v1
-    #   grpcio-status
-grpcio-status==1.62.3 \
-    --hash=sha256:289bdd7b2459794a12cf95dc0cb727bd4a1742c37bd823f760236c937e53a485 \
-    --hash=sha256:f9049b762ba8de6b1086789d8315846e094edac2c50beaf462338b301a8fd4b8
-    # via
-    #   google-api-core
-    #   google-cloud-pubsub
 gunicorn==23.0.0 \
     --hash=sha256:ec400d38950de4dfd418cff8328b2c8faed0edb0d517d3394e457c317908ca4d \
     --hash=sha256:f014447a0101dc57e294f6c18ca6b40227a4c90e9bdb586042628030cba004ec
@@ -1068,12 +713,6 @@ httpcore==1.0.9 \
     --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
     --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
     # via httpx
-httplib2==0.32.0 \
-    --hash=sha256:48a0ef30a42db65d8f3399045e1d09ab0ba66e3b9efc360d07f80ea55d286025 \
-    --hash=sha256:dc6705cacdf3fb0a2aba7629fa33c90fd93e30035db0c157325826be177e4816
-    # via
-    #   google-api-python-client
-    #   google-auth-httplib2
 httptools==0.8.0 \
     --hash=sha256:0770728beb05094c809b98e814edff5fef69d26ad7d21185f2f6d5884a0ba683 \
     --hash=sha256:0ea897f0c729581ebf72131a438a7932d9b14efef72d75ada966700cac3caaeb \
@@ -1138,17 +777,6 @@ idna==3.19 \
     #   httpx
     #   requests
     #   yarl
-isodate==0.7.2 \
-    --hash=sha256:28009937d8031054830160fce6d409ed342816b543597cece116d966c6d99e15 \
-    --hash=sha256:4cd1aa0f43ca76f4a6c6c0292a85f40b35ec2e43e315b59f06e6d32171a953e6
-    # via
-    #   azure-mgmt-compute
-    #   azure-mgmt-monitor
-    #   azure-mgmt-network
-    #   azure-mgmt-resource
-    #   azure-mgmt-security
-    #   azure-mgmt-storage
-    #   msrest
 jinja2==3.1.6 \
     --hash=sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
@@ -1264,10 +892,6 @@ msal-extensions==1.3.1 \
     --hash=sha256:96d3de4d034504e969ac5e85bae8106c8373b5c6568e4c8fa7af2eca9dbe6bca \
     --hash=sha256:c5b0fd10f65ef62b5f1d62f4251d51cbcaf003fcedae8c91b040a488614be1a4
     # via azure-identity
-msrest==0.7.1 \
-    --hash=sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32 \
-    --hash=sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9
-    # via azure-mgmt-sql
 multidict==6.7.1 \
     --hash=sha256:026d264228bcd637d4e060844e39cdc60f86c479e463d49075dedc21b18fbbe0 \
     --hash=sha256:03ede2a6ffbe8ef936b92cb4529f27f42be7f56afcdab5ab739cd5f27fb1cbf9 \
@@ -1418,15 +1042,10 @@ multidict==6.7.1 \
     # via
     #   aiohttp
     #   yarl
-oauthlib==4.0.0 \
-    --hash=sha256:624c28c13a0a59cabf9747dfa52af63be3e512a7f2714df16e91b5b3a145e6cd \
-    --hash=sha256:efb274799819440f95b4ab3b818869f1ce9ae26c5beacba0201d1a1b76b54f86
-    # via requests-oauthlib
 packaging==26.3 \
     --hash=sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
     # via
-    #   google-cloud-bigquery
     #   gunicorn
     #   kombu
 prometheus-client==0.19.0 \
@@ -1562,75 +1181,6 @@ propcache==0.5.2 \
     # via
     #   aiohttp
     #   yarl
-proto-plus==1.28.2 \
-    --hash=sha256:26d843eb99c1e32fdf1d20ff0faae56607f7748fe774acf9ecd5cfe6c6472501 \
-    --hash=sha256:b874236fcac2358f601e4330bcb76cb8b89c851303ccf4078408b3d4774d1c52
-    # via
-    #   google-api-core
-    #   google-cloud-appengine-logging
-    #   google-cloud-asset
-    #   google-cloud-bigquery
-    #   google-cloud-binary-authorization
-    #   google-cloud-compute
-    #   google-cloud-container
-    #   google-cloud-dataflow-client
-    #   google-cloud-firestore
-    #   google-cloud-functions
-    #   google-cloud-kms
-    #   google-cloud-logging
-    #   google-cloud-monitoring
-    #   google-cloud-org-policy
-    #   google-cloud-os-config
-    #   google-cloud-pubsub
-    #   google-cloud-redis
-    #   google-cloud-resource-manager
-    #   google-cloud-scheduler
-    #   google-cloud-secret-manager
-    #   google-cloud-securitycenter
-    #   google-cloud-service-usage
-    #   grafeas
-protobuf==4.25.9 \
-    --hash=sha256:3683c05154252206f7cb2d371626514b3708199d9bcf683b503dabf3a2e38e06 \
-    --hash=sha256:438c636de8fb706a0de94a12a268ef1ae8f5ba5ae655a7671fcda5968ba3c9be \
-    --hash=sha256:79faf4e5a80b231d94dcf3a0a2917ccbacf0f586f12c9b9c91794b41b913a853 \
-    --hash=sha256:7f7c1abcea3fc215918fba67a2d2a80fbcccc0f84159610eb187e9bbe6f939ee \
-    --hash=sha256:9481e80e8cffb1c492c68e7c4e6726f4ad02eebc4fa97ead7beebeaa3639511d \
-    --hash=sha256:9560813560e6ee72c11ca8873878bdb7ee003c96a57ebb013245fe84e2540904 \
-    --hash=sha256:999146ef02e7fa6a692477badd1528bcd7268df211852a3df2d834ba2b480791 \
-    --hash=sha256:b0dc7e7c68de8b1ce831dacb12fb407e838edbb8b6cc0dc3a2a6b4cbf6de9cff \
-    --hash=sha256:b1d467352de666dc1b6d5740b6319d9c08cab7b21b452501e4ee5b0ac5156780 \
-    --hash=sha256:bde396f568b0b46fc8fbfe9f02facf25b6755b2578a3b8ac61e74b9d69499e03 \
-    --hash=sha256:d49b615e7c935194ac161f0965699ac84df6112c378e05ec53da65d2e4cbb6d4
-    # via
-    #   google-api-core
-    #   google-cloud-access-context-manager
-    #   google-cloud-appengine-logging
-    #   google-cloud-asset
-    #   google-cloud-audit-log
-    #   google-cloud-bigquery
-    #   google-cloud-binary-authorization
-    #   google-cloud-compute
-    #   google-cloud-container
-    #   google-cloud-dataflow-client
-    #   google-cloud-firestore
-    #   google-cloud-functions
-    #   google-cloud-kms
-    #   google-cloud-logging
-    #   google-cloud-monitoring
-    #   google-cloud-org-policy
-    #   google-cloud-os-config
-    #   google-cloud-pubsub
-    #   google-cloud-redis
-    #   google-cloud-resource-manager
-    #   google-cloud-scheduler
-    #   google-cloud-secret-manager
-    #   google-cloud-securitycenter
-    #   google-cloud-service-usage
-    #   googleapis-common-protos
-    #   grafeas
-    #   grpc-google-iam-v1
-    #   grpcio-status
-    #   proto-plus
 pyasn1==0.6.4 \
     --hash=sha256:9c447d8431c947fe4c8febc4ed9e760bc29011a5b01e5c74b67025bd9fb8ce81 \
     --hash=sha256:deda9277cfd454080ec40b207fb6df82206a3a2688735233cdcd8d3d565f088b
@@ -1782,10 +1332,6 @@ pyjwt==2.15.1 \
     --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193 \
     --hash=sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8
     # via msal
-pyparsing==3.3.2 \
-    --hash=sha256:850ba148bd908d7e2411587e247a1e4f0327839c40e2e5e6d05a007ecc69911d \
-    --hash=sha256:c777f4d763f140633dcb6d8a3eda953bf7a214dc4eff598413c070bcdc117cbc
-    # via httplib2
 python-dateutil==2.8.2 \
     --hash=sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
@@ -1793,7 +1339,6 @@ python-dateutil==2.8.2 \
     #   -r open-security-cspm/requirements.in
     #   botocore
     #   celery
-    #   google-cloud-bigquery
 python-dotenv==1.2.2 \
     --hash=sha256:1d8214789a24de455a8b8bd8ae6fe3c6b69a5e3d64aa8a8e5d68e694bbcb285a \
     --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
@@ -1867,18 +1412,7 @@ requests==2.34.2 \
     --hash=sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed
     # via
     #   azure-core
-    #   google-api-core
-    #   google-cloud-bigquery
-    #   google-cloud-storage
     #   msal
-    #   msrest
-    #   requests-oauthlib
-requests-oauthlib==2.0.0 \
-    --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
-    --hash=sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9
-    # via
-    #   google-auth-oauthlib
-    #   msrest
 rsa==4.9.1 \
     --hash=sha256:68635866661c6836b8d39430f97a996acbd61bfa49406748ea243539fe239762 \
     --hash=sha256:e7bdbfdb5497da4c07dfd35530e1a902659db6ff241e39d9953cad06ebd0ae75
@@ -1912,7 +1446,6 @@ typing-extensions==4.16.0 \
     #   anyio
     #   azure-core
     #   fastapi
-    #   grpcio
     #   pydantic
     #   pydantic-core
     #   starlette
@@ -1930,10 +1463,6 @@ tzdata==2026.3 \
     # via
     #   celery
     #   kombu
-uritemplate==4.2.0 \
-    --hash=sha256:480c2ed180878955863323eea31b0ede668795de182617fef9c6ca09e6ec9d0e \
-    --hash=sha256:962201ba1c4edcab02e60f9a0d3821e82dfc5d2d6662a21abd533879bdb8a686
-    # via google-api-python-client
 urllib3==2.8.0 \
     --hash=sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3 \
     --hash=sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63
