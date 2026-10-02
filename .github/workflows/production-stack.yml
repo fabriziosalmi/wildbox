@@ -18,6 +18,7 @@ on:
       - '.github/compose.ci-*.yml'
       - 'open-security-gateway/nginx/**'
       - 'scripts/check_network_segmentation.py'
+      - 'scripts/check_redis_config.py'
       - 'scripts/generate_secrets.py'
       - '.env.example'
       - '.github/workflows/production-stack.yml'
@@ -76,6 +77,12 @@ jobs:
         # operator deploys, not the CI variant.
         run: python3 scripts/check_network_segmentation.py config
 
+      - name: Redis keeps its state in the rendered production configuration
+        # noeviction, a maxmemory, AOF, and a container limit of at least
+        # twice maxmemory (#530): the overlay once set allkeys-lru, which
+        # could evict the token blacklist, lockout counters and queues.
+        run: python3 scripts/check_redis_config.py config
+
       - name: Start the production stack
         run: docker compose up -d --wait --wait-timeout 900
 
@@ -91,6 +98,32 @@ jobs:
 
       - name: Segmentation from inside the running containers
         run: python3 scripts/check_network_segmentation.py runtime
+
+      - name: identity applies the production CORS_ORIGINS
+        # .env carries CORS_ORIGINS comma-separated; identity used to crash-loop
+        # on that form and the overlay stopped passing it (#531). A preflight
+        # from each configured origin must be allowed and one from elsewhere
+        # refused, which shows the value is parsed and applied.
+        run: |
+          preflight() {
+            curl -sS -o /dev/null -w '%{http_code}' -D headers.txt -X OPTIONS \
+              -H "Origin: $1" -H 'Access-Control-Request-Method: GET' \
+              http://localhost:8001/health
+          }
+          origins="$(sed -n 's/^CORS_ORIGINS=//p' .env | tail -1)"
+          test -n "$origins"
+          IFS=',' read -ra list <<< "$origins"
+          for origin in "${list[@]}"; do
+            origin="$(echo "$origin" | xargs)"
+            code="$(preflight "$origin")"
+            echo "allowed? $origin -> $code"
+            test "$code" = 200
+            grep -qi "^access-control-allow-origin: $origin" headers.txt
+          done
+          code="$(preflight https://not-configured.example)"
+          echo "refused? https://not-configured.example -> $code"
+          test "$code" = 400
+          ! grep -qi '^access-control-allow-origin' headers.txt
 
       - name: Run Integration Tests
         run: |
@@ -118,6 +151,12 @@ jobs:
           SENSOR_SERVICE_URL: http://localhost:8004
           DASHBOARD_URL: http://localhost:3000
         timeout-minutes: 20
+
+      - name: Redis settings and memory use after the suite
+        # The live CONFIG GET values and the limit Docker applied, plus the
+        # peak memory the suite reached: the evidence for REDIS_MAXMEMORY.
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_redis_config.py runtime --env-file .env
 
       - name: Service logs on failure
         if: failure()

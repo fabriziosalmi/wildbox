@@ -2,9 +2,11 @@
 Configuration management for Open Security Identity service.
 """
 
-from typing import Optional
-from pydantic import Field
-from pydantic_settings import BaseSettings
+import json
+from typing import Annotated, Any, Optional
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, NoDecode
 
 
 class Settings(BaseSettings):
@@ -50,12 +52,36 @@ class Settings(BaseSettings):
     gateway_internal_secret: Optional[str] = Field(None, description="Shared secret for gateway-to-identity communication")
     
     # CORS - SECURITY: Restrict origins in production
-    cors_origins: list[str] = ["http://localhost:3000", "https://wildbox.local", "https://dashboard.wildbox.local"]
+    #
+    # NoDecode: pydantic-settings would otherwise read a list[str] from the
+    # environment as JSON only, and CORS_ORIGINS is comma-separated in .env
+    # and for every other service. identity exited at import on that value
+    # and crash-looped (#531). _parse_cors_origins accepts both forms.
+    cors_origins: Annotated[list[str], NoDecode] = ["http://localhost:3000", "https://wildbox.local", "https://dashboard.wildbox.local"]
     cors_allow_credentials: bool = True
     cors_allow_methods: list[str] = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     cors_allow_headers: list[str] = ["Content-Type", "Authorization", "X-API-Key", "X-Requested-With"]
     
     
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, value: Any) -> Any:
+        """Accept a JSON list or a comma-separated string of origins.
+
+        '["https://a.example", "https://b.example"]' and
+        'https://a.example, https://b.example' give the same list. An empty
+        value gives an empty list, which allows no cross-origin requests: the
+        dashboard reaches identity through the gateway on its own origin.
+        """
+        if not isinstance(value, str):
+            return value
+        text = value.strip()
+        if text.startswith("["):
+            # Invalid JSON raises ValueError, which pydantic reports as a
+            # validation error naming the field.
+            return json.loads(text)
+        return [origin.strip() for origin in text.split(",") if origin.strip()]
+
     class Config:
         env_file = ".env"
         case_sensitive = False

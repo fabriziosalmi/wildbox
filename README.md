@@ -176,7 +176,7 @@ lifecycle) are indexed on the [contributor docs](https://www.wildbox.io/contribu
 | Documentation portal | [wildbox.io/docs.html](https://www.wildbox.io/docs.html) |
 | Quick start (detailed) | [guides/quickstart](https://www.wildbox.io/guides/quickstart/) |
 | Credentials | [guides/credentials](https://www.wildbox.io/guides/credentials/) |
-| Authentication and sessions | [docs/guides/authentication.md](docs/guides/authentication.md) |
+| Authentication and sessions | [guides/authentication](https://www.wildbox.io/guides/authentication/) |
 | API reference | [wildbox.io/api](https://www.wildbox.io/api/) |
 | Upgrading between versions | [UPGRADING.md](UPGRADING.md) |
 | Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |

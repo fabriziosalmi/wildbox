@@ -125,6 +125,59 @@ docker compose --profile monitoring up -d    # Prometheus with monitoring/alert_
 docker compose --profile backup up -d        # scheduled PostgreSQL backups
 ```
 
+### Redis memory
+
+Redis is not a cache here. It holds the token blacklist, failed-login lockout
+counters, Celery and Dramatiq queues and results, and scan, run and task state
+that exists nowhere else. It therefore runs with
+`--maxmemory-policy noeviction`, in production as in development: an eviction
+policy would delete those keys under memory pressure, so a revoked token
+would work again and a lockout would lift early.
+
+What happens at the limit: once the dataset reaches `REDIS_MAXMEMORY`, Redis
+refuses every command that would add memory with
+`OOM command not allowed when used memory > 'maxmemory'`. Reads, deletes and
+`PING` keep working, nothing already stored is lost, and Redis and its health
+check stay up. The service that issued the write gets the error, so new tasks
+cannot be queued and new state cannot be recorded until memory is freed or
+the limit is raised. Raise it and restart Redis:
+`docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d wildbox-redis`.
+
+Two settings in `.env` size it:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `REDIS_MAXMEMORY` | `1gb` | The dataset ceiling at which writes are refused |
+| `REDIS_MEMORY_LIMIT` | `2g` | The container's memory limit |
+
+Keep `REDIS_MEMORY_LIMIT` at least twice `REDIS_MAXMEMORY`. `maxmemory`
+bounds the dataset, not the process: an AOF rewrite forks, and copy-on-write
+under writes can double resident memory. When the container limit is lower,
+the kernel kills Redis (exit 137) before `noeviction` gets to refuse anything,
+and up to the last second of writes (`appendfsync everysec`) is lost. Measured on `redis:7-alpine`
+with a 128 MB `maxmemory`: a limit equal to it was OOM-killed while filling,
+a limit of 1.5x was killed during an AOF rewrite, and at 2x Redis refused the
+excess writes and stayed up. Check a configuration before starting it:
+
+```bash
+python3 scripts/check_redis_config.py config --env-file .env
+```
+
+Monitor the headroom and alert well before the ceiling, for example when
+`used_memory` passes 80% of `maxmemory`, and on any increase of
+`errorstat_OOM`, the count of refused writes:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec \
+  -e REDISCLI_AUTH="$REDIS_PASSWORD" wildbox-redis \
+  sh -c 'redis-cli INFO memory | grep -E "^(used_memory|maxmemory):"; redis-cli INFO errorstats'
+```
+
+With the stack running,
+`COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml python3
+scripts/check_redis_config.py runtime --env-file .env` reads the live settings
+and the applied limit and prints the memory in use and its peak.
+
 ---
 
 ## 5. Verify

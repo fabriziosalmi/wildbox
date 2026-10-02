@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **identity reads a comma-separated `CORS_ORIGINS`** (#531). Its
+  settings declared `cors_origins` as `list[str]`, which pydantic-settings
+  decodes from the environment as JSON only, so the comma-separated value
+  in `.env` made identity exit at import and restart forever. The field
+  now accepts a JSON list or a comma-separated string; an empty value
+  allows no cross-origin requests. The production overlay passes
+  `CORS_ORIGINS` to identity again, as it does for the other services, and
+  the Production Stack workflow checks that a preflight from each
+  configured origin is allowed and one from elsewhere is refused.
+
+- **`make clean` no longer prunes the whole Docker host.** It ran
+  `docker system prune -f --volumes`, deleting every unused volume and image
+  on the machine, other projects' data included; it now clears local caches
+  only. Every Makefile target uses `docker compose`, and `.env.example` no
+  longer carries a `REDIS_URL` without password that nothing reads.
+
 - **The dashboard type-checks against the node it runs on** (#521):
   `@types/node` moves from 20 to 24, the major in the Dockerfile and in
   CI since node 24 became the base image. Dependabot no longer proposes
@@ -113,6 +129,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **Production Redis no longer evicts authoritative state** (#530):
+  `docker-compose.prod.yml` replaced the base file's
+  `--maxmemory-policy noeviction` with `allkeys-lru` at 512 MB, so under
+  memory pressure Redis could delete token-blacklist entries (a revoked
+  token worked again), failed-login lockout counters, and Celery and
+  Dramatiq queues and results. The overlay now inherits the base command,
+  so a full Redis refuses writes instead. The container memory limit
+  becomes `REDIS_MEMORY_LIMIT` (default `2g`, twice the default
+  `REDIS_MAXMEMORY` of `1gb`) in both files: with the limit equal to
+  `maxmemory` the kernel OOM-killed Redis before `noeviction` refused a
+  write, and at 1.5x it was killed during an AOF rewrite.
+  `scripts/check_redis_config.py` asserts the policy, AOF and the headroom
+  on the rendered production configuration and on the running Redis; the
+  Production Stack workflow runs both. Sizing and monitoring are in the
+  deployment guide.
 
 - **Production network segmentation now takes effect** (#494):
   `docker-compose.prod.yml` attached services to `frontend`, `backend` and
