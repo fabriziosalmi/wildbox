@@ -106,6 +106,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
 
+### Documentation
+
+- **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
+  `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
+  every page loads. `api-reference.html` and the two Redoc pages now load
+  their vendored files from root-relative paths like the rest of the site,
+  the Redoc pages get canonical URLs, the remaining standalone pages link
+  `security.txt` in their footers, and `api-reference.html` loses a stale
+  "Last Updated" stamp.
+- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+  (a November 2025 snapshot, unpublished) is marked archived, and the
+  gateway authentication guide, linked from the published tools audit, says
+  that its keys and hosts are fictitious.
+
 ### Removed
 
 - **The Docusaurus site in `website/`** (#419). It was never the published
