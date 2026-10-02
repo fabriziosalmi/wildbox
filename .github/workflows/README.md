@@ -1,64 +1,84 @@
-# Wildbox Data Ingestion Workflows
+# GitHub Actions workflows
 
-## Overview
+Every workflow that runs in this repository is a `.yml` file in this
+directory. GitHub does not run workflow files in subdirectories, so nothing
+in [`archived/`](#archived) runs (see below).
 
-This directory contains the GitHub Actions workflows responsible for populating the Wildbox Datalake. These workflows are designed to be run manually (workflow_dispatch) to gather fresh, open-source security intelligence on demand. They form the foundation of Wildbox's threat intelligence and analysis capabilities.
+"Required" means the job's check name is a required status check of `main`'s
+branch protection, so a pull request cannot merge until it passes. Only a
+check that runs on **every** pull request can be required: a required check
+that a path filter skips never reports, and the pull request waits for it
+forever.
 
-The main workflow, ingest-all-data.yml, can be used to trigger all other ingestion workflows sequentially.
+## Pull requests and `main`
 
-## Workflow Catalog
+| Workflow | Triggers | Jobs (check names) | What it gates | Required |
+| --- | --- | --- | --- | --- |
+| [`pr-validation.yml`](pr-validation.yml) | PR to `main`/`develop` | Validate Docker Compose; Validate Project Structure; Dependency Integrity; Python Code Quality (one per service); **PR Validation Summary** | Compose renders with generated secrets; critical files exist; every `requirements.txt` matches its `requirements.in` (`scripts/compile_requirements.sh --check`); flake8 correctness and complexity per service. The summary fails if any of the others did. | PR Validation Summary |
+| [`test.yml`](test.yml) | PR and push to `main`/`develop`, dispatch | **Unit Tests (3.11, _service_)** x8; Shared Package Unit Tests; **E2E Tests (Playwright)** (frontend-only smoke); Dashboard Lint / Format / Types; **Security Scanning**; Code Quality; Build Docker Images (push to `main` only) | Unit tests per service and for `open-security-shared` and `scripts/`; the dashboard's build, smoke specs, ESLint, Prettier and `tsc`; Trivy and Bandit (below); flake8/black/isort tiers. On `main`, builds each image, writes its SBOM, checks dependency licenses and pushes to GHCR. | Unit Tests for identity, tools, data, guardian, responder, agents, cspm; E2E Tests (Playwright); Security Scanning |
+| [`integration-tests.yml`](integration-tests.yml) | PR to `main`/`develop`, push to `main`, dispatch | **Run Integration Tests**; **Security Validation** | `tests/integration/` against the whole compose stack, through the gateway over HTTPS; `security_validation_v2.sh`, no hardcoded compose passwords, digest-pinned base images. | Both |
+| [`e2e-fullstack.yml`](e2e-fullstack.yml) | PR to `main`/`develop`, push to `main`, dispatch | E2E Full-Stack (login flows) | The backend-dependent Playwright specs against identity and the gateway. | No |
+| [`gateway-tests.yml`](gateway-tests.yml) | PR to `main`/`develop`, push to `main`, dispatch | Gateway Auth Tests | The gateway's authentication behavior against a mock identity service, including a gateway with the wrong proof-of-origin secret. | No |
+| [`secret-scan.yml`](secret-scan.yml) | PR to `main`/`develop`, push to `main`, dispatch | Gitleaks | No new secret in the working tree (`.gitleaks.toml`). | No |
+| [`docker-build-validation.yml`](docker-build-validation.yml) | PR touching a Dockerfile, `requirements.txt`, service code, the shared package or a compose file | Build _service_ image x9 | Every service image still builds (never pushed). | No (path-filtered) |
+| [`production-stack.yml`](production-stack.yml) | PR touching the compose files, the gateway's nginx config or the scripts it runs; dispatch | Production stack and network segmentation | `docker-compose.yml` + `docker-compose.prod.yml` start; network segmentation and Redis settings hold, rendered and at runtime; the integration suite passes against it. | No (path-filtered) |
+| [`gateway-lint.yml`](gateway-lint.yml) | PR and push to `main` touching the gateway's Lua or `.luacheckrc`; dispatch | Luacheck (OpenResty Lua) | luacheck over `open-security-gateway/nginx/lua`. | No (path-filtered) |
+| [`documentation-quality.yml`](documentation-quality.yml) | PR and push to `main` touching Markdown or `docs/` | Markdown Linting; Spell Check; Link Validation; Image Alt Text Validation; Documentation Security Scan; and three advisory jobs | markdownlint, cspell, links in `README.md`, image alt text, and three secret patterns in Markdown (gitleaks allowlists `docs/` and README files). Prose Quality, Inclusive Language and Documentation Coverage report only. | No (path-filtered) |
 
-The following table provides a summary of all available data ingestion workflows, their purpose, and the destination of the collected data.
+Code scanning adds three more checks to a pull request: **Trivy** and
+**Bandit**, created from the SARIF files that Security Scanning uploads, and
+**CodeQL** from the repository's default CodeQL set-up (it has no workflow
+file here). Trivy is required.
 
-| Workflow File | Description | Datalake Path |
+### Security scanning
+
+Trivy and Bandit run once per pull request, in Security Scanning (`test.yml`):
+
+- Trivy reports every finding to code scanning, category `trivy-fs`.
+- On a pull request it then fails on a critical advisory with a released fix
+  that the pull request introduces (`scripts/critical_advisories.sh new`).
+  Advisories already on `main` are tracked by `main-advisories.yml` instead.
+- Bandit reports to code scanning, category `bandit`. It does not gate.
+
+## Scheduled and manual
+
+| Workflow | Triggers | What it does |
 | --- | --- | --- |
-| ingest-cti-feeds.yml | Ingests Cyber Threat Intelligence feeds (IPs, domains, hashes) from sources like abuse.ch and Feodo Tracker. | datalake/raw/cti/ |
-| ingest-vulnerability-feeds.yml | Ingests vulnerability databases from NVD, EPSS, and the CISA Known Exploited Vulnerabilities catalog. | datalake/raw/vulnerabilities/ |
-| ingest-compliance-benchmarks.yml | Ingests compliance benchmarks and security guidelines from sources like CIS and OpenControl. | datalake/raw/compliance/ |
-| ingest-osint-software-feeds.yml | Gathers OSINT data on popular open-source software from GitHub, npm, and pip. | datalake/raw/osint/software/ |
-| ingest-attack-ttps.yml | Ingests the MITRE ATT&CK framework data (Tactics, Techniques, and Procedures). | datalake/raw/ttps/mitre/ |
-| ingest-cloud-ip-ranges.yml | Ingests the official IP ranges for major cloud providers (AWS, Azure, GCP). | datalake/raw/cloud/ip-ranges/ |
-| ingest-security-news.yml | Ingests RSS feeds from curated, high-quality security news websites and blogs. | datalake/raw/osint/news/ |
-| ingest-gitleaks-rules.yml | Ingests rule packs for thegitleakstool for secret scanning. | datalake/raw/signatures/secret-detection/ |
-| ingest-public-storage.yml | Ingests lists of known publicly exposed S3 buckets and other cloud storage. | datalake/raw/cloud/public-storage/ |
-| ingest-sandbox-reports.yml | Ingests public reports from malware sandboxing services. | datalake/raw/malware/sandbox-reports/ |
-| ingest-yara-rules.yml | Ingests YARA rules from various open-source repositories for malware hunting. | datalake/raw/signatures/yara/ |
-| ingest-sigma-rules.yml | Ingests SIGMA rules for generic log-based threat detection. | datalake/raw/signatures/sigma/ |
-| ingest-osquery-packs.yml | Ingests OSQuery packs for advanced endpoint threat detection. | datalake/raw/endpoint/osquery-packs/ |
-| ingest-threat-actor-iocs.yml | Ingests Indicator of Compromise (IoC) sets related to specific APTs and threat actors. | datalake/raw/threat-actors/ |
-| ingest-ja3-hashes.yml | Ingests lists of JA3/JA3S hashes associated with malicious clients. | datalake/raw/network/ja3/ |
-| ingest-tor-exit-nodes.yml | Ingests the latest list of TOR network exit nodes. | datalake/raw/network/tor-nodes.txt |
-| ingest-public-proxies.yml | Ingests lists of public HTTP/SOCKS proxies and VPNs. | datalake/raw/network/proxies/ |
-| ingest-scanner-ips.yml | Ingests lists of known internet scanners from sources like GreyNoise and Shodan. | datalake/raw/network/scanners/ |
-| ingest-phishing-domains.yml | Ingests feeds of newly registered phishing and typosquatting domains. | datalake/raw/phishing/ |
-| ingest-saas-ip-ranges.yml | Ingests official IP ranges for popular SaaS platforms (e.g., Office 365, GitHub). | datalake/raw/cloud/saas-ips/ |
-| ingest-cloud-security-policies.yml | Ingests "Policy as Code" examples from frameworks like OPA and Sentinel. | datalake/raw/compliance/policies-as-code/ |
-| ingest-leaked-cred-patterns.yml | Ingests regex patterns for detecting leaked credentials in code. | datalake/raw/signatures/secret-detection/ |
-| ingest-exposed-k8s-apis.yml | Uses Shodan to discover publicly exposed Kubernetes API servers. | datalake/raw/cloud/exposed-k8s.json |
-| ingest-cloud-misconfigurations.yml | Ingests databases of common cloud misconfigurations and CWEs. | datalake/raw/compliance/cloud-cwe/ |
-| ingest-leaked-passwords.yml | Ingests dumps of password hashes from known data breaches for proactive checks. | datalake/raw/credentials/leaked-passwords.txt |
-| ingest-social-media-threats.yml | Monitors security-focused social media channels for emerging IoCs. | datalake/raw/osint/social-media/ |
-| ingest-dark-web-trends.yml | Ingests public reports on dark web market trends. | datalake/raw/osint/dark-web-reports/ |
-| ingest-pastebin-leaks.yml | Scans Pastebin and similar sites for data leaks matching specific keywords. | datalake/raw/osint/pastebin/ |
-| ingest-security-blogs.yml | Aggregates RSS feeds from top security researchers. | datalake/raw/osint/blogs/ |
-| ingest-domain-history.yml | Retrieves historical WHOIS and DNS data for suspicious domains. | datalake/raw/osint/domain-history/ |
-| ingest-cert-transparency.yml | Monitors Certificate Transparency logs for suspicious subdomains and certificates. | datalake/raw/osint/cert-transparency/ |
-| ingest-mobile-threats.yml | Ingests feeds related to mobile application vulnerabilities and malware. | datalake/raw/mobile-threats/ |
-| ingest-ics-scada-intel.yml | Ingests intelligence on vulnerabilities in Industrial Control Systems. | datalake/raw/ics-scada/ |
-| ingest-crypto-threats.yml | Ingests IoCs related to cryptojacking and cryptocurrency scams. | datalake/raw/crypto-threats/ |
-| **ingest-all-data.yml** | **Orchestrator workflow to trigger all other ingestion pipelines.** | **N/A** |
+| [`main-advisories.yml`](main-advisories.yml) | Daily 06:00 UTC, push to `main`, dispatch | Scans `main` for critical advisories with a fix and keeps one issue, "Critical advisories on main", in step: opened, updated, closed when empty. |
+| [`pip-security-upgrades.yml`](pip-security-upgrades.yml) | Mondays 05:00 UTC, dispatch | Moves only the pip packages with a known advisory, re-locks with uv and opens or refreshes one pull request. Replaces Dependabot for pip (`.github/dependabot.yml`). |
+| [`chaos-and-load.yml`](chaos-and-load.yml) | Daily 03:00 UTC, dispatch (`all`, `chaos` or `load`) | Fault injection against the running stack (`tests/chaos/`) and a search-latency baseline (`tests/perf/`). |
 
-## Usage
+## Conventions
 
-To run a workflow:
+- **Timeouts.** Every job has `timeout-minutes`, about three times the
+  longest successful run observed, with a floor of 10 minutes; dependency
+  installs, browser installs and stack start-up also have step limits. The
+  comment next to each limit gives the observation it is based on.
+- **Concurrency.** A new push to a pull request cancels that pull request's
+  run in progress. Runs on `main`, scheduled runs and dispatches are never
+  cancelled.
+- **Caches.** `setup-python` caches pip keyed on the `requirements.txt` the
+  job installs, `setup-node` caches npm keyed on the dashboard's
+  `package-lock.json`, and `setup-uv` caches by default. Integration Tests
+  and the production stack build their images through the Actions cache
+  (`.github/compose.ci-cache.yml`), in the scopes `docker-build-validation`
+  also uses.
+- **Permissions.** Each workflow starts from `contents: read`; a job that
+  needs more asks for it.
+- **Lint.** `actionlint` passes on every file here; `.github/actionlint.yaml`
+  holds its one, explained, exception.
 
-1. Navigate to the "Actions" tab of the Wildbox repository on GitHub.
-2. Select the desired workflow from the list on the left.
-3. Click the "Run workflow" dropdown button.
-4. Click the "Run workflow" button to start the pipeline.
+## Archived
 
-The workflow will execute and the collected data will be committed to the datalake/raw/ directory.
+`archived/` holds 36 data-ingestion workflows (`ingest-*.yml`), moved there
+in November 2025. They are dead:
 
-## Contribution
+- GitHub runs only workflow files at the top level of this directory, so none
+  of them can be triggered.
+- `archived/README.md` points to a consolidated `ingest-threat-feeds.yml`,
+  but that file was itself only ever committed under `archived/`.
+- 35 of them write to a `datalake/` directory that does not exist in the
+  repository, and nothing outside `archived/` refers to them.
 
-Contributions to this data ingestion framework are welcome. To add a new data source, please create a new workflow YAML file following the existing structure and submit a pull request. Ensure that the source is public, reliable, and provides data in a structured or semi-structured format.
+They are kept for reference only. Nothing depends on them, so they can be
+deleted whenever that reference is no longer wanted.
