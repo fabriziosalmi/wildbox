@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
+  `utils.http_request` ignored the caller's `timeout` because `request_uri()`
+  does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
+  Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+
+### CI
+
+- **The chaos suite measures the system now** (#428). Seven experiments
+  against the stack as the integration job starts it: cached authorisation
+  survives an identity outage; new tokens fail closed with 503, then
+  immediately once the breaker opens, and work again when it closes; a
+  PostgreSQL outage is reported and recovered from without a restart; a Redis
+  outage does not block login; a crashed identity or data process is
+  restarted and served again; a 200-request burst gets only 200s and 429s.
+  Back on the nightly schedule.
+
 ### Security
 
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
