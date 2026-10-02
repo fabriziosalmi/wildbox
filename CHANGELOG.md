@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's health check and integration tests check something** (#532).
+  With `DEBUG=false` guardian redirected every plain-HTTP request to
+  HTTPS, its health route included, so the container health check
+  (`curl -f`, which counts a 301 as success) reported healthy with the
+  database down, and the integration suite's probe followed the redirect
+  to a port with no TLS and skipped all six guardian tests on every run.
+  `health/` is now exempt from the redirect and the container health
+  checks call it directly; it answers 503 when a dependency is down. The
+  tests go through the gateway with a real login and assert concrete
+  results, and CI now fails, rather than skips, a test whose service the
+  stack starts but does not answer (`REQUIRE_ALL_SERVICES=1`).
+
 - **identity reads a comma-separated `CORS_ORIGINS`** (#531). Its
   settings declared `cors_origins` as `list[str]`, which pydantic-settings
   decodes from the environment as JSON only, so the comma-separated value

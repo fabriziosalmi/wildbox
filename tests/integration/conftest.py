@@ -110,7 +110,7 @@ def data_url() -> str:
 @pytest.fixture(scope="session")
 def guardian_url() -> str:
     """Base URL for guardian service"""
-    return os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8003")
+    return os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013")
 
 
 @pytest.fixture(scope="session")
@@ -517,12 +517,45 @@ def provision_api_key():
     return minted
 
 
+# Services the default `docker compose up` does not start: each sits behind a
+# compose profile, so a stack without that profile legitimately lacks it.
+_PROFILED_SERVICES = {"automations": "automations"}
+
+
+def _service_required(service: str) -> bool:
+    """Must this service be up, so that its absence is an error, not a skip?
+
+    REQUIRE_ALL_SERVICES=1 is set by the CI jobs that start the whole stack.
+    There, an unreachable service is a broken service: skipping its tests is
+    how guardian's six were reported green on every run while not one of them
+    executed (#532). A profiled service is required only when its profile is
+    enabled through COMPOSE_PROFILES.
+    """
+    if _os.getenv("REQUIRE_ALL_SERVICES", "") not in ("1", "true", "yes"):
+        return False
+    profile = _PROFILED_SERVICES.get(service)
+    if profile is None:
+        return True
+    enabled = {p.strip() for p in _os.getenv("COMPOSE_PROFILES", "").split(",")}
+    return profile in enabled or "*" in enabled
+
+
 def pytest_runtest_setup(item):
-    """Skip a test whose service is not running, and say which one."""
+    """Skip a test whose service is not running, and say which one.
+
+    Under REQUIRE_ALL_SERVICES the test errors instead, unless its service is
+    one the stack is not expected to start.
+    """
     module = item.module.__name__.rsplit(".", 1)[-1]
     service = _MODULE_SERVICE.get(module)
     if service and not _is_reachable(service):
-        pytest.skip(
-            f"{service} service is not reachable at {_SERVICE_URLS.get(service)} "
-            f"- start it to run {module}"
+        message = (
+            f"{service} service is not reachable at {_SERVICE_URLS.get(service)}"
         )
+        if _service_required(service):
+            pytest.fail(
+                f"{message}, and REQUIRE_ALL_SERVICES is set: the stack is "
+                f"expected to run it, so {module} must not be skipped",
+                pytrace=False,
+            )
+        pytest.skip(f"{message} - start it to run {module}")

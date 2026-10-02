@@ -135,6 +135,11 @@ jobs:
           GUARDIAN_SERVICE_URL: http://localhost:8013
           SENSOR_SERVICE_URL: http://localhost:8004
           DASHBOARD_URL: http://localhost:3000
+          # Every service this job starts must answer: an unreachable one fails
+          # its tests instead of skipping them, which is how guardian's tests
+          # went unrun on every green build (#532). Services behind a compose
+          # profile the job does not enable (automations) still skip.
+          REQUIRE_ALL_SERVICES: "1"
         timeout-minutes: 20
 
       - name: Service logs on failure

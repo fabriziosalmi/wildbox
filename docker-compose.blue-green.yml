@@ -101,7 +101,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8013/health/"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -159,7 +159,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8013/health/"]
       interval: 10s
       timeout: 5s
       retries: 3
