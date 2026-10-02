@@ -13,7 +13,9 @@ and service names are listed once, in [Service ports](ports.md).
 
 ## 1. Server Requirements
 
-- Linux with Docker Engine 20.10+ and the Compose plugin
+- Linux with Docker Engine 20.10+ and the Compose plugin 2.24.4 or later
+  (`docker-compose.prod.yml` uses the `!override` tag, which older versions
+  reject)
 - 8 GB RAM minimum (16 GB recommended), 50 GB SSD
 - A DNS name for the server and a TLS certificate for it
 - Somewhere off the server to keep backups
@@ -94,7 +96,14 @@ gateway: `docker compose restart gateway`.
 ## 4. Start the Stack
 
 `make start-prod` composes `docker-compose.yml` with `docker-compose.prod.yml`
-(`restart: always`, log rotation, tuned connection limits):
+(`restart: always`, log rotation, tuned connection limits, and network
+segmentation: only the gateway and the dashboard share the public-facing
+network, and PostgreSQL and Redis sit on an internal network reachable only
+by the services that use them; the map is at the top of
+`docker-compose.prod.yml`). To check it on a host:
+`python3 scripts/check_network_segmentation.py config`, and with the stack
+running, `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml python3
+scripts/check_network_segmentation.py runtime`.
 
 ```bash
 make start-prod

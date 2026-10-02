@@ -271,7 +271,7 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 - Secrets required (no defaults in docker-compose)
 - Environment-based configuration
 - TLS/SSL support
-- Network segmentation (defined in `docker-compose.prod.yml` but not yet effective: see the [Security status](status.md))
+- Network segmentation in the production configuration (`docker-compose.prod.yml`; verified in CI, see the [Security status](status.md))
 - Health checks configured
 - Monitoring hooks ready
 

@@ -1,0 +1,136 @@
+name: Production Stack
+permissions:
+  contents: read
+
+# The production configuration (docker-compose.yml + docker-compose.prod.yml)
+# was never started by any job, which is how its network segmentation could be
+# documented as PASS while every service still shared one flat network (#494),
+# and how the overlay carried a guardian settings module that does not exist.
+# This job renders it, starts it, runs the integration suite against it, and
+# asserts the segmentation both on the rendered configuration and from inside
+# the running containers.
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'docker-compose.yml'
+      - 'docker-compose.prod.yml'
+      - '.github/compose.ci-*.yml'
+      - 'open-security-gateway/nginx/**'
+      - 'scripts/check_network_segmentation.py'
+      - 'scripts/generate_secrets.py'
+      - '.env.example'
+      - '.github/workflows/production-stack.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: production-stack-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-stack:
+    name: Production stack and network segmentation
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      # Every `docker compose` call in this job, including the ones inside
+      # check_network_segmentation.py's runtime probes, addresses the same
+      # stack. compose.ci-ports.yml and compose.ci-prod.yml publish PostgreSQL
+      # on loopback for the cross-tenant test; see the comments in both.
+      COMPOSE_FILE: docker-compose.yml:docker-compose.prod.yml:.github/compose.ci-ports.yml:.github/compose.ci-prod.yml
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Docker and Compose versions
+        # docker-compose.prod.yml needs Compose 2.24.4+ for `!override`.
+        run: |
+          docker version --format 'Docker Engine {{.Server.Version}}'
+          docker compose version
+
+      - name: Install test dependencies
+        run: |
+          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
+
+      - name: Generate secrets
+        # Same as integration-tests.yml: generated the way a fresh install
+        # does it, no fallback secret.
+        run: |
+          cp .env.example .env
+          python3 scripts/generate_secrets.py --force
+          python3 scripts/validate_secrets.py
+
+      - name: Raise the rate limit for the suite
+        # See integration-tests.yml: the suite makes several hundred requests
+        # with one key and would otherwise meet the limiter part-way through.
+        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+
+      - name: Segmentation in the rendered production configuration
+        # base + prod only, every profile included: the configuration an
+        # operator deploys, not the CI variant.
+        run: python3 scripts/check_network_segmentation.py config
+
+      - name: Start the production stack
+        run: docker compose up -d --wait --wait-timeout 900
+
+      - name: Show what came up
+        if: always()
+        run: |
+          docker compose ps
+          for n in frontend backend data egress; do
+            echo "== $n"
+            docker network inspect "$(docker compose config --format json | python3 -c "import json,sys;print(json.load(sys.stdin)['networks']['$n']['name'])")" \
+              --format '{{range .Containers}}{{.Name}} {{end}}'
+          done
+
+      - name: Segmentation from inside the running containers
+        run: python3 scripts/check_network_segmentation.py runtime
+
+      - name: Run Integration Tests
+        run: |
+          env_value() { sed -n "s/^$1=//p" .env | head -1; }
+          export INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          export INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          export GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
+          export SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
+          export DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          python -m pytest tests/integration/ \
+            -v -rs \
+            --tb=short \
+            --junit-xml=pytest-results.xml \
+            -o addopts=""
+        env:
+          GATEWAY_URL: https://localhost
+          REQUESTS_CA_BUNDLE: ${{ github.workspace }}/open-security-gateway/ssl/wildbox.crt
+          IDENTITY_SERVICE_URL: http://localhost:8001
+          TOOLS_SERVICE_URL: http://localhost:8000
+          DATA_SERVICE_URL: http://localhost:8002
+          RESPONDER_SERVICE_URL: http://localhost:8018
+          CSPM_SERVICE_URL: http://localhost:8019
+          AGENTS_SERVICE_URL: http://localhost:8006
+          GUARDIAN_SERVICE_URL: http://localhost:8013
+          SENSOR_SERVICE_URL: http://localhost:8004
+          DASHBOARD_URL: http://localhost:3000
+        timeout-minutes: 20
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-stack-test-results
+          path: pytest-results.xml
+          retention-days: 30
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

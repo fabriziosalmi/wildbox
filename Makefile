@@ -79,7 +79,10 @@ start: validate-secrets
 
 start-prod: validate-secrets
 	@echo "$(BLUE)Starting services (production configuration)...$(NC)"
-	@docker-compose $(COMPOSE_PROD) up -d
+	@# `docker compose`, not `docker-compose`: the prod overlay's `!override`
+	@# needs Compose 2.24.4+, and a legacy docker-compose binary would refuse
+	@# the file.
+	@docker compose $(COMPOSE_PROD) up -d
 	@echo "$(YELLOW)Waiting for services...$(NC)"
 	@sleep 15
 	@echo "$(GREEN)✓ Services started with docker-compose.prod.yml$(NC)"

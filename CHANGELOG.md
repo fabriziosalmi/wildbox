@@ -96,6 +96,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Production network segmentation now takes effect** (#494):
+  `docker-compose.prod.yml` attached services to `frontend`, `backend` and
+  `data`, but Compose merges a service's networks with the base file's, so
+  every service also stayed on the flat `wildbox` network and the dashboard
+  and the gateway could open connections to PostgreSQL and Redis. The
+  overlay now replaces each service's networks with `!override` (Docker
+  Compose 2.24.4 or later). Only `gateway` and `dashboard` are on
+  `frontend`; the gateway and the API services on `backend`; PostgreSQL,
+  Redis and the services whose database or Redis URLs name them on `data`,
+  which is internal. `backend` is no longer internal: Docker gives a
+  container on internal networks only neither a route out nor published
+  ports, and the API services need both. The four services that are on
+  `data` alone (tools-worker, tools-flower, data-scheduler, backup) get them
+  from a fourth network, `egress`, with inter-container communication
+  disabled. The new `Production Stack` workflow renders the configuration,
+  starts it, runs the integration suite against it and probes the
+  segmentation from inside the containers
+  (`scripts/check_network_segmentation.py`). Starting it also exposed three
+  overlay defects that kept the production stack from coming up, now fixed:
+  guardian was pointed at a settings module that does not exist and lost
+  the hostname the gateway sends from `ALLOWED_HOSTS`; identity was given
+  `CORS_ORIGINS` in the comma-separated form it cannot parse and exited at
+  start-up; and the dashboard's development bind mount hid the production
+  build.
+
 - **Least-privilege workflow tokens and no exception text in API errors.**
   Every workflow now declares `permissions: contents: read`, with
   `security-events: write` only for the two SARIF uploads and
