@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `secret_token`, channel `config`) are write-only. A new test GETs every
   read route, with search and every ordering, and fails on any 5xx.
 
+- **Completing a guardian remediation step works, and creators are
+  recorded** (#516). `RemediationStep.complete_execution` called a
+  workflow method that did not exist and raised `AttributeError`; the
+  steps API's `complete` and `execute` actions only flipped the status, so
+  timings and workflow progress never moved. They now go through
+  `start_execution`/`complete_execution`, and the workflow recomputes its
+  progress from its steps. Creating a ticket, workflow, template, external
+  system or notification channel now sets `created_by` to the
+  gateway-authenticated user instead of leaving it null.
+
 - **Password change and self-deletion work again** (#501). identity's custom
   routes verified with passlib bcrypt, which cannot read the Argon2id hashes
   fastapi-users writes for every account, so they failed for every user.

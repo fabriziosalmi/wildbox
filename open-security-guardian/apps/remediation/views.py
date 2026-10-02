@@ -33,6 +33,10 @@ class RemediationTicketViewSet(viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'updated_at', 'due_date', 'priority']
     ordering = ['-created_at']
 
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
+
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
         """Assign ticket to a user"""
@@ -72,6 +76,10 @@ class RemediationWorkflowViewSet(viewsets.ModelViewSet):
     filterset_fields = ['vulnerability', 'status', 'priority', 'assigned_to']
     ordering_fields = ['created_at', 'updated_at', 'planned_completion_date']
     ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -128,17 +136,19 @@ class RemediationStepViewSet(viewsets.ModelViewSet):
     def execute(self, request, pk=None):
         """Execute step"""
         step = self.get_object()
-        step.status = 'in_progress'
-        step.save()
-        # TODO: Implement step execution logic
+        step.start_execution(request.user)
         return Response({'status': 'success', 'message': 'Step execution started'})
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         """Mark step as completed"""
         step = self.get_object()
-        step.status = 'completed'
-        step.save()
+        # complete_execution also records the duration and moves the
+        # workflow's progress; setting the status alone left both stale.
+        step.complete_execution(
+            notes=request.data.get('notes'),
+            validation_results=request.data.get('validation_results'),
+        )
         return Response({'status': 'success', 'message': 'Step completed'})
 
     @action(detail=True, methods=['post'])
@@ -178,6 +188,10 @@ class RemediationTemplateViewSet(viewsets.ModelViewSet):
     filterset_fields = ['category', 'is_active', 'created_by']
     ordering_fields = ['name', 'created_at', 'usage_count']
     ordering = ['name']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def clone(self, request, pk=None):

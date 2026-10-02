@@ -33,6 +33,10 @@ class ExternalSystemViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at', 'last_health_check']
     ordering = ['name']
 
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
+
     @action(detail=True, methods=['post'])
     def test_connection(self, request, pk=None):
         """Test connection to external system"""
@@ -179,6 +183,10 @@ class NotificationChannelViewSet(viewsets.ModelViewSet):
     filterset_fields = ['channel_type', 'is_active']
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def test_notification(self, request, pk=None):
