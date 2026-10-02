@@ -173,6 +173,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **README rewritten from verified facts.** It described components the
+  project no longer has (Stripe billing, OpenAI, Elasticsearch, Grafana,
+  NLTK), claimed 50+ threat feeds (there are 7) and a stale v0.8.0 roadmap,
+  and its quick start ended in a stack where `data` refused to start. The
+  new README documents the configuration CI starts on every change, an HTTPS
+  health check and login against the generated certificate, one table of
+  capabilities with real counts, and links into the published docs.
+
 - **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
   `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
   every page loads. `api-reference.html` and the two Redoc pages now load
