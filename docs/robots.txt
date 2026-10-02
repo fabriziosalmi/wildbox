@@ -1,7 +1,8 @@
 # robots.txt for https://www.wildbox.io/
 User-agent: *
 Allow: /
-Disallow: /vendor/
+# /vendor/ and /api/vendor/ hold the self-hosted CSS, JS and fonts every
+# page loads; crawlers need them to render the pages, so they are not blocked.
 
 # Sitemap location
 Sitemap: https://www.wildbox.io/sitemap.xml

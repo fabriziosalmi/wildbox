@@ -122,6 +122,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compared); those defects are fixed so the new behavior is reachable, and
   22 unit tests against a local self-signed HTTPS server cover it.
 
+- **cspm drops the cloud SDKs it never imported, and protobuf with them**
+  (#415). requirements.in pinned 23 `google-*` packages besides google-auth
+  and seven `azure-mgmt-*` packages; the service imports only `google.auth`
+  and `azure.identity` (in `app/worker.py`), and every GCP and Azure check
+  runs on sample data, naming its SDK only in a comment. The 2023
+  google-cloud releases require `protobuf<5`, which held protobuf at 4.25.9
+  (PYSEC-2026-1805, fixed in 5.29.6). With them gone protobuf, grpcio and
+  google-api-core leave the lock entirely: 128 packages become 73, and
+  pip-audit reports nothing for cspm. boto3, botocore, google-auth and
+  azure-identity stay at the same versions.
+
 ### CI
 
 - **The chaos suite measures the system now** (#428). Seven experiments
@@ -143,6 +154,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens, updates and closes.
 
 ### Documentation
+
+- **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
+  `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
+  every page loads. `api-reference.html` and the two Redoc pages now load
+  their vendored files from root-relative paths like the rest of the site,
+  the Redoc pages get canonical URLs, the remaining standalone pages link
+  `security.txt` in their footers, and `api-reference.html` loses a stale
+  "Last Updated" stamp.
+- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+  (a November 2025 snapshot, unpublished) is marked archived, and the
+  gateway authentication guide, linked from the published tools audit, says
+  that its keys and hosts are fictitious.
+
+- **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
+  WAF, Kubernetes support and a local Ollama LLM, none of which the project
+  ships, and gave the gateway as port 8080 and Postgres credentials that do
+  not match. Both are rewritten from `docker-compose.yml`, the gateway routes
+  and the integration tests' login flow, agree with each other, state no
+  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  The homepage's structured data loses the same claims and its stale
+  `softwareVersion`.
+- **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
+  item; the copy now says so and calls them a growing collection instead of
+  promising a library, and the placeholder comments are gone. Both stay
+  indexed.
+- **The privacy notice is indexable.** It is a complete, dated legal page
+  listed in the sitemap, so `noindex` contradicted the sitemap; it now has
+  `index, follow` and a canonical URL.
+- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
+  loads its vendored Tailwind from a root-relative path like the other pages,
+  and the llms files no longer claim account lockout, which identity does not
+  enforce.
 
 - **The security status page says what is still wrong.** It reported every
   finding "Fixed", every check "PASS" and "99% of known vulnerabilities

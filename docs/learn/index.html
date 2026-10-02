@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'self'; form-action 'self'">
     <title>Learn — Security Guides &amp; How-Tos | Wildbox</title>
-    <meta name="description" content="Practical, vendor-neutral security guides: email authentication, TLS, DNS, web hardening and more — with the commands to check things yourself and the tools to automate them.">
+    <meta name="description" content="Vendor-neutral security how-to guides from the Wildbox project. The first one shows how to check SPF, DKIM and DMARC with dig and read the results; more are added one at a time.">
     <meta property="og:title" content="Learn — Security Guides &amp; How-Tos">
-    <meta property="og:description" content="Practical, vendor-neutral security guides with the commands to check things yourself and the tools to automate them.">
+    <meta property="og:description" content="Vendor-neutral security how-to guides from the Wildbox project, starting with SPF, DKIM and DMARC.">
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://www.wildbox.io/learn/">
     <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
@@ -16,7 +16,7 @@
     <meta name="robots" content="index, follow, max-image-preview:large">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Learn — Security Guides &amp; How-Tos">
-    <meta name="twitter:description" content="Practical, vendor-neutral security guides with the commands to check things yourself.">
+    <meta name="twitter:description" content="Vendor-neutral security how-to guides, starting with SPF, DKIM and DMARC.">
     <meta name="twitter:image" content="https://www.wildbox.io/images/wildbox.png">
 
     <script type="application/ld+json">
@@ -34,7 +34,7 @@
           "@type": "CollectionPage",
           "name": "Learn — Security Guides & How-Tos",
           "url": "https://www.wildbox.io/learn/",
-          "description": "Practical, vendor-neutral security guides with the commands to check things yourself and the tools to automate them.",
+          "description": "Vendor-neutral security how-to guides from the Wildbox project, starting with SPF, DKIM and DMARC.",
           "isPartOf": { "@type": "WebSite", "name": "Wildbox", "url": "https://www.wildbox.io/" }
         }
       ]
@@ -74,7 +74,7 @@
         <div class="max-w-5xl mx-auto">
             <div class="max-w-2xl mb-12">
                 <h1 class="text-3xl md:text-5xl font-bold tracking-tight leading-tight mb-4">Learn</h1>
-                <p class="text-lg text-muted leading-relaxed">Practical, vendor-neutral security guides — the commands to check things yourself, how to read the results, and how to automate them with Wildbox.</p>
+                <p class="text-lg text-muted leading-relaxed">Vendor-neutral security how-tos: the commands to check something yourself and how to read the results. This is a small, growing collection; it starts with one guide, and new ones are added when they are written and checked.</p>
             </div>
 
             <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -83,7 +83,6 @@
                     <h2 class="text-lg font-semibold mt-2 mb-2">How to check SPF, DKIM &amp; DMARC</h2>
                     <p class="text-muted text-sm leading-relaxed">Query the three DNS records with <code class="inline-code">dig</code>, read the output, and fix what sends legitimate mail to spam.</p>
                 </a>
-                <!-- Add a new card here for each guide as it ships. -->
             </div>
 
             <div class="border-t divider mt-14 pt-8">
@@ -105,6 +104,7 @@
                     <a href="/docs.html" class="nav-link">Documentation</a>
                     <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-link">GitHub</a>
                     <a href="/privacy.html" class="nav-link">Privacy</a>
+                    <a href="/.well-known/security.txt" class="nav-link">security.txt</a>
                 </div>
                 <p class="text-sm text-faint">&copy; 2025 Wildbox &middot; MIT</p>
             </div>
