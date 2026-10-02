@@ -51,6 +51,7 @@ EXPECTED_NETWORKS = {
     "prometheus": {"backend"},
     "tools-worker": {"data", "egress"},
     "tools-flower": {"data", "egress"},
+    "guardian-worker": {"data", "egress"},
     "data-scheduler": {"data", "egress"},
     "backup": {"data", "egress"},
     "postgres": {"data"},
@@ -88,6 +89,8 @@ MUST_CONNECT = [
     ("data-scheduler", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("guardian", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("guardian", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
+    ("guardian-worker", "wildbox-postgres", 5432, "DATABASE_URL"),
+    ("guardian-worker", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
     ("responder", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("responder", "wildbox-redis", 6379, "REDIS_URL"),
     ("cspm", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
@@ -98,6 +101,7 @@ MUST_CONNECT = [
     ("agents", "api.anthropic.com", 443, "outbound internet via backend"),
     ("tools-worker", "github.com", 443, "outbound internet via egress"),
     ("data-scheduler", "github.com", 443, "outbound internet via egress"),
+    ("guardian-worker", "github.com", 443, "outbound internet via egress"),
 ]
 
 MUST_NOT_CONNECT = [

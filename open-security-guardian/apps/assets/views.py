@@ -21,7 +21,7 @@ from .serializers import (
     AssetGroupSerializer, AssetSoftwareSerializer, AssetPortSerializer,
     AssetDiscoveryRuleSerializer, AssetDetailSerializer
 )
-from .tasks import discover_assets, update_asset_inventory
+from .tasks import discover_assets, scan_asset_ports, update_asset_inventory
 from .filters import AssetFilter
 from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
 
@@ -51,15 +51,26 @@ class AssetViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def scan(self, request, pk=None):
-        """Trigger a vulnerability scan for this asset"""
+        """Queue a port scan of this asset's IP address.
+
+        This used to import ``apps.scanners.tasks.scan_asset``, a module that
+        has never existed, so every call answered 500 (#537). The scanners
+        app records external scanner runs and has no task of its own; the
+        scan guardian itself performs is ``scan_asset_ports``, the one an
+        asset with an address already gets on creation.
+        """
         asset = self.get_object()
-        
-        # Trigger vulnerability scan task
-        from apps.scanners.tasks import scan_asset
-        task = scan_asset.delay(asset.id)
-        
+
+        if not asset.ip_address:
+            return Response(
+                {'error': 'Asset has no IP address to scan'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        task = scan_asset_ports.delay(str(asset.id))
+
         return Response({
-            'message': f'Vulnerability scan initiated for {asset.name}',
+            'message': f'Port scan initiated for {asset.name}',
             'task_id': task.id
         })
 

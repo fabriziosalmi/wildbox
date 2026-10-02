@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's Celery tasks run** (#537). guardian queued tasks (port
+  scans of new assets, threat-intel enrichment, alert-rule checks, report
+  generation) but no service consumed its queue, so none of them ever ran.
+  A `guardian-worker` service now does. `POST
+  /api/v1/guardian/assets/assets/{id}/scan/` imported a module that does
+  not exist and answered 500 on every call; it now queues the asset's port
+  scan. `GET /api/v1/guardian/tasks/{task_id}/` reports a queued task's
+  state, and the integration suite waits on it for the task to finish.
 - **guardian's health check and integration tests check something** (#532).
   With `DEBUG=false` guardian redirected every plain-HTTP request to
   HTTPS, its health route included, so the container health check
