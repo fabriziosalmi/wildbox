@@ -392,6 +392,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **A scheduled guardian task is seen to run, and on its queue** (#545).
+  Integration Tests and Production Stack start guardian-beat with the
+  alert-rule sweep every 15 seconds and wait, through the gateway, for a
+  rule's trigger count to move with nothing else starting a sweep; the
+  alert sweep and an asset port scan must report the `reporting` and
+  `scanning` queues. Production Stack also checks the queues the running
+  worker consumes and that there is one beat container.
 - **The dashboard is linted, format-checked and type-checked in CI**
   (#528). `npm run lint` used `next lint`, gone in Next.js 16, with a
   legacy `.eslintrc.json` ESLint 9 cannot load; it now runs the ESLint
