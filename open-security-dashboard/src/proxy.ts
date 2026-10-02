@@ -18,7 +18,7 @@ const protectedRoutes = [
 // Routes that require superuser access
 const adminRoutes = ['/admin']
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const authToken = request.cookies.get('auth_token')?.value
 
