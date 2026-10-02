@@ -8,6 +8,8 @@ import json
 import logging
 from datetime import timedelta
 
+from django.db import transaction
+
 from apps.core.locks import single_instance
 
 logger = logging.getLogger(__name__)
@@ -452,48 +454,116 @@ def get_compliance_widget_data(widget_type, query_config, filters):
 @shared_task
 def check_alert_rule(rule_id, test_mode=False):
     """
-    Check if an alert rule should trigger
+    Evaluate an alert rule and notify on a change of state (#549).
+
+    The rule's metric is computed from guardian's data (alert_metrics.py)
+    and compared with its threshold. Outside test mode the result is
+    recorded on the rule, and a notification goes out when the rule starts
+    firing, at most once per settings.ALERT_RENOTIFY_INTERVAL while it keeps
+    firing, and once when it recovers. A rule guardian cannot evaluate
+    (an unknown metric, a condition other than a threshold) is reported as
+    an error, never as a value of 0.
     """
+    from .alert_metrics import UnsupportedAlertRule
+    from .models import AlertRule
+
     try:
-        from .models import AlertRule
-        
         rule = AlertRule.objects.get(id=rule_id)
-        
-        # Get current value based on data source
         current_value = get_current_value_for_rule(rule)
-        
-        # Check condition
-        triggered = evaluate_alert_condition(rule, current_value)
-        
-        result = {
-            'triggered': triggered,
-            'current_value': current_value,
-            'rule_id': rule_id
-        }
-        
-        if triggered and not test_mode:
-            # Send notification
-            send_alert_notification(rule, current_value)
-            
-            # Update rule
-            rule.last_triggered = timezone.now()
-            rule.trigger_count += 1
-            rule.save()
-        
+    except AlertRule.DoesNotExist:
+        logger.error(f"Alert rule {rule_id} not found")
+        return {'triggered': False, 'error': 'rule_not_found', 'rule_id': str(rule_id)}
+    except UnsupportedAlertRule as exc:
+        logger.warning(f"Alert rule {rule_id} cannot be evaluated: {exc}")
+        return {'triggered': False, 'error': str(exc), 'rule_id': str(rule_id)}
+
+    triggered = evaluate_alert_condition(rule, current_value)
+    result = {
+        'triggered': triggered,
+        'current_value': current_value,
+        'rule_id': str(rule_id),
+    }
+    if test_mode:
         return result
-        
-    except Exception as e:
-        logger.error(f"Error checking alert rule {rule_id}: {str(e)}")
-        return {'triggered': False, 'error': str(e)}
+
+    notification = record_alert_evaluation(rule.pk, current_value, triggered)
+    result['state'] = AlertRule.STATE_FIRING if triggered else AlertRule.STATE_OK
+    result['notification'] = notification.kind if notification else None
+    if notification is not None:
+        deliver_alert_notification(notification)
+    return result
 
 
 def get_current_value_for_rule(rule):
     """
-    Get current value for alert rule evaluation
+    The current value of the rule's metric.
+
+    This returned 0 for every rule, whatever it measured (#549). It raises
+    alert_metrics.UnsupportedAlertRule for a rule that names no supported
+    metric or condition.
     """
-    # This would be implemented based on the specific data source
-    # For now, return a placeholder
-    return 0
+    from .alert_metrics import current_value
+
+    return current_value(rule)
+
+
+def record_alert_evaluation(rule_id, current_value, triggered, now=None):
+    """
+    Record an evaluation on the rule; the notification it calls for, if any.
+
+    Notifies on the transition to firing, again only once
+    ALERT_RENOTIFY_INTERVAL has passed since the last notification while
+    the rule keeps firing, and on the transition back. The rule row is
+    locked for the decision, so two evaluations at once (the sweep and a
+    check queued by hand) cannot both see "not firing yet" and both notify.
+    """
+    from .models import AlertNotification, AlertRule
+
+    now = now or timezone.now()
+    interval = settings.ALERT_RENOTIFY_INTERVAL
+    with transaction.atomic():
+        rule = AlertRule.objects.select_for_update().get(pk=rule_id)
+        kind = None
+        if triggered:
+            if rule.state != AlertRule.STATE_FIRING:
+                kind = AlertNotification.KIND_FIRING
+                rule.state = AlertRule.STATE_FIRING
+                rule.firing_since = now
+                rule.last_triggered = now
+                rule.trigger_count += 1
+            elif interval is not None and (
+                rule.last_notified_at is None or now - rule.last_notified_at >= interval
+            ):
+                kind = AlertNotification.KIND_REPEAT
+        elif rule.state == AlertRule.STATE_FIRING:
+            kind = AlertNotification.KIND_RESOLVED
+            rule.state = AlertRule.STATE_OK
+            rule.firing_since = None
+        rule.last_value = current_value
+        rule.last_evaluated_at = now
+        notification = None
+        if kind is not None:
+            rule.last_notified_at = now
+            notification = AlertNotification.objects.create(
+                rule=rule,
+                kind=kind,
+                value=current_value,
+                threshold_value=rule.threshold_value,
+                operator=rule.operator,
+                recipients=alert_recipients(rule),
+                created_at=now,
+            )
+        rule.save(update_fields=[
+            'state', 'firing_since', 'last_triggered', 'trigger_count',
+            'last_value', 'last_evaluated_at', 'last_notified_at',
+        ])
+    return notification
+
+
+def alert_recipients(rule):
+    """notification_config['recipients'], else DEFAULT_NOTIFICATION_RECIPIENTS."""
+    configured = (rule.notification_config or {}).get('recipients') or []
+    return list(configured) or list(getattr(settings, 'DEFAULT_NOTIFICATION_RECIPIENTS', []))
 
 
 def evaluate_alert_condition(rule, current_value):
@@ -513,26 +583,48 @@ def evaluate_alert_condition(rule, current_value):
             return current_value <= rule.threshold_value
         elif rule.operator == 'ne':
             return current_value != rule.threshold_value
-    
+
     return False
 
 
-def send_alert_notification(rule, current_value):
+def deliver_alert_notification(notification):
     """
-    Send alert notification
+    E-mail a recorded notification and record whether it went out.
+
+    Sent after the evaluation is committed, so a slow mail server does not
+    hold the rule's row lock. The template this used,
+    reporting/alert_notification.html, did not exist, so no alert e-mail
+    was ever sent (#549).
     """
     from apps.core.utils import send_notification
-    
-    send_notification(
-        subject=f"Alert: {rule.name}",
+
+    rule = notification.rule
+    subjects = {
+        'firing': f"Alert: {rule.name}",
+        'repeat': f"Alert still firing: {rule.name}",
+        'resolved': f"Resolved: {rule.name}",
+    }
+    delivered = bool(notification.recipients) and send_notification(
+        subject=subjects[notification.kind],
         template='reporting/alert_notification.html',
         context={
             'rule': rule,
-            'current_value': current_value,
-            'triggered_at': timezone.now()
+            'notification': notification,
+            'current_value': notification.value,
+            'triggered_at': notification.created_at,
         },
-        notification_type='alert'
+        notification_type='alert',
+        recipients=notification.recipients,
     )
+    if delivered:
+        type(notification).objects.filter(pk=notification.pk).update(delivered=True)
+        notification.delivered = True
+    else:
+        logger.warning(
+            f"Alert rule {rule.name}: {notification.kind} notification not sent"
+            + ("" if notification.recipients else " (no recipients configured)")
+        )
+    return delivered
 
 
 @shared_task

@@ -345,6 +345,14 @@ from guardian.schedule import build_beat_schedule  # noqa: E402
 CELERY_BEAT_SCHEDULER = 'guardian.beat:HeartbeatDatabaseScheduler'
 CELERY_BEAT_SCHEDULE = build_beat_schedule()
 
+# How long a firing alert rule waits before notifying again while it keeps
+# firing; None: never, only when it starts firing and when it recovers
+# (#549). GUARDIAN_ALERT_RENOTIFY_INTERVAL, seconds or 'off', default one
+# day; see guardian/schedule.py.
+from guardian.schedule import alert_renotify_interval  # noqa: E402
+
+ALERT_RENOTIFY_INTERVAL = alert_renotify_interval()
+
 # =============================================================================
 # LOGGING CONFIGURATION
 # =============================================================================

@@ -1,0 +1,14 @@
+{% if notification.kind == "resolved" %}
+<p>The alert rule <strong>{{ rule.name }}</strong> is no longer firing.</p>
+{% elif notification.kind == "repeat" %}
+<p>The alert rule <strong>{{ rule.name }}</strong> is still firing{% if rule.firing_since %}, since {{ rule.firing_since|date:"Y-m-d H:i e" }}{% endif %}.</p>
+{% else %}
+<p>The alert rule <strong>{{ rule.name }}</strong> started firing.</p>
+{% endif %}
+<ul>
+  <li>Metric: {{ rule.data_source }}{% if rule.condition_config %} ({{ rule.condition_config }}){% endif %}</li>
+  <li>Value: {{ current_value }}</li>
+  <li>Condition: {{ rule.get_operator_display }} {{ notification.threshold_value }}</li>
+  <li>Evaluated: {{ triggered_at|date:"Y-m-d H:i e" }}</li>
+</ul>
+{% if rule.description %}<p>{{ rule.description }}</p>{% endif %}

@@ -15,7 +15,7 @@ from .models import (
 from .serializers import (
     ReportTemplateSerializer, ReportScheduleSerializer, ReportSerializer,
     DashboardSerializer, WidgetSerializer, ReportMetricsSerializer,
-    AlertRuleSerializer
+    AlertRuleSerializer, AlertNotificationSerializer
 )
 from .filters import (
     ReportTemplateFilter, ReportScheduleFilter, ReportFilter,
@@ -335,6 +335,14 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
             'threshold_value': rule.threshold_value,
             'test_time': timezone.now().isoformat()
         })
+
+    @action(detail=True, methods=['get'])
+    def notifications(self, request, pk=None):
+        """The notifications this rule sent, newest first (#549)."""
+        rule = self.get_object()
+        page = self.paginate_queryset(rule.notifications.all())
+        serializer = AlertNotificationSerializer(page, many=True)
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['post'])
     def check_all(self, request):

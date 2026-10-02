@@ -211,6 +211,32 @@ traffic through `scripts/shell-scripts/blue_green_guardian_tasks.sh`.
   code, as requests already do against the shared database: change a task's
   arguments or the tables it reads in two releases, not one.
 
+### 15. guardian's alert rules measure real data and stop repeating themselves
+
+Every alert rule was evaluated against 0, whatever it named, and a rule that
+fired notified on every sweep. Rules now compute the metric they name, and
+notify when they start firing, when they recover, and in between at most once
+a day. A migration (`reporting.0002_alert_rule_state`) adds the rule's state
+and a notification log; `guardian` applies it when it starts.
+
+- **Check your rules.** A rule whose `data_source` is not one of the metrics
+  in the [deployment guide](https://www.wildbox.io/guides/deployment/#alert-rules),
+  or whose condition is not `threshold`, is no longer evaluated: each sweep
+  logs it as an error and it never fires. Edit it to a supported metric (the
+  API now refuses anything else). List them with
+  `GET /api/v1/guardian/reports/alerts/` and compare `data_source`.
+- **Expect one notification per firing rule.** On the first sweep after the
+  upgrade (within 15 minutes) every rule whose condition holds starts firing
+  and notifies once. The e-mail template was missing, so no alert e-mail was
+  ever actually sent before; set `notification_config.recipients` on a rule,
+  or `DEFAULT_NOTIFICATION_RECIPIENTS`, for them to reach someone.
+- `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (optional, `guardian-worker`, and
+  every guardian container in `docker-compose.blue-green.yml`): seconds
+  between reminders while a rule keeps firing, default 86400, or `off`.
+  Anything else stops the container at start-up.
+- `trigger_count` and `last_triggered` now count and date the times a rule
+  started firing, not every evaluation that found it firing.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a
