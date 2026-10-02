@@ -108,7 +108,7 @@ export default function SettingsPage() {
       </div>
 
       {/* Account Information */}
-      <Card className="mt-8 p-6">
+      <Card className="mt-8 p-6" data-testid="account-information">
         <h3 className="mb-4 text-lg font-semibold text-foreground">Account Information</h3>
 
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">

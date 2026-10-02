@@ -170,8 +170,9 @@ jobs:
           cd open-security-dashboard
           # Frontend-only smoke: these specs are backend-free by design (they
           # assert the dashboard builds, the login UI renders, form validation,
-          # and the client-side auth-guard redirects). Backend-dependent E2E
-          # flows are tracked separately (the full stack was consolidated out).
+          # and the client-side auth-guard redirects). The backend-dependent
+          # specs are tagged @backend and run against the full compose stack
+          # in e2e-fullstack.yml (#103).
           npx playwright test --project=chromium \
             tests/e2e/admin-ui-only.spec.ts \
             tests/e2e/quick-login-test.spec.ts

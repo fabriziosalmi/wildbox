@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The dashboard works through the gateway again** (#103). Signing in
+  at https://localhost on a stack set up the documented way failed four
+  ways at once: `.env.example` pointed the dashboard's API calls at
+  `http://localhost`, which only redirects, so every call ended in
+  "Network error"; the gateway's server-wide rate limit (burst 10)
+  answered 429 to the JavaScript chunks of a single page load; the
+  login, signup and logout pages inherited the gateway's API
+  Content-Security-Policy on top of the dashboard's own, which blocks
+  the dev runtime; and `next dev`'s hot-reload socket got a 404. The
+  default is now `https://localhost`, static assets have their own
+  limit, every dashboard page location sends the dashboard's headers
+  only, and the socket is proxied.
+- **Admin and IOC lookup pages** (#103). Loading or reloading `/admin`
+  sent an admin to `/dashboard` whenever `/users/me` was slower than
+  the first render. The IOC lookup requested
+  `/api/v1/data/api/v1/<kind>/<value>` and so reported every indicator
+  as not found, and its "Detected type" hint described the previous
+  search rather than the input.
+
 - **tools pass the authenticated caller to tools that act for one** (#563).
   `sql_injection_scanner` requires a caller, but the execution manager
   called every tool with its input alone, so every API execution of it
@@ -504,6 +523,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
+
+- **The backend-dependent Playwright specs run on the real stack**
+  (#103). `E2E Full-Stack` brings the stack up with
+  `docker compose up --wait` and a generated `.env`, as Integration
+  Tests does, and drives the dashboard through the gateway at
+  https://localhost. The four deferred specs are rewritten against the
+  current UI and assert outcomes on the page and through the API: 27
+  tests, tagged `@backend`, replace 8 that ran (4 of them quarantined)
+  and 27 that never did. Billing tests are gone with the billing page.
 
 - **The workflows are bounded, deduplicated and cached** (#557). Every
   job has a timeout of about three times its longest observed green run
