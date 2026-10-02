@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's alert rules evaluate real data and notify on changes only**
+  (#549). `get_current_value_for_rule` returned 0 for every rule, so no
+  rule measured anything, and a firing rule notified on every sweep (96
+  times a day). A rule now names one of five metrics computed from
+  guardian's data (unresolved, overdue and highest-risk vulnerabilities,
+  filterable by severity and asset; non-compliant results; overdue
+  assessments), and the API refuses unknown metrics, filters, and the
+  `change`, `trend` and `anomaly` conditions, which were never evaluated.
+  A rule notifies when it starts firing, once when it recovers, and at
+  most once per `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (a day) in between; its
+  state is kept on the rule and each notification is recorded and listed
+  at `.../reports/alerts/{id}/notifications/`. The alert e-mail template
+  did not exist, so no alert was ever e-mailed; it does now, to the rule's
+  recipients.
 - **A blue/green deployment runs guardian's tasks, with one beat** (#550).
   `docker-compose.blue-green.yml` ran guardian's API in two colors but no
   worker and no beat, so nothing guardian queues or schedules ran there;

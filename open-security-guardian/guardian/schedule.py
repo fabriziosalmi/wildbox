@@ -126,6 +126,34 @@ def parse_schedule(value, variable):
     return schedule, CRONTAB_EXPIRY_SECONDS
 
 
+# A firing alert rule notifies when it starts firing, when it recovers, and
+# in between at most once per this interval (#549). A day: the alert-rule
+# sweep runs every 15 minutes, and a rule notified on every run would send
+# 96 e-mails a day for one condition; a condition still true a day later is
+# worth one reminder, as the SLA check reminds once per vulnerability per
+# day. 'off' sends no reminders at all.
+ALERT_RENOTIFY_VARIABLE = "GUARDIAN_ALERT_RENOTIFY_INTERVAL"
+ALERT_RENOTIFY_DEFAULT = "86400"
+
+
+def alert_renotify_interval(environ=None):
+    """The re-notification interval as a timedelta; None for 'off'.
+
+    Raises ImproperlyConfigured for anything but a positive number of
+    seconds or 'off', so a typo stops guardian at start-up.
+    """
+    environ = os.environ if environ is None else environ
+    value = (environ.get(ALERT_RENOTIFY_VARIABLE) or ALERT_RENOTIFY_DEFAULT).strip()
+    if value.lower() == "off":
+        return None
+    if not value.isdigit() or int(value) <= 0:
+        raise ImproperlyConfigured(
+            f"{ALERT_RENOTIFY_VARIABLE}={value!r}: expected a positive number of "
+            "seconds or 'off'"
+        )
+    return timedelta(seconds=int(value))
+
+
 def build_beat_schedule(environ=None):
     """The CELERY_BEAT_SCHEDULE mapping, with overrides from ``environ``.
 
