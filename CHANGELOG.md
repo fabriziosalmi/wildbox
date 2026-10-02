@@ -133,6 +133,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pip-audit reports nothing for cspm. boto3, botocore, google-auth and
   azure-identity stay at the same versions.
 
+- **No advisories left in the requirement files outside the locks**
+  (#508). Four files were outside `scripts/compile_requirements.sh` and
+  carried 15 Dependabot alerts. `open-security-tools/requirements-secure.txt` is
+  deleted: nothing in the repository installs or mentions it.
+  `tests/requirements.txt` (installed by the chaos and load workflow) moves
+  to pytest 9.0.3, pytest-asyncio 1.3.0, aiohttp 3.14.3, black 26.3.1 and
+  psutil 6.1.1, and drops `safety`, which nothing runs and which pulled in a
+  vulnerable filelock (or, from 3.6.1, nltk, which has no fixed release).
+  The cspm and guardian `requirements-dev.txt` move to pytest 9.0.3, black
+  26.3.1 and mkdocs-material 9.7.7. guardian's could not be resolved against
+  its own lock at all (safety 2.3.5 required packaging<22, pgcli 3.5.0
+  sqlparse<0.5); it now resolves, with safety dropped and pgcli at 4.6.0.
+  pip-audit reports nothing for any of them, transitive dependencies
+  included.
+
 ### CI
 
 - **The chaos suite measures the system now** (#428). Seven experiments
