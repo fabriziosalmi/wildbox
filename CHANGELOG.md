@@ -710,6 +710,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Direct `X-API-Key` authentication on the tools service** (#565). A
+  request that sent the service's static `API_KEY` straight to port 8000 as
+  `X-API-Key` was answered with a `GatewayUser` built on the nil UUID,
+  which the model refuses (it declares UUID4), so every such call ended in
+  a server error. Nothing in the stack depended on it: the gateway removes
+  `X-API-Key` before proxying, and the agents service forwards the caller's
+  gateway identity. The tools service now accepts only requests forwarded
+  by the gateway (`X-Wildbox-*` headers verified with `X-Gateway-Secret`);
+  anything else gets 401, and the message no longer mentions `X-API-Key`.
+  Personal API keys sent to the gateway are unaffected. `API_KEY` stays a
+  required setting: the service still validates it at start-up and the
+  agents service still receives it as `INTERNAL_API_KEY`.
+
 - **The blue/green deployment experiment** (#552).
   `docker-compose.blue-green.yml`, `haproxy/`, the `blue_green_*.sh`
   scripts and the `Blue-Green guardian tasks` workflow are deleted. The

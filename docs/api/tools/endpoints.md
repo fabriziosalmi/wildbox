@@ -10,8 +10,8 @@
 > fictitious placeholders.
 
 **Gateway path**: `https://<host>/api/v1/tools/...` (proxied to the service's `/api/tools/...`)  
-**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: API Key (X-API-Key header) required
+**Local port**: listed in [Service ports](../../guides/ports.md); the service accepts only requests forwarded by the gateway, so the tool examples below call the gateway  
+**Authentication**: through the gateway only (JWT, or a personal API key sent to the gateway as `X-API-Key`)
 
 ---
 
@@ -47,12 +47,19 @@ certificate as a finding.
 
 ## Authentication
 
-All Tools Service endpoints require API Key authentication:
+Every request goes through the gateway, which authenticates the caller and
+forwards the identity to the service as `X-Wildbox-*` headers with the
+`X-Gateway-Secret` proof of origin. The credential is a JWT or a personal API
+key created in the identity service:
 
 ```bash
-curl -X GET http://localhost:8000/api/tools \
+curl -X GET https://<host>/api/v1/tools \
   -H "X-API-Key: your-api-key"
 ```
+
+A request sent to the service port directly, without the gateway headers, is
+answered with 401. The service's own `API_KEY` setting is not a credential:
+the direct `X-API-Key` path was removed in #565.
 
 ---
 
@@ -79,7 +86,7 @@ List all available security tools.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8000/api/tools?category=scanner&status=active" \
+curl -X GET "https://<host>/api/v1/tools?category=scanner&status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -144,7 +151,7 @@ Get detailed information about a specific tool.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8000/api/tools/nessus-001/info \
+curl -X GET https://<host>/api/v1/tools/nessus-001/info \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -225,7 +232,7 @@ Execute a security tool with specified parameters.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8000/api/tools/nessus-001/execute \
+curl -X POST https://<host>/api/v1/tools/nessus-001/execute \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -272,7 +279,7 @@ Get the status and results of a tool execution.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8000/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://<host>/api/v1/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -330,7 +337,7 @@ Cancel a running or pending tool execution.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8000/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://<host>/api/v1/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -534,11 +541,11 @@ X-RateLimit-Reset: 1730963100
 
 ```bash
 # Get Nessus scanner info
-curl -X GET http://localhost:8000/api/tools/nessus-001/info \
+curl -X GET https://<host>/api/v1/tools/nessus-001/info \
   -H "X-API-Key: your-api-key" | jq '.'
 
 # Execute full vulnerability scan
-EXEC_ID=$(curl -s -X POST http://localhost:8000/api/tools/nessus-001/execute \
+EXEC_ID=$(curl -s -X POST https://<host>/api/v1/tools/nessus-001/execute \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -554,7 +561,7 @@ echo "Execution started: $EXEC_ID"
 
 # Monitor progress
 while true; do
-  STATUS=$(curl -s -X GET "http://localhost:8000/api/tools/nessus-001/executions/$EXEC_ID" \
+  STATUS=$(curl -s -X GET "https://<host>/api/v1/tools/nessus-001/executions/$EXEC_ID" \
     -H "X-API-Key: your-api-key" | jq '.')
 
   STATE=$(echo "$STATUS" | jq -r '.status')
@@ -582,7 +589,7 @@ TARGET="192.168.1.1"
 for tool in "${TOOLS[@]}"; do
   echo "Executing $tool on $TARGET"
 
-  EXEC=$(curl -s -X POST "http://localhost:8000/api/tools/$tool/execute" \
+  EXEC=$(curl -s -X POST "https://<host>/api/v1/tools/$tool/execute" \
     -H "X-API-Key: your-api-key" \
     -H "Content-Type: application/json" \
     -d "{

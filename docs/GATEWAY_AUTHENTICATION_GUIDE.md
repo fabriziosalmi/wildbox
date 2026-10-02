@@ -18,22 +18,20 @@ All Wildbox backend services use a **trust-based authentication pattern** where 
                Auth            User Info        Headers
 ```
 
-### Dual-Mode Authentication (Tools Service)
+### Tools Service Authentication
 
-The Tools service supports **two authentication modes** for flexibility during development and testing:
-
-**Production Mode (Recommended):**
+The Tools service accepts only requests that come through the gateway:
 
 - Requests go through API Gateway (`http://localhost/api/v1/tools/...`)
 - Gateway validates credentials and injects `X-Wildbox-*` headers
-- Backend trusts gateway headers
+- Backend verifies the `X-Gateway-Secret` proof of origin and trusts the headers
 
-**Legacy/Development Mode:**
-
-- Direct service access (`http://localhost:8000/api/tools/...`)
-- Client provides `X-API-Key` header directly
-- Service validates API key locally
-- ⚠️ **Use only for development/testing** - not recommended for production
+It used to also accept its static `API_KEY` sent directly as `X-API-Key` on
+port 8000. That path built an identity the shared `GatewayUser` model
+refuses, so it answered every call with a server error, and it was removed
+(#565). A direct request without gateway headers now gets 401. Personal API
+keys are unaffected: send them to the gateway, which resolves them through
+identity.
 
 ## Security Model
 

@@ -144,6 +144,15 @@ is at the top of the file.
   in `docker-compose.yml` or `docker-compose.prod.yml` used it. If you kept a
   copy, it is not maintained; deploy with `docker-compose.prod.yml` as the
   [deployment guide](https://www.wildbox.io/guides/deployment/) describes.
+- The tools service no longer accepts its static `API_KEY` sent directly as
+  `X-API-Key` (#565). That path already failed with a server error on every
+  call, so nothing that worked before stops working. If a script or
+  integration calls the tools service directly on port 8000 with
+  `X-API-Key`, send it through the gateway instead
+  (`https://<host>/api/v1/tools/...`) with a JWT or a personal API key
+  created in the identity service; a direct request without the gateway's
+  headers is answered with 401. Keep `API_KEY` in `.env`: the service still
+  requires it at start-up.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
