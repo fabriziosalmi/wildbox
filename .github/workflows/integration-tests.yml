@@ -127,13 +127,14 @@ jobs:
           # the file: `. ./.env` executes it, and a generated secret is not
           # shell syntax.
           env_value() { sed -n "s/^$1=//p" .env | head -1; }
-          export INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
-          export INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
-          export GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
-          export SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
-          # ${{ env.* }} is evaluated before any step runs, so it cannot carry a
-          # value this job generated.
-          export DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
+          SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
+          # An `env` context expression is evaluated before any step runs, so
+          # it cannot carry a value this job generated.
+          DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
+          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN
           python -m pytest tests/integration/ \
             -v -rs \
             --tb=short \
