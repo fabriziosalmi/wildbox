@@ -1,5 +1,10 @@
 # Documentation Quality Audit Report
 
+> **Archived (stale).** This November 2025 snapshot is kept only as a
+> record. Its scores, issue list and review date no longer describe the
+> documentation, and it is not published on the site. Documentation problems
+> are tracked as GitHub issues and pull requests instead.
+
 **Generated**: 2025-11-24  
 **Purpose**: Comprehensive documentation quality assessment following FAANG-level standards
 

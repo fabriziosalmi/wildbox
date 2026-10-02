@@ -125,6 +125,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
+  `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
+  every page loads. `api-reference.html` and the two Redoc pages now load
+  their vendored files from root-relative paths like the rest of the site,
+  the Redoc pages get canonical URLs, the remaining standalone pages link
+  `security.txt` in their footers, and `api-reference.html` loses a stale
+  "Last Updated" stamp.
+- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+  (a November 2025 snapshot, unpublished) is marked archived, and the
+  gateway authentication guide, linked from the published tools audit, says
+  that its keys and hosts are fictitious.
+
 - **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
   WAF, Kubernetes support and a local Ollama LLM, none of which the project
   ships, and gave the gateway as port 8080 and Postgres credentials that do
