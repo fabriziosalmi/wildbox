@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`make start` no longer leaves the data service crash-looping.** It layers
+  `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
+  whose `ENVIRONMENT` is `production`; data refuses that combination. The
+  development overlay now sets `ENVIRONMENT=development` for data as well.
+
 - **Password change and self-deletion work again** (#501). identity's custom
   routes verified with passlib bcrypt, which cannot read the Argon2id hashes
   fastapi-users writes for every account, so they failed for every user.
