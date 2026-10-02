@@ -111,7 +111,12 @@ MUST_NOT_CONNECT = [
     ("gateway", "wildbox-redis", 6379, "gateway is not on data"),
     ("sensor", "wildbox-postgres", 5432, "sensor is not on data"),
     ("sensor", "wildbox-redis", 6379, "sensor is not on data"),
-    ("gateway", "open-security-tools-flower", 5555, "flower is on data and egress only"),
+    (
+        "gateway",
+        "open-security-tools-flower",
+        5555,
+        "flower is on data and egress only",
+    ),
     ("postgres", "github.com", 443, "data is internal: no route out"),
 ]
 
@@ -209,10 +214,15 @@ def check_config(env_file):
     for n in ("frontend", "backend", "egress"):
         if nets.get(n, {}).get("internal"):
             failures.append(f"network {n} must not be internal")
-    icc = nets.get("egress", {}).get("driver_opts", {}).get(
-        "com.docker.network.bridge.enable_icc")
+    icc = (
+        nets.get("egress", {})
+        .get("driver_opts", {})
+        .get("com.docker.network.bridge.enable_icc")
+    )
     if str(icc).lower() != "false":
-        failures.append("network egress must set com.docker.network.bridge.enable_icc=false")
+        failures.append(
+            "network egress must set com.docker.network.bridge.enable_icc=false"
+        )
     used = {n for s in services.values() for n in (s.get("networks") or {})}
     if "wildbox" in used:
         failures.append("a service is still attached to the flat wildbox network")
@@ -221,8 +231,21 @@ def check_config(env_file):
 
 def probe(service, host, port):
     r = subprocess.run(
-        ["docker", "compose", "exec", "-T", service, "sh", "-c", PROBE, host, str(port)],
-        capture_output=True, text=True, timeout=60,
+        [
+            "docker",
+            "compose",
+            "exec",
+            "-T",
+            service,
+            "sh",
+            "-c",
+            PROBE,
+            host,
+            str(port),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     return r.returncode, (r.stderr or "").strip()
 
@@ -238,8 +261,10 @@ def check_runtime():
                 print(f"  ERR  {svc:15} -> {host}:{port}  rc={rc} {err}")
                 continue
             ok = (rc == 0) == expect_ok
-            print(f"  {'ok  ' if ok else 'FAIL'} {svc:15} -> {host}:{port:<5} "
-                  f"{RESULT[rc]:18} ({why})")
+            print(
+                f"  {'ok  ' if ok else 'FAIL'} {svc:15} -> {host}:{port:<5} "
+                f"{RESULT[rc]:18} ({why})"
+            )
             if not ok:
                 failures.append(f"{svc} -> {host}:{port}: {RESULT[rc]} ({why})")
     return failures
