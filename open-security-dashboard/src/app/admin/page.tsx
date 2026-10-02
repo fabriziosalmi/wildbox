@@ -571,8 +571,7 @@ export default function AdminPage() {
 
       const token = Cookies.get('auth_token')
 
-      const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
-      const response = await fetch(`${gatewayUrl}/api/v1/identity/auth/register`, {
+      const response = await fetch(`${gatewayBaseUrl}/api/v1/identity/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -597,9 +596,8 @@ export default function AdminPage() {
 
         // Update superuser status if needed
         if (createUserForm.is_superuser) {
-          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
           const superuserResponse = await fetch(
-            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/role`,
+            `${gatewayBaseUrl}/api/v1/identity/admin/users/${userId}/role`,
             {
               method: 'PATCH',
               headers: {
@@ -619,9 +617,8 @@ export default function AdminPage() {
 
         // Update active status if needed
         if (!createUserForm.is_active) {
-          const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || ''
           const statusResponse = await fetch(
-            `${gatewayUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`,
+            `${gatewayBaseUrl}/api/v1/identity/admin/users/${userId}/status?is_active=false`,
             {
               method: 'PATCH',
               headers: {

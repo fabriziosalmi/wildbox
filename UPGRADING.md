@@ -254,6 +254,39 @@ describes what can be scheduled.
   3389 (a refused connection counts as up), not by ping, which was not
   installed in the image. A host that answers only ICMP is not found.
 
+### 17. Rebuild the dashboard image; leave `NEXT_PUBLIC_GATEWAY_URL` empty
+
+`NEXT_PUBLIC_*` is compiled into the dashboard's browser code when the image
+is built, and the production Dockerfile took no value for it, so a production
+dashboard sent every API call to `http://localhost:80` on the user's machine.
+The image now takes `NEXT_PUBLIC_GATEWAY_URL`, `NEXT_PUBLIC_USE_GATEWAY` and
+`NEXT_PUBLIC_APP_URL` as build arguments, which `docker-compose.prod.yml`
+reads from `.env`.
+
+- **Set `NEXT_PUBLIC_GATEWAY_URL=` (empty) in `.env`** unless the dashboard
+  is served from another origin than the gateway. Empty means the dashboard's
+  own origin, which is where this stack's gateway serves the API. The
+  previous template value, `https://localhost`, would now be compiled into
+  the image and work only for a browser on the server itself.
+- **Rebuild the dashboard image** after this and after any later change to
+  these variables: `docker compose -f docker-compose.yml -f
+  docker-compose.prod.yml build dashboard`. Setting them on the running
+  container has no effect.
+- The per-service `NEXT_PUBLIC_*_API_URL` and `NEXT_PUBLIC_API_BASE_URL`
+  variables are read by nothing and can be removed from overrides.
+
+See the [deployment guide](https://www.wildbox.io/guides/deployment/#the-dashboards-browser-settings).
+
+### 18. `PATCH /auth/users/me` no longer changes the password
+
+It changed the password without asking for the current one. It now answers
+400 (`UPDATE_USER_INVALID_PASSWORD`) to a request with a `password` field and
+changes nothing; email changes work as before. A script that changes a
+user's own password must call
+`POST /api/v1/identity/admin/me/change-password` with `current_password` and
+`new_password` (at least 12 characters). Administrators resetting another
+account's password through `PATCH /auth/users/{id}` are not affected.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

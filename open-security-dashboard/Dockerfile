@@ -35,6 +35,27 @@ COPY . .
 # Uncomment the following line in case you want to disable telemetry during the build.
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# The browser-side configuration. Next.js inlines NEXT_PUBLIC_* into the
+# client bundle during `npm run build`, so these have to be present here, at
+# build time; setting them on the running container changes nothing. No
+# argument was declared, so every production image was built without a
+# gateway URL and fell back to http://localhost:80 (#559).
+#
+# NEXT_PUBLIC_GATEWAY_URL: leave it empty when the gateway serves the
+#   dashboard (the supported topology): the dashboard then calls the API on
+#   its own origin. Set it only when the dashboard is served from another
+#   origin than the gateway; that origin is also allowed in the CSP.
+# NEXT_PUBLIC_USE_GATEWAY: "false" only for development against a bare
+#   service.
+# NEXT_PUBLIC_APP_URL: the public URL of the dashboard, for absolute links
+#   in page metadata.
+ARG NEXT_PUBLIC_GATEWAY_URL=""
+ARG NEXT_PUBLIC_USE_GATEWAY="true"
+ARG NEXT_PUBLIC_APP_URL=""
+ENV NEXT_PUBLIC_GATEWAY_URL=$NEXT_PUBLIC_GATEWAY_URL \
+    NEXT_PUBLIC_USE_GATEWAY=$NEXT_PUBLIC_USE_GATEWAY \
+    NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+
 RUN npm run build
 
 # Production image, copy all the files and run next

@@ -198,7 +198,19 @@ class ApiClient {
 // bare service, but it now defaults to ON rather than OFF: an unset variable
 // gives the supported deployment instead of the unsupported one.
 const useGateway = process.env.NEXT_PUBLIC_USE_GATEWAY !== 'false'
-const gatewayUrl = process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://localhost:80'
+
+// Where the browser reaches the gateway. NEXT_PUBLIC_* values are inlined
+// into the bundle when it is built, so this is fixed per image, not per
+// container. Unset (the default), it is '' and every request is relative:
+// it goes to the origin the dashboard was loaded from, which is the gateway
+// itself -- the gateway serves the dashboard and the API on one origin. Set
+// it only when the dashboard is served from a different origin than the
+// gateway (e.g. `next dev` on :3000 against a gateway elsewhere).
+//
+// The fallback used to be http://localhost:80, which the production image
+// always got, since its Dockerfile passed no value at build time: a deployed
+// dashboard sent every call to the browser's own machine (#559).
+const gatewayUrl = (process.env.NEXT_PUBLIC_GATEWAY_URL || '').replace(/\/+$/, '')
 
 // Helper function to get the correct gateway URL based on environment
 const getGatewayUrl = (): string => {

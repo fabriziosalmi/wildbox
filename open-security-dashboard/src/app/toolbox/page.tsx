@@ -18,7 +18,20 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient } from '@/lib/api-client'
+import { apiClient, gatewayBaseUrl } from '@/lib/api-client'
+
+// A tool's own page in the tools service, through the gateway's /tools/
+// route, which accepts the dashboard's session cookie. These links used
+// NEXT_PUBLIC_API_BASE_URL, which no build set (it fell back to the tools
+// service's port on the browser's machine, http://localhost:8000) and which
+// docker-compose.yml pointed at a path that does not exist (#559).
+const toolPageUrl = (name: string) => `${gatewayBaseUrl}/tools/${encodeURIComponent(name)}`
+
+// The tools service's own /docs is not routed through the gateway; the
+// dashboard's API documentation page is.
+const API_DOCS_PATH = '/api-docs'
+
+const openInNewTab = (url: string) => window.open(url, '_blank', 'noopener,noreferrer')
 
 interface SecurityTool {
   name: string
@@ -113,21 +126,16 @@ function ToolCard({
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/tools/${tool.name}`, '_blank')
-              }
+              onClick={() => openInNewTab(toolPageUrl(tool.name))}
+              aria-label={`Open ${tool.display_name} in the tools service`}
             >
               <Settings className="h-4 w-4" />
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL}/docs#/Security%20Tools/execute_${tool.name}_api_tools__tool_name__post`,
-                  '_blank'
-                )
-              }
+              onClick={() => openInNewTab(API_DOCS_PATH)}
+              aria-label="API documentation"
             >
               <Book className="h-4 w-4" />
             </Button>
@@ -230,9 +238,7 @@ export default function ToolboxPage() {
       ...prev.slice(0, 9), // Keep last 10
     ])
 
-    // Open the tool execution page in the API service
-    const toolUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/tools/${tool.name}`
-    window.open(toolUrl, '_blank')
+    openInNewTab(toolPageUrl(tool.name))
   }
 
   if (isLoading) {
@@ -296,29 +302,9 @@ export default function ToolboxPage() {
             <p className="text-muted-foreground">Execute security tools and analyze results</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/docs`,
-                  '_blank'
-                )
-              }
-            >
+            <Button variant="outline" onClick={() => openInNewTab(API_DOCS_PATH)}>
               <Book className="mr-2 h-4 w-4" />
               API Docs
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() =>
-                window.open(
-                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`,
-                  '_blank'
-                )
-              }
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Web Interface
             </Button>
           </div>
         </div>

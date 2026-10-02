@@ -130,6 +130,24 @@ jobs:
               --format '{{range .Containers}}{{.Name}} {{end}}'
           done
 
+      - name: The dashboard bundle calls the gateway on its own origin
+        # NEXT_PUBLIC_* is compiled into the browser bundle at build time, and
+        # the Dockerfile declared no build argument for it, so every production
+        # image fell back to http://localhost:80 (#559). With .env's empty
+        # NEXT_PUBLIC_GATEWAY_URL the API paths must be relative. The first
+        # grep proves the search reads the bundle at all.
+        run: |
+          docker compose exec -T dashboard sh -c '
+            set -e
+            grep -rqF "/auth/jwt/login" .next/static
+            if grep -rlF "http://localhost:80" .next/static; then
+              echo "the bundle still addresses http://localhost:80" >&2
+              exit 1
+            fi'
+          code="$(curl -sk -o /dev/null -w '%{http_code}' https://localhost/auth/login)"
+          echo "GET https://localhost/auth/login -> $code"
+          test "$code" = 200
+
       - name: Segmentation from inside the running containers
         run: python3 scripts/check_network_segmentation.py runtime
 

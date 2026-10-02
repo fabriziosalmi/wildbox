@@ -307,8 +307,18 @@ services:
     build:
       context: ./open-security-dashboard
       dockerfile: Dockerfile
+      # NEXT_PUBLIC_* is compiled into the browser bundle, so it is a build
+      # argument, read from .env here; the environment of the running
+      # container cannot change it. Without these the image fell back to
+      # http://localhost:80 (#559). An empty NEXT_PUBLIC_GATEWAY_URL -- the
+      # default -- makes the dashboard call the gateway on its own origin,
+      # which is how this stack serves it. Rebuild the image after changing
+      # any of them (docs/guides/deployment.md).
       args:
         - NODE_ENV=production
+        - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-}
+        - NEXT_PUBLIC_USE_GATEWAY=${NEXT_PUBLIC_USE_GATEWAY:-true}
+        - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
     environment:
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
