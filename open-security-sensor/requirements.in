@@ -13,7 +13,7 @@
 # the token-verification path (WILDBO-DEP-02/DEP-04/DEP-05).
 
 asyncio-mqtt==0.16.2
-aiohttp==3.14.1
+aiohttp==3.14.3
 aiohttp-cors==0.7.0
 PyYAML==6.0.2
 psutil==6.1.1
@@ -22,7 +22,7 @@ jsonschema==4.23.0
 python-dateutil==2.9.0
 watchdog==6.0.0
 structlog==24.4.0
-cryptography==48.0.1
+cryptography==50.0.2
 certifi==2024.12.14
 pytest==8.3.4
 pytest-asyncio==0.24.0
