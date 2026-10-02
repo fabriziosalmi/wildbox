@@ -621,6 +621,58 @@ services:
       timeout: 10s
       retries: 3
 
+  # Guardian Celery worker. guardian publishes tasks to Redis db 1 (port
+  # scans on asset creation, threat-intel enrichment, alert-rule checks,
+  # report generation, compliance notifications), and nothing consumed them
+  # until this service existed: every task stayed queued forever (#537).
+  # Same image as guardian; the entrypoint's migrate is a no-op once
+  # guardian is healthy, which is why it waits for that.
+  guardian-worker:
+    build:
+      context: ./open-security-guardian
+      dockerfile: Dockerfile
+      additional_contexts:
+        shared: ./open-security-shared
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    # -Q: the default queue plus every queue guardian/celery.py routes to, so
+    # a routed task is never published to a queue no worker reads.
+    command: celery -A guardian worker --loglevel=info --concurrency=2 -Q default,reporting,scanning,analytics,queue_management
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SECRET_KEY=${GUARDIAN_SECRET_KEY:?GUARDIAN_SECRET_KEY is required}
+      - DATABASE_URL=${GUARDIAN_DATABASE_URL:-${DATABASE_URL}}
+      - REDIS_URL=${GUARDIAN_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_BROKER_URL=${GUARDIAN_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - CELERY_RESULT_BACKEND=${GUARDIAN_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/1}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      wildbox-redis:
+        condition: service_healthy
+      guardian:
+        condition: service_healthy
+    networks:
+      - wildbox
+    healthcheck:
+      # This worker, by node name, not any worker on the broker.
+      test: ["CMD-SHELL", "celery -A guardian inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+
 
 
   # Responder Service (Incident Response)

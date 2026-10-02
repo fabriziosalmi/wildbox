@@ -33,8 +33,12 @@ ASSETS = f"{GUARDIAN_API}/assets/assets/"
 VULNERABILITIES = f"{GUARDIAN_API}/vulnerabilities/"
 DASHBOARDS = f"{GUARDIAN_API}/reports/dashboards/"
 ALERT_CHECK_ALL = f"{GUARDIAN_API}/reports/alerts/check_all/"
+TASKS = f"{GUARDIAN_API}/tasks/"
 
 TIMEOUT = 15
+# How long a queued task may take to be picked up and finished by the
+# guardian worker. The tasks used here take well under a second.
+TASK_DEADLINE = 90
 
 
 @pytest.fixture(scope="module")
@@ -86,6 +90,28 @@ def asset(admin_headers):
     body = created.json()
     yield body
     requests.delete(f"{ASSETS}{body['id']}/", headers=admin_headers, timeout=TIMEOUT)
+
+
+def _wait_for_task(task_id: str, headers: dict) -> dict:
+    """Poll guardian's task-status endpoint until the task is finished.
+
+    Celery reports PENDING for a task no worker has taken, so with no
+    guardian worker running this never leaves PENDING and the test fails at
+    the deadline (#537).
+    """
+    uuid.UUID(task_id)  # Celery task ids are UUIDs; raises if not.
+    deadline = time.monotonic() + TASK_DEADLINE
+    body: dict = {}
+    while time.monotonic() < deadline:
+        response = requests.get(f"{TASKS}{task_id}/", headers=headers, timeout=TIMEOUT)
+        assert (
+            response.status_code == 200
+        ), f"{response.status_code} {response.text[:300]}"
+        body = response.json()
+        if body["ready"]:
+            return body
+        time.sleep(1)
+    pytest.fail(f"task {task_id} not finished after {TASK_DEADLINE}s: {body}")
 
 
 class TestGuardianMonitoring:
@@ -202,14 +228,11 @@ class TestGuardianMonitoring:
         )
         assert gone.status_code == 404, gone.status_code
 
-    def test_celery_task_trigger(self, admin_headers) -> None:
-        """The alert-rule sweep is queued on Celery and a task id comes back.
+    def test_celery_task_runs(self, admin_headers) -> None:
+        """The alert-rule sweep is queued, and the guardian worker runs it.
 
-        This is guardian's endpoint that dispatches a Celery task and returns
-        its id. The stack runs no guardian worker, so the task's execution is
-        not observable here; what is asserted is that guardian published it to
-        the broker -- with the broker unreachable, .delay() raises and the
-        endpoint answers 500.
+        Until #537 nothing consumed guardian's queue, and this test could only
+        assert that a task id came back. It now waits for the task to finish.
         """
         response = requests.post(
             ALERT_CHECK_ALL, headers=admin_headers, timeout=TIMEOUT
@@ -219,7 +242,41 @@ class TestGuardianMonitoring:
         ), f"{response.status_code} {response.text[:300]}"
         task_id = response.json().get("task_id")
         assert task_id, response.json()
-        uuid.UUID(task_id)  # Celery task ids are UUIDs; raises if not.
+
+        status = _wait_for_task(task_id, admin_headers)
+        assert status["state"] == "SUCCESS", status
+        assert status["successful"] is True, status
+
+    def test_asset_scan_runs(self, admin_headers) -> None:
+        """POST .../assets/{id}/scan/ queues a port scan that completes.
+
+        The action imported a module that does not exist and answered 500 on
+        every call (#537). The address is loopback, so the worker scans
+        itself: every port is refused at once and nothing leaves the host.
+        """
+        payload = {
+            "name": f"it-guardian-scan-{uuid.uuid4().hex[:12]}",
+            "asset_type": "server",
+            "ip_address": f"127.0.{uuid.uuid4().int % 250 + 1}.{uuid.uuid4().int % 250 + 1}",
+        }
+        created = requests.post(
+            ASSETS, json=payload, headers=admin_headers, timeout=TIMEOUT
+        )
+        assert created.status_code == 201, created.text[:300]
+        asset_id = created.json()["id"]
+        try:
+            response = requests.post(
+                f"{ASSETS}{asset_id}/scan/", headers=admin_headers, timeout=TIMEOUT
+            )
+            assert (
+                response.status_code == 200
+            ), f"{response.status_code} {response.text[:300]}"
+            status = _wait_for_task(response.json()["task_id"], admin_headers)
+            assert status["state"] == "SUCCESS", status
+        finally:
+            requests.delete(
+                f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT
+            )
 
     def test_monitoring_dashboard_access(self, admin_headers) -> None:
         """Reporting dashboards are served to an authenticated user, not to anyone."""

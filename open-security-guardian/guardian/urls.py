@@ -13,7 +13,7 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
-from apps.core.views import HealthCheckView, MetricsView
+from apps.core.views import HealthCheckView, MetricsView, TaskStatusView
 
 urlpatterns = [
     # Admin interface
@@ -26,6 +26,8 @@ urlpatterns = [
     path('metrics/', MetricsView.as_view(), name='metrics'),
     
     # API endpoints
+    # State of a dispatched Celery task, by the task_id an endpoint returned.
+    path('api/v1/tasks/<uuid:task_id>/', TaskStatusView.as_view(), name='task-status'),
     path('api/v1/assets/', include('apps.assets.urls')),
     path('api/v1/vulnerabilities/', include('apps.vulnerabilities.urls')),
     path('api/v1/scanners/', include('apps.scanners.urls')),

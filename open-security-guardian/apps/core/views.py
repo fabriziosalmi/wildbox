@@ -88,6 +88,30 @@ class SystemInfoView(APIView):
         return Response(system_info)
 
 
+class TaskStatusView(APIView):
+    """State of a Celery task this service dispatched (#537).
+
+    Several endpoints answer with a ``task_id`` (asset scan and discovery,
+    alert-rule checks, report generation) and nothing let a client find out
+    what became of it. This reads the result backend: PENDING for a task no
+    worker has picked up (or an unknown id), then STARTED, SUCCESS, FAILURE
+    or RETRY. Only the state is returned, never the task's return value or
+    traceback, which may carry data the caller is not entitled to.
+    """
+
+    def get(self, request, task_id):
+        from guardian.celery import app as celery_app
+
+        state = celery_app.AsyncResult(str(task_id)).state
+        ready = state in ('SUCCESS', 'FAILURE', 'REVOKED')
+        return Response({
+            'task_id': str(task_id),
+            'state': state,
+            'ready': ready,
+            'successful': state == 'SUCCESS' if ready else None,
+        })
+
+
 # Import required modules for system info
 import sys
 import platform

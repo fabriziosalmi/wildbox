@@ -31,10 +31,10 @@
 #             the /metrics targets in monitoring/prometheus.yml
 #   data      postgres, wildbox-redis, and only the services whose
 #   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup
-#   egress    tools-worker, tools-flower, data-scheduler, backup: the services
-#             on `data` alone, which would otherwise have no outbound internet
-#             (tool execution, threat feeds, `apk add` in backup) and no
-#             loopback port (flower). Inter-container communication is
+#   egress    tools-worker, tools-flower, guardian-worker, data-scheduler,
+#             backup: the services on `data` alone, which would otherwise have
+#             no outbound internet (tool execution, port scans, threat feeds,
+#             `apk add` in backup) and no loopback port (flower). Inter-container communication is
 #             disabled on it, so it is never a path between two services.
 #
 # backend is NOT internal. Docker neither routes out nor publishes ports for a
@@ -51,7 +51,7 @@
 # reached. A first version of this change put every
 # service on egress; with PostgreSQL also on it, identity, data and guardian
 # resolved the database to its egress address and never connected. So no name
-# that a service looks up may be on egress: only the four services above are,
+# that a service looks up may be on egress: only the services above are,
 # and nothing looks them up.
 #
 # Not reachable, by construction: dashboard -> postgres/redis/any backend
@@ -339,6 +339,23 @@ services:
     networks: !override
       - data
       - egress
+
+  # The broker and the database are on data; egress for what the tasks
+  # reach outside the stack: port scans of asset addresses, threat-intel
+  # URLs, SMTP and chat webhooks. Nothing looks the worker up by name.
+  guardian-worker:
+    restart: always
+    networks: !override
+      - data
+      - egress
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   data:
     networks: !override

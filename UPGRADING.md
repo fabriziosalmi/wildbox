@@ -130,6 +130,24 @@ is at the top of the file.
   `src/middleware.ts` to `src/proxy.ts`, and `images.domains` is now
   `images.remotePatterns`.
 
+### 12. guardian has a Celery worker (`guardian-worker`)
+
+A new service, `guardian-worker`, runs the tasks guardian queues: port scans of
+new assets, threat-intel enrichment, alert-rule checks, report generation and
+compliance notifications. Before, nothing ran them. It uses guardian's image,
+so it is built with the others, and in the production overlay it sits on
+`data` and `egress`.
+
+Every task queued since guardian was deployed is still in Redis and runs as
+soon as the worker starts, including e-mails and port scans that are now out
+of date. To drop that backlog first, run, with the old stack still up:
+
+```bash
+docker compose exec guardian celery -A guardian purge -f
+```
+
+No `celery beat` is added: guardian defines no periodic schedule.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a
