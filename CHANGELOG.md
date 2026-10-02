@@ -83,6 +83,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The dashboard no longer ships four libraries it never imports** (#519):
+  recharts, zustand, @hookform/resolvers and react-markdown. No file under
+  `src/` or `tests/` references them, and the build output is unchanged
+  without them. 99 packages leave the lockfile, along with the
+  `mdast-util-to-hast` override that existed only for react-markdown, and
+  so do the four major-version Dependabot PRs that kept proposing them.
+
 - **The dashboard's npm tree has no known advisory left** (#518): 61 open
   Dependabot alerts (29 high) and 15 `npm audit` findings, down to zero.
   Patch and minor releases only, inside the existing ranges: axios 1.20.0,
