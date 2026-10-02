@@ -1,272 +1,239 @@
 """
-Guardian Monitoring Test Module
-Tests assets, vulnerabilities, Celery task management
+Guardian (vulnerability management) integration tests.
+
+Two paths, each the one a real client uses:
+
+* Health is probed directly on guardian's published port, over plain HTTP,
+  exactly as the container healthcheck and the conftest reachability guard
+  do. /health/ is the one route exempt from guardian's HTTPS redirect.
+* Everything else goes through the gateway, over HTTPS, with a JWT from the
+  real login. Guardian refuses a direct API call by design (it only trusts the
+  X-Wildbox-* headers the gateway injects alongside the shared secret), so a
+  test that called /api/v1/... on port 8013 could only ever observe a redirect
+  or a 401 -- which is all the previous version of this module asserted, and
+  it accepted those as passes.
+
+Every test asserts a concrete outcome; none of them accepts "any status".
 """
 
 import os
+import time
+import uuid
+
 import pytest
 import requests
-import asyncio
-import time
-from typing import Dict, List, Any, Optional
+
+GATEWAY_URL = os.getenv("GATEWAY_URL", "https://localhost").rstrip("/")
+IDENTITY_URL = os.getenv("IDENTITY_SERVICE_URL", "http://localhost:8001").rstrip("/")
+GUARDIAN_URL = os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013").rstrip("/")
+
+# /api/v1/guardian/<x> on the gateway is /api/v1/<x> on guardian.
+GUARDIAN_API = f"{GATEWAY_URL}/api/v1/guardian"
+ASSETS = f"{GUARDIAN_API}/assets/assets/"
+VULNERABILITIES = f"{GUARDIAN_API}/vulnerabilities/"
+DASHBOARDS = f"{GUARDIAN_API}/reports/dashboards/"
+ALERT_CHECK_ALL = f"{GUARDIAN_API}/reports/alerts/check_all/"
+
+TIMEOUT = 15
+
+
+@pytest.fixture(scope="module")
+def admin_headers() -> dict:
+    """Bearer header for the admin the stack provisions (a team owner)."""
+    email = os.getenv("TEST_ADMIN_EMAIL")
+    password = os.getenv("TEST_ADMIN_PASSWORD")
+    assert (
+        email and password
+    ), "TEST_ADMIN_EMAIL/TEST_ADMIN_PASSWORD (or INITIAL_ADMIN_*) must be set"
+    login = requests.post(
+        f"{IDENTITY_URL}/api/v1/auth/jwt/login",
+        data={"username": email, "password": password},
+        timeout=TIMEOUT,
+    )
+    assert (
+        login.status_code == 200
+    ), f"admin login failed: {login.status_code} {login.text[:200]}"
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def _assert_page(response: requests.Response) -> dict:
+    """A DRF PageNumberPagination body: count, next, previous, results."""
+    assert response.status_code == 200, (
+        f"{response.request.method} {response.url}: "
+        f"{response.status_code} {response.text[:300]}"
+    )
+    body = response.json()
+    assert isinstance(body.get("count"), int), body
+    assert isinstance(body.get("results"), list), body
+    return body
+
+
+@pytest.fixture
+def asset(admin_headers):
+    """A throwaway asset, removed afterwards even if the test fails."""
+    payload = {
+        "name": f"it-guardian-{uuid.uuid4().hex[:12]}",
+        "asset_type": "server",
+        "hostname": "it-guardian.invalid",
+        "tags": ["integration-test"],
+    }
+    created = requests.post(
+        ASSETS, json=payload, headers=admin_headers, timeout=TIMEOUT
+    )
+    assert (
+        created.status_code == 201
+    ), f"asset creation failed: {created.status_code} {created.text[:300]}"
+    body = created.json()
+    yield body
+    requests.delete(f"{ASSETS}{body['id']}/", headers=admin_headers, timeout=TIMEOUT)
 
 
 class TestGuardianMonitoring:
-    """Comprehensive tests for Guardian Monitoring Service (Port 8013)"""
-    
-    # setup_method, not __init__: pytest silently refuses to collect a
-    # class that defines a constructor. Combined with the class rename
-    # below, this is what makes these tests run at all (WILDBO-TEST-01).
-    def setup_method(self, method):
-        # Constructor defaults, resolved here now that pytest calls
-        # setup_method() with no arguments (WILDBO-TEST-01).
-        # Read the same environment variable the conftest reachability guard
-        # reads. Hard-coding localhost meant the guard probed the configured
-        # address, said "reachable", and the test then connected somewhere
-        # else -- so these tests could only ever pass on a host where every
-        # service happened to be on loopback.
-        base_url = os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013")
-        self.base_url = base_url
-        self.results = []
-        
-    def log_test_result(self, test_name: str, passed: bool, details: str = ""):
-        """Log individual test result"""
-        self.results.append({
-            "name": test_name,
-            "passed": passed,
-            "details": details,
-            "timestamp": time.time()
-        })
-        
-    async def test_service_health(self) -> None:
-        """Test Guardian service health"""
-        try:
-            response = requests.get(f"{self.base_url}/health", timeout=10)
-            passed = response.status_code == 200
-            
-            if passed:
-                health_data = response.json()
-                details = f"Status: {health_data.get('status', 'unknown')}"
-            else:
-                details = f"HTTP {response.status_code}"
-                
-            self.log_test_result("Guardian Service Health", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Guardian Service Health", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_assets_database_access(self) -> None:
-        """Test access to assets database"""
-        try:
-            # Test assets endpoint
-            response = requests.get(f"{self.base_url}/api/v1/assets", timeout=10)
-            
-            # Check if endpoint is accessible
-            if response.status_code == 200:
-                assets_data = response.json()
-                asset_count = len(assets_data) if isinstance(assets_data, list) else len(assets_data.get('assets', []))
-                details = f"Assets database accessible, {asset_count} assets found"
-                passed = True
-            elif response.status_code in [401, 403]:
-                details = "Assets database requires authentication (expected)"
-                passed = True
-            elif response.status_code == 404:
-                details = "Assets endpoint not found"
-                passed = False
-            else:
-                details = f"Assets endpoint responds (HTTP {response.status_code})"
-                passed = True
-                
-            self.log_test_result("Assets Database Access", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Assets Database Access", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_vulnerabilities_database_access(self) -> None:
-        """Test access to vulnerabilities database"""
-        try:
-            # Test vulnerabilities endpoint
-            response = requests.get(f"{self.base_url}/api/v1/vulnerabilities", timeout=10)
-            
-            # Check if endpoint is accessible
-            if response.status_code == 200:
-                vulns_data = response.json()
-                vuln_count = len(vulns_data) if isinstance(vulns_data, list) else len(vulns_data.get('vulnerabilities', []))
-                details = f"Vulnerabilities database accessible, {vuln_count} vulnerabilities found"
-                passed = True
-            elif response.status_code in [401, 403]:
-                details = "Vulnerabilities database requires authentication (expected)"
-                passed = True
-            elif response.status_code == 404:
-                details = "Vulnerabilities endpoint not found"
-                passed = False
-            else:
-                details = f"Vulnerabilities endpoint responds (HTTP {response.status_code})"
-                passed = True
-                
-            self.log_test_result("Vulnerabilities Database Access", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Vulnerabilities Database Access", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_asset_creation_authorization(self) -> None:
-        """Test asset creation with authorization"""
-        try:
-            # Test asset creation
-            test_asset = {
-                "name": f"test-asset-{int(time.time())}",
-                "type": "server", 
-                "ip_address": "192.168.1.100",
-                "environment": "test"
-            }
-            
-            response = requests.post(
-                f"{self.base_url}/api/v1/assets",
-                json=test_asset,
-                timeout=10
+    """Guardian through the paths operators and clients actually use."""
+
+    def test_service_health(self) -> None:
+        """/health/ answers 200 JSON over plain HTTP, with every dependency up.
+
+        No redirect is allowed: a 301 here is what made the container
+        healthcheck pass with the database down and the suite skip guardian
+        as unreachable (#532).
+        """
+        response = requests.get(
+            f"{GUARDIAN_URL}/health/", timeout=TIMEOUT, allow_redirects=False
+        )
+        assert response.status_code == 200, (
+            f"{response.status_code} {response.headers.get('location', '')} "
+            f"{response.text[:300]}"
+        )
+        assert "json" in response.headers.get("content-type", "")
+        body = response.json()
+        assert body["status"] == "healthy", body
+        assert body["checks"]["database"]["status"] == "healthy", body
+        assert body["checks"]["redis"]["status"] == "healthy", body
+
+    def test_assets_database_access(self, admin_headers, asset) -> None:
+        """Assets are read back from guardian's database through the gateway."""
+        listing = _assert_page(
+            requests.get(
+                ASSETS,
+                params={"search": asset["name"]},
+                headers=admin_headers,
+                timeout=TIMEOUT,
             )
-            
-            # Check response
-            if response.status_code in [200, 201]:
-                details = "Asset creation successful"
-                passed = True
-            elif response.status_code in [401, 403]:
-                details = "Asset creation requires authorization (expected)"
-                passed = True
-            elif response.status_code == 400:
-                details = "Asset validation working (HTTP 400)"
-                passed = True
-            else:
-                passed = response.status_code != 404
-                details = f"Asset creation endpoint responds (HTTP {response.status_code})"
-                
-            self.log_test_result("Asset Creation with Authorization", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Asset Creation with Authorization", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_celery_task_trigger(self) -> None:
-        """Test asynchronous Celery task triggering"""
-        try:
-            # Test task endpoints that might trigger Celery tasks
-            task_endpoints = [
-                "/api/v1/tasks/scan",
-                "/api/v1/tasks/report",
-                "/api/v1/scans/start"
-            ]
-            
-            task_capable_endpoints = 0
-            
-            for endpoint in task_endpoints:
-                try:
-                    # Use GET to test if endpoint exists
-                    response = requests.get(f"{self.base_url}{endpoint}", timeout=10)
-                    
-                    # Any response except 404 means endpoint exists
-                    if response.status_code != 404:
-                        task_capable_endpoints += 1
-                        
-                    # Also test POST to see if it triggers tasks
-                    post_response = requests.post(
-                        f"{self.base_url}{endpoint}",
-                        json={"test": "task"},
-                        timeout=10
-                    )
-                    
-                    if post_response.status_code not in [404, 405]:
-                        task_capable_endpoints += 1
-                        
-                except Exception:
-                    pass
-            
-            passed = task_capable_endpoints > 0
-            
-            if passed:
-                details = f"{task_capable_endpoints} task-capable endpoints found"
-            else:
-                details = "No Celery task endpoints found"
-                
-            self.log_test_result("Celery Task Triggering", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Celery Task Triggering", False, f"Error: {str(e)}")
-            raise
-            
-    async def test_monitoring_dashboard_access(self) -> None:
-        """Test monitoring dashboard accessibility"""
-        try:
-            # Test dashboard/admin endpoints
-            dashboard_endpoints = [
-                "/admin",
-                "/dashboard", 
-                "/api/v1/status",
-                "/api/v1/metrics"
-            ]
-            
-            accessible_dashboards = 0
-            
-            for endpoint in dashboard_endpoints:
-                try:
-                    response = requests.get(f"{self.base_url}{endpoint}", timeout=10)
-                    
-                    # Any response except 404 means endpoint exists
-                    if response.status_code != 404:
-                        accessible_dashboards += 1
-                        
-                except Exception:
-                    pass
-            
-            passed = accessible_dashboards > 0
-            
-            if passed:
-                details = f"{accessible_dashboards}/{len(dashboard_endpoints)} dashboard endpoints accessible"
-            else:
-                details = "No monitoring dashboard endpoints found"
-                
-            self.log_test_result("Monitoring Dashboard Access", passed, details)
-            assert passed, details
-            
-        except Exception as e:
-            self.log_test_result("Monitoring Dashboard Access", False, f"Error: {str(e)}")
-            raise
+        )
+        assert [a["id"] for a in listing["results"]] == [asset["id"]], listing
+
+        detail = requests.get(
+            f"{ASSETS}{asset['id']}/", headers=admin_headers, timeout=TIMEOUT
+        )
+        assert detail.status_code == 200, detail.text[:300]
+        assert detail.json()["name"] == asset["name"]
+        assert detail.json()["asset_type"] == "server"
+
+    def test_vulnerabilities_database_access(self, admin_headers, asset) -> None:
+        """A vulnerability recorded against an asset is listed for that asset."""
+        title = f"Integration test finding {uuid.uuid4().hex[:8]}"
+        created = requests.post(
+            VULNERABILITIES,
+            json={
+                "title": title,
+                "description": "Created by the integration suite.",
+                "asset": asset["id"],
+                "severity": "high",
+                "cvss_v3_score": 7.5,
+                "cve_id": "CVE-2024-3094",
+            },
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert created.status_code == 201, (
+            f"vulnerability creation failed: {created.status_code} "
+            f"{created.text[:300]}"
+        )
+
+        listing = _assert_page(
+            requests.get(
+                VULNERABILITIES,
+                params={"asset_id": asset["id"]},
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+        )
+        assert listing["count"] == 1, listing
+        found = listing["results"][0]
+        assert found["title"] == title
+        assert found["severity"] == "high"
+        # The vulnerability is removed with its asset (on_delete=CASCADE)
+        # when the asset fixture is torn down.
+
+    def test_asset_creation_authorization(self, admin_headers) -> None:
+        """Writing an asset needs a credential; an owner can create and delete."""
+        payload = {
+            "name": f"it-guardian-auth-{uuid.uuid4().hex[:12]}",
+            "asset_type": "workstation",
+        }
+
+        anonymous = requests.post(ASSETS, json=payload, timeout=TIMEOUT)
+        assert (
+            anonymous.status_code == 401
+        ), f"unauthenticated write was not refused: {anonymous.status_code}"
+
+        invalid = requests.post(
+            ASSETS,
+            json={**payload, "asset_type": "not-a-type"},
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert invalid.status_code == 400, invalid.text[:300]
+        assert "asset_type" in invalid.json(), invalid.json()
+
+        created = requests.post(
+            ASSETS, json=payload, headers=admin_headers, timeout=TIMEOUT
+        )
+        assert created.status_code == 201, created.text[:300]
+        asset_id = created.json()["id"]
+
+        deleted = requests.delete(
+            f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT
+        )
+        assert deleted.status_code == 204, deleted.text[:300]
+        gone = requests.get(
+            f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT
+        )
+        assert gone.status_code == 404, gone.status_code
+
+    def test_celery_task_trigger(self, admin_headers) -> None:
+        """The alert-rule sweep is queued on Celery and a task id comes back.
+
+        This is guardian's endpoint that dispatches a Celery task and returns
+        its id. The stack runs no guardian worker, so the task's execution is
+        not observable here; what is asserted is that guardian published it to
+        the broker -- with the broker unreachable, .delay() raises and the
+        endpoint answers 500.
+        """
+        response = requests.post(
+            ALERT_CHECK_ALL, headers=admin_headers, timeout=TIMEOUT
+        )
+        assert (
+            response.status_code == 200
+        ), f"{response.status_code} {response.text[:300]}"
+        task_id = response.json().get("task_id")
+        assert task_id, response.json()
+        uuid.UUID(task_id)  # Celery task ids are UUIDs; raises if not.
+
+    def test_monitoring_dashboard_access(self, admin_headers) -> None:
+        """Reporting dashboards are served to an authenticated user, not to anyone."""
+        anonymous = requests.get(DASHBOARDS, timeout=TIMEOUT)
+        assert anonymous.status_code == 401, anonymous.status_code
+
+        _assert_page(requests.get(DASHBOARDS, headers=admin_headers, timeout=TIMEOUT))
 
 
-async def run_tests() -> Dict[str, Any]:
-    """Run all Guardian monitoring tests"""
-    tester = TestGuardianMonitoring()
-    
-    # Run tests in sequence
-    tests = [
-        tester.test_service_health,
-        tester.test_assets_database_access,
-        tester.test_vulnerabilities_database_access,
-        tester.test_asset_creation_authorization,
-        tester.test_celery_task_trigger,
-        tester.test_monitoring_dashboard_access
-    ]
-    
-    success_count = 0
-    for test in tests:
-        try:
-            success = await test()
-            if success:
-                success_count += 1
-        except Exception as e:
-            print(f"Guardian monitoring test error: {e}")
-            
-    all_passed = success_count == len(tests)
-    
+def run_tests() -> dict:
+    """Entry point kept for tests/test_pulse_check_system.py; runs this module."""
+    started = time.time()
+    code = pytest.main([__file__, "-q"])
     return {
-        "success": all_passed,
-        "tests": tester.results,
-        "summary": f"{success_count}/{len(tests)} tests passed"
+        "success": code == 0,
+        "summary": f"pytest exit code {code} in {time.time() - started:.1f}s",
     }

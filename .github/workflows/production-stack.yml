@@ -117,6 +117,9 @@ jobs:
           GUARDIAN_SERVICE_URL: http://localhost:8013
           SENSOR_SERVICE_URL: http://localhost:8004
           DASHBOARD_URL: http://localhost:3000
+          # See integration-tests.yml: an unreachable service the stack starts
+          # fails its tests rather than skipping them (#532).
+          REQUIRE_ALL_SERVICES: "1"
         timeout-minutes: 20
 
       - name: Service logs on failure
