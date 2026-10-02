@@ -72,7 +72,17 @@ def test_new_tokens_fail_closed_then_fast_while_identity_is_down(stack):
     opens the refusal is immediate. When identity returns, new tokens work
     again within the breaker's open window."""
     attempts = BREAKER_THRESHOLD + 3
-    tokens = [fresh_token() for _ in range(attempts)]
+    tokens = []
+    for _ in range(attempts):
+        # Login tokens carry no jti or iat -- only sub, aud and exp, with exp
+        # in whole seconds -- so two logins in the same second return the
+        # same token, and the gateway answers the second from its cache. The
+        # first run of this experiment measured exactly that: one "new" token
+        # let through in 0.0 s with identity paused. Space the logins out.
+        time.sleep(1.1)
+        tokens.append(fresh_token())
+    time.sleep(1.1)  # and away from the token the fixture just used
+    assert len(set(tokens)) == attempts, "login returned the same token twice"
 
     stack.pause("identity")
     results = []

@@ -130,11 +130,12 @@ def login(timeout: float = 10.0) -> requests.Response:
 
 
 def fresh_token() -> str:
-    """A token the gateway has never seen.
+    """A token from a new login.
 
-    identity puts a unique jti in every token, and the gateway caches
-    authorisation decisions per token, so each call here is a guaranteed
-    cache miss -- the request has to reach identity.
+    Not guaranteed unseen: login tokens carry only sub, aud and exp (whole
+    seconds), so two logins within the same second return the same token.
+    An experiment that needs a cache miss at the gateway must space its
+    logins more than a second apart.
     """
     response = login()
     assert (
