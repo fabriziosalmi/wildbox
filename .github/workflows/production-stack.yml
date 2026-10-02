@@ -91,10 +91,34 @@ jobs:
         # could evict the token blacklist, lockout counters and queues.
         run: python3 scripts/check_redis_config.py config
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Expose the Actions cache to BuildKit
+        # See integration-tests.yml.
+        uses: actions/github-script@v9
+        with:
+          script: |
+            for (const name of ['ACTIONS_RUNTIME_TOKEN', 'ACTIONS_RESULTS_URL',
+                                'ACTIONS_CACHE_URL', 'ACTIONS_CACHE_SERVICE_V2']) {
+              if (process.env[name]) core.exportVariable(name, process.env[name]);
+            }
+
+      - name: Build the images
+        # The cache file is added for this step only, so every other compose
+        # call -- the segmentation checks included -- sees the configuration
+        # above unchanged.
+        timeout-minutes: 20
+        env:
+          COMPOSE_FILE: ${{ env.COMPOSE_FILE }}:.github/compose.ci-cache.yml
+          DASHBOARD_CACHE_SCOPE: dashboard
+        run: docker compose build
+
       - name: Start the production stack
         run: docker compose up -d --wait --wait-timeout 900
-        # Image builds plus --wait-timeout above (15 min); observed max 5.0.
-        timeout-minutes: 25
+        # --wait-timeout above (15 min) and a margin. Before the build had a
+        # step of its own this step took up to 5.0 min, builds included.
+        timeout-minutes: 20
 
       - name: Show what came up
         if: always()
