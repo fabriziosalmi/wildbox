@@ -78,6 +78,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
 
+### Documentation
+
+- **The security status page says what is still wrong.** It reported every
+  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
+  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
+  networks are not segmented (the production overlay's networks are merged
+  with the flat `wildbox` network), identity's `init.sh` prints the initial
+  admin password to the log, two scanners disable TLS verification, and
+  identity and tools serve API docs in every environment. The page now lists
+  those as open issues, points at #415 for dependencies, marks unchecked
+  claims "Not verified", and says how each check was made. The 2024 and 2025
+  audit documents are marked historical; the checklist's quoted heredoc that
+  wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
+  replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
+  is no longer quoted as current. Expired version and review stamps are gone
+  from the security policy.
+
 ### Removed
 
 - **The Docusaurus site in `website/`** (#419). It was never the published

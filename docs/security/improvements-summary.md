@@ -1,5 +1,9 @@
 # Wildbox Security Improvements Summary
 
+> **Historical document (November 2024).** It describes the code as it was then;
+> file paths, line numbers, scores and statuses below no longer match `main`.
+> For what is true today, see the [Security status](status.md).
+
 **Date**: November 7, 2024  
 **Status**:  Complete  
 **Impact**: Critical Security Hardening

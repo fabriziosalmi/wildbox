@@ -1,9 +1,10 @@
 # Wildbox Security Policy & Best Practices
 
-**Last Updated**: November 7, 2024
-**Status**:  Secure Foundation Established - Ready for Community Evaluation
-**Version**: 2.0
 **Maturity**: Early Evaluation Phase
+
+This page states the security requirements and practices Wildbox aims for.
+Where the code does not meet them yet, the gap is listed under
+"Known Open Issues" in the [Security status](status.md).
 
 ## Quick Navigation
 
@@ -122,7 +123,7 @@ openssl rand -base64 24
 
 ```sql
 -- Create dedicated user for application
-CREATE USER wildbox_app WITH PASSWORD 'secure_random_password';
+CREATE USER wildbox_app WITH PASSWORD '<generated password>';
 
 -- Grant minimal required permissions
 GRANT CONNECT ON DATABASE wildbox_main TO wildbox_app;
@@ -261,7 +262,7 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 
 - No eval() calls (secure JSON serialization)
 - No hardcoded secrets in code
-- No plaintext password logging
+- No plaintext password logging (one known exception: see the [Security status](status.md))
 - Secure random generation for tokens/keys
 - Error handling without exposing internals
 
@@ -270,7 +271,7 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 - Secrets required (no defaults in docker-compose)
 - Environment-based configuration
 - TLS/SSL support
-- Network segmentation
+- Network segmentation (defined in `docker-compose.prod.yml` but not yet effective: see the [Security status](status.md))
 - Health checks configured
 - Monitoring hooks ready
 
@@ -304,12 +305,6 @@ We value security researchers! Valid vulnerability reports receive:
 
 ---
 
-**Last Updated**: November 7, 2024
-**Version**: 2.0
-**Review Frequency**: Quarterly
-**Next Review**: February 7, 2025
-
----
 
 ## Version History
 
