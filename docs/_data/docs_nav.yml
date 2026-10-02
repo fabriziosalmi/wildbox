@@ -40,17 +40,15 @@
       path: api/agents/endpoints.md
     - title: Gateway routes
       url: /docs.html#gateway-routes
+- title: Contributing
+  items:
+    - title: Contributor docs
+      path: contributing.md
 - title: Security
   items:
     - title: Security status
       path: security/status.md
     - title: Security policy
       path: security/policy.md
-    - title: Platform audit report (2024)
-      path: security/audit-report.md
     - title: Tools service audit (2025)
       path: security/tools-service-audit.md
-    - title: Improvements summary (2024)
-      path: security/improvements-summary.md
-    - title: Remediation checklist (2024)
-      path: security/remediation-checklist.md

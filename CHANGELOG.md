@@ -68,6 +68,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`api/swagger-index.html` redirects to the API overview.** It called itself
   the index of all APIs and listed two of six; Redoc pages for the other four
   were not generated because no exported OpenAPI document exists for them.
+- **The 2024 security audit is no longer published.** `docs.html#security-audit`
+  led to `/security/audit-report/`; that report, its remediation checklist and
+  its improvements summary describe code that has since changed and are
+  excluded from the site and the sidebar, and the old hash now leads to the
+  security status page.
+- **Contributor docs page and smaller site fixes.** `/contributing/` links the
+  engineering notes that stay unpublished (cited by `SECURITY.md` and CI
+  scripts) and states that Jekyll in `docs/` is the only documentation stack;
+  `website/` is ignored by git. Long pages get an "On this page" list built
+  from their headings, every documentation page links `security.txt`, vendor
+  READMEs are no longer published as pages, and the sitemap emits only `<loc>`
+  because Pages cannot supply a real last-modified date.
 
 ### Removed
 

@@ -43,7 +43,43 @@
         });
     }
 
+    // "On this page" list for long documents, built from the h2 headings and
+    // the ids kramdown gave them. Text is copied with textContent.
+    function addTableOfContents() {
+        const article = document.querySelector('article.markdown-content');
+        if (!article) return;
+        const headings = Array.prototype.filter.call(
+            article.querySelectorAll('h2[id]'),
+            function (h) { return !h.closest('footer'); }
+        );
+        if (headings.length < 5) return;
+        const nav = document.createElement('nav');
+        nav.className = 'page-toc';
+        nav.setAttribute('aria-label', 'On this page');
+        const title = document.createElement('p');
+        title.className = 'page-toc-title';
+        title.textContent = 'On this page';
+        nav.appendChild(title);
+        const list = document.createElement('ul');
+        headings.forEach(function (h) {
+            const item = document.createElement('li');
+            const link = document.createElement('a');
+            link.href = '#' + encodeURIComponent(h.id);
+            link.textContent = h.textContent;
+            item.appendChild(link);
+            list.appendChild(item);
+        });
+        nav.appendChild(list);
+        const h1 = article.querySelector('h1');
+        if (h1 && h1.nextSibling) {
+            article.insertBefore(nav, h1.nextSibling);
+        } else {
+            article.insertBefore(nav, article.firstChild);
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
+        addTableOfContents();
         document.querySelectorAll('[data-toggle-sidebar]').forEach(function (el) {
             el.addEventListener('click', toggleSidebar);
         });
