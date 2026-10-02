@@ -1,27 +1,17 @@
 import base64
-import xml.etree.ElementTree as ET
-from xml.dom import minidom
 import re
 import time
 from datetime import datetime
 from typing import Dict, List, Any
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from lxml import etree
 
-# Configure secure XML parser to prevent XXE attacks
-try:
-    import defusedxml.ElementTree as DefusedET
-    # Use defusedxml if available for security
-    safe_xml_fromstring = DefusedET.fromstring
-except ImportError:
-    # Fallback to built-in with security measures
-    def safe_xml_fromstring(text):
-        parser = ET.XMLParser()
-        # Disable external entity processing to prevent XXE
-        parser.parser.DefaultHandler = lambda data: None
-        parser.parser.ExternalEntityRefHandler = lambda context, base, sysId, notationName: False
-        return ET.fromstring(text, parser)
+# SAML responses come from the caller and are untrusted. defusedxml refuses
+# DTDs with entity declarations and external references, so a crafted
+# response cannot expand entities (billion laughs) or read local files (XXE).
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import ParseError
+from defusedxml.ElementTree import fromstring as safe_xml_fromstring
 
 from .schemas import SAMLAnalyzerInput, SAMLAnalyzerOutput, SAMLFinding
 
@@ -55,6 +45,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
                 recommendation="Ensure SAML response is properly base64 encoded"
             ))
             return SAMLAnalyzerOutput(
+                success=True,
                 is_valid=False,
                 findings=findings,
                 security_score=0.0,
@@ -67,7 +58,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
         # Parse XML
         try:
             root = safe_xml_fromstring(saml_xml)
-        except ET.ParseError as e:
+        except ParseError as e:
             findings.append(SAMLFinding(
                 severity="Critical",
                 category="Format",
@@ -76,6 +67,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
                 recommendation="Ensure SAML response is valid XML"
             ))
             return SAMLAnalyzerOutput(
+                success=True,
                 is_valid=False,
                 findings=findings,
                 security_score=0.0,
@@ -84,7 +76,25 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
                 attributes={},
                 execution_time=time.time() - start_time
             )
-        
+        except DefusedXmlException as e:
+            findings.append(SAMLFinding(
+                severity="Critical",
+                category="XML Security",
+                title="Forbidden XML Construct",
+                description=f"SAML response was rejected before parsing: {e!r}",
+                recommendation="Reject SAML responses that carry a DTD, entity declarations or external references"
+            ))
+            return SAMLAnalyzerOutput(
+                success=True,
+                is_valid=False,
+                findings=findings,
+                security_score=0.0,
+                signature_valid=False,
+                encrypted=False,
+                attributes={},
+                execution_time=time.time() - start_time
+            )
+
         # Extract basic information
         issuer = extract_issuer(root)
         subject = extract_subject(root)
@@ -115,6 +125,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
         is_valid = not any(f.severity in ["Critical", "High"] for f in findings)
         
         return SAMLAnalyzerOutput(
+            success=True,
             is_valid=is_valid,
             issuer=issuer,
             subject=subject,
@@ -138,6 +149,7 @@ async def execute_tool(data: SAMLAnalyzerInput) -> SAMLAnalyzerOutput:
         ))
         
         return SAMLAnalyzerOutput(
+            success=False,
             is_valid=False,
             findings=findings,
             security_score=0.0,
