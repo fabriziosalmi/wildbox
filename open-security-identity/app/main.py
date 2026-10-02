@@ -213,8 +213,41 @@ async def health_check():
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError):
         health_status["status"] = "unhealthy"
         health_status["checks"]["database"] = {"status": "unhealthy"}
-    
+
+    # Redis holds the token blacklist and the login-lockout counters. Both fail
+    # open when Redis is down -- logins keep working, but a revoked token is
+    # accepted again and lockout stops counting -- so its loss degrades the
+    # service rather than taking it down. Reported so the admin page's Redis
+    # status comes from a real check, not from "identity answered" (#559).
+    health_status["checks"]["redis"] = await _redis_check()
+    if (
+        health_status["checks"]["redis"]["status"] != "healthy"
+        and health_status["status"] == "healthy"
+    ):
+        health_status["status"] = "degraded"
+
     return health_status
+
+
+async def _redis_check() -> dict:
+    """PING identity's Redis, bounded so a hung connection cannot stall /health."""
+    import asyncio
+    import time
+
+    from redis.exceptions import RedisError
+
+    from .token_blacklist import get_redis
+
+    start = time.time()
+    try:
+        redis = await get_redis()
+        await asyncio.wait_for(redis.ping(), timeout=2)
+    except (RedisError, OSError, asyncio.TimeoutError):
+        return {"status": "unhealthy"}
+    return {
+        "status": "healthy",
+        "response_time_ms": round((time.time() - start) * 1000, 2),
+    }
 
 
 @app.get("/api/v1/admin/metrics")
