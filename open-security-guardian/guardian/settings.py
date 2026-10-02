@@ -35,7 +35,18 @@ if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_SECONDS = 31536000
-    SECURE_REDIRECT_EXEMPT = []
+    # The health route is exempt from the HTTPS redirect. It is probed over
+    # plain HTTP by things that are not the gateway -- the container
+    # healthcheck (curl inside the container) and the integration suite on
+    # 127.0.0.1:8013 -- and neither has TLS to follow the redirect to. With no
+    # exemption every probe got a 301: `curl -f` counts a 301 as success, so
+    # the container reported healthy with the database down, and the suite's
+    # probe followed it to https://localhost:8013, found no TLS there, and
+    # skipped the guardian tests as "not reachable" on every run (#532).
+    # Patterns match the path without its leading slash; "health" is covered
+    # too so the APPEND_SLASH redirect to health/ stays on plain HTTP.
+    # The response carries only up/down status per dependency.
+    SECURE_REDIRECT_EXEMPT = [r"^health/?$"]
     SECURE_SSL_REDIRECT = True
     # Without this, SECURE_SSL_REDIRECT loops. TLS terminates at the gateway,
     # which proxies to guardian over plain HTTP, so Django sees an insecure

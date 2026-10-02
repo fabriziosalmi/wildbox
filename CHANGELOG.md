@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian's health check and integration tests check something** (#532).
+  With `DEBUG=false` guardian redirected every plain-HTTP request to
+  HTTPS, its health route included, so the container healthcheck
+  (`curl -f`, which counts a 301 as success) reported healthy with the
+  database down, and the integration suite's probe followed the redirect
+  to a port with no TLS and skipped all six guardian tests on every run.
+  `health/` is now exempt from the redirect and the healthchecks call it
+  directly; it answers 503 when a dependency is down. The tests go
+  through the gateway with a real login and assert concrete results, and
+  CI now fails, rather than skips, a test whose service the stack starts
+  but does not answer (`REQUIRE_ALL_SERVICES=1`).
+
 - **The dashboard type-checks against the node it runs on** (#521):
   `@types/node` moves from 20 to 24, the major in the Dockerfile and in
   CI since node 24 became the base image. Dependabot no longer proposes

@@ -602,7 +602,11 @@ services:
     networks:
       - wildbox
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8013/health"]
+      # /health/, the route itself: /health only answers APPEND_SLASH's 301,
+      # and curl -f counts any 3xx as success, so the check passed even with
+      # the database down. The route returns 503 when a dependency is
+      # unhealthy, which -f turns into a failed check (#532).
+      test: ["CMD", "curl", "-fsS", "http://localhost:8013/health/"]
       interval: 30s
       timeout: 10s
       retries: 3
