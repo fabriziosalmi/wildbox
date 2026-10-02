@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The web vulnerability scanner's SQL injection check works** (#507). It
+  read `await response.text().lower()`, which calls `.lower()` on the
+  coroutine and raised before any comparison, so it never reported a finding.
+
+- **`make start` no longer leaves the data service crash-looping.** It layers
+  `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
+  whose `ENVIRONMENT` is `production`; data refuses that combination. The
+  development overlay now sets `ENVIRONMENT=development` for data as well.
+
 - **Password change and self-deletion work again** (#501). identity's custom
   routes verified with passlib bcrypt, which cannot read the Argon2id hashes
   fastapi-users writes for every account, so they failed for every user.
@@ -48,6 +57,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   account accepted unlimited password guesses. Password login now refuses an
   account with 429 after 5 failures, for registered and unknown emails alike,
   and a successful login clears the counter.
+
+- **identity no longer serves its API documentation in production** (#496).
+  `/docs`, `/redoc` and `/openapi.json` mapped every route, admin and
+  internal ones included; like agents, responder and cspm, identity now
+  serves them only when `ENVIRONMENT` is not `production`.
 
 - **identity no longer prints the initial admin password** (#493).
   `scripts/init.sh` wrote it to the container log on first start, where
@@ -150,7 +164,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pip-audit reports nothing for cspm. boto3, botocore, google-auth and
   azure-identity stay at the same versions.
 
+- **No advisories left in the requirement files outside the locks**
+  (#508). Four files were outside `scripts/compile_requirements.sh` and
+  carried 15 Dependabot alerts. `open-security-tools/requirements-secure.txt` is
+  deleted: nothing in the repository installs or mentions it.
+  `tests/requirements.txt` (installed by the chaos and load workflow) moves
+  to pytest 9.0.3, pytest-asyncio 1.3.0, aiohttp 3.14.3, black 26.3.1 and
+  psutil 6.1.1, and drops `safety`, which nothing runs and which pulled in a
+  vulnerable filelock (or, from 3.6.1, nltk, which has no fixed release).
+  The cspm and guardian `requirements-dev.txt` move to pytest 9.0.3, black
+  26.3.1 and mkdocs-material 9.7.7. guardian's could not be resolved against
+  its own lock at all (safety 2.3.5 required packaging<22, pgcli 3.5.0
+  sqlparse<0.5); it now resolves, with safety dropped and pgcli at 4.6.0.
+  pip-audit reports nothing for any of them, transitive dependencies
+  included.
+
 ### CI
+
+- **The weekly pip security PR can trigger CI without a personal token.**
+  `Pip Security Upgrades` mints a one-hour GitHub App installation token,
+  scoped to this repository's contents and pull requests, when
+  `DEPS_APP_CLIENT_ID` and `DEPS_APP_PRIVATE_KEY` are configured, and falls
+  back to `GITHUB_TOKEN` otherwise. The `DEPS_PR_TOKEN` personal-token option
+  is removed.
 
 - **The chaos suite measures the system now** (#428). Seven experiments
   against the stack as the integration job starts it: cached authorization
@@ -171,6 +207,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   opens, updates and closes.
 
 ### Documentation
+
+- **README rewritten from verified facts.** It described components the
+  project no longer has (Stripe billing, OpenAI, Elasticsearch, Grafana,
+  NLTK), claimed 50+ threat feeds (there are 7) and a stale v0.8.0 roadmap,
+  and its quick start ended in a stack where `data` refused to start. The
+  new README documents the configuration CI starts on every change, an HTTPS
+  health check and login against the generated certificate, one table of
+  capabilities with real counts, and links into the published docs.
 
 - **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
   `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
