@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Logout now ends the session** (#475). Tokens from the login endpoint carried
+  only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
+  ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
+  dashboard only deleted its cookie, and two logins within the same second got
+  the same token. A logged-out token stayed valid at the gateway for its whole
+  lifetime. Login tokens now carry a `jti` and an `iat`, identity's own routes
+  refuse a revoked one, both logout routes revoke, and the dashboard calls
+  revocation before clearing its cookie. Tokens issued before this release
+  still lack a `jti` and expire on their own.
+- **identity could not reach Redis** (#475). Its `REDIS_URL` came from `.env`
+  without the password Redis has required since 0.10.0, so every blacklist
+  write and read failed with "Authentication required" and was swallowed:
+  even a token with a `jti` could not have been revoked. compose now builds
+  the URL with `REDIS_PASSWORD`, as it does for every other service
+  (`IDENTITY_REDIS_URL` overrides it).
+- **The gateway auth-cache purge never reached the gateway** (#475). identity
+  called it on port 80, which answers everything but `/health` with a 301, so
+  a revoked token stayed authorized from the cache for up to its TTL. The
+  endpoint now also lives on an internal listener, port 8081, not published,
+  and that is identity's default.
+
 - **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
   `utils.http_request` ignored the caller's `timeout` because `request_uri()`
   does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
