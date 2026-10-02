@@ -17,7 +17,6 @@ class SecurityIntegration:
     def __init__(self):
         self.security_enabled = os.getenv('SECURITY_CONTROLS_ENABLED', 'false').lower() == 'true'
         self.strict_mode = os.getenv('SECURITY_STRICT_MODE', 'false').lower() == 'true'
-        self.credential_manager = None
         self.authorization_manager = None
         self.validator = None
         
@@ -27,11 +26,9 @@ class SecurityIntegration:
     def _initialize_security_components(self):
         """Initialize security components only if enabled."""
         try:
-            from app.security.credential_manager import credential_manager
             from app.security.authorization import authorization_manager
             from app.security.validator import security_validator
             
-            self.credential_manager = credential_manager
             self.authorization_manager = authorization_manager
             self.validator = security_validator
             logger.info("Security components initialized successfully")
@@ -108,14 +105,13 @@ class SecurityIntegration:
                 raise
     
     def get_api_key(self, service: str) -> Optional[str]:
-        """Get API key through secure credential manager or fallback."""
-        if self.security_enabled and self.credential_manager:
-            try:
-                return self.credential_manager.get_api_key(service)
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                logger.warning(f"Secure credential retrieval failed for {service}: {e}")
-        
-        # Fallback to environment variables
+        """Get the API key for an external service from the environment.
+
+        There is no secure store behind this: the SecureCredentialManager this
+        used to consult read the same environment variables, and importing it
+        (it needed ``keyring``, which the image does not install) disabled
+        every control in this class (#540).
+        """
         env_var_map = {
             'virustotal': 'VIRUSTOTAL_API_KEY',
             'shodan': 'SHODAN_API_KEY',

@@ -25,7 +25,6 @@ class SecurityConfig:
             'JWT_SECRET_KEY',
             'DATABASE_URL',
             'REDIS_URL',
-            'ENCRYPTION_KEY'
         ]
         
         missing = [var for var in required_vars if not os.getenv(var)]

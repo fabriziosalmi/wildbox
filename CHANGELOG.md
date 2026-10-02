@@ -539,6 +539,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The tools credential manager and `ENCRYPTION_KEY`** (#540).
+  `SecureCredentialManager` read API keys from the same environment
+  variables as the fallback beside it, and its encrypt/decrypt methods had
+  no caller, so nothing was ever stored encrypted. It imported `keyring`,
+  which the image does not install: setting `SECURITY_CONTROLS_ENABLED=true`
+  raised an ImportError that switched the whole security layer off, SSRF
+  validator and authorization manager included. Removing it makes that flag
+  load both. `ENCRYPTION_KEY` goes from `.env.example`,
+  `open-security-tools/.env.template` and `setup_security.sh`; no service
+  reads it.
+
 - **python-nmap** (#431), a GPL-3.0 package declared by tools and guardian
   and imported by nothing. The services use the `nmap` binary, which stays.
 
