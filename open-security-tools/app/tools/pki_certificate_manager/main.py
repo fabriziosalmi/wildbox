@@ -9,6 +9,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
 
+from ...utils.tls import probe_certificate_trust
 from .schemas import (
     PKICertificateManagerInput, 
     PKICertificateManagerOutput,
@@ -40,6 +41,9 @@ class PKICertificateManager:
     def __init__(self) -> None:
         # Set by _to_certificate_info; read by the SCT and OCSP checks.
         self._last_certificate: Optional[x509.Certificate] = None
+        # Set by _fetch_domain_certificate: the reason a verified handshake
+        # with the host failed, or None when it succeeded.
+        self._trust_issue: Optional[str] = None
     
     async def execute(self, input_data: PKICertificateManagerInput) -> PKICertificateManagerOutput:
         """Execute PKI certificate analysis"""
@@ -76,6 +80,7 @@ class PKICertificateManager:
             compliance_status = self._check_compliance(cert_info, security_analysis)
             
             return PKICertificateManagerOutput(
+                success=True,
                 certificate_info=cert_info,
                 validation_results=validation,
                 security_analysis=security_analysis,
@@ -89,6 +94,8 @@ class PKICertificateManager:
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             # Return error response
             return PKICertificateManagerOutput(
+                success=False,
+                error_message=str(e),
                 certificate_info=self._create_error_cert_info(),
                 validation_results=CertificateValidation(
                     is_valid=False,
@@ -231,7 +238,9 @@ class PKICertificateManager:
         def _connect() -> bytes:
             # verify_mode NONE on purpose: the job is to INSPECT whatever the
             # host presents, including expired or self-signed certificates.
-            # Trust is assessed separately in _validate_certificate.
+            # Trust is assessed separately by a verified handshake
+            # (_probe_trust) and reported as an issue in _validate_certificate.
+            # Only the certificate is read from this connection.
             context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
@@ -243,9 +252,18 @@ class PKICertificateManager:
                 with context.wrap_socket(sock, server_hostname=host) as tls:
                     return tls.getpeercert(binary_form=True)
 
-        der = await asyncio.get_running_loop().run_in_executor(None, _connect)
+        def _probe_trust() -> Optional[str]:
+            try:
+                reason = probe_certificate_trust(host, port, 10)
+            except (OSError, ValueError) as exc:
+                return f"Certificate trust not determined: {exc}"
+            return None if reason is None else f"Certificate verification failed: {reason}"
+
+        loop = asyncio.get_running_loop()
+        der = await loop.run_in_executor(None, _connect)
         if not der:
             raise ValueError(f"{host}:{port} presented no certificate")
+        self._trust_issue = await loop.run_in_executor(None, _probe_trust)
         return self._to_certificate_info(x509.load_der_x509_certificate(der))
 
     async def _validate_certificate(self, cert_info: CertificateInfo, input_data: PKICertificateManagerInput) -> CertificateValidation:
@@ -254,7 +272,7 @@ class PKICertificateManager:
         warnings = []
         
         # Check expiration
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         if cert_info.valid_to < now:
             issues.append("Certificate has expired")
         elif cert_info.valid_to < now + timedelta(days=30):
@@ -295,9 +313,12 @@ class PKICertificateManager:
                     "responder in its Authority Information Access extension"
                 )
         
+        if self._trust_issue:
+            issues.append(self._trust_issue)
+
         is_valid = len(issues) == 0
         chain_complete = not cert_info.is_self_signed
-        trusted_root = cert_info.issuer.get("CN") in self.TRUSTED_CAS
+        trusted_root = cert_info.issuer.get("CN") in self.TRUSTED_CAS and not self._trust_issue
         
         return CertificateValidation(
             is_valid=is_valid,
@@ -353,7 +374,7 @@ class PKICertificateManager:
     def _check_expiration(self, cert_info: CertificateInfo) -> List[str]:
         """Check certificate expiration"""
         warnings = []
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         
         days_until_expiry = (cert_info.valid_to - now).days
         
@@ -430,7 +451,7 @@ class PKICertificateManager:
         if cert_info.is_self_signed:
             recommendations.append("Obtain certificate from trusted Certificate Authority")
         
-        if (cert_info.valid_to - datetime.now()).days < 30:
+        if (cert_info.valid_to - datetime.now(timezone.utc)).days < 30:
             recommendations.append("Renew certificate before expiration")
         
         if not validation.chain_complete:
@@ -523,8 +544,8 @@ class PKICertificateManager:
             subject={"CN": "unknown"},
             issuer={"CN": "unknown"},
             serial_number="unknown",
-            valid_from=datetime.now(),
-            valid_to=datetime.now(),
+            valid_from=datetime.now(timezone.utc),
+            valid_to=datetime.now(timezone.utc),
             signature_algorithm="unknown",
             public_key_algorithm="unknown",
             key_size=0,

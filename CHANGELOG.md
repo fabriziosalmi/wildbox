@@ -103,6 +103,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   exits with an error (typer 0.9.4, pinned by spacy 3.7.2, predates click
   8.2); nothing in the repository imports spacy or runs its CLI.
 
+- **Tools verify TLS certificates by default** (#495). `web_vuln_scanner`,
+  `cookie_scanner`, `http_security_scanner` and `url_analyzer` connected with
+  certificate verification switched off (`ssl=False` or `CERT_NONE`), so a
+  scan could report on content served by whoever intercepted the connection.
+  They now verify the certificate chain and the hostname. When verification
+  fails the scan returns `success: false` with the reason (for example
+  `self-signed certificate`) and sends no further request; there is no retry
+  without verification. Accepting an unverified certificate is a per-scan
+  choice through the `verify_ssl` input every tool already inherits (default
+  `true`), whose description in the input schema states the risk.
+  `ssl_analyzer`, `ca_analyzer` and `pki_certificate_manager` still read the
+  certificate over an unverified handshake, which is what lets them inspect a
+  broken one, and now also run a verified handshake and report its failure as
+  a finding. Most of these seven tools could not return any result before this
+  change (the required `success` field was never set, `getpeercert_chain()`
+  does not exist in the `ssl` module, naive and aware datetimes were
+  compared); those defects are fixed so the new behavior is reachable, and
+  22 unit tests against a local self-signed HTTPS server cover it.
+
 - **cspm drops the cloud SDKs it never imported, and protobuf with them**
   (#415). requirements.in pinned 23 `google-*` packages besides google-auth
   and seven `azure-mgmt-*` packages; the service imports only `google.auth`

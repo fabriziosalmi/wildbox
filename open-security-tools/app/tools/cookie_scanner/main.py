@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import logging
 from datetime import datetime
 
+from ...utils.tls import certificate_error_message, client_ssl
 from .schemas import CookieScannerInput, CookieScannerOutput
 logger = logging.getLogger(__name__)
 
@@ -19,13 +20,16 @@ class CookieSecurityScanner:
     def __init__(self):
         self.timeout = aiohttp.ClientTimeout(total=30)
     
-    async def scan_cookies(self, url: str, follow_redirects: bool = True) -> Dict[str, Any]:
+    async def scan_cookies(self, url: str, follow_redirects: bool = True,
+                           verify_ssl: bool = True) -> Dict[str, Any]:
         """
         Scan cookies from the given URL and analyze their security attributes.
         
         Args:
             url: The URL to scan for cookies
             follow_redirects: Whether to follow HTTP redirects
+            verify_ssl: Verify the target's TLS certificate. A verification
+                failure is returned as an error, never retried unverified.
             
         Returns:
             Dictionary containing cookie analysis results
@@ -46,7 +50,7 @@ class CookieSecurityScanner:
         }
         
         try:
-            connector = aiohttp.TCPConnector(ssl=False)
+            connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
             async with aiohttp.ClientSession(
                 connector=connector,
                 timeout=self.timeout
@@ -67,6 +71,9 @@ class CookieSecurityScanner:
                     # Analyze cookies and generate security summary
                     self._analyze_cookies(results)
                     
+        except aiohttp.ClientConnectorCertificateError as e:
+            results["error"] = certificate_error_message(e, url)
+            logger.warning(results["error"])
         except asyncio.TimeoutError:
             logger.error(f"Timeout scanning cookies for {url}")
             results["error"] = "Request timeout"
@@ -257,9 +264,28 @@ async def scan_cookies(request: CookieScannerInput) -> CookieScannerOutput:
     try:
         # Perform cookie scan
         results = await scanner.scan_cookies(
-            url=request.url,
-            follow_redirects=request.follow_redirects
+            url=request.target_url,
+            verify_ssl=request.verify_ssl
         )
+
+        if results.get("error"):
+            # The target could not be fetched (for example its certificate
+            # did not verify): report that instead of an empty, "successful"
+            # cookie analysis.
+            return CookieScannerOutput(
+                success=False,
+                target_url=request.target_url,
+                timestamp=datetime.now(),
+                total_cookies=0,
+                secure_cookies=0,
+                insecure_cookies=0,
+                cookies=[],
+                overall_security_score=0,
+                recommendations=[],
+                message="Cookie security scan failed",
+                error=results["error"],
+                error_message=results["error"]
+            )
         
         return CookieScannerOutput(
             success=True,

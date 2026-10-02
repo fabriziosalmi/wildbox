@@ -4,6 +4,7 @@ Schemas for URL Shortener Analyzer Tool
 
 from pydantic import BaseModel, Field, HttpUrl
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...utils.tls import VERIFY_SSL_DESCRIPTION
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
@@ -32,6 +33,10 @@ class URLShortenerInput(BaseToolInput):
     check_reputation: bool = Field(
         default=True,
         description="Check URL reputation against known malicious URLs"
+    )
+    verify_ssl: bool = Field(
+        default=True,
+        description=VERIFY_SSL_DESCRIPTION
     )
 
 
