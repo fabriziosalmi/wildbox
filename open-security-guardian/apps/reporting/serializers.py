@@ -1,10 +1,24 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from rest_framework import serializers
+from .alert_metrics import UnsupportedAlertRule, parse_rule
 from .models import (
     ReportTemplate, ReportSchedule, Report, Dashboard, Widget,
-    ReportMetrics, AlertRule, SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYPES
+    ReportMetrics, AlertRule, AlertNotification,
+    SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYPES,
 )
+
+
+def validate_email_list(value, not_a_list_message):
+    """A list of e-mail addresses, shared by report schedules (#548) and alert rules (#549)."""
+    if not isinstance(value, list):
+        raise serializers.ValidationError(not_a_list_message)
+    for address in value:
+        try:
+            validate_email(address)
+        except (DjangoValidationError, TypeError):
+            raise serializers.ValidationError(f"{address!r} is not an e-mail address.")
+    return value
 
 
 class ReportTemplateSerializer(serializers.ModelSerializer):
@@ -32,14 +46,7 @@ class ReportScheduleSerializer(serializers.ModelSerializer):
 
     def validate_recipients(self, value):
         """A list of e-mail addresses: they are sent each report (#548)."""
-        if not isinstance(value, list):
-            raise serializers.ValidationError("Recipients must be a list of e-mail addresses.")
-        for address in value:
-            try:
-                validate_email(address)
-            except (DjangoValidationError, TypeError):
-                raise serializers.ValidationError(f"{address!r} is not an e-mail address.")
-        return value
+        return validate_email_list(value, "Recipients must be a list of e-mail addresses.")
 
     def validate(self, attrs):
         """Refuse a schedule that would only ever produce failed or empty reports (#548)."""
@@ -120,8 +127,59 @@ class ReportMetricsSerializer(serializers.ModelSerializer):
 
 class AlertRuleSerializer(serializers.ModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    
+
     class Meta:
         model = AlertRule
         fields = '__all__'
-        read_only_fields = ('id', 'created_at', 'updated_at', 'last_triggered', 'trigger_count')
+        # The evaluation state is guardian's to keep (#549).
+        read_only_fields = (
+            'id', 'created_at', 'updated_at', 'last_triggered', 'trigger_count',
+            'state', 'firing_since', 'last_value', 'last_evaluated_at',
+            'last_notified_at',
+        )
+
+    def validate_notification_config(self, value):
+        """An object; its 'recipients', if any, a list of e-mail addresses."""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Must be an object.")
+        validate_email_list(
+            value.get('recipients', []),
+            "'recipients' must be a list of e-mail addresses.",
+        )
+        return value
+
+    def validate(self, attrs):
+        """Refuse a rule guardian cannot evaluate (#549).
+
+        Every rule used to be evaluated against 0, so a rule naming anything
+        at all was accepted. The metric, the condition and its filters must
+        now be ones alert_metrics.py computes.
+        """
+        attrs = super().validate(attrs)
+
+        def current(name, default=None):
+            if name in attrs:
+                return attrs[name]
+            return getattr(self.instance, name, default)
+
+        try:
+            parse_rule(
+                current('data_source'),
+                current('condition_type'),
+                current('operator'),
+                current('threshold_value'),
+                current('condition_config', {}),
+            )
+        except UnsupportedAlertRule as exc:
+            raise serializers.ValidationError(exc.args[0])
+        return attrs
+
+
+class AlertNotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AlertNotification
+        fields = (
+            'id', 'kind', 'value', 'threshold_value', 'operator', 'recipients',
+            'delivered', 'created_at',
+        )
+        read_only_fields = fields

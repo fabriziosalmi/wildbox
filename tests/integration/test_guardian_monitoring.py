@@ -98,17 +98,18 @@ def asset(admin_headers):
     requests.delete(f"{ASSETS}{body['id']}/", headers=admin_headers, timeout=TIMEOUT)
 
 
-def _user_schedule_interval() -> int:
-    """How often guardian-beat sends the user-schedule dispatcher (#548).
+def _beat_interval(variable: str, default: str = "") -> int:
+    """How often guardian-beat sends a periodic task in this stack, in seconds.
 
-    GUARDIAN_SCHEDULE_USER_SCHEDULES, 60 seconds when unset, as in
-    guardian/schedule.py. A longer interval would make the deadlines below
-    minutes long, so it is refused like the alert-rule one.
+    The suite waits for beat, so an interval over 60 s would make its
+    deadlines minutes long: it is refused (a failure when every service is
+    required, a skip otherwise). CI starts the stack with the variable set
+    and gives the suite the same value.
     """
-    interval = os.getenv("GUARDIAN_SCHEDULE_USER_SCHEDULES", "") or "60"
+    interval = os.getenv(variable, "") or default
     if not interval.isdigit() or not 0 < int(interval) <= 60:
         message = (
-            "start the stack with GUARDIAN_SCHEDULE_USER_SCHEDULES at 60 s or "
+            f"start the stack with {variable} at 60 s or "
             "less, and set it for the suite too"
         )
         if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
@@ -117,9 +118,50 @@ def _user_schedule_interval() -> int:
     return int(interval)
 
 
+def _alert_rule_interval() -> int:
+    """How often guardian-beat sends the alert-rule sweep in this stack.
+
+    The default is 15 minutes, too long to wait for; CI starts the stack
+    with GUARDIAN_SCHEDULE_ALERT_RULES=15.
+    """
+    return _beat_interval("GUARDIAN_SCHEDULE_ALERT_RULES")
+
+
+def _user_schedule_interval() -> int:
+    """How often guardian-beat sends the user-schedule dispatcher (#548).
+
+    GUARDIAN_SCHEDULE_USER_SCHEDULES, 60 seconds when unset, as in
+    guardian/schedule.py.
+    """
+    return _beat_interval("GUARDIAN_SCHEDULE_USER_SCHEDULES", "60")
+
+
 def _timestamp(value: str) -> datetime:
     """A DRF datetime ("...Z") as an aware datetime."""
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def _wait_for_rule(rule_id, headers, condition, what, seconds) -> dict:
+    """Poll an alert rule until ``condition(rule)`` holds; fail after ``seconds``."""
+    deadline = time.monotonic() + seconds
+    rule: dict = {}
+    while time.monotonic() < deadline:
+        response = requests.get(f"{ALERTS}{rule_id}/", headers=headers, timeout=TIMEOUT)
+        assert response.status_code == 200, response.text[:300]
+        rule = response.json()
+        if condition(rule):
+            return rule
+        time.sleep(2)
+    pytest.fail(f"no sweep brought {what} within {seconds}s: {rule}")
+
+
+def _notification_kinds(rule_id, headers) -> list:
+    """The kinds of the notifications a rule recorded, newest first (#549)."""
+    response = requests.get(
+        f"{ALERTS}{rule_id}/notifications/", headers=headers, timeout=TIMEOUT
+    )
+    page = _assert_page(response)
+    return [n["kind"] for n in page["results"]]
 
 
 def _wait_for_task(task_id: str, headers: dict) -> dict:
@@ -280,33 +322,28 @@ class TestGuardianMonitoring:
         # the routes matched no task name and everything went to default.
         assert status["queue"] == "reporting", status
 
-    def test_scheduled_task_runs_on_its_own(self, admin_headers) -> None:
+    def test_scheduled_task_runs_on_its_own(self, admin_headers, asset) -> None:
         """guardian-beat sends the alert-rule sweep without anyone asking.
 
         Nothing scheduled guardian's periodic tasks until #545. The rule
-        created here fires on every evaluation, and a sweep that is not in
-        test mode records that in trigger_count; nothing in this test starts
-        a sweep, so the count can only move if beat sent one and the worker
-        ran it. CI runs the sweep every GUARDIAN_SCHEDULE_ALERT_RULES
-        seconds (15) instead of the default 15 minutes.
+        created here counts the unresolved vulnerabilities of an asset that
+        has none, so its value is 0 and "equal to 0" fires on the first
+        evaluation; a sweep that is not in test mode records that in
+        trigger_count. Nothing in this test starts a sweep, so the count can
+        only move if beat sent one and the worker ran it. CI runs the sweep
+        every GUARDIAN_SCHEDULE_ALERT_RULES seconds (15) instead of the
+        default 15 minutes.
         """
-        interval = os.getenv("GUARDIAN_SCHEDULE_ALERT_RULES", "")
-        if not interval.isdigit() or not 0 < int(interval) <= 60:
-            message = (
-                "start the stack with GUARDIAN_SCHEDULE_ALERT_RULES at 60 s or "
-                "less, and set it for the suite too"
-            )
-            if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
-                pytest.fail(message, pytrace=False)
-            pytest.skip(message)
+        interval = _alert_rule_interval()
 
         payload = {
             "name": f"it-guardian-beat-{uuid.uuid4().hex[:12]}",
-            "data_source": "integration-test",
+            # A real metric since #549, over data this test controls: the
+            # rule used to name nothing and was evaluated against 0.
+            "data_source": "vulnerabilities.unresolved",
+            "condition_config": {"asset": asset["id"]},
             "condition_type": "threshold",
             "operator": "eq",
-            # guardian evaluates every rule against 0 for now
-            # (reporting/tasks.py get_current_value_for_rule), so this fires.
             "threshold_value": 0,
         }
         created = requests.post(
@@ -316,7 +353,7 @@ class TestGuardianMonitoring:
         rule = created.json()
         assert rule["trigger_count"] == 0, rule
         try:
-            deadline = time.monotonic() + max(TASK_DEADLINE, 3 * int(interval))
+            deadline = time.monotonic() + max(TASK_DEADLINE, 3 * interval)
             while time.monotonic() < deadline:
                 current = requests.get(
                     f"{ALERTS}{rule['id']}/", headers=admin_headers, timeout=TIMEOUT
@@ -330,9 +367,124 @@ class TestGuardianMonitoring:
                 rule["trigger_count"] > 0
             ), f"no scheduled sweep evaluated the rule within the deadline: {rule}"
             assert rule["last_triggered"], rule
+            assert rule["last_value"] == 0, rule
         finally:
             requests.delete(
                 f"{ALERTS}{rule['id']}/", headers=admin_headers, timeout=TIMEOUT
+            )
+
+    def test_alert_rule_notifies_on_state_changes(self, admin_headers, asset) -> None:
+        """A rule notifies when it starts firing and when it recovers, once each.
+
+        Until #549 every rule was evaluated against 0 and a firing rule
+        notified on every sweep. The rule here counts the unresolved
+        vulnerabilities of one asset, and the test moves it through every
+        state with real data, the sweeps coming from guardian-beat alone:
+        not firing (no vulnerability), firing (one is recorded), still firing
+        over two more sweeps (no second notification: the re-notification
+        interval is a day), recovered (it is resolved).
+        """
+        interval = _alert_rule_interval()
+        deadline = max(TASK_DEADLINE, 3 * interval)
+        created = requests.post(
+            ALERTS,
+            json={
+                "name": f"it-guardian-states-{uuid.uuid4().hex[:12]}",
+                "data_source": "vulnerabilities.unresolved",
+                "condition_config": {"asset": asset["id"]},
+                "condition_type": "threshold",
+                "operator": "gt",
+                "threshold_value": 0,
+            },
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert created.status_code == 201, created.text[:300]
+        rule_id = created.json()["id"]
+        try:
+            rule = _wait_for_rule(
+                rule_id,
+                admin_headers,
+                lambda r: r["last_evaluated_at"] is not None,
+                "a first evaluation",
+                deadline,
+            )
+            assert (rule["state"], rule["last_value"]) == ("ok", 0), rule
+            assert _notification_kinds(rule_id, admin_headers) == []
+
+            finding = requests.post(
+                VULNERABILITIES,
+                json={
+                    "title": f"Alert rule finding {uuid.uuid4().hex[:8]}",
+                    "description": "Created by the integration suite.",
+                    "asset": asset["id"],
+                    "severity": "high",
+                    "cve_id": "CVE-2024-3094",
+                },
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert finding.status_code == 201, finding.text[:300]
+            # The create response carries no id; the asset has only this one.
+            listing = _assert_page(
+                requests.get(
+                    VULNERABILITIES,
+                    params={"asset_id": asset["id"]},
+                    headers=admin_headers,
+                    timeout=TIMEOUT,
+                )
+            )
+            assert listing["count"] == 1, listing
+            finding_id = listing["results"][0]["id"]
+
+            rule = _wait_for_rule(
+                rule_id,
+                admin_headers,
+                lambda r: r["state"] == "firing",
+                "the rule to fire",
+                deadline,
+            )
+            assert rule["last_value"] == 1, rule
+            assert rule["trigger_count"] == 1, rule
+            assert _notification_kinds(rule_id, admin_headers) == ["firing"]
+
+            # Two more sweeps while it keeps firing: nothing new is sent.
+            for _ in range(2):
+                seen = rule["last_evaluated_at"]
+                rule = _wait_for_rule(
+                    rule_id,
+                    admin_headers,
+                    lambda r, seen=seen: r["last_evaluated_at"] != seen,
+                    "another evaluation",
+                    deadline,
+                )
+                assert rule["state"] == "firing", rule
+            assert rule["trigger_count"] == 1, rule
+            assert _notification_kinds(rule_id, admin_headers) == ["firing"]
+
+            resolved = requests.patch(
+                f"{VULNERABILITIES}{finding_id}/",
+                json={"status": "resolved"},
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert resolved.status_code == 200, resolved.text[:300]
+
+            rule = _wait_for_rule(
+                rule_id,
+                admin_headers,
+                lambda r: r["state"] == "ok",
+                "the rule to recover",
+                deadline,
+            )
+            assert rule["last_value"] == 0, rule
+            assert _notification_kinds(rule_id, admin_headers) == [
+                "resolved",
+                "firing",
+            ]
+        finally:
+            requests.delete(
+                f"{ALERTS}{rule_id}/", headers=admin_headers, timeout=TIMEOUT
             )
 
     def test_asset_scan_runs(self, admin_headers) -> None:

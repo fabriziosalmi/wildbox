@@ -263,9 +263,11 @@ def _alert_rule():
 
     # Without the test-mode check its creation queues (signals.py).
     with mock.patch("apps.reporting.signals.check_alert_rule"):
+        # No vulnerability exists in these tests, so the count is 0 and
+        # the rule fires (#549: the value is computed, no longer always 0).
         return AlertRule.objects.create(
             name="always fires",
-            data_source="vulnerabilities",
+            data_source="vulnerabilities.unresolved",
             condition_type="threshold",
             operator="eq",
             threshold_value=0,

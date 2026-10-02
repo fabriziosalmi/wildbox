@@ -667,6 +667,9 @@ services:
       # Prefix of the links in the SLA and assignment e-mails; empty gives
       # relative links (guardian/settings.py BASE_URL).
       - GUARDIAN_BASE_URL=${GUARDIAN_BASE_URL:-}
+      # Seconds between reminders of an alert rule that keeps firing, or
+      # off; empty means one day (guardian/schedule.py, #549).
+      - GUARDIAN_ALERT_RENOTIFY_INTERVAL=${GUARDIAN_ALERT_RENOTIFY_INTERVAL:-}
     depends_on:
       postgres:
         condition: service_healthy

@@ -310,8 +310,25 @@ class AlertRule(models.Model):
     operator = models.CharField(max_length=10, choices=OPERATORS, blank=True)
     notification_config = models.JSONField(default=dict)  # Notification settings
     is_active = models.BooleanField(default=True)
+    # When the rule last started firing, and how many times it has (#549).
     last_triggered = models.DateTimeField(null=True, blank=True)
     trigger_count = models.PositiveIntegerField(default=0)
+
+    # Evaluation state (#549): a rule notifies when it starts firing, again
+    # at most once per ALERT_RENOTIFY_INTERVAL while it keeps firing, and
+    # once when it recovers -- not on every evaluation.
+    STATE_OK = 'ok'
+    STATE_FIRING = 'firing'
+    STATES = [
+        (STATE_OK, 'OK'),
+        (STATE_FIRING, 'Firing'),
+    ]
+    state = models.CharField(max_length=10, choices=STATES, default=STATE_OK)
+    firing_since = models.DateTimeField(null=True, blank=True)
+    last_value = models.FloatField(null=True, blank=True)
+    last_evaluated_at = models.DateTimeField(null=True, blank=True)
+    last_notified_at = models.DateTimeField(null=True, blank=True)
+
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -326,3 +343,41 @@ class AlertRule(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class AlertNotification(models.Model):
+    """One notification an alert rule sent, or tried to send (#549).
+
+    The record of what a rule told whom and when: the API lists it per
+    rule, and it is how the repeat suppression can be checked. ``delivered``
+    is False when the e-mail could not be sent, for instance because no
+    recipient is configured.
+    """
+    KIND_FIRING = 'firing'
+    KIND_REPEAT = 'repeat'
+    KIND_RESOLVED = 'resolved'
+    KINDS = [
+        (KIND_FIRING, 'Started firing'),
+        (KIND_REPEAT, 'Still firing'),
+        (KIND_RESOLVED, 'Resolved'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    rule = models.ForeignKey(AlertRule, on_delete=models.CASCADE, related_name='notifications')
+    kind = models.CharField(max_length=10, choices=KINDS)
+    value = models.FloatField()
+    threshold_value = models.FloatField(null=True, blank=True)
+    operator = models.CharField(max_length=10, blank=True)
+    recipients = models.JSONField(default=list, blank=True)
+    delivered = models.BooleanField(default=False)
+    # The evaluation that called for it.
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['rule', 'created_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.rule.name}: {self.kind} at {self.created_at}"
