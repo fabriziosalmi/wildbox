@@ -87,75 +87,12 @@ jobs:
 
           echo "✓ All critical service files exist"
 
-  # Security checks
-  security-scan:
-    # Uploads the Trivy SARIF report to code scanning.
-    permissions:
-      contents: read
-      security-events: write
-    name: Security Scan
-    runs-on: ubuntu-latest
-    timeout-minutes: 10  # observed max 1.2 min
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      # Two passes, because `severity` and `format: sarif` do not combine.
-      #
-      # With a SARIF output the action logs "Building SARIF report with all
-      # severities" and drops the severity filter, so `severity: CRITICAL` plus
-      # `exit-code: 1` did not gate on criticals -- it gated on every finding at
-      # any level, of which this repository has hundreds. The first pass keeps
-      # the full picture for GitHub code scanning without failing; the second is
-      # the gate, and it is the one that decides.
-      - name: Run Trivy (SARIF for code scanning)
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          exit-code: '0'
-
-      - name: Install Trivy
-        uses: aquasecurity/setup-trivy@v0.3.1
-        with:
-          version: v0.70.0
-          cache: true
-
-      - name: Check out the base branch
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
-
-      - name: Fail on critical advisories this PR introduces
-        # Gates (WILDBO-DEP-03), but only on what the PR adds (#430). Failing on
-        # every critical in the tree turned all open PRs red the day an advisory
-        # was published against something already on main, whatever they
-        # touched; those are reported on main by main-advisories.yml instead.
-        # Starting at CRITICAL keeps the gate achievable; widen to
-        # CRITICAL,HIGH once the current HIGH backlog is triaged.
-        run: ./scripts/critical_advisories.sh new . "$RUNNER_TEMP/base"
-
-      - name: Upload Trivy results
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: 'trivy-results.sarif'
-
-      - name: Check for hardcoded secrets
-        run: |
-          # Check for common secret patterns (basic check)
-          echo "Checking for hardcoded secrets..."
-
-          # Skip .env files as they're examples
-          git ls-files | grep -v "\.env\." | xargs grep -niE "password\s*=\s*['\"][^'\"]{3,}['\"]" || true
-          git ls-files | grep -v "\.env\." | xargs grep -niE "api[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
-          git ls-files | grep -v "\.env\." | xargs grep -niE "secret[_-]?key\s*=\s*['\"][^'\"]{8,}['\"]" || true
-
-          echo "✓ Basic secret scan complete (review output above)"
+  # Security scanning is not repeated here. Trivy (SARIF report and the
+  # critical-advisory gate) and Bandit run once per pull request in the
+  # "Security Scanning" job of test.yml, a required check; gitleaks runs in
+  # secret-scan.yml. The job that stood here ran Trivy a second time and
+  # finished with a grep for hardcoded secrets that ended in `|| true`, so it
+  # could not fail.
 
   # Dependency lockfiles must be current, and the SBOM must be producible.
   dependency-integrity:
@@ -273,20 +210,20 @@ jobs:
     needs:
       - validate-docker
       - validate-structure
-      - security-scan
       - dependency-integrity
       - python-quality
     if: always()
     steps:
       - name: Check validation results
         # This job is the one branch protection requires, so a job missing from
-        # this test does not gate anything. security-scan was listed in needs
-        # but never tested, and dependency-integrity was not listed at all:
-        # both went red on PRs that could still be merged (#430).
+        # this test does not gate anything. A security job was once listed in
+        # needs but never tested, and dependency-integrity was not listed at
+        # all: both went red on PRs that could still be merged (#430). The
+        # critical-advisory gate now lives in "Security Scanning" (test.yml),
+        # which is itself a required check.
         run: |
           if [ "${{ needs.validate-docker.result }}" != "success" ] || \
              [ "${{ needs.validate-structure.result }}" != "success" ] || \
-             [ "${{ needs.security-scan.result }}" != "success" ] || \
              [ "${{ needs.dependency-integrity.result }}" != "success" ] || \
              [ "${{ needs.python-quality.result }}" != "success" ]; then
             echo "❌ PR validation failed. Please fix the issues above."

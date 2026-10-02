@@ -186,6 +186,9 @@ jobs:
           echo "🔗 External Links: $EXTERNAL_LINKS" >> $GITHUB_STEP_SUMMARY
 
   security-scan:
+    # Not a duplicate of gitleaks (secret-scan.yml): .gitleaks.toml allowlists
+    # docs/ and every README.md for their sample curl calls, so these three
+    # patterns are the only secret check documentation gets.
     name: Documentation Security Scan
     runs-on: ubuntu-latest
     timeout-minutes: 10  # observed max 0.6 min
@@ -196,21 +199,23 @@ jobs:
       - name: Scan for exposed secrets in docs
         run: |
           echo "Scanning for common secret patterns in documentation..."
-          
+
+          # -E is required: in grep's default basic syntax {16} and {36} are
+          # literal braces, so these two patterns matched nothing at all.
           # Check for AWS keys
-          if grep -r 'AKIA[0-9A-Z]{16}' . --include="*.md" --exclude-dir=node_modules; then
+          if grep -rE 'AKIA[0-9A-Z]{16}' . --include="*.md" --exclude-dir=node_modules; then
             echo "⚠️ WARNING: Potential AWS access key found"
             exit 1
           fi
           
           # Check for private keys
-          if grep -r 'BEGIN.*PRIVATE KEY' . --include="*.md" --exclude-dir=node_modules; then
+          if grep -rE 'BEGIN.*PRIVATE KEY' . --include="*.md" --exclude-dir=node_modules; then
             echo "⚠️ WARNING: Potential private key found"
             exit 1
           fi
           
           # Check for GitHub tokens
-          if grep -r 'ghp_[0-9a-zA-Z]{36}' . --include="*.md" --exclude-dir=node_modules; then
+          if grep -rE 'ghp_[0-9a-zA-Z]{36}' . --include="*.md" --exclude-dir=node_modules; then
             echo "⚠️ WARNING: Potential GitHub token found"
             exit 1
           fi

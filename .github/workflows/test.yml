@@ -212,43 +212,91 @@ jobs:
         run: npx tsc --noEmit
 
   security-scan:
-    # Uploads the Trivy SARIF report to code scanning.
+    # The one job that runs Trivy and Bandit, on pull requests and on main.
+    #
+    # Trivy used to run in two jobs on every pull request -- this one and
+    # "Security Scan" in pr-validation.yml -- uploading the same scan to code
+    # scanning twice under two automatic categories, and Bandit's report went
+    # to an artifact nobody read. Each tool now runs once and uploads under a
+    # fixed category, so the analysis of a pull request is compared with the
+    # analysis of main under the same name.
+    #
+    # "Security Scanning" is a required status check: keep the name.
     permissions:
       contents: read
       security-events: write
     name: Security Scanning
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # observed max 0.7 min
-    
+    timeout-minutes: 10  # observed max 0.7 min here + 1.2 min for the gate
+
     steps:
       - uses: actions/checkout@v7
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          # Findings are uploaded to the Security tab below; the gating copy of
-          # this scan runs in pr-validation.yml (WILDBO-DEP-03).
-          exit-code: '0'
-      
-      - name: Upload Trivy results to GitHub Security
+          version: v0.70.0
+          cache: true
+
+      - name: Trivy, every finding (SARIF for code scanning)
+        # All severities, reported rather than gated; the gate is a separate
+        # pass below, because `severity` and SARIF output do not combine (the
+        # SARIF writer reports every severity whatever the filter says).
+        run: trivy fs --quiet --format sarif --output trivy-results.sarif --exit-code 0 .
+
+      - name: Check out the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+
+      - name: Fail on critical advisories this PR introduces
+        # Gates (WILDBO-DEP-03), but only on what the PR adds (#430). Failing
+        # on every critical in the tree turned all open PRs red the day an
+        # advisory was published against something already on main, whatever
+        # they touched; those are reported on main by main-advisories.yml
+        # instead. Starting at CRITICAL keeps the gate achievable; widen to
+        # CRITICAL,HIGH once the current HIGH backlog is triaged.
+        if: github.event_name == 'pull_request'
+        run: ./scripts/critical_advisories.sh new . "$RUNNER_TEMP/base"
+
+      - name: Upload Trivy results
+        if: ${{ !cancelled() && hashFiles('trivy-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-results.sarif'
-      
-      - name: Run Bandit security linter
-        run: |
-          pip install bandit
-          bandit -r open-security-*/app -f json -o bandit-report.json || true
-      
-      - name: Upload Bandit results
-        uses: actions/upload-artifact@v7
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          name: bandit-report
-          path: bandit-report.json
+          python-version: '3.11'
+
+      - name: Bandit (SARIF for code scanning)
+        # Every Python service's own package. Guardian's code is in apps/ and
+        # guardian/, the sensor's in sensor/ and the shared package's at its
+        # root, so the old `open-security-*/app` skipped all three. Reported,
+        # not gated.
+        timeout-minutes: 5
+        run: |
+          pip install --quiet "bandit[sarif]==1.8.6"
+          bandit --quiet --recursive --exit-zero \
+            --exclude '*/tests/*,*/migrations/*' \
+            --format sarif --output bandit-results.sarif \
+            open-security-agents/app open-security-cspm/app \
+            open-security-data/app open-security-identity/app \
+            open-security-responder/app open-security-tools/app \
+            open-security-guardian/apps open-security-guardian/guardian \
+            open-security-sensor/sensor open-security-shared
+
+      - name: Upload Bandit results
+        if: ${{ !cancelled() && hashFiles('bandit-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
 
   lint:
     name: Code Quality
