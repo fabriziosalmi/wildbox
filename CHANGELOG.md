@@ -12,8 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **guardian's remediation and integrations endpoints answer again** (#499).
   All 11 list endpoints of the two apps, plus `scanners/stats/` and
   `reports/metrics/summary/`, answered 500: `filterset_fields`, search and
-  ordering named fields the models do not have, and no viewset in either app
-  had a serializer. Filters now use real fields, each viewset has an
+  ordering named fields the models do not have, and no endpoint in either
+  app had a serializer. Filters now use real fields, each endpoint has an
   explicit serializer, and stored credentials (`auth_config`,
   `secret_token`, channel `config`) are write-only. A new test GETs every
   read route, with search and every ordering, and fails on any 5xx.
