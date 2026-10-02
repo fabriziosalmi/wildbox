@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **identity no longer prints the initial admin password** (#493).
   `scripts/init.sh` wrote it to the container log on first start, where
-  `docker logs`, log shippers and CI artefacts could read it. It now says
+  `docker logs`, log shippers and CI artifacts could read it. It now says
   where the value comes from (`INITIAL_ADMIN_PASSWORD`) instead.
 
 - **cryptography 50.0.2 in every service that uses it** (#415): cspm, data,

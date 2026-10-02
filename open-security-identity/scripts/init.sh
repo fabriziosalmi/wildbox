@@ -126,7 +126,7 @@ async def create_initial_superuser():
 
         print(f'✅ Created initial admin user: {admin_email}')
         # Never print the password itself: container logs are read by anyone
-        # with `docker logs`, log shippers and CI artefacts (#493).
+        # with `docker logs`, log shippers and CI artifacts (#493).
         print('🔑 Password: the value of INITIAL_ADMIN_PASSWORD in .env')
         print('⚠️  Please change the default password after first login!')
         
