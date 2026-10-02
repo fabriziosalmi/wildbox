@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { 
-  Book, 
-  Clock, 
+import {
+  Book,
+  Clock,
   User,
   Settings,
   ChevronRight,
@@ -13,21 +13,20 @@ import {
   Play,
   Search,
   Filter,
-  CheckCircle,
-  XCircle
+  XCircle,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { 
-  useResponderPlaybooks, 
+import {
+  useResponderPlaybooks,
   usePlaybookExecution,
   filterPlaybooks,
   getAllTags,
   getTagColor,
   getTriggerTypeLabel,
-  type PlaybookSummary
+  type PlaybookSummary,
 } from '@/hooks/use-responder-playbooks'
 import { addExecutionToHistory } from '@/hooks/use-execution-status'
 import {
@@ -41,18 +40,22 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 
-function PlaybookCard({ playbook, onExecute }: { playbook: PlaybookSummary; onExecute: (playbook: PlaybookSummary) => void }) {
+function PlaybookCard({
+  playbook,
+  onExecute,
+}: {
+  playbook: PlaybookSummary
+  onExecute: (playbook: PlaybookSummary) => void
+}) {
   return (
-    <Card className="group hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
+    <Card className="group border-l-4 border-l-blue-500 transition-all duration-200 hover:shadow-lg">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <CardTitle className="text-lg font-semibold group-hover:text-blue-600 transition-colors">
+            <CardTitle className="text-lg font-semibold transition-colors group-hover:text-blue-600">
               {playbook.name}
             </CardTitle>
-            <CardDescription className="text-sm">
-              {playbook.description}
-            </CardDescription>
+            <CardDescription className="text-sm">{playbook.description}</CardDescription>
           </div>
           <Badge variant="outline" className="ml-2 shrink-0">
             v{playbook.version}
@@ -64,11 +67,7 @@ function PlaybookCard({ playbook, onExecute }: { playbook: PlaybookSummary; onEx
           {/* Tags */}
           <div className="flex flex-wrap gap-1.5">
             {playbook.tags.map((tag: string) => (
-              <Badge
-                key={tag}
-                variant="secondary"
-                className={`text-xs ${getTagColor(tag)}`}
-              >
+              <Badge key={tag} variant="secondary" className={`text-xs ${getTagColor(tag)}`}>
                 {tag}
               </Badge>
             ))}
@@ -95,13 +94,13 @@ function PlaybookCard({ playbook, onExecute }: { playbook: PlaybookSummary; onEx
           </div>
 
           {/* Actions */}
-          <div className="flex gap-2 pt-2 border-t">
+          <div className="flex gap-2 border-t pt-2">
             <Button
               onClick={() => onExecute(playbook)}
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               size="sm"
             >
-              <Play className="h-4 w-4 mr-2" />
+              <Play className="mr-2 h-4 w-4" />
               Execute
             </Button>
             <Button
@@ -128,7 +127,13 @@ interface ExecutionDialogProps {
   isLoading: boolean
 }
 
-function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: ExecutionDialogProps) {
+function ExecutionDialog({
+  playbook,
+  isOpen,
+  onClose,
+  onExecute,
+  isLoading,
+}: ExecutionDialogProps) {
   const [triggerData, setTriggerData] = useState('{}')
   const [error, setError] = useState<string | null>(null)
 
@@ -138,16 +143,16 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
       JSON.parse(triggerData)
       setError(null)
       onExecute(triggerData)
-    } catch (e) {
+    } catch {
       setError('Invalid JSON format')
     }
   }
 
   const getExampleData = (playbookId: string): string => {
     const examples: Record<string, string> = {
-      'simple_notification': JSON.stringify({ message: 'Test notification' }, null, 2),
-      'triage_ip': JSON.stringify({ ip: '8.8.8.8' }, null, 2),
-      'triage_url': JSON.stringify({ url: 'https://example.com' }, null, 2),
+      simple_notification: JSON.stringify({ message: 'Test notification' }, null, 2),
+      triage_ip: JSON.stringify({ ip: '8.8.8.8' }, null, 2),
+      triage_url: JSON.stringify({ url: 'https://example.com' }, null, 2),
     }
     return examples[playbookId] || '{}'
   }
@@ -159,20 +164,20 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
       <DialogContent className="sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle>Execute Playbook: {playbook.name}</DialogTitle>
-          <DialogDescription>
-            {playbook.description}
-          </DialogDescription>
+          <DialogDescription>{playbook.description}</DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label htmlFor="trigger-data">Trigger Data (JSON)</Label>
             <Textarea
               id="trigger-data"
               value={triggerData}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setTriggerData(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setTriggerData(e.target.value)
+              }
               placeholder={getExampleData(playbook.playbook_id)}
-              className="font-mono text-sm min-h-[150px]"
+              className="min-h-[150px] font-mono text-sm"
             />
             {error && (
               <div className="flex items-center gap-2 text-sm text-red-600">
@@ -181,11 +186,12 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
               </div>
             )}
           </div>
-          
-          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950 p-3 rounded-md">
+
+          <div className="flex items-center gap-2 rounded-md bg-blue-50 p-3 text-sm text-muted-foreground dark:bg-blue-950">
             <AlertCircle className="h-4 w-4 flex-shrink-0" />
             <span>
-              Execution will start asynchronously. You'll be redirected to the runs page to monitor progress.
+              Execution will start asynchronously. You&apos;ll be redirected to the runs page to
+              monitor progress.
             </span>
           </div>
         </div>
@@ -197,12 +203,12 @@ function ExecutionDialog({ playbook, isOpen, onClose, onExecute, isLoading }: Ex
           <Button onClick={handleExecute} disabled={isLoading}>
             {isLoading ? (
               <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 Starting...
               </>
             ) : (
               <>
-                <Play className="h-4 w-4 mr-2" />
+                <Play className="mr-2 h-4 w-4" />
                 Execute
               </>
             )}
@@ -222,31 +228,31 @@ export default function PlaybooksPage() {
     playbook: PlaybookSummary | null
   }>({
     isOpen: false,
-    playbook: null
+    playbook: null,
   })
 
   // Use custom hooks
   const { playbooks, total, isLoading, error, refetch } = useResponderPlaybooks()
-  
-  const { execute, data: executionData, isLoading: isExecuting, isSuccess } = usePlaybookExecution({
-    onSuccess: (response) => {
+
+  const { execute, isLoading: isExecuting } = usePlaybookExecution({
+    onSuccess: response => {
       // Save to history
       addExecutionToHistory({
         run_id: response.run_id,
         playbook_id: response.playbook_id,
         playbook_name: response.playbook_name,
-        started_at: new Date().toISOString()
+        started_at: new Date().toISOString(),
       })
-      
+
       // Close dialog
       setExecutionDialog({ isOpen: false, playbook: null })
-      
+
       // Redirect to runs page
       router.push(`/response/runs?run_id=${response.run_id}`)
     },
-    onError: (error) => {
+    onError: error => {
       alert(`Failed to execute playbook: ${error.message}`)
-    }
+    },
   })
 
   // Filter playbooks
@@ -261,13 +267,13 @@ export default function PlaybooksPage() {
   const handleExecutePlaybook = (playbook: PlaybookSummary) => {
     setExecutionDialog({
       isOpen: true,
-      playbook
+      playbook,
     })
   }
 
   const handleConfirmExecution = (triggerDataJson: string) => {
     if (!executionDialog.playbook) return
-    
+
     try {
       const triggerData = JSON.parse(triggerDataJson)
       execute(executionDialog.playbook.playbook_id, { trigger_data: triggerData })
@@ -278,15 +284,13 @@ export default function PlaybooksPage() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-        <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Failed to load playbooks</h3>
-        <p className="text-muted-foreground mb-4">
+      <div className="flex min-h-[400px] flex-col items-center justify-center text-center">
+        <AlertCircle className="mb-4 h-12 w-12 text-red-500" />
+        <h3 className="mb-2 text-lg font-semibold">Failed to load playbooks</h3>
+        <p className="mb-4 text-muted-foreground">
           Unable to connect to the Response service. Please check if the service is running.
         </p>
-        <Button onClick={() => refetch()}>
-          Try Again
-        </Button>
+        <Button onClick={() => refetch()}>Try Again</Button>
       </div>
     )
   }
@@ -294,7 +298,7 @@ export default function PlaybooksPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Response Playbooks</h1>
           <p className="text-muted-foreground">
@@ -303,7 +307,7 @@ export default function PlaybooksPage() {
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="px-3 py-1">
-            <Book className="h-4 w-4 mr-1" />
+            <Book className="mr-1 h-4 w-4" />
             {total} playbooks
           </Badge>
           <Button onClick={() => refetch()} variant="outline" size="sm">
@@ -313,13 +317,13 @@ export default function PlaybooksPage() {
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col sm:flex-row gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
           <Input
             placeholder="Search playbooks..."
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={e => setSearchTerm(e.target.value)}
             className="pl-10"
           />
         </div>
@@ -327,11 +331,11 @@ export default function PlaybooksPage() {
           <Filter className="h-4 w-4 text-muted-foreground" />
           <select
             value={selectedTag}
-            onChange={(e) => setSelectedTag(e.target.value)}
-            className="px-3 py-2 border border-input bg-background rounded-md text-sm"
+            onChange={e => setSelectedTag(e.target.value)}
+            className="rounded-md border border-input bg-background px-3 py-2 text-sm"
           >
             <option value="all">All tags</option>
-            {allTags.map((tag) => (
+            {allTags.map(tag => (
               <option key={tag} value={tag}>
                 {tag}
               </option>
@@ -342,7 +346,7 @@ export default function PlaybooksPage() {
 
       {/* Playbooks Grid */}
       {isLoading ? (
-        <div className="flex items-center justify-center min-h-[300px]">
+        <div className="flex min-h-[300px] items-center justify-center">
           <div className="flex items-center gap-2">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span>Loading playbooks...</span>
@@ -350,7 +354,7 @@ export default function PlaybooksPage() {
         </div>
       ) : filteredList.length > 0 ? (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredList.map((playbook) => (
+          {filteredList.map(playbook => (
             <PlaybookCard
               key={playbook.playbook_id}
               playbook={playbook}
@@ -359,11 +363,11 @@ export default function PlaybooksPage() {
           ))}
         </div>
       ) : (
-        <div className="flex flex-col items-center justify-center min-h-[300px] text-center">
-          <Book className="h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No playbooks found</h3>
+        <div className="flex min-h-[300px] flex-col items-center justify-center text-center">
+          <Book className="mb-4 h-12 w-12 text-muted-foreground" />
+          <h3 className="mb-2 text-lg font-semibold">No playbooks found</h3>
           <p className="text-muted-foreground">
-            {searchTerm || selectedTag !== 'all' 
+            {searchTerm || selectedTag !== 'all'
               ? 'Try adjusting your search or filter criteria.'
               : 'No playbooks are currently available.'}
           </p>

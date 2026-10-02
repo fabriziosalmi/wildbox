@@ -7,7 +7,14 @@ export interface ApiError {
   code?: string
   /** Correlation id from the canonical error body, for matching against logs. */
   requestId?: string
-  details?: any
+  details?: unknown
+}
+
+/** Error bodies the services answer with, canonical and legacy shapes. */
+interface ErrorBody {
+  error?: { message?: string; type?: string; request_id?: string }
+  detail?: string
+  message?: string
 }
 
 class ApiClient {
@@ -30,7 +37,7 @@ class ApiClient {
   private setupInterceptors() {
     // Request interceptor - add auth token
     this.client.interceptors.request.use(
-      (config) => {
+      config => {
         // All services (incl. Guardian) authenticate via the gateway with the
         // user's JWT; the gateway validates it and forwards X-Wildbox-* headers.
         // Guardian no longer uses a browser-exposed API key (#113).
@@ -41,7 +48,7 @@ class ApiClient {
 
         return config
       },
-      (error) => {
+      error => {
         return Promise.reject(error)
       }
     )
@@ -56,7 +63,7 @@ class ApiClient {
         }
 
         if (error.response) {
-          const data = error.response.data as any
+          const data = error.response.data as ErrorBody | undefined
           apiError.status = error.response.status
           // Services answer with the canonical shape from open_security_shared.errors:
           //   { error: { code, message, type, request_id } }
@@ -64,11 +71,7 @@ class ApiClient {
           // `detail`) are still accepted so a partially-upgraded deployment does
           // not lose the server's explanation (WILDBO-API-01).
           apiError.message =
-            data?.error?.message ||
-            data?.detail ||
-            data?.message ||
-            error.message ||
-            'API Error'
+            data?.error?.message || data?.detail || data?.message || error.message || 'API Error'
           apiError.code = data?.error?.type
           apiError.requestId = data?.error?.request_id
           apiError.details = error.response.data
@@ -76,9 +79,11 @@ class ApiClient {
           // Handle auth errors
           if (error.response.status === 401) {
             // Only trigger auth error handling for non-admin pages and if not already on auth page
-            if (typeof window !== 'undefined' && 
-                !window.location.pathname.includes('/admin') &&
-                !window.location.pathname.includes('/auth')) {
+            if (
+              typeof window !== 'undefined' &&
+              !window.location.pathname.includes('/admin') &&
+              !window.location.pathname.includes('/auth')
+            ) {
               this.handleAuthError()
             }
           }
@@ -105,28 +110,33 @@ class ApiClient {
 
     // Clear auth cookie for non-gateway auth errors
     Cookies.remove('auth_token')
-    
+
     // Redirect to login if we're not already there and not on an admin page
-    if (typeof window !== 'undefined' &&
-        !window.location.pathname.includes('/auth') &&
-        !window.location.pathname.includes('/admin')) {
+    if (
+      typeof window !== 'undefined' &&
+      !window.location.pathname.includes('/auth') &&
+      !window.location.pathname.includes('/admin')
+    ) {
+      // A full reload is intended: this runs outside React (no router here)
+      // and must drop every piece of client state tied to the dead session.
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- hard reload by design
       window.location.href = '/'
     }
   }
 
   // Generic request methods
-  async get<T = any>(endpoint: string, params?: any): Promise<T> {
+  async get<T = unknown>(endpoint: string, params?: object): Promise<T> {
     const response = await this.client.get(endpoint, { params })
     return response.data
   }
 
-  async post<T = any>(endpoint: string, data?: any): Promise<T> {
+  async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.post(endpoint, data)
     return response.data
   }
 
   // Form data POST (for OAuth2 login)
-  async postForm<T = any>(endpoint: string, formData: URLSearchParams): Promise<T> {
+  async postForm<T = unknown>(endpoint: string, formData: URLSearchParams): Promise<T> {
     const response = await this.client.post(endpoint, formData, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -135,23 +145,27 @@ class ApiClient {
     return response.data
   }
 
-  async put<T = any>(endpoint: string, data?: any): Promise<T> {
+  async put<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.put(endpoint, data)
     return response.data
   }
 
-  async patch<T = any>(endpoint: string, data?: any): Promise<T> {
+  async patch<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
     const response = await this.client.patch(endpoint, data)
     return response.data
   }
 
-  async delete<T = any>(endpoint: string): Promise<T> {
+  async delete<T = unknown>(endpoint: string): Promise<T> {
     const response = await this.client.delete(endpoint)
     return response.data
   }
 
   // File upload
-  async upload<T = any>(endpoint: string, file: File, onProgress?: (progress: number) => void): Promise<T> {
+  async upload<T = unknown>(
+    endpoint: string,
+    file: File,
+    onProgress?: (progress: number) => void
+  ): Promise<T> {
     const formData = new FormData()
     formData.append('file', file)
 
@@ -159,7 +173,7 @@ class ApiClient {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
-      onUploadProgress: (progressEvent) => {
+      onUploadProgress: progressEvent => {
         if (onProgress && progressEvent.total) {
           const progress = (progressEvent.loaded / progressEvent.total) * 100
           onProgress(Math.round(progress))

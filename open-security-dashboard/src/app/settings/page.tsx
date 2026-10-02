@@ -4,14 +4,7 @@ import { useAuth } from '@/components/auth-provider'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
-import {
-  User,
-  Key,
-  Users,
-  Shield,
-  ArrowRight,
-  Settings
-} from 'lucide-react'
+import { User, Key, Users, ArrowRight, Settings } from 'lucide-react'
 
 const settingsCards = [
   {
@@ -46,21 +39,19 @@ export default function SettingsPage() {
   return (
     <div className="max-w-4xl">
       <div className="mb-8">
-        <div className="flex items-center gap-3 mb-4">
-          <Settings className="w-8 h-8 text-foreground" />
+        <div className="mb-4 flex items-center gap-3">
+          <Settings className="h-8 w-8 text-foreground" />
           <h1 className="text-3xl font-bold text-foreground">Settings</h1>
         </div>
-        <p className="text-muted-foreground">
-          Manage your account, team, and system preferences
-        </p>
+        <p className="text-muted-foreground">Manage your account, team, and system preferences</p>
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg flex items-center justify-center">
-              <User className="w-6 h-6 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+              <User className="h-6 w-6 text-white" />
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Account Status</div>
@@ -73,8 +64,8 @@ export default function SettingsPage() {
 
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-600 rounded-lg flex items-center justify-center">
-              <Users className="w-6 h-6 text-white" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-600">
+              <Users className="h-6 w-6 text-white" />
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Team Members</div>
@@ -87,27 +78,25 @@ export default function SettingsPage() {
       </div>
 
       {/* Settings Categories */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {allCards.map((card) => {
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        {allCards.map(card => {
           const Icon = card.icon
-          
+
           return (
-            <Card key={card.title} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className={`w-12 h-12 bg-gradient-to-br ${card.color} rounded-lg flex items-center justify-center`}>
-                  <Icon className="w-6 h-6 text-white" />
+            <Card key={card.title} className="p-6 transition-shadow hover:shadow-lg">
+              <div className="mb-4 flex items-start justify-between">
+                <div
+                  className={`h-12 w-12 bg-gradient-to-br ${card.color} flex items-center justify-center rounded-lg`}
+                >
+                  <Icon className="h-6 w-6 text-white" />
                 </div>
-                <ArrowRight className="w-5 h-5 text-muted-foreground" />
+                <ArrowRight className="h-5 w-5 text-muted-foreground" />
               </div>
-              
-              <h3 className="text-lg font-semibold text-foreground mb-2">
-                {card.title}
-              </h3>
-              
-              <p className="text-muted-foreground text-sm mb-4">
-                {card.description}
-              </p>
-              
+
+              <h3 className="mb-2 text-lg font-semibold text-foreground">{card.title}</h3>
+
+              <p className="mb-4 text-sm text-muted-foreground">{card.description}</p>
+
               <Link href={card.href}>
                 <Button variant="outline" className="w-full">
                   Manage {card.title}
@@ -119,31 +108,31 @@ export default function SettingsPage() {
       </div>
 
       {/* Account Information */}
-      <Card className="p-6 mt-8">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Account Information</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <Card className="mt-8 p-6">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Account Information</h3>
+
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Email Address</div>
+            <div className="mb-1 text-sm text-muted-foreground">Email Address</div>
             <div className="font-medium text-foreground">{user?.email}</div>
           </div>
-          
+
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Account Type</div>
+            <div className="mb-1 text-sm text-muted-foreground">Account Type</div>
             <div className="font-medium text-foreground">
               {user?.is_superuser ? 'Administrator' : 'Standard User'}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Member Since</div>
+            <div className="mb-1 text-sm text-muted-foreground">Member Since</div>
             <div className="font-medium text-foreground">
               {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'Unknown'}
             </div>
           </div>
-          
+
           <div>
-            <div className="text-sm text-muted-foreground mb-1">Last Updated</div>
+            <div className="mb-1 text-sm text-muted-foreground">Last Updated</div>
             <div className="font-medium text-foreground">
               {user?.updated_at ? new Date(user.updated_at).toLocaleDateString() : 'Never'}
             </div>

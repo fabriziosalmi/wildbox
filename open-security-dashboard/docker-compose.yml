@@ -4,7 +4,7 @@ services:
   dashboard:
     build: .
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
@@ -19,7 +19,7 @@ services:
       - wildbox-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      test: ['CMD-SHELL', 'curl -f http://localhost:3000/api/health || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -31,7 +31,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "3000:3000"
+      - '3000:3000'
     volumes:
       - .:/app
       - /app/node_modules
