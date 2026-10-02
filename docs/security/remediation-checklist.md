@@ -1,5 +1,9 @@
 # Security Remediation Checklist
 
+> **Historical document (November 2024).** It describes the code as it was then;
+> file paths, line numbers, scores and statuses below no longer match `main`.
+> For what is true today, see the [Security status](status.md).
+
 **Last Updated**: November 7, 2024  
 **Audit Date**: November 7, 2024
 
@@ -211,7 +215,7 @@ curl -X POST http://localhost:8001/v1/analyze \
 
 ```bash
 # Search for usage of this key
-grep -r "wbx-<REDACTED-LEAKED-KEY>" /Users/fab/GitHub/wildbox/
+grep -r "wbx-<REDACTED-LEAKED-KEY>" ./
 
 # If found in actual usage:
 # 1. Immediately rotate the key in your system
@@ -335,18 +339,18 @@ With:
 - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
 ```
 
-**Step 4: Create .env.production with actual values**
+**Step 4: Generate `.env` with real values**
 
-```bash
-cat > .env.production << 'ENV'
-# Generate secure values
-DATABASE_URL=postgresql+asyncpg://secure_user:$(openssl rand -base64 32)@postgres:5432/identity
-JWT_SECRET_KEY=$(openssl rand -base64 32)
-API_KEY=$(openssl rand -hex 32)
-STRIPE_SECRET_KEY=sk_live_XXXXX  # Your actual key
-STRIPE_WEBHOOK_SECRET=whsec_XXXXX
-ENV
-```
+> **Superseded.** This step used to show a heredoc that was quoted
+> (`<< 'ENV'`), so the `$(openssl ...)` commands in it were written to the
+> file literally instead of being run, next to `sk_live_` placeholders. Use
+> the generator instead; it fills every secret with a random value and
+> refuses to leave a placeholder behind:
+>
+> ```bash
+> make generate-secrets
+> make validate-secrets
+> ```
 
 **Step 5: Update docker-compose to use external .env**
 
@@ -564,39 +568,14 @@ def get_hash_function(algorithm: str):
 
 ---
 
-### [ ] 12. Secure Django Secret Key
+### [x] 12. Secure Django Secret Key
 
-**File**: `open-security-guardian/guardian/settings.py` (line 23)
+**File**: `open-security-guardian/guardian/settings.py`
 
-Replace:
-
-```python
-SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-here-change-in-production')
-```
-
-With:
-
-```python
-SECRET_KEY = os.getenv('SECRET_KEY')
-
-if not SECRET_KEY:
-    raise ImproperlyConfigured(
-        "SECRET_KEY environment variable must be set for production"
-    )
-
-# Validate it's not a default/weak value
-WEAK_SECRETS = [
-    'your-secret-key-here-change-in-production',
-    'change-me',
-    'secret',
-    'insecure',
-]
-
-if SECRET_KEY.lower() in WEAK_SECRETS or len(SECRET_KEY) < 32:
-    raise ImproperlyConfigured(
-        "SECRET_KEY must be changed from default and at least 32 characters"
-    )
-```
+**Status (checked on `main`, 2 October 2026)**: done. `settings.py` reads
+`SECRET_KEY` from the environment with no fallback and raises if it is unset;
+`docker-compose.yml` passes `GUARDIAN_SECRET_KEY`, which
+`scripts/generate_secrets.py` generates.
 
 ---
 

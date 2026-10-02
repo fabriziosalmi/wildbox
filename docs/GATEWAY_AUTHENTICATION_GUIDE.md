@@ -1,5 +1,10 @@
 # Gateway Authentication Pattern - Developer Guide
 
+> **Example values are fictitious.** Keys, tokens, IDs and host names below
+> (`your-api-key-here`, `example.com` addresses and similar) are placeholders
+> for illustration; `example.com` is reserved for documentation by RFC 2606.
+> Never paste a real credential into documentation.
+
 ## Overview
 
 All Wildbox backend services use a **trust-based authentication pattern** where the API Gateway validates user credentials (JWT or API keys) and injects trusted headers to backend services.

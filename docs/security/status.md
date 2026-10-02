@@ -1,212 +1,71 @@
-# Wildbox Security Status Report
+# Wildbox Security Status
 
-**Date**: February 22, 2026
-**Version**: v0.5.5
-**Scope**: Complete security audit, vulnerability remediation, and dependency updates
-**Status**: Security-Hardened
+What is known about Wildbox's security today, including what is still wrong.
+This page replaces an earlier report that marked every audit finding "Fixed"
+and every check "PASS"; several of those claims did not hold when they were
+checked against the code.
 
----
+**Current release**: v0.10.0. Changes since then are listed under
+"Unreleased" in [CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md).  
+**Checked against**: `main` on 2 October 2026. Each check below names how it
+was made, so it can be repeated.
 
-## Vulnerability Metrics
-
-| Metric | Value |
-| -------- | ------- |
-| **Initial Vulnerabilities (Nov 2024)** | 29 (6 critical, 10 high, 9 moderate, 4 low) |
-| **After Phase 1 Fixes** | 10 (66% reduction) |
-| **Security Audit Rounds 1-3 (Feb 2026)** | 35 issues identified |
-| **Issues Fixed (v0.5.2)** | 35/35 (100%) |
-| **Security Audit Round 4 (Feb 2026)** | 24 issues identified (9 critical, 15 high) |
-| **Issues Fixed (v0.5.5)** | 24/24 (100%) |
-| **Dependabot Alerts (Pre-update)** | 98 |
-| **Dependabot Alerts (Post-update v0.5.4)** | 2 (Next.js, requires breaking migration) |
-| **Overall Reduction** | **99% of known vulnerabilities resolved** |
+To report a vulnerability, follow
+[SECURITY.md](https://github.com/fabriziosalmi/wildbox/blob/main/SECURITY.md);
+do not open a public issue.
 
 ---
 
-## Security Audit Summary (v0.5.2)
+## Known Open Issues
 
-### Round 1: Critical & High Severity
-
-| # | Issue | Severity | Status |
-| --- | ------- | ---------- | -------- |
-| 1 | Hardcoded secrets in CI/CD pipelines | CRITICAL | Fixed |
-| 2 | JWT tokens not revocable after logout | CRITICAL | Fixed |
-| 3 | No account lockout mechanism | CRITICAL | Fixed |
-| 4 | Path traversal in report generation | HIGH | Fixed |
-| 5 | Missing security headers on dashboard | HIGH | Fixed |
-| 6 | CORS wildcard in Next.js config | HIGH | Fixed |
-| 7 | PostgreSQL exposed on host network | HIGH | Fixed |
-| 8 | No Docker network segmentation | HIGH | Fixed |
-| 9 | Unpinned CI/CD action versions | HIGH | Fixed |
-| 10 | Bare except clauses (8 instances) | HIGH | Fixed |
-
-### Round 2: Medium Severity
-
-| # | Issue | Severity | Status |
-| --- | ------- | ---------- | -------- |
-| 11 | No circuit breaker for external APIs | MEDIUM | Fixed |
-| 12 | HTTP used for external API calls | MEDIUM | Fixed |
-| 13 | Missing DB connection pool health checks | MEDIUM | Fixed |
-| 14 | Cookie security settings missing | MEDIUM | Fixed |
-| 15 | Race conditions in Stripe webhooks | MEDIUM | Fixed |
-| 16-25 | Various code quality and security issues | MEDIUM | Fixed |
-
-### Round 3: Infrastructure & Monitoring
-
-| # | Issue | Severity | Status |
-| --- | ------- | ---------- | -------- |
-| 26 | No Prometheus alerting rules | MEDIUM | Fixed |
-| 27 | Incomplete monitoring coverage | MEDIUM | Fixed |
-| 28 | No database backup strategy | MEDIUM | Fixed |
-| 29-35 | Additional infrastructure hardening | LOW-MEDIUM | Fixed |
+| Issue | Where | Notes |
+| --- | --- | --- |
+| Vulnerable dependencies | all services | Tracked in [#415](https://github.com/fabriziosalmi/wildbox/issues/415). On 2 October 2026 Dependabot listed about 180 open alerts (none critical, 85 high) and code scanning about 190 (Trivy and CodeQL). The `Main Advisories` workflow keeps an issue with the current list of advisories on `main`. |
+| Network segmentation is not effective | `docker-compose.yml`, `docker-compose.prod.yml` | The production overlay defines `frontend`, `backend` and `data` networks, but Compose merges service networks with the base file, so every service also stays on the flat `wildbox` network. With both files, `docker compose config` shows the dashboard and the gateway on the same network as PostgreSQL and Redis. |
+| Initial admin password written to the log | `open-security-identity/scripts/init.sh` | When the identity service creates the first administrator it prints the password from `INITIAL_ADMIN_PASSWORD` to the container log. Change that password after the first login and treat container logs as sensitive. |
+| TLS verification disabled in two scanners | `open-security-tools/app/tools/web_vuln_scanner/main.py`, `open-security-tools/app/tools/cookie_scanner/main.py` | Both create `aiohttp.TCPConnector(ssl=False)`, so they accept any certificate from the target. |
+| Failed logins are not locked out | `open-security-identity/app/token_blacklist.py` | `config.py` sets 5 attempts and 15 minutes, and `record_failed_login` / `is_account_locked` exist, but no login route calls them. The only brake is the gateway's rate limit on `/auth/jwt/` (5 requests per second per address, burst 3). |
+| API documentation served regardless of environment | identity, tools | identity always serves `/docs` and `/redoc`; tools always serves `/openapi.json`. Both are reachable only on their `127.0.0.1` ports, not through the gateway. agents, responder and cspm disable theirs in production. |
 
 ---
 
-## Security Audit Round 4 (v0.5.5)
+## Verification Checks
 
-### Critical Severity (9)
+Re-run on `main` on 2 October 2026. "Not verified" means nobody has checked
+the claim against the current code; it is not a pass.
 
-| # | Issue | Status |
-| --- | ------- | -------- |
-| C1 | Bearer token bypass in data service (grants enterprise/admin) | Fixed |
-| C2 | Bearer token bypass in responder service (grants enterprise/admin) | Fixed |
-| C3 | 5 unauthenticated endpoints in responder service | Fixed |
-| C4 | 14 unauthenticated endpoints in data service | Fixed |
-| C5 | Open redirect via unvalidated billing URLs | Fixed |
-| C6 | Gateway internal secret not mandatory | Fixed |
-| C7 | SSRF in URL security scanner (no private IP filtering) | Fixed |
-| C8 | SSRF in header analyzer (no private IP filtering) | Fixed |
-| C9 | Docker socket mounted in n8n container | Fixed |
-
-### High Severity (15)
-
-| # | Issue | Status |
-| --- | ------- | -------- |
-| H1 | Account enumeration via different HTTP status codes | Fixed |
-| H2 | /metrics endpoint unauthenticated | Fixed |
-| H3 | Health endpoint leaks database error details | Fixed |
-| H4 | CORS wildcard with credentials in sensor | Fixed |
-| H5 | No queryset filtering for non-admin users in Guardian | Fixed |
-| H6 | Flat role check in API key permissions (no hierarchy) | Fixed |
-| H7 | has_perm() grants view_all to members | Fixed |
-| H8 | No file upload validation in Guardian | Fixed |
-| H9 | SSL verification disabled in security tools | Fixed |
-| H10 | Agents GET endpoint unauthenticated | Fixed |
-| H11 | IOC values unsanitized (prompt injection risk) | Fixed |
-| H12 | Sensor mounts full /proc, /sys, docker.sock | Fixed |
-| H13 | Ollama CORS wildcard and exposed port | Fixed |
-| H14 | Guardian DEBUG=true in Docker Compose | Fixed |
-| H15 | N8N_SECURE_COOKIE=false | Fixed |
+| Check | Result | How it was checked |
+| --- | --- | --- |
+| No `eval()` in service code | PASS | `grep` for `eval(` in `open-security-*/**/*.py`, outside tests: only string literals in blocklists |
+| No plaintext passwords in code or logs | **FAIL** | See "Initial admin password written to the log" above. No password literal is used as a default: `docker-compose.yml` refuses to start without the required secrets |
+| No `.env` file in git | PASS | `git ls-files` finds only `.env.example` and `.env.template` files, which hold placeholders |
+| Database and Redis not published to the host | PASS | Neither `postgres` nor `wildbox-redis` has `ports:` in `docker-compose.yml`; backends bind to `127.0.0.1` |
+| Docker networks segmented | **FAIL** | See "Network segmentation is not effective" above |
+| Gateway requires authentication on service APIs | PASS | Every `/api/v1/<service>/` location in `wildbox_gateway.conf` calls `auth_handler.authenticate()`; identity validates tokens itself |
+| Every API endpoint enforces authentication | Not verified | Not checked endpoint by endpoint behind the gateway |
+| JWT tokens revocable | PASS | `POST /auth/logout` and `POST /auth/jwt/logout` blacklist the token's `jti` in Redis; the gateway and identity's own routes refuse it (`logout.py`, `user_manager.py`) |
+| Account lockout after failed logins | **FAIL** | See "Failed logins are not locked out" above |
+| CORS without wildcards | PASS | No `allow_origins=["*"]` or wildcard `Access-Control-Allow-Origin` in service code or gateway config |
+| Security headers at the gateway | PASS | HSTS, `X-Frame-Options`, `X-Content-Type-Options` and `Permissions-Policy` set in `wildbox_gateway.conf` |
+| API docs disabled in production | **FAIL** | See "API documentation served regardless of environment" above |
+| No bare `except:` | PASS, one exception | Only `open-security-responder/demo_final.py`, a demo script |
+| TLS verification enabled in all tools | **FAIL** | See "TLS verification disabled in two scanners" above |
+| No Docker socket mounts | PASS | No `docker.sock` in any Compose file |
+| SSRF protection on outbound requests | Not verified | |
+| File upload validation | Not verified | |
+| LLM input sanitization | Not verified | |
+| CI secrets externalized | Not verified | `secret-scan.yml` runs on every PR; the workflows were not reviewed one by one |
 
 ---
 
-## Dependency Updates (v0.5.4)
+## History
 
-### Python Packages Updated
+The November 2024 platform audit (its report, remediation checklist and
+improvements summary) is no longer published: it described code that has since
+changed, and its findings are superseded by this page. The
+[Tools service audit](tools-service-audit.md) (November 2025) is kept for
+reference, with the same caveat.
 
-| Package | Previous | Updated | CVEs Resolved |
-| --------- | ---------- | --------- | --------------- |
-| aiohttp | 3.12.14/3.13.2 | 3.13.3 | 48 (DoS, zip bomb, path leak) |
-| cryptography | 44.0.x | 46.0.5 | 10 (subgroup attack, OpenSSL) |
-| Django | 4.2.26 | 4.2.28 | 8 (SQL injection, DoS, timing) |
-| fastapi-users | 15.0.0 | 15.0.4 | 1 (account takeover) |
-| urllib3 | 2.5.0 | 2.6.3 | 3 (decompression bomb) |
-| starlette | 0.46.2 | 0.52.1 | 2 (DoS) |
-| python-multipart | 0.0.20 | 0.0.22 | 1 (arbitrary file write) |
-| Pillow | 11.1.0 | 12.1.1 | 1 (OOB write) |
-| nltk | 3.9 | 3.9.2 | 1 (Zip Slip) |
-| fastapi | 0.115.x | 0.129.2 | Required for starlette update |
-
-### npm Packages Updated
-
-| Package | Previous | Updated | CVEs Resolved |
-| --------- | ---------- | --------- | --------------- |
-| axios | ^1.7.0 | ^1.13.5 | 1 (DoS) |
-| next | ^14.2.0 | ^14.2.35 | Partial mitigation |
-| minimatch | (transitive) | ^10.2.1 (override) | 2 (ReDoS) |
-| lodash | (transitive) | ^4.17.22 (override) | 2 (prototype pollution) |
-| diff | (transitive) | ^7.0.0 (override) | 1 (DoS) |
-| mdast-util-to-hast | (transitive) | ^13.2.1 (override) | 2 (XSS) |
-
-### Remaining Vulnerabilities (2)
-
-| Package | Issue | Severity | Reason |
-|---------|-------|----------|--------|
-| next.js | DoS via Image Optimizer | HIGH | Requires Next.js 16 (breaking change) |
-| next.js | DoS via Server Components | HIGH | Requires Next.js 16 (breaking change) |
-
-**Action**: Next.js 16 migration planned as separate effort.
-
----
-
-## Security Controls Implemented
-
-### Authentication & Authorization
-
-- JWT token revocation via Redis blacklist with JTI claims
-- Account lockout after configurable failed login attempts
-- Token blacklist with automatic TTL expiry
-- SELECT FOR UPDATE on subscription mutations (prevents TOCTOU)
-
-### Infrastructure Security
-
-- Docker network segmentation: frontend, backend (internal), data (internal)
-- PostgreSQL not exposed to host network
-- CI/CD secrets via GitHub Secrets (no hardcoded values)
-- Pinned CI/CD action versions (Trivy @0.28.0)
-
-### Application Security
-
-- Security headers on Next.js dashboard (CSP, HSTS, X-Frame-Options, etc.)
-- CORS restricted to configured origins (no wildcards)
-- Path traversal prevention with realpath validation
-- HTTP → HTTPS for all external API calls
-- Circuit breaker for OpenAI API resilience
-- Specific exception handling (no bare except clauses)
-
-### Monitoring & Operations
-
-- Prometheus alert rules for service health, infrastructure, database, security
-- PostgreSQL backup script with optional GPG encryption and S3 upload
-- Connection pool health checks (pool_pre_ping)
-- Cookie security: httpOnly, sameSite=Lax
-
----
-
-## Verification Checklist
-
-| Check | Status |
-| ------- | -------- |
-| No eval() calls in source code | PASS |
-| No plaintext passwords in code | PASS |
-| CORS configured explicitly (no wildcards) | PASS |
-| Authentication on all API endpoints | PASS |
-| No .env files in git repository | PASS |
-| Security headers implemented | PASS |
-| API docs disabled in production | PASS |
-| JWT tokens revocable | PASS |
-| Account lockout enabled | PASS |
-| Docker networks segmented | PASS |
-| CI/CD secrets externalized | PASS |
-| Database not exposed to host | PASS |
-| Bare except clauses eliminated | PASS |
-| SSRF protection on outbound requests | PASS |
-| SSL verification enabled on all tools | PASS |
-| File upload validation enforced | PASS |
-| No Docker socket mounts | PASS |
-| LLM input sanitization | PASS |
-
----
-
-## Related Documentation
-
-- **[CHANGELOG.md](../../CHANGELOG.md)** - Version history with all security changes
-- **[SECURITY.md](../../SECURITY.md)** - Security policy and vulnerability reporting
-- **[audit-report.md](audit-report.md)** - Detailed technical audit findings
-- **[improvements-summary.md](improvements-summary.md)** - Executive summary of improvements
-- **[remediation-checklist.md](remediation-checklist.md)** - Implementation procedures
-
----
-
-**Last Updated**: February 22, 2026
-**Next Review**: Monthly or when upstream patches are available
+The audit rounds of February 2026 (v0.5.2 to v0.5.5) and every later security
+change are recorded release by release in
+[CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md).

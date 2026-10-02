@@ -98,7 +98,7 @@ cat > /tmp/wildbox-test-config.yaml <<EOF
 data_lake:
   endpoint: "http://localhost:8001/api/v1/ingest"
   api_key: "your-test-api-key-here"
-  tls_verify: false
+  tls_verify: true
   batch_size: 50
   flush_interval: 10
 

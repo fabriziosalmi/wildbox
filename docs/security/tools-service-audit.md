@@ -1,5 +1,13 @@
 # Tools Service Security Audit
 
+> **Historical document (November 2025).** It describes the code as it was then;
+> file paths, line numbers, scores and statuses below no longer match `main`.
+> For what is true today, see the [Security status](status.md).
+>
+> The `SecureToolExecutionManager` whose input-sanitization TODOs it
+> recommends completing no longer exists; tool execution now lives in
+> `open-security-tools/app/execution_manager.py`, which has no such TODOs.
+
 **Date:** 2025-11-16
 **Service:** Wildbox Security Tools (open-security-tools)
 **Auditor:** Security Assessment Team
@@ -166,13 +174,7 @@ Focus areas for next audit:
 
 ## Related Documentation
 
-- **Full Audit Report:** [TOOLS_SERVICE_SECURITY_AUDIT.md](../../TOOLS_SERVICE_SECURITY_AUDIT.md)
-- **Beta Announcement:** [TOOLS_SERVICE_BETA_ANNOUNCEMENT.md](../../TOOLS_SERVICE_BETA_ANNOUNCEMENT.md)
-- **Monitoring Guide:** [TOOLS_SERVICE_POST_RELEASE_MONITORING.md](../../TOOLS_SERVICE_POST_RELEASE_MONITORING.md)
-- **Authentication Guide:** [GATEWAY_AUTHENTICATION_GUIDE.md](../GATEWAY_AUTHENTICATION_GUIDE.md)
-- **Tools README:** [open-security-tools/README.md](../../open-security-tools/README.md)
+- **Authentication Guide:** [GATEWAY_AUTHENTICATION_GUIDE.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/GATEWAY_AUTHENTICATION_GUIDE.md)
+- **Tools README:** [open-security-tools/README.md](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-tools/README.md)
+- **Current status:** [Security status](status.md)
 
----
-
-**Generated:** 2025-11-16
-**Last Updated:** 2025-11-16

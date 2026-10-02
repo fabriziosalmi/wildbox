@@ -62,11 +62,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **pytest 9 and black 26.3.1 in the service locks** (#415). pytest 7.4 and
+  8.3 (one advisory: predictable `/tmp/pytest-of-<user>` directories) move
+  to 9.0.3 in six services and 9.1.1 in identity (which keeps a range), with
+  pytest-asyncio 1.3.0, the first release that accepts pytest 9. black 24
+  (2 advisories) moves to 26.3.1 in data,
+  guardian, identity and sensor. Dev tools only: no runtime code changes, and
+  the Code Quality job already ran an unpinned black.
+
+- **agents moves to LangChain 1.x** (#415). langchain 0.3.30,
+  langchain-anthropic 0.3.22, langchain-core 0.3.86 and
+  langchain-text-splitters 0.3.11 carried 6 advisories between them. The agent
+  keeps its `AgentExecutor` loop, now from `langchain-classic` 1.0.8; prompts,
+  messages and `@tool` come from langchain-core 1.6.6; langchain-anthropic is
+  1.4.6. `langchain-community`, never imported, is gone. One visible change:
+  the analyst notes passed to the structured report are now the model's text,
+  where 0.3 passed the string form of a list of content blocks.
+
+- **guardian moves to Django 5.2 LTS** (#415). Django 4.2 has been out of
+  support since April 2026; 4.2.30 carried 8 advisories, djangorestframework
+  3.15.2 another 2. Now Django 5.2.17, DRF 3.17.2, django-celery-beat 2.8.1
+  (2.5.0 declared `Django<5.0`) and django-filter 25.1 (with 23.2 every list
+  endpoint with a `ChoiceFilter` answered 500 on Django 5; a new unit test,
+  `test_filtersets.py`, builds every filterset form so this fails in CI
+  instead of at request time). `STATICFILES_STORAGE`, which Django 5.1 drops
+  without an error, becomes `STORAGES`: without it the WhiteNoise compressed
+  manifest storage would have been silently replaced by the plain one.
+  Deploy runs one new migration, `django_celery_beat.0019`.
+
+- **cspm leaves urllib3 1.26** (#415). urllib3 1.26.20 carried 7 advisories and
+  was held there by `google-auth==2.23.0` (`urllib3<2.0`) and
+  `botocore==1.34.0` (`urllib3<2.1`). google-auth 2.23.4 and boto3/botocore
+  1.34.63 are the first releases of the same lines that allow urllib3 2; the
+  lock now has urllib3 2.8.0 and s3transfer 0.10.4.
+
+- **Unused dependencies with advisories removed** (#415). guardian pinned
+  Pillow 12.2.0 (13 advisories) and nothing imports PIL or declares an
+  ImageField. data pinned nltk 3.10.3 (1 advisory, no fixed release exists)
+  and dash 2.15.0, which held flask at 3.0.3 and werkzeug at 3.0.6
+  (4 advisories); neither is imported. 15 packages leave the data lock.
+
 - **click 8.3.3 in cspm and data** (#415), from 8.1.7 (1 advisory). Neither
   service calls click itself; celery, uvicorn and black do, and their CLIs
   behave as before. The one change seen: `python -m spacy info` in data now
   exits with an error (typer 0.9.4, pinned by spacy 3.7.2, predates click
   8.2); nothing in the repository imports spacy or runs its CLI.
+
+- **Tools verify TLS certificates by default** (#495). `web_vuln_scanner`,
+  `cookie_scanner`, `http_security_scanner` and `url_analyzer` connected with
+  certificate verification switched off (`ssl=False` or `CERT_NONE`), so a
+  scan could report on content served by whoever intercepted the connection.
+  They now verify the certificate chain and the hostname. When verification
+  fails the scan returns `success: false` with the reason (for example
+  `self-signed certificate`) and sends no further request; there is no retry
+  without verification. Accepting an unverified certificate is a per-scan
+  choice through the `verify_ssl` input every tool already inherits (default
+  `true`), whose description in the input schema states the risk.
+  `ssl_analyzer`, `ca_analyzer` and `pki_certificate_manager` still read the
+  certificate over an unverified handshake, which is what lets them inspect a
+  broken one, and now also run a verified handshake and report its failure as
+  a finding. Most of these seven tools could not return any result before this
+  change (the required `success` field was never set, `getpeercert_chain()`
+  does not exist in the `ssl` module, naive and aware datetimes were
+  compared); those defects are fixed so the new behavior is reachable, and
+  22 unit tests against a local self-signed HTTPS server cover it.
+
+- **cspm drops the cloud SDKs it never imported, and protobuf with them**
+  (#415). requirements.in pinned 23 `google-*` packages besides google-auth
+  and seven `azure-mgmt-*` packages; the service imports only `google.auth`
+  and `azure.identity` (in `app/worker.py`), and every GCP and Azure check
+  runs on sample data, naming its SDK only in a comment. The 2023
+  google-cloud releases require `protobuf<5`, which held protobuf at 4.25.9
+  (PYSEC-2026-1805, fixed in 5.29.6). With them gone protobuf, grpcio and
+  google-api-core leave the lock entirely: 128 packages become 73, and
+  pip-audit reports nothing for cspm. boto3, botocore, google-auth and
+  azure-identity stay at the same versions.
 
 ### CI
 
@@ -87,6 +157,123 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on advisories the PR introduces; those already on `main` are reported by the
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
+
+### Documentation
+
+- **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
+  `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
+  every page loads. `api-reference.html` and the two Redoc pages now load
+  their vendored files from root-relative paths like the rest of the site,
+  the Redoc pages get canonical URLs, the remaining standalone pages link
+  `security.txt` in their footers, and `api-reference.html` loses a stale
+  "Last Updated" stamp.
+- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+  (a November 2025 snapshot, unpublished) is marked archived, and the
+  gateway authentication guide, linked from the published tools audit, says
+  that its keys and hosts are fictitious.
+
+- **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
+  WAF, Kubernetes support and a local Ollama LLM, none of which the project
+  ships, and gave the gateway as port 8080 and Postgres credentials that do
+  not match. Both are rewritten from `docker-compose.yml`, the gateway routes
+  and the integration tests' login flow, agree with each other, state no
+  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  The homepage's structured data loses the same claims and its stale
+  `softwareVersion`.
+- **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
+  item; the copy now says so and calls them a growing collection instead of
+  promising a library, and the placeholder comments are gone. Both stay
+  indexed.
+- **The privacy notice is indexable.** It is a complete, dated legal page
+  listed in the sitemap, so `noindex` contradicted the sitemap; it now has
+  `index, follow` and a canonical URL.
+- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
+  loads its vendored Tailwind from a root-relative path like the other pages,
+  and the llms files no longer claim account lockout, which identity does not
+  enforce.
+
+- **The security status page says what is still wrong.** It reported every
+  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
+  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
+  networks are not segmented (the production overlay's networks are merged
+  with the flat `wildbox` network), identity's `init.sh` prints the initial
+  admin password to the log, two scanners disable TLS verification, and
+  identity and tools serve API docs in every environment. The page now lists
+  those as open issues, points at #415 for dependencies, marks unchecked
+  claims "Not verified", and says how each check was made. The 2024 and 2025
+  audit documents are marked historical; the checklist's quoted heredoc that
+  wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
+  replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
+  is no longer quoted as current. Expired version and review stamps are gone
+  from the security policy.
+- **Account lockout is reported as not enforced.** The status page counted
+  the lockout settings in `config.py` as a pass, but nothing calls
+  `record_failed_login` or `is_account_locked`; it is now a known open issue
+  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
+  (fastapi-users hashes with Argon2). The status page stops linking the
+  November 2024 audit documents, which the site no longer publishes.
+
+- **One ports table, one login flow, no published passwords.** The guides
+  disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
+  8006, guardian on 8001) and showed the login once as JSON and once
+  form-encoded. `docs/guides/ports.md` now lists every service, container
+  and port from `docker-compose.yml`, and the other guides link to it. The
+  Quick Start uses the login sequence the integration tests run (form-encoded,
+  through the gateway over HTTPS, trusting the generated certificate), with no
+  time promise. The Credentials guide no longer lists `dev-api-key-123`,
+  `postgres/postgres`, `demo-password-123` or `admin/admin`, none of which the
+  stack uses; it explains `generate_secrets.py`, `INITIAL_ADMIN_*` and
+  rotation instead. The Deployment guide no longer overwrites
+  `docker-compose.yml`, replaces the gateway with a separate nginx or creates
+  databases by hand. The identity API reference is rewritten from the routes
+  the service registers; the other references get correct ports and a note
+  that they are hand-written.
+- **The Ollama guide says Ollama is gone.** `guides/ollama-llm.md` described a
+  local LLM container that no Compose file defines; it now documents the
+  Anthropic configuration the agents service actually reads, including that
+  submitted indicators are sent to Anthropic when it is enabled. The
+  Deployment guide notes that `haproxy/` belongs to the blue/green Compose
+  file only.
+- **One authentication reference.** The Credentials guide now states, from
+  the identity code, the signing algorithm (HS256), the claims, the 30-minute
+  lifetime (which `.env` cannot change, because Compose does not pass it), that
+  there is no refresh, both revocation routes, and that failed logins are not
+  locked out (the lockout helpers exist but nothing calls them). It also warns
+  that the `/admin/me` password routes use bcrypt and cannot verify the Argon2
+  hashes fastapi-users writes. The tools reference counts 52 loadable tools
+  instead of 54, the ports page explains how `/metrics` and Prometheus are
+  kept private (localhost binding, not authentication), the references mark
+  their example values as fictitious, and acronyms are expanded on first use.
+
+- **The documentation site renders Markdown at build time.** `docs.html` used
+  to fetch guides from `raw.githubusercontent.com` and turn them into HTML in
+  the browser with a hand-written parser, injecting the result unsanitized; a
+  failed fetch left a "Loading..." page. Jekyll now renders every guide,
+  security page and API reference through one layout, with a sidebar built
+  from `docs/_data/docs_nav.yml`, and old `docs.html#quickstart` links redirect
+  to the published page. The API cards that said "Coming Soon" for tools,
+  identity, data and guardian link to their endpoint references, and
+  `docs/api/README.md` is published at `/api/`. The dead `collections`
+  configuration, the unused remote theme and the stale `docs/index.md` are
+  gone, and the sitemap lists only pages the build produced.
+- **`docs/security/findings.json` is deleted.** It was a November 2024 dump
+  with local `/Users/...` paths that contradicted the status page; nothing
+  read it. It remains in git history.
+- **`api/swagger-index.html` redirects to the API overview.** It called itself
+  the index of all APIs and listed two of six; Redoc pages for the other four
+  were not generated because no exported OpenAPI document exists for them.
+- **The 2024 security audit is no longer published.** `docs.html#security-audit`
+  led to `/security/audit-report/`; that report, its remediation checklist and
+  its improvements summary describe code that has since changed and are
+  excluded from the site and the sidebar, and the old hash now leads to the
+  security status page.
+- **Contributor docs page and smaller site fixes.** `/contributing/` links the
+  engineering notes that stay unpublished (cited by `SECURITY.md` and CI
+  scripts) and states that Jekyll in `docs/` is the only documentation stack;
+  `website/` is ignored by git. Long pages get an "On this page" list built
+  from their headings, every documentation page links `security.txt`, vendor
+  READMEs are no longer published as pages, and the sitemap emits only `<loc>`
+  because Pages cannot supply a real last-modified date.
 
 ### Removed
 
