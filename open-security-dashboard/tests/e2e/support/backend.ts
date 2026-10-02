@@ -7,6 +7,7 @@
  * the data service has no API that creates indicators -- see that file.
  */
 import { APIRequestContext, BrowserContext, Page, expect, request } from '@playwright/test'
+import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -51,12 +52,13 @@ export function adminAccount(): Account {
 
 /** A fresh, unique address on every call, so no test ever reuses an account. */
 export function uniqueEmail(label: string): string {
-  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+  const nonce = `${Date.now().toString(36)}${randomBytes(4).toString('hex')}`
   return `e2e-${label}-${nonce}@wildbox.io`
 }
 
 export function strongPassword(): string {
-  return `E2e-${Math.random().toString(36).slice(2, 12)}-Pw9!`
+  // From the CSPRNG: these accounts live on a real stack, however briefly.
+  return `E2e-${randomBytes(8).toString('hex')}-Pw9!`
 }
 
 export async function gatewayApi(): Promise<APIRequestContext> {
