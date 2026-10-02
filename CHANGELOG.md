@@ -57,6 +57,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **Unused dependencies with advisories removed** (#415). guardian pinned
+  Pillow 12.2.0 (13 advisories) and nothing imports PIL or declares an
+  ImageField. data pinned nltk 3.10.3 (1 advisory, no fixed release exists)
+  and dash 2.15.0, which held flask at 3.0.3 and werkzeug at 3.0.6
+  (4 advisories); neither is imported. 15 packages leave the data lock.
+
 - **click 8.3.3 in cspm and data** (#415), from 8.1.7 (1 advisory). Neither
   service calls click itself; celery, uvicorn and black do, and their CLIs
   behave as before. The one change seen: `python -m spacy info` in data now
