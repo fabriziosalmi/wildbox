@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **guardian can create vulnerabilities again** (#515). The post_save
+  history entry wrote `old_value=None` into a NOT NULL column, so every
+  vulnerability creation raised `IntegrityError`, and so did assigning a
+  user or clearing the assignment. A missing value is now stored as `''`,
+  the column's own empty value. No migration.
+
+- **guardian's vulnerability templates and assessments are reachable**
+  (#514). The router registered the empty prefix first, so
+  `/api/v1/vulnerabilities/templates/` and `.../assessments/` were served
+  as a vulnerability lookup and answered 404. The named prefixes are now
+  registered before it.
+
 - **`make start` no longer leaves the data service crash-looping.** It layers
   `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
   whose `ENVIRONMENT` is `production`; data refuses that combination. The
