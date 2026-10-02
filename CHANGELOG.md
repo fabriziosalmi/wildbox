@@ -71,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The dashboard runs on Next.js 16** (#522): 16.3.8, from 15.5. Next 15
+  pins postcss 8.4.31, which carries four advisories; Next 16 depends on
+  the patched 8.5 line itself. `src/middleware.ts` becomes `src/proxy.ts`
+  (the file convention Next 16 renamed), `images.domains` becomes the
+  equivalent `remotePatterns`, and production builds now use Turbopack.
+  Status codes, redirects and response headers match Next 15, and the
+  login and dashboard pages render the same.
 - **Failed-login lockout is enforced** (#509). The helpers and settings
   existed (5 attempts, 15 minutes) but no login route called them, so every
   account accepted unlimited password guesses. Password login now refuses an

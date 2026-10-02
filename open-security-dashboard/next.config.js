@@ -9,7 +9,8 @@ const scriptSrc = isDev
 const nextConfig = {
   output: 'standalone',
   images: {
-    domains: ['localhost'],
+    // images.domains is deprecated in Next 16; this is the same allowance.
+    remotePatterns: [{ hostname: 'localhost' }],
   },
   env: {
     CUSTOM_KEY: process.env.CUSTOM_KEY,
