@@ -1,11 +1,10 @@
 # Chaos and load, on a schedule.
 #
-# tests/chaos/ contains exactly the scenarios that would surface this system's
-# concurrency and resilience defects -- network partition, Redis failure,
-# connection-pool exhaustion with 100 concurrent requests, full outage -- and no
-# workflow referenced it, so it was documentation of intent rather than
-# verification (WILDBO-CONC-03). Nothing measured performance either
-# (WILDBO-PERF-03).
+# tests/chaos/ injects one fault at a time into the running stack -- identity
+# unreachable, PostgreSQL or Redis down, a service process dying, a burst of
+# concurrent requests -- and asserts what the code says should happen and that
+# the stack recovers (WILDBO-CONC-03, rewritten in #428). Nothing measured
+# performance either (WILDBO-PERF-03).
 #
 # Nightly rather than per-PR: these bring up the whole stack and take minutes.
 name: Chaos & Load
@@ -25,17 +24,10 @@ on:
 jobs:
   chaos:
     name: Chaos experiments
-    # Manual only until the suite is rewritten (#428). It went red every night
-    # for reasons that are not findings about the system: the experiments
-    # address containers by a name scheme the compose file does not use, call
-    # the gateway on port 80 where everything but /health is a 301 to HTTPS,
-    # expect a circuit breaker to open in 5 s that needs 10 failures and 60 s,
-    # and inject latency with tc in containers that lack NET_ADMIN. A nightly
-    # red that means nothing teaches everyone to ignore the nightly. The load
-    # baseline below still runs every night.
+    # Manual only until the rewritten suite (#428) has been green on dispatch.
     if: github.event_name == 'workflow_dispatch' && (inputs.suite == 'all' || inputs.suite == 'chaos')
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -44,46 +36,46 @@ jobs:
         with:
           python-version: '3.11'
 
+      # The stack is started exactly as the integration job starts it: the
+      # experiments measure the configuration that ships, not the development
+      # override, and they log in with the admin account it provisions.
       - name: Generate secrets
         run: |
-          python3 scripts/generate_secrets.py
+          cp .env.example .env
+          python3 scripts/generate_secrets.py --force
           python3 scripts/validate_secrets.py
 
+      - name: Raise the per-team rate limit
+        run: sed -i "s/^RATE_LIMIT_PER_HOUR=.*/RATE_LIMIT_PER_HOUR=1000000/" .env
+
       - name: Start the stack
-        run: |
-          docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
-          chmod +x scripts/wait-for-services.sh
-          ./scripts/wait-for-services.sh
-        timeout-minutes: 15
-        env:
-          SERVICES: "gateway:localhost:80:/health identity:localhost:8001:/health tools:localhost:8000:/health data:localhost:8002:/health"
-          # generate_secrets.py builds .env from .env.template, which sets
-          # ENVIRONMENT=production because that is what a real deployment wants.
-          # This job then layers docker-compose.dev.yml on top, and that file
-          # forces DEBUG=true for `data`. app/config.py:186 refuses the pair:
-          #
-          #   ValueError: DEBUG must be False in production
-          #
-          # so `data` crash-looped, never went healthy, and both jobs died in
-          # "Start the stack" after nine minutes of building images. The stack
-          # here IS a development stack (it is the dev override), so say so.
-          ENVIRONMENT: development
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml up -d --wait --wait-timeout 600
 
       - name: Install test dependencies
         run: pip install -r tests/requirements.txt
 
       - name: Run chaos suite
-        run: pytest tests/chaos -v --tb=short -p no:cacheprovider
+        run: |
+          env_value() { sed -n "s/^$1=//p" .env | head -1; }
+          INITIAL_ADMIN_EMAIL="$(env_value INITIAL_ADMIN_EMAIL)"
+          INITIAL_ADMIN_PASSWORD="$(env_value INITIAL_ADMIN_PASSWORD)"
+          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD
+          python -m pytest tests/chaos -v -s -rA --tb=short -p no:cacheprovider -o addopts=""
         env:
-          GATEWAY_URL: http://localhost
+          GATEWAY_URL: https://localhost
+          REQUESTS_CA_BUNDLE: ${{ github.workspace }}/open-security-gateway/ssl/wildbox.crt
+          IDENTITY_SERVICE_URL: http://localhost:8001
+          TOOLS_SERVICE_URL: http://localhost:8000
+          DATA_SERVICE_URL: http://localhost:8002
+        timeout-minutes: 40
 
       - name: Collect logs on failure
         if: failure()
-        run: docker compose logs --tail=200
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml logs --tail=200 gateway identity data postgres wildbox-redis
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.yml -f .github/compose.ci-ports.yml down -v
 
   load:
     name: Load baseline
