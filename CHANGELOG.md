@@ -57,6 +57,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **guardian moves to Django 5.2 LTS** (#415). Django 4.2 has been out of
+  support since April 2026; 4.2.30 carried 8 advisories, djangorestframework
+  3.15.2 another 2. Now Django 5.2.17, DRF 3.17.2, django-celery-beat 2.8.1
+  (2.5.0 declared `Django<5.0`) and django-filter 25.1 (with 23.2 every list
+  endpoint with a `ChoiceFilter` answered 500 on Django 5; a new unit test,
+  `test_filtersets.py`, builds every filterset form so this fails in CI
+  instead of at request time). `STATICFILES_STORAGE`, which Django 5.1 drops
+  without an error, becomes `STORAGES`: without it the WhiteNoise compressed
+  manifest storage would have been silently replaced by the plain one.
+  Deploy runs one new migration, `django_celery_beat.0019`.
+
 - **cspm leaves urllib3 1.26** (#415). urllib3 1.26.20 carried 7 advisories and
   was held there by `google-auth==2.23.0` (`urllib3<2.0`) and
   `botocore==1.34.0` (`urllib3<2.1`). google-auth 2.23.4 and boto3/botocore
