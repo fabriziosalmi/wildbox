@@ -12,7 +12,7 @@ Two checks, both against the production configuration
            inside the containers: each attachment in the map must carry the
            connection it exists for, and the paths segmentation is meant to
            remove (dashboard -> data layer and backends, gateway -> data
-           layer, lateral traffic over the egress network) must fail.
+           layer, the data layer -> internet) must fail.
 
 The rendered map is the authority for what segmentation *is*; the runtime
 probes prove Docker enforces it. The issue this guards against was invisible
@@ -39,16 +39,16 @@ PROFILES = ["automations", "backup", "monitoring"]
 EXPECTED_NETWORKS = {
     "gateway": {"frontend", "backend"},
     "dashboard": {"frontend"},
-    "identity": {"backend", "data", "egress"},
-    "api": {"backend", "data", "egress"},
-    "data": {"backend", "data", "egress"},
-    "cspm": {"backend", "data", "egress"},
-    "guardian": {"backend", "data", "egress"},
-    "responder": {"backend", "data", "egress"},
-    "agents": {"backend", "data", "egress"},
-    "sensor": {"backend", "egress"},
-    "automations": {"backend", "egress"},
-    "prometheus": {"backend", "egress"},
+    "identity": {"backend", "data"},
+    "api": {"backend", "data"},
+    "data": {"backend", "data"},
+    "cspm": {"backend", "data"},
+    "guardian": {"backend", "data"},
+    "responder": {"backend", "data"},
+    "agents": {"backend", "data"},
+    "sensor": {"backend"},
+    "automations": {"backend"},
+    "prometheus": {"backend"},
     "tools-worker": {"data", "egress"},
     "tools-flower": {"data", "egress"},
     "data-scheduler": {"data", "egress"},
@@ -94,8 +94,10 @@ MUST_CONNECT = [
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "api", 8000, "WILDBOX_API_URL"),
     ("sensor", "open-security-data", 8002, "ingest endpoint"),
-    ("api", "github.com", 443, "outbound internet via egress"),
+    ("api", "github.com", 443, "outbound internet via backend"),
+    ("agents", "api.anthropic.com", 443, "outbound internet via backend"),
     ("tools-worker", "github.com", 443, "outbound internet via egress"),
+    ("data-scheduler", "github.com", 443, "outbound internet via egress"),
 ]
 
 MUST_NOT_CONNECT = [
@@ -107,16 +109,15 @@ MUST_NOT_CONNECT = [
     ("dashboard", "open-security-agents", 8006, "dashboard goes through the gateway"),
     ("gateway", "wildbox-postgres", 5432, "gateway is not on data"),
     ("gateway", "wildbox-redis", 6379, "gateway is not on data"),
-    # sensor and postgres/flower share no network but egress (postgres only in
-    # CI, to publish its loopback port): these prove ICC is off on egress.
-    ("sensor", "wildbox-postgres", 5432, "egress carries no container traffic"),
+    ("sensor", "wildbox-postgres", 5432, "sensor is not on data"),
     ("sensor", "wildbox-redis", 6379, "sensor is not on data"),
-    ("sensor", "open-security-tools-flower", 5555, "egress carries no container traffic"),
+    ("gateway", "open-security-tools-flower", 5555, "flower is on data and egress only"),
+    ("postgres", "github.com", 443, "data is internal: no route out"),
 ]
 
 # Runs inside the container with "$0"=host "$1"=port. Exit 0: TCP connection
 # established; 2: name does not resolve; 3: resolved, connection failed.
-# Uses whichever of python3 / node / curl the image has.
+# Uses whichever of python3 / node / curl / bash the image has.
 PROBE = r"""
 h="$0"; p="$1"
 if command -v python3 >/dev/null 2>&1; then
@@ -149,7 +150,12 @@ else
   [ "$rc" -eq 6 ] && exit 2
   case "$t" in ""|0|0.0*) exit 3 ;; esac
   exit 0
+elif command -v bash >/dev/null 2>&1; then
+  getent hosts "$h" >/dev/null || exit 2
+  timeout 4 bash -c "exec 3<>/dev/tcp/$h/$p" 2>/dev/null || exit 3
+  exit 0
 fi
+exit 4
 """
 
 RESULT = {0: "connected", 2: "does not resolve", 3: "connection failed"}
@@ -197,10 +203,10 @@ def check_config(env_file):
             failures.append(f"{svc}: alias {alias!r} missing on {net}")
 
     nets = cfg.get("networks", {})
-    for n in ("backend", "data"):
-        if not nets.get(n, {}).get("internal"):
-            failures.append(f"network {n} must be internal")
-    for n in ("frontend", "egress"):
+    if not nets.get("data", {}).get("internal"):
+        failures.append("network data must be internal")
+    # backend is deliberately not internal; see docker-compose.prod.yml.
+    for n in ("frontend", "backend", "egress"):
         if nets.get(n, {}).get("internal"):
             failures.append(f"network {n} must not be internal")
     icc = nets.get("egress", {}).get("driver_opts", {}).get(

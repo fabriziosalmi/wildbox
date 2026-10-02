@@ -3,16 +3,36 @@
 # compose.ci-ports.yml publishes PostgreSQL on the runner's loopback for the
 # cross-tenant test. In production postgres is attached to the internal `data`
 # network alone, and Docker publishes no port for a container whose networks
-# are all internal, so that binding silently does nothing.
+# are all internal, so that binding does nothing here.
 #
-# Joining `egress` gives the port a network to be published through without
-# opening a path to the database: inter-container communication is disabled on
-# egress, so no container reaches postgres through it.
-# scripts/check_network_segmentation.py asserts exactly that (sensor, which
-# shares only egress with postgres here, must fail to connect).
+# Attaching postgres to a non-internal network to get the port back is not an
+# option: Docker's DNS would then answer `wildbox-postgres` with that
+# network's address to every service sharing it, which is what broke the
+# first run of this job. Instead a forwarder on `data` + `egress` publishes
+# the port and relays to wildbox-postgres:5432 over `data`. postgres itself
+# keeps exactly its production networks, and nothing looks the forwarder up.
 #
 # Never add this to a deployment.
 services:
   postgres:
+    ports: !reset []
+
+  postgres-ci-port:
+    image: alpine:3.20
+    command:
+      - sh
+      - -c
+      - apk add --no-cache socat >/dev/null && exec socat TCP-LISTEN:5432,fork,reuseaddr TCP:wildbox-postgres:5432
+    ports:
+      - "127.0.0.1:5432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
+      - data
       - egress
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep socat >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
