@@ -130,12 +130,10 @@ def login(timeout: float = 10.0) -> requests.Response:
 
 
 def fresh_token() -> str:
-    """A token from a new login.
+    """A token from a new login, never seen by the gateway.
 
-    Not guaranteed unseen: login tokens carry only sub, aud and exp (whole
-    seconds), so two logins within the same second return the same token.
-    An experiment that needs a cache miss at the gateway must space its
-    logins more than a second apart.
+    Login tokens carry a random jti (RevocableJWTStrategy, #475), so every
+    call yields a distinct token and a guaranteed cache miss at the gateway.
     """
     response = login()
     assert (

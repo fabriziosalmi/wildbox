@@ -125,7 +125,9 @@ async def create_initial_superuser():
         await ensure_default_team(db, admin_user)
 
         print(f'✅ Created initial admin user: {admin_email}')
-        print(f'🔑 Password: {admin_password}')
+        # Never print the password itself: container logs are read by anyone
+        # with `docker logs`, log shippers and CI artifacts (#493).
+        print('🔑 Password: the value of INITIAL_ADMIN_PASSWORD in .env')
         print('⚠️  Please change the default password after first login!')
         
         await db.close()

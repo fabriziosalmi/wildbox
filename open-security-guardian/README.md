@@ -1,7 +1,7 @@
 # Open Security Guardian - Vulnerability Management
 
 **Version:** 1.0  
-**Framework:** Django 4.2 + Django REST Framework  
+**Framework:** Django 5.2 LTS + Django REST Framework  
 **Port:** 8013  
 **Database:** PostgreSQL (guardian schema)
 

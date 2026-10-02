@@ -14,9 +14,9 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Literal
 
 from langchain_anthropic import ChatAnthropic
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.schema.messages import SystemMessage
+from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import SystemMessage
 from pydantic import BaseModel, Field
 
 from ..config import settings
