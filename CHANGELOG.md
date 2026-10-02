@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **identity no longer serves its API documentation in production** (#496).
+  `/docs`, `/redoc` and `/openapi.json` mapped every route, admin and
+  internal ones included; like agents, responder and cspm, identity now
+  serves them only when `ENVIRONMENT` is not `production`.
+
 - **identity no longer prints the initial admin password** (#493).
   `scripts/init.sh` wrote it to the container log on first start, where
   `docker logs`, log shippers and CI artifacts could read it. It now says
