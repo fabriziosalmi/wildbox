@@ -75,6 +75,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
 
+### Documentation
+
+- **One ports table, one login flow, no published passwords.** The guides
+  disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
+  8006, guardian on 8001) and showed the login once as JSON and once
+  form-encoded. `docs/guides/ports.md` now lists every service, container
+  and port from `docker-compose.yml`, and the other guides link to it. The
+  Quick Start uses the login sequence the integration tests run (form-encoded,
+  through the gateway over HTTPS, trusting the generated certificate), with no
+  time promise. The Credentials guide no longer lists `dev-api-key-123`,
+  `postgres/postgres`, `demo-password-123` or `admin/admin`, none of which the
+  stack uses; it explains `generate_secrets.py`, `INITIAL_ADMIN_*` and
+  rotation instead. The Deployment guide no longer overwrites
+  `docker-compose.yml`, replaces the gateway with a separate nginx or creates
+  databases by hand. The identity API reference is rewritten from the routes
+  the service registers; the other references get correct ports and a note
+  that they are hand-written.
+
 ### Removed
 
 - **The Docusaurus site in `website/`** (#419). It was never the published

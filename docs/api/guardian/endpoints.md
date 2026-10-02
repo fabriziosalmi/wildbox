@@ -1,9 +1,14 @@
 # Guardian Service API
 
-**Service Port**: 8001
-**Base URL**: `http://localhost:8001/api/v1`
+> **Hand-written reference.** This page was written in November 2024 and
+> has not been re-checked endpoint by endpoint against the code since.
+> Paths, fields and examples may have drifted; the service's own OpenAPI
+> document is authoritative. Corrections are welcome as issues or pull
+> requests.
+
+**Gateway path**: `https://<host>/api/v1/guardian/...` (proxied to the service's `/api/v1/...`)  
+**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
 **Authentication**: API Key (X-API-Key header) or Bearer Token (JWT)
-**Documentation**: [Live Swagger UI](http://localhost:8001/docs) | [OpenAPI Schema](http://localhost:8001/api/schema/)
 
 ---
 
@@ -33,7 +38,7 @@ Guardian Service supports multiple authentication methods:
 Use the `X-API-Key` header for API requests:
 
 ```bash
-curl -X GET http://localhost:8001/api/v1/assets/ \
+curl -X GET http://localhost:8013/api/v1/assets/ \
   -H "X-API-Key: your-api-key-here"
 ```
 
@@ -42,7 +47,7 @@ curl -X GET http://localhost:8001/api/v1/assets/ \
 Use the `Authorization: Bearer` header:
 
 ```bash
-curl -X GET http://localhost:8001/api/v1/assets/ \
+curl -X GET http://localhost:8013/api/v1/assets/ \
   -H "Authorization: Bearer your-jwt-token-here"
 ```
 
@@ -65,7 +70,7 @@ curl -X GET http://localhost:8001/api/v1/assets/ \
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/auth/api-keys/ \
+curl -X POST http://localhost:8013/api/v1/auth/api-keys/ \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -115,7 +120,7 @@ List all security assets with filtering and pagination.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/assets/?limit=20&status=active&severity=critical" \
+curl -X GET "http://localhost:8013/api/v1/assets/?limit=20&status=active&severity=critical" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -124,7 +129,7 @@ curl -X GET "http://localhost:8001/api/v1/assets/?limit=20&status=active&severit
 ```json
 {
   "count": 150,
-  "next": "http://localhost:8001/api/v1/assets/?offset=20",
+  "next": "http://localhost:8013/api/v1/assets/?offset=20",
   "previous": null,
   "results": [
     {
@@ -177,7 +182,7 @@ Create a new asset in the system.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/assets/ \
+curl -X POST http://localhost:8013/api/v1/assets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -225,7 +230,7 @@ Retrieve detailed information about a specific asset.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8001/api/v1/assets/asset-001/ \
+curl -X GET http://localhost:8013/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -290,7 +295,7 @@ Update an asset's information.
 **Request**:
 
 ```bash
-curl -X PUT http://localhost:8001/api/v1/assets/asset-001/ \
+curl -X PUT http://localhost:8013/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -322,7 +327,7 @@ Delete an asset from the system.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8001/api/v1/assets/asset-001/ \
+curl -X DELETE http://localhost:8013/api/v1/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -351,7 +356,7 @@ Initiate a security scan on an asset.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/assets/asset-001/scan/ \
+curl -X POST http://localhost:8013/api/v1/assets/asset-001/scan/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -403,7 +408,7 @@ List all vulnerabilities with advanced filtering.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/vulnerabilities/?severity=critical&status=open" \
+curl -X GET "http://localhost:8013/api/v1/vulnerabilities/?severity=critical&status=open" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -454,7 +459,7 @@ Retrieve detailed information about a specific vulnerability.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8001/api/v1/vulnerabilities/vuln-001/ \
+curl -X GET http://localhost:8013/api/v1/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -518,7 +523,7 @@ Update a vulnerability's status or assignment.
 **Request**:
 
 ```bash
-curl -X PATCH http://localhost:8001/api/v1/vulnerabilities/vuln-001/ \
+curl -X PATCH http://localhost:8013/api/v1/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -561,7 +566,7 @@ Assign a vulnerability to a team or user.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/vulnerabilities/vuln-001/assign/ \
+curl -X POST http://localhost:8013/api/v1/vulnerabilities/vuln-001/assign/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -608,7 +613,7 @@ List all configured security scanners.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/scanners/?status=active" \
+curl -X GET "http://localhost:8013/api/v1/scanners/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -666,7 +671,7 @@ Register a new security scanner.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/scanners/ \
+curl -X POST http://localhost:8013/api/v1/scanners/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -702,7 +707,7 @@ Test connectivity and authentication with a scanner.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/scanners/scanner-nessus-01/test/ \
+curl -X POST http://localhost:8013/api/v1/scanners/scanner-nessus-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -743,7 +748,7 @@ List all configured integrations with external systems.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/integrations/?status=active" \
+curl -X GET "http://localhost:8013/api/v1/integrations/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -798,7 +803,7 @@ Create a new integration with an external system.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/integrations/ \
+curl -X POST http://localhost:8013/api/v1/integrations/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -836,7 +841,7 @@ Test connectivity and authentication with an integration.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/integrations/int-jira-01/test/ \
+curl -X POST http://localhost:8013/api/v1/integrations/int-jira-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -879,7 +884,7 @@ List all remediation tickets and workflows.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8001/api/v1/remediation-tickets/?status=in_progress" \
+curl -X GET "http://localhost:8013/api/v1/remediation-tickets/?status=in_progress" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -929,7 +934,7 @@ Create a new remediation ticket.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
+curl -X POST http://localhost:8013/api/v1/remediation-tickets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1021,15 +1026,15 @@ When rate limit is exceeded (429 error):
 
 ```bash
 # 1. Get all critical vulnerabilities
-CRITICAL_VULNS=$(curl -s -X GET "http://localhost:8001/api/v1/vulnerabilities/?severity=critical&status=open" \
+CRITICAL_VULNS=$(curl -s -X GET "http://localhost:8013/api/v1/vulnerabilities/?severity=critical&status=open" \
   -H "X-API-Key: your-api-key" | jq -r '.results[0].id')
 
 # 2. Get vulnerability details
-curl -s -X GET http://localhost:8001/api/v1/vulnerabilities/$CRITICAL_VULNS/ \
+curl -s -X GET http://localhost:8013/api/v1/vulnerabilities/$CRITICAL_VULNS/ \
   -H "X-API-Key: your-api-key" | jq '.title, .cvss_score, .affected_assets'
 
 # 3. Assign to team
-curl -X POST http://localhost:8001/api/v1/vulnerabilities/$CRITICAL_VULNS/assign/ \
+curl -X POST http://localhost:8013/api/v1/vulnerabilities/$CRITICAL_VULNS/assign/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1039,7 +1044,7 @@ curl -X POST http://localhost:8001/api/v1/vulnerabilities/$CRITICAL_VULNS/assign
   }'
 
 # 4. Create remediation ticket
-curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
+curl -X POST http://localhost:8013/api/v1/remediation-tickets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1052,7 +1057,7 @@ curl -X POST http://localhost:8001/api/v1/remediation-tickets/ \
   }'
 
 # 5. Monitor ticket progress
-curl -s -X GET "http://localhost:8001/api/v1/remediation-tickets/?assigned_to=security-team" \
+curl -s -X GET "http://localhost:8013/api/v1/remediation-tickets/?assigned_to=security-team" \
   -H "X-API-Key: your-api-key" | jq '.results[] | {id, status, progress}'
 ```
 
@@ -1060,17 +1065,17 @@ curl -s -X GET "http://localhost:8001/api/v1/remediation-tickets/?assigned_to=se
 
 ```bash
 # 1. Get all active assets
-ASSETS=$(curl -s -X GET "http://localhost:8001/api/v1/assets/?status=active&limit=50" \
+ASSETS=$(curl -s -X GET "http://localhost:8013/api/v1/assets/?status=active&limit=50" \
   -H "X-API-Key: your-api-key" | jq -r '.results[].id')
 
 # 2. Get active Nessus scanner
-SCANNER=$(curl -s -X GET "http://localhost:8001/api/v1/scanners/?status=active&scanner_type=vulnerability" \
+SCANNER=$(curl -s -X GET "http://localhost:8013/api/v1/scanners/?status=active&scanner_type=vulnerability" \
   -H "X-API-Key: your-api-key" | jq -r '.results[0].id')
 
 # 3. Start scanning each asset
 for asset in $ASSETS; do
   echo "Starting scan for $asset"
-  curl -X POST http://localhost:8001/api/v1/assets/$asset/scan/ \
+  curl -X POST http://localhost:8013/api/v1/assets/$asset/scan/ \
     -H "X-API-Key: your-api-key" \
     -H "Content-Type: application/json" \
     -d "{
@@ -1087,12 +1092,5 @@ done
 
 - [Security Policy](../../security/policy.md) - Authentication and authorization requirements
 - [API Reference Hub](../../api-reference.html) - All service endpoints
-- [Integration Guide](../../guides/integrations.md) - Integration setup instructions
 - [Quickstart Guide](../../guides/quickstart.md) - Getting started with API
 
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
-**Base Port**: 8001

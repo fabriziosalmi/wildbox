@@ -1,9 +1,14 @@
 # Responder Service API
 
-**Service Port**: 8018
-**Base URL**: `http://localhost:8018/api/v1`
+> **Hand-written reference.** This page was written in November 2024 and
+> has not been re-checked endpoint by endpoint against the code since.
+> Paths, fields and examples may have drifted; the service's own OpenAPI
+> document is authoritative. Corrections are welcome as issues or pull
+> requests.
+
+**Gateway path**: `https://<host>/api/v1/responder/...` (proxied to the service's `/v1/...`)  
+**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
 **Authentication**: Bearer Token (JWT) required
-**Documentation**: [Live Swagger UI](http://localhost:8018/docs) | [OpenAPI Schema](http://localhost:8018/openapi.json)
 
 ---
 
@@ -27,7 +32,7 @@ The Responder Service orchestrates incident response and remediation workflows t
 All Responder Service endpoints require JWT Bearer token authentication:
 
 ```bash
-curl -X GET http://localhost:8018/api/v1/playbooks \
+curl -X GET http://localhost:8018/v1/playbooks \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -57,7 +62,7 @@ List all available SOAR playbooks.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8018/api/v1/playbooks?category=incident_response&enabled=true" \
+curl -X GET "http://localhost:8018/v1/playbooks?category=incident_response&enabled=true" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -123,7 +128,7 @@ Get detailed information about a specific playbook.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8018/api/v1/playbooks/pb-001 \
+curl -X GET http://localhost:8018/v1/playbooks/pb-001 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -232,7 +237,7 @@ Execute a playbook with specified parameters.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8018/api/v1/playbooks/pb-001/execute \
+curl -X POST http://localhost:8018/v1/playbooks/pb-001/execute \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -282,7 +287,7 @@ Get the status and results of a playbook execution.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8018/api/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -414,7 +419,7 @@ List playbook executions with filtering and pagination.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8018/api/v1/runs?status=success&time_range=24h" \
+curl -X GET "http://localhost:8018/v1/runs?status=success&time_range=24h" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -450,7 +455,7 @@ Cancel a running playbook execution.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8018/api/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -486,7 +491,7 @@ List all configured connectors for playbook actions.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8018/api/v1/connectors?status=active" \
+curl -X GET "http://localhost:8018/v1/connectors?status=active" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -569,11 +574,11 @@ X-RateLimit-Reset: 1730963100
 
 ```bash
 # 1. List available playbooks
-PLAYBOOKS=$(curl -s http://localhost:8018/api/v1/playbooks?category=malware \
+PLAYBOOKS=$(curl -s http://localhost:8018/v1/playbooks?category=malware \
   -H "Authorization: Bearer $TOKEN" | jq '.')
 
 # 2. Execute malware response playbook
-RUN_ID=$(curl -s -X POST http://localhost:8018/api/v1/playbooks/pb-001/execute \
+RUN_ID=$(curl -s -X POST http://localhost:8018/v1/playbooks/pb-001/execute \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -589,7 +594,7 @@ echo "Playbook execution started: $RUN_ID"
 
 # 3. Monitor execution progress
 while true; do
-  RUN=$(curl -s http://localhost:8018/api/v1/runs/$RUN_ID \
+  RUN=$(curl -s http://localhost:8018/v1/runs/$RUN_ID \
     -H "Authorization: Bearer $TOKEN")
 
   STATUS=$(echo "$RUN" | jq -r '.status')
@@ -632,7 +637,7 @@ else
 fi
 
 # Execute playbook
-curl -X POST "http://localhost:8018/api/v1/playbooks/$PLAYBOOK_ID/execute" \
+curl -X POST "http://localhost:8018/v1/playbooks/$PLAYBOOK_ID/execute" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -652,9 +657,3 @@ curl -X POST "http://localhost:8018/api/v1/playbooks/$PLAYBOOK_ID/execute" \
 - [Tools Service API](../tools/endpoints.md) - Tool execution
 - [Quickstart Guide](../../guides/quickstart.md) - Getting started with APIs
 
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
-**Base Port**: 8018

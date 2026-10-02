@@ -1,556 +1,166 @@
 # Identity & Authentication Service API
 
-**Service Port**: 8000
-**Base URL**: `http://localhost:8000/api/v1`
-**Authentication**: Bearer Token (JWT) required
-**Documentation**: [Live Swagger UI](http://localhost:8000/docs) | [OpenAPI Schema](http://localhost:8000/openapi.json)
+The identity service (`open-security-identity`, FastAPI with fastapi-users)
+owns users, JWT login, API keys and teams, and answers the gateway's
+authorization checks.
 
----
+**Gateway path**: `https://<host>/api/v1/identity/...` (proxied to the service's `/api/v1/...`); login at `https://<host>/auth/jwt/login`  
+**Local port**: listed in [Service ports](../../guides/ports.md)  
+**Authentication**: JWT bearer token; identity validates it itself on its routes
 
-## Overview
-
-The Identity Service manages all authentication, authorization, and user account operations in Wildbox. It issues JWT tokens, validates credentials, and maintains user permissions.
-
-## Table of Contents
-
-- [Authentication](#authentication)
-- [User Management](#user-management)
-- [Token Management](#token-management)
-- [Permission Management](#permission-management)
-- [Error Codes](#error-codes)
+This page lists the routes registered in
+[`open-security-identity/app/main.py`](https://github.com/fabriziosalmi/wildbox/blob/main/open-security-identity/app/main.py)
+and the modules it includes. For request and response schemas, a running
+service publishes its OpenAPI document at `/openapi.json` and Swagger UI at
+`/docs` (on its local port, not through the gateway).
 
 ---
 
 ## Authentication
 
-### POST /auth/login
+### Log In
 
-User login with email and password. Returns JWT token valid for subsequent API requests.
+`POST /api/v1/auth/jwt/login` (gateway: `POST /auth/jwt/login`)
 
-**Method**: `POST`
-**Endpoint**: `/auth/login`
-**Authentication**: Not required
-**Rate Limit**: 5 requests/minute per IP
-
-**Request Body**:
+Form-encoded body, as defined by OAuth2 password flow: `username` (the email
+address) and `password`. Returns:
 
 ```json
 {
-  "email": "user@example.com",
-  "password": "your-secure-password"
+  "access_token": "<JWT>",
+  "token_type": "bearer"
 }
 ```
 
-**Request**:
+Wrong credentials return 400. The token lifetime is
+`JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (30 minutes by default). There is no refresh
+endpoint; log in again when the token expires.
 
 ```bash
-curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "your-secure-password"
-  }'
+TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://localhost/auth/jwt/login \
+  --data-urlencode "username=$ADMIN_EMAIL" \
+  --data-urlencode "password=$ADMIN_PASSWORD" | jq -r .access_token)
 ```
 
-**Response (200 OK)**:
+The [Quick Start](../../guides/quickstart.md#5-log-in-and-call-the-api) shows
+where `ADMIN_EMAIL` and `ADMIN_PASSWORD` come from.
 
-```json
-{
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c3ItMTIzIiwiZW1haWwiOiJ1c2VyQGV4YW1wbGUuY29tIn0...",
-    "user_id": "usr-123",
-    "email": "user@example.com",
-    "expires_in": 3600,
-    "token_type": "Bearer"
-  },
-  "status": "success"
-}
-```
+### Log Out
 
-**Error (401 Unauthorized)**:
+`POST /api/v1/auth/logout` (gateway: `POST /auth/logout`) with
+`Authorization: Bearer <token>`. Adds the token's `jti` to a blacklist until
+the token would have expired, and asks the gateway to drop it from its
+authorization cache. Returns 200 whether or not the token was already revoked;
+401 without a bearer token.
 
-```json
-{
-  "error": "Unauthorized",
-  "message": "Invalid email or password",
-  "status": "error"
-}
-```
+### Other Authentication Routes
 
-**Parameters**:
+All under `/api/v1/auth` (fastapi-users):
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| email | string | Yes | User email address |
-| password | string | Yes | User password (minimum 8 characters) |
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/register` | Create an account (gateway: `/auth/register`) |
+| POST | `/forgot-password` | Request a password reset token |
+| POST | `/reset-password` | Reset a password with that token |
+| POST | `/request-verify-token` | Request an email verification token |
+| POST | `/verify` | Verify an email address |
 
 ---
 
-### POST /auth/refresh
+## Current User
 
-Refresh an existing JWT token to extend the session without requiring re-authentication.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/users/me` | The authenticated user |
+| PATCH | `/api/v1/users/me` | Update the authenticated user (fastapi-users) |
+| PATCH | `/api/v1/admin/me/profile` | Update profile fields |
+| PUT | `/api/v1/admin/me` | Update the authenticated user |
+| PUT | `/api/v1/admin/me/password` | Change password |
+| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` |
+| DELETE | `/api/v1/admin/me/account` | Delete own account |
+| GET | `/api/v1/admin/me/activity` | Own recent activity |
 
-**Method**: `POST`
-**Endpoint**: `/auth/refresh`
-**Authentication**: Required (Bearer Token)
-
-**Request**:
+Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
+account and need only a valid token.
 
 ```bash
-curl -X POST http://localhost:8000/auth/refresh \
-  -H "Authorization: Bearer {current_token}"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "expires_in": 3600
-  },
-  "status": "success"
-}
+curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -H "Authorization: Bearer $TOKEN" https://localhost/api/v1/identity/users/me
 ```
 
 ---
 
-### POST /auth/logout
+## API Keys
 
-Logout user and revoke the current JWT token. Token becomes invalid for future requests.
+Personal API keys, sent to the gateway as `X-API-Key: <key>`. The secret is
+returned once, when the key is created.
 
-**Method**: `POST`
-**Endpoint**: `/auth/logout`
-**Authentication**: Required (Bearer Token)
+| Method | Path | Purpose |
+| --- | --- | --- |
+| POST | `/api/v1/api-keys` | Create a key for the caller |
+| GET | `/api/v1/api-keys` | List the caller's keys |
+| GET | `/api/v1/api-keys/{key_prefix}` | Show one key |
+| DELETE | `/api/v1/api-keys/{key_prefix}` | Revoke a key |
 
-**Request**:
+Team keys, which require the `admin` or `owner` role in the team:
 
-```bash
-curl -X POST http://localhost:8000/auth/logout \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response (204 No Content)**:
-
-```text
-(Empty response body)
-```
-
----
-
-## User Management
-
-### GET /users
-
-List all users with pagination, filtering, and sorting support.
-
-**Method**: `GET`
-**Endpoint**: `/users`
-**Authentication**: Required (Bearer Token)
-**Rate Limit**: 100 requests/minute
-
-**Query Parameters**:
-
-| Name | Type | Required | Default | Description |
-| ------ | ------ | ---------- | --------- | ------------- |
-| limit | integer | No | 20 | Number of results (max 100) |
-| offset | integer | No | 0 | Pagination offset |
-| status | string | No | - | Filter by status: active, inactive, suspended |
-| role | string | No | - | Filter by role: admin, analyst, viewer |
-| sort | string | No | created_at:desc | Sort field and direction |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8000/users?limit=10&status=active" \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": [
-    {
-      "id": "usr-001",
-      "email": "user1@example.com",
-      "full_name": "John Doe",
-      "role": "analyst",
-      "status": "active",
-      "created_at": "2024-01-15T10:30:00Z",
-      "last_login": "2024-11-07T14:25:00Z"
-    },
-    {
-      "id": "usr-002",
-      "email": "user2@example.com",
-      "full_name": "Jane Smith",
-      "role": "viewer",
-      "status": "active",
-      "created_at": "2024-02-20T09:15:00Z",
-      "last_login": "2024-11-06T16:45:00Z"
-    }
-  ],
-  "pagination": {
-    "limit": 10,
-    "offset": 0,
-    "total": 45,
-    "pages": 5
-  },
-  "status": "success"
-}
-```
+| Method | Path |
+| --- | --- |
+| POST | `/api/v1/teams/{team_id}/api-keys` |
+| GET | `/api/v1/teams/{team_id}/api-keys` |
+| GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
+| DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
 
 ---
 
-### POST /users
+## Teams
 
-Create a new user account with specified role and permissions.
-
-**Method**: `POST`
-**Endpoint**: `/users`
-**Authentication**: Required (Bearer Token - admin only)
-
-**Request Body**:
-
-```json
-{
-  "email": "newuser@example.com",
-  "full_name": "New User",
-  "password": "secure-password-123",
-  "role": "analyst",
-  "teams": ["team-001", "team-002"]
-}
-```
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:8000/users \
-  -H "Authorization: Bearer {admin_token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "newuser@example.com",
-    "full_name": "New User",
-    "password": "secure-password-123",
-    "role": "analyst"
-  }'
-```
-
-**Response (201 Created)**:
-
-```json
-{
-  "data": {
-    "id": "usr-123",
-    "email": "newuser@example.com",
-    "full_name": "New User",
-    "role": "analyst",
-    "status": "active",
-    "created_at": "2024-11-07T15:30:00Z"
-  },
-  "status": "success"
-}
-```
-
-**Error (400 Bad Request)**:
-
-```json
-{
-  "error": "Bad Request",
-  "message": "Email already exists",
-  "status": "error"
-}
-```
-
-**Parameters**:
-
-| Field | Type | Required | Description |
-| ------- | ------ | ---------- | ------------- |
-| email | string | Yes | User email address (must be unique) |
-| full_name | string | Yes | User full name |
-| password | string | Yes | Initial password (minimum 8 characters) |
-| role | string | Yes | User role: admin, analyst, viewer |
-| teams | array | No | Team IDs to assign user |
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/admin/teams/{team_id}/members` | List members |
+| POST | `/api/v1/admin/teams/{team_id}/invite` | Invite a member |
+| PUT | `/api/v1/admin/teams/{team_id}` | Update a team |
+| DELETE | `/api/v1/admin/teams/{team_id}/members/{user_id}` | Remove a member |
 
 ---
 
-### GET /users/{id}
+## Platform Administration
 
-Retrieve detailed information about a specific user.
+These require a superuser (`is_superuser`); being the owner or admin of a team
+is not enough.
 
-**Method**: `GET`
-**Endpoint**: `/users/{id}`
-**Authentication**: Required (Bearer Token)
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/admin/users` | List users |
+| GET | `/api/v1/admin/users/{user_id}` | One user with teams |
+| GET | `/api/v1/admin/users/{user_id}/can-delete` | Check whether a user can be deleted |
+| PATCH | `/api/v1/admin/users/{user_id}/status` | Activate or deactivate |
+| PATCH | `/api/v1/admin/users/{user_id}/superuser` | Grant or revoke superuser |
+| PATCH | `/api/v1/admin/users/{user_id}/role` | Promote or demote a superuser |
+| DELETE | `/api/v1/admin/users/{user_id}` | Delete a user |
+| GET | `/api/v1/analytics/admin/system-stats` | Platform statistics |
+| GET | `/api/v1/analytics/admin/user-activity` | User activity |
+| GET | `/api/v1/analytics/admin/usage-summary` | Usage summary |
 
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| id | string | User ID |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8000/users/usr-001 \
-  -H "Authorization: Bearer {token}"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": {
-    "id": "usr-001",
-    "email": "user@example.com",
-    "full_name": "John Doe",
-    "role": "analyst",
-    "status": "active",
-    "teams": [
-      {
-        "id": "team-001",
-        "name": "Security Team"
-      }
-    ],
-    "permissions": [
-      "read:findings",
-      "execute:scans",
-      "manage:alerts"
-    ],
-    "created_at": "2024-01-15T10:30:00Z",
-    "updated_at": "2024-11-07T14:25:00Z",
-    "last_login": "2024-11-07T14:25:00Z"
-  },
-  "status": "success"
-}
-```
+fastapi-users also registers `GET`, `PATCH` and `DELETE` on
+`/api/v1/users/{id}` for superusers.
 
 ---
 
-### PUT /users/{id}
+## Service Routes
 
-Update user profile, role, permissions, and team assignments.
-
-**Method**: `PUT`
-**Endpoint**: `/users/{id}`
-**Authentication**: Required (Bearer Token - admin or user updating self)
-
-**Request Body**:
-
-```json
-{
-  "full_name": "Updated Name",
-  "role": "analyst",
-  "status": "active",
-  "teams": ["team-001", "team-002"]
-}
-```
-
-**Request**:
-
-```bash
-curl -X PUT http://localhost:8000/users/usr-001 \
-  -H "Authorization: Bearer {token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "full_name": "Updated Name",
-    "role": "analyst"
-  }'
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": {
-    "id": "usr-001",
-    "email": "user@example.com",
-    "full_name": "Updated Name",
-    "role": "analyst",
-    "updated_at": "2024-11-07T15:35:00Z"
-  },
-  "status": "success"
-}
-```
-
----
-
-### DELETE /users/{id}
-
-Delete a user account and revoke all associated tokens and permissions.
-
-**Method**: `DELETE`
-**Endpoint**: `/users/{id}`
-**Authentication**: Required (Bearer Token - admin only)
-
-**Request**:
-
-```bash
-curl -X DELETE http://localhost:8000/users/usr-001 \
-  -H "Authorization: Bearer {admin_token}"
-```
-
-**Response (204 No Content)**:
-
-```text
-(Empty response body)
-```
-
----
-
-## Token Management
-
-### GET /tokens
-
-List all active tokens for the current user.
-
-**Method**: `GET`
-**Endpoint**: `/tokens`
-**Authentication**: Required (Bearer Token)
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": [
-    {
-      "id": "token-001",
-      "name": "API Token",
-      "created_at": "2024-11-07T10:30:00Z",
-      "expires_at": "2024-11-08T10:30:00Z",
-      "last_used": "2024-11-07T14:25:00Z"
-    }
-  ],
-  "status": "success"
-}
-```
-
----
-
-### POST /tokens/revoke
-
-Revoke a specific token immediately.
-
-**Method**: `POST`
-**Endpoint**: `/tokens/revoke`
-**Authentication**: Required (Bearer Token)
-
-**Request Body**:
-
-```json
-{
-  "token_id": "token-001"
-}
-```
-
----
-
-## Permission Management
-
-### GET /permissions
-
-List all available permissions in the system.
-
-**Method**: `GET`
-**Endpoint**: `/permissions`
-**Authentication**: Required (Bearer Token)
-
-**Response (200 OK)**:
-
-```json
-{
-  "data": {
-    "read": [
-      "read:findings",
-      "read:scans",
-      "read:reports"
-    ],
-    "write": [
-      "write:findings",
-      "write:reports"
-    ],
-    "execute": [
-      "execute:scans",
-      "execute:playbooks"
-    ],
-    "manage": [
-      "manage:users",
-      "manage:teams",
-      "manage:integrations"
-    ]
-  },
-  "status": "success"
-}
-```
-
----
-
-## Error Codes
-
-| Code | Status | Description |
-| ------ | -------- | ------------- |
-| 400 | Bad Request | Invalid request parameters or body |
-| 401 | Unauthorized | Missing or invalid authentication token |
-| 403 | Forbidden | Authenticated but not authorized for this action |
-| 404 | Not Found | User or resource not found |
-| 409 | Conflict | Resource already exists (e.g., email) |
-| 429 | Too Many Requests | Rate limit exceeded |
-| 500 | Internal Server Error | Server error (contact support) |
-
----
-
-## Rate Limiting
-
-Authentication endpoints are rate limited to prevent brute force attacks:
-
-- **Login endpoint**: 5 requests/minute per IP
-- **Other endpoints**: 100 requests/minute per user
-
-Rate limit information is returned in response headers:
-
-```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1730963100
-```
-
----
-
-## Examples
-
-### Complete Authentication Workflow
-
-```bash
-# 1. Login
-TOKEN=$(curl -X POST http://localhost:8000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "user@example.com",
-    "password": "password"
-  }' | jq -r '.data.token')
-
-# 2. Use token for subsequent requests
-curl -X GET http://localhost:8000/users \
-  -H "Authorization: Bearer $TOKEN"
-
-# 3. Refresh token if needed
-NEW_TOKEN=$(curl -X POST http://localhost:8000/auth/refresh \
-  -H "Authorization: Bearer $TOKEN" | jq -r '.data.token')
-
-# 4. Logout
-curl -X POST http://localhost:8000/auth/logout \
-  -H "Authorization: Bearer $TOKEN"
-```
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Health check |
+| GET | `/` | Service information |
+| GET | `/api/v1/admin/metrics` | User, team and API-key counts; requires `X-Gateway-Secret`, not a user token |
+| POST | `/internal/authorize` | Token and API-key validation for the gateway; requires `X-Gateway-Secret` and is not routed by the gateway |
 
 ---
 
 ## Related Documentation
 
-- [Security Policy](../../security/policy.md) - Authentication and authorization requirements
-- [API Reference Hub](../../api-reference.html) - All service endpoints
-- [Quickstart Guide](../../guides/quickstart.md) - Getting started with API
-
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
+- [Credentials and authentication](../../guides/credentials.md)
+- [Quick Start](../../guides/quickstart.md)
+- [Gateway routes](https://www.wildbox.io/docs.html#gateway-routes)

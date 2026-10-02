@@ -1,9 +1,14 @@
 # Tools Service API
 
-**Service Port**: 8013
-**Base URL**: `http://localhost:8013/api`
+> **Hand-written reference.** This page was written in November 2024 and
+> has not been re-checked endpoint by endpoint against the code since.
+> Paths, fields and examples may have drifted; the service's own OpenAPI
+> document is authoritative. Corrections are welcome as issues or pull
+> requests.
+
+**Gateway path**: `https://<host>/api/v1/tools/...` (proxied to the service's `/api/tools/...`)  
+**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
 **Authentication**: API Key (X-API-Key header) required
-**Documentation**: [Live Swagger UI](http://localhost:8013/docs) | [OpenAPI Schema](http://localhost:8013/openapi.json)
 
 ---
 
@@ -27,7 +32,7 @@ The Tools Service provides a unified interface for executing 54+ security analys
 All Tools Service endpoints require API Key authentication:
 
 ```bash
-curl -X GET http://localhost:8013/api/tools \
+curl -X GET http://localhost:8000/api/tools \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -56,7 +61,7 @@ List all available security tools.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/tools?category=scanner&status=active" \
+curl -X GET "http://localhost:8000/api/tools?category=scanner&status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -121,7 +126,7 @@ Get detailed information about a specific tool.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8013/api/tools/nessus-001/info \
+curl -X GET http://localhost:8000/api/tools/nessus-001/info \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -202,7 +207,7 @@ Execute a security tool with specified parameters.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/tools/nessus-001/execute \
+curl -X POST http://localhost:8000/api/tools/nessus-001/execute \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -249,7 +254,7 @@ Get the status and results of a tool execution.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8013/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET http://localhost:8000/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -307,7 +312,7 @@ Cancel a running or pending tool execution.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8013/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:8000/api/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -336,7 +341,7 @@ Service health check.
 **Request**:
 
 ```bash
-curl http://localhost:8013/api/health
+curl http://localhost:8000/api/health
 ```
 
 **Response (200 OK)**:
@@ -373,7 +378,7 @@ Get system and service information.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8013/api/system/info \
+curl -X GET http://localhost:8000/api/system/info \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -413,7 +418,7 @@ Get detailed performance metrics.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/system/metrics?time_range=24h" \
+curl -X GET "http://localhost:8000/api/system/metrics?time_range=24h" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -511,11 +516,11 @@ X-RateLimit-Reset: 1730963100
 
 ```bash
 # Get Nessus scanner info
-curl -X GET http://localhost:8013/api/tools/nessus-001/info \
+curl -X GET http://localhost:8000/api/tools/nessus-001/info \
   -H "X-API-Key: your-api-key" | jq '.'
 
 # Execute full vulnerability scan
-EXEC_ID=$(curl -s -X POST http://localhost:8013/api/tools/nessus-001/execute \
+EXEC_ID=$(curl -s -X POST http://localhost:8000/api/tools/nessus-001/execute \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -531,7 +536,7 @@ echo "Execution started: $EXEC_ID"
 
 # Monitor progress
 while true; do
-  STATUS=$(curl -s -X GET "http://localhost:8013/api/tools/nessus-001/executions/$EXEC_ID" \
+  STATUS=$(curl -s -X GET "http://localhost:8000/api/tools/nessus-001/executions/$EXEC_ID" \
     -H "X-API-Key: your-api-key" | jq '.')
 
   STATE=$(echo "$STATUS" | jq -r '.status')
@@ -559,7 +564,7 @@ TARGET="192.168.1.1"
 for tool in "${TOOLS[@]}"; do
   echo "Executing $tool on $TARGET"
 
-  EXEC=$(curl -s -X POST "http://localhost:8013/api/tools/$tool/execute" \
+  EXEC=$(curl -s -X POST "http://localhost:8000/api/tools/$tool/execute" \
     -H "X-API-Key: your-api-key" \
     -H "Content-Type: application/json" \
     -d "{
@@ -585,9 +590,3 @@ done
 - [Guardian Service API](../guardian/endpoints.md) - Asset management
 - [Responder Service API](../responder/endpoints.md) - Incident response
 
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
-**Base Port**: 8013
