@@ -57,6 +57,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
   advisory (CVE-2024-23342) upstream will not fix. `auth_utils` now uses PyJWT;
   its JWT behavior is covered by new tests in `tests/shared/test_auth_utils.py`.
+- **pytest 9 and black 26.3.1 in the service locks** (#415). pytest 7.4 and
+  8.3 (one advisory: predictable `/tmp/pytest-of-<user>` directories) move
+  to 9.0.3 in six services and 9.1.1 in identity (which keeps a range), with
+  pytest-asyncio 1.3.0, the first release that accepts pytest 9. black 24
+  (2 advisories) moves to 26.3.1 in data,
+  guardian, identity and sensor. Dev tools only: no runtime code changes, and
+  the Code Quality job already ran an unpinned black.
+
+- **agents moves to LangChain 1.x** (#415). langchain 0.3.30,
+  langchain-anthropic 0.3.22, langchain-core 0.3.86 and
+  langchain-text-splitters 0.3.11 carried 6 advisories between them. The agent
+  keeps its `AgentExecutor` loop, now from `langchain-classic` 1.0.8; prompts,
+  messages and `@tool` come from langchain-core 1.6.6; langchain-anthropic is
+  1.4.6. `langchain-community`, never imported, is gone. One visible change:
+  the analyst notes passed to the structured report are now the model's text,
+  where 0.3 passed the string form of a list of content blocks.
+
 - **guardian moves to Django 5.2 LTS** (#415). Django 4.2 has been out of
   support since April 2026; 4.2.30 carried 8 advisories, djangorestframework
   3.15.2 another 2. Now Django 5.2.17, DRF 3.17.2, django-celery-beat 2.8.1
@@ -119,6 +136,109 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (a November 2025 snapshot, unpublished) is marked archived, and the
   gateway authentication guide, linked from the published tools audit, says
   that its keys and hosts are fictitious.
+
+- **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
+  WAF, Kubernetes support and a local Ollama LLM, none of which the project
+  ships, and gave the gateway as port 8080 and Postgres credentials that do
+  not match. Both are rewritten from `docker-compose.yml`, the gateway routes
+  and the integration tests' login flow, agree with each other, state no
+  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  The homepage's structured data loses the same claims and its stale
+  `softwareVersion`.
+- **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
+  item; the copy now says so and calls them a growing collection instead of
+  promising a library, and the placeholder comments are gone. Both stay
+  indexed.
+- **The privacy notice is indexable.** It is a complete, dated legal page
+  listed in the sitemap, so `noindex` contradicted the sitemap; it now has
+  `index, follow` and a canonical URL.
+- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
+  loads its vendored Tailwind from a root-relative path like the other pages,
+  and the llms files no longer claim account lockout, which identity does not
+  enforce.
+
+- **The security status page says what is still wrong.** It reported every
+  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
+  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
+  networks are not segmented (the production overlay's networks are merged
+  with the flat `wildbox` network), identity's `init.sh` prints the initial
+  admin password to the log, two scanners disable TLS verification, and
+  identity and tools serve API docs in every environment. The page now lists
+  those as open issues, points at #415 for dependencies, marks unchecked
+  claims "Not verified", and says how each check was made. The 2024 and 2025
+  audit documents are marked historical; the checklist's quoted heredoc that
+  wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
+  replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
+  is no longer quoted as current. Expired version and review stamps are gone
+  from the security policy.
+- **Account lockout is reported as not enforced.** The status page counted
+  the lockout settings in `config.py` as a pass, but nothing calls
+  `record_failed_login` or `is_account_locked`; it is now a known open issue
+  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
+  (fastapi-users hashes with Argon2). The status page stops linking the
+  November 2024 audit documents, which the site no longer publishes.
+
+- **One ports table, one login flow, no published passwords.** The guides
+  disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
+  8006, guardian on 8001) and showed the login once as JSON and once
+  form-encoded. `docs/guides/ports.md` now lists every service, container
+  and port from `docker-compose.yml`, and the other guides link to it. The
+  Quick Start uses the login sequence the integration tests run (form-encoded,
+  through the gateway over HTTPS, trusting the generated certificate), with no
+  time promise. The Credentials guide no longer lists `dev-api-key-123`,
+  `postgres/postgres`, `demo-password-123` or `admin/admin`, none of which the
+  stack uses; it explains `generate_secrets.py`, `INITIAL_ADMIN_*` and
+  rotation instead. The Deployment guide no longer overwrites
+  `docker-compose.yml`, replaces the gateway with a separate nginx or creates
+  databases by hand. The identity API reference is rewritten from the routes
+  the service registers; the other references get correct ports and a note
+  that they are hand-written.
+- **The Ollama guide says Ollama is gone.** `guides/ollama-llm.md` described a
+  local LLM container that no Compose file defines; it now documents the
+  Anthropic configuration the agents service actually reads, including that
+  submitted indicators are sent to Anthropic when it is enabled. The
+  Deployment guide notes that `haproxy/` belongs to the blue/green Compose
+  file only.
+- **One authentication reference.** The Credentials guide now states, from
+  the identity code, the signing algorithm (HS256), the claims, the 30-minute
+  lifetime (which `.env` cannot change, because Compose does not pass it), that
+  there is no refresh, both revocation routes, and that failed logins are not
+  locked out (the lockout helpers exist but nothing calls them). It also warns
+  that the `/admin/me` password routes use bcrypt and cannot verify the Argon2
+  hashes fastapi-users writes. The tools reference counts 52 loadable tools
+  instead of 54, the ports page explains how `/metrics` and Prometheus are
+  kept private (localhost binding, not authentication), the references mark
+  their example values as fictitious, and acronyms are expanded on first use.
+
+- **The documentation site renders Markdown at build time.** `docs.html` used
+  to fetch guides from `raw.githubusercontent.com` and turn them into HTML in
+  the browser with a hand-written parser, injecting the result unsanitized; a
+  failed fetch left a "Loading..." page. Jekyll now renders every guide,
+  security page and API reference through one layout, with a sidebar built
+  from `docs/_data/docs_nav.yml`, and old `docs.html#quickstart` links redirect
+  to the published page. The API cards that said "Coming Soon" for tools,
+  identity, data and guardian link to their endpoint references, and
+  `docs/api/README.md` is published at `/api/`. The dead `collections`
+  configuration, the unused remote theme and the stale `docs/index.md` are
+  gone, and the sitemap lists only pages the build produced.
+- **`docs/security/findings.json` is deleted.** It was a November 2024 dump
+  with local `/Users/...` paths that contradicted the status page; nothing
+  read it. It remains in git history.
+- **`api/swagger-index.html` redirects to the API overview.** It called itself
+  the index of all APIs and listed two of six; Redoc pages for the other four
+  were not generated because no exported OpenAPI document exists for them.
+- **The 2024 security audit is no longer published.** `docs.html#security-audit`
+  led to `/security/audit-report/`; that report, its remediation checklist and
+  its improvements summary describe code that has since changed and are
+  excluded from the site and the sidebar, and the old hash now leads to the
+  security status page.
+- **Contributor docs page and smaller site fixes.** `/contributing/` links the
+  engineering notes that stay unpublished (cited by `SECURITY.md` and CI
+  scripts) and states that Jekyll in `docs/` is the only documentation stack;
+  `website/` is ignored by git. Long pages get an "On this page" list built
+  from their headings, every documentation page links `security.txt`, vendor
+  READMEs are no longer published as pages, and the sitemap emits only `<loc>`
+  because Pages cannot supply a real last-modified date.
 
 ### Removed
 

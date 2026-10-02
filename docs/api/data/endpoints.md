@@ -1,9 +1,17 @@
 # Data Service API
 
-**Service Port**: 8006
-**Base URL**: `http://localhost:8006/api/v1`
+> **Hand-written reference.** This page was written in November 2024 and
+> has not been re-checked endpoint by endpoint against the code since.
+> Paths, fields and examples may have drifted; the service's own OpenAPI
+> document is authoritative. Corrections are welcome as issues or pull
+> requests.
+>
+> All IDs, keys (such as `your-api-key`) and host names in the examples are
+> fictitious placeholders.
+
+**Gateway path**: `https://<host>/api/v1/data/...` (proxied to the service's `/api/v1/...`)  
+**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
 **Authentication**: Optional (API Key for enhanced features)
-**Documentation**: [Live Swagger UI](http://localhost:8006/docs) | [OpenAPI Schema](http://localhost:8006/openapi.json)
 
 ---
 
@@ -30,7 +38,7 @@ The Data Service aggregates, normalizes, and provides access to security intelli
 Use an optional API key to unlock enhanced features and higher rate limits:
 
 ```bash
-curl -X GET "http://localhost:8006/api/v1/indicators/search" \
+curl -X GET "http://localhost:8002/api/v1/indicators/search" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -39,7 +47,7 @@ curl -X GET "http://localhost:8006/api/v1/indicators/search" \
 Public endpoints work without authentication:
 
 ```bash
-curl -X GET "http://localhost:8006/api/v1/indicators/search?q=example.com"
+curl -X GET "http://localhost:8002/api/v1/indicators/search?q=example.com"
 ```
 
 ---
@@ -73,7 +81,7 @@ Search for indicators of compromise in the threat intelligence database.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8006/api/v1/indicators/search?q=malicious-domain.com&limit=20" \
+curl -X GET "http://localhost:8002/api/v1/indicators/search?q=malicious-domain.com&limit=20" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -127,7 +135,7 @@ Perform bulk lookup of multiple indicators at once.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8006/api/v1/indicators/bulk-lookup \
+curl -X POST http://localhost:8002/api/v1/indicators/bulk-lookup \
   -H "Content-Type: application/json" \
   -d '{
     "indicators": ["8.8.8.8", "example.com", "192.168.1.1"],
@@ -183,7 +191,7 @@ Get detailed threat intelligence for an IP address.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8006/api/v1/intelligence/ip/192.168.1.100
+curl -X GET http://localhost:8002/api/v1/intelligence/ip/192.168.1.100
 ```
 
 **Response (200 OK)**:
@@ -239,7 +247,7 @@ Get detailed threat intelligence for a domain.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8006/api/v1/intelligence/domain/example.com
+curl -X GET http://localhost:8002/api/v1/intelligence/domain/example.com
 ```
 
 **Response (200 OK)**:
@@ -294,7 +302,7 @@ Get detailed threat intelligence for a file hash.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8006/api/v1/intelligence/hash/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+curl -X GET http://localhost:8002/api/v1/intelligence/hash/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
 **Response (200 OK)**:
@@ -343,7 +351,7 @@ List all configured threat intelligence sources and feeds.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8006/api/v1/sources?limit=20
+curl -X GET http://localhost:8002/api/v1/sources?limit=20
 ```
 
 **Response (200 OK)**:
@@ -395,7 +403,7 @@ Stream newly added indicators from a specific source (NDJSON format).
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8006/api/v1/sources/src-001/stream \
+curl -X GET http://localhost:8002/api/v1/sources/src-001/stream \
   --stream
 ```
 
@@ -432,7 +440,7 @@ Ingest telemetry events from sensors and endpoints.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8006/api/v1/telemetry/events \
+curl -X POST http://localhost:8002/api/v1/telemetry/events \
   -H "Content-Type: application/json" \
   -d '{
     "events": [
@@ -481,7 +489,7 @@ Get aggregated telemetry statistics and metrics.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8006/api/v1/telemetry/statistics?time_range=24h"
+curl -X GET "http://localhost:8002/api/v1/telemetry/statistics?time_range=24h"
 ```
 
 **Response (200 OK)**:
@@ -540,7 +548,7 @@ X-RateLimit-Reset: 1730963100
 
 ```bash
 # Search for domains with high threat level
-curl -X GET "http://localhost:8006/api/v1/indicators/search?type=domain&threat_level=malware&severity=critical" \
+curl -X GET "http://localhost:8002/api/v1/indicators/search?type=domain&threat_level=malware&severity=critical" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -551,7 +559,7 @@ curl -X GET "http://localhost:8006/api/v1/indicators/search?type=domain&threat_l
 
 IPS=("8.8.8.8" "1.1.1.1" "192.168.1.1" "10.0.0.1")
 
-curl -X POST http://localhost:8006/api/v1/indicators/bulk-lookup \
+curl -X POST http://localhost:8002/api/v1/indicators/bulk-lookup \
   -H "Content-Type: application/json" \
   -d "{
     \"indicators\": $(echo "${IPS[@]}" | jq -R -s -c 'split(" ")')
@@ -562,7 +570,7 @@ curl -X POST http://localhost:8006/api/v1/indicators/bulk-lookup \
 
 ```bash
 # Stream malware indicators from Abuse.ch
-curl -X GET http://localhost:8006/api/v1/sources/abuse-ch/stream \
+curl -X GET http://localhost:8002/api/v1/sources/abuse-ch/stream \
   --stream | while IFS= read -r line; do
   THREAT=$(echo "$line" | jq -r '.threat')
   VALUE=$(echo "$line" | jq -r '.value')
@@ -583,9 +591,3 @@ done
 - [Guardian Service API](../guardian/endpoints.md) - Vulnerability management
 - [Agents Service API](../agents/endpoints.md) - Threat analysis
 
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
-**Base Port**: 8006

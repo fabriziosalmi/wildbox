@@ -1,9 +1,17 @@
 # Agents Service API
 
-**Service Port**: 8004
-**Base URL**: `http://localhost:8004`
-**Authentication**: Bearer Token (JWT) required for analysis endpoints
-**Documentation**: [Live Swagger UI](http://localhost:8004/docs) | [OpenAPI Schema](http://localhost:8004/openapi.json)
+> **Hand-written reference.** This page was written in November 2024 and
+> has not been re-checked endpoint by endpoint against the code since.
+> Paths, fields and examples may have drifted; the service's own OpenAPI
+> document is authoritative. Corrections are welcome as issues or pull
+> requests.
+>
+> All IDs, keys (such as `your-api-key`) and host names in the examples are
+> fictitious placeholders.
+
+**Gateway path**: `https://<host>/api/v1/agents/...` (proxied to the service's `/v1/...`)  
+**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
+**Authentication**: Bearer Token (JWT, JSON Web Token) required for analysis endpoints
 
 ---
 
@@ -28,7 +36,7 @@ The Agents Service is an AI-powered threat intelligence and enrichment platform 
 The analysis endpoints require JWT Bearer token authentication:
 
 ```bash
-curl -X POST http://localhost:8004/v1/analyze \
+curl -X POST http://localhost:8006/v1/analyze \
   -H "Authorization: Bearer your-jwt-token-here" \
   -H "Content-Type: application/json" \
   -d '{...}'
@@ -39,7 +47,7 @@ curl -X POST http://localhost:8004/v1/analyze \
 Inter-service calls use the `X-API-Key` header:
 
 ```bash
-curl -X GET http://localhost:8004/health \
+curl -X GET http://localhost:8006/health \
   -H "X-API-Key: wildbox-internal-key"
 ```
 
@@ -58,7 +66,7 @@ Service information and root endpoint.
 **Request**:
 
 ```bash
-curl http://localhost:8004/
+curl http://localhost:8006/
 ```
 
 **Response (200 OK)**:
@@ -68,7 +76,7 @@ curl http://localhost:8004/
   "service": "Wildbox Agents Service",
   "version": "1.0.0",
   "status": "operational",
-  "port": 8004
+  "port": 8006
 }
 ```
 
@@ -85,7 +93,7 @@ Health check endpoint for service monitoring and orchestration.
 **Request**:
 
 ```bash
-curl http://localhost:8004/health
+curl http://localhost:8006/health
 ```
 
 **Response (200 OK)**:
@@ -116,7 +124,7 @@ Service statistics and performance metrics.
 **Request**:
 
 ```bash
-curl http://localhost:8004/stats
+curl http://localhost:8006/stats
 ```
 
 **Response (200 OK)**:
@@ -170,7 +178,7 @@ Submit an indicator of compromise (IOC) for AI-powered threat analysis.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8004/v1/analyze \
+curl -X POST http://localhost:8006/v1/analyze \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -226,7 +234,7 @@ Retrieve the status and results of a submitted analysis task.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET http://localhost:8006/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -334,7 +342,7 @@ Cancel a pending or running analysis task.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8004/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE http://localhost:8006/v1/analyze/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
@@ -433,7 +441,7 @@ When rate limit is exceeded (429 error):
 
 ```bash
 # 1. Submit IOC for analysis
-TASK_ID=$(curl -s -X POST http://localhost:8004/v1/analyze \
+TASK_ID=$(curl -s -X POST http://localhost:8006/v1/analyze \
   -H "Authorization: Bearer your-jwt-token" \
   -H "Content-Type: application/json" \
   -d '{
@@ -448,7 +456,7 @@ echo "Analysis task submitted: $TASK_ID"
 
 # 2. Poll for analysis results
 while true; do
-  RESULT=$(curl -s -X GET http://localhost:8004/v1/analyze/$TASK_ID \
+  RESULT=$(curl -s -X GET http://localhost:8006/v1/analyze/$TASK_ID \
     -H "Authorization: Bearer your-jwt-token")
 
   STATUS=$(echo $RESULT | jq -r '.status')
@@ -485,7 +493,7 @@ TOKEN="your-jwt-token"
 for ioc in "${IOCS[@]}"; do
   echo "Analyzing: $ioc"
 
-  TASK_ID=$(curl -s -X POST http://localhost:8004/v1/analyze \
+  TASK_ID=$(curl -s -X POST http://localhost:8006/v1/analyze \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d '{
@@ -505,14 +513,14 @@ done
 
 ```bash
 # Get IOCs from Guardian vulnerabilities
-VULNERABLE_IPS=$(curl -s http://localhost:8001/api/v1/vulnerabilities/?severity=critical \
+VULNERABLE_IPS=$(curl -s http://localhost:8013/api/v1/vulnerabilities/?severity=critical \
   -H "X-API-Key: api-key" | jq -r '.results[].affected_assets[].ip_address')
 
 # Analyze each with Agents Service
 for ip in $VULNERABLE_IPS; do
   echo "Analyzing $ip with Agents Service"
 
-  TASK_ID=$(curl -s -X POST http://localhost:8004/v1/analyze \
+  TASK_ID=$(curl -s -X POST http://localhost:8006/v1/analyze \
     -H "Authorization: Bearer $TOKEN" \
     -H "Content-Type: application/json" \
     -d "{
@@ -537,9 +545,3 @@ done
 - [Guardian Service API](../guardian/endpoints.md) - Asset and vulnerability management
 - [Data Service API](../data/endpoints.md) - Threat intelligence data
 
----
-
-**Last Updated**: November 7, 2024
-**API Version**: v1
-**Status**: Stable
-**Base Port**: 8004

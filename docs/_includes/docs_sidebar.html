@@ -1,0 +1,28 @@
+<aside id="sidebar" class="fixed md:sticky top-16 bottom-0 left-0 md:h-[calc(100vh-4rem)] transform -translate-x-full md:translate-x-0 z-40 w-64 shrink-0 border-r border-white/10 p-6 overflow-y-auto" aria-label="Documentation">
+    <a href="/docs.html" class="block text-lg font-semibold accent mb-2">Documentation</a>
+    <nav>
+    {%- for group in site.data.docs_nav %}
+        <p class="nav-group-title">{{ group.title }}</p>
+        {%- for item in group.items %}
+            {%- assign href = nil %}
+            {%- if item.path %}
+                {%- assign target = site.pages | where: "path", item.path | first %}
+                {%- if target %}{% assign href = target.url %}{% endif %}
+            {%- else %}
+                {%- assign href = item.url %}
+            {%- endif %}
+            {%- if href %}
+        <a href="{{ href | relative_url }}" class="nav-item{% if page.url == href %} active{% endif %}"{% if page.url == href %} aria-current="page"{% endif %}>{{ item.title }}</a>
+            {%- endif %}
+        {%- endfor %}
+    {%- endfor %}
+    </nav>
+    <div class="pt-6 mt-6 border-t border-white/10 space-y-2 text-sm">
+        <p class="nav-group-title" style="margin-top:0">Online resources</p>
+        <a href="https://github.com/fabriziosalmi/wildbox" target="_blank" rel="noopener noreferrer" class="nav-item">GitHub repository</a>
+        <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer" class="nav-item">Report an issue</a>
+        <a href="https://github.com/fabriziosalmi/wildbox/discussions" target="_blank" rel="noopener noreferrer" class="nav-item">Discussions</a>
+        <a href="/.well-known/security.txt" class="nav-item">Report a vulnerability (security.txt)</a>
+    </div>
+</aside>
+<div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden md:hidden" data-toggle-sidebar></div>
