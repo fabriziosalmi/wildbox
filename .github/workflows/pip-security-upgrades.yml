@@ -42,15 +42,31 @@ jobs:
       - name: Publish summary
         run: cat "$RUNNER_TEMP/summary.md" >> "$GITHUB_STEP_SUMMARY"
 
+      # A PR opened with GITHUB_TOKEN does not trigger other workflows, so its
+      # required checks would never start. The fix is a GitHub App installation
+      # token: it lasts one hour, is scoped to this repository and to the two
+      # permissions below, and is not tied to a person -- unlike a personal
+      # access token, which this workflow deliberately does not use.
+      #
+      # Configure once: create a GitHub App with Contents and Pull requests
+      # (read & write), install it on this repository, then set the repository
+      # variable DEPS_APP_CLIENT_ID and the secret DEPS_APP_PRIVATE_KEY. Until then the
+      # job falls back to GITHUB_TOKEN: the PR is still opened, and CI starts at
+      # the next push to the branch.
+      - name: Mint a GitHub App token
+        id: app-token
+        if: vars.DEPS_APP_CLIENT_ID != ''
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.DEPS_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPS_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Open or refresh the pull request
         env:
-          # A PR opened with GITHUB_TOKEN does not trigger other workflows, so
-          # its required checks never start. A fine-grained token with
-          # contents + pull-requests write on this repository, stored as
-          # DEPS_PR_TOKEN, avoids that; without it the PR is still opened and
-          # CI starts at the next push to the branch.
-          GH_TOKEN: ${{ secrets.DEPS_PR_TOKEN || github.token }}
-          PUSH_TOKEN: ${{ secrets.DEPS_PR_TOKEN || github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          PUSH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
         run: |
           if git diff --quiet -- 'open-security-*/requirements.txt'; then
             echo "No pin moved." >> "$GITHUB_STEP_SUMMARY"

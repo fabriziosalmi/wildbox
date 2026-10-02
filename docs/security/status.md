@@ -20,10 +20,8 @@ do not open a public issue.
 
 | Issue | Where | Notes |
 | --- | --- | --- |
-| Vulnerable dependencies | all services | Tracked in [#415](https://github.com/fabriziosalmi/wildbox/issues/415). On 2 October 2026 Dependabot listed about 180 open alerts (none critical, 85 high) and code scanning about 190 (Trivy and CodeQL). The `Main Advisories` workflow keeps an issue with the current list of advisories on `main`. |
+| Vulnerable dependencies | dashboard (npm), four unlocked Python requirement files | The hash-pinned locks of all eight Python services have no known advisory (pip-audit, 2 October 2026; [#415](https://github.com/fabriziosalmi/wildbox/issues/415) closed). Still open: about 60 npm alerts in `open-security-dashboard`, and 15 pip alerts in requirement files outside the lock system (`open-security-cspm/requirements-dev.txt`, `open-security-guardian/requirements-dev.txt`, `open-security-tools/requirements-secure.txt`, `tests/requirements.txt`). The `Main Advisories` workflow reports critical advisories on `main` daily. |
 | Network segmentation is not effective | `docker-compose.yml`, `docker-compose.prod.yml` | The production overlay defines `frontend`, `backend` and `data` networks, but Compose merges service networks with the base file, so every service also stays on the flat `wildbox` network. With both files, `docker compose config` shows the dashboard and the gateway on the same network as PostgreSQL and Redis. |
-| Initial admin password written to the log | `open-security-identity/scripts/init.sh` | When the identity service creates the first administrator it prints the password from `INITIAL_ADMIN_PASSWORD` to the container log. Change that password after the first login and treat container logs as sensitive. |
-| TLS verification disabled in two scanners | `open-security-tools/app/tools/web_vuln_scanner/main.py`, `open-security-tools/app/tools/cookie_scanner/main.py` | Both create `aiohttp.TCPConnector(ssl=False)`, so they accept any certificate from the target. |
 | Failed logins are not locked out | `open-security-identity/app/token_blacklist.py` | `config.py` sets 5 attempts and 15 minutes, and `record_failed_login` / `is_account_locked` exist, but no login route calls them. The only brake is the gateway's rate limit on `/auth/jwt/` (5 requests per second per address, burst 3). |
 | API documentation served regardless of environment | identity, tools | identity always serves `/docs` and `/redoc`; tools always serves `/openapi.json`. Both are reachable only on their `127.0.0.1` ports, not through the gateway. agents, responder and cspm disable theirs in production. |
 
@@ -37,7 +35,7 @@ the claim against the current code; it is not a pass.
 | Check | Result | How it was checked |
 | --- | --- | --- |
 | No `eval()` in service code | PASS | `grep` for `eval(` in `open-security-*/**/*.py`, outside tests: only string literals in blocklists |
-| No plaintext passwords in code or logs | **FAIL** | See "Initial admin password written to the log" above. No password literal is used as a default: `docker-compose.yml` refuses to start without the required secrets |
+| No plaintext passwords in code or logs | PASS | The initial administrator password is no longer printed ([#493](https://github.com/fabriziosalmi/wildbox/issues/493)). No password literal is used as a default: `docker-compose.yml` refuses to start without the required secrets |
 | No `.env` file in git | PASS | `git ls-files` finds only `.env.example` and `.env.template` files, which hold placeholders |
 | Database and Redis not published to the host | PASS | Neither `postgres` nor `wildbox-redis` has `ports:` in `docker-compose.yml`; backends bind to `127.0.0.1` |
 | Docker networks segmented | **FAIL** | See "Network segmentation is not effective" above |
@@ -49,7 +47,7 @@ the claim against the current code; it is not a pass.
 | Security headers at the gateway | PASS | HSTS, `X-Frame-Options`, `X-Content-Type-Options` and `Permissions-Policy` set in `wildbox_gateway.conf` |
 | API docs disabled in production | **FAIL** | See "API documentation served regardless of environment" above |
 | No bare `except:` | PASS, one exception | Only `open-security-responder/demo_final.py`, a demo script |
-| TLS verification enabled in all tools | **FAIL** | See "TLS verification disabled in two scanners" above |
+| TLS verification enabled in all tools | PASS | Scanners verify certificates by default and report a failed verification instead of falling back; accepting an invalid certificate needs `verify_ssl: false` on that scan. The three certificate analyzers keep an unverified handshake to read broken certificates and report an untrusted one as a finding ([#495](https://github.com/fabriziosalmi/wildbox/issues/495)) |
 | No Docker socket mounts | PASS | No `docker.sock` in any Compose file |
 | SSRF protection on outbound requests | Not verified | |
 | File upload validation | Not verified | |

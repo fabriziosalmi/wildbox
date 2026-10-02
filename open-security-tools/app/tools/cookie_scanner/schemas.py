@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...utils.tls import VERIFY_SSL_DESCRIPTION
 from typing import List, Optional, Dict
 from datetime import datetime
 
@@ -9,6 +10,7 @@ class CookieScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL to analyze cookies", example="https://example.com")
     include_subdomains: bool = Field(default=True, description="Include subdomain cookie analysis")
     timeout: int = Field(default=10, description="Request timeout in seconds", ge=1, le=60)
+    verify_ssl: bool = Field(default=True, description=VERIFY_SSL_DESCRIPTION)
 
 class CookieAnalysis(BaseModel):
     name: str = Field(..., description="Cookie name")

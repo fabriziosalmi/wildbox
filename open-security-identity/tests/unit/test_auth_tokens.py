@@ -104,3 +104,28 @@ def test_verify_access_token_rejects_tampered_signature():
     tampered = token[:-4] + ("0" * 4 if token[-4:] != "0000" else "1111")
     with pytest.raises(HTTPException):
         verify_access_token(tampered)
+
+
+def test_verify_accepts_hashes_written_by_fastapi_users():
+    """Registration, the initial admin and PATCH /users/me hash through
+    fastapi-users (Argon2id); the custom password routes verify through
+    app.auth. They must agree, or password change fails for every user
+    (#501)."""
+    from fastapi_users.password import PasswordHelper
+
+    hashed = PasswordHelper().hash("correct horse battery staple")
+    assert hashed.startswith("$argon2")
+    assert verify_password("correct horse battery staple", hashed) is True
+    assert verify_password("wrong password", hashed) is False
+
+
+def test_verify_still_accepts_legacy_bcrypt_hashes():
+    import bcrypt
+
+    legacy = bcrypt.hashpw(b"correct horse battery staple", bcrypt.gensalt()).decode()
+    assert verify_password("correct horse battery staple", legacy) is True
+    assert verify_password("wrong password", legacy) is False
+
+
+def test_new_hashes_are_argon2():
+    assert get_password_hash("correct horse battery staple").startswith("$argon2")

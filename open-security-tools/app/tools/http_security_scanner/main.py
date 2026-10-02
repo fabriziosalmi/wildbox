@@ -2,13 +2,13 @@
 
 import asyncio
 import aiohttp
-import ssl
 import urllib.parse
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Tuple
 import logging
 import re
 
+from ...utils.tls import certificate_error_message, client_ssl
 from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,9 @@ TOOL_INFO = {
 class HttpSecurityScanner:
     """HTTP Security Headers Scanner for analyzing web application security headers."""
     
-    def __init__(self, timeout: int = 10):
+    def __init__(self, timeout: int = 10, verify_ssl: bool = True):
         self.timeout = timeout
+        self.verify_ssl = verify_ssl
         self.session = None
         
         # Define critical security headers with their descriptions and recommendations
@@ -69,12 +70,9 @@ class HttpSecurityScanner:
         }
         
     async def __aenter__(self):
-        # Create SSL context that allows self-signed certificates for testing
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        # Certificates are verified unless the caller set verify_ssl=False
+        # for this scan.
+        connector = aiohttp.TCPConnector(ssl=client_ssl(self.verify_ssl))
         timeout = aiohttp.ClientTimeout(total=self.timeout)
         self.session = aiohttp.ClientSession(
             connector=connector, 
@@ -258,7 +256,7 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
     start_time = datetime.now()
     
     try:
-        async with HttpSecurityScanner(input_data.timeout) as scanner:
+        async with HttpSecurityScanner(input_data.timeout, verify_ssl=input_data.verify_ssl) as scanner:
             # Normalize the URL
             normalized_url = scanner.normalize_url(input_data.url)
             
@@ -306,7 +304,11 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
             if additional_paths:
                 findings["additional_paths_scanned"] = additional_paths
             
+            if not input_data.verify_ssl:
+                findings["certificate_verification"] = "disabled for this scan (verify_ssl=false)"
+
             return HttpSecurityScannerOutput(
+                success=True,
                 url=input_data.url,
                 timestamp=start_time,
                 duration=duration,
@@ -320,11 +322,28 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
                 findings=findings
             )
             
+    except aiohttp.ClientConnectorCertificateError as e:
+        # Reported as-is. There is no fallback to an unverified connection.
+        message = certificate_error_message(e, input_data.url)
+        logger.warning(message)
+        return HttpSecurityScannerOutput(
+            success=False,
+            error_message=message,
+            url=input_data.url,
+            timestamp=start_time,
+            duration=(datetime.now() - start_time).total_seconds(),
+            status="tls_verification_failed",
+            http_status=None,
+            security_score=0,
+            findings={"error": message, "certificate_verification": "failed"}
+        )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"HTTP security scan failed: {e}")
         duration = (datetime.now() - start_time).total_seconds()
         
         return HttpSecurityScannerOutput(
+            success=False,
+            error_message=str(e),
             url=input_data.url,
             timestamp=start_time,
             duration=duration,
@@ -342,5 +361,4 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
         )
 
 # TODO: Implement proper session management with async with
-# TODO: Add proper SSL certificate verification
 # TODO: Implement request/response logging for audit

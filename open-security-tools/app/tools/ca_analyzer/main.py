@@ -19,6 +19,7 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
+from ...utils.tls import probe_certificate_trust
 from .schemas import (
     CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
     RevocationStatus, SecurityAnalysis
@@ -61,25 +62,29 @@ class CAAnalyzer:
         pass
     
     def get_certificate_chain(self, hostname: str, port: int = 443, timeout: int = 30) -> List[bytes]:
-        """Retrieve SSL certificate chain from server"""
+        """Retrieve the certificate the server presents (leaf only).
+
+        The standard library on Python 3.11 exposes only the peer's leaf
+        certificate; getpeercert_chain() does not exist on ssl.SSLSocket and
+        raised AttributeError on every call. Chain trust is decided by the
+        verified handshake in check_certificate_trust instead.
+        """
         try:
-            # Create SSL context
+            # Verification is off for THIS handshake by design: the tool exists
+            # to report on the certificate a host presents, including expired,
+            # self-signed or mismatched ones, so it has to complete the
+            # handshake to read it. Trust is decided separately by a verified
+            # handshake (check_certificate_trust) and reported in chain_issues.
+            # Only the certificate is read from this connection.
             context = ssl.create_default_context()
             context.check_hostname = False
             context.verify_mode = ssl.CERT_NONE
             
-            # Connect and get certificate chain
             with socket.create_connection((hostname, port), timeout=timeout) as sock:
                 with context.wrap_socket(sock, server_hostname=hostname) as ssock:
-                    # Get peer certificate chain
-                    peer_cert_der = ssock.getpeercert_chain()
-                    if peer_cert_der:
-                        return [cert.public_bytes(encoding=ssl.Encoding.DER) for cert in peer_cert_der]
-                    
-                    # Fallback to just peer certificate
-                    peer_cert = ssock.getpeercert_chain()
+                    peer_cert = ssock.getpeercert(binary_form=True)
                     if peer_cert:
-                        return [peer_cert[0].public_bytes(encoding=ssl.Encoding.DER)]
+                        return [peer_cert]
             
             return []
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
@@ -181,11 +186,6 @@ class CAAnalyzer:
         # Basic chain validation
         is_valid_chain = True
         
-        # Check chain length
-        if chain_length < 2 and not is_self_signed:
-            chain_issues.append("Incomplete certificate chain")
-            is_valid_chain = False
-        
         # Check if certificates are expired
         current_time = datetime.now(timezone.utc)
         for i, cert_data in enumerate(chain_data):
@@ -210,6 +210,16 @@ class CAAnalyzer:
             is_valid_chain=is_valid_chain,
             chain_issues=chain_issues
         )
+    
+    def check_certificate_trust(self, hostname: str, port: int, timeout: int) -> Optional[str]:
+        """Verified handshake: None if chain and hostname verify, else the issue."""
+        try:
+            reason = probe_certificate_trust(hostname, port, timeout)
+        except (OSError, ValueError) as e:
+            return f"Certificate trust not determined: {e}"
+        if reason is None:
+            return None
+        return f"Certificate verification failed: {reason}"
     
     def check_revocation_status(self, cert_data: Dict[str, Any]) -> RevocationStatus:
         """Check certificate revocation status (simplified implementation)"""
@@ -381,6 +391,10 @@ class CAAnalyzer:
         
         # Analyze certificate chain
         chain_analysis = self.analyze_certificate_chain(chain_data)
+        trust_issue = self.check_certificate_trust(hostname, port, timeout)
+        if trust_issue:
+            chain_analysis.chain_issues.append(trust_issue)
+            chain_analysis.is_valid_chain = False
         
         # Check revocation status
         revocation_status = None
