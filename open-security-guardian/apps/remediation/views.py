@@ -15,17 +15,27 @@ from .models import (
     RemediationTicket, RemediationWorkflow, RemediationStep,
     RemediationComment, RemediationTemplate, RemediationMetrics
 )
+from .serializers import (
+    RemediationCommentSerializer, RemediationStepSerializer,
+    RemediationTemplateSerializer, RemediationTicketSerializer,
+    RemediationWorkflowSerializer,
+)
 
 
 class RemediationTicketViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation tickets"""
     queryset = RemediationTicket.objects.all()
+    serializer_class = RemediationTicketSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description', 'external_ticket_id']
-    filterset_fields = ['status', 'priority', 'assigned_to', 'ticketing_system']
+    filterset_fields = ['status', 'priority', 'assigned_to', 'system']
     ordering_fields = ['created_at', 'updated_at', 'due_date', 'priority']
     ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
@@ -59,12 +69,17 @@ class RemediationTicketViewSet(viewsets.ModelViewSet):
 class RemediationWorkflowViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation workflows"""
     queryset = RemediationWorkflow.objects.all()
+    serializer_class = RemediationWorkflowSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    search_fields = ['name', 'description']
+    search_fields = ['title', 'description']
     filterset_fields = ['vulnerability', 'status', 'priority', 'assigned_to']
-    ordering_fields = ['created_at', 'updated_at', 'due_date']
+    ordering_fields = ['created_at', 'updated_at', 'planned_completion_date']
     ordering = ['-created_at']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def start(self, request, pk=None):
@@ -109,28 +124,31 @@ class RemediationWorkflowViewSet(viewsets.ModelViewSet):
 class RemediationStepViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation steps"""
     queryset = RemediationStep.objects.all()
+    serializer_class = RemediationStepSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['title', 'description']
-    filterset_fields = ['workflow', 'status', 'assigned_to', 'step_type']
-    ordering_fields = ['order', 'created_at', 'due_date']
+    filterset_fields = ['workflow', 'status', 'assigned_to']
+    ordering_fields = ['order', 'created_at', 'completed_at']
     ordering = ['order']
 
     @action(detail=True, methods=['post'])
     def execute(self, request, pk=None):
         """Execute step"""
         step = self.get_object()
-        step.status = 'in_progress'
-        step.save()
-        # TODO: Implement step execution logic
+        step.start_execution(request.user)
         return Response({'status': 'success', 'message': 'Step execution started'})
 
     @action(detail=True, methods=['post'])
     def complete(self, request, pk=None):
         """Mark step as completed"""
         step = self.get_object()
-        step.status = 'completed'
-        step.save()
+        # complete_execution also records the duration and moves the
+        # workflow's progress; setting the status alone left both stale.
+        step.complete_execution(
+            notes=request.data.get('notes'),
+            validation_results=request.data.get('validation_results'),
+        )
         return Response({'status': 'success', 'message': 'Step completed'})
 
     @action(detail=True, methods=['post'])
@@ -145,10 +163,13 @@ class RemediationStepViewSet(viewsets.ModelViewSet):
 class RemediationCommentViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation comments"""
     queryset = RemediationComment.objects.all()
+    serializer_class = RemediationCommentSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['content']
-    filterset_fields = ['ticket', 'workflow', 'author', 'comment_type']
+    # A comment belongs to a workflow, not to a ticket: reach the ticket
+    # through the workflow.
+    filterset_fields = ['workflow', 'workflow__ticket', 'author', 'comment_type']
     ordering_fields = ['created_at']
     ordering = ['-created_at']
 
@@ -160,12 +181,17 @@ class RemediationCommentViewSet(viewsets.ModelViewSet):
 class RemediationTemplateViewSet(viewsets.ModelViewSet):
     """ViewSet for managing remediation templates"""
     queryset = RemediationTemplate.objects.all()
+    serializer_class = RemediationTemplateSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     filterset_fields = ['category', 'is_active', 'created_by']
     ordering_fields = ['name', 'created_at', 'usage_count']
     ordering = ['name']
+
+    def perform_create(self, serializer):
+        """Record the gateway-authenticated user as the creator."""
+        serializer.save(created_by=self.request.user)
 
     @action(detail=True, methods=['post'])
     def clone(self, request, pk=None):

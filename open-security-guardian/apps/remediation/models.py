@@ -245,6 +245,25 @@ class RemediationWorkflow(models.Model):
         
         self.save()
 
+    def update_workflow_progress(self):
+        """Recompute progress from the workflow's steps.
+
+        Counts completed steps, as the ``progress`` API action does, and
+        points ``current_step`` at the first step not yet completed.
+        RemediationStep.complete_execution called this method before it
+        existed, so completing a step raised AttributeError (#516).
+        """
+        steps = self.steps.order_by('order')
+        total = steps.count()
+        if total == 0:
+            return
+        completed = steps.filter(status='completed').count()
+        next_step = steps.exclude(status__in=['completed', 'skipped']).first()
+        self.update_progress(
+            completed / total * 100,
+            current_step=next_step.title if next_step else None,
+        )
+
 
 class RemediationStep(models.Model):
     """Individual steps in a remediation workflow"""

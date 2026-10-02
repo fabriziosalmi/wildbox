@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
-from django.db.models import Count, Q, Avg
+from django.db.models import Count, Q, Avg, Sum
 from django.utils import timezone
 from django.http import HttpResponse, Http404
 from .models import (
@@ -285,13 +285,13 @@ class ReportMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         
         summary = {
             'total_reports_generated': recent_metrics.aggregate(
-                total=models.Sum('generation_count')
+                total=Sum('generation_count')
             )['total'] or 0,
             'average_success_rate': recent_metrics.aggregate(
                 avg=Avg('success_rate')
             )['avg'] or 0,
             'most_popular_templates': recent_metrics.values('template__name').annotate(
-                total_count=models.Sum('generation_count')
+                total_count=Sum('generation_count')
             ).order_by('-total_count')[:5],
             'total_storage_used_mb': sum([
                 m.total_file_size / (1024 * 1024) for m in recent_metrics if m.total_file_size

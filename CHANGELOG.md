@@ -21,6 +21,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as a vulnerability lookup and answered 404. The named prefixes are now
   registered before it.
 
+- **guardian's remediation and integrations endpoints answer again** (#499).
+  All 11 list endpoints of the two apps, plus `scanners/stats/` and
+  `reports/metrics/summary/`, answered 500: `filterset_fields`, search and
+  ordering named fields the models do not have, and no endpoint in either
+  app had a serializer. Filters now use real fields, each endpoint has an
+  explicit serializer, and stored credentials (`auth_config`,
+  `secret_token`, channel `config`) are write-only. A new test GETs every
+  read route, with search and every ordering, and fails on any 5xx.
+
+- **Completing a guardian remediation step works, and creators are
+  recorded** (#516). `RemediationStep.complete_execution` called a
+  workflow method that did not exist and raised `AttributeError`; the
+  steps API's `complete` and `execute` actions only flipped the status, so
+  timings and workflow progress never moved. They now go through
+  `start_execution`/`complete_execution`, and the workflow recomputes its
+  progress from its steps. Creating a ticket, workflow, template, external
+  system or notification channel now sets `created_by` to the
+  gateway-authenticated user instead of leaving it null.
+
+- **The web vulnerability scanner's SQL injection check works** (#507). It
+  read `await response.text().lower()`, which calls `.lower()` on the
+  coroutine and raised before any comparison, so it never reported a finding.
+
 - **`make start` no longer leaves the data service crash-looping.** It layers
   `docker-compose.dev.yml`, which sets `DEBUG=true` for data, over a `.env`
   whose `ENVIRONMENT` is `production`; data refuses that combination. The
@@ -59,6 +82,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **Failed-login lockout is enforced** (#509). The helpers and settings
+  existed (5 attempts, 15 minutes) but no login route called them, so every
+  account accepted unlimited password guesses. Password login now refuses an
+  account with 429 after 5 failures, for registered and unknown emails alike,
+  and a successful login clears the counter.
+
+- **identity no longer serves its API documentation in production** (#496).
+  `/docs`, `/redoc` and `/openapi.json` mapped every route, admin and
+  internal ones included; like agents, responder and cspm, identity now
+  serves them only when `ENVIRONMENT` is not `production`.
 
 - **identity no longer prints the initial admin password** (#493).
   `scripts/init.sh` wrote it to the container log on first start, where
@@ -160,6 +194,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   google-api-core leave the lock entirely: 128 packages become 73, and
   pip-audit reports nothing for cspm. boto3, botocore, google-auth and
   azure-identity stay at the same versions.
+
+- **No advisories left in the requirement files outside the locks**
+  (#508). Four files were outside `scripts/compile_requirements.sh` and
+  carried 15 Dependabot alerts. `open-security-tools/requirements-secure.txt` is
+  deleted: nothing in the repository installs or mentions it.
+  `tests/requirements.txt` (installed by the chaos and load workflow) moves
+  to pytest 9.0.3, pytest-asyncio 1.3.0, aiohttp 3.14.3, black 26.3.1 and
+  psutil 6.1.1, and drops `safety`, which nothing runs and which pulled in a
+  vulnerable filelock (or, from 3.6.1, nltk, which has no fixed release).
+  The cspm and guardian `requirements-dev.txt` move to pytest 9.0.3, black
+  26.3.1 and mkdocs-material 9.7.7. guardian's could not be resolved against
+  its own lock at all (safety 2.3.5 required packaging<22, pgcli 3.5.0
+  sqlparse<0.5); it now resolves, with safety dropped and pgcli at 4.6.0.
+  pip-audit reports nothing for any of them, transitive dependencies
+  included.
 
 ### CI
 
