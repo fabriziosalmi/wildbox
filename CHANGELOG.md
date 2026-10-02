@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could not reach that point for guardian: they probed port 8001 on every
   service and started green with a plain `up` of a service at 0 replicas,
   which starts nothing.
+
+- **guardian's vulnerability history endpoint answers again.** It ordered by
+  `changed_at`, which does not exist (the field is `timestamp`), so
+  `GET /api/v1/vulnerabilities/{id}/history/` answered 500 for every
+  vulnerability.
+
 - **guardian's periodic tasks run, and its tasks reach their queues**
   (#545). guardian used django-celery-beat but scheduled nothing and ran
   no beat, so the SLA check, alert rules, risk-score recalculation,
