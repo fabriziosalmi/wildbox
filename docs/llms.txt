@@ -7,7 +7,7 @@ What exists today, as defined by `docker-compose.yml` in the repository. Ports, 
 ## Services
 
 - **Gateway (`open-security-gateway`)**: OpenResty. The only service published beyond localhost: HTTPS on 443; ports 80 and 8080 answer `/health` and redirect everything else to HTTPS. Validates JWTs and API keys with the identity service, rate-limits per team, routes `/api/v1/<service>/` to each backend.
-- **Identity (`open-security-identity`)**: FastAPI with fastapi-users. Users, JWT login (`POST /auth/jwt/login` through the gateway, form-encoded `username`/`password`), token revocation, API keys, teams with owner/admin/member roles, account lockout.
+- **Identity (`open-security-identity`)**: FastAPI with fastapi-users. Users, JWT login (`POST /auth/jwt/login` through the gateway, form-encoded `username`/`password`), token revocation, API keys, teams with owner/admin/member roles. Failed logins are not locked out.
 - **Tools (`open-security-tools`)**: Runs 52 security tools (scanners, analyzers, OSINT and crypto utilities) through an API, with Celery workers.
 - **Data (`open-security-data`)**: Collects threat intelligence (IOCs, denylists) from public sources on a schedule and serves lookups.
 - **Guardian (`open-security-guardian`)**: Django REST. Assets, vulnerabilities, remediation, compliance and reporting.

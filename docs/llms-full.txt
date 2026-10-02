@@ -43,7 +43,7 @@ The gateway is the only service published on all interfaces. Every other publish
 | Compose service | Host port | Role |
 | --- | --- | --- |
 | gateway | 443, 80, 8080 | OpenResty ingress, TLS, authentication, rate limiting, routing |
-| identity | 127.0.0.1:8001 | Users, JWT login and revocation, API keys, teams, account lockout (FastAPI, fastapi-users) |
+| identity | 127.0.0.1:8001 | Users, JWT login and revocation, API keys, teams (FastAPI, fastapi-users) |
 | api (tools) | 127.0.0.1:8000 | Runs 52 security tools through an API; Celery workers (`tools-worker`), Flower on 127.0.0.1:5555 |
 | data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected from public sources by `data-scheduler` |
 | sensor | 127.0.0.1:8004 | Endpoint telemetry with osquery, forwarded to the data service |
@@ -82,8 +82,10 @@ TOKEN=$(curl -s --cacert "$CA" -X POST https://localhost/auth/jwt/login \
 curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" https://localhost/api/v1/identity/users/me
 ```
 
-- Login is form-encoded (`username`, `password`) and returns `access_token`. Tokens expire after `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` (30 by default); there is no refresh endpoint.
-- `POST /auth/logout` with the bearer token revokes it.
+- Login is form-encoded (`username`, `password`) and returns `access_token`. Tokens are HS256 JWTs valid for 30 minutes (`jwt_access_token_expire_minutes`; Compose does not pass an override); there is no refresh endpoint.
+- `POST /auth/logout` or `POST /auth/jwt/logout` with the bearer token revokes it: its `jti` is blacklisted in Redis and refused by the gateway and by identity.
+- Failed logins are not locked out (the lockout helpers in identity are not wired); the gateway rate-limits `/auth/jwt/`.
+- New passwords are hashed with Argon2 by fastapi-users.
 - API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`.
 - Rate limits come from `RATE_LIMIT_PER_HOUR` and are reported in `X-RateLimit-*` headers.
 
