@@ -380,6 +380,9 @@
     "lookback",
     "lua",
     "lxml",
+
+    "luacheck",
+    "luacheckrc",
     "Lynis",
     "maintanibile",
     "makemigrations",

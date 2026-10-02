@@ -15,10 +15,19 @@ env:
 permissions:
   contents: read
 
+# One run per pull request: a new push cancels the run it supersedes. Any
+# other event (push to main, schedule, dispatch) gets a group of its own,
+# so it is never cancelled -- not even while pending, which a shared group
+# with cancel-in-progress: false would still do to a queued run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 2.9 min
     strategy:
       matrix:
         python-version: ["3.11"]
@@ -43,8 +52,13 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
+          # One key per service. Without a path the key hashed every
+          # requirements file in the tree, so all eight legs shared one key
+          # and the cache held whichever leg saved first.
+          cache-dependency-path: open-security-${{ matrix.service }}/requirements.txt
       
       - name: Install dependencies for ${{ matrix.service }}
+        timeout-minutes: 5  # observed max 0.9 min
         run: |
           cd open-security-${{ matrix.service }}
           # Python services import open_security_shared; install it so unit
@@ -89,6 +103,7 @@ jobs:
   shared-package-tests:
     name: Shared Package Unit Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.4 min
     steps:
       - uses: actions/checkout@v7
 
@@ -96,8 +111,11 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: open-security-shared/pyproject.toml
 
       - name: Install
+        timeout-minutes: 5
         run: |
           pip install ./open-security-shared
           pip install pytest pytest-asyncio httpx
@@ -118,6 +136,7 @@ jobs:
   e2e-tests:
     name: E2E Tests (Playwright)
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # observed max 8.3 min (Playwright's apt dependencies)
     
     steps:
       - uses: actions/checkout@v7
@@ -130,11 +149,13 @@ jobs:
           cache-dependency-path: open-security-dashboard/package-lock.json
       
       - name: Install dependencies
+        timeout-minutes: 5
         run: |
           cd open-security-dashboard
           npm ci
       
       - name: Install Playwright Browsers
+        timeout-minutes: 15  # see e2e-fullstack.yml: once 8.0 min on apt mirrors
         run: |
           cd open-security-dashboard
           npx playwright install --with-deps chromium
@@ -168,6 +189,7 @@ jobs:
     # Prettier and TypeScript checks ran nowhere and drifted (#528).
     name: Dashboard Lint / Format / Types
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.8 min
     defaults:
       run:
         working-directory: open-security-dashboard
@@ -183,6 +205,7 @@ jobs:
           cache-dependency-path: open-security-dashboard/package-lock.json
 
       - name: Install dependencies
+        timeout-minutes: 5
         run: npm ci
 
       - name: ESLint
@@ -195,46 +218,99 @@ jobs:
         run: npx tsc --noEmit
 
   security-scan:
-    # Uploads the Trivy SARIF report to code scanning.
+    # The one job that runs Trivy and Bandit, on pull requests and on main.
+    #
+    # Trivy used to run in two jobs on every pull request -- this one and
+    # "Security Scan" in pr-validation.yml -- uploading the same scan to code
+    # scanning twice under two automatic categories, and Bandit's report went
+    # to an artifact nobody read. Each tool now runs once and uploads under a
+    # fixed category, so the analysis of a pull request is compared with the
+    # analysis of main under the same name.
+    #
+    # "Security Scanning" is a required status check: keep the name.
     permissions:
       contents: read
       security-events: write
     name: Security Scanning
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 10  # observed max 0.7 min here + 1.2 min for the gate
+
     steps:
       - uses: actions/checkout@v7
-      
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@v0.36.0
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-results.sarif'
-          # Findings are uploaded to the Security tab below; the gating copy of
-          # this scan runs in pr-validation.yml (WILDBO-DEP-03).
-          exit-code: '0'
-      
-      - name: Upload Trivy results to GitHub Security
+          version: v0.70.0
+          cache: true
+
+      - name: Trivy, every finding (SARIF for code scanning)
+        # All severities, reported rather than gated; the gate is a separate
+        # pass below, because `severity` and SARIF output do not combine (the
+        # SARIF writer reports every severity whatever the filter says).
+        run: trivy fs --quiet --format sarif --output trivy-results.sarif --exit-code 0 .
+
+      - name: Check out the base branch
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE_SHA"
+
+      - name: Fail on critical advisories this PR introduces
+        # Gates (WILDBO-DEP-03), but only on what the PR adds (#430). Failing
+        # on every critical in the tree turned all open PRs red the day an
+        # advisory was published against something already on main, whatever
+        # they touched; those are reported on main by main-advisories.yml
+        # instead. Starting at CRITICAL keeps the gate achievable; widen to
+        # CRITICAL,HIGH once the current HIGH backlog is triaged.
+        if: github.event_name == 'pull_request'
+        run: ./scripts/critical_advisories.sh new . "$RUNNER_TEMP/base"
+
+      - name: Upload Trivy results
+        if: ${{ !cancelled() && hashFiles('trivy-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-results.sarif'
-      
-      - name: Run Bandit security linter
-        run: |
-          pip install bandit
-          bandit -r open-security-*/app -f json -o bandit-report.json || true
-      
-      - name: Upload Bandit results
-        uses: actions/upload-artifact@v7
+          sarif_file: trivy-results.sarif
+          category: trivy-fs
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          name: bandit-report
-          path: bandit-report.json
+          python-version: '3.11'
+
+      - name: Bandit (SARIF for code scanning)
+        # Every Python service's own package. Guardian's code is in apps/ and
+        # guardian/, the sensor's in sensor/ and the shared package's at its
+        # root, so the old `open-security-*/app` skipped all three. Reported,
+        # not gated. Medium severity and confidence and up: below that, Bandit
+        # reports patterns such as try/except/pass and string constants named
+        # like passwords, which would bury the findings worth acting on.
+        timeout-minutes: 5
+        run: |
+          pip install --quiet "bandit[sarif]==1.8.6"
+          bandit --quiet --recursive --exit-zero \
+            --severity-level medium --confidence-level medium \
+            --exclude '*/tests/*,*/migrations/*' \
+            --format sarif --output bandit-results.sarif \
+            open-security-agents/app open-security-cspm/app \
+            open-security-data/app open-security-identity/app \
+            open-security-responder/app open-security-tools/app \
+            open-security-guardian/apps open-security-guardian/guardian \
+            open-security-sensor/sensor open-security-shared
+
+      - name: Upload Bandit results
+        if: ${{ !cancelled() && hashFiles('bandit-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: bandit-results.sarif
+          category: bandit
 
   lint:
     name: Code Quality
     runs-on: ubuntu-latest
+    timeout-minutes: 10  # observed max 0.4 min
 
     steps:
       - uses: actions/checkout@v7
@@ -329,6 +405,7 @@ jobs:
       packages: write
     name: Build Docker Images
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # observed max 6.3 min
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # lint is in needs so a failing quality gate actually blocks the image
     # build; it used to be absent, which made the gate decorative twice over

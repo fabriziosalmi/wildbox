@@ -1,0 +1,82 @@
+# CI only. Builds the stack's images through the GitHub Actions cache.
+#
+# Applied on top of docker-compose.yml by the jobs that start the whole stack
+# (integration-tests.yml, production-stack.yml).
+#
+# It needs a BuildKit builder that can export a cache (docker/setup-buildx-
+# action) and the runner's cache credentials in the environment (the
+# "Expose the Actions cache to BuildKit" step).
+#
+# One scope per build context, named as in docker-build-validation.yml, which
+# builds the same Dockerfiles with the same shared context: the two jobs fill
+# and read the same cache. Where several services build one context (tools,
+# data, guardian) only the first writes, so concurrent exports do not race
+# for one scope; the others read it.
+#
+# Staleness: every Dockerfile copies its lockfile (requirements.txt,
+# package-lock.json) before the step that installs from it, and BuildKit
+# keys a cached layer on the content of what was copied, so a changed lock
+# rebuilds from that step on. An apt-get layer is reused until its line or the
+# digest-pinned base image changes -- as it already is by the image builds in
+# test.yml and docker-build-validation.yml; these images are tested, never
+# pushed.
+services:
+  identity:
+    build:
+      cache_from: ['type=gha,scope=identity']
+      cache_to: ['type=gha,scope=identity,mode=max']
+  api:
+    build:
+      cache_from: ['type=gha,scope=tools']
+      cache_to: ['type=gha,scope=tools,mode=max']
+  tools-worker:
+    build:
+      cache_from: ['type=gha,scope=tools']
+  tools-flower:
+    build:
+      cache_from: ['type=gha,scope=tools']
+  data:
+    build:
+      cache_from: ['type=gha,scope=data']
+      cache_to: ['type=gha,scope=data,mode=max']
+  data-scheduler:
+    build:
+      cache_from: ['type=gha,scope=data']
+  gateway:
+    build:
+      cache_from: ['type=gha,scope=gateway']
+      cache_to: ['type=gha,scope=gateway,mode=max']
+  dashboard:
+    build:
+      # docker-compose.yml builds Dockerfile.dev; docker-compose.prod.yml
+      # switches to the production Dockerfile, which docker-build-validation
+      # builds under "dashboard". production-stack.yml sets the variable so
+      # the two Dockerfiles do not overwrite each other's cache.
+      cache_from: ['type=gha,scope=${DASHBOARD_CACHE_SCOPE:-dashboard-dev}']
+      cache_to: ['type=gha,scope=${DASHBOARD_CACHE_SCOPE:-dashboard-dev},mode=max']
+  guardian:
+    build:
+      cache_from: ['type=gha,scope=guardian']
+      cache_to: ['type=gha,scope=guardian,mode=max']
+  guardian-worker:
+    build:
+      cache_from: ['type=gha,scope=guardian']
+  guardian-beat:
+    build:
+      cache_from: ['type=gha,scope=guardian']
+  responder:
+    build:
+      cache_from: ['type=gha,scope=responder']
+      cache_to: ['type=gha,scope=responder,mode=max']
+  cspm:
+    build:
+      cache_from: ['type=gha,scope=cspm']
+      cache_to: ['type=gha,scope=cspm,mode=max']
+  agents:
+    build:
+      cache_from: ['type=gha,scope=agents']
+      cache_to: ['type=gha,scope=agents,mode=max']
+  sensor:
+    build:
+      cache_from: ['type=gha,scope=sensor']
+      cache_to: ['type=gha,scope=sensor,mode=max']

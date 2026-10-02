@@ -32,6 +32,7 @@ jobs:
   build:
     name: Build ${{ matrix.service }} image
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # observed max 3.8 min over the last 30 green runs
     strategy:
       fail-fast: false
       matrix:

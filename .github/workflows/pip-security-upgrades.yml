@@ -26,6 +26,7 @@ jobs:
   upgrade:
     name: Upgrade vulnerable pins
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # one green run so far, 2.4 min; resolving every lock
     steps:
       - name: Checkout code
         uses: actions/checkout@v7

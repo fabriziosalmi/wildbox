@@ -42,13 +42,10 @@ Enable these options:
 
 - ✅ **Require status checks to pass before merging**
   - ✅ Require branches to be up to date before merging
-  - **Select required status checks:**
-    - `Validate Docker Compose`
-    - `Validate Project Structure`
-    - `Security Scan`
-    - `Python Code Quality`
-    - `Integration Tests`
-    - `PR Validation Summary`
+  - **Select required status checks:** the check names listed as required
+    in [`workflows/README.md`](workflows/README.md). Only checks that run on
+    every pull request can be required; a path-filtered one never reports
+    on the pull requests it skips, and those would wait for it forever.
 
 - ✅ **Require conversation resolution before merging**
   - All PR comments must be resolved
@@ -103,9 +100,10 @@ After setup, test by trying to:
 
 ## GitHub Actions Required
 
-The following workflow must exist and be enabled:
+The following workflows must exist and be enabled:
 
-- `.github/workflows/pr-validation.yml` ✓ (Already created)
+- Every workflow that produces a required check; see
+  [`workflows/README.md`](workflows/README.md).
 
 ## PR Workflow
 

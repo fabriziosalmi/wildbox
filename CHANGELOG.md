@@ -465,6 +465,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The workflows are bounded, deduplicated and cached** (#557). Every
+  job has a timeout of about three times its longest observed green run
+  (26 had none), with step limits on installs and stack start-up; a new
+  push to a pull request cancels its superseded runs, never runs on
+  `main`. Trivy and Bandit run once per pull request, in Security
+  Scanning, uploading to code scanning as `trivy-fs` and `bandit` (Trivy
+  ran twice, Bandit missed guardian, the sensor and the shared package);
+  the critical-advisory gate moved there unchanged. The documentation
+  secret scan's AWS and GitHub token patterns matched nothing without
+  `grep -E`. pip caches are keyed per service, and Integration Tests and
+  the production stack build through the Actions cache: 5.4 to 2.1 min of
+  image builds warm. `.github/workflows/README.md` now lists what each
+  workflow runs and gates, and actionlint passes.
 - **A scheduled guardian task is seen to run, and on its queue** (#545).
   Integration Tests and Production Stack start guardian-beat with the
   alert-rule sweep every 15 seconds and wait, through the gateway, for a
