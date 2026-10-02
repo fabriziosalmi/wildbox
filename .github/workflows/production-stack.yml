@@ -43,6 +43,9 @@ jobs:
       # 15 minutes, so the integration suite can watch a scheduled run happen
       # (#545). The suite reads it too, to size its deadline.
       GUARDIAN_SCHEDULE_ALERT_RULES: "15"
+      # Likewise the user-schedule dispatcher, every 15 s instead of every
+      # minute (#548).
+      GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
 
     steps:
       - name: Checkout code

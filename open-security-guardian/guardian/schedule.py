@@ -89,6 +89,15 @@ PERIODIC_TASKS = (
         "GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS",
         "0 8 * * 1",
     ),
+    # The schedules users define (discovery rules, report schedules): their
+    # cron fields have a one-minute resolution, so a sweep every minute
+    # starts each run within a minute of its time (#548).
+    (
+        "core.dispatch_due_schedules",
+        "apps.core.tasks.dispatch_due_schedules",
+        "GUARDIAN_SCHEDULE_USER_SCHEDULES",
+        "60",
+    ),
 )
 
 

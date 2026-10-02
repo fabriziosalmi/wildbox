@@ -1,55 +1,42 @@
-from django.db.models.signals import post_save, pre_delete
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
-from .models import Report, ReportSchedule, AlertRule
-from .tasks import update_report_metrics, check_alert_rule
+
+from apps.core.schedules import next_frequency_run
+
+from .models import ReportSchedule, AlertRule
+from .tasks import check_alert_rule
 
 
-@receiver(post_save, sender=Report)
-def report_generated(sender, instance, created, **kwargs):
-    """
-    Handle report generation completion
-    """
-    if instance.status == 'completed' and instance.tracker.has_changed('status'):
-        # Update metrics for the template
-        update_report_metrics.delay(instance.template.id)
-        
-        # Send notification if scheduled report
-        if instance.schedule:
-            from apps.core.utils import send_notification
-            send_notification(
-                subject=f"Scheduled Report Generated: {instance.name}",
-                template='reporting/report_generated.html',
-                context={
-                    'report': instance,
-                    'schedule': instance.schedule
-                },
-                notification_type='report'
-            )
+# A completed scheduled report is announced by generate_report itself
+# (tasks.notify_scheduled_report). The post_save receiver that did it read
+# ``instance.tracker``, which neither Report nor ReportSchedule has, so
+# saving a completed report or editing a schedule raised (#548).
 
 
-@receiver(post_save, sender=ReportSchedule)
-def schedule_updated(sender, instance, created, **kwargs):
+@receiver(pre_save, sender=ReportSchedule)
+def schedule_reactivated(sender, instance, **kwargs):
+    """Skip the runs a schedule missed while it was paused or disabled (#548).
+
+    When a schedule becomes active again with a next_run already past, the
+    dispatcher would run it at once for a date long gone; next_run moves to
+    the first run after now instead, at the same time of day. A one-off
+    schedule keeps its date: switching it back on means "run it".
     """
-    Handle schedule updates
-    """
-    if not created and instance.tracker.has_changed('status'):
-        if instance.status == 'active':
-            # Calculate next run time
-            from datetime import timedelta
-            from django.utils import timezone
-            
-            now = timezone.now()
-            if instance.frequency == 'daily':
-                instance.next_run = now + timedelta(days=1)
-            elif instance.frequency == 'weekly':
-                instance.next_run = now + timedelta(weeks=1)
-            elif instance.frequency == 'monthly':
-                instance.next_run = now + timedelta(days=30)
-            elif instance.frequency == 'quarterly':
-                instance.next_run = now + timedelta(days=90)
-            
-            instance.save(update_fields=['next_run'])
+    if kwargs.get('raw') or instance._state.adding or instance.status != 'active':
+        return
+    previous = (
+        ReportSchedule.objects.filter(pk=instance.pk)
+        .values_list('status', flat=True)
+        .first()
+    )
+    if previous in (None, 'active'):
+        return
+    now = timezone.now()
+    if instance.next_run and instance.next_run <= now:
+        upcoming = next_frequency_run(instance.frequency, instance.next_run, now)
+        if upcoming is not None:
+            instance.next_run = upcoming
 
 
 @receiver(post_save, sender=AlertRule)

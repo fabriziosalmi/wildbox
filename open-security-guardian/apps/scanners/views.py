@@ -196,8 +196,28 @@ class ScanResultViewSet(viewsets.ModelViewSet):
     ordering = ['-created_at']
 
 
+SCAN_SCHEDULES_UNSUPPORTED = (
+    "Scheduled scans are not supported: guardian cannot start a scan on an "
+    "external scanner yet (starting, stopping and importing scans are not "
+    "implemented), so a schedule would never run. Existing schedules can be "
+    "listed, disabled and deleted."
+)
+
+
 class ScanScheduleViewSet(viewsets.ModelViewSet):
-    """ViewSet for managing scan schedules"""
+    """ViewSet for managing scan schedules.
+
+    A scan schedule names an external scanner (Nessus, Qualys, OpenVAS,
+    Rapid7 or a custom one) and a scan profile, and guardian has no code
+    that starts a scan on any of them: the start, stop, pause, resume and
+    import actions above are placeholders. The asset port scan
+    (apps.assets.tasks.scan_asset_ports) is guardian's own TCP connect scan
+    of one asset; it uses neither the scanner nor the profile and produces
+    no Scan or ScanResult, so running it for a scan schedule would report
+    work that was not done. Creating, changing, triggering and enabling a
+    schedule therefore answer 400 instead of accepting a schedule nothing
+    would run (#548).
+    """
     queryset = ScanSchedule.objects.all()
     serializer_class = ScanScheduleSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -207,20 +227,32 @@ class ScanScheduleViewSet(viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at', 'next_run']
     ordering = ['next_run']
 
+    @staticmethod
+    def _unsupported():
+        return Response(
+            {'detail': SCAN_SCHEDULES_UNSUPPORTED},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    def create(self, request, *args, **kwargs):
+        return self._unsupported()
+
+    def update(self, request, *args, **kwargs):
+        # PATCH goes through here too (partial_update calls update).
+        self.get_object()
+        return self._unsupported()
+
     @action(detail=True, methods=['post'])
     def trigger(self, request, pk=None):
-        """Manually trigger a scheduled scan"""
-        schedule = self.get_object()
-        # TODO: Implement actual schedule trigger logic
-        return Response({'status': 'success', 'message': 'Schedule triggered'})
+        """Manually trigger a scheduled scan: not supported (#548)."""
+        self.get_object()
+        return self._unsupported()
 
     @action(detail=True, methods=['post'])
     def enable(self, request, pk=None):
-        """Enable a scan schedule"""
-        schedule = self.get_object()
-        schedule.is_active = True
-        schedule.save()
-        return Response({'status': 'success', 'message': 'Schedule enabled'})
+        """Enable a scan schedule: not supported (#548)."""
+        self.get_object()
+        return self._unsupported()
 
     @action(detail=True, methods=['post'])
     def disable(self, request, pk=None):

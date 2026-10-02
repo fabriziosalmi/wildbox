@@ -19,6 +19,7 @@ Every test asserts a concrete outcome; none of them accepts "any status".
 import os
 import time
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 import requests
@@ -35,6 +36,10 @@ DASHBOARDS = f"{GUARDIAN_API}/reports/dashboards/"
 ALERTS = f"{GUARDIAN_API}/reports/alerts/"
 ALERT_CHECK_ALL = f"{ALERTS}check_all/"
 TASKS = f"{GUARDIAN_API}/tasks/"
+DISCOVERY_RULES = f"{GUARDIAN_API}/assets/discovery-rules/"
+REPORT_TEMPLATES = f"{GUARDIAN_API}/reports/templates/"
+REPORT_SCHEDULES = f"{GUARDIAN_API}/reports/schedules/"
+REPORTS = f"{GUARDIAN_API}/reports/reports/"
 
 TIMEOUT = 15
 # How long a queued task may take to be picked up and finished by the
@@ -93,22 +98,47 @@ def asset(admin_headers):
     requests.delete(f"{ASSETS}{body['id']}/", headers=admin_headers, timeout=TIMEOUT)
 
 
-def _alert_rule_interval() -> int:
-    """How often guardian-beat sends the alert-rule sweep in this stack.
+def _beat_interval(variable: str, default: str = "") -> int:
+    """How often guardian-beat sends a periodic task in this stack, in seconds.
 
-    The default is 15 minutes, too long to wait for; CI starts the stack
-    with GUARDIAN_SCHEDULE_ALERT_RULES=15 and gives the suite the same value.
+    The suite waits for beat, so an interval over 60 s would make its
+    deadlines minutes long: it is refused (a failure when every service is
+    required, a skip otherwise). CI starts the stack with the variable set
+    and gives the suite the same value.
     """
-    interval = os.getenv("GUARDIAN_SCHEDULE_ALERT_RULES", "")
+    interval = os.getenv(variable, "") or default
     if not interval.isdigit() or not 0 < int(interval) <= 60:
         message = (
-            "start the stack with GUARDIAN_SCHEDULE_ALERT_RULES at 60 s or "
+            f"start the stack with {variable} at 60 s or "
             "less, and set it for the suite too"
         )
         if os.getenv("REQUIRE_ALL_SERVICES", "") in ("1", "true", "yes"):
             pytest.fail(message, pytrace=False)
         pytest.skip(message)
     return int(interval)
+
+
+def _alert_rule_interval() -> int:
+    """How often guardian-beat sends the alert-rule sweep in this stack.
+
+    The default is 15 minutes, too long to wait for; CI starts the stack
+    with GUARDIAN_SCHEDULE_ALERT_RULES=15.
+    """
+    return _beat_interval("GUARDIAN_SCHEDULE_ALERT_RULES")
+
+
+def _user_schedule_interval() -> int:
+    """How often guardian-beat sends the user-schedule dispatcher (#548).
+
+    GUARDIAN_SCHEDULE_USER_SCHEDULES, 60 seconds when unset, as in
+    guardian/schedule.py.
+    """
+    return _beat_interval("GUARDIAN_SCHEDULE_USER_SCHEDULES", "60")
+
+
+def _timestamp(value: str) -> datetime:
+    """A DRF datetime ("...Z") as an aware datetime."""
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
 def _wait_for_rule(rule_id, headers, condition, what, seconds) -> dict:
@@ -519,6 +549,166 @@ class TestGuardianMonitoring:
             requests.delete(
                 f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT
             )
+
+    def test_report_schedule_runs_on_its_own(self, admin_headers) -> None:
+        """A report schedule that is due is generated without anyone asking.
+
+        Report schedules were stored and never run (#548): nothing read
+        next_run. guardian-beat now sends a dispatcher every
+        GUARDIAN_SCHEDULE_USER_SCHEDULES seconds that queues each due
+        schedule's report. Nothing in this test starts one: the report can
+        only appear if beat sent the dispatcher, the dispatcher queued the
+        report and the worker generated it -- and before #548 generation
+        itself failed for every report, so it must also complete and be
+        downloadable from guardian, which is not the container that wrote it.
+        """
+        interval = _user_schedule_interval()
+        template = requests.post(
+            REPORT_TEMPLATES,
+            json={
+                "name": f"it-guardian-template-{uuid.uuid4().hex[:12]}",
+                "report_type": "vulnerability_summary",
+                "template_content": "unused: reports are rendered by guardian",
+                "default_format": "json",
+            },
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert template.status_code == 201, template.text[:300]
+        template_id = template.json()["id"]
+        try:
+            created = requests.post(
+                REPORT_SCHEDULES,
+                json={
+                    "name": f"it-guardian-schedule-{uuid.uuid4().hex[:12]}",
+                    "template": template_id,
+                    "frequency": "once",
+                    "format": "json",
+                    "next_run": datetime.now(timezone.utc).isoformat(),
+                },
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert created.status_code == 201, created.text[:300]
+            schedule = created.json()
+            assert schedule["status"] == "active", schedule
+            assert schedule["last_run"] is None, schedule
+
+            report: dict = {}
+            deadline = time.monotonic() + max(TASK_DEADLINE, 3 * interval)
+            while time.monotonic() < deadline:
+                listing = _assert_page(
+                    requests.get(
+                        REPORTS,
+                        params={"schedule": schedule["id"]},
+                        headers=admin_headers,
+                        timeout=TIMEOUT,
+                    )
+                )
+                if listing["results"] and listing["results"][0]["status"] in (
+                    "completed",
+                    "failed",
+                ):
+                    assert listing["count"] == 1, listing
+                    report = listing["results"][0]
+                    break
+                time.sleep(2)
+            assert report, "no scheduled run generated the report within the deadline"
+            assert report["status"] == "completed", report
+
+            # A one-off schedule runs once, then is switched off.
+            current = requests.get(
+                f"{REPORT_SCHEDULES}{schedule['id']}/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert current.status_code == 200, current.text[:300]
+            assert current.json()["status"] == "disabled", current.json()
+            assert current.json()["last_run"], current.json()
+
+            download = requests.get(
+                f"{REPORTS}{report['id']}/download/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert download.status_code == 200, download.text[:300]
+            body = download.json()
+            assert isinstance(body["vulnerabilities"], list), body
+            assert isinstance(body["vulnerability_stats"]["total_count"], int), body
+        finally:
+            # The schedule and its reports go with the template (CASCADE).
+            requests.delete(
+                f"{REPORT_TEMPLATES}{template_id}/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+
+    def test_discovery_rule_runs_on_its_own(self, admin_headers) -> None:
+        """A discovery rule runs on its cron schedule and finds its host.
+
+        Discovery rules had a cron schedule nothing read (#548), and the
+        host probe ran a ping binary the image does not contain, so even a
+        manual run found nothing. The rule here runs every minute over one
+        loopback address, which the worker's TCP probe finds up (every
+        connection is refused at once, and nothing leaves the host); the
+        asset can only appear if the rule ran on its own.
+        """
+        interval = _user_schedule_interval()
+        address = f"127.0.{uuid.uuid4().int % 250 + 1}.{uuid.uuid4().int % 250 + 1}"
+        created = requests.post(
+            DISCOVERY_RULES,
+            json={
+                "name": f"it-guardian-rule-{uuid.uuid4().hex[:12]}",
+                "discovery_type": "network_scan",
+                "target_specification": {"networks": [f"{address}/32"]},
+                "schedule": "* * * * *",
+            },
+            headers=admin_headers,
+            timeout=TIMEOUT,
+        )
+        assert created.status_code == 201, created.text[:300]
+        rule = created.json()
+        assert rule["next_run"], rule
+        assert rule["last_run"] is None, rule
+        found: list = []
+        try:
+            # The first run is at the next minute, then within one interval.
+            deadline = time.monotonic() + 60 + max(TASK_DEADLINE, 3 * interval)
+            while time.monotonic() < deadline:
+                listing = _assert_page(
+                    requests.get(
+                        ASSETS,
+                        params={"search": address},
+                        headers=admin_headers,
+                        timeout=TIMEOUT,
+                    )
+                )
+                found = [a for a in listing["results"] if a["ip_address"] == address]
+                if found:
+                    break
+                time.sleep(2)
+            assert found, f"no scheduled run of the rule discovered {address}"
+
+            current = requests.get(
+                f"{DISCOVERY_RULES}{rule['id']}/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            assert current.status_code == 200, current.text[:300]
+            ran = current.json()
+            assert ran["last_run"], ran
+            # Moved on past the run it claimed.
+            assert _timestamp(ran["next_run"]) > _timestamp(ran["last_run"]), ran
+        finally:
+            requests.delete(
+                f"{DISCOVERY_RULES}{rule['id']}/",
+                headers=admin_headers,
+                timeout=TIMEOUT,
+            )
+            for asset in found:
+                requests.delete(
+                    f"{ASSETS}{asset['id']}/", headers=admin_headers, timeout=TIMEOUT
+                )
 
     def test_monitoring_dashboard_access(self, admin_headers) -> None:
         """Reporting dashboards are served to an authenticated user, not to anyone."""

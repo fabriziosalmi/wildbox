@@ -1,0 +1,8 @@
+<p>The scheduled report <strong>{{ report.name }}</strong> is ready.</p>
+<ul>
+  <li>Schedule: {{ schedule.name }} ({{ schedule.get_frequency_display }})</li>
+  <li>Template: {{ report.template.name }}</li>
+  <li>Format: {{ report.get_format_display }}</li>
+  <li>Generated: {{ report.generated_at|date:"Y-m-d H:i e" }}</li>
+</ul>
+<p>Download it from guardian: <code>GET /api/v1/reports/reports/{{ report.id }}/download/</code></p>

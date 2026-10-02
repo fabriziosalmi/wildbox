@@ -9,11 +9,18 @@ from django.utils import timezone
 from django.conf import settings
 import logging
 import requests
+import errno
 import socket
 import ipaddress
 from datetime import timedelta
 
-from .models import Asset, AssetDiscoveryRule, AssetSoftware, AssetPort
+from .models import (
+    IMPLEMENTED_DISCOVERY_TYPES,
+    Asset,
+    AssetDiscoveryRule,
+    AssetPort,
+    AssetSoftware,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +46,7 @@ def discover_assets(self, network_range, scan_type='basic'):
             ip_str = str(ip)
             
             # Check if host is reachable
-            if _ping_host(ip_str):
+            if _host_is_up(ip_str):
                 asset, created = _discover_host(ip_str, scan_type)
                 if created:
                     discovered_count += 1
@@ -72,7 +79,16 @@ def execute_discovery_rule(self, rule_id):
         if not rule.enabled:
             logger.warning(f"Discovery rule {rule.name} is disabled")
             return {'status': 'skipped', 'reason': 'rule_disabled'}
-        
+
+        # The other types only log "not yet implemented" (or do nothing);
+        # reporting them as completed said discovery had run (#548).
+        if rule.discovery_type not in IMPLEMENTED_DISCOVERY_TYPES:
+            logger.warning(
+                f"Discovery rule {rule.name}: {rule.discovery_type} discovery "
+                "is not implemented"
+            )
+            return {'status': 'skipped', 'reason': 'not_implemented'}
+
         # Update last_run timestamp
         rule.last_run = timezone.now()
         rule.save(update_fields=['last_run'])
@@ -213,26 +229,35 @@ def scan_asset_ports(asset_id, port_range=None):
         raise
 
 
-def _ping_host(ip_address, timeout=1):
-    """Check if host is reachable via ping"""
-    import subprocess
-    import platform
+# Ports a host-discovery probe connects to (#548). This used to run the ping
+# binary, which guardian's image does not contain: every probe raised
+# FileNotFoundError and a network scan discovered nothing. ICMP would also
+# need a raw socket, which the unprivileged guardian user does not have. A
+# TCP connection either completes or is refused by a host that is up; only a
+# host that is down or drops every probe stays silent. This is what nmap
+# does for host discovery without privileges.
+HOST_PROBE_PORTS = (80, 443, 22, 3389)
 
-    # Validate IP address format before passing to subprocess
+
+def _host_is_up(ip_address, timeout=1):
+    """True if the host completes or refuses a TCP connection on a probe port."""
     try:
-        ipaddress.ip_address(ip_address)
+        address = ipaddress.ip_address(ip_address)
     except ValueError:
         logger.warning(f"Invalid IP address format: {ip_address}")
         return False
 
-    param = '-n' if platform.system().lower() == 'windows' else '-c'
-    command = ['ping', param, '1', '-W' if platform.system().lower() == 'windows' else '-w', str(timeout * 1000), ip_address]
-
-    try:
-        result = subprocess.run(command, capture_output=True, timeout=timeout + 2)
-        return result.returncode == 0
-    except subprocess.TimeoutExpired:
-        return False
+    family = socket.AF_INET6 if address.version == 6 else socket.AF_INET
+    for port in HOST_PROBE_PORTS:
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                result = sock.connect_ex((str(address), port))
+        except OSError:
+            continue
+        if result in (0, errno.ECONNREFUSED):
+            return True
+    return False
 
 
 def _discover_host(ip_address, scan_type):
