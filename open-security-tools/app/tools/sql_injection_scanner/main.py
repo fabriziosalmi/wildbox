@@ -199,7 +199,12 @@ def execute_tool(input_data: SQLInjectionScannerInput, user_id: str = None) -> S
         recommendations.insert(1, "Review all user input handling in the application")
     
     return SQLInjectionScannerOutput(
-        target_url=input_data.target_url,
+        # success is required by BaseToolOutput; without it every completed
+        # scan failed to build its own result.
+        success=True,
+        tool_name="sql_injection_scanner",
+        target=target_url,
+        target_url=target_url,
         timestamp=timestamp,
         total_tests=len(results),
         vulnerabilities_found=vulnerabilities_found,
