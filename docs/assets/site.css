@@ -14,7 +14,7 @@
   --border-strong: rgba(255, 255, 255, 0.16);
   --text: #e7e9ee;
   --text-muted: #9aa1ac;
-  --text-faint: #6b7280;
+  --text-faint: #858c97; /* 4.5:1 on --surface and #0d0f12 (WCAG AA) */
   --accent: #3b82f6;
   --accent-hover: #2563eb;
   --accent-soft: rgba(59, 130, 246, 0.12);
@@ -92,11 +92,12 @@ a { color: inherit; }
   cursor: pointer;
 }
 .btn-primary {
-  background: var(--accent);
+  /* White on --accent is 3.7:1; on #2563eb it is 5.2:1 (WCAG AA). */
+  background: var(--accent-hover);
   color: #fff;
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-hover);
 }
-.btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn-primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
 .btn-secondary {
   background: transparent;
   color: var(--text);
@@ -141,7 +142,7 @@ a { color: inherit; }
   padding: 0.1rem 0.4rem;
   font-family: 'SFMono-Regular', Consolas, monospace;
   font-size: 0.85em;
-  color: var(--accent);
+  color: #60a5fa; /* --accent is 4.2:1 on the code background */
 }
 
 /* ---- Step number ---- */
