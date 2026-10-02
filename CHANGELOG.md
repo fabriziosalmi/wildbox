@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A blue/green deployment runs guardian's tasks, with one beat** (#550).
+  `docker-compose.blue-green.yml` ran guardian's API in two colors but no
+  worker and no beat, so nothing guardian queues or schedules ran there;
+  guardian could not even build or start from it (no shared build context,
+  no `SECRET_KEY`, no broker URL, no guardian database, a Redis without the
+  password the services send). Each color now has a worker reading every
+  routed queue, from that color's image, and one `guardian-beat` serves
+  both: beat has no leader election, so a beat per color would send every
+  periodic task twice. It runs the active color's image
+  (`GUARDIAN_ACTIVE_COLOR`), and `blue_green_guardian_tasks.sh`, called by
+  the deploy and rollback scripts, starts the new color's worker, moves beat
+  (compose stops the old container before starting the new one) and stops
+  the old worker with a warm shutdown. The deploy and rollback scripts
+  could not reach that point for guardian: they probed port 8001 on every
+  service and started green with a plain `up` of a service at 0 replicas,
+  which starts nothing.
 - **guardian's periodic tasks run, and its tasks reach their queues**
   (#545). guardian used django-celery-beat but scheduled nothing and ran
   no beat, so the SLA check, alert rules, risk-score recalculation,
@@ -392,6 +408,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **guardian's tasks across a blue/green switch** (#550). A new workflow
+  starts guardian's part of `docker-compose.blue-green.yml`, moves its tasks
+  to green and back with the script the deploy uses, and checks after each
+  move that exactly one beat runs, on the active color's image, that the
+  active worker reads every routed queue and runs the scheduled sweep, and
+  that the old worker is stopped; it samples the beat count during each
+  switch and fails on two. The routing unit test checks the blue/green
+  workers' queues and the single beat too.
 - **A scheduled guardian task is seen to run, and on its queue** (#545).
   Integration Tests and Production Stack start guardian-beat with the
   alert-rule sweep every 15 seconds and wait, through the gateway, for a

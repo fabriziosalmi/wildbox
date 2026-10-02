@@ -12,6 +12,13 @@ set -euo pipefail
 
 SERVICE=$1
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+case "$SERVICE" in
+  guardian) APP_PORT=8013; HEALTH_PATH=/health/ ;;
+  *) APP_PORT=8001; HEALTH_PATH=/health ;;
+esac
+
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 GREEN='\033[0;32m'
@@ -29,10 +36,10 @@ sleep 10
 
 # Step 2: Verify blue health
 echo -e "${BLUE}Step 2: Verifying blue health...${NC}"
-BLUE_PORT=$(docker-compose -f docker-compose.blue-green.yml port ${SERVICE}-blue 8001 | cut -d: -f2)
+BLUE_PORT=$(docker-compose -f docker-compose.blue-green.yml port ${SERVICE}-blue $APP_PORT | cut -d: -f2)
 
 for i in {1..30}; do
-    if curl -sf "http://localhost:$BLUE_PORT/health" > /dev/null; then
+    if curl -sf "http://localhost:$BLUE_PORT$HEALTH_PATH" > /dev/null; then
         echo -e "${GREEN}✓ Blue environment healthy${NC}"
         break
     fi
@@ -44,6 +51,13 @@ done
 echo -e "${BLUE}Step 3: Switching traffic to blue...${NC}"
 sed -i.bak "s/server ${SERVICE}-green/${SERVICE}-blue/g" haproxy/haproxy.cfg
 docker-compose -f docker-compose.blue-green.yml exec haproxy kill -USR2 1
+
+# guardian's worker and its single beat follow the traffic back (#550),
+# before green stops: beat must not be left on green's image.
+if [ "$SERVICE" = "guardian" ]; then
+    echo -e "${BLUE}Step 3b: Moving guardian's background tasks to blue...${NC}"
+    "$SCRIPT_DIR/blue_green_guardian_tasks.sh" blue
+fi
 
 # Step 4: Stop green
 echo -e "${BLUE}Step 4: Stopping green environment...${NC}"
