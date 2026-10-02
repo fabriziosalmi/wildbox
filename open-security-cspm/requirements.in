@@ -64,11 +64,11 @@ pydantic-settings>=2.6.0,<3.0.0
 jinja2==3.1.6
 pyyaml==6.0.1
 httpx==0.25.2
-aiohttp==3.14.1
-cryptography==48.0.1
+aiohttp==3.14.3
+cryptography==50.0.2
 structlog==23.2.0
 prometheus-client==0.19.0
 gunicorn==23.0.0
 python-dateutil==2.8.2
 python-dotenv==1.2.2
-click==8.1.7
+click==8.3.3

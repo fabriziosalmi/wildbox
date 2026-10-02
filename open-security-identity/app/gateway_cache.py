@@ -23,9 +23,12 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Port 8081 is the gateway's internal listener. The old default had no port,
+# i.e. 80, which answers everything but /health with a 301 to HTTPS -- every
+# purge failed and was logged as a warning (#475).
 _DEFAULT_URL = os.getenv(
     "GATEWAY_INTERNAL_URL",
-    "http://open-security-gateway/internal/gateway/purge-auth-cache",
+    "http://open-security-gateway:8081/internal/gateway/purge-auth-cache",
 )
 
 

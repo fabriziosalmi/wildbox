@@ -110,11 +110,22 @@ end
 function _M.http_request(method, url, options)
     local httpc = http:new()
 
-    -- Set timeouts
-    httpc:set_timeouts(5000, 10000, 10000) -- connect, send, read timeouts
-
     -- Default options
     local opts = options or {}
+
+    -- Timeouts. request_uri() does not read a `timeout` field from its
+    -- params, so the caller's opts.timeout used to be ignored and every call
+    -- ran with these fixed 5/10/10 s values: auth_handler's TIMEOUT_SECONDS = 5
+    -- was dead configuration, and with identity unresponsive each
+    -- authentication hung for 10 s instead of 5 (found by tests/chaos, #428).
+    -- Honour it as the send/read budget and cap the connect at it as well.
+    local timeout_ms = tonumber(opts.timeout)
+    if timeout_ms then
+        httpc:set_timeouts(math.min(5000, timeout_ms), timeout_ms, timeout_ms)
+    else
+        httpc:set_timeouts(5000, 10000, 10000) -- connect, send, read timeouts
+    end
+    opts.timeout = nil
     opts.method = method
     opts.headers = opts.headers or {}
 
