@@ -114,7 +114,7 @@ class VulnerabilityHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = VulnerabilityHistory
         fields = '__all__'
-        read_only_fields = ['changed_at', 'changed_by']
+        read_only_fields = ['timestamp', 'changed_by']
 
 
 class VulnerabilityAttachmentSerializer(serializers.ModelSerializer):
