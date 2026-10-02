@@ -401,9 +401,21 @@ def test_shipped_example_file_loads(monkeypatch):
         ("https://shop.example.com/app", "https://shop.example.com/app/x?id=1", True),
         ("https://shop.example.com/app", "https://shop.example.com/other?id=1", False),
         # Dot segments resolve outside a path-scoped entry on the server.
-        ("https://shop.example.com/app", "https://shop.example.com/app/../admin?id=1", False),
-        ("https://shop.example.com/app", "https://shop.example.com/app/%2e%2e/admin", False),
-        ("https://shop.example.com/app", "https://shop.example.com/app/.%2E/admin", False),
+        (
+            "https://shop.example.com/app",
+            "https://shop.example.com/app/../admin?id=1",
+            False,
+        ),
+        (
+            "https://shop.example.com/app",
+            "https://shop.example.com/app/%2e%2e/admin",
+            False,
+        ),
+        (
+            "https://shop.example.com/app",
+            "https://shop.example.com/app/.%2E/admin",
+            False,
+        ),
         ("https://shop.example.com", "https://shop.example.com/app/../x?id=1", True),
         ("https://shop.example.com", "http://shop.example.com/page?id=1", False),
         ("https://shop.example.com", "https://shop.example.com.evil.test/?id=1", False),
