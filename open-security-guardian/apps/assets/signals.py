@@ -4,10 +4,12 @@ Asset Management Signals
 Django signals for asset management events and automation.
 """
 
-from django.db.models.signals import post_save, pre_delete
+from django.db.models.signals import post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from django.utils import timezone
 import logging
+
+from apps.core.schedules import InvalidSchedule, next_cron_run
 
 from .models import Asset, AssetDiscoveryRule
 from .tasks import scan_asset_ports
@@ -46,15 +48,46 @@ def asset_pre_delete(sender, instance, **kwargs):
     # e.g., removing from external systems, notifications, etc.
 
 
-@receiver(post_save, sender=AssetDiscoveryRule)
-def discovery_rule_post_save(sender, instance, created, **kwargs):
-    """Handle discovery rule creation and updates"""
-    if created:
-        logger.info(f"New discovery rule created: {instance.name}")
-        
-        # Schedule next run based on cron schedule
-        # This would typically be handled by a cron job scheduler like celery-beat
-        if instance.enabled:
-            from .tasks import execute_discovery_rule
-            # Could schedule the first run here
-            pass
+@receiver(pre_save, sender=AssetDiscoveryRule)
+def discovery_rule_next_run(sender, instance, **kwargs):
+    """Keep next_run in step with the rule's schedule (#548).
+
+    apps.core.tasks.dispatch_due_schedules runs a rule when next_run is due
+    and moves next_run on in the same conditional UPDATE that claims the
+    run. Here next_run is computed afresh when a rule is created, when its
+    schedule changes and when it is enabled again, so a rule that was off
+    for a week does not run the moment it is switched back on. Otherwise
+    next_run and last_run are the database's: a rule loaded before the
+    dispatcher moved next_run on and saved afterwards (an edit through the
+    API) would write the old value back and run a second time.
+    """
+    if kwargs.get('raw'):
+        return
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None and not {'schedule', 'enabled'} & set(update_fields):
+        # A partial save that leaves the schedule alone, such as
+        # execute_discovery_rule recording last_run.
+        return
+    previous = None
+    if not instance._state.adding and instance.pk is not None:
+        previous = (
+            AssetDiscoveryRule.objects.filter(pk=instance.pk)
+            .values('schedule', 'enabled', 'next_run', 'last_run')
+            .first()
+        )
+    rescheduled = (
+        previous is None
+        or previous['schedule'] != instance.schedule
+        or (instance.enabled and not previous['enabled'])
+    )
+    if not rescheduled:
+        instance.next_run = previous['next_run']
+        instance.last_run = previous['last_run']
+        return
+    try:
+        instance.next_run = next_cron_run(instance.schedule, timezone.now())
+    except InvalidSchedule as exc:
+        # The API refuses such a schedule; one written another way (the
+        # admin, a shell) is reported by the dispatcher and never run.
+        logger.warning(f"Discovery rule {instance.name}: {exc}")
+        instance.next_run = None

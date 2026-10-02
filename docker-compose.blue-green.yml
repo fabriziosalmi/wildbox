@@ -74,6 +74,9 @@ x-guardian-worker: &guardian-worker
   # the grace period lets an ordinary task (a port scan, a report) finish
   # when the deploy script retires the old color's worker.
   stop_grace_period: 5m
+  # The reports it generates, served by the API of either color (#548).
+  volumes:
+    - guardian-media:/app/media
   security_opt:
     - no-new-privileges:true
   networks:
@@ -147,6 +150,9 @@ services:
       VERSION: 0.2.0
     ports:
       - "8113:8013"  # Blue on 8113
+    # Generated reports, written by the workers (#548).
+    volumes:
+      - guardian-media:/app/media
     networks:
       - wildbox-network
     depends_on:
@@ -217,6 +223,9 @@ services:
       VERSION: 0.3.0
     ports:
       - "8213:8013"  # Green on 8213
+    # Generated reports, written by the workers (#548).
+    volumes:
+      - guardian-media:/app/media
     networks:
       - wildbox-network
     depends_on:
@@ -280,6 +289,7 @@ services:
       GUARDIAN_SCHEDULE_ASSET_INVENTORY: ${GUARDIAN_SCHEDULE_ASSET_INVENTORY:-}
       GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS: ${GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS:-}
       GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS: ${GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS:-}
+      GUARDIAN_SCHEDULE_USER_SCHEDULES: ${GUARDIAN_SCHEDULE_USER_SCHEDULES:-}
     security_opt:
       - no-new-privileges:true
     networks:
@@ -341,3 +351,4 @@ networks:
 
 volumes:
   postgres-data:
+  guardian-media:

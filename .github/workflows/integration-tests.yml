@@ -100,6 +100,10 @@ jobs:
           # watch a scheduled run happen (#545). Not a secret and not in .env,
           # so it cannot disagree with it (see the note at the top).
           GUARDIAN_SCHEDULE_ALERT_RULES: "15"
+          # The user-schedule dispatcher every 15 s instead of every minute,
+          # so the report-schedule and discovery-rule tests finish sooner
+          # (#548).
+          GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
 
       - name: Show what came up
         if: always()
@@ -146,9 +150,10 @@ jobs:
           # went unrun on every green build (#532). Services behind a compose
           # profile the job does not enable (automations) still skip.
           REQUIRE_ALL_SERVICES: "1"
-          # The interval the stack was started with (step above); the
-          # scheduled-run test sizes its deadline on it.
+          # The intervals the stack was started with (step above); the
+          # scheduled-run tests size their deadlines on them.
           GUARDIAN_SCHEDULE_ALERT_RULES: "15"
+          GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
         timeout-minutes: 20
 
       - name: Service logs on failure

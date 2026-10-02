@@ -196,6 +196,7 @@ schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 | Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |
 | Overdue compliance assessments | daily, 08:00 | Sends one reminder per overdue assessment on every run, at the start of the working day | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
 | Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and reminds on every run: weekly gives about four reminders per exception, daily would give thirty | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
+| User-defined schedules | every minute | Queues the discovery rules and report schedules that are due (below). Their cron fields have a one-minute resolution, so each starts within a minute of its time; a sweep that finds nothing due is two indexed queries | `GUARDIAN_SCHEDULE_USER_SCHEDULES` |
 
 To change one, set its variable in `.env` and restart the scheduler:
 
@@ -239,6 +240,29 @@ docker compose logs guardian-beat
   scheduling.
 - The SLA and assignment e-mails prefix their vulnerability link with
   `GUARDIAN_BASE_URL`; unset, the link is a relative path.
+
+#### Schedules defined through the API
+
+The dispatcher in the last row runs the schedules users create:
+
+| Schedule | Defined by | Runs | What can be scheduled |
+| --- | --- | --- | --- |
+| Asset discovery rule (`/api/v1/guardian/assets/discovery-rules/`) | `schedule`: five crontab fields, in `CELERY_TIMEZONE` (UTC unless set), with the same syntax as the variables above | the rule's network scan, on the `scanning` queue | `network_scan` rules only. Cloud API and CMDB discovery are placeholders and agent reports and DNS zone transfers have no code, so the API refuses those types |
+| Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` (or `DEFAULT_NOTIFICATION_RECIPIENTS`) when it is ready | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
+| Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so creating, changing, triggering or enabling one answers 400. Existing ones can still be listed, disabled and deleted |
+
+- Each due time runs once. The dispatcher claims a run by moving `next_run`
+  on in the same statement that checks it, so two overlapping sweeps, or a
+  sweep and a manual run, cannot both queue it; `last_run` records when it
+  was queued.
+- A schedule that missed several runs (guardian was down, or the schedule
+  was paused) runs once and then continues from the next run after now; the
+  missed ones are not replayed. A one-off report schedule is set to
+  `disabled` once it has run.
+- An invalid cron expression is refused by the API. One written another way
+  (the admin) is logged by every sweep and never run.
+- Reports are written to the `guardian_media` volume, which `guardian-worker`
+  (which generates them) and `guardian` (which serves their downloads) share.
 
 ---
 

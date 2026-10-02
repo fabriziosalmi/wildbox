@@ -8,7 +8,10 @@ import json
 import logging
 from datetime import timedelta
 
+from django.core.serializers.json import DjangoJSONEncoder
+
 from apps.core.locks import single_instance
+from apps.reporting.models import SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +29,22 @@ def generate_report(report_id):
         report.save()
         
         start_time = timezone.now()
-        
+
+        # Fail, with the reason, a report that would otherwise be "completed"
+        # with placeholder or no data, or in a format that is not written.
+        if report.template.report_type not in SUPPORTED_REPORT_TYPES:
+            raise ValueError(
+                f"{report.template.get_report_type_display()} reports cannot be "
+                "generated: they have no data behind them"
+            )
+        if report.format not in SUPPORTED_REPORT_FORMATS:
+            raise ValueError(f"{report.format} reports are not generated yet")
+
         # Get data based on template type
         data = get_report_data(report.template, report.parameters, report.filters)
         
         # Render report content
-        content = render_report_content(report.template, data)
+        content = render_report_content(report, data)
         
         # Save report file
         file_path = save_report_file(report, content)
@@ -56,6 +69,8 @@ def generate_report(report_id):
         update_report_metrics.delay(report.template.id)
         
         logger.info(f"Report {report.name} generated successfully in {generation_time}")
+        if report.schedule_id:
+            notify_scheduled_report(report)
         return report.id
         
     except Exception as e:
@@ -83,22 +98,24 @@ def get_report_data(template, parameters, filters):
     
     data = {}
     
+    # list(): a QuerySet is lazy, and json.dumps(default=str) wrote its
+    # truncated repr instead of the rows.
     if template.report_type == 'vulnerability_summary':
-        data['vulnerabilities'] = Vulnerability.objects.filter(
+        data['vulnerabilities'] = list(Vulnerability.objects.filter(
             **apply_filters(filters, 'vulnerability')
-        ).values()
+        ).values())
         data['vulnerability_stats'] = get_vulnerability_stats(filters)
         
     elif template.report_type == 'asset_inventory':
-        data['assets'] = Asset.objects.filter(
+        data['assets'] = list(Asset.objects.filter(
             **apply_filters(filters, 'asset')
-        ).values()
+        ).values())
         data['asset_stats'] = get_asset_stats(filters)
         
     elif template.report_type == 'compliance_status':
-        data['assessments'] = ComplianceAssessment.objects.filter(
+        data['assessments'] = list(ComplianceAssessment.objects.filter(
             **apply_filters(filters, 'compliance')
-        ).values()
+        ).values())
         data['compliance_stats'] = get_compliance_stats(filters)
         
     elif template.report_type == 'risk_assessment':
@@ -121,7 +138,8 @@ def apply_filters(filters, data_type):
         end_date = filters['date_range'].get('end')
         if start_date and end_date:
             if data_type == 'vulnerability':
-                query_filters['discovered_at__range'] = [start_date, end_date]
+                # Vulnerability has no discovered_at (#548).
+                query_filters['first_discovered__range'] = [start_date, end_date]
             elif data_type == 'asset':
                 query_filters['created_at__range'] = [start_date, end_date]
             elif data_type == 'compliance':
@@ -165,7 +183,8 @@ def get_asset_stats(filters):
         'total_count': assets.count(),
         'by_type': dict(assets.values('asset_type').annotate(count=Count('id')).values_list('asset_type', 'count')),
         'by_environment': dict(assets.values('environment').annotate(count=Count('id')).values_list('environment', 'count')),
-        'active_count': assets.filter(is_active=True).count(),
+        # Asset has no is_active; its status says whether it is (#548).
+        'active_count': assets.filter(status='active').count(),
     }
 
 
@@ -213,20 +232,57 @@ def get_executive_summary(filters):
     }
 
 
-def render_report_content(template, data):
+def render_report_content(report, data):
     """
-    Render report content using template
+    Render report content in the report's format.
+
+    JSON is the data itself. Every other format starts from HTML, rendered
+    with one template for all report types: the per-type templates this
+    looked up ('reporting/<report_type>.html') never existed, and JSON was
+    chosen by comparing the report *type* with 'json', which no type is, so
+    every report failed with TemplateDoesNotExist (#548).
     """
-    if template.report_type == 'json':
-        return json.dumps(data, indent=2, default=str)
-    
-    # For other formats, render HTML template
-    html_content = render_to_string(
-        f'reporting/{template.report_type}.html',
-        {'data': data, 'template': template}
+    if report.format == 'json':
+        return json.dumps(data, indent=2, cls=DjangoJSONEncoder)
+
+    return render_to_string(
+        'reporting/report.html',
+        {
+            'report': report,
+            'template': report.template,
+            'sections': report_sections(data),
+        },
     )
-    
-    return html_content
+
+
+def report_sections(data):
+    """The report data as titled tables, for the HTML template.
+
+    A list of rows becomes a table with a column per field; a mapping
+    becomes a two-column table; nested values are shown as JSON.
+    """
+    def cell(value):
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, cls=DjangoJSONEncoder)
+        return value
+
+    sections = []
+    for key, value in data.items():
+        title = key.replace('_', ' ').capitalize()
+        if isinstance(value, list):
+            columns = list(value[0].keys()) if value and isinstance(value[0], dict) else ['value']
+            rows = [
+                [cell(row.get(column)) for column in columns] if isinstance(row, dict) else [cell(row)]
+                for row in value
+            ]
+        elif isinstance(value, dict):
+            columns = ['name', 'value']
+            rows = [[name, cell(item)] for name, item in value.items()]
+        else:
+            columns = ['value']
+            rows = [[cell(value)]]
+        sections.append({'title': title, 'columns': columns, 'rows': rows})
+    return sections
 
 
 def save_report_file(report, content):
@@ -515,6 +571,26 @@ def evaluate_alert_condition(rule, current_value):
             return current_value != rule.threshold_value
     
     return False
+
+
+def notify_scheduled_report(report):
+    """E-mail a scheduled report's recipients that it is ready (#548).
+
+    This lived in a post_save signal that read ``instance.tracker``, which
+    Report does not have, so saving a completed report raised and
+    generate_report recorded it as failed. The schedule's recipients were
+    never used; without any, DEFAULT_NOTIFICATION_RECIPIENTS are told.
+    """
+    from apps.core.utils import send_notification
+
+    schedule = report.schedule
+    return send_notification(
+        subject=f"Scheduled Report Generated: {report.name}",
+        template='reporting/report_generated.html',
+        context={'report': report, 'schedule': schedule},
+        notification_type='report',
+        recipients=list(schedule.recipients or []) or None,
+    )
 
 
 def send_alert_notification(rule, current_value):
