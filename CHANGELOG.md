@@ -100,6 +100,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   definitions move together to 19.3 (Dependabot's #151 moved `react` alone).
   Unblocked by lucide-react 1.x.
 
+- **Gateway base image refreshed** to the current `openresty/openresty:alpine`
+  digest (OpenResty 1.31.1.1). Dependabot no longer proposes Node.js major
+  bumps of the dashboard image: it stays on the active LTS line, which is
+  changed by hand.
+
 - **The dashboard runs on Next.js 16** (#522): 16.3.8, from 15.5. Next 15
   pins postcss 8.4.31, which carries four advisories; Next 16 depends on
   the patched 8.5 line itself. `src/middleware.ts` becomes `src/proxy.ts`

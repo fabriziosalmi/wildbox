@@ -45,6 +45,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    # The dashboard runs on the active Node.js LTS line. A major bump of the
+    # node image is a runtime upgrade (and @types/node follows it), decided by
+    # hand when a line becomes LTS, not a weekly digest refresh.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
     groups:
       docker:
         patterns:
