@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **cryptography 50.0.2 in every service that uses it** (#415): cspm, data,
+  guardian, identity, sensor and tools were held at 48.0.1, which carries 3
+  advisories (two fixed in 49.0.0, one in 50.0.0: a padding
+  oracle in PKCS#7 decryption). Nothing else in the locks moves. 49.0.0 stops
+  publishing wheels for Intel macOS; the containers are Linux and unaffected.
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
   PRs regenerated the locks with pip-compile instead of uv and could never pass
   the Dependency Integrity gate, so no Python fix had landed since 0.10.0.
