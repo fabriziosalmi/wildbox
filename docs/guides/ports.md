@@ -14,12 +14,17 @@ if this page and that file disagree, the file is right and this page is a bug.
   the machine running Docker and nowhere else; they are for health checks,
   debugging and the integration tests, not for clients.
 - PostgreSQL and Redis publish no port at all.
+- The gateway also listens on port **8081**, which is not published. Only
+  containers on the Compose network reach it; identity calls it to drop a
+  revoked token from the gateway's authorization cache
+  (`/internal/gateway/purge-auth-cache`, which also requires the
+  `GATEWAY_INTERNAL_SECRET`). Do not publish it.
 
 ## Ports
 
 | Compose service | Container name | Host port | What it is | Health check |
 | --- | --- | --- | --- | --- |
-| `gateway` | `open-security-gateway` | `443`, `80`, `8080` (all interfaces) | OpenResty gateway: TLS, authentication, rate limiting, routing | `http://localhost/health` |
+| `gateway` | `open-security-gateway` | `443`, `80`, `8080` (all interfaces); `8081` not published | OpenResty gateway: TLS, authentication, rate limiting, routing | `http://localhost/health` |
 | `identity` | `open-security-identity` | `127.0.0.1:8001` | Users, JWT (JSON Web Token) login, API keys, teams | `http://localhost:8001/health` |
 | `api` | (Compose default) | `127.0.0.1:8000` | Security tools API | `http://localhost:8000/health` |
 | `data` | (Compose default) | `127.0.0.1:8002` | Threat intelligence and IOC (indicator of compromise) data | `http://localhost:8002/health` |

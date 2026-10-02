@@ -86,25 +86,25 @@ permalink: /docs.html
                     <div class="grid md:grid-cols-2 gap-6 mb-12">
                         <a class="card p-8 rounded-xl block" href="/guides/quickstart/">
                             <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75Z"/></svg></span>
-                            <h3 class="text-lg font-semibold mb-2">Quick start</h3>
+                            <h2 class="text-lg font-semibold mb-2">Quick start</h2>
                             <p class="text-gray-400 leading-relaxed">Deploy Wildbox with Docker Compose and verify the services.</p>
                         </a>
 
                         <a class="card p-8 rounded-xl block" href="/security/status/">
                             <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"/></svg></span>
-                            <h3 class="text-lg font-semibold mb-2">Security status</h3>
+                            <h2 class="text-lg font-semibold mb-2">Security status</h2>
                             <p class="text-gray-400 leading-relaxed">Known open issues, verification checks and where vulnerabilities are tracked.</p>
                         </a>
 
                         <a class="card p-8 rounded-xl block" href="#api-docs">
                             <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M17.25 6.75 22.5 12l-5.25 5.25m-10.5 0L1.5 12l5.25-5.25m7.5-3-4.5 16.5"/></svg></span>
-                            <h3 class="text-lg font-semibold mb-2">API reference</h3>
+                            <h2 class="text-lg font-semibold mb-2">API reference</h2>
                             <p class="text-gray-400 leading-relaxed">Endpoint reference for each service and the routes the gateway exposes.</p>
                         </a>
 
                         <a class="card p-8 rounded-xl block" href="/guides/deployment/">
                             <span class="icon-badge mb-4"><svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 16.5V9.75m0 0 3 3m-3-3-3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z"/></svg></span>
-                            <h3 class="text-lg font-semibold mb-2">Deployment guide</h3>
+                            <h2 class="text-lg font-semibold mb-2">Deployment guide</h2>
                             <p class="text-gray-400 leading-relaxed">Production deployment, TLS, backups and operations.</p>
                         </a>
                     </div>
@@ -113,15 +113,15 @@ permalink: /docs.html
                         <h2 class="text-3xl font-bold mb-6 accent">Documentation by role</h2>
                         <div class="space-y-6 markdown-content">
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold accent mb-2 text-lg">Developer</h4>
+                                <h3 class="font-semibold accent mb-2 text-lg">Developer</h3>
                                 <p>Start with the <a href="/guides/quickstart/">Quick start</a>, then the <a href="#api-docs">API reference</a> and the <a href="/guides/credentials/">Credentials guide</a>.</p>
                             </div>
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold accent mb-2 text-lg">Security engineer</h4>
+                                <h3 class="font-semibold accent mb-2 text-lg">Security engineer</h3>
                                 <p>Read the <a href="/security/status/">Security status</a> and the <a href="/security/policy/">Security policy</a>.</p>
                             </div>
                             <div class="border-l-4 border-blue-500 pl-4">
-                                <h4 class="font-semibold accent mb-2 text-lg">System administrator</h4>
+                                <h3 class="font-semibold accent mb-2 text-lg">System administrator</h3>
                                 <p>Follow the <a href="/guides/deployment/">Deployment guide</a> for a production setup.</p>
                             </div>
                         </div>
@@ -131,7 +131,7 @@ permalink: /docs.html
                 <!-- API overview -->
                 <div id="api-docs-section" class="doc-section">
                     <div class="markdown-content">
-                        <h1 id="api-documentation">API Documentation</h1>
+                        <h1 id="api-docs">API Documentation</h1>
                         <p>Every Wildbox service exposes a REST API. In a deployment, clients reach them through the gateway over HTTPS; the routes are listed under <a href="#gateway-routes">Gateway routes</a>.</p>
                         <p>The endpoint references below are written by hand in the repository. Where one disagrees with a running service, the service is right: please <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer">open an issue</a>.</p>
 
@@ -179,7 +179,7 @@ permalink: /docs.html
                         <p>Only the responder and agents services have a published Redoc page; each embeds an OpenAPI document exported from that service. For the others, a running service can expose its own schema on its local port; some disable it in production. See also the <a href="/api/">API documentation index</a>.</p>
 
                         <h2 id="authentication">Authentication</h2>
-                        <p>Obtain a JWT from the identity service with a form-encoded login (fields <code>username</code> and <code>password</code>), then send it as a bearer token. Through the gateway the login path is <code>/auth/jwt/login</code>; the <a href="/guides/quickstart/">Quick start</a> shows the full, tested sequence.</p>
+                        <p>Obtain a JWT from the identity service with a form-encoded login (fields <code>username</code> and <code>password</code>), then send it as a bearer token. Through the gateway the login path is <code>/auth/jwt/login</code>; the <a href="/guides/quickstart/">Quick start</a> shows the full, tested sequence. Token lifetime (30 minutes, no refresh), logout and the failed-login lockout are described in <a href="/guides/authentication/">Authentication and sessions</a>.</p>
                         <ul>
                             <li><code>Authorization: Bearer &lt;access_token&gt;</code> &mdash; JWT returned by the login</li>
                             <li><code>X-API-Key: &lt;key&gt;</code> &mdash; an API key created through the identity service, accepted by the gateway as an alternative</li>
@@ -190,17 +190,17 @@ permalink: /docs.html
                 <!-- Gateway routes -->
                 <div id="gateway-routes-section" class="doc-section">
                     <div class="markdown-content">
-                        <h1 id="gateway-routes-title">Gateway routes</h1>
-                        <p>The gateway is the only service published beyond the local machine: HTTPS on port 443, with ports 80 and 8080 answering <code>/health</code> and redirecting everything else to HTTPS. These are the prefixes it routes, taken from <a href="https://github.com/fabriziosalmi/wildbox/blob/main/open-security-gateway/nginx/conf.d/wildbox_gateway.conf" target="_blank" rel="noopener noreferrer"><code>open-security-gateway/nginx/conf.d/wildbox_gateway.conf</code></a>.</p>
+                        <h1 id="gateway-routes">Gateway routes</h1>
+                        <p>The gateway is the only service published beyond the local machine: HTTPS on port 443, with ports 80 and 8080 answering <code>/health</code> and redirecting everything else to HTTPS. A fourth listener, port 8081, is not published: identity calls it on the Compose network to drop revoked tokens from the gateway's authorization cache. These are the prefixes it routes, taken from <a href="https://github.com/fabriziosalmi/wildbox/blob/main/open-security-gateway/nginx/conf.d/wildbox_gateway.conf" target="_blank" rel="noopener noreferrer"><code>open-security-gateway/nginx/conf.d/wildbox_gateway.conf</code></a>.</p>
                         <table>
                             <thead>
                                 <tr><th>Gateway path</th><th>Service</th><th>Authentication</th></tr>
                             </thead>
                             <tbody>
                                 <tr><td><code>/health</code></td><td>gateway</td><td>none</td></tr>
-                                <tr><td><code>/auth/jwt/login</code>, <code>/auth/jwt/&hellip;</code></td><td>identity <code>/api/v1/auth/jwt/&hellip;</code></td><td>none (this is the login)</td></tr>
+                                <tr><td><code>/auth/jwt/login</code>, <code>/auth/jwt/&hellip;</code></td><td>identity <code>/api/v1/auth/jwt/&hellip;</code></td><td>none for the login, rate-limited per client address; <code>POST /auth/jwt/logout</code> takes the bearer token and revokes it</td></tr>
                                 <tr><td><code>/auth/register</code></td><td>identity</td><td>none</td></tr>
-                                <tr><td><code>POST /auth/logout</code></td><td>identity <code>/api/v1/auth/logout</code></td><td>bearer token, revoked on success</td></tr>
+                                <tr><td><code>POST /auth/logout</code></td><td>identity <code>/api/v1/auth/logout</code></td><td>bearer token, revoked on success (a <code>GET</code> serves the dashboard's logout page)</td></tr>
                                 <tr><td><code>/api/v1/identity/&hellip;</code></td><td>identity <code>/api/v1/&hellip;</code></td><td>validated by identity</td></tr>
                                 <tr><td><code>/api/v1/tools</code>, <code>/api/v1/tools/&hellip;</code></td><td>tools API <code>/api/tools/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/data/&hellip;</code></td><td>data <code>/api/v1/&hellip;</code></td><td>required</td></tr>

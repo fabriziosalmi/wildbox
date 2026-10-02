@@ -42,7 +42,7 @@ The gateway is the only service published on all interfaces. Every other publish
 
 | Compose service | Host port | Role |
 | --- | --- | --- |
-| gateway | 443, 80, 8080 | OpenResty ingress, TLS, authentication, rate limiting, routing |
+| gateway | 443, 80, 8080 (8081 internal, not published) | OpenResty ingress, TLS, authentication, rate limiting, routing; port 8081 takes identity's auth-cache purge on the Compose network |
 | identity | 127.0.0.1:8001 | Users, JWT login and revocation, API keys, teams (FastAPI, fastapi-users) |
 | api (tools) | 127.0.0.1:8000 | Runs 52 security tools through an API; Celery workers (`tools-worker`), Flower on 127.0.0.1:5555 |
 | data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected from public sources by `data-scheduler` |
@@ -50,7 +50,7 @@ The gateway is the only service published on all interfaces. Every other publish
 | agents | 127.0.0.1:8006 | Optional AI-assisted IOC analysis with the Anthropic API (Claude) |
 | guardian | 127.0.0.1:8013 | Assets, vulnerabilities, remediation, compliance, reporting (Django REST) |
 | responder | 127.0.0.1:8018 | YAML incident-response playbooks executed through connectors |
-| cspm | 127.0.0.1:8019 | 31 cloud configuration checks across AWS, Azure and GCP |
+| cspm | 127.0.0.1:8019 | 31 cloud configuration checks: 22 for AWS against live accounts; the Azure and GCP checks run on sample data |
 | dashboard | 127.0.0.1:3000 | Next.js web UI, normally reached through the gateway |
 | automations | 127.0.0.1:5678 | n8n, only with `--profile automations` |
 | prometheus | 127.0.0.1:9090 | Only with `--profile monitoring` |
@@ -83,9 +83,11 @@ curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" https://localhost/api/v
 ```
 
 - Login is form-encoded (`username`, `password`) and returns `access_token`. Tokens are HS256 JWTs valid for 30 minutes (`jwt_access_token_expire_minutes`; Compose does not pass an override); there is no refresh endpoint.
-- `POST /auth/logout` or `POST /auth/jwt/logout` with the bearer token revokes it: its `jti` is blacklisted in Redis and refused by the gateway and by identity.
-- Failed logins are not locked out (the lockout helpers in identity are not wired); the gateway rate-limits `/auth/jwt/`.
-- New passwords are hashed with Argon2 by fastapi-users.
+- `POST /auth/logout` or `POST /auth/jwt/logout` with the bearer token revokes it: its `jti` is blacklisted in Redis until it would have expired, identity refuses it, and identity purges it from the gateway's authorization cache through the gateway's internal listener on port 8081 (Compose network only, not published). Logout revokes only the token presented.
+- Failed-login lockout: after 5 failed password logins for an email (registered or not), login answers 429 with `Retry-After: 900` for 15 minutes, even with the correct password; a successful login before that clears the counter. The gateway also rate-limits `/auth/jwt/` per client address.
+- Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`; older bcrypt hashes still verify.
+- The gateway calls identity with a 5-second timeout, caches authorization decisions for 300 seconds (`AUTH_CACHE_TTL`), and opens a circuit breaker for 60 seconds after 10 failed calls.
+- identity serves `/docs`, `/redoc` and `/openapi.json` only when `ENVIRONMENT` is not `production` (the generated `.env` sets `production`).
 - API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`.
 - Rate limits come from `RATE_LIMIT_PER_HOUR` and are reported in `X-RateLimit-*` headers.
 

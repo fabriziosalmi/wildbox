@@ -1,386 +1,122 @@
 # Security Policy
 
-**Wildbox Security Platform**  
-**Version:** 2.1  
-**Last Updated:** 2025-11-24
+## Reporting a Vulnerability
 
----
+Report vulnerabilities privately. Do not open a public issue, pull request or
+discussion for a security problem.
 
-## 🔒 Reporting a Vulnerability
+- **Preferred**: [report it privately on GitHub](https://github.com/fabriziosalmi/wildbox/security/advisories/new)
+  (Security tab, "Report a vulnerability").
+- **Email**: the address in
+  [`security.txt`](https://www.wildbox.io/.well-known/security.txt)
+  (`fabrizio.salmi@gmail.com`), with `[SECURITY]` and a short description in
+  the subject.
 
-We take security seriously. If you discover a vulnerability in Wildbox, please report it responsibly through our private disclosure process.
+Include:
 
-### How to Report
+1. What the vulnerability is and which service or file it affects
+2. Steps to reproduce, with a proof of concept if you have one
+3. The impact you expect
+4. Optionally, a proposed fix
 
-**Email**: security@wildbox.dev
+Please do not exploit a vulnerability beyond what is needed to show it, and do
+not access or modify data that is not yours.
 
-**Subject Format**: `[SECURITY] <Brief Description>`
-
-**Required Information**:
-
-1. **Vulnerability Description**: Clear explanation of the security issue
-2. **Affected Components**: Which services/files are impacted
-3. **Reproduction Steps**: Detailed steps to reproduce the vulnerability
-4. **Proof of Concept**: Code snippet or configuration demonstrating the issue
-5. **Impact Assessment**: Potential security impact and attack scenarios
-6. **Suggested Fix**: (Optional) Your proposed remediation
-
-**What NOT to do**:
-
-- ❌ Do not open public GitHub issues for security vulnerabilities
-- ❌ Do not discuss vulnerabilities in public channels (Discord, Twitter, etc.)
-- ❌ Do not exploit vulnerabilities beyond verification
-- ❌ Do not access or modify data that isn't yours
-
-### Response Timeline
+### What Happens Next
 
 | Timeframe | Action |
-| ----------- | -------- |
-| **48 hours** | Initial acknowledgment of your report |
-| **7 days** | Detailed status update and severity assessment |
-| **14-90 days** | Fix development and testing (based on severity) |
-| **After fix** | Public disclosure coordinated with reporter |
+| --- | --- |
+| 48 hours | Acknowledgment of your report |
+| 7 days | Severity assessment and status update |
+| 14 to 90 days | Fix developed and tested, depending on severity |
+| After the fix | Public disclosure coordinated with you |
 
-### Severity Classification
+| Severity | Target response | Examples |
+| --- | --- | --- |
+| Critical | 24 to 48 hours | Authentication bypass, remote code execution, secrets in shipped code |
+| High | 3 to 7 days | SQL injection, XSS, privilege escalation, insecure defaults exposing data |
+| Medium | 14 days | CSRF, information disclosure, missing security headers, weak cryptography |
+| Low | 30 days | Minor information leaks, non-exploitable edge cases |
 
-| Severity | Response Time | Examples |
-| ---------- | --------------- | ---------- |
-| **Critical** | 24-48 hours | Authentication bypass, Remote Code Execution, Hardcoded secrets in production code |
-| **High** | 3-7 days | SQL Injection, XSS, Privilege escalation, Insecure defaults exposing sensitive data |
-| **Medium** | 14 days | CSRF, Information disclosure, Missing security headers, Weak cryptography |
-| **Low** | 30 days | Minor information leaks, UI-only issues, Non-exploitable edge cases |
-
-### Recognition
-
-Security researchers who responsibly disclose vulnerabilities will be:
-
-- Credited in our SECURITY.md Hall of Fame (with permission)
-- Mentioned in release notes for the fix
-- Eligible for swag/recognition (for significant findings)
+Fixes are published as GitHub Security Advisories and recorded in
+[CHANGELOG.md](CHANGELOG.md). Reporters are credited, with their permission,
+in the advisory and the release notes.
 
 ---
 
-## 🛡️ Security Best Practices
+## Current Security State
 
-### For Deployment
-
-#### 1. Secret Management (CRITICAL)
-
-**Never use default secrets in production.**
-
-Generate secure secrets for all services:
-
-```bash
-# Generate JWT secret (256-bit recommended)
-openssl rand -hex 32
-
-# Generate database password (strong passphrase)
-openssl rand -base64 32
-
-# Generate API keys
-openssl rand -hex 32
-```
-
-Update your `.env` file:
-
-```bash
-# REQUIRED: Change these from defaults
-JWT_SECRET_KEY=<generated-secret-here>
-DATABASE_PASSWORD=<generated-password-here>
-GATEWAY_INTERNAL_SECRET=<generated-secret-here>
-
-# Optional: External service keys
-OPENAI_API_KEY=sk-<your-openai-key>
-STRIPE_SECRET_KEY=sk_live_<your-stripe-key>
-```
-
-**Never commit `.env` files to version control!**
-openssl rand -base64 24 > .secrets/n8n_password
-openssl rand -base64 32 > .secrets/db_password
-
-```bash
-
-**Required environment variables:**
-
-```bash
-# .env (NEVER commit this file)
-JWT_SECRET_KEY=<generate with: openssl rand -hex 32>
-NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
-GATEWAY_INTERNAL_SECRET=<generate with: openssl rand -hex 32>
-POSTGRES_PASSWORD=<generate with: openssl rand -base64 32>
-N8N_BASIC_AUTH_PASSWORD=<generate with: openssl rand -base64 24>
-GRAFANA_ADMIN_PASSWORD=<generate with: openssl rand -base64 24>
-API_KEY=<generate with: openssl rand -hex 32>
-```
-
-**Validation:**
-
-```bash
-# Verify no hardcoded secrets
-./security_validation_v2.sh
-```
-
-#### 2. Network Security
-
-**Production deployment MUST:**
-
-- Use HTTPS/TLS for all external traffic
-- Route all requests through the gateway (port 80/443)
-- Block direct access to backend services (ports 8000-8019)
-- Enable firewall rules limiting access to necessary ports
-
-**Firewall Configuration:**
-
-```bash
-# Allow only gateway and dashboard
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw allow 3000/tcp
-
-# Deny direct backend access from external
-ufw deny 8000:8019/tcp
-```
-
-#### 3. Database Security
-
-**PostgreSQL:**
-
-- Change default password immediately
-- Use strong passwords (min 24 chars, cryptographically random)
-- Limit connections to localhost/internal network
-- Enable SSL/TLS for database connections
-- Regular backups with encryption
-
-**Configuration:**
-
-```yaml
-postgres:
-  environment:
-    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-  # Limit connections
-  command: -c max_connections=100 -c shared_buffers=256MB
-  # Enable SSL (production)
-  volumes:
-    - ./ssl/server.crt:/var/lib/postgresql/server.crt:ro
-    - ./ssl/server.key:/var/lib/postgresql/server.key:ro
-```
-
-#### 4. Authentication & Authorization
-
-**JWT Security:**
-
-- Rotate `JWT_SECRET_KEY` regularly (every 90 days) with
-  `./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY`.
-  **Set `API_KEY_HASH_SECRET` first** (`./scripts/rotate_secrets.sh --secret
-  API_KEY_HASH_SECRET --init`). Until it is set, stored API-key digests are
-  HMACs keyed by the JWT secret, so rotating the JWT key invalidates every API
-  key in the database. The rotation script refuses to proceed until the two are
-  decoupled. Rotating the JWT key always invalidates active sessions.
-- Use strong signing algorithms (RS256 for production)
-- Set appropriate token expiration (15 min access, 7 day refresh)
-- Implement token revocation (Redis denylist)
-
-**API Key Management:**
-
-- Generate cryptographically secure API keys
-- Store only keyed hashes in the database: HMAC-SHA256, keyed by
-  `API_KEY_HASH_SECRET`. This is stronger than the plain SHA256 previously
-  documented here -- recovering a key from a database dump also requires the
-  secret, which is not in the database.
-- Implement rate limiting (enforced at gateway)
-- Rotate keys on security events. `./scripts/rotate_secrets.sh --list` shows
-  every rotatable secret and what rotating each one costs (which services must
-  restart together, and what becomes invalid).
-
-#### 5. Rate Limiting
-
-**Gateway Configuration:**
-
-```nginx
-# Per IP rate limiting
-limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-
-location /api/ {
-    limit_req zone=api_limit burst=20;
-}
-```
-
-**Service-level limits (via environment):**
-
-```bash
-RATE_LIMIT_REQUESTS=500
-RATE_LIMIT_WINDOW=60
-```
+What is known to be wrong today, and how each claim was checked, is published
+on the [security status page](https://www.wildbox.io/security/status/). It is
+the authoritative list of open issues; this file does not repeat it.
 
 ---
 
-## 🔍 Security Validation
+## Deploying Securely
 
-### Pre-Deployment Checklist
+The guides on the documentation site are the reference; in short:
 
-- [ ] Run `./security_validation_v2.sh` - must pass
-- [ ] All secrets generated with cryptographic randomness
-- [ ] `.env` file NOT in version control
-- [ ] HTTPS/TLS certificates installed
-- [ ] Firewall configured (external access to 80/443/3000 only)
-- [ ] Database passwords changed from defaults
-- [ ] API keys rotated from development keys
-- [ ] Rate limiting configured
-- [ ] Monitoring/alerting configured (Grafana)
-
-### Automated Checks
-
-```bash
-# Security validation (must pass before deployment)
-./security_validation_v2.sh
-
-# Dependency vulnerability scanning
-make security-check
-
-# Container scanning (requires trivy)
-trivy image --severity HIGH,CRITICAL wildbox-gateway
-```
-
-### Manual Review
-
-1. **Code Review:**
-   - No hardcoded secrets
-   - Input validation on all user data
-   - Proper error handling (no information leakage)
-   - SQL injection prevention (parameterized queries)
-   - XSS prevention (output encoding)
-
-2. **Configuration Review:**
-   - `docker-compose.yml` - all secrets use `${VARIABLE}`
-   - `nginx` - security headers enabled
-   - Services - resource limits configured
+- **Secrets**: generate every secret with `make generate-secrets` and check
+  them with `make validate-secrets`. There are no default credentials; never
+  copy a secret from documentation. Rotate with `scripts/rotate_secrets.sh`.
+  See [Credentials](https://www.wildbox.io/guides/credentials/).
+- **Exposure**: only the gateway is published (443, plus 80 and 8080 for
+  `/health` and the redirect to HTTPS). Backends are bound to `127.0.0.1`,
+  PostgreSQL and Redis publish no port, and the gateway's internal port 8081
+  is not published. Open only 443 (and 80 if you want the redirect) in your
+  firewall. See [Service ports](https://www.wildbox.io/guides/ports/).
+- **TLS**: replace the self-signed development certificate with a real one.
+  See the [Deployment guide](https://www.wildbox.io/guides/deployment/).
+- **Environment**: keep `ENVIRONMENT=production` (the generated default) and
+  `DEBUG=false`; identity, agents and responder then stop serving their API
+  documentation, and cspm serves it only with `DEBUG=true`.
+- **Updates**: rebuild the images after pulling a release, and read
+  [UPGRADING.md](UPGRADING.md) first.
+- **Backups**: `make backup` and `make restore-drill`; backups contain
+  sensitive data, so encrypt them (`GPG_RECIPIENT`) and keep them off the
+  server.
 
 ---
 
-## 📋 Security Features
+## Security Features
 
-### Authentication
+Authentication (details in
+[Authentication and sessions](https://www.wildbox.io/guides/authentication/)):
 
-- **JWT-based authentication** with refresh tokens
-- **API key authentication** for service-to-service
-- **Gateway-enforced authorization** (all requests validated)
-- **Team-based access control** (multi-tenancy)
+- Every API request is authenticated at the gateway, which validates JWTs and
+  API keys with the identity service; each backend rejects requests that do
+  not carry the gateway's `GATEWAY_INTERNAL_SECRET`.
+- JWT access tokens are signed with HS256, last 30 minutes and cannot be
+  refreshed. Logout revokes the token in Redis and drops it from the
+  gateway's authorization cache.
+- Five failed password logins lock an email address for 15 minutes.
+- Passwords are hashed with Argon2id; API keys are stored as HMAC-SHA256
+  digests keyed by `API_KEY_HASH_SECRET`.
+- Team roles (owner, admin, member) and platform superusers.
 
-### Data Protection
+Platform:
 
-- **TLS/HTTPS** for all external communications
-- **Password hashing** with bcrypt (12 rounds)
-- **API key hashing** with HMAC-SHA256 keyed by `API_KEY_HASH_SECRET`
-- **Database encryption** (optional, recommended for production)
+- Rate limiting at the gateway, per client address and per team.
+- Security headers at the gateway (HSTS, `X-Frame-Options`,
+  `X-Content-Type-Options`, `Permissions-Policy`, Content Security Policy).
+- Security tools verify TLS certificates by default.
+- Cloud credentials stored by CSPM are encrypted with `CSPM_CREDENTIAL_KEY`.
+- Wildbox has no multi-factor authentication.
 
-### Network Security
+Development and CI:
 
-- **API Gateway** (OpenResty/Nginx with Lua authentication)
-- **Request validation** before reaching backend services
-- **Rate limiting** per IP and per user
-- **CORS policies** enforced
-
-### Monitoring & Auditing
-
-- **Structured logging** (all services use structlog)
-- **Access logs** (gateway tracks all requests)
-- **Metrics collection** (Prometheus)
-- **Alerting** (Grafana)
-
----
-
-## 🚨 Known Security Considerations
-
-### Current Limitations
-
-1. **Development Mode:**
-   - Default `docker-compose.yml` is for **development only**
-   - Uses `POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}` (fallback for local dev)
-   - **Production MUST set all secrets explicitly**
-
-2. **TLS Certificates:**
-   - Self-signed certificates in `open-security-gateway/ssl/`
-   - **Production MUST use valid certificates** (Let's Encrypt, purchased certs)
-
-3. **Session Management:**
-   - Sessions stored in Redis
-   - **Production MUST persist Redis** (`redis.conf` with AOF)
-
-4. **Backup Security:**
-   - Database backups created with `make backup`
-   - **Backups contain sensitive data - encrypt and secure**
+- Hash-pinned Python lock files; `PR Validation` blocks pull requests that add a
+  critical advisory, and `Main Advisories` checks `main` daily.
+- `pip-audit`, Trivy, Bandit, Gitleaks and GitHub code scanning run in CI.
+- Python security upgrades: `make lock-security` and the weekly
+  `Pip Security Upgrades` workflow. npm, Docker and GitHub Actions updates:
+  Dependabot.
 
 ---
 
-## 📚 Security Resources
+## Further Reading
 
-### Standards & Compliance
-
-- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
-- [OWASP API Security Top 10](https://owasp.org/www-project-api-security/)
-- [CIS Docker Benchmark](https://www.cisecurity.org/benchmark/docker)
-- [NIST Cybersecurity Framework](https://www.nist.gov/cyberframework)
-
-### Tools Used
-
-- **Secret Management:** Environment variables, never hardcoded
-- **Dependency Scanning:** `pip-audit` (Python), `trivy` (Docker)
-- **Static Analysis:** `bandit` (Python security)
-- **Container Scanning:** `trivy` (vulnerabilities)
-- **Network Testing:** `nmap`, `sqlmap` (penetration testing)
-
-### Internal Documentation
-
-- `docs/ENGINEERING_STANDARDS.md` - Secure coding practices
-- `docs/GATEWAY_AUTHENTICATION_GUIDE.md` - Authentication flow
-- `.env.example` - Required secrets with generation commands
-
----
-
-## 🔄 Security Update Process
-
-### Dependency Updates
-
-```bash
-# Check for vulnerabilities
-make security-check
-
-# Update dependencies (review changelog first)
-make update
-
-# Test after updates
-make test
-```
-
-### Security Patches
-
-1. Security team notified via security@wildbox.dev
-2. Severity assessed (Critical/High/Medium/Low)
-3. Fix developed and tested
-4. Security advisory published (GitHub Security Advisories)
-5. Patch released with version bump
-6. Users notified (email, GitHub releases)
-
----
-
-## 📞 Contact
-
-**Security Team:** security@wildbox.dev  
-**GitHub Security Advisories:** https://github.com/fabriziosalmi/wildbox/security/advisories  
-**GPG Key:** [Available on request]
-
----
-
-## 🙏 Acknowledgments
-
-We appreciate responsible disclosure from security researchers. Contributors who report valid vulnerabilities will be acknowledged (with permission) in:
-
-- Security advisories
-- Release notes
-- This document
-
----
-
-**Last Security Audit:** November 23, 2025 (Brutal Rep Auditor)  
-**Remediation Status:** Critical issues resolved  
-**Next Audit:** Q1 2026
+- [Security status](https://www.wildbox.io/security/status/)
+- [Security policy and practices](https://www.wildbox.io/security/policy/)
+- [Secrets rotation](docs/SECURITY_SECRETS_ROTATION.md)
+- [Engineering standards](docs/ENGINEERING_STANDARDS.md)
