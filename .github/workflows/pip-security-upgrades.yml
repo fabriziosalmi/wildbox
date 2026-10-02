@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v7
 
       - name: Upgrade vulnerable packages
         run: SUMMARY_FILE="$RUNNER_TEMP/summary.md" ./scripts/upgrade_vulnerable_requirements.sh
