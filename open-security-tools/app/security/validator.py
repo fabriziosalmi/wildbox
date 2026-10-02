@@ -253,7 +253,10 @@ class SecurityValidator:
             return
         # Raised outside the try above: inside it, this error was swallowed by
         # the "not an IP address" branch and every private address passed.
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_unspecified:
+        # Only globally routable unicast addresses are allowed: is_global is
+        # False for private, loopback, link-local, unspecified, shared
+        # (100.64.0.0/10) and reserved ranges, and for IPv4-mapped forms.
+        if not ip.is_global or ip.is_multicast:
             raise ValueError("Private/local IP addresses not allowed")
     
     @classmethod

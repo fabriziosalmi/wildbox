@@ -61,6 +61,10 @@ def test_bad_schemes_and_empty_blocked(url):
     "https://[::]/",
     "https://[::1]/",
     "https://localhost/",
+    "https://100.64.0.1/",  # shared address space (carrier-grade NAT)
+    "https://224.0.0.1/",  # multicast
+    "https://[::ffff:10.0.0.1]/",  # IPv4-mapped private address
+    "https://[fd00::1]/",  # unique local IPv6
 ])
 def test_private_and_local_hosts_blocked_over_https(url):
     with pytest.raises(ValueError, match="(Private/local IP|Local hostnames)"):
@@ -70,3 +74,12 @@ def test_private_and_local_hosts_blocked_over_https(url):
 def test_private_hosts_pass_when_explicitly_allowed():
     url = "https://10.0.0.5/"
     assert SecurityValidator.validate_url(url, allow_private=True) == url
+
+
+@pytest.mark.parametrize("url", [
+    "https://8.8.8.8/",
+    "https://[2606:4700:4700::1111]/",
+    "https://example.com/",
+])
+def test_public_hosts_pass_over_https(url):
+    assert SecurityValidator.validate_url(url) == url
