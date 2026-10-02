@@ -1,0 +1,56 @@
+# The documentation index: the sidebar of docs.html and of every page rendered
+# through _layouts/doc.html is built from this list, so it is the one place
+# that says what the site publishes.
+#
+# `path` names a Markdown source under docs/. The sidebar looks it up in
+# site.pages and links to the URL Jekyll generated for it; an entry whose page
+# does not exist (or is excluded in _config.yml) is skipped rather than
+# rendered as a dead link. `url` is for static pages that Jekyll copies as-is.
+- title: Getting started
+  items:
+    - title: Quick start
+      path: guides/quickstart.md
+    - title: Service ports
+      path: guides/ports.md
+    - title: Credentials and authentication
+      path: guides/credentials.md
+    - title: Local LLM with Ollama
+      path: guides/ollama-llm.md
+- title: Operations
+  items:
+    - title: Deployment guide
+      path: guides/deployment.md
+- title: API reference
+  items:
+    - title: API overview
+      url: /docs.html#api-docs
+    - title: API documentation index
+      path: api/README.md
+    - title: Identity service
+      path: api/identity/endpoints.md
+    - title: Tools service
+      path: api/tools/endpoints.md
+    - title: Data service
+      path: api/data/endpoints.md
+    - title: Guardian service
+      path: api/guardian/endpoints.md
+    - title: Responder service
+      path: api/responder/endpoints.md
+    - title: Agents service
+      path: api/agents/endpoints.md
+    - title: Gateway routes
+      url: /docs.html#gateway-routes
+- title: Security
+  items:
+    - title: Security status
+      path: security/status.md
+    - title: Security policy
+      path: security/policy.md
+    - title: Platform audit report (2024)
+      path: security/audit-report.md
+    - title: Tools service audit (2025)
+      path: security/tools-service-audit.md
+    - title: Improvements summary (2024)
+      path: security/improvements-summary.md
+    - title: Remediation checklist (2024)
+      path: security/remediation-checklist.md

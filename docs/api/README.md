@@ -1,87 +1,49 @@
 # Wildbox API Documentation
 
-Complete API reference documentation for all Wildbox microservices with examples, error handling, and authentication details.
+Endpoint references for the Wildbox microservices, with request examples,
+error handling and authentication details.
 
-## 📚 Documentation Status
+## Service References
 
-| Service | Status | Files |
-| --------- | -------- | ------- |
-| **Identity Service** | ✅ Complete | [endpoints.md](identity/endpoints.md) |
-| **Guardian Service** | ✅ Complete | [endpoints.md](guardian/endpoints.md) |
-| **Agents Service** | ✅ Complete | [endpoints.md](agents/endpoints.md) |
-| **Data Service** | ✅ Complete | [endpoints.md](data/endpoints.md) |
-| **Tools Service** | ✅ Complete | [endpoints.md](tools/endpoints.md) |
-| **Responder Service** | ✅ Complete | [endpoints.md](responder/endpoints.md) |
-| **CSPM Service** | 📋 Planned | Coming soon |
+Each reference is written by hand. Where one disagrees with a running service,
+the service is right: please
+[open an issue](https://github.com/fabriziosalmi/wildbox/issues) naming the
+service and the endpoint.
 
-## 🚀 Quick Start
+| Service | Reference | OpenAPI (Redoc) |
+| --------- | ----------- | ----------------- |
+| **Identity** | [endpoints.md](identity/endpoints.md) | - |
+| **Tools** | [endpoints.md](tools/endpoints.md) | - |
+| **Data** | [endpoints.md](data/endpoints.md) | - |
+| **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
+| **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
+| **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
+| **CSPM** | Not written yet | - |
 
-### Access API Documentation
+## Reaching the APIs
 
-**Interactive HTML Portal**:
+In a deployment every API is reached through the gateway, over HTTPS on port
+443. The gateway path for each service, and whether it requires
+authentication, is listed in the
+[gateway routes table](https://www.wildbox.io/docs.html#gateway-routes). The
+local port each service listens on is defined in `docker-compose.yml`; the
+backend ports are bound to `127.0.0.1` only.
 
-- Local: [http://localhost/landing-page/api-reference.html](../api-reference.html)
-- GitHub Pages: [https://www.wildbox.io/docs/api-reference.html](../api-reference.html)
+To authenticate, log in with a form-encoded `POST /auth/jwt/login` (fields
+`username` and `password`) and send the returned `access_token` as
+`Authorization: Bearer <token>`. The gateway also accepts an API key in the
+`X-API-Key` header. The [Quick Start](../guides/quickstart.md) shows the
+complete sequence.
 
-**Live OpenAPI Endpoints** (during development):
+The interactive overview is the [API reference page](../api-reference.html).
 
-- Identity Service: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Guardian Service: [http://localhost:8001/docs](http://localhost:8001/docs)
-- Agents Service: [http://localhost:8002/docs](http://localhost:8002/docs)
-- Data Service: [http://localhost:8006/docs](http://localhost:8006/docs)
-- Tools Service: [http://localhost:8013/docs](http://localhost:8013/docs)
-
-## 📖 Available Documentation
-
-### Identity Service
-
-- **Description**: User authentication, JWT tokens, user management
-- **Port**: 8000
-- **Documentation**: [Full Endpoint Reference](identity/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8000/docs) | [OpenAPI Schema](http://localhost:8000/openapi.json)
-
-### Guardian Service
-
-- **Description**: Integration management, queue monitoring, orchestration
-- **Port**: 8001
-- **Documentation**: [Full Endpoint Reference](guardian/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8001/docs) | [OpenAPI Schema](http://localhost:8001/openapi.json)
-
-### Agents Service
-
-- **Description**: AI-powered threat analysis, intelligence enrichment
-- **Port**: 8004
-- **Documentation**: [Full Endpoint Reference](agents/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8004/docs) | [OpenAPI Schema](http://localhost:8004/openapi.json)
-
-### Data Service
-
-- **Description**: Security data aggregation, analysis, reporting
-- **Port**: 8006
-- **Documentation**: [Full Endpoint Reference](data/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8006/docs) | [OpenAPI Schema](http://localhost:8006/openapi.json)
-
-### Tools Service
-
-- **Description**: Security tool execution, resource management
-- **Port**: 8013
-- **Documentation**: [Full Endpoint Reference](tools/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8013/docs) | [OpenAPI Schema](http://localhost:8013/openapi.json)
-
-### Responder Service
-
-- **Description**: Incident response, playbook execution, remediation
-- **Port**: 8018
-- **Documentation**: [Full Endpoint Reference](responder/endpoints.md)
-- **Live Docs**: [Swagger UI](http://localhost:8018/docs) | [OpenAPI Schema](http://localhost:8018/openapi.json)
-
-## 🛠️ Creating API Documentation
+## Creating API Documentation
 
 ### Template Files
 
 Use these templates when documenting a new service:
 
-**Markdown Template**: See [TEMPLATE.md](TEMPLATE.md) for the complete markdown structure with all sections.
+**Markdown Template**: See [TEMPLATE.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/TEMPLATE.md) for the complete markdown structure with all sections.
 
 ### Step-by-Step Guide
 
@@ -111,9 +73,8 @@ Use these templates when documenting a new service:
    - Authentication flows
 
 5. **Update this README**:
-   - Mark service as complete in the status table
-   - Add link to the endpoint documentation file
-   - Update any service-specific information
+   - Add the service to the table above
+   - Link the endpoint documentation file
 
 ### Documentation Structure
 
@@ -158,95 +119,44 @@ For each endpoint, document:
 - **Complete curl example**
 - **Parameter table** with types and descriptions
 
-## 🔍 SEO Optimization
-
-Each API documentation page is optimized for search engines:
-
-- **Descriptive titles** - Service name and "API Reference"
-- **Meta descriptions** - Clear summary of service capabilities
-- **Structured data** - Endpoints listed with HTTP methods
-- **Internal linking** - Cross-references between services
-- **Headers hierarchy** - H1, H2, H3 structure for readability
-- **Code examples** - Searchable curl commands
-- **Parameters documented** - All query/path parameters indexed
-
-### SEO Keywords
-
-Each service documentation targets:
-
-- Service name + "API"
-- "Wildbox" + service function
-- HTTP methods + endpoint paths
-- Authentication type + service
-- "API Reference" + service
-
-Example: "Wildbox Identity Service API", "JWT Token Authentication", "User Management Endpoints"
-
-## 📝 Contributing Documentation
+## Contributing Documentation
 
 To contribute API documentation:
 
-1. **Choose a service** from the "In Progress" list
-2. **Follow the template** in [TEMPLATE.md](TEMPLATE.md)
+1. **Choose a service** without a reference (currently CSPM), or one whose
+   reference has drifted from the code
+2. **Follow the template** in [TEMPLATE.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/api/TEMPLATE.md)
 3. **Test examples** with running services
 4. **Include real examples** from live API responses
-5. **Document all endpoints** - no stubs or "coming soon"
-6. **Update the status** in this README
+5. **Document all endpoints** - no stubs or placeholder sections
+6. **Update the table** in this README
 7. **Submit via pull request**
 
-## 🔗 Related Resources
+## Related Resources
 
 - [API Reference Hub](../api-reference.html) - Interactive documentation portal
 - [Security Policy](../security/policy.md) - Authentication and security requirements
 - [Quickstart Guide](../guides/quickstart.md) - Getting started with APIs
 - [Deployment Guide](../guides/deployment.md) - Production deployment info
 
-## ❓ FAQ
+## FAQ
 
-**Q: How long are rate limits?**
-A: Standard endpoints have 100 requests/minute per user. Check individual service docs for specific limits.
+**Q: What are the rate limits?**
+A: The gateway limits requests per team. The budget comes from
+`RATE_LIMIT_PER_HOUR` in `.env`, and every authenticated response carries
+`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`.
 
 **Q: How do I refresh my JWT token?**
-A: Use the `/auth/refresh` endpoint with your current valid token. See Identity Service docs.
+A: There is no refresh endpoint. When a token expires, log in again. The
+lifetime is `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` in the identity service settings
+(30 minutes unless you set it).
 
 **Q: Where can I test the APIs?**
-A: Use the live Swagger UI at each service's `/docs` endpoint, or use curl examples from the documentation.
-
-**Q: What formats are supported?**
-A: All APIs use JSON for request/response bodies. Some endpoints support CSV export.
+A: With the curl examples in each reference, against your own deployment.
 
 **Q: How do I report API bugs?**
 A: Open an issue on [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues) with the service name and endpoint.
 
-## 📊 Documentation Roadmap
+## License
 
-**Phase 1 (Complete)**:
-
-- ✅ Identity Service - Full endpoint documentation
-- ✅ API documentation template
-- ✅ HTML reference portal
-
-**Phase 2 (In Progress)**:
-
-- 🔄 Guardian Service API documentation
-- 🔄 Agents Service API documentation
-- 🔄 Data Service API documentation
-
-**Phase 3 (Planned)**:
-
-- 📋 Tools Service API documentation
-- 📋 Responder Service API documentation
-- 📋 CSPM Service API documentation
-- 📋 Code examples (Python, JavaScript, Go)
-- 📋 Postman collections
-
-## 📄 License
-
-All documentation is licensed under the MIT License. See [LICENSE](../../LICENSE) for details.
-
----
-
-**Last Updated**: November 7, 2024
-**Version**: 1.0
-**Status**: Active Development
-**Maintainer**: Wildbox Community
+All documentation is licensed under the MIT License. See [LICENSE](https://github.com/fabriziosalmi/wildbox/blob/main/LICENSE) for details.

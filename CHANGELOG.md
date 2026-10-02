@@ -49,6 +49,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
 
+### Documentation
+
+- **The documentation site renders Markdown at build time.** `docs.html` used
+  to fetch guides from `raw.githubusercontent.com` and turn them into HTML in
+  the browser with a hand-written parser, injecting the result unsanitized; a
+  failed fetch left a "Loading..." page. Jekyll now renders every guide,
+  security page and API reference through one layout, with a sidebar built
+  from `docs/_data/docs_nav.yml`, and old `docs.html#quickstart` links redirect
+  to the published page. The API cards that said "Coming Soon" for tools,
+  identity, data and guardian link to their endpoint references, and
+  `docs/api/README.md` is published at `/api/`. The dead `collections`
+  configuration, the unused remote theme, the stale `docs/index.md` and the
+  2024 `security/findings.json` snapshot are no longer published, and the
+  sitemap lists only pages the build produced.
+
 ### Removed
 
 - **The Docusaurus site in `website/`** (#419). It was never the published
