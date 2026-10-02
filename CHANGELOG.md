@@ -136,6 +136,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **Crawlers may fetch the site's own assets.** `robots.txt` disallowed
+  `/vendor/`, which holds the self-hosted Tailwind, highlight.js and fonts
+  every page loads. `api-reference.html` and the two Redoc pages now load
+  their vendored files from root-relative paths like the rest of the site,
+  the Redoc pages get canonical URLs, the remaining standalone pages link
+  `security.txt` in their footers, and `api-reference.html` loses a stale
+  "Last Updated" stamp.
+- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+  (a November 2025 snapshot, unpublished) is marked archived, and the
+  gateway authentication guide, linked from the published tools audit, says
+  that its keys and hosts are fictitious.
+
+- **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
+  WAF, Kubernetes support and a local Ollama LLM, none of which the project
+  ships, and gave the gateway as port 8080 and Postgres credentials that do
+  not match. Both are rewritten from `docker-compose.yml`, the gateway routes
+  and the integration tests' login flow, agree with each other, state no
+  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  The homepage's structured data loses the same claims and its stale
+  `softwareVersion`.
+- **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
+  item; the copy now says so and calls them a growing collection instead of
+  promising a library, and the placeholder comments are gone. Both stay
+  indexed.
+- **The privacy notice is indexable.** It is a complete, dated legal page
+  listed in the sitemap, so `noindex` contradicted the sitemap; it now has
+  `index, follow` and a canonical URL.
+- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
+  loads its vendored Tailwind from a root-relative path like the other pages,
+  and the llms files no longer claim account lockout, which identity does not
+  enforce.
+
+- **The security status page says what is still wrong.** It reported every
+  finding "Fixed", every check "PASS" and "99% of known vulnerabilities
+  resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
+  networks are not segmented (the production overlay's networks are merged
+  with the flat `wildbox` network), identity's `init.sh` prints the initial
+  admin password to the log, two scanners disable TLS verification, and
+  identity and tools serve API docs in every environment. The page now lists
+  those as open issues, points at #415 for dependencies, marks unchecked
+  claims "Not verified", and says how each check was made. The 2024 and 2025
+  audit documents are marked historical; the checklist's quoted heredoc that
+  wrote `$(openssl ...)` literally and its `sk_live_` placeholders are
+  replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
+  is no longer quoted as current. Expired version and review stamps are gone
+  from the security policy.
+- **Account lockout is reported as not enforced.** The status page counted
+  the lockout settings in `config.py` as a pass, but nothing calls
+  `record_failed_login` or `is_account_locked`; it is now a known open issue
+  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
+  (fastapi-users hashes with Argon2). The status page stops linking the
+  November 2024 audit documents, which the site no longer publishes.
+
 - **One ports table, one login flow, no published passwords.** The guides
   disagreed about ports (identity on 8000 or 8001, agents on 8002, 8004 or
   8006, guardian on 8001) and showed the login once as JSON and once
