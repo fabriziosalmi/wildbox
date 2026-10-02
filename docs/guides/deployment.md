@@ -50,7 +50,8 @@ than secrets:
 
 - `INITIAL_ADMIN_EMAIL`: the first administrator's login
 - `CORS_ORIGINS`: the HTTPS origins that may call the API, for example
-  `https://wildbox.example.com`
+  `https://wildbox.example.com` (here and below, replace `wildbox.example.com`,
+  a name reserved for documentation, with your host name)
 - `ENVIRONMENT=production` (the template default)
 
 Do not generate secrets by hand or copy them from documentation. The
@@ -78,6 +79,11 @@ sudo install -m 0644 /etc/letsencrypt/live/wildbox.example.com/fullchain.pem \
 sudo install -m 0600 /etc/letsencrypt/live/wildbox.example.com/privkey.pem \
   open-security-gateway/ssl/wildbox.key
 ```
+
+TLS terminates at the gateway; no other proxy is needed in front of it. The
+`haproxy/` directory in the repository belongs to the blue/green experiment in
+`docker-compose.blue-green.yml` and is not used by `docker-compose.yml` or
+`docker-compose.prod.yml`.
 
 `certbot --standalone` needs port 80 free, so run it before the stack starts or
 stop the gateway while it renews. After replacing the files, restart the

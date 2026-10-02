@@ -92,6 +92,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases by hand. The identity API reference is rewritten from the routes
   the service registers; the other references get correct ports and a note
   that they are hand-written.
+- **The Ollama guide says Ollama is gone.** `guides/ollama-llm.md` described a
+  local LLM container that no Compose file defines; it now documents the
+  Anthropic configuration the agents service actually reads, including that
+  submitted indicators are sent to Anthropic when it is enabled. The
+  Deployment guide notes that `haproxy/` belongs to the blue/green Compose
+  file only.
 
 ### Removed
 
