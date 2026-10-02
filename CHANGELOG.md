@@ -120,6 +120,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Production Redis no longer evicts authoritative state** (#530):
+  `docker-compose.prod.yml` replaced the base file's
+  `--maxmemory-policy noeviction` with `allkeys-lru` at 512 MB, so under
+  memory pressure Redis could delete token-blacklist entries (a revoked
+  token worked again), failed-login lockout counters, and Celery and
+  Dramatiq queues and results. The overlay now inherits the base command,
+  so a full Redis refuses writes instead. The container memory limit
+  becomes `REDIS_MEMORY_LIMIT` (default `2g`, twice the default
+  `REDIS_MAXMEMORY` of `1gb`) in both files: with the limit equal to
+  `maxmemory` the kernel OOM-killed Redis before `noeviction` refused a
+  write, and at 1.5x it was killed during an AOF rewrite.
+  `scripts/check_redis_config.py` asserts the policy, AOF and the headroom
+  on the rendered production configuration and on the running Redis; the
+  Production Stack workflow runs both. Sizing and monitoring are in the
+  deployment guide.
+
 - **Production network segmentation now takes effect** (#494):
   `docker-compose.prod.yml` attached services to `frontend`, `backend` and
   `data`, but Compose merges a service's networks with the base file's, so

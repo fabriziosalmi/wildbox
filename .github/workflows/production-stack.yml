@@ -18,6 +18,7 @@ on:
       - '.github/compose.ci-*.yml'
       - 'open-security-gateway/nginx/**'
       - 'scripts/check_network_segmentation.py'
+      - 'scripts/check_redis_config.py'
       - 'scripts/generate_secrets.py'
       - '.env.example'
       - '.github/workflows/production-stack.yml'
@@ -76,6 +77,12 @@ jobs:
         # operator deploys, not the CI variant.
         run: python3 scripts/check_network_segmentation.py config
 
+      - name: Redis keeps its state in the rendered production configuration
+        # noeviction, a maxmemory, AOF, and a container limit of at least
+        # twice maxmemory (#530): the overlay once set allkeys-lru, which
+        # could evict the token blacklist, lockout counters and queues.
+        run: python3 scripts/check_redis_config.py config
+
       - name: Start the production stack
         run: docker compose up -d --wait --wait-timeout 900
 
@@ -118,6 +125,12 @@ jobs:
           SENSOR_SERVICE_URL: http://localhost:8004
           DASHBOARD_URL: http://localhost:3000
         timeout-minutes: 20
+
+      - name: Redis settings and memory use after the suite
+        # The live CONFIG GET values and the limit Docker applied, plus the
+        # peak memory the suite reached: the evidence for REDIS_MAXMEMORY.
+        if: ${{ !cancelled() }}
+        run: python3 scripts/check_redis_config.py runtime --env-file .env
 
       - name: Service logs on failure
         if: failure()
