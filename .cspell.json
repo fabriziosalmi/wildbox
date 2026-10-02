@@ -226,6 +226,8 @@
     "Fetc",
     "fetchall",
     "Filebeat",
+    "filterset",
+    "filtersets",
     "findall",
     "firewall",
     "firmati",
