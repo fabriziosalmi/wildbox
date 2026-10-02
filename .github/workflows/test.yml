@@ -10,6 +10,11 @@ on:
 env:
   REGISTRY: ghcr.io
   
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   unit-tests:
     name: Unit Tests
@@ -34,7 +39,7 @@ jobs:
       - uses: actions/checkout@v7
       
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
@@ -88,7 +93,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -118,7 +123,7 @@ jobs:
       - uses: actions/checkout@v7
       
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'npm'
@@ -159,6 +164,10 @@ jobs:
           retention-days: 30
 
   security-scan:
+    # Uploads the Trivy SARIF report to code scanning.
+    permissions:
+      contents: read
+      security-events: write
     name: Security Scanning
     runs-on: ubuntu-latest
     
@@ -203,7 +212,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -283,6 +292,10 @@ jobs:
           echo "::endgroup::"
 
   build-images:
+    # Pushes images to GHCR (main only).
+    permissions:
+      contents: read
+      packages: write
     name: Build Docker Images
     runs-on: ubuntu-latest
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -21,6 +21,11 @@ on:
         type: choice
         options: [all, chaos, load]
 
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   chaos:
     name: Chaos experiments
@@ -31,7 +36,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -85,7 +90,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 

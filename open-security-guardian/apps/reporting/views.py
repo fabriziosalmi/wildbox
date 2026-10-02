@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
 from rest_framework.decorators import action
@@ -22,6 +23,8 @@ from .filters import (
 )
 from .tasks import generate_report, process_widget_data
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class ReportTemplateViewSet(viewsets.ModelViewSet):
@@ -259,10 +262,13 @@ class WidgetViewSet(viewsets.ModelViewSet):
                 'status': 'success',
                 'data': data
             })
-        except Exception as e:
+        except Exception:
+            # Log the cause; return a generic message. str(e) exposed
+            # internal details (queries, field names, paths) to the caller.
+            logger.exception("Widget test failed for widget %s", widget.pk)
             return Response({
                 'status': 'error',
-                'error': str(e)
+                'error': 'The widget could not be evaluated with these filters.'
             }, status=status.HTTP_400_BAD_REQUEST)
 
 

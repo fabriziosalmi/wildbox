@@ -20,6 +20,11 @@ on:
       - '.github/workflows/gateway-lint.yml'
   workflow_dispatch:
 
+# Least privilege: the token can read the repository and nothing else,
+# unless a job below asks for more.
+permissions:
+  contents: read
+
 jobs:
   luacheck:
     name: Luacheck (OpenResty Lua)
