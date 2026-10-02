@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% seo %}
+    <meta property="og:image" content="https://www.wildbox.io/images/wildbox.png">
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <script src="/vendor/tailwindcss/tailwind.js"></script>
+    <link rel="stylesheet" href="/assets/site.css">
+    <link rel="stylesheet" href="/assets/docs.css">
+</head>
+<body>
+    {% include site_nav.html %}
+
+    <div class="flex min-h-screen relative">
+        {% include docs_sidebar.html %}
+
+        <main class="flex-1 min-w-0">
+            <article class="markdown-content max-w-4xl mx-auto px-4 sm:px-8 py-10">
+                {{ content }}
+
+                <footer class="page-meta">
+                    Rendered from
+                    <a href="https://github.com/fabriziosalmi/wildbox/blob/main/docs/{{ page.path }}" target="_blank" rel="noopener noreferrer"><code>docs/{{ page.path }}</code></a>
+                    on GitHub. Found a mistake?
+                    <a href="https://github.com/fabriziosalmi/wildbox/issues" target="_blank" rel="noopener noreferrer">Open an issue</a>.
+                    Security reports: <a href="/.well-known/security.txt">security.txt</a>.
+                </footer>
+            </article>
+        </main>
+    </div>
+
+    <script src="/assets/docs.js"></script>
+</body>
+</html>

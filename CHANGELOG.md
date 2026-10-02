@@ -123,6 +123,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
 
+### Documentation
+
+- **The documentation site renders Markdown at build time.** `docs.html` used
+  to fetch guides from `raw.githubusercontent.com` and turn them into HTML in
+  the browser with a hand-written parser, injecting the result unsanitized; a
+  failed fetch left a "Loading..." page. Jekyll now renders every guide,
+  security page and API reference through one layout, with a sidebar built
+  from `docs/_data/docs_nav.yml`, and old `docs.html#quickstart` links redirect
+  to the published page. The API cards that said "Coming Soon" for tools,
+  identity, data and guardian link to their endpoint references, and
+  `docs/api/README.md` is published at `/api/`. The dead `collections`
+  configuration, the unused remote theme and the stale `docs/index.md` are
+  gone, and the sitemap lists only pages the build produced.
+- **`docs/security/findings.json` is deleted.** It was a November 2024 dump
+  with local `/Users/...` paths that contradicted the status page; nothing
+  read it. It remains in git history.
+- **`api/swagger-index.html` redirects to the API overview.** It called itself
+  the index of all APIs and listed two of six; Redoc pages for the other four
+  were not generated because no exported OpenAPI document exists for them.
+- **The 2024 security audit is no longer published.** `docs.html#security-audit`
+  led to `/security/audit-report/`; that report, its remediation checklist and
+  its improvements summary describe code that has since changed and are
+  excluded from the site and the sidebar, and the old hash now leads to the
+  security status page.
+- **Contributor docs page and smaller site fixes.** `/contributing/` links the
+  engineering notes that stay unpublished (cited by `SECURITY.md` and CI
+  scripts) and states that Jekyll in `docs/` is the only documentation stack;
+  `website/` is ignored by git. Long pages get an "On this page" list built
+  from their headings, every documentation page links `security.txt`, vendor
+  READMEs are no longer published as pages, and the sitemap emits only `<loc>`
+  because Pages cannot supply a real last-modified date.
+
 ### Removed
 
 - **The Docusaurus site in `website/`** (#419). It was never the published
