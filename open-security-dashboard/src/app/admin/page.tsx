@@ -56,7 +56,7 @@ interface AdminUserData {
 }
 
 export default function AdminPage() {
-  const { user } = useAuth()
+  const { user, isLoading: authLoading } = useAuth()
   const { toast } = useToast()
   const router = useRouter()
   const [users, setUsers] = useState<AdminUserData[]>([])
@@ -95,13 +95,15 @@ export default function AdminPage() {
     is_active: true,
   })
 
-  // Check if user is superuser
+  // Check if user is superuser -- once the session has been read. On a
+  // direct load or a reload the user is still null while /users/me is in
+  // flight, and redirecting then sent every admin to /dashboard whenever that
+  // call took longer than the first render.
   useEffect(() => {
-    if (!user?.is_superuser) {
+    if (!authLoading && !user?.is_superuser) {
       router.push('/dashboard')
-      return
     }
-  }, [user, router])
+  }, [authLoading, user, router])
 
   const fetchSystemHealth = useCallback(async () => {
     try {
