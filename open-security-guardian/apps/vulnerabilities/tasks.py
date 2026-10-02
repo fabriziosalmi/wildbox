@@ -351,23 +351,3 @@ def cleanup_old_vulnerability_history():
     except Exception as exc:
         logger.error(f"Error cleaning up vulnerability history: {exc}")
         raise
-
-
-@shared_task
-def generate_vulnerability_reports():
-    """
-    Generate scheduled vulnerability reports
-    """
-    try:
-        # This would generate various reports like:
-        # - Executive summary
-        # - Team dashboards  
-        # - Compliance reports
-        # - Trend analysis
-        
-        logger.info("Vulnerability report generation completed")
-        return {'reports_generated': True}
-        
-    except Exception as exc:
-        logger.error(f"Error generating vulnerability reports: {exc}")
-        raise

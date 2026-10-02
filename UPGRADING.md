@@ -129,6 +129,12 @@ is at the top of the file.
 - For forks that customize the dashboard: Next.js 16 renamed
   `src/middleware.ts` to `src/proxy.ts`, and `images.domains` is now
   `images.remotePatterns`.
+- guardian's `apps.vulnerabilities.tasks.generate_vulnerability_reports` is
+  gone: it did nothing, and nothing called or scheduled it. Reports, the
+  vulnerability summary included, come from report templates
+  (`POST /api/v1/reports/templates/{id}/generate/`). If you added a periodic
+  task for it in the Django admin, delete that row, or the worker logs an
+  unregistered task each time beat sends it.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
