@@ -12,8 +12,10 @@
       path: guides/quickstart.md
     - title: Service ports
       path: guides/ports.md
-    - title: Credentials and authentication
+    - title: Credentials
       path: guides/credentials.md
+    - title: Authentication and sessions
+      path: guides/authentication.md
     - title: AI analysis (LLM)
       path: guides/ollama-llm.md
 - title: Operations

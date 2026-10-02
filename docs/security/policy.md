@@ -35,55 +35,44 @@ Where the code does not meet them yet, the gap is listed under
 
 ### 1. Environment Variables Configuration
 
-Copy `.env.example` to `.env` and configure all variables:
+Generate `.env` with random values for every secret, then check it:
 
 ```bash
-cp .env.example .env
+make generate-secrets    # scripts/generate_secrets.py, writes .env with mode 0600
+make validate-secrets    # refuses placeholders and known weak values
 ```
 
-**Required changes:**
+Then set the values that describe your deployment: `INITIAL_ADMIN_EMAIL`
+and `CORS_ORIGINS` (your HTTPS origins only). Do not write secrets by hand or
+copy them from documentation.
 
-1. **Generate secure random values** for all keys and passwords
-2. **Change all default credentials**
-3. **Use strong, unique passwords** for all services
-4. **Configure proper CORS origins** for your domain
+### 2. Critical Security Variables
 
-### 2. Critical Security Variables to Change
+The [Credentials guide](../guides/credentials.md) lists every generated value
+and what it protects. The most sensitive are:
 
 | Variable | Description | Security Level |
 | ---------- | ------------- | ---------------- |
-| `JWT_SECRET_KEY` | JWT token signing key | **CRITICAL** |
-| `INITIAL_ADMIN_PASSWORD` | Default admin password | **CRITICAL** |
-| `POSTGRES_PASSWORD` | Database password | **CRITICAL** |
-| `API_KEY` | Main API authentication key | **CRITICAL** |
-| `STRIPE_SECRET_KEY` | Payment processing key | **CRITICAL** |
-| `ENCRYPTION_KEY` | Data encryption key | **CRITICAL** |
+| `JWT_SECRET_KEY` | Signs every login token | **CRITICAL** |
+| `API_KEY_HASH_SECRET` | Keys the HMAC of stored API keys | **CRITICAL** |
+| `GATEWAY_INTERNAL_SECRET` | Proves to the backends that a request came through the gateway | **CRITICAL** |
+| `INITIAL_ADMIN_PASSWORD` | Password of the first administrator | **CRITICAL** |
+| `POSTGRES_PASSWORD`, `REDIS_PASSWORD` | Datastore passwords | **CRITICAL** |
+| `CSPM_CREDENTIAL_KEY` | Encrypts stored cloud credentials | **CRITICAL** |
+| `API_KEY` | Static key for the tools API | **CRITICAL** |
 
 ### 3. Password Security Requirements
 
-- **Minimum 16 characters**
-- **Mix of uppercase, lowercase, numbers, symbols**
-- **No dictionary words**
-- **Unique per service**
-- **Rotated regularly**
+- **Change the first administrator's password** after the first login
+- **Use long, unique passwords** for every account
+- **Rotate secrets** with `scripts/rotate_secrets.sh`, which knows which ones
+  depend on each other
 
 ### 4. Secure Key Generation
 
-Use secure random generators:
-
-```bash
-# Generate JWT secret (64 characters)
-openssl rand -base64 48
-
-# Generate API key
-openssl rand -hex 32
-
-# Generate encryption key
-openssl rand -base64 32
-
-# Generate secure password
-openssl rand -base64 24
-```
+`scripts/generate_secrets.py` uses Python's `secrets` module and refuses to
+emit a value that the services' own validators would reject. To rotate one
+secret later, use `./scripts/rotate_secrets.sh --secret <NAME>`.
 
 ### 5. Production Security Checklist
 
@@ -143,10 +132,17 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wildbox_a
 
 #### Authentication
 
-- **Enable MFA** for admin accounts
-- **Set session timeouts** (default: 1 hour)
-- **Implement account lockout** after failed attempts (not enforced by Wildbox today: see the [Security status](status.md))
-- **Require email verification** for new accounts
+What Wildbox enforces (details in
+[Authentication and sessions](../guides/authentication.md)):
+
+- **Access tokens last 30 minutes**, with no refresh token
+- **Logout revokes the token** at identity and at the gateway
+- **Account lockout**: 5 failed password logins lock an email for 15 minutes
+
+What it does not provide, so plan around it:
+
+- **No multi-factor authentication**: restrict who can reach the gateway
+- **No email verification requirement** at login: limit who can register
 
 #### API Security
 
@@ -205,49 +201,42 @@ Depending on your use case, ensure compliance with:
 
 ### 13. Managing Dependency Vulnerabilities
 
-Wildbox uses GitHub Dependabot for continuous security scanning of all dependencies.
+How dependencies are kept free of known advisories:
 
-**Transitive Dependencies (Current Status):**
+- **Python**: every service installs from a hash-pinned `requirements.txt`
+  compiled from `requirements.in` (`make lock`). `make lock-security`
+  (`scripts/upgrade_vulnerable_requirements.sh`) moves only the packages with
+  a known advisory, and the weekly `Pip Security Upgrades` workflow opens a
+  pull request with the result. Dependabot does not handle pip.
+- **npm, Docker base images and GitHub Actions**: Dependabot opens the update
+  pull requests.
+- **Gates**: `PR Validation` fails a pull request that introduces a critical
+  advisory; the `Main Advisories` workflow checks `main` daily and keeps one
+  issue open while any critical advisory is present.
 
-- 10 security alerts exist from transitive dependencies (upstream packages)
-- These are **not** code vulnerabilities - they exist in libraries we depend on
-- We cannot fix them directly - they require upstream package patches
-- See [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) for real-time status
+The current state is on the [Security status](status.md) page and in the
+repository's [Dependabot alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot).
 
-**Mitigation Strategy:**
+**Your deployment:**
 
-- **Dependabot enabled**: Automatically detects new vulnerability patches
-- **Automated PRs**: Creates pull requests when patched versions available
-- **Testing integration**: Full test suite validates compatibility
-- **Automatic merging**: Patches integrated immediately when tests pass (typically within 1-4 weeks)
-
-**Your Deployment Considerations:**
-
-1. **For Development/Testing**: Use `docker-compose up -d` as-is for evaluation
-2. **For Staging**: Monitor [GitHub Security Alerts](https://github.com/fabriziosalmi/wildbox/security/dependabot) page
-3. **For Production**:
-   - Wait for upstream patches (usually released within weeks of disclosure)
-   - Check our releases page for updates
-   - Subscribe to [GitHub Security Advisories](https://github.com/fabriziosalmi/wildbox/security/advisories)
-   - Join our [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) for security updates
-
-**Best Practices:**
-
-- Keep Docker images updated with `docker-compose build --pull`
-- Monitor GitHub Security tab for patch availability
-- Test patches in staging before production deployment
-- Report any real-world vulnerability impacts you discover
+- Rebuild the images after every update; they are built from the repository,
+  so pulling the code alone changes nothing that is running (see
+  [Updating](../guides/deployment.md#8-updating)).
+- Subscribe to [GitHub Security Advisories](https://github.com/fabriziosalmi/wildbox/security/advisories)
+  and the releases page.
+- Test updates in staging before production.
 
 ## Security Features Implemented
 
 ### 1. Authentication & Authorization
 
-- JWT tokens with HS256 encryption (minimum 32-char secret)
-- Password hashing with Argon2 through fastapi-users' password helper; see the [authentication reference](../guides/credentials.md#authentication-reference)
+- JWT tokens signed with HS256 (minimum 32-character secret), valid for 30 minutes, without refresh
+- Revocation on logout: the token's `jti` is blacklisted in Redis and purged from the gateway's cache
+- Failed-login lockout: 5 failures lock an email for 15 minutes
+- Password hashing with Argon2id through fastapi-users' `PasswordHelper`; see [Authentication and sessions](../guides/authentication.md)
 - Bearer token authentication on all protected endpoints
-- API key support for service-to-service communication
-- Role-based access control (RBAC)
-- Token expiration and refresh mechanisms
+- API keys, stored as HMAC-SHA256 digests
+- Team roles (owner, admin, member) and platform superusers
 
 ### 2. API Security
 
@@ -256,13 +245,13 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 - Input validation on all endpoints
 - Parameterized queries (no SQL injection)
 - XXE protection (defusedxml)
-- Rate limiting ready (slowapi)
+- Rate limiting at the gateway, per client address and per team
 
 ### 3. Code Security
 
 - No eval() calls (secure JSON serialization)
 - No hardcoded secrets in code
-- No plaintext password logging (one known exception: see the [Security status](status.md))
+- No plaintext password logging (the initial administrator password is no longer printed)
 - Secure random generation for tokens/keys
 - Error handling without exposing internals
 
