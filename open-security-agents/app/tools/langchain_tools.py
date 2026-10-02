@@ -8,7 +8,7 @@ Each tool has a clear description that helps the AI understand when and how to u
 import json
 import logging
 from typing import Any, Dict
-from langchain.tools import tool
+from langchain_core.tools import tool
 
 from .wildbox_client import wildbox_client
 

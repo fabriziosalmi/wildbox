@@ -1,5 +1,16 @@
-# Jekyll Configuration for GitHub Pages
-# Wildbox Security Platform Documentation
+# Jekyll configuration for www.wildbox.io
+#
+# GitHub Pages builds this directory from `main` (legacy "deploy from branch"
+# mode, github-pages gem). Two kinds of page are published:
+#
+#   - Standalone HTML pages without front matter (index.html, api-reference.html,
+#     learn/, tools/, api/*.html ...) are copied as they are.
+#   - Markdown pages (guides/, security/, api/) are rendered at build time by
+#     kramdown through _layouts/doc.html, which carries the site navigation and
+#     the documentation sidebar from _data/docs_nav.yml. docs.html is processed
+#     too, only so that it can share that sidebar.
+#
+# Nothing is rendered in the browser from Markdown fetched at runtime.
 
 # Site metadata
 title: Wildbox Security Platform
@@ -7,65 +18,45 @@ description: "Open-source security platform with community-driven development"
 author: "Wildbox Community"
 url: "https://www.wildbox.io"
 baseurl: ""
+social:
+  name: "Wildbox Community"
+  links:
+    - "https://github.com/fabriziosalmi/wildbox"
 
 # Build settings
 markdown: kramdown
-remote_theme: "mmistakes/minimal-mistakes@4.24.0"
-minimal_mistakes_skin: "dark"
+kramdown:
+  input: GFM
 
-# Plugins
+# The plugins below are enabled by GitHub Pages anyway; they are listed so that
+# a local `jekyll build` with the github-pages gem produces the same site.
+#   jekyll-optional-front-matter  renders Markdown files that have no front matter
+#   jekyll-titles-from-headings   takes page.title from the first heading
+#   jekyll-relative-links         rewrites links to .md files into page URLs
+#   jekyll-readme-index           publishes api/README.md as /api/
 plugins:
-  - jekyll-feed
-  - jekyll-paginate
   - jekyll-seo-tag
-  - jekyll-include-cache
+  - jekyll-optional-front-matter
+  - jekyll-titles-from-headings
+  - jekyll-relative-links
+  - jekyll-readme-index
 
-# Page metadata
-collections_dir: collections
+# Publish only the rendered page, not a second copy of the .md source.
+optional_front_matter:
+  remove_originals: true
+readme_index:
+  remove_originals: true
+
+# /guides/quickstart.md -> /guides/quickstart/
 permalink: /:path/
 
-# Navigation
-# The site uses standalone HTML pages (index.html, docs.html, api-reference.html);
-# theme header_pages navigation is not used.
-header_pages: []
-
-# Search
-search_enabled: true
-search:
-  rel_url: true
-  full_text_search: false
-
-# Footer
-footer_content: "Wildbox Security Platform &copy; 2024. Community-driven security excellence."
-
-# Collections
-collections:
-  guides:
-    output: true
-    permalink: /:collection/:path/
-  security:
-    output: true
-    permalink: /:collection/:path/
-
-# Defaults
 defaults:
   - scope:
       path: ""
     values:
-      layout: "default"
-      author: "Wildbox"
-  - scope:
-      path: "guides"
-    values:
-      layout: "default"
-      category: "Guides"
-  - scope:
-      path: "security"
-    values:
-      layout: "default"
-      category: "Security"
+      layout: "doc"
 
-# Exclude files
+# Files kept in the repository but intentionally NOT published.
 exclude:
   - .git
   - .gitignore
@@ -73,11 +64,7 @@ exclude:
   - Gemfile.lock
   - README.md
   - LICENSE
-  # Internal/engineering docs kept in the repo (and referenced by SECURITY.md,
-  # CI scripts, etc.) but intentionally NOT published as standalone pages on the
-  # site. The live site is the HTML pages + the guides/ and security/ content
-  # rendered through docs.html.
-  - index.md
+  # Internal/engineering notes referenced by SECURITY.md, CI scripts, etc.
   - ARCHITECTURE_DECISIONS.md
   - ARCHITECTURE_STACK_JUSTIFICATION.md
   - DATA_SERVICE_API_DOCUMENTATION.md
@@ -103,26 +90,27 @@ exclude:
   - SERVICE_LIFECYCLE.md
   - TESTING_STRATEGY.md
   - guardian/
+  - vendor/README.md
+  - vendor/fonts/README.md
+  - api/vendor/redoc/README.md
+  - api/vendor/fonts/README.md
+  # The November 2024 platform audit: report, remediation checklist and
+  # summary. They describe code that has since changed and are superseded by
+  # security/status.md; kept in the repository, not published.
+  - security/audit-report.md
+  - security/remediation-checklist.md
+  - security/improvements-summary.md
+  # Contributor notes for writing API docs, not reference material.
   - api/CONTRIBUTING.md
   - api/GENERATION_GUIDE.md
-  - api/README.md
   - api/TEMPLATE.md
 
-# Sitemap is statically maintained in docs/sitemap.xml to index standalone HTML pages
-
-# SEO
-social:
-  name: "Wildbox Community"
-  links:
-    - "https://github.com/fabriziosalmi/wildbox"
-
-# Google Analytics (optional - add your tracking ID)
-# google_analytics: "UA-XXXXXXXXX-X"
-
-# Additional settings
-timezone: UTC
-encoding: UTF-8
+# sitemap.xml is generated at build time from _data/docs_nav.yml plus a fixed
+# list of standalone HTML pages.
 
 # Include dot-folders (required by Jekyll for RFC 9116 security.txt)
 include:
   - ".well-known"
+
+timezone: UTC
+encoding: UTF-8
