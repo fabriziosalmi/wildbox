@@ -194,7 +194,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
       await page.getByLabel('Email Address').fill(newEmail)
       await page.getByRole('button', { name: 'Save Changes' }).click()
 
-      await expect(page.getByText('Profile updated successfully')).toBeVisible()
+      await expect(page.getByText('Profile updated successfully', { exact: true })).toBeVisible()
       await expect(page.getByRole('heading', { name: newEmail, level: 2 })).toBeVisible()
       const me = await api.get('/auth/users/me', { headers: bearer(account.token) })
       expect(me.status(), await me.text()).toBe(200)
@@ -210,7 +210,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
 
       await fillPasswordForm(page, account.password, newPassword)
 
-      await expect(page.getByText('Password changed successfully')).toBeVisible()
+      await expect(page.getByText('Password changed successfully', { exact: true })).toBeVisible()
       expect(await loginStatus(api, { email: account.email, password: newPassword })).toBe(200)
       expect(await loginStatus(api, account)).toBe(400)
     })
@@ -221,7 +221,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
 
       await fillPasswordForm(page, `not-${account.password}`, newPassword)
 
-      await expect(page.getByText('Incorrect current password')).toBeVisible()
+      await expect(page.getByText('Incorrect current password', { exact: true })).toBeVisible()
       expect(await loginStatus(api, { email: account.email, password: newPassword })).toBe(400)
       expect(await loginStatus(api, account)).toBe(200)
     })
