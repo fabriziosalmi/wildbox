@@ -276,6 +276,9 @@ export const getAgentsPath = stripApiV1
 // prefixes below are the gateway's route table (WILDBO-ARCH-01/ARCH-04).
 const gw = getGatewayUrl()
 
+/** The gateway origin every client above uses, for the odd plain fetch(). */
+export const gatewayBaseUrl = gw
+
 export const apiClient = new ApiClient(`${gw}/api/v1`)
 export const identityClient = new ApiClient(gw) // auth endpoints live at the gateway root
 export const dataClient = new ApiClient(`${gw}/api/v1/data`)

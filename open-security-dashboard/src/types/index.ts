@@ -601,6 +601,9 @@ export interface AdminSystemAnalytics {
 
 export interface AdminUsageSummary {
   summary: {
+    /** An estimate (keys used x 75), not a count: not shown. */
     api_requests_today: number
+    /** API keys used in the last 24 hours. */
+    api_keys_active: number
   }
 }
