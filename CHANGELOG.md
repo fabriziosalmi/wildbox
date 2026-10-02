@@ -125,6 +125,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **`llms.txt` and `llms-full.txt` describe what exists.** They sold a SIEM, a
+  WAF, Kubernetes support and a local Ollama LLM, none of which the project
+  ships, and gave the gateway as port 8080 and Postgres credentials that do
+  not match. Both are rewritten from `docker-compose.yml`, the gateway routes
+  and the integration tests' login flow, agree with each other, state no
+  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  The homepage's structured data loses the same claims and its stale
+  `softwareVersion`.
+- **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
+  item; the copy now says so and calls them a growing collection instead of
+  promising a library, and the placeholder comments are gone. Both stay
+  indexed.
+- **The privacy notice is indexable.** It is a complete, dated legal page
+  listed in the sitemap, so `noindex` contradicted the sitemap; it now has
+  `index, follow` and a canonical URL.
+- **The homepage, hubs and privacy notice link `security.txt`**, the homepage
+  loads its vendored Tailwind from a root-relative path like the other pages,
+  and the llms files no longer claim account lockout, which identity does not
+  enforce.
+
 - **The security status page says what is still wrong.** It reported every
   finding "Fixed", every check "PASS" and "99% of known vulnerabilities
   resolved" as of v0.5.5. Re-checked against `main`, four checks fail:
