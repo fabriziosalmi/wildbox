@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The web vulnerability scanner's SQL injection check works** (#507). It
+  read `await response.text().lower()`, which calls `.lower()` on the
+  coroutine and raised before any comparison, so it never reported a finding.
+
 - **Password change and self-deletion work again** (#501). identity's custom
   routes verified with passlib bcrypt, which cannot read the Argon2id hashes
   fastapi-users writes for every account, so they failed for every user.
