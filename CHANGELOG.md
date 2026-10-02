@@ -96,6 +96,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The dashboard moves to React 19.** `react`, `react-dom` and their type
+  definitions move together to 19.3 (Dependabot's #151 moved `react` alone).
+  Unblocked by lucide-react 1.x.
+
 - **Gateway base image refreshed** to the current `openresty/openresty:alpine`
   digest (OpenResty 1.31.1.1). Dependabot no longer proposes Node.js major
   bumps of the dashboard image: it stays on the active LTS line, which is
