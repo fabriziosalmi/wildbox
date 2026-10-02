@@ -136,14 +136,13 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
-
-      - name: Cache pip packages
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles(format('{0}/**/requirements*.txt', matrix.service)) }}
-          restore-keys: |
-            ${{ runner.os }}-pip-
+          # Same dependency path, hence the same cache key, as the service's
+          # Unit Tests leg in test.yml. That one also runs on main, and a
+          # pull request can restore what main saved; this workflow runs on
+          # pull requests only, so the actions/cache step it used before
+          # saved into the PR's own scope and every new PR started cold.
+          cache: 'pip'
+          cache-dependency-path: ${{ matrix.service }}/requirements.txt
 
       - name: Install dependencies
         timeout-minutes: 5  # observed max 1.2 min

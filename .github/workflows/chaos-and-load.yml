@@ -47,6 +47,8 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: tests/requirements.txt
 
       # The stack is started exactly as the integration job starts it: the
       # experiments measure the configuration that ships, not the development
@@ -104,6 +106,8 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: tests/requirements.txt
 
       - name: Generate secrets
         run: python3 scripts/generate_secrets.py
