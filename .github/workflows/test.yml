@@ -163,6 +163,37 @@ jobs:
           path: open-security-dashboard/playwright-report/
           retention-days: 30
 
+  dashboard-lint:
+    # The Code Quality job below is Python-only; the dashboard's ESLint,
+    # Prettier and TypeScript checks ran nowhere and drifted (#528).
+    name: Dashboard Lint / Format / Types
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: open-security-dashboard
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: open-security-dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: Prettier
+        run: npm run format:check
+
+      - name: TypeScript
+        run: npx tsc --noEmit
+
   security-scan:
     # Uploads the Trivy SARIF report to code scanning.
     permissions:
@@ -302,7 +333,7 @@ jobs:
     # lint is in needs so a failing quality gate actually blocks the image
     # build; it used to be absent, which made the gate decorative twice over
     # (WILDBO-QUAL-03).
-    needs: [unit-tests, shared-package-tests, e2e-tests, lint]
+    needs: [unit-tests, shared-package-tests, e2e-tests, lint, dashboard-lint]
     
     strategy:
       matrix:

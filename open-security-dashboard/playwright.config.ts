@@ -1,4 +1,4 @@
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test'
 
 /**
  * @see https://playwright.dev/docs/test-configuration
@@ -27,13 +27,13 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
-    
+
     /* Take screenshot on failure */
     screenshot: 'only-on-failure',
-    
+
     /* Record video for failed tests */
     video: 'retain-on-failure',
-    
+
     /* Increased navigation timeout for slow CI environments */
     navigationTimeout: process.env.CI ? 30 * 1000 : 15 * 1000, // 30s in CI, 15s locally
   },
@@ -99,10 +99,12 @@ export default defineConfig({
   /* PLAYWRIGHT_SKIP_WEBSERVER: drive a dashboard that is already running --
      the one in the compose stack -- instead of starting a second Next on the
      same port. */
-  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER ? undefined : {
-    command: process.env.CI ? 'npm run start' : 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000, // 2 minutes
-  },
-});
+  webServer: process.env.PLAYWRIGHT_SKIP_WEBSERVER
+    ? undefined
+    : {
+        command: process.env.CI ? 'npm run start' : 'npm run dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120 * 1000, // 2 minutes
+      },
+})

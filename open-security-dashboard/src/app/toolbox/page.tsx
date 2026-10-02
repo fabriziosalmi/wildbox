@@ -1,18 +1,18 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { 
-  Search, 
-  Play, 
-  Settings, 
-  Clock, 
+import {
+  Search,
+  Play,
+  Settings,
+  Clock,
   CheckCircle,
   AlertCircle,
   Loader2,
   ExternalLink,
   Book,
-  Filter
+  Filter,
 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -37,7 +37,7 @@ interface ToolExecution {
   status: 'running' | 'completed' | 'failed'
   startTime: string
   duration?: number
-  result?: any
+  result?: unknown
 }
 
 async function fetchSecurityTools(): Promise<SecurityTool[]> {
@@ -45,7 +45,7 @@ async function fetchSecurityTools(): Promise<SecurityTool[]> {
     // Use the gateway-aware API client
     // apiClient base URL is http://localhost:80/api/v1 (when using gateway)
     // Calling /tools results in full path: /api/v1/tools
-    const response = await apiClient.get('/tools')
+    const response = await apiClient.get<SecurityTool[]>('/tools')
     return response
   } catch (error) {
     console.error('Failed to fetch security tools:', error)
@@ -55,36 +55,41 @@ async function fetchSecurityTools(): Promise<SecurityTool[]> {
 
 function getCategoryColor(category: string): string {
   const colors: Record<string, string> = {
-    'network_security': 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
-    'web_security': 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100',
-    'reconnaissance': 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100',
-    'cryptography': 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100',
-    'vulnerability_assessment': 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
-    'security_analysis': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100',
-    'osint': 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-100',
-    'general': 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100'
+    network_security: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100',
+    web_security: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100',
+    reconnaissance: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-100',
+    cryptography: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-100',
+    vulnerability_assessment: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100',
+    security_analysis: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900 dark:text-indigo-100',
+    osint: 'bg-teal-100 text-teal-800 dark:bg-teal-900 dark:text-teal-100',
+    general: 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-100',
   }
   return colors[category] || colors['general']
 }
 
 function formatCategoryName(category: string): string {
-  return category.split('_').map(word => 
-    word.charAt(0).toUpperCase() + word.slice(1)
-  ).join(' ')
+  return category
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
 }
 
-function ToolCard({ tool, onExecute }: { tool: SecurityTool; onExecute: (tool: SecurityTool) => void }) {
+function ToolCard({
+  tool,
+  onExecute,
+}: {
+  tool: SecurityTool
+  onExecute: (tool: SecurityTool) => void
+}) {
   return (
-    <Card className="hover:shadow-md transition-shadow cursor-pointer group">
+    <Card className="group cursor-pointer transition-shadow hover:shadow-md">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <CardTitle className="text-lg group-hover:text-primary transition-colors">
+            <CardTitle className="text-lg transition-colors group-hover:text-primary">
               {tool.display_name}
             </CardTitle>
-            <CardDescription className="mt-1">
-              {tool.description}
-            </CardDescription>
+            <CardDescription className="mt-1">{tool.description}</CardDescription>
           </div>
           <Badge className={getCategoryColor(tool.category)}>
             {formatCategoryName(tool.category)}
@@ -97,27 +102,30 @@ function ToolCard({ tool, onExecute }: { tool: SecurityTool; onExecute: (tool: S
             <span>v{tool.version}</span>
             <span>by {tool.author}</span>
           </div>
-          
+
           <div className="flex items-center gap-2">
-            <Button 
-              onClick={() => onExecute(tool)}
-              className="flex-1"
-              size="sm"
-            >
-              <Play className="h-4 w-4 mr-2" />
+            <Button onClick={() => onExecute(tool)} className="flex-1" size="sm">
+              <Play className="mr-2 h-4 w-4" />
               Execute Tool
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
-              onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/tools/${tool.name}`, '_blank')}
+              onClick={() =>
+                window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/tools/${tool.name}`, '_blank')
+              }
             >
               <Settings className="h-4 w-4" />
             </Button>
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               size="sm"
-              onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL}/docs#/Security%20Tools/execute_${tool.name}_api_tools__tool_name__post`, '_blank')}
+              onClick={() =>
+                window.open(
+                  `${process.env.NEXT_PUBLIC_API_BASE_URL}/docs#/Security%20Tools/execute_${tool.name}_api_tools__tool_name__post`,
+                  '_blank'
+                )
+              }
             >
               <Book className="h-4 w-4" />
             </Button>
@@ -134,13 +142,11 @@ function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Recent Executions</CardTitle>
-          <CardDescription>
-            Tool execution history will appear here
-          </CardDescription>
+          <CardDescription>Tool execution history will appear here</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-center py-8 text-muted-foreground">
-            <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <div className="py-8 text-center text-muted-foreground">
+            <Clock className="mx-auto mb-4 h-12 w-12 opacity-50" />
             <p>No recent executions</p>
           </div>
         </CardContent>
@@ -152,19 +158,24 @@ function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="text-lg">Recent Executions</CardTitle>
-        <CardDescription>
-          Latest tool execution results
-        </CardDescription>
+        <CardDescription>Latest tool execution results</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {executions.map((execution) => (
-            <div key={execution.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+          {executions.map(execution => (
+            <div
+              key={execution.id}
+              className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
+            >
               <div className="flex items-center gap-3">
-                {execution.status === 'running' && <Loader2 className="h-4 w-4 animate-spin text-blue-500" />}
-                {execution.status === 'completed' && <CheckCircle className="h-4 w-4 text-green-500" />}
+                {execution.status === 'running' && (
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                )}
+                {execution.status === 'completed' && (
+                  <CheckCircle className="h-4 w-4 text-green-500" />
+                )}
                 {execution.status === 'failed' && <AlertCircle className="h-4 w-4 text-red-500" />}
-                
+
                 <div>
                   <p className="font-medium">{execution.tool}</p>
                   <p className="text-sm text-muted-foreground">
@@ -173,11 +184,16 @@ function ExecutionPanel({ executions }: { executions: ToolExecution[] }) {
                   </p>
                 </div>
               </div>
-              
-              <Badge variant={
-                execution.status === 'completed' ? 'default' :
-                execution.status === 'running' ? 'secondary' : 'destructive'
-              }>
+
+              <Badge
+                variant={
+                  execution.status === 'completed'
+                    ? 'default'
+                    : execution.status === 'running'
+                      ? 'secondary'
+                      : 'destructive'
+                }
+              >
                 {execution.status}
               </Badge>
             </div>
@@ -193,7 +209,11 @@ export default function ToolboxPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
   const [executions, setExecutions] = useState<ToolExecution[]>([])
 
-  const { data: tools = [], isLoading, error } = useQuery({
+  const {
+    data: tools = [],
+    isLoading,
+    error,
+  } = useQuery({
     queryKey: ['security-tools'],
     queryFn: fetchSecurityTools,
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -204,12 +224,13 @@ export default function ToolboxPage() {
 
   // Filter tools based on search and category
   const filteredTools = tools.filter(tool => {
-    const matchesSearch = tool.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         tool.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         tool.category.toLowerCase().includes(searchTerm.toLowerCase())
-    
+    const matchesSearch =
+      tool.display_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tool.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tool.category.toLowerCase().includes(searchTerm.toLowerCase())
+
     const matchesCategory = selectedCategory === 'all' || tool.category === selectedCategory
-    
+
     return matchesSearch && matchesCategory
   })
 
@@ -219,22 +240,28 @@ export default function ToolboxPage() {
       id: Date.now().toString(),
       tool: tool.display_name,
       status: 'running',
-      startTime: new Date().toISOString()
+      startTime: new Date().toISOString(),
     }
-    
+
     setExecutions(prev => [execution, ...prev.slice(0, 9)]) // Keep last 10
-    
+
     // Open the tool execution page in the API service
     const toolUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/tools/${tool.name}`
     window.open(toolUrl, '_blank')
-    
+
     // Simulate completion (in reality, this would be handled by the API)
     setTimeout(() => {
-      setExecutions(prev => prev.map(exec => 
-        exec.id === execution.id 
-          ? { ...exec, status: 'completed' as const, duration: Math.floor(Math.random() * 30) + 5 }
-          : exec
-      ))
+      setExecutions(prev =>
+        prev.map(exec =>
+          exec.id === execution.id
+            ? {
+                ...exec,
+                status: 'completed' as const,
+                duration: Math.floor(Math.random() * 30) + 5,
+              }
+            : exec
+        )
+      )
     }, 3000)
   }
 
@@ -249,11 +276,11 @@ export default function ToolboxPage() {
             {[...Array(6)].map((_, i) => (
               <Card key={i} className="animate-pulse">
                 <CardHeader>
-                  <div className="h-4 bg-muted rounded mb-2" />
-                  <div className="h-3 bg-muted rounded w-3/4" />
+                  <div className="mb-2 h-4 rounded bg-muted" />
+                  <div className="h-3 w-3/4 rounded bg-muted" />
                 </CardHeader>
                 <CardContent>
-                  <div className="h-8 bg-muted rounded" />
+                  <div className="h-8 rounded bg-muted" />
                 </CardContent>
               </Card>
             ))}
@@ -272,16 +299,13 @@ export default function ToolboxPage() {
           </div>
           <Card>
             <CardContent className="pt-6">
-              <div className="text-center py-8">
-                <AlertCircle className="h-12 w-12 mx-auto mb-4 text-red-500" />
-                <h3 className="text-lg font-semibold mb-2">Failed to Load Tools</h3>
-                <p className="text-muted-foreground mb-4">
+              <div className="py-8 text-center">
+                <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
+                <h3 className="mb-2 text-lg font-semibold">Failed to Load Tools</h3>
+                <p className="mb-4 text-muted-foreground">
                   Unable to connect to the security API service.
                 </p>
-                <Button 
-                  onClick={() => window.location.reload()}
-                  variant="outline"
-                >
+                <Button onClick={() => window.location.reload()} variant="outline">
                   Try Again
                 </Button>
               </div>
@@ -299,23 +323,31 @@ export default function ToolboxPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Security Toolbox</h1>
-            <p className="text-muted-foreground">
-              Execute security tools and analyze results
-            </p>
+            <p className="text-muted-foreground">Execute security tools and analyze results</p>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
+            <Button
               variant="outline"
-              onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/docs`, '_blank')}
+              onClick={() =>
+                window.open(
+                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/docs`,
+                  '_blank'
+                )
+              }
             >
-              <Book className="h-4 w-4 mr-2" />
+              <Book className="mr-2 h-4 w-4" />
               API Docs
             </Button>
-            <Button 
+            <Button
               variant="outline"
-              onClick={() => window.open(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`, '_blank')}
+              onClick={() =>
+                window.open(
+                  `${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}`,
+                  '_blank'
+                )
+              }
             >
-              <ExternalLink className="h-4 w-4 mr-2" />
+              <ExternalLink className="mr-2 h-4 w-4" />
               Web Interface
             </Button>
           </div>
@@ -326,7 +358,7 @@ export default function ToolboxPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 bg-primary/10 rounded flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-primary/10">
                   <Settings className="h-4 w-4 text-primary" />
                 </div>
                 <div>
@@ -339,7 +371,7 @@ export default function ToolboxPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 bg-green-100 rounded flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-green-100">
                   <CheckCircle className="h-4 w-4 text-green-600" />
                 </div>
                 <div>
@@ -352,7 +384,7 @@ export default function ToolboxPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 bg-blue-100 rounded flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-blue-100">
                   <Filter className="h-4 w-4 text-blue-600" />
                 </div>
                 <div>
@@ -365,7 +397,7 @@ export default function ToolboxPage() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
-                <div className="h-8 w-8 bg-orange-100 rounded flex items-center justify-center">
+                <div className="flex h-8 w-8 items-center justify-center rounded bg-orange-100">
                   <Clock className="h-4 w-4 text-orange-600" />
                 </div>
                 <div>
@@ -380,14 +412,14 @@ export default function ToolboxPage() {
         {/* Search and Filters */}
         <Card>
           <CardContent className="p-6">
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex flex-col gap-4 md:flex-row">
               <div className="flex-1">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     placeholder="Search tools by name, description, or category..."
                     value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={e => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
@@ -395,8 +427,8 @@ export default function ToolboxPage() {
               <div className="md:w-48">
                 <select
                   value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full h-10 px-3 border border-input bg-background rounded-md text-sm"
+                  onChange={e => setSelectedCategory(e.target.value)}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 >
                   {categories.map(category => (
                     <option key={category} value={category}>
@@ -414,16 +446,14 @@ export default function ToolboxPage() {
           {/* Tools Grid */}
           <div className="lg:col-span-2">
             <div className="space-y-4">
-              <h2 className="text-xl font-semibold">
-                Available Tools ({filteredTools.length})
-              </h2>
-              
+              <h2 className="text-xl font-semibold">Available Tools ({filteredTools.length})</h2>
+
               {filteredTools.length === 0 ? (
                 <Card>
                   <CardContent className="pt-6">
-                    <div className="text-center py-8">
-                      <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                      <h3 className="text-lg font-semibold mb-2">No Tools Found</h3>
+                    <div className="py-8 text-center">
+                      <Search className="mx-auto mb-4 h-12 w-12 opacity-50" />
+                      <h3 className="mb-2 text-lg font-semibold">No Tools Found</h3>
                       <p className="text-muted-foreground">
                         Try adjusting your search or filter criteria.
                       </p>
@@ -432,12 +462,8 @@ export default function ToolboxPage() {
                 </Card>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
-                  {filteredTools.map((tool) => (
-                    <ToolCard
-                      key={tool.name}
-                      tool={tool}
-                      onExecute={handleExecuteTool}
-                    />
+                  {filteredTools.map(tool => (
+                    <ToolCard key={tool.name} tool={tool} onExecute={handleExecuteTool} />
                   ))}
                 </div>
               )}

@@ -55,17 +55,7 @@ else
     print_status ".env file already exists"
 fi
 
-# Step 2: Generate encryption key if needed
-print_step "Generating encryption key"
-if ! grep -q "ENCRYPTION_KEY=" .env || grep -q "your-32-byte-encryption-key-here" .env; then
-    ENCRYPTION_KEY=$(openssl rand -hex 32)
-    sed -i.bak "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=$ENCRYPTION_KEY/" .env
-    print_status "Generated new encryption key"
-else
-    print_status "Encryption key already configured"
-fi
-
-# Step 3: Generate JWT secret if needed
+# Step 2: Generate JWT secret if needed
 print_step "Checking JWT secret key"
 if grep -q "INSECURE-DEFAULT-JWT-SECRET-CHANGE-THIS" .env; then
     JWT_SECRET=$(openssl rand -hex 32)
@@ -75,7 +65,7 @@ else
     print_status "JWT secret key already configured"
 fi
 
-# Step 4: Create authorized targets configuration
+# Step 3: Create authorized targets configuration
 print_step "Creating authorized targets configuration"
 cat > "$SECURITY_DIR/authorized_targets.json" << 'EOF'
 {
@@ -96,7 +86,7 @@ cat > "$SECURITY_DIR/authorized_targets.json" << 'EOF'
 EOF
 print_status "Created authorized targets configuration"
 
-# Step 5: Create user permissions configuration
+# Step 4: Create user permissions configuration
 print_step "Creating user permissions configuration"
 cat > "$SECURITY_DIR/user_permissions.json" << 'EOF'
 {
@@ -122,7 +112,7 @@ cat > "$SECURITY_DIR/user_permissions.json" << 'EOF'
 EOF
 print_status "Created user permissions configuration"
 
-# Step 6: Create minimal IoT credentials file
+# Step 5: Create minimal IoT credentials file
 print_step "Creating IoT default credentials configuration"
 cat > "$SECURITY_DIR/iot_default_creds.json" << 'EOF'
 [
@@ -133,7 +123,7 @@ cat > "$SECURITY_DIR/iot_default_creds.json" << 'EOF'
 EOF
 print_status "Created IoT default credentials configuration"
 
-# Step 7: Create JWT secrets file
+# Step 6: Create JWT secrets file
 print_step "Creating JWT secrets wordlist"
 cat > "$SECURITY_DIR/jwt_secrets.txt" << 'EOF'
 secret
@@ -143,7 +133,7 @@ key
 EOF
 print_status "Created JWT secrets wordlist"
 
-# Step 8: Update environment with security paths
+# Step 7: Update environment with security paths
 print_step "Updating environment configuration"
 {
     echo ""
@@ -156,7 +146,7 @@ print_step "Updating environment configuration"
 
 print_status "Updated .env with security configuration paths"
 
-# Step 9: Set appropriate permissions
+# Step 8: Set appropriate permissions
 print_step "Setting secure file permissions"
 chmod 600 "$SECURITY_DIR"/*.json 2>/dev/null || true
 chmod 600 "$SECURITY_DIR"/*.txt 2>/dev/null || true
@@ -165,7 +155,7 @@ chmod 600 .env
 
 print_status "Set secure file permissions"
 
-# Step 10: Create a test configuration for gradual rollout
+# Step 9: Create a test configuration for gradual rollout
 print_step "Setting up gradual security rollout"
 echo ""
 echo "SECURITY_CONTROLS_ENABLED=false" >> .env

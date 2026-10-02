@@ -2,7 +2,21 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Database, Activity, TrendingUp, AlertTriangle, Shield, Globe, Hash, Mail, Server, Eye, Filter, Download, RefreshCcw } from 'lucide-react'
+import {
+  Search,
+  Database,
+  Activity,
+  TrendingUp,
+  Shield,
+  Globe,
+  Hash,
+  Mail,
+  Server,
+  Eye,
+  Filter,
+  Download,
+  RefreshCcw,
+} from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -26,7 +40,7 @@ interface Indicator {
   expires_at?: string
   active: boolean
   source_id: string
-  indicator_metadata: Record<string, any>
+  indicator_metadata: Record<string, unknown>
   created_at: string
   updated_at: string
 }
@@ -62,7 +76,7 @@ interface SourceInfo {
 
 async function fetchSystemStats(): Promise<SystemStats> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/stats'))
+    const response = await dataClient.get<SystemStats>(getDataPath('/api/v1/stats'))
     return response
   } catch (error) {
     console.error('Failed to fetch system stats:', error)
@@ -72,7 +86,7 @@ async function fetchSystemStats(): Promise<SystemStats> {
 
 async function fetchSources(): Promise<SourceInfo[]> {
   try {
-    const response = await dataClient.get(getDataPath('/api/v1/sources'))
+    const response = await dataClient.get<SourceInfo[]>(getDataPath('/api/v1/sources'))
     return response
   } catch (error) {
     console.error('Failed to fetch sources:', error)
@@ -95,20 +109,24 @@ async function searchIndicators(params: {
 }): Promise<IndicatorSearchResponse> {
   try {
     const searchParams = new URLSearchParams()
-    
+
     if (params.q) searchParams.append('q', params.q)
     if (params.indicator_type) searchParams.append('indicator_type', params.indicator_type)
-    if (params.threat_types) params.threat_types.forEach(t => searchParams.append('threat_types', t))
+    if (params.threat_types)
+      params.threat_types.forEach(t => searchParams.append('threat_types', t))
     if (params.confidence) searchParams.append('confidence', params.confidence)
     if (params.min_severity) searchParams.append('min_severity', params.min_severity.toString())
     if (params.max_severity) searchParams.append('max_severity', params.max_severity.toString())
     if (params.source_id) searchParams.append('source_id', params.source_id)
     if (params.since) searchParams.append('since', params.since)
-    if (params.active_only !== undefined) searchParams.append('active_only', params.active_only.toString())
+    if (params.active_only !== undefined)
+      searchParams.append('active_only', params.active_only.toString())
     if (params.limit) searchParams.append('limit', params.limit.toString())
     if (params.offset) searchParams.append('offset', params.offset.toString())
 
-    const response = await dataClient.get(getDataPath(`/api/v1/indicators/search?${searchParams.toString()}`))
+    const response = await dataClient.get<IndicatorSearchResponse>(
+      getDataPath(`/api/v1/indicators/search?${searchParams.toString()}`)
+    )
     return response
   } catch (error) {
     console.error('Failed to search indicators:', error)
@@ -120,7 +138,7 @@ export default function ThreatIntelligenceData() {
   const [searchTerm, setSearchTerm] = useState('')
   const [indicatorType, setIndicatorType] = useState<string>('all')
   const [confidence, setConfidence] = useState<string>('all')
-  const [severityRange, setSeverityRange] = useState<{ min: number; max: number }>({ min: 1, max: 10 })
+  const [severityRange] = useState<{ min: number; max: number }>({ min: 1, max: 10 })
   const [selectedSource, setSelectedSource] = useState<string>('all')
   const [activeOnly, setActiveOnly] = useState(true)
   const [offset, setOffset] = useState(0)
@@ -141,19 +159,33 @@ export default function ThreatIntelligenceData() {
   })
 
   // Search indicators
-  const { data: searchResults, isLoading: searchLoading, refetch } = useQuery({
-    queryKey: ['threat-intel-search', searchTerm, indicatorType, confidence, severityRange, selectedSource, activeOnly, offset],
-    queryFn: () => searchIndicators({
-      q: searchTerm || undefined,
-      indicator_type: indicatorType !== 'all' ? indicatorType : undefined,
-      confidence: confidence !== 'all' ? confidence : undefined,
-      min_severity: severityRange.min,
-      max_severity: severityRange.max,
-      source_id: selectedSource !== 'all' ? selectedSource : undefined,
-      active_only: activeOnly,
-      limit,
-      offset
-    }),
+  const {
+    data: searchResults,
+    isLoading: searchLoading,
+    refetch,
+  } = useQuery({
+    queryKey: [
+      'threat-intel-search',
+      searchTerm,
+      indicatorType,
+      confidence,
+      severityRange,
+      selectedSource,
+      activeOnly,
+      offset,
+    ],
+    queryFn: () =>
+      searchIndicators({
+        q: searchTerm || undefined,
+        indicator_type: indicatorType !== 'all' ? indicatorType : undefined,
+        confidence: confidence !== 'all' ? confidence : undefined,
+        min_severity: severityRange.min,
+        max_severity: severityRange.max,
+        source_id: selectedSource !== 'all' ? selectedSource : undefined,
+        active_only: activeOnly,
+        limit,
+        offset,
+      }),
     enabled: true, // Always enabled to show initial data
   })
 
@@ -162,12 +194,18 @@ export default function ThreatIntelligenceData() {
 
   const getIndicatorIcon = (type: string) => {
     switch (type) {
-      case 'ip_address': return <Globe className="h-4 w-4" />
-      case 'domain': return <Server className="h-4 w-4" />
-      case 'url': return <Globe className="h-4 w-4" />
-      case 'file_hash': return <Hash className="h-4 w-4" />
-      case 'email': return <Mail className="h-4 w-4" />
-      default: return <Shield className="h-4 w-4" />
+      case 'ip_address':
+        return <Globe className="h-4 w-4" />
+      case 'domain':
+        return <Server className="h-4 w-4" />
+      case 'url':
+        return <Globe className="h-4 w-4" />
+      case 'file_hash':
+        return <Hash className="h-4 w-4" />
+      case 'email':
+        return <Mail className="h-4 w-4" />
+      default:
+        return <Shield className="h-4 w-4" />
     }
   }
 
@@ -180,11 +218,16 @@ export default function ThreatIntelligenceData() {
 
   const getConfidenceColor = (confidence: string) => {
     switch (confidence) {
-      case 'verified': return 'bg-green-500'
-      case 'high': return 'bg-blue-500'
-      case 'medium': return 'bg-yellow-500'
-      case 'low': return 'bg-orange-500'
-      default: return 'bg-gray-500'
+      case 'verified':
+        return 'bg-green-500'
+      case 'high':
+        return 'bg-blue-500'
+      case 'medium':
+        return 'bg-yellow-500'
+      case 'low':
+        return 'bg-orange-500'
+      default:
+        return 'bg-gray-500'
     }
   }
 
@@ -194,13 +237,14 @@ export default function ThreatIntelligenceData() {
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">Threat Intelligence Data</h1>
-          <p className="text-muted-foreground mt-2">
-            Browse and search the threat intelligence database with live indicators from multiple sources
+          <p className="mt-2 text-muted-foreground">
+            Browse and search the threat intelligence database with live indicators from multiple
+            sources
           </p>
         </div>
 
         {/* Statistics Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Indicators</CardTitle>
@@ -210,9 +254,7 @@ export default function ThreatIntelligenceData() {
               <div className="text-2xl font-bold">
                 {statsLoading ? '...' : stats?.total_indicators.toLocaleString() || '0'}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Active threat indicators
-              </p>
+              <p className="text-xs text-muted-foreground">Active threat indicators</p>
             </CardContent>
           </Card>
 
@@ -223,11 +265,11 @@ export default function ThreatIntelligenceData() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {sourcesLoading ? '...' : `${stats?.active_sources || 0}/${stats?.total_sources || 0}`}
+                {sourcesLoading
+                  ? '...'
+                  : `${stats?.active_sources || 0}/${stats?.total_sources || 0}`}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Active sources
-              </p>
+              <p className="text-xs text-muted-foreground">Active sources</p>
             </CardContent>
           </Card>
 
@@ -240,9 +282,7 @@ export default function ThreatIntelligenceData() {
               <div className="text-2xl font-bold">
                 {statsLoading ? '...' : stats?.recent_collections || '0'}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Last 24 hours
-              </p>
+              <p className="text-xs text-muted-foreground">Last 24 hours</p>
             </CardContent>
           </Card>
 
@@ -255,9 +295,7 @@ export default function ThreatIntelligenceData() {
               <div className="text-2xl font-bold">
                 {searchLoading ? '...' : totalResults.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">
-                Matching indicators
-              </p>
+              <p className="text-xs text-muted-foreground">Matching indicators</p>
             </CardContent>
           </Card>
         </div>
@@ -270,14 +308,14 @@ export default function ThreatIntelligenceData() {
               <CardDescription>Breakdown of indicators by type</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-6">
                 {Object.entries(stats.indicator_types).map(([type, count]) => (
                   <div key={type} className="text-center">
-                    <div className="flex items-center justify-center mb-2">
+                    <div className="mb-2 flex items-center justify-center">
                       {getIndicatorIcon(type)}
                     </div>
                     <div className="text-lg font-semibold">{count.toLocaleString()}</div>
-                    <div className="text-xs text-muted-foreground capitalize">
+                    <div className="text-xs capitalize text-muted-foreground">
                       {type.replace('_', ' ')}
                     </div>
                   </div>
@@ -298,24 +336,24 @@ export default function ThreatIntelligenceData() {
           <CardContent className="space-y-4">
             {/* Search Input */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
               <Input
                 placeholder="Search indicators (IP, domain, hash, email, etc.)"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={e => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
 
             {/* Filters Row */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {/* Indicator Type Filter */}
               <div>
                 <label className="text-sm font-medium">Type</label>
-                <select 
-                  value={indicatorType} 
-                  onChange={(e) => setIndicatorType(e.target.value)}
-                  className="w-full mt-1 p-2 border rounded-md"
+                <select
+                  value={indicatorType}
+                  onChange={e => setIndicatorType(e.target.value)}
+                  className="mt-1 w-full rounded-md border p-2"
                 >
                   <option value="all">All Types</option>
                   <option value="ip_address">IP Address</option>
@@ -332,10 +370,10 @@ export default function ThreatIntelligenceData() {
               {/* Confidence Filter */}
               <div>
                 <label className="text-sm font-medium">Confidence</label>
-                <select 
-                  value={confidence} 
-                  onChange={(e) => setConfidence(e.target.value)}
-                  className="w-full mt-1 p-2 border rounded-md"
+                <select
+                  value={confidence}
+                  onChange={e => setConfidence(e.target.value)}
+                  className="mt-1 w-full rounded-md border p-2"
                 >
                   <option value="all">All Levels</option>
                   <option value="verified">Verified</option>
@@ -348,13 +386,13 @@ export default function ThreatIntelligenceData() {
               {/* Source Filter */}
               <div>
                 <label className="text-sm font-medium">Source</label>
-                <select 
-                  value={selectedSource} 
-                  onChange={(e) => setSelectedSource(e.target.value)}
-                  className="w-full mt-1 p-2 border rounded-md"
+                <select
+                  value={selectedSource}
+                  onChange={e => setSelectedSource(e.target.value)}
+                  className="mt-1 w-full rounded-md border p-2"
                 >
                   <option value="all">All Sources</option>
-                  {sources.map((source) => (
+                  {sources.map(source => (
                     <option key={source.id} value={source.id}>
                       {source.name}
                     </option>
@@ -368,7 +406,7 @@ export default function ThreatIntelligenceData() {
                   <input
                     type="checkbox"
                     checked={activeOnly}
-                    onChange={(e) => setActiveOnly(e.target.checked)}
+                    onChange={e => setActiveOnly(e.target.checked)}
                     className="rounded"
                   />
                   <span className="text-sm font-medium">Active Only</span>
@@ -379,11 +417,11 @@ export default function ThreatIntelligenceData() {
             {/* Action Buttons */}
             <div className="flex gap-2">
               <Button onClick={() => refetch()} disabled={searchLoading}>
-                <RefreshCcw className="h-4 w-4 mr-2" />
+                <RefreshCcw className="mr-2 h-4 w-4" />
                 Refresh
               </Button>
               <Button variant="outline">
-                <Download className="h-4 w-4 mr-2" />
+                <Download className="mr-2 h-4 w-4" />
                 Export Results
               </Button>
             </div>
@@ -400,48 +438,50 @@ export default function ThreatIntelligenceData() {
           </CardHeader>
           <CardContent>
             {searchLoading ? (
-              <div className="text-center py-8">Loading indicators...</div>
+              <div className="py-8 text-center">Loading indicators...</div>
             ) : indicators.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
+              <div className="py-8 text-center text-muted-foreground">
                 No indicators found matching your criteria.
               </div>
             ) : (
               <div className="space-y-3">
-                {indicators.map((indicator) => (
-                  <div key={indicator.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                {indicators.map(indicator => (
+                  <div key={indicator.id} className="rounded-lg border p-4 hover:bg-gray-50">
                     <div className="flex items-start justify-between">
-                      <div className="flex items-start gap-3 flex-1">
-                        <div className="mt-1">
-                          {getIndicatorIcon(indicator.indicator_type)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <code className="text-sm font-mono bg-gray-100 px-2 py-1 rounded">
+                      <div className="flex flex-1 items-start gap-3">
+                        <div className="mt-1">{getIndicatorIcon(indicator.indicator_type)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <code className="rounded bg-gray-100 px-2 py-1 font-mono text-sm">
                               {indicator.value}
                             </code>
                             <Badge variant="outline" className="capitalize">
                               {indicator.indicator_type.replace('_', ' ')}
                             </Badge>
-                            <Badge className={`text-white ${getConfidenceColor(indicator.confidence)}`}>
+                            <Badge
+                              className={`text-white ${getConfidenceColor(indicator.confidence)}`}
+                            >
                               {indicator.confidence}
                             </Badge>
                             <div className="flex items-center gap-1">
-                              <div className={`w-2 h-2 rounded-full ${getSeverityColor(indicator.severity)}`} />
+                              <div
+                                className={`h-2 w-2 rounded-full ${getSeverityColor(indicator.severity)}`}
+                              />
                               <span className="text-xs text-muted-foreground">
                                 Severity {indicator.severity}
                               </span>
                             </div>
                           </div>
-                          
+
                           {indicator.description && (
-                            <p className="text-sm text-muted-foreground mt-1">
+                            <p className="mt-1 text-sm text-muted-foreground">
                               {indicator.description}
                             </p>
                           )}
-                          
+
                           {indicator.threat_types.length > 0 && (
-                            <div className="flex gap-1 mt-2 flex-wrap">
-                              {indicator.threat_types.map((threat) => (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {indicator.threat_types.map(threat => (
                                 <Badge key={threat} variant="secondary" className="text-xs">
                                   {threat}
                                 </Badge>
@@ -450,8 +490,8 @@ export default function ThreatIntelligenceData() {
                           )}
 
                           {indicator.tags.length > 0 && (
-                            <div className="flex gap-1 mt-2 flex-wrap">
-                              {indicator.tags.slice(0, 5).map((tag) => (
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {indicator.tags.slice(0, 5).map(tag => (
                                 <Badge key={tag} variant="outline" className="text-xs">
                                   {tag}
                                 </Badge>
@@ -465,13 +505,15 @@ export default function ThreatIntelligenceData() {
                           )}
                         </div>
                       </div>
-                      
+
                       <div className="text-right text-xs text-muted-foreground">
                         {indicator.last_seen && (
                           <div>Last seen: {formatRelativeTime(new Date(indicator.last_seen))}</div>
                         )}
                         {indicator.first_seen && (
-                          <div>First seen: {formatRelativeTime(new Date(indicator.first_seen))}</div>
+                          <div>
+                            First seen: {formatRelativeTime(new Date(indicator.first_seen))}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -482,7 +524,7 @@ export default function ThreatIntelligenceData() {
 
             {/* Pagination */}
             {totalResults > limit && (
-              <div className="flex justify-between items-center mt-6">
+              <div className="mt-6 flex items-center justify-between">
                 <Button
                   variant="outline"
                   onClick={() => setOffset(Math.max(0, offset - limit))}
@@ -513,30 +555,26 @@ export default function ThreatIntelligenceData() {
               <CardDescription>Active threat intelligence feeds</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {sources.map((source) => (
-                  <div key={source.id} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {sources.map(source => (
+                  <div key={source.id} className="rounded-lg border p-4">
+                    <div className="mb-2 flex items-center justify-between">
                       <h4 className="font-semibold">{source.name}</h4>
-                      <Badge 
-                        variant={source.enabled ? "default" : "secondary"}
-                        className={source.enabled ? "bg-green-500" : ""}
+                      <Badge
+                        variant={source.enabled ? 'default' : 'secondary'}
+                        className={source.enabled ? 'bg-green-500' : ''}
                       >
-                        {source.enabled ? "Active" : "Disabled"}
+                        {source.enabled ? 'Active' : 'Disabled'}
                       </Badge>
                     </div>
                     {source.description && (
-                      <p className="text-sm text-muted-foreground mb-2">
-                        {source.description}
-                      </p>
+                      <p className="mb-2 text-sm text-muted-foreground">{source.description}</p>
                     )}
-                    <div className="text-xs space-y-1">
+                    <div className="space-y-1 text-xs">
                       <div>Type: {source.source_type}</div>
                       <div>Collections: {source.collection_count.toLocaleString()}</div>
                       {source.error_count > 0 && (
-                        <div className="text-red-500">
-                          Errors: {source.error_count}
-                        </div>
+                        <div className="text-red-500">Errors: {source.error_count}</div>
                       )}
                       {source.last_collection && (
                         <div>

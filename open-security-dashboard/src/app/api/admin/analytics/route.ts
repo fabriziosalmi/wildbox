@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
     // The identity service will verify the token and check superuser status
     const [systemStats, usageSummary] = await Promise.allSettled([
       identityClient.get(getIdentityPath('/api/v1/analytics/admin/system-stats?days=30')),
-      identityClient.get(getIdentityPath('/api/v1/analytics/admin/usage-summary'))
+      identityClient.get(getIdentityPath('/api/v1/analytics/admin/usage-summary')),
     ])
 
     // Extract analytics data
@@ -29,17 +29,17 @@ export async function GET(request: NextRequest) {
       data: {
         systemStats: analytics || null,
         usageSummary: usage || null,
-        lastUpdated: new Date().toISOString()
-      }
+        lastUpdated: new Date().toISOString(),
+      },
     }
 
     return NextResponse.json(response)
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         success: false,
         error: 'Failed to fetch analytics data',
-        data: null
+        data: null,
       },
       { status: 500 }
     )

@@ -374,6 +374,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The dashboard is linted, format-checked and type-checked in CI**
+  (#528). `npm run lint` used `next lint`, gone in Next.js 16, with a
+  legacy `.eslintrc.json` ESLint 9 cannot load; it now runs the ESLint
+  CLI on a flat config from `eslint-config-next`, with warnings failing
+  it. 181 of its 182 findings are fixed in code (the last, `require()`
+  in the CommonJS Tailwind config, is allowed for `*.config.js`), among
+  them IOC lookups that returned
+  `response.data` from a client that already returns the body (every
+  hit showed as an error, every miss was retried instead of reported as
+  not found) and error handlers reading an axios `response` the API
+  client never rejects with. Prettier was applied once to the whole
+  project, in a commit listed in `.git-blame-ignore-revs`. A new
+  `dashboard-lint` job runs lint, `format:check` and `tsc --noEmit`, and
+  the image build waits for it.
 - **The license gate blames the right cause** (#429). It reported "no license
   data in the SBOM" for the gateway image, whose SBOM is complete but holds no
   language packages, only Alpine ones the gate deliberately ignores. Its first
@@ -546,6 +560,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **The tools credential manager and `ENCRYPTION_KEY`** (#540).
+  `SecureCredentialManager` read API keys from the same environment
+  variables as the fallback beside it, and its encrypt/decrypt methods had
+  no caller, so nothing was ever stored encrypted. It imported `keyring`,
+  which the image does not install: setting `SECURITY_CONTROLS_ENABLED=true`
+  raised an ImportError that switched the whole security layer off, SSRF
+  validator and authorization manager included. Removing it makes that flag
+  load both. `ENCRYPTION_KEY` goes from `.env.example`,
+  `open-security-tools/.env.template` and `setup_security.sh`; no service
+  reads it.
 
 - **python-nmap** (#431), a GPL-3.0 package declared by tools and guardian
   and imported by nothing. The services use the `nmap` binary, which stays.

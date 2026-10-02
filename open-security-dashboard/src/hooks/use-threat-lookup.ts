@@ -1,11 +1,11 @@
 /**
  * Custom hook for IOC (Indicator of Compromise) threat intelligence lookups
- * 
+ *
  * Provides type-safe access to the Data service threat intel APIs:
  * - /api/v1/ips/{ip}
  * - /api/v1/domains/{domain}
  * - /api/v1/hashes/{hash}
- * 
+ *
  * Features:
  * - Automatic IOC type detection
  * - Intelligent caching (30s stale time)
@@ -13,8 +13,8 @@
  * - TypeScript interfaces matching backend schemas
  */
 
-import { useQuery, UseQueryResult } from '@tanstack/react-query'
-import { dataClient } from '@/lib/api-client'
+import { useQuery } from '@tanstack/react-query'
+import { dataClient, type ApiError } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -36,14 +36,7 @@ import { dataClient } from '@/lib/api-client'
  * indicator's type and are carried in their own fields.
  */
 export type IndicatorType =
-  | 'ip_address'
-  | 'domain'
-  | 'url'
-  | 'file_hash'
-  | 'email'
-  | 'certificate'
-  | 'asn'
-  | 'vulnerability'
+  'ip_address' | 'domain' | 'url' | 'file_hash' | 'email' | 'certificate' | 'asn' | 'vulnerability'
 
 /**
  * What the client can detect locally from a raw user-supplied string. A subset
@@ -71,7 +64,7 @@ export interface ThreatIndicator {
   expires_at: string | null
   active: boolean
   source_id: string
-  indicator_metadata: Record<string, any>
+  indicator_metadata: Record<string, unknown>
   created_at: string | null
   updated_at: string | null
 }
@@ -149,7 +142,7 @@ export interface ThreatLookupError {
 export function isValidIPv4(value: string): boolean {
   const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
   if (!ipv4Regex.test(value)) return false
-  
+
   const parts = value.split('.')
   return parts.every(part => {
     const num = parseInt(part, 10)
@@ -182,7 +175,7 @@ export function isValidHash(value: string): boolean {
   const md5Regex = /^[a-fA-F0-9]{32}$/
   const sha1Regex = /^[a-fA-F0-9]{40}$/
   const sha256Regex = /^[a-fA-F0-9]{64}$/
-  
+
   return md5Regex.test(value) || sha1Regex.test(value) || sha256Regex.test(value)
 }
 
@@ -191,19 +184,19 @@ export function isValidHash(value: string): boolean {
  */
 export function detectIOCType(value: string): IOCType {
   const trimmed = value.trim().toLowerCase()
-  
+
   if (isValidIPv4(trimmed) || isValidIPv6(trimmed)) {
     return 'ip_address'
   }
-  
+
   if (isValidDomain(trimmed)) {
     return 'domain'
   }
-  
+
   if (isValidHash(trimmed)) {
     return 'file_hash'
   }
-  
+
   return 'unknown'
 }
 
@@ -215,24 +208,31 @@ export function detectIOCType(value: string): IOCType {
  * Lookup IP address threat intelligence
  */
 async function lookupIP(ip: string): Promise<IPIntelligence> {
-  const response = await dataClient.get(`/api/v1/ips/${encodeURIComponent(ip)}`)
-  return response.data
+  return dataClient.get<IPIntelligence>(`/api/v1/ips/${encodeURIComponent(ip)}`)
 }
 
 /**
  * Lookup domain threat intelligence
  */
 async function lookupDomain(domain: string): Promise<DomainIntelligence> {
-  const response = await dataClient.get(`/api/v1/domains/${encodeURIComponent(domain)}`)
-  return response.data
+  return dataClient.get<DomainIntelligence>(`/api/v1/domains/${encodeURIComponent(domain)}`)
 }
 
 /**
  * Lookup file hash threat intelligence
  */
 async function lookupHash(hash: string): Promise<HashIntelligence> {
-  const response = await dataClient.get(`/api/v1/hashes/${encodeURIComponent(hash)}`)
-  return response.data
+  return dataClient.get<HashIntelligence>(`/api/v1/hashes/${encodeURIComponent(hash)}`)
+}
+
+/**
+ * The API client rejects with an ApiError carrying the HTTP status; an
+ * unknown IOC type is rejected with a plain Error before any request.
+ */
+type LookupError = Error | ApiError
+
+function isNotFoundError(error: LookupError | null): boolean {
+  return error !== null && 'status' in error && error.status === 404
 }
 
 // ============================================================================
@@ -244,12 +244,12 @@ export interface UseThreatLookupOptions {
    * IOC value to lookup (IP, domain, or hash)
    */
   iocValue?: string
-  
+
   /**
    * Optional: Specify IOC type explicitly (auto-detected if not provided)
    */
   iocType?: IOCType
-  
+
   /**
    * Whether to enable the query (default: true if iocValue provided)
    */
@@ -261,32 +261,32 @@ export interface UseThreatLookupResult {
    * Threat intelligence data (null if not found or error)
    */
   data: ThreatIntelligence | null
-  
+
   /**
    * Detected or specified IOC type
    */
   iocType: IOCType
-  
+
   /**
    * Whether the query is currently loading
    */
   isLoading: boolean
-  
+
   /**
    * Error object if query failed
    */
-  error: Error | null
-  
+  error: LookupError | null
+
   /**
    * Whether IOC was not found (404 response)
    */
   isNotFound: boolean
-  
+
   /**
    * Whether query has succeeded at least once
    */
   isSuccess: boolean
-  
+
   /**
    * Refetch function to manually trigger lookup
    */
@@ -295,23 +295,23 @@ export interface UseThreatLookupResult {
 
 /**
  * Custom hook for IOC threat intelligence lookups
- * 
+ *
  * @example
  * ```tsx
  * // IP lookup
- * const { data, isLoading, error, isNotFound } = useThreatLookup({ 
- *   iocValue: '8.8.8.8' 
+ * const { data, isLoading, error, isNotFound } = useThreatLookup({
+ *   iocValue: '8.8.8.8'
  * })
- * 
+ *
  * // Domain lookup with manual type specification
- * const result = useThreatLookup({ 
+ * const result = useThreatLookup({
  *   iocValue: 'malicious-domain.evil',
  *   iocType: 'domain'
  * })
- * 
+ *
  * // Controlled query (enable manually)
  * const [searchValue, setSearchValue] = useState('')
- * const result = useThreatLookup({ 
+ * const result = useThreatLookup({
  *   iocValue: searchValue,
  *   enabled: searchValue.length > 0
  * })
@@ -319,17 +319,17 @@ export interface UseThreatLookupResult {
  */
 export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreatLookupResult {
   const { iocValue, iocType: explicitType, enabled = true } = options
-  
+
   // Detect IOC type if not explicitly provided
   const detectedType = iocValue ? detectIOCType(iocValue) : 'unknown'
   const iocType = explicitType || detectedType
-  
+
   // Determine query function based on IOC type
   const queryFn = async (): Promise<ThreatIntelligence> => {
     if (!iocValue) {
       throw new Error('No IOC value provided')
     }
-    
+
     switch (iocType) {
       case 'ip_address':
         return lookupIP(iocValue)
@@ -341,27 +341,25 @@ export function useThreatLookup(options: UseThreatLookupOptions = {}): UseThreat
         throw new Error(`Unknown IOC type: ${iocType}. Please provide a valid IP, domain, or hash.`)
     }
   }
-  
+
   // Execute query with TanStack Query
-  const query = useQuery<ThreatIntelligence, Error>({
+  const query = useQuery<ThreatIntelligence, LookupError>({
     queryKey: ['threat-lookup', iocType, iocValue],
     queryFn,
     enabled: enabled && !!iocValue && iocType !== 'unknown',
     staleTime: 30000, // 30 seconds - threat intel changes slowly
     gcTime: 5 * 60 * 1000, // 5 minutes - keep in cache
-    retry: (failureCount, error: any) => {
+    retry: (failureCount, error) => {
       // Don't retry on 404 (IOC not found)
-      if (error?.response?.status === 404) return false
+      if (isNotFoundError(error)) return false
       // Retry up to 2 times for other errors
       return failureCount < 2
     },
   })
-  
+
   // Detect 404 errors (IOC not found in database)
-  const isNotFound = query.error ? 
-    (query.error as any)?.response?.status === 404 : 
-    false
-  
+  const isNotFound = isNotFoundError(query.error)
+
   return {
     data: query.data || null,
     iocType,
@@ -390,7 +388,7 @@ export function getMaxSeverity(indicators?: ThreatIndicator[]): number {
  */
 export function getAllThreatTypes(indicators?: ThreatIndicator[]): string[] {
   if (!indicators || indicators.length === 0) return []
-  
+
   const allTypes = indicators.flatMap(ind => ind.threat_types || [])
   return Array.from(new Set(allTypes))
 }
