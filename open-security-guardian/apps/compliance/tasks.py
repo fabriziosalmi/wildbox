@@ -1,4 +1,5 @@
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 from django.db.models import Count, Q
 from .models import ComplianceAssessment, ComplianceResult, ComplianceMetrics
@@ -14,8 +15,17 @@ def calculate_compliance_metrics(assessment_id):
     """
     Calculate compliance metrics for an assessment
     """
+    # One calculation per assessment at a time, the assessment row being the
+    # lock. Two running together (the worker takes two tasks at once, and
+    # every result saved queues one) could each find no metrics row for today
+    # and both insert one; every later update_or_create would then fail.
+    with transaction.atomic():
+        return _calculate_compliance_metrics(assessment_id)
+
+
+def _calculate_compliance_metrics(assessment_id):
     try:
-        assessment = ComplianceAssessment.objects.get(id=assessment_id)
+        assessment = ComplianceAssessment.objects.select_for_update().get(id=assessment_id)
         results = assessment.results.all()
         
         # Calculate metrics
@@ -41,11 +51,14 @@ def calculate_compliance_metrics(assessment_id):
             exceptions__valid_until__gt=timezone.now()
         ).distinct().count()
         
-        # Create or update metrics
+        # Create or update metrics: one row per assessment and day. metric_date
+        # is a DateTimeField; today's midnight, aware, is the value a bare date
+        # was stored as, without the naive-datetime warning on every run.
+        today = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
         metrics, created = ComplianceMetrics.objects.update_or_create(
             framework=assessment.framework,
             assessment=assessment,
-            metric_date=timezone.now().date(),
+            metric_date=today,
             defaults={
                 'total_controls': total_controls,
                 'compliant_controls': compliant,
