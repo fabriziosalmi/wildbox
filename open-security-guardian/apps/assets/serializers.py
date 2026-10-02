@@ -192,10 +192,11 @@ class AssetDiscoveryRuleSerializer(serializers.ModelSerializer):
         """Five crontab fields that parse and match some time (#548)."""
         try:
             validate_cron(value)
-        except InvalidSchedule as exc:
+        except InvalidSchedule:
+            # A fixed message: the parser's own text is not part of the API.
             raise serializers.ValidationError(
                 f"Schedule must be five crontab fields (minute hour "
-                f"day-of-month month day-of-week, in {schedule_timezone()}): "
-                f"{exc}"
+                f"day-of-month month day-of-week, in {schedule_timezone()}) "
+                f"that match at least one time."
             )
         return value

@@ -24,6 +24,7 @@ from apps.core.schedules import (
     InvalidSchedule,
     next_cron_run,
     next_frequency_run,
+    schedule_timezone,
     validate_cron,
 )
 from celery.schedules import crontab
@@ -122,6 +123,20 @@ def test_cron_is_read_in_the_celery_time_zone(settings):
 def test_invalid_cron_is_refused(expression):
     with pytest.raises(InvalidSchedule):
         validate_cron(expression)
+
+
+@pytest.mark.parametrize("expression", ["61 * * * *", "* * * * funday", "0 0 31 2 *"])
+def test_the_api_refuses_a_bad_schedule_without_the_parser_text(expression):
+    from apps.assets.serializers import AssetDiscoveryRuleSerializer
+    from rest_framework.exceptions import ValidationError
+
+    with pytest.raises(ValidationError) as refused:
+        AssetDiscoveryRuleSerializer().validate_schedule(expression)
+    (message,) = refused.value.detail
+    assert message == (
+        "Schedule must be five crontab fields (minute hour day-of-month month "
+        f"day-of-week, in {schedule_timezone()}) that match at least one time."
+    )
 
 
 def test_a_schedule_that_is_not_a_string_is_refused():
