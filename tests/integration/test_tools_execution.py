@@ -136,6 +136,26 @@ class TestToolsExecution:
             self.log_test_result("Simple Tool Execution (base64_encoder)", False, f"Error: {str(e)}")
             raise
             
+    def test_sql_injection_scanner_reaches_authorization(self) -> None:
+        """The scanner is authorized for the gateway's caller, not crashed (#563).
+
+        The tools service passed no caller to the scanner, so it raised
+        PermissionError and every call answered 500 "Tool execution failed".
+        The caller now reaches the authorization manager. This stack ships no
+        USER_PERMISSIONS_FILE, so nobody is granted destructive tests and the
+        answer is a 403 naming the operation. The target is an IP literal and
+        the refusal comes before any request, so nothing leaves the runner.
+        """
+        response = requests.post(
+            f"{self.base_url}/api/v1/tools/sql_injection_scanner",
+            json={"target_url": "http://93.184.215.14/page?id=1"},
+            headers=self.headers,
+            timeout=15
+        )
+
+        assert response.status_code == 403, f"HTTP {response.status_code}: {response.text[:200]}"
+        assert "not authorized for destructive_test" in response.json().get("detail", ""), response.text[:200]
+
     async def test_plan_based_protection(self) -> None:
         """Test plan-based execution protection"""
         try:

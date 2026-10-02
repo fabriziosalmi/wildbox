@@ -56,18 +56,45 @@ class AuthorizationManager:
             if os.path.exists(perms_file):
                 with open(perms_file, 'r') as f:
                     perms_config = json.load(f)
-                    for user_id, perms in perms_config.items():
-                        self.user_permissions[user_id] = [OperationType(p) for p in perms]
+                    self.user_permissions.update(self._parse_permissions(perms_config))
                     logger.info(f"Loaded permissions for {len(self.user_permissions)} users")
         
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except (OSError, ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Failed to load authorization configuration: {e}")
     
+    @staticmethod
+    def _parse_permissions(perms_config: Dict) -> Dict[str, List[OperationType]]:
+        """
+        Map each user to the operations granted to them.
+
+        Only list values are grants. The shipped example keeps "description"
+        and "operation_types" beside the users; iterating the description
+        string as operations raised ValueError and abandoned the rest of the
+        file, so every user listed after it was left with no rights (#563).
+        An unknown operation name is skipped, not fatal, for the same reason.
+        """
+        permissions: Dict[str, List[OperationType]] = {}
+        for user_id, perms in perms_config.items():
+            if not isinstance(perms, list):
+                continue
+            granted = []
+            for perm in perms:
+                try:
+                    granted.append(OperationType(perm))
+                except ValueError:
+                    logger.warning(f"Ignoring unknown operation {perm!r} granted to {user_id}")
+            permissions[str(user_id)] = granted
+        return permissions
+
     def is_target_authorized(self, target: str, operation: OperationType) -> bool:
         """Check if target is authorized for the given operation."""
         try:
             # Check explicit authorization
             if target in self.authorized_targets:
+                return True
+
+            # Check URL entries, which cover every URL under them
+            if self._is_url_authorized(target):
                 return True
             
             # Check domain-based authorization
@@ -214,8 +241,10 @@ class AuthorizationManager:
             
             for auth_domain in authorized_domains:
                 if auth_domain.startswith('.'):
-                    # Wildcard domain
-                    if domain.endswith(auth_domain[1:]):
+                    # Wildcard domain: the domain itself or any subdomain. This
+                    # compared endswith("example.com"), which also accepted
+                    # badexample.com.
+                    if domain == auth_domain[1:] or domain.endswith(auth_domain):
                         return True
                 elif domain == auth_domain:
                     return True
@@ -225,10 +254,44 @@ class AuthorizationManager:
         except Exception:
             return False
     
+    def _is_url_authorized(self, target: str) -> bool:
+        """
+        Check the target against URL entries ("https://shop.example.com/app").
+
+        An entry covers URLs with the same scheme, host and port whose path is
+        the entry's path or below it. Entries were compared to the target as
+        whole strings, so the documented "use full URLs for web targets" form
+        never matched a URL with a path or query.
+        """
+        from urllib.parse import urlparse
+
+        if not target.startswith(('http://', 'https://')):
+            return False
+        try:
+            parsed = urlparse(target)
+            for entry in self.authorized_targets:
+                if not entry.startswith(('http://', 'https://')):
+                    continue
+                allowed = urlparse(entry)
+                if (parsed.scheme, parsed.hostname, parsed.port) != (
+                    allowed.scheme, allowed.hostname, allowed.port
+                ):
+                    continue
+                prefix = allowed.path.rstrip('/')
+                if not prefix or parsed.path == prefix or parsed.path.startswith(prefix + '/'):
+                    return True
+        except ValueError:
+            return False
+        return False
+
     def _is_ip_range_authorized(self, target: str) -> bool:
         """Check if target IP is in authorized IP ranges."""
         try:
-            # Try to parse as IP
+            # Try to parse as IP, or as the host of a URL. A URL target never
+            # matched an IP range because the whole URL was parsed as an IP.
+            if target.startswith(('http://', 'https://')):
+                from urllib.parse import urlparse
+                target = urlparse(target).hostname or ''
             target_ip = ipaddress.ip_address(target)
             
             # Check against authorized IP ranges

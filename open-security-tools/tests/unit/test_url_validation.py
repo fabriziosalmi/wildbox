@@ -148,17 +148,10 @@ def test_sql_injection_scanner_accepts_http_target_with_query(monkeypatch):
     """An http:// target with a query string reaches the scan (#561).
 
     Before the fix the validator refused it ("dangerous content"), so the
-    scanner could not test the parameters it exists to test.
+    scanner could not test the parameters it exists to test. The tool is
+    called directly, with the caller the execution path would pass;
+    authorization happens in that path (#563, test_tool_authorization.py).
     """
-    from app.security import authorization
-
-    authorized = []
-    monkeypatch.setattr(
-        authorization.authorization_manager,
-        "require_authorization",
-        lambda **kwargs: authorized.append(kwargs["target"]),
-    )
-
     requested = []
 
     class FakeResponse:
@@ -175,7 +168,6 @@ def test_sql_injection_scanner_accepts_http_target_with_query(monkeypatch):
         SQLInjectionScannerInput(target_url=target), user_id="user-1"
     )
 
-    assert authorized == [target]
     assert result.target_url == target
     assert result.total_tests == len(sqli_scanner.SAFE_SQL_PAYLOADS)
     assert {r.parameter for r in result.results} == {"id"}

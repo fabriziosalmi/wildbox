@@ -47,11 +47,10 @@ class SecurityIntegration:
                 try:
                     # Extract common parameters
                     input_data = args[0] if args else None
-                    user_id = kwargs.get('user_id')
-                    
+
                     # Apply security controls if enabled
                     if self.security_enabled and input_data:
-                        await self._apply_security_controls(tool_name, input_data, user_id)
+                        await self._apply_security_controls(tool_name, input_data)
                     
                     # Execute original function
                     if asyncio.iscoroutinefunction(func):
@@ -74,7 +73,7 @@ class SecurityIntegration:
             return wrapper
         return decorator
     
-    async def _apply_security_controls(self, tool_name: str, input_data: Any, user_id: Optional[str]):
+    async def _apply_security_controls(self, tool_name: str, input_data: Any):
         """Apply security controls to tool execution."""
         if not self.security_enabled:
             return
@@ -86,18 +85,11 @@ class SecurityIntegration:
                 if target_url:
                     self.validator.validate_url(target_url, allow_private=True)
             
-            # Authorization check (only if user_id provided)
-            if self.authorization_manager and user_id:
-                from app.security.authorization import OperationType
-                operation_type = self.authorization_manager.get_operation_type(tool_name, {})
-                
-                target = getattr(input_data, 'target_url', 'unknown')
-                self.authorization_manager.require_authorization(
-                    target=target,
-                    user_id=user_id,
-                    operation=operation_type,
-                    tool_name=tool_name
-                )
+            # No authorization here. It is enforced once, before the tool
+            # starts, by app.execution_manager.authorize_tool_call. This block
+            # used to repeat it whenever a user_id reached the tool, which
+            # spent a destructive test's allowance of one per hour on the
+            # check and refused the execution itself (#563).
         
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Security control failed for {tool_name}: {e}")

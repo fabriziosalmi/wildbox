@@ -330,6 +330,41 @@ REDIS_URL=redis://redis:6379
 - **CORS**: Configurable cross-origin requests
 - **Security Headers**: Automatic security headers via Nginx
 
+### Tools that act for a caller
+
+A tool whose `execute_tool` declares a `user_id` parameter acts on behalf of
+the caller. Today that is `sql_injection_scanner` only. For such a tool the
+execution path (`authorize_tool_call` in `app/execution_manager.py`, used by
+both `POST /api/tools/<name>` and `POST /api/tools/<name>/async`):
+
+1. refuses to run it without an authenticated caller;
+2. asks the authorization manager (`app/security/authorization.py`) whether
+   that caller may perform the tool's operation type (`destructive_test` for
+   the scanner) against the tool's `target_url`;
+3. passes the caller to the tool as `user_id`.
+
+A refusal answers `403` with the reason. The caller is the user ID that the
+gateway forwards in `X-Wildbox-User-ID`.
+
+The policy is read at start-up from two files, and **with neither present,
+nobody may run the scanner**. That is the default in `docker-compose.yml`:
+
+- `USER_PERMISSIONS_FILE` (default `/etc/security/user_permissions.json`):
+  user IDs mapped to the operations they may perform, for example
+  `{"<user uuid>": ["destructive_test"]}`. Keys whose value is not a list,
+  such as `description`, are ignored.
+- `AUTHORIZED_TARGETS_FILE` (default `/etc/security/authorized_targets.json`):
+  `{"targets": [...]}` with URLs (`https://shop.example.com/app` covers that
+  path and everything below it, on the same scheme, host and port), host names,
+  wildcard domains (`.example.com` covers the domain and its subdomains), IP
+  addresses and CIDR ranges.
+
+See `config/*.json.example`. To grant access, mount the files into both the
+`api` and `tools-worker` containers of the root `docker-compose.yml`.
+Destructive tests are limited to one per caller per hour; the counter is kept
+in each process's memory, so the API process and the Celery worker count
+separately and a restart resets them.
+
 ### Tool Configuration
 
 Each tool can have its own configuration:

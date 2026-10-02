@@ -1,6 +1,7 @@
 """Tool execution manager with timeout and concurrency control."""
 
 import asyncio
+import functools
 import time
 import inspect
 import uuid
@@ -32,6 +33,7 @@ class ExecutionStatus(Enum):
     FAILED = "failed"
     TIMEOUT = "timeout"
     CANCELLED = "cancelled"
+    REFUSED = "refused"
 
 
 @dataclass
@@ -43,6 +45,70 @@ class ExecutionResult:
     duration: Optional[float] = None
     start_time: Optional[float] = None
     end_time: Optional[float] = None
+
+
+class ToolAuthorizationError(PermissionError):
+    """The tool acts on behalf of a caller and this caller may not run it."""
+
+
+def tool_acts_for_caller(tool_func) -> bool:
+    """Whether the tool's execute_tool declares a ``user_id`` parameter.
+
+    Declaring it is how a tool says it acts on behalf of the caller: it is then
+    run only for an authenticated caller who passes authorize_tool_call, and it
+    receives that caller as ``user_id``. inspect.signature follows __wrapped__,
+    so the answer is the same for a tool wrapped by security_integration.
+    """
+    if tool_func is None:
+        return False
+    try:
+        return "user_id" in inspect.signature(tool_func).parameters
+    except (TypeError, ValueError):
+        return False
+
+
+def authorize_tool_call(tool_func, tool_name: str, input_data, user_id: Optional[str]) -> Dict[str, Any]:
+    """
+    Authorize one tool execution and return the keyword arguments to call it with.
+
+    The one place where tools are authorized, shared by the synchronous path
+    (ToolExecutionManager) and the asynchronous one (app.tasks). A tool that
+    does not declare ``user_id`` is called with its input alone, as before.
+    A tool that declares it (#563) must have a caller, and the authorization
+    manager must allow that caller the tool's operation type against the
+    tool's ``target_url``. The tool then receives the caller as ``user_id``.
+
+    Until #563 the execution manager accepted a user_id but called every tool
+    as tool_func(input_data), so sql_injection_scanner, which demands a caller,
+    refused every API execution.
+
+    Raises ToolAuthorizationError when the caller is missing or not allowed.
+    """
+    if not tool_acts_for_caller(tool_func):
+        return {}
+
+    if not user_id:
+        raise ToolAuthorizationError(
+            f"Tool '{tool_name}' acts on behalf of a caller and requires an authenticated caller"
+        )
+
+    target = getattr(input_data, "target_url", None)
+    if not target:
+        raise ToolAuthorizationError(f"Tool '{tool_name}' has no target_url to authorize")
+
+    from app.security.authorization import authorization_manager
+
+    try:
+        authorization_manager.require_authorization(
+            target=target,
+            user_id=str(user_id),
+            operation=authorization_manager.get_operation_type(tool_name, {}),
+            tool_name=tool_name,
+        )
+    except PermissionError as e:
+        raise ToolAuthorizationError(str(e)) from e
+
+    return {"user_id": str(user_id)}
 
 
 class ToolExecutionManager:
@@ -81,7 +147,7 @@ class ToolExecutionManager:
         tool_name: str,
         timeout: Optional[int] = None,
         execution_id: Optional[str] = None,
-        user_id: Optional[str] = None  # Add user_id parameter
+        user_id: Optional[str] = None
     ) -> ExecutionResult:
         """
         Execute a tool with timeout and concurrency control.
@@ -92,10 +158,13 @@ class ToolExecutionManager:
             tool_name: Name of the tool
             timeout: Execution timeout in seconds
             execution_id: Unique execution ID
-            user_id: User ID for security controls (optional)
-            
+            user_id: The authenticated caller. Required by tools that declare
+                a user_id parameter (see authorize_tool_call), which receive it;
+                other tools ignore it.
+
         Returns:
-            ExecutionResult with status and results
+            ExecutionResult with status and results. A tool that its caller may
+            not run is not started and returns status REFUSED.
         """
         
         timeout = timeout or self.default_timeout
@@ -108,6 +177,11 @@ class ToolExecutionManager:
         # passes the request id -- but the default is now unique by construction.
         execution_id = execution_id or f"{tool_name}_{uuid.uuid4().hex}"
         
+        try:
+            tool_kwargs = authorize_tool_call(tool_func, tool_name, input_data, user_id)
+        except ToolAuthorizationError as e:
+            return self._refuse(tool_name, execution_id, user_id, str(e))
+
         # Apply security wrapper if available
         try:
             from app.security_integration import security_integration
@@ -137,12 +211,14 @@ class ToolExecutionManager:
                 # Handle both sync and async tool functions
                 if inspect.iscoroutinefunction(tool_func):
                     # Async function - create task directly
-                    task = asyncio.create_task(tool_func(input_data))
+                    task = asyncio.create_task(tool_func(input_data, **tool_kwargs))
                 else:
                     # Sync function - wrap in async and run in executor
                     async def run_sync():
                         loop = asyncio.get_event_loop()
-                        return await loop.run_in_executor(None, tool_func, input_data)
+                        return await loop.run_in_executor(
+                            None, functools.partial(tool_func, input_data, **tool_kwargs)
+                        )
                     task = asyncio.create_task(run_sync())
                 
                 self._active_executions[execution_id] = task
@@ -292,6 +368,36 @@ class ToolExecutionManager:
             
             return execution_result
     
+    def _refuse(self, tool_name: str, execution_id: str, user_id: Optional[str], reason: str) -> ExecutionResult:
+        """Record a refused execution; the tool is never started."""
+        now = time.time()
+        logger.warning(
+            f"Tool execution refused: {tool_name}",
+            extra={
+                "tool_name": tool_name,
+                "execution_id": execution_id,
+                "user_id": user_id if user_id else "anonymous",
+                "reason": reason,
+                "status": ExecutionStatus.REFUSED.value,
+            }
+        )
+        TOOL_EXECUTIONS.labels(tool=tool_name, outcome=ExecutionStatus.REFUSED.value).inc()
+        self._execution_history.append({
+            "execution_id": execution_id,
+            "tool_name": tool_name,
+            "status": ExecutionStatus.REFUSED.value,
+            "start_time": now,
+            "end_time": now,
+            "duration": 0,
+        })
+        return ExecutionResult(
+            status=ExecutionStatus.REFUSED,
+            error=reason,
+            duration=0,
+            start_time=now,
+            end_time=now,
+        )
+
     def get_active_executions(self) -> Dict[str, Dict[str, Any]]:
         """Get information about currently active executions."""
         return {

@@ -10,7 +10,7 @@ from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery_app
-from app.execution_manager import ExecutionStatus
+from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
@@ -46,7 +46,8 @@ def execute_tool_async(
     Args:
         tool_name: Name of the tool to execute
         input_data: Tool input parameters (as dict)
-        user_id: Optional user identifier for tracking
+        user_id: The caller the submitting request authenticated as. Tools
+            that act on a caller's behalf require it (see authorize_tool_call).
         timeout: Optional timeout override
         
     Returns:
@@ -104,15 +105,34 @@ def execute_tool_async(
         from app.input_validation import InputSanitizer
         InputSanitizer.validate_request_urls(validated_input)
 
+        # Authorize the call exactly as the synchronous path does: a tool
+        # that declares user_id needs a caller who may run it, and receives
+        # that caller (#563). Refusals are returned, not raised, so the retry
+        # policy does not run a refused tool again.
+        try:
+            tool_kwargs = authorize_tool_call(execute_func, tool_name, validated_input, user_id)
+        except ToolAuthorizationError as e:
+            logger.warning(
+                f"Async tool execution refused: {tool_name}",
+                extra={"tool_name": tool_name, "task_id": task_id, "reason": str(e)}
+            )
+            return {
+                'status': ExecutionStatus.REFUSED.value,
+                'error': str(e),
+                'duration': time.time() - start_time,
+                'tool_name': tool_name,
+                'task_id': task_id
+            }
+
         # Execute the tool (handle both sync and async)
         import inspect
         if inspect.iscoroutinefunction(execute_func):
             # Async function - need to run in event loop
             import asyncio
-            result = asyncio.run(execute_func(validated_input))
+            result = asyncio.run(execute_func(validated_input, **tool_kwargs))
         else:
             # Sync function - call directly
-            result = execute_func(validated_input)
+            result = execute_func(validated_input, **tool_kwargs)
         
         end_time = time.time()
         duration = end_time - start_time

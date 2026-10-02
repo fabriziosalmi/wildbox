@@ -1,11 +1,15 @@
 """SQL Injection Scanner Tool - Tests for SQL injection vulnerabilities."""
 
+import logging
 import time
 import requests
 from datetime import datetime
 from typing import List, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
 from .schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
+
+logger = logging.getLogger(__name__)
+
 # Safe SQL injection test payloads (non-destructive)
 SAFE_SQL_PAYLOADS = [
     # Basic error-based payloads
@@ -129,23 +133,24 @@ def test_sql_injection(url: str, method: str, param_name: str, param_value: str,
         )
 
 def execute_tool(input_data: SQLInjectionScannerInput, user_id: str = None) -> SQLInjectionScannerOutput:
-    """Execute the SQL injection scanner tool with authorization."""
-    from app.security.authorization import authorization_manager, OperationType
+    """Execute the SQL injection scanner on behalf of ``user_id``.
+
+    Declaring ``user_id`` makes this a tool that acts for a caller: the
+    execution path (app.execution_manager.authorize_tool_call) runs it only for
+    an authenticated caller whom the authorization manager allows a
+    destructive test against ``target_url``, and passes that caller here.
+    The check is not repeated here: destructive tests are limited to one per
+    caller per hour, and a second check would spend that allowance (#563).
+    """
     from app.security.validator import security_validator
-    
+
+    # Defense in depth for a caller that bypasses the execution path.
+    if not user_id:
+        raise PermissionError("User authentication required for SQL injection testing")
+
     # Validate and sanitize inputs
     target_url = security_validator.validate_url(input_data.target_url)
-    
-    # Check authorization for destructive testing
-    if user_id:
-        authorization_manager.require_authorization(
-            target=target_url,
-            user_id=user_id,
-            operation=OperationType.DESTRUCTIVE_TEST,
-            tool_name="sql_injection_scanner"
-        )
-    else:
-        raise PermissionError("User authentication required for SQL injection testing")
+    logger.info(f"SQL injection scan of {target_url} for user {user_id}")
     
     timestamp = datetime.now()
     results = []

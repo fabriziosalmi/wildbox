@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request, Body
 from typing import Dict, Any
 from celery.result import AsyncResult
 
+from open_security_shared.gateway_auth import GatewayUser
+
 from app.auth import verify_api_key
 from app.celery_app import celery_app
 from app.tasks import execute_tool_async
@@ -21,7 +23,7 @@ async def submit_tool_async(
     tool_name: str,
     request: Request,
     input_data: dict = Body(...),
-    api_key: str = Depends(verify_api_key)
+    caller: GatewayUser = Depends(verify_api_key)
 ) -> Dict[str, Any]:
     """
     Submit a tool for asynchronous execution.
@@ -40,8 +42,10 @@ async def submit_tool_async(
         "request_id": getattr(request.state, 'request_id', 'unknown')
     })
     
-    # Get user ID from request state if available (set by auth middleware)
-    user_id = getattr(request.state, 'user_id', 'anonymous')
+    # The caller the request authenticated as. This read request.state.user_id,
+    # which nothing sets, so every task ran for the literal caller "anonymous"
+    # (#563). Tools that act on a caller's behalf are authorized for this one.
+    user_id = str(caller.user_id)
     
     # Submit task to Celery
     task = execute_tool_async.apply_async(
@@ -117,7 +121,11 @@ async def get_task_status(
     elif state == 'SUCCESS':
         result = task_result.result
         response.update({
-            "status": "completed",
+            # The task finishes without raising when the tool failed, timed
+            # out or was refused, and reports which in its own status; this
+            # said "completed" for all of them.
+            "status": result.get('status', 'completed'),
+            "error": result.get('error'),
             "result": result.get('result'),
             "duration": result.get('duration'),
             "tool_name": result.get('tool_name'),
