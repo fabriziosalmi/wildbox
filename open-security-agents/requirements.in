@@ -23,9 +23,12 @@ pydantic-settings==2.10.1
 slowapi==0.1.9  # rate limiting; imported in app/main.py
 celery[redis]==5.4.0
 redis==5.2.1
-langchain==0.3.30
-langchain-anthropic==0.3.22
-langchain-community==0.3.31
+# LangChain 1.x moved AgentExecutor and create_tool_calling_agent, which the
+# threat enrichment agent is built on, out of `langchain` into
+# `langchain-classic`; prompts, messages and @tool come from langchain-core.
+# langchain-community was never imported and pinned langchain below 1.0.
+langchain-classic==1.0.8
+langchain-anthropic==1.4.6
 httpx==0.28.1
 python-dotenv==1.2.2
 pytest==9.0.3

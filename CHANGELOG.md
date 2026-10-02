@@ -7,8 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Logout now ends the session** (#475). Tokens from the login endpoint carried
+  only `sub`, `aud` and `exp`: `POST /auth/logout` refused every one of them
+  ("Token carries no jti"), `POST /auth/jwt/logout` revoked nothing, the
+  dashboard only deleted its cookie, and two logins within the same second got
+  the same token. A logged-out token stayed valid at the gateway for its whole
+  lifetime. Login tokens now carry a `jti` and an `iat`, identity's own routes
+  refuse a revoked one, both logout routes revoke, and the dashboard calls
+  revocation before clearing its cookie. Tokens issued before this release
+  still lack a `jti` and expire on their own.
+- **identity could not reach Redis** (#475). Its `REDIS_URL` came from `.env`
+  without the password Redis has required since 0.10.0, so every blacklist
+  write and read failed with "Authentication required" and was swallowed:
+  even a token with a `jti` could not have been revoked. compose now builds
+  the URL with `REDIS_PASSWORD`, as it does for every other service
+  (`IDENTITY_REDIS_URL` overrides it).
+- **The gateway auth-cache purge never reached the gateway** (#475). identity
+  called it on port 80, which answers everything but `/health` with a 301, so
+  a revoked token stayed authorized from the cache for up to its TTL. The
+  endpoint now also lives on an internal listener, port 8081, not published,
+  and that is identity's default.
+
+- **The gateway waited 10 s, not 5, for an unresponsive identity** (#428).
+  `utils.http_request` ignored the caller's `timeout` because `request_uri()`
+  does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
+  Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+
 ### Security
 
+- **cryptography 50.0.2 in every service that uses it** (#415): cspm, data,
+  guardian, identity, sensor and tools were held at 48.0.1, which carries 3
+  advisories (two fixed in 49.0.0, one in 50.0.0: a padding
+  oracle in PKCS#7 decryption). Nothing else in the locks moves. 49.0.0 stops
+  publishing wheels for Intel macOS; the containers are Linux and unaffected.
 - **Python security upgrades no longer depend on Dependabot** (#420). Its pip
   PRs regenerated the locks with pip-compile instead of uv and could never pass
   the Dependency Integrity gate, so no Python fix had landed since 0.10.0.
@@ -16,6 +49,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the packages with a known advisory, within the ranges `requirements.in`
   allows, and lists the rest; a weekly workflow opens the PR. This run moved 19
   pins, among them PyJWT, urllib3, tornado, anyio and oauthlib.
+- **aiohttp 3.14.3 in cspm, data, sensor and tools** (#415), from 3.14.1: 3
+  advisories, among them request smuggling through WebSocket upgrades in the
+  server, which the sensor's local API runs. Patch releases, bug fixes only.
 - **python-jose is gone, and ecdsa with it** (#415). It was pinned in cspm, data
   and guardian only because `open_security_shared.auth_utils` imported it, and
   none of the three uses those helpers. It pulled in `ecdsa`, whose timing
@@ -29,7 +65,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guardian, identity and sensor. Dev tools only: no runtime code changes, and
   the Code Quality job already ran an unpinned black.
 
+- **agents moves to LangChain 1.x** (#415). langchain 0.3.30,
+  langchain-anthropic 0.3.22, langchain-core 0.3.86 and
+  langchain-text-splitters 0.3.11 carried 6 advisories between them. The agent
+  keeps its `AgentExecutor` loop, now from `langchain-classic` 1.0.8; prompts,
+  messages and `@tool` come from langchain-core 1.6.6; langchain-anthropic is
+  1.4.6. `langchain-community`, never imported, is gone. One visible change:
+  the analyst notes passed to the structured report are now the model's text,
+  where 0.3 passed the string form of a list of content blocks.
+
+- **guardian moves to Django 5.2 LTS** (#415). Django 4.2 has been out of
+  support since April 2026; 4.2.30 carried 8 advisories, djangorestframework
+  3.15.2 another 2. Now Django 5.2.17, DRF 3.17.2, django-celery-beat 2.8.1
+  (2.5.0 declared `Django<5.0`) and django-filter 25.1 (with 23.2 every list
+  endpoint with a `ChoiceFilter` answered 500 on Django 5; a new unit test,
+  `test_filtersets.py`, builds every filterset form so this fails in CI
+  instead of at request time). `STATICFILES_STORAGE`, which Django 5.1 drops
+  without an error, becomes `STORAGES`: without it the WhiteNoise compressed
+  manifest storage would have been silently replaced by the plain one.
+  Deploy runs one new migration, `django_celery_beat.0019`.
+
+- **cspm leaves urllib3 1.26** (#415). urllib3 1.26.20 carried 7 advisories and
+  was held there by `google-auth==2.23.0` (`urllib3<2.0`) and
+  `botocore==1.34.0` (`urllib3<2.1`). google-auth 2.23.4 and boto3/botocore
+  1.34.63 are the first releases of the same lines that allow urllib3 2; the
+  lock now has urllib3 2.8.0 and s3transfer 0.10.4.
+
+- **Unused dependencies with advisories removed** (#415). guardian pinned
+  Pillow 12.2.0 (13 advisories) and nothing imports PIL or declares an
+  ImageField. data pinned nltk 3.10.3 (1 advisory, no fixed release exists)
+  and dash 2.15.0, which held flask at 3.0.3 and werkzeug at 3.0.6
+  (4 advisories); neither is imported. 15 packages leave the data lock.
+
+- **click 8.3.3 in cspm and data** (#415), from 8.1.7 (1 advisory). Neither
+  service calls click itself; celery, uvicorn and black do, and their CLIs
+  behave as before. The one change seen: `python -m spacy info` in data now
+  exits with an error (typer 0.9.4, pinned by spacy 3.7.2, predates click
+  8.2); nothing in the repository imports spacy or runs its CLI.
+
 ### CI
+
+- **The chaos suite measures the system now** (#428). Seven experiments
+  against the stack as the integration job starts it: cached authorization
+  survives an identity outage; new tokens fail closed with 503, then
+  immediately once the breaker opens, and work again when it closes; a
+  PostgreSQL outage is reported and recovered from without a restart; a Redis
+  outage does not block login; a crashed identity or data process is
+  restarted and served again; a 200-request burst gets only 200s and 429s.
+  Back on the nightly schedule.
 
 - **The critical-advisory gate now gates, and only on what a PR adds** (#430).
   `PR Validation Summary`, the check branch protection requires, never read
@@ -39,8 +122,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on advisories the PR introduces; those already on `main` are reported by the
   new `Main Advisories` workflow, daily and on every push, in one issue it
   opens, updates and closes.
-- **Chaos experiments run on demand only** until the suite is rewritten
-  (#428). The nightly load baseline is unchanged.
 
 ### Removed
 
