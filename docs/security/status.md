@@ -24,6 +24,7 @@ do not open a public issue.
 | Network segmentation is not effective | `docker-compose.yml`, `docker-compose.prod.yml` | The production overlay defines `frontend`, `backend` and `data` networks, but Compose merges service networks with the base file, so every service also stays on the flat `wildbox` network. With both files, `docker compose config` shows the dashboard and the gateway on the same network as PostgreSQL and Redis. |
 | Initial admin password written to the log | `open-security-identity/scripts/init.sh` | When the identity service creates the first administrator it prints the password from `INITIAL_ADMIN_PASSWORD` to the container log. Change that password after the first login and treat container logs as sensitive. |
 | TLS verification disabled in two scanners | `open-security-tools/app/tools/web_vuln_scanner/main.py`, `open-security-tools/app/tools/cookie_scanner/main.py` | Both create `aiohttp.TCPConnector(ssl=False)`, so they accept any certificate from the target. |
+| Failed logins are not locked out | `open-security-identity/app/token_blacklist.py` | `config.py` sets 5 attempts and 15 minutes, and `record_failed_login` / `is_account_locked` exist, but no login route calls them. The only brake is the gateway's rate limit on `/auth/jwt/` (5 requests per second per address, burst 3). |
 | API documentation served regardless of environment | identity, tools | identity always serves `/docs` and `/redoc`; tools always serves `/openapi.json`. Both are reachable only on their `127.0.0.1` ports, not through the gateway. agents, responder and cspm disable theirs in production. |
 
 ---
@@ -42,8 +43,8 @@ the claim against the current code; it is not a pass.
 | Docker networks segmented | **FAIL** | See "Network segmentation is not effective" above |
 | Gateway requires authentication on service APIs | PASS | Every `/api/v1/<service>/` location in `wildbox_gateway.conf` calls `auth_handler.authenticate()`; identity validates tokens itself |
 | Every API endpoint enforces authentication | Not verified | Not checked endpoint by endpoint behind the gateway |
-| JWT tokens revocable | PASS | `POST /api/v1/auth/logout` blacklists the token's `jti` (`open-security-identity/app/logout.py`) |
-| Account lockout | PASS | `max_failed_login_attempts` (5) and `account_lockout_minutes` (15) in `open-security-identity/app/config.py` |
+| JWT tokens revocable | PASS | `POST /auth/logout` and `POST /auth/jwt/logout` blacklist the token's `jti` in Redis; the gateway and identity's own routes refuse it (`logout.py`, `user_manager.py`) |
+| Account lockout after failed logins | **FAIL** | See "Failed logins are not locked out" above |
 | CORS without wildcards | PASS | No `allow_origins=["*"]` or wildcard `Access-Control-Allow-Origin` in service code or gateway config |
 | Security headers at the gateway | PASS | HSTS, `X-Frame-Options`, `X-Content-Type-Options` and `Permissions-Policy` set in `wildbox_gateway.conf` |
 | API docs disabled in production | **FAIL** | See "API documentation served regardless of environment" above |
@@ -59,13 +60,11 @@ the claim against the current code; it is not a pass.
 
 ## History
 
-Earlier audits are kept for reference. They describe the code as it was when
-they were written, and their file paths and line numbers no longer match:
-
-- [Platform audit report](audit-report.md) (November 2024)
-- [Remediation checklist](remediation-checklist.md) (November 2024)
-- [Improvements summary](improvements-summary.md) (November 2024)
-- [Tools service audit](tools-service-audit.md) (November 2025)
+The November 2024 platform audit (its report, remediation checklist and
+improvements summary) is no longer published: it described code that has since
+changed, and its findings are superseded by this page. The
+[Tools service audit](tools-service-audit.md) (November 2025) is kept for
+reference, with the same caveat.
 
 The audit rounds of February 2026 (v0.5.2 to v0.5.5) and every later security
 change are recorded release by release in

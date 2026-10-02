@@ -94,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   replaced by `make generate-secrets`, and the guardian `SECRET_KEY` fallback
   is no longer quoted as current. Expired version and review stamps are gone
   from the security policy.
+- **Account lockout is reported as not enforced.** The status page counted
+  the lockout settings in `config.py` as a pass, but nothing calls
+  `record_failed_login` or `is_account_locked`; it is now a known open issue
+  and a failed check, and the policy no longer claims bcrypt with 12+ rounds
+  (fastapi-users hashes with Argon2). The status page stops linking the
+  November 2024 audit documents, which the site no longer publishes.
 
 ### Removed
 

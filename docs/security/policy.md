@@ -145,7 +145,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO wildbox_a
 
 - **Enable MFA** for admin accounts
 - **Set session timeouts** (default: 1 hour)
-- **Implement account lockout** after failed attempts
+- **Implement account lockout** after failed attempts (not enforced by Wildbox today: see the [Security status](status.md))
 - **Require email verification** for new accounts
 
 #### API Security
@@ -243,7 +243,7 @@ Wildbox uses GitHub Dependabot for continuous security scanning of all dependenc
 ### 1. Authentication & Authorization
 
 - JWT tokens with HS256 encryption (minimum 32-char secret)
-- bcrypt password hashing (12+ rounds)
+- Password hashing with Argon2 through fastapi-users' password helper; see the [authentication reference](../guides/credentials.md#authentication-reference)
 - Bearer token authentication on all protected endpoints
 - API key support for service-to-service communication
 - Role-based access control (RBAC)
