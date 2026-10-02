@@ -16,13 +16,12 @@ os.environ.setdefault("JWT_SECRET_KEY", "a" * 32)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from fastapi.testclient import TestClient  # noqa: E402
-from redis.exceptions import ConnectionError as RedisConnectionError  # noqa: E402
-from sqlalchemy.exc import OperationalError  # noqa: E402
-
 import app.database as database  # noqa: E402
 import app.main as main  # noqa: E402
 import app.token_blacklist as token_blacklist  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from redis.exceptions import ConnectionError as RedisConnectionError  # noqa: E402
+from sqlalchemy.exc import OperationalError  # noqa: E402
 
 
 class _Session:
