@@ -44,7 +44,9 @@ class RedisConfig:
 @dataclass
 class APIConfig:
     """API server configuration"""
-    host: str = os.getenv("API_HOST", "0.0.0.0")
+    # Binding all interfaces is intended: the service runs in a container and
+    # is reached through the container network. Override with API_HOST if needed.
+    host: str = os.getenv("API_HOST", "0.0.0.0")  # nosec B104
     port: int = int(os.getenv("API_PORT", "8002"))
     workers: int = int(os.getenv("API_WORKERS", "4"))
     max_requests: int = int(os.getenv("API_MAX_REQUESTS", "1000"))

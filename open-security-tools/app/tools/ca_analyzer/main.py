@@ -130,9 +130,10 @@ class CAAnalyzer:
                 public_key_size = 0
                 public_key_algorithm = "unknown"
             
-            # Calculate fingerprints
+            # Calculate fingerprints. SHA-1 is reported only because it is the
+            # fingerprint many tools still display; it identifies, not protects.
             sha256_fingerprint = hashlib.sha256(cert_der).hexdigest().upper()
-            sha1_fingerprint = hashlib.sha1(cert_der).hexdigest().upper()
+            sha1_fingerprint = hashlib.sha1(cert_der, usedforsecurity=False).hexdigest().upper()
             
             return {
                 'subject': subject,

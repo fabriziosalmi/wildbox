@@ -199,7 +199,9 @@ class PKICertificateManager:
             signature_algorithm=signature_algorithm,
             public_key_algorithm=key_algorithm,
             key_size=key_size,
-            fingerprint_sha1=certificate.fingerprint(hashes.SHA1()).hex(),
+            # The SHA-1 fingerprint is reported for display and cross-reference
+            # with other tools; it identifies the certificate and protects nothing.
+            fingerprint_sha1=certificate.fingerprint(hashes.SHA1()).hex(),  # nosec B303
             fingerprint_sha256=certificate.fingerprint(hashes.SHA256()).hex(),
             san_names=san_names,
             is_ca=is_ca,
