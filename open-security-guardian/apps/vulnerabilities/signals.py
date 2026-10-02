@@ -17,6 +17,17 @@ from .tasks import (
 )
 
 
+def _history_value(value):
+    """Render a field value for VulnerabilityHistory.old_value/new_value.
+
+    Both columns are ``TextField(blank=True)`` and NOT NULL, so "no value"
+    (a creation, an unassigned user) is stored as ``''``, the empty value
+    Django uses for text columns. Writing ``None`` raised IntegrityError and
+    made every vulnerability creation fail (#515).
+    """
+    return '' if value is None else str(value)
+
+
 @receiver(pre_save, sender=Vulnerability)
 def track_vulnerability_changes(sender, instance, **kwargs):
     """Track changes to vulnerability fields for history"""
@@ -46,8 +57,8 @@ def track_vulnerability_changes(sender, instance, **kwargs):
                     
                     instance._tracked_changes.append({
                         'field_name': field,
-                        'old_value': str(old_value) if old_value is not None else None,
-                        'new_value': str(new_value) if new_value is not None else None
+                        'old_value': _history_value(old_value),
+                        'new_value': _history_value(new_value)
                     })
         
         except Vulnerability.DoesNotExist:
@@ -71,8 +82,8 @@ def handle_vulnerability_save(sender, instance, created, **kwargs):
         VulnerabilityHistory.objects.create(
             vulnerability=instance,
             field_name='status',
-            old_value=None,
-            new_value=instance.status,
+            old_value=_history_value(None),
+            new_value=_history_value(instance.status),
             change_reason='Vulnerability created'
         )
     
