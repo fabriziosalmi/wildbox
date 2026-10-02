@@ -1,4 +1,8 @@
 # Development dependencies
+# Plain `pip install -r` refuses this file: requirements.txt is hash-pinned,
+# which switches pip to --require-hashes for everything it reads, and the
+# pins below carry no hashes. `uv pip install -r requirements-dev.txt` works:
+# uv checks the hashes it is given without requiring them on every line.
 -r requirements.txt
 
 # Additional development tools
@@ -8,17 +12,25 @@ ipython==8.14.0
 jupyter==1.0.0
 
 # API documentation
-mkdocs==1.5.0
-mkdocs-material==9.1.21
+# mkdocs-material 9.7.7 is the first release without CVE-2026-73295 and
+# needs mkdocs>=1.6.
+mkdocs==1.6.1
+mkdocs-material==9.7.7
 mkdocs-mermaid2-plugin==1.1.1
 
 # Code quality
+# No `safety`: 2.3.5 requires packaging<22 and requirements.txt locks
+# packaging 26.3, so this file could not be resolved at all. Releases up to
+# 3.6.0 pin filelock below the 3.32.5 locked there, and every release from
+# 3.6.1 on depends on nltk, which has an advisory with no fixed release
+# (CVE-2026-81726).
 bandit==1.7.5
-safety==2.3.5
 vulture==2.9.1
 
 # Performance testing
 locust==2.16.1
 
 # Database tools
-pgcli==3.5.0
+# 4.6.0 is the first pgcli that accepts the sqlparse 0.6.0 requirements.txt
+# locks (3.5.0 required sqlparse<0.5).
+pgcli==4.6.0
