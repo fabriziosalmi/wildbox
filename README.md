@@ -1,419 +1,191 @@
 <div align="center">
-  <!-- Demo Video -->
-  <a href="https://youtu.be/BjuTF6yJ_JA">
-    <img src="https://img.youtube.com/vi/BjuTF6yJ_JA/hqdefault.jpg" alt="Wildbox Demo Video" width="700px" style="border-radius: 10px;"/>
-  </a>
-  <br/><br/>
-
-  <!-- Logo -->
-  <img src="wildbox.png" alt="Wildbox Logo" width="150px" height="150px"/>
-
-  <br/><br/>
-
-  <!-- Watch Demo Button -->
-  <a href="https://youtu.be/BjuTF6yJ_JA">
-    <img src="https://img.shields.io/badge/Watch_Full_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white" alt="Watch Demo"/>
-  </a>
-</div>
+  <img src="wildbox.png" alt="Wildbox" width="120" height="120"/>
 
 # Wildbox
 
-Self-hosted, open-source security operations platform. Threat monitoring, analysis, and automated response with full control over your data.
+Self-hosted, open-source security operations platform.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://docker.com)
-[![Python](https://img.shields.io/badge/Python-3.11+-green.svg)](https://python.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://typescriptlang.org)
-[![CodeQL](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/github-code-scanning/codeql)
-[![Dependabot Updates](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates/badge.svg)](https://github.com/fabriziosalmi/wildbox/actions/workflows/dependabot/dependabot-updates)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Test Suite](https://github.com/fabriziosalmi/wildbox/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/fabriziosalmi/wildbox/actions/workflows/test.yml)
+[![Integration Tests](https://github.com/fabriziosalmi/wildbox/actions/workflows/integration-tests.yml/badge.svg?branch=main)](https://github.com/fabriziosalmi/wildbox/actions/workflows/integration-tests.yml)
+[![Release](https://img.shields.io/github/v/release/fabriziosalmi/wildbox)](https://github.com/fabriziosalmi/wildbox/releases)
 
-## Featured on
+[Documentation](https://www.wildbox.io/docs.html) · [Quick start](#quick-start) · [Changelog](CHANGELOG.md) · [Security policy](SECURITY.md)
 
-[![Featured on Self-Host Weekly](https://img.shields.io/badge/Featured%20on-Self--Host%20Weekly-green)](https://selfh.st/weekly/2025-11-07/)
-[![Listed on LibHunt](https://img.shields.io/badge/Listed%20on-LibHunt-blue)](https://www.libhunt.com/r/wildbox)
-[![Featured on Product Hunt](https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=wildbox&theme=light)](https://www.producthunt.com/products/wildbox)
+</div>
 
----
+Wildbox runs threat intelligence, cloud posture checks, vulnerability tracking,
+security tooling and automated response as a set of services behind one
+authenticating gateway, on your own hardware, with your data staying there.
 
-## What is Wildbox?
+Wildbox is pre-1.0. Interfaces can change between minor releases; read
+[UPGRADING.md](UPGRADING.md) before moving to a new version.
 
-- Aggregate threat intelligence from 50+ sources
-- Monitor cloud infrastructure security posture (AWS, Azure, GCP)
-- Automate incident response with YAML playbooks
-- Track and manage vulnerabilities
-- Collect endpoint telemetry
-- Use LLMs for threat analysis and report generation
+![Wildbox dashboard](screenshot.png)
 
-## Features
+## Capabilities
 
-| Feature | Description |
-| :--- | :--- |
-| **API Gateway** | Single entry point with rate-limiting and authentication |
-| **Identity Management** | Users, teams, RBAC (Role-Based Access Control), JWT (JSON Web Tokens) |
-| **Cloud Security (CSPM)** | CSPM (Cloud Security Posture Management): scan AWS, Azure, GCP for misconfigurations |
-| **Vulnerability Management** | Scan, prioritize, and track vulnerabilities (CVE) |
-| **Automated Response (SOAR)** | SOAR (Security Orchestration, Automation, and Response): YAML-based playbooks |
-| **LLM Analysis** | LLM-based (Large Language Models) threat analysis and reporting |
+| Area | What it does | Service |
+| :--- | :--- | :--- |
+| Gateway | Single HTTPS entry point: authentication, per-IP and per-team rate limiting, routing | `open-security-gateway` |
+| Identity | Users, teams, roles, API keys with scopes, JWT sessions with server-side revocation | `open-security-identity` |
+| Security tools | 52 tools behind one API (DNS, TLS, email security, headers, ports, and more) | `open-security-tools` |
+| Threat intelligence | Indicator collection from 7 public feeds (abuse.ch, PhishTank, AbuseIPDB and others) and lookup | `open-security-data` |
+| Cloud posture | 31 checks: 22 for AWS against live accounts; Azure and GCP checks currently run on sample data | `open-security-cspm` |
+| Vulnerabilities | Asset inventory, findings, risk-based prioritization, remediation tracking | `open-security-guardian` |
+| Response | YAML playbooks executed as background jobs | `open-security-responder` |
+| Endpoint telemetry | osquery-based telemetry from hosts running the sensor | `open-security-sensor` |
+| Analysis | Threat-enrichment reports generated with Anthropic Claude | `open-security-agents` |
+| Interface | Web dashboard | `open-security-dashboard` |
 
 ## Architecture
 
-Microservices architecture. Each component is an independent service communicating through an API gateway.
+Every request from outside enters through the gateway. Backend services listen
+on `127.0.0.1` only, PostgreSQL and Redis publish no port at all, and each
+backend rejects requests that do not carry the gateway's proof-of-origin
+secret.
 
 ```mermaid
-graph TD
-    subgraph "Client Layer"
-        UI[Dashboard UI]
-        CLI[CLI Tools]
-        API_CLIENT[API Clients]
-    end
-
-    subgraph "Gateway Layer"
-        GATEWAY[Security Gateway]
-        IDENTITY[Identity Service]
-    end
-
-    subgraph "Core Services"
-        API[Security API]
-        DATA[Data Lake]
-        CSPM[CSPM Service]
-        GUARDIAN[Guardian]
-        RESPONDER[Responder]
-        AGENTS[AI Agents]
-        SENSOR[Sensor]
-    end
-
-    subgraph "Data Layer"
-        POSTGRES[(PostgreSQL)]
-        REDIS[(Redis)]
-        ELASTICSEARCH[(Elasticsearch)]
-    end
-
-    subgraph "External Services"
-        STRIPE[Stripe]
-        OPENAI[OpenAI]
-        FEEDS[Threat Feeds]
-        CLOUD_APIS[Cloud APIs]
-    end
-
-    UI --> GATEWAY
-    CLI --> GATEWAY
-    API_CLIENT --> GATEWAY
-
-    GATEWAY --> IDENTITY
-    GATEWAY --> API
-    GATEWAY --> DATA
-    GATEWAY --> CSPM
-    GATEWAY --> GUARDIAN
-    GATEWAY --> RESPONDER
-    GATEWAY --> AGENTS
-
-    SENSOR --> GATEWAY
-
-    API --> POSTGRES
-    DATA --> POSTGRES
-    CSPM --> POSTGRES
-    GUARDIAN --> POSTGRES
-    RESPONDER --> POSTGRES
-    AGENTS --> POSTGRES
-
-    GATEWAY --> REDIS
-    API --> REDIS
-    CSPM --> REDIS
-    RESPONDER --> REDIS
-
-    DATA --> ELASTICSEARCH
-
-    IDENTITY --> STRIPE
-    AGENTS --> OPENAI
-    DATA --> FEEDS
-    CSPM --> CLOUD_APIS
+flowchart LR
+    client[Browser / API client / sensor] -->|HTTPS 443| gateway[Gateway<br/>OpenResty]
+    gateway --> identity[Identity]
+    gateway --> tools[Tools]
+    gateway --> data[Data]
+    gateway --> cspm[CSPM]
+    gateway --> guardian[Guardian]
+    gateway --> responder[Responder]
+    gateway --> agents[Agents]
+    gateway --> dashboard[Dashboard]
+    identity --> pg[(PostgreSQL 15)]
+    data --> pg
+    guardian --> pg
+    responder --> pg
+    identity --> redis[(Redis 7)]
+    tools --> redis
+    cspm --> redis
+    responder --> redis
+    agents --> redis
+    agents --> claude[Anthropic API]
+    cspm --> clouds[AWS / Azure / GCP APIs]
+    data --> feeds[Public threat feeds]
 ```
 
-## Screenshot
+## Quick start
 
-![Wildbox Dashboard showing threat intelligence feed, vulnerability management interface, and security metrics](screenshot.png)
+### Requirements
 
----
+- Docker Engine 24 or later with the Compose plugin (`docker compose`)
+- 8 GB of RAM (16 GB recommended), 20 GB of free disk
+- Linux, macOS, or Windows with WSL 2
 
-## Table of Contents
-
-- [Quick Start](#quick-start)
-- [Components](#components)
-- [Technology Stack](#technology-stack)
-- [Roadmap](#roadmap)
-- [Contributing](#contributing)
-- [Documentation](#documentation)
-- [License](#license)
-
----
-
-## Quick Start
-
-### Prerequisites
-
-- Docker >= 20.10
-- Docker Compose >= 2.0
-- 8GB RAM minimum (16GB recommended)
-- Linux, macOS, or Windows with WSL2
-
-### Installation
+### Install and start
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 
-# 2. Create .env and fill EVERY secret with a secure random value
-make generate-secrets
+make generate-secrets        # writes .env with random values for every secret (mode 0600)
+# edit INITIAL_ADMIN_EMAIL in .env: it is the login of the first administrator
+make validate-secrets        # refuses placeholder values
 
-# 3. Check that no placeholder secret survived
-make validate-secrets
-
-# 4. Start all services
-make start
-
-# 5. Wait for services to initialize (2-3 minutes)
-docker-compose logs -f gateway identity
-
-# 6. Verify health status
-curl http://localhost/health
-curl http://localhost:8001/health
-
-# 7. Access the platform
-# Gateway:           http://localhost          (the only port bound beyond localhost)
-# Dashboard:         http://localhost:3000     (127.0.0.1 only)
-# API Documentation: http://localhost:8000/docs (127.0.0.1 only)
+docker compose up -d --wait  # builds and starts the stack; the first build takes several minutes
 ```
 
-> **Do not hand-edit secrets.** `make generate-secrets` fills every secret the
-> stack needs (fourteen of them, from `JWT_SECRET_KEY` to `SENSOR_API_KEY`) with
-> cryptographically random values and writes the file with mode 0600;
-> `make validate-secrets` refuses to let the stack start with a placeholder
-> still in place. The previous instructions here generated two values by hand
-> and named one of them `DATABASE_PASSWORD`, which nothing in the project reads
-> — the real variable is `POSTGRES_PASSWORD` — so a reader who followed them
-> shipped with the repository's published placeholder values for everything
-> else. The authoritative list is `secrets_map` in `scripts/generate_secrets.py`;
-> naming them here only creates something else to go stale.
+This is the configuration the integration suite starts and tests on every
+change.
 
-<!-- separates consecutive blockquotes: markdownlint reads a blank line between
-     two `>` blocks as a blank line *inside* one blockquote (MD028) -->
+### Verify
 
-> **For a production deployment use `make start-prod`**, which composes
-> `docker-compose.yml` with `docker-compose.prod.yml` (restart: always, log
-> rotation, tuned connection limits). Plain `make start` adds the development
-> overlay instead.
-
-<!-- separates consecutive blockquotes (MD028) -->
-
-> **These addresses work on the machine running Docker, and nowhere else.**
-> Only the gateway publishes on all interfaces, on ports 80, 443 and 8080.
-> Every other service is bound to `127.0.0.1`, and PostgreSQL and Redis publish
-> nothing at all. That is deliberate: the gateway is where authentication and
-> rate limiting live, so everything from outside is meant to arrive through it.
-> To reach the dashboard from another machine, put it behind the gateway or
-> open an SSH tunnel; do not move the binding.
-
-The one service behind a profile is `automations`, which stays down until you
-ask for it:
+The gateway serves HTTPS with a certificate generated at first start. Trust it
+explicitly rather than disabling verification:
 
 ```bash
-docker-compose --profile automations up -d
+curl --cacert open-security-gateway/ssl/wildbox.crt https://localhost/health
 ```
 
-Until then `/api/v1/automations/` returns 502, which is expected rather than
-broken.
+Log in with the initial administrator. The email is the one you set in `.env`;
+the password was generated there by `make generate-secrets`:
 
-### Default Credentials
+```bash
+ADMIN_EMAIL=$(sed -n 's/^INITIAL_ADMIN_EMAIL=//p' .env)
+ADMIN_PASSWORD=$(sed -n 's/^INITIAL_ADMIN_PASSWORD=//p' .env)
 
-The first admin account is created from the values you set in `.env`:
+TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  --data-urlencode "username=$ADMIN_EMAIL" \
+  --data-urlencode "password=$ADMIN_PASSWORD" \
+  https://localhost/auth/jwt/login | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
 
-- **Email**: `INITIAL_ADMIN_EMAIL`
-- **Password**: `INITIAL_ADMIN_PASSWORD`
+curl --cacert open-security-gateway/ssl/wildbox.crt \
+  -H "Authorization: Bearer $TOKEN" https://localhost/api/v1/tools
+```
 
-Set both to strong values before the first start, and change the password after first login.
+Open the dashboard at `https://localhost` and sign in with the same account.
+Change the initial password after the first login.
 
-### Next Steps
+### Optional services
 
-1. Review **[Security Best Practices](SECURITY.md)**
-2. Configure **[Environment Variables](docs/guides/credentials.md)**
-3. Read **[Deployment Guide](docs/guides/deployment.md)** for production setup
-4. Explore **[API Documentation](docs/api/)**
+| Service | Start with |
+| :--- | :--- |
+| Workflow automation (n8n) | `docker compose --profile automations up -d` |
+| Prometheus | `docker compose --profile monitoring up -d` |
+| Scheduled backups | `docker compose --profile backup up -d` |
 
-### Troubleshooting
+## Operations
 
-- Check Docker logs: `docker-compose logs <service-name>`
-- Verify port availability: `netstat -tuln | grep -E '(8000|8001|3000|5432|6379)'`
-- Ensure sufficient disk space: `df -h`
-- See **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** for common issues
+| Task | Command |
+| :--- | :--- |
+| Service status | `docker compose ps` |
+| Logs | `docker compose logs -f <service>` |
+| Full health check | `make health` |
+| Production overlay | `make start-prod` (adds `docker-compose.prod.yml`) |
+| Back up PostgreSQL | `make backup` |
+| Rehearse a restore | `make restore-drill` |
+| List rotatable secrets | `make rotate-secrets` |
+| Stop | `docker compose down` |
 
----
+Ports, service names and bindings are listed in one place:
+[ports reference](https://www.wildbox.io/guides/ports/). Production guidance is in the
+[deployment guide](https://www.wildbox.io/guides/deployment/).
 
-## Components
+## Security
 
-### **open-security-identity**
+- Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+- The current state of known security issues, including what is still open, is
+  published on the [security status page](https://www.wildbox.io/security/status/).
+- Every Python service ships a hash-pinned lockfile compiled from
+  `requirements.in`; CI blocks pull requests that introduce a critical
+  advisory, and a daily job reports any found on `main`.
 
-Identity management, JWT authentication, API key management, subscription billing.
-FastAPI, PostgreSQL, Stripe, JWT.
+## Development
 
-### **open-security-gateway**
+```bash
+make lock             # recompile every service's hash-pinned requirements.txt
+make lock-security    # move only packages with known advisories
+make test             # integration tests against a running stack
+```
 
-API gateway with routing, rate-limiting, and authentication.
-OpenResty (Nginx + Lua), Redis, Docker.
-
-### **open-security-tools**
-
-Unified API for 50+ security tools with dynamic discovery and execution.
-FastAPI, Redis, Docker.
-
-### **open-security-data**
-
-Threat intelligence aggregation and serving.
-FastAPI, PostgreSQL, Elasticsearch, Redis.
-
-### **open-security-cspm** (In Development)
-
-Multi-cloud security posture management and compliance scanning.
-Defined in the default `docker-compose.yml` without a profile, so it starts
-with everything else. "In development" describes the feature surface, not
-whether the container runs.
-FastAPI, Celery, Redis, Python cloud SDKs.
-
-### **open-security-guardian**
-
-Vulnerability lifecycle management with risk-based prioritization.
-Django, PostgreSQL, Celery, Redis.
-
-### **open-security-sensor** (In Development)
-
-Endpoint monitoring and telemetry collection.
-Defined in the default `docker-compose.yml` without a profile, so it starts
-with everything else. "In development" describes the feature surface, not
-whether the container runs.
-osquery, Python, HTTPS.
-
-### **open-security-responder**
-
-Incident response automation with YAML-based playbooks.
-FastAPI, Dramatiq, Redis.
-
-### **open-security-automations**
-
-Node-based workflow automation for connecting services and APIs.
-n8n, Node.js, Docker.
-
-### **open-security-agents**
-
-LLM-based security analysis and automation.
-FastAPI, Celery, LangChain, OpenAI.
-
-### **open-security-dashboard**
-
-Web interface for the platform.
-Next.js, TypeScript, Tailwind CSS, TanStack Query.
-
----
-
-## Technology Stack
-
-### Frontend
-
-- **Next.js 14** - React framework with App Router
-- **TypeScript 5.0+** - Type-safe JavaScript
-- **Tailwind CSS** - Utility-first CSS framework
-- **Shadcn/ui** - React components built on Radix UI
-- **TanStack Query** - Data synchronization for React
-- **Recharts** - Charting library for React
-
-### Backend
-
-- **FastAPI** - Python async web framework
-- **Django 5.2 LTS** - Python web framework
-- **OpenResty** - Nginx + LuaJIT
-- **PostgreSQL 15** - Relational database
-- **Redis 7** - In-memory data store for caching and queues
-- **SQLAlchemy** - Python ORM
-- **Alembic** - Database migrations
-- **Celery** - Distributed task queue
-
-### AI
-
-- **OpenAI API** - LLM integration for threat analysis
-- **LangChain** - LLM application framework
-- **Pydantic** - Data validation
-- **NLTK** - Natural language processing
-- **Scikit-learn** - Machine learning
-
-### Infrastructure
-
-- **Docker / Docker Compose** - Containerization and orchestration
-- **Nginx** - Reverse proxy
-- **Prometheus** - Metrics and monitoring
-- **Grafana** - Visualization
-- **GitHub Actions** - CI/CD
-
-### Security
-
-- **JWT** - Authentication tokens
-- **bcrypt** - Password hashing
-- **cryptography** - Cryptographic primitives
-- **osquery** - Endpoint monitoring
-- **TLS 1.3** - Transport encryption
-
----
-
-## Roadmap
-
-**Current version: v0.8.0 (Security-Hardened)**
-
-**Phase 1: Stabilization** - Done
-
-- Core security controls, documentation, CI/CD
-
-**Phase 2: Security Hardening** - Done
-
-- 3-round security audit, 35 issues fixed
-- 96/98 Dependabot alerts resolved
-- JWT revocation, account lockout, network segmentation
-- Docker network isolation, CI/CD secrets, Prometheus alerting
-
-**Phase 3: Feature Expansion** - Planned
-
-- Additional cloud provider integrations
-- Extended SOAR capabilities
-- Next.js 16 migration
-
----
-
-## Commercial support & consulting
-
-Running Wildbox - or building out SIEM/SOAR/WAF? I offer paid support, deployment & tuning, and consulting - custom detection & SOAR, hardening, and WAF. Reach out: **fabrizio.salmi@gmail.com**.
-
-## Contributing
-
-See **[Contributing Guide](CONTRIBUTING.md)** for development setup and guidelines.
-
----
+Unit tests run per service; see `.github/workflows/test.yml` for the exact
+commands CI uses. Contribution guidelines: [CONTRIBUTING.md](CONTRIBUTING.md).
+Engineering documents (architecture decisions, testing strategy, service
+lifecycle) are indexed on the [contributor docs](https://www.wildbox.io/contributing/) page.
 
 ## Documentation
 
-Full documentation: **[wildbox.io](https://www.wildbox.io)**
-
-- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - Deployment guide
-- **[SECURITY.md](SECURITY.md)** - Security policy and vulnerability reporting
-- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
-- **[CHANGELOG.md](CHANGELOG.md)** - Version history
-
----
-
-## License
-
-MIT License. See [LICENSE](LICENSE).
-
----
+| Topic | Link |
+| :--- | :--- |
+| Documentation portal | [wildbox.io/docs.html](https://www.wildbox.io/docs.html) |
+| Quick start (detailed) | [guides/quickstart](https://www.wildbox.io/guides/quickstart/) |
+| Credentials and authentication | [guides/credentials](https://www.wildbox.io/guides/credentials/) |
+| API reference | [wildbox.io/api](https://www.wildbox.io/api/) |
+| Upgrading between versions | [UPGRADING.md](UPGRADING.md) |
+| Troubleshooting | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) |
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
-- **Security**: fabrizio.salmi@gmail.com
+- Bugs and feature requests: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
+- Questions: [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions)
+- Commercial support, deployment and consulting: fabrizio.salmi@gmail.com
+
+## License
+
+[MIT](LICENSE)

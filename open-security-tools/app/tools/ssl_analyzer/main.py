@@ -4,6 +4,7 @@ import ssl
 import socket
 from datetime import datetime, timezone
 from typing import List, Dict
+from ...utils.tls import probe_certificate_trust
 from .schemas import SSLAnalyzerInput, SSLAnalyzerOutput, CertificateInfo, SSLVulnerability
 def analyze_certificate(cert_der: bytes) -> CertificateInfo:
     """Analyze SSL certificate."""
@@ -34,14 +35,14 @@ def analyze_certificate(cert_der: bytes) -> CertificateInfo:
     
     # Calculate days until expiry
     now = datetime.now(timezone.utc)
-    days_until_expiry = (cert.not_valid_after - now).days
+    days_until_expiry = (cert.not_valid_after_utc - now).days
     
     return CertificateInfo(
         subject=subject,
         issuer=issuer,
         serial_number=str(cert.serial_number),
-        not_before=cert.not_valid_before.replace(tzinfo=timezone.utc),
-        not_after=cert.not_valid_after.replace(tzinfo=timezone.utc),
+        not_before=cert.not_valid_before_utc,
+        not_after=cert.not_valid_after_utc,
         days_until_expiry=days_until_expiry,
         signature_algorithm=cert.signature_algorithm_oid._name,
         public_key_size=cert.public_key().key_size,
@@ -140,6 +141,12 @@ def generate_recommendations(vulnerabilities: List[SSLVulnerability], ssl_versio
     
     if any("key size" in vuln.name.lower() for vuln in vulnerabilities):
         recommendations.append("Use RSA keys of 2048 bits or higher, or ECDSA keys")
+
+    if any(vuln.name == "Untrusted Certificate" for vuln in vulnerabilities):
+        recommendations.append(
+            "Serve a certificate issued by a publicly trusted CA that covers this hostname, "
+            "together with its intermediate certificates"
+        )
     
     recommendations.extend([
         "Enable HTTP Strict Transport Security (HSTS)",
@@ -149,12 +156,36 @@ def generate_recommendations(vulnerabilities: List[SSLVulnerability], ssl_versio
     
     return recommendations
 
+def check_certificate_trust(input_data: SSLAnalyzerInput) -> List[SSLVulnerability]:
+    """Report whether the presented certificate verifies (chain + hostname)."""
+    try:
+        reason = probe_certificate_trust(input_data.target, input_data.port, input_data.timeout)
+    except (OSError, ValueError) as e:
+        return [SSLVulnerability(
+            name="Certificate Trust Not Determined",
+            severity="medium",
+            description=f"A verified handshake could not be completed: {e}"
+        )]
+    if reason is None:
+        return []
+    return [SSLVulnerability(
+        name="Untrusted Certificate",
+        severity="high",
+        description=f"Certificate verification failed: {reason}"
+    )]
+
 def execute_tool(input_data: SSLAnalyzerInput) -> SSLAnalyzerOutput:
     """Execute the SSL/TLS analyzer tool."""
     timestamp = datetime.now()
     
     try:
-        # Create SSL context
+        # Verification is off for THIS handshake by design: the tool exists to
+        # report on the certificate a host presents, including expired,
+        # self-signed or mismatched ones, so it has to complete the handshake
+        # to read it. Whether the certificate is trusted is decided separately
+        # below by a verified handshake (probe_certificate_trust) and reported
+        # as an "Untrusted Certificate" vulnerability when it fails. Nothing
+        # fetched over this connection is used except the certificate itself.
         context = ssl.create_default_context()
         context.check_hostname = False
         context.verify_mode = ssl.CERT_NONE
@@ -166,12 +197,14 @@ def execute_tool(input_data: SSLAnalyzerInput) -> SSLAnalyzerOutput:
                 ssl_version = ssock.version()
                 cipher_suite = ssock.cipher()[0] if ssock.cipher() else "Unknown"
                 
-                # Get certificate
-                cert_der = ssock.getpeercert_chain()[0].to_bytes()
+                # Get certificate (the leaf, as presented). getpeercert_chain()
+                # does not exist on ssl.SSLSocket; it raised AttributeError.
+                cert_der = ssock.getpeercert(binary_form=True)
                 cert_info = analyze_certificate(cert_der)
                 
                 # Check vulnerabilities
                 vulnerabilities = check_vulnerabilities(ssl_version, cipher_suite, cert_info)
+                vulnerabilities.extend(check_certificate_trust(input_data))
                 
                 # Calculate security score
                 security_score = calculate_security_score(ssl_version, cipher_suite, vulnerabilities)
@@ -180,6 +213,7 @@ def execute_tool(input_data: SSLAnalyzerInput) -> SSLAnalyzerOutput:
                 recommendations = generate_recommendations(vulnerabilities, ssl_version)
                 
                 return SSLAnalyzerOutput(
+                    success=True,
                     target=input_data.target,
                     port=input_data.port,
                     timestamp=timestamp,
@@ -194,6 +228,8 @@ def execute_tool(input_data: SSLAnalyzerInput) -> SSLAnalyzerOutput:
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         # Return basic output with error information
         return SSLAnalyzerOutput(
+            success=False,
+            error_message=str(e),
             target=input_data.target,
             port=input_data.port,
             timestamp=timestamp,

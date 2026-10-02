@@ -22,38 +22,15 @@ celery[redis]==5.3.1
 redis==5.0.1
 boto3==1.34.63
 botocore==1.34.63
-google-api-python-client==2.108.0
+# Cloud credentials only. app/worker.py imports google.auth and
+# azure.identity to build sessions; every GCP and Azure check runs on
+# sample data and names its SDK only in a comment. The 23 other google-*
+# and seven azure-mgmt-* pins that used to sit here were never imported,
+# and the 2023 google-cloud-* releases require protobuf<5, which held it at
+# 4.25.9 (PYSEC-2026-1805, fixed in 5.29.6). Add an SDK back together with
+# the check that imports it (#415).
 google-auth==2.23.4
-google-auth-oauthlib==1.1.0
-google-auth-httplib2==0.2.0
-google-cloud-compute==1.15.0
-google-cloud-storage==2.10.0
-google-cloud-logging==3.8.0
-google-cloud-monitoring==2.16.0
-google-cloud-pubsub==2.18.4
-google-cloud-dns==0.34.1
-google-cloud-functions==1.13.3
-google-cloud-kms==2.19.1
-google-cloud-bigquery==3.12.0
-google-cloud-secret-manager==2.16.4
-google-cloud-container==2.31.0
-google-cloud-resource-manager==1.10.4
-google-cloud-firestore==2.13.1
-google-cloud-scheduler==2.13.4
-google-cloud-securitycenter==1.23.1
-google-cloud-binary-authorization==1.13.2
-google-cloud-redis==2.13.1
-google-cloud-asset==3.19.1
-google-cloud-service-usage==1.13.1
-google-cloud-dataflow-client==0.8.4
 azure-identity==1.16.1
-azure-mgmt-resource==23.0.1
-azure-mgmt-storage==21.1.0
-azure-mgmt-network==25.2.0
-azure-mgmt-compute==30.3.0
-azure-mgmt-sql==3.0.1
-azure-mgmt-security==6.0.0
-azure-mgmt-monitor==6.0.2
 # Pydantic was pinned to 2.5.0 (November 2023). That single pin held FastAPI at
 # 0.125 and Starlette at 0.50 in this service's lock, while the other services
 # resolved to Starlette 1.6 -- three Starlette majors across one deployment,

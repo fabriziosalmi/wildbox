@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 
 import jwt
 from jwt.exceptions import InvalidTokenError
-from passlib.context import CryptContext
+from fastapi_users.password import PasswordHelper
 from fastapi import HTTPException, Depends, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +21,12 @@ from .config import settings
 from .database import get_db
 from .models import User, TeamMembership, Team, ApiKey
 
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing: the same helper fastapi-users uses for registration, the
+# initial admin and PATCH /users/me. It hashes with Argon2id and verifies
+# Argon2id and bcrypt. This used to be passlib with bcrypt only, which raises
+# UnknownHashError on the Argon2id hashes fastapi-users writes, so the custom
+# password-change and self-deletion routes failed for every user (#501).
+password_helper = PasswordHelper()
 
 # HTTP Bearer token security
 security = HTTPBearer()
@@ -69,13 +73,14 @@ def hash_api_key(api_key: str) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify a password against its hash (Argon2id or legacy bcrypt)."""
+    verified, _ = password_helper.verify_and_update(plain_password, hashed_password)
+    return verified
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password for storage."""
-    return pwd_context.hash(password)
+    """Hash a password for storage (Argon2id)."""
+    return password_helper.hash(password)
 
 
 def create_access_token(data: Dict[str, Any], expires_delta: Optional[timedelta] = None) -> str:

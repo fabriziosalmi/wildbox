@@ -7,7 +7,6 @@ and performs security analysis to detect potential threats.
 
 import asyncio
 import aiohttp
-import ssl
 from urllib.parse import urlparse, parse_qs
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -15,6 +14,7 @@ import time
 import re
 
 from ...input_validation import InputSanitizer  # SSRF guard
+from ...utils.tls import certificate_error_message, client_ssl
 
 from .schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 class URLShortenerAnalyzer:
@@ -70,18 +70,20 @@ class URLShortenerAnalyzer:
     
     async def analyze_url(self, url: str, follow_redirects: bool = True, 
                          max_redirects: int = 10, timeout: int = 10,
-                         check_reputation: bool = True) -> Dict[str, Any]:
-        """Analyze a shortened URL"""
+                         check_reputation: bool = True,
+                         verify_ssl: bool = True) -> Dict[str, Any]:
+        """Analyze a shortened URL.
+
+        A hop whose TLS certificate does not verify raises
+        aiohttp.ClientConnectorCertificateError; it is not retried unverified.
+        """
         
         redirect_chain = []
         current_url = str(url)
         
-        # Create SSL context that allows self-signed certificates
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-        
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
+        # Certificates are verified unless the caller set verify_ssl=False
+        # for this analysis.
+        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
         custom_timeout = aiohttp.ClientTimeout(total=timeout)
         
         try:
@@ -133,6 +135,8 @@ class URLShortenerAnalyzer:
                             else:
                                 break
                                 
+                    except aiohttp.ClientConnectorCertificateError:
+                        raise
                     except aiohttp.ClientError as e:
                         # If HEAD fails, try GET
                         try:
@@ -153,6 +157,8 @@ class URLShortenerAnalyzer:
                                 )
                                 redirect_chain.append(hop)
                                 break
+                        except aiohttp.ClientConnectorCertificateError:
+                            raise
                         except Exception:
                             break
                 
@@ -170,6 +176,8 @@ class URLShortenerAnalyzer:
                     'security_analysis': security_analysis
                 }
                 
+        except aiohttp.ClientConnectorCertificateError:
+            raise
         except asyncio.TimeoutError:
             raise Exception(f"Request timeout for {url}")
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
@@ -273,7 +281,8 @@ async def execute_tool(params: URLShortenerInput) -> URLShortenerOutput:
             follow_redirects=params.follow_redirects,
             max_redirects=params.max_redirects,
             timeout=params.timeout,
-            check_reputation=params.check_reputation
+            check_reputation=params.check_reputation,
+            verify_ssl=params.verify_ssl
         )
         
         return URLShortenerOutput(
@@ -288,6 +297,28 @@ async def execute_tool(params: URLShortenerInput) -> URLShortenerOutput:
             error=None
         )
         
+    except aiohttp.ClientConnectorCertificateError as e:
+        # Reported as-is. There is no fallback to an unverified connection.
+        message = certificate_error_message(e)
+        return URLShortenerOutput(
+            success=False,
+            original_url=str(params.shortened_url),
+            final_url=None,
+            redirect_chain=[],
+            total_redirects=0,
+            shortener_service=None,
+            security_analysis=SecurityAnalysis(
+                is_suspicious=False,
+                risk_level="unknown",
+                threats_detected=[],
+                reputation_score=None,
+                phishing_indicators=[],
+                malware_indicators=[]
+            ),
+            timestamp=datetime.now(),
+            error=message,
+            error_message=message
+        )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return URLShortenerOutput(
             success=False,

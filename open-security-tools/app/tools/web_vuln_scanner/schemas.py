@@ -2,6 +2,7 @@
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...utils.tls import VERIFY_SSL_DESCRIPTION
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from enum import Enum
@@ -57,6 +58,10 @@ class WebVulnScannerInput(BaseToolInput):
         description="Timeout in seconds for the scan",
         ge=10,
         le=600
+    )
+    verify_ssl: bool = Field(
+        default=True,
+        description=VERIFY_SSL_DESCRIPTION
     )
 
 
