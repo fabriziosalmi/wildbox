@@ -49,15 +49,18 @@ which every proxied route includes, then send:
 proxy_set_header X-Wildbox-User-ID $wildbox_user_id;
 proxy_set_header X-Wildbox-Team-ID $wildbox_team_id;
 proxy_set_header X-Wildbox-Role $wildbox_role;
-proxy_set_header X-Gateway-Secret $gateway_secret;
+proxy_set_header X-Gateway-Secret $wildbox_gateway_secret;
 proxy_set_header X-Request-ID $request_id;
 proxy_set_header Authorization "";
 ```
 
-`$gateway_secret` is set in the server block from the gateway's
-`GATEWAY_INTERNAL_SECRET` environment variable, so a client cannot supply it.
-The server block initializes the three `$wildbox_*` variables to empty
-strings, and nginx does not send a header whose value is empty.
+The server block initializes `$wildbox_gateway_secret` and the three
+`$wildbox_*` identity variables to empty strings, and nginx does not send a
+header whose value is empty. `authenticate()` fills them in, the secret from
+the gateway's `GATEWAY_INTERNAL_SECRET`, only for a request it let through
+(`auth_handler.lua`). So the gateway sends its proof of origin only on routes
+it has authenticated; every other location (identity's routes, the
+dashboard) forwards no `X-Gateway-Secret` and drops one a client sent.
 
 ### Routes that differ
 
