@@ -121,9 +121,10 @@ Key configuration options:
    make dev
    ```
 
-3. **Access application:**
-   - Web Interface: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
+3. **Check the service:**
    - Health Check: http://localhost:8000/health
+   - OpenAPI schema: http://localhost:8000/openapi.json
+   - Browse the tools on the dashboard's `/toolbox` page; the service has no
+     web interface of its own
 
 The project is now fully containerized and community-ready! 🎉

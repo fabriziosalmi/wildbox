@@ -1,1 +1,0 @@
-"""Web interface package."""

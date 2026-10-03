@@ -2,30 +2,18 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import {
-  Search,
-  Play,
-  Settings,
-  Clock,
-  CheckCircle,
-  AlertCircle,
-  ExternalLink,
-  Book,
-  Filter,
-} from 'lucide-react'
+import { Search, Settings, CheckCircle, AlertCircle, Book, Filter } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, gatewayBaseUrl, type ApiError } from '@/lib/api-client'
+import { apiClient, type ApiError } from '@/lib/api-client'
 
-// A tool's own page in the tools service, through the gateway's /tools/
-// route, which accepts the dashboard's session cookie. These links used
-// NEXT_PUBLIC_API_BASE_URL, which no build set (it fell back to the tools
-// service's port on the browser's machine, http://localhost:8000) and which
-// docker-compose.yml pointed at a path that does not exist (#559).
-const toolPageUrl = (name: string) => `${gatewayBaseUrl}/tools/${encodeURIComponent(name)}`
+// The route that runs a tool, as the gateway exposes it. Each card used to
+// open the tools service's own page for the tool at /tools/<name>; that
+// standalone UI is removed (#581), so the card names the API call instead.
+const toolApiPath = (name: string) => `/api/v1/tools/${encodeURIComponent(name)}`
 
 // The tools service's own /docs is not routed through the gateway; the
 // dashboard's API documentation page is.
@@ -41,18 +29,6 @@ interface SecurityTool {
   author: string
   category: string
   endpoint: string
-}
-
-/**
- * A tool opened from this page. The tool runs in its own tab, in the tools
- * service's page, so this page never learns whether or when it finished: it
- * records only that it was opened. It used to mark each entry "completed"
- * after three seconds with a random duration of 5-34 s (#559).
- */
-interface OpenedTool {
-  id: string
-  tool: string
-  openedAt: string
 }
 
 // apiClient is mounted on the gateway's /api/v1, so this is GET /api/v1/tools.
@@ -83,15 +59,9 @@ function formatCategoryName(category: string): string {
     .join(' ')
 }
 
-function ToolCard({
-  tool,
-  onExecute,
-}: {
-  tool: SecurityTool
-  onExecute: (tool: SecurityTool) => void
-}) {
+function ToolCard({ tool }: { tool: SecurityTool }) {
   return (
-    <Card className="group cursor-pointer transition-shadow hover:shadow-md">
+    <Card className="group transition-shadow hover:shadow-md">
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="flex-1">
@@ -113,18 +83,9 @@ function ToolCard({
           </div>
 
           <div className="flex items-center gap-2">
-            <Button onClick={() => onExecute(tool)} className="flex-1" size="sm">
-              <Play className="mr-2 h-4 w-4" />
-              Execute Tool
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => openInNewTab(toolPageUrl(tool.name))}
-              aria-label={`Open ${tool.display_name} in the tools service`}
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
+            <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
+              POST {toolApiPath(tool.name)}
+            </code>
             <Button
               variant="outline"
               size="sm"
@@ -140,62 +101,9 @@ function ToolCard({
   )
 }
 
-function OpenedToolsPanel({ opened }: { opened: OpenedTool[] }) {
-  if (opened.length === 0) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Recently Opened</CardTitle>
-          <CardDescription>Tools you open will be listed here</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="py-8 text-center text-muted-foreground">
-            <Clock className="mx-auto mb-4 h-12 w-12 opacity-50" />
-            <p>No tools opened yet</p>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-lg">Recently Opened</CardTitle>
-        <CardDescription>
-          Each tool runs in its own tab; its results are shown there
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-3">
-          {opened.map(entry => (
-            <div
-              key={entry.id}
-              className="flex items-center justify-between rounded-lg bg-muted/50 p-3"
-            >
-              <div className="flex items-center gap-3">
-                <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="font-medium">{entry.tool}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {new Date(entry.openedAt).toLocaleTimeString()}
-                  </p>
-                </div>
-              </div>
-
-              <Badge variant="secondary">opened</Badge>
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function ToolboxPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [opened, setOpened] = useState<OpenedTool[]>([])
 
   const {
     data: tools = [],
@@ -223,19 +131,6 @@ export default function ToolboxPage() {
 
     return matchesSearch && matchesCategory
   })
-
-  const handleExecuteTool = (tool: SecurityTool) => {
-    setOpened(prev => [
-      {
-        id: `${tool.name}-${Date.now()}`,
-        tool: tool.display_name,
-        openedAt: new Date().toISOString(),
-      },
-      ...prev.slice(0, 9), // Keep last 10
-    ])
-
-    openInNewTab(toolPageUrl(tool.name))
-  }
 
   if (isLoading) {
     return (
@@ -295,7 +190,9 @@ export default function ToolboxPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Security Toolbox</h1>
-            <p className="text-muted-foreground">Execute security tools and analyze results</p>
+            <p className="text-muted-foreground">
+              Browse the security tools; run them through the API
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => openInNewTab(API_DOCS_PATH)}>
@@ -306,7 +203,7 @@ export default function ToolboxPage() {
         </div>
 
         {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2">
@@ -348,19 +245,6 @@ export default function ToolboxPage() {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded bg-orange-100">
-                  <Clock className="h-4 w-4 text-orange-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Recently Opened</p>
-                  <p className="text-xl font-bold">{opened.length}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Search and Filters */}
@@ -395,39 +279,29 @@ export default function ToolboxPage() {
           </CardContent>
         </Card>
 
-        {/* Main Content */}
-        <div className="grid gap-6 lg:grid-cols-3">
-          {/* Tools Grid */}
-          <div className="lg:col-span-2">
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold">Available Tools ({filteredTools.length})</h2>
+        {/* Tools Grid */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Available Tools ({filteredTools.length})</h2>
 
-              {filteredTools.length === 0 ? (
-                <Card>
-                  <CardContent className="pt-6">
-                    <div className="py-8 text-center">
-                      <Search className="mx-auto mb-4 h-12 w-12 opacity-50" />
-                      <h3 className="mb-2 text-lg font-semibold">No Tools Found</h3>
-                      <p className="text-muted-foreground">
-                        Try adjusting your search or filter criteria.
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {filteredTools.map(tool => (
-                    <ToolCard key={tool.name} tool={tool} onExecute={handleExecuteTool} />
-                  ))}
+          {filteredTools.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="py-8 text-center">
+                  <Search className="mx-auto mb-4 h-12 w-12 opacity-50" />
+                  <h3 className="mb-2 text-lg font-semibold">No Tools Found</h3>
+                  <p className="text-muted-foreground">
+                    Try adjusting your search or filter criteria.
+                  </p>
                 </div>
-              )}
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredTools.map(tool => (
+                <ToolCard key={tool.name} tool={tool} />
+              ))}
             </div>
-          </div>
-
-          {/* Execution Panel */}
-          <div>
-            <OpenedToolsPanel opened={opened} />
-          </div>
+          )}
         </div>
       </div>
     </MainLayout>

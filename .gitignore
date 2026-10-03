@@ -1,7 +1,6 @@
 open-security-tools/app/__pycache__/
 open-security-tools/app/api/__pycache__/
 open-security-tools/app/tools/__pycache__/
-open-security-tools/app/web/__pycache__/
 open-security-tools/*.pyc
 open-security-tools/.env
 open-security-tools/app/tools/compliance_checker/__pycache__/schemas.cpython-312.pyc

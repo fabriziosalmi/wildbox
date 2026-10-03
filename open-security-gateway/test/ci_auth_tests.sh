@@ -9,6 +9,7 @@
 #   * API-key scope enforcement (tools:read / tools:execute mapping + hierarchy)
 #   * X-Gateway-Secret proof-of-origin propagation (wrong secret -> 403)
 #   * auth-cache short-circuit (one /internal/authorize call for N requests)
+#   * the removed standalone tools UI (/tools/ answers 404, #581)
 
 set -u
 
@@ -150,6 +151,28 @@ done
 assert_strict_json "pending password change error body"
 request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
 assert_json "pending decision cached" '."pending-password-change-token"' '1'
+
+# 10c-10f. The standalone tools UI is removed (#581): /tools/ is an
+#          explicit 404 from the gateway, with or without credentials, the
+#          tools API is unaffected, and the auth_token cookie that only the
+#          UI's page loads relied on is no longer a credential.
+request "standalone tools UI is gone" 404 "$GATEWAY_URL/tools/"
+assert_json "removed UI error code" '.error' 'endpoint_not_found'
+assert_strict_json "removed UI error body"
+if echo "$BODY" | grep -q "standalone tools UI was removed"; then
+    pass "removed UI answered by its own location, not a catch-all"
+else
+    fail "removed UI: expected the /tools/ removal message, got: $(head -c 300 /tmp/body.json)"
+fi
+request "tool page gone even when authenticated" 404 \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/tools/hash_generator"
+assert_json "authenticated tool page error code" '.error' 'endpoint_not_found'
+request "tools API still served" 200 \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/tools/echo"
+assert_json "tools API reaches the service" '.path' '/api/v1/tools/echo'
+request "auth_token cookie alone is not a credential" 401 \
+    -H "Cookie: auth_token=valid-bearer-token" "$GATEWAY_URL/api/v1/tools/echo"
+assert_json "cookie-only error code" '.error' 'authentication_required'
 
 # 11. Proof-of-origin: a gateway configured with the wrong
 #     GATEWAY_INTERNAL_SECRET is rejected by identity (403) and must NOT
