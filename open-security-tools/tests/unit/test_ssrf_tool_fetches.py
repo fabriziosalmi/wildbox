@@ -29,6 +29,11 @@ from app.tools.http_security_scanner import main as http_scanner  # noqa: E402
 from app.tools.http_security_scanner.schemas import (  # noqa: E402
     HttpSecurityScannerInput,
 )
+from app.tools.sql_injection_scanner import main as sqli_scanner  # noqa: E402
+from app.tools.sql_injection_scanner.schemas import (  # noqa: E402
+    SQLInjectionScannerInput,
+)
+from app.tools.url_security_scanner import main as url_scanner  # noqa: E402
 
 PUBLIC_IP = "93.184.215.14"
 PUBLIC_IP_2 = "93.184.215.15"
@@ -258,3 +263,38 @@ def test_header_analyzer_refuses_what_its_old_check_let_through(dns, monkeypatch
 
 def test_header_analyzer_has_no_private_check_of_its_own():
     assert not hasattr(header_analyzer.HeaderSecurityAnalyzer, "_is_private_ip")
+
+
+# --- url_security_scanner: fail closed ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "url", ["http://unknown.example/", "http://rebind.example/", "http://224.0.0.1/"]
+)
+def test_url_scanner_redirect_analysis_fails_closed(dns, monkeypatch, url):
+    opened = []
+    monkeypatch.setattr(
+        url_scanner, "guarded_session", lambda **kw: opened.append(kw) or Recorder()
+    )
+    result = asyncio.run(url_scanner.URLSecurityScanner().analyze_redirects(url, 5, 5))
+    assert result.redirect_count == 0
+    assert result.redirect_security_issues[0].startswith("Blocked:")
+    assert opened == []
+
+
+# --- sql_injection_scanner: DNS resolution, fail closed ----------------------
+
+
+@pytest.mark.parametrize(
+    "host",
+    ["internal.example", "rebind.example", "metadata.example", "unknown.example"],
+)
+def test_sqli_scanner_resolves_the_target(dns, monkeypatch, host):
+    recorder = Recorder()
+    monkeypatch.setattr(sqli_scanner, "guarded_requests_session", lambda: recorder)
+    with pytest.raises(ValueError):
+        sqli_scanner.execute_tool(
+            SQLInjectionScannerInput(target_url=f"http://{host}/?id=1"),
+            user_id="user-1",
+        )
+    assert recorder.urls == []

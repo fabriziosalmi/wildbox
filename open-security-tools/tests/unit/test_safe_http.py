@@ -442,8 +442,10 @@ FETCHING_TOOLS = [
     "http_security_scanner",
     "metadata_extractor",
     "mobile_security_analyzer",
+    "sql_injection_scanner",
     "static_malware_analyzer",
     "url_analyzer",
+    "url_security_scanner",
     "web_vuln_scanner",
     "xss_scanner",
 ]
