@@ -523,8 +523,7 @@ local function required_scope_for_request(uri, method)
     local is_read = (method == "GET" or method == "HEAD" or method == "OPTIONS")
 
     -- Security tools and AI agents: running them is "execute".
-    if uri:find("^/api/tools/") or uri:find("^/api/v1/tools/")
-       or uri:find("^/api/v1/agents/") then
+    if uri:find("^/api/v1/tools/") or uri:find("^/api/v1/agents/") then
         return is_read and "tools:read" or "tools:execute"
     end
     -- Asynchronous tool tasks (#567): reading and listing them is tools:read,

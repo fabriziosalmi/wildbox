@@ -158,6 +158,28 @@ class TestToolsExecution:
         message = response.json().get("error", {}).get("message", "")
         assert "not authorized for destructive_test" in message, response.text[:200]
 
+    def test_the_deprecated_tools_alias_is_gone(self) -> None:
+        """/api/tools/ was removed after its announced sunset (#567).
+
+        The same authenticated request is served at /api/v1/tools/ and is
+        answered by the gateway's catch-all at the old path.
+        """
+        canonical = requests.get(
+            f"{self.base_url}/api/v1/tools/hash_generator/info",
+            headers=self.headers,
+            timeout=10
+        )
+        assert canonical.status_code == 200, canonical.text[:200]
+
+        alias = requests.get(
+            f"{self.base_url}/api/tools/hash_generator/info",
+            headers=self.headers,
+            timeout=10
+        )
+        assert alias.status_code == 404, alias.text[:200]
+        assert alias.json()["error"] == "endpoint_not_found"
+        assert "Sunset" not in alias.headers
+
     async def test_plan_based_protection(self) -> None:
         """Test plan-based execution protection"""
         try:
