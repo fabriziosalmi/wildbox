@@ -910,6 +910,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`users.recent_logins` in identity's system statistics** (#573).
+  `GET /api/v1/analytics/admin/system-stats` reported as "recent logins"
+  the number of users whose `updated_at` changed in the last day, so a
+  profile change counted as a login and a login that changed nothing
+  did not. identity keeps no record of successful logins (the lockout
+  counts only failures, and clears them on success), and nothing in
+  the dashboard read the field, so it is removed rather than estimated.
 - **Estimated request counts in identity's admin analytics** (#570).
   `GET /api/v1/analytics/admin/usage-summary` returned
   `summary.api_requests_today` as the number of API keys used in the

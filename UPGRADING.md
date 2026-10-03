@@ -384,6 +384,13 @@ when the previous 24 hours had no indicators; it used to report 100.0 (or
 0.0 when both periods were empty). A client that reads the field must
 accept null. Every other value is unchanged.
 
+### 20. `users.recent_logins` is gone from identity's system statistics
+
+`GET /api/v1/analytics/admin/system-stats` no longer returns
+`users.recent_logins`. It counted users whose record changed in the last
+day, not logins, and identity has no login count to put in its place. A
+script that reads it must stop; the dashboard never did.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a
