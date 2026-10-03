@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the counts are 0 and the score is null ("Not assessed"), not 0%. The
   page shows only what the service returns, and an error with a retry
   when it cannot. See UPGRADING.md for the field changes.
+- **`/vulnerabilities` lists what guardian holds, and says when it
+  cannot** (#572). The page asked guardian for
+  `/api/v1/vulnerabilities/vulnerabilities/`, which is not the list, and
+  turned that failure, like any other, into an empty result, so it
+  always read "No vulnerabilities found". It now calls
+  `/api/v1/vulnerabilities/`, pages with guardian's own previous / next
+  links instead of a page size guardian ignored, and shows a failed
+  request as an error with a retry. The statistics no longer announce
+  "No Vulnerabilities Found" while they are still loading, and their
+  error card gains a retry.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
