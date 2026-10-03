@@ -1,336 +1,206 @@
-"""
-FIXED Network Scanner Tool - Example of proper implementation
+"""Network Scanner: host discovery over a small range, with an optional TCP
+connect probe of common ports on the hosts that answer.
 
-This is a demonstration of how to fix the issues found in the original network_scanner tool:
-- Replaced bare except clauses with specific exception handling
-- Added proper input validation
-- Implemented resource management
-- Added rate limiting
-- Improved error handling and logging
+This is the only tool that sweeps a range of addresses; port_scanner and
+network_port_scanner each scan one host. Every run used to fail before the
+first probe (#615): ping_host indexed the boolean that a stub target check
+returned, and the TypeError was swallowed by asyncio.gather, so each scan
+reported success with no hosts. The stubs (a rate limiter that slept while
+holding its lock, a port "restriction" that skipped 22, 445 and 3389) are
+gone; probes are bounded by ``max_threads`` and each one by ``timeout``.
+
+Which targets may be scanned at all is decided centrally (#614), not here.
 """
 
 import asyncio
+import ipaddress
+import logging
 import shutil
 import socket
-import subprocess
-import ipaddress
 import time
-import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from contextlib import asynccontextmanager
-
-# Import fixed utilities
-from ...utils.tool_utils import (
-    InputValidator, SessionManager, ToolExceptionHandler, 
-    RateLimiter, MetricsCollector
-)
-# Note: Using simplified config for demonstration
-# from ...tool_config import ToolConfig, SecurityConfig
+from typing import List, Optional
 
 from ...tool_errors import RUN_ERRORS
-from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
+from .schemas import HostInfo, NetworkScannerInput, NetworkScannerOutput
+
 logger = logging.getLogger(__name__)
 
-# Tool metadata
 TOOL_INFO = {
     "name": "Network Scanner",
-    "description": "Secure network scanner with proper error handling and resource management",
+    "description": (
+        "Discovers live hosts in a small range with ping and, with scan_type "
+        "tcp, probes their common ports with a TCP connect"
+    ),
     "category": "network_scanning",
     "author": "Wildbox Security",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "input_schema": NetworkScannerInput,
     "output_schema": NetworkScannerOutput,
-    "tags": ["network", "scanning", "discovery", "hosts"]
+    "tags": ["network", "scanning", "discovery", "hosts"],
 }
 
-# Common ports to scan for TCP scans
-COMMON_PORTS = [21, 22, 23, 25, 53, 80, 110, 135, 139, 143, 443, 445, 993, 995, 1723, 3389, 5900, 8080]
+# Ports probed on each live host by a tcp scan.
+COMMON_PORTS = [
+    21,
+    22,
+    23,
+    25,
+    53,
+    80,
+    110,
+    135,
+    139,
+    143,
+    443,
+    445,
+    993,
+    995,
+    1723,
+    3389,
+    5900,
+    8080,
+]
 
-# Simplified configuration for demonstration (replacing missing app.config.tool_config)
-class SimpleToolConfig:
-    DEFAULT_TIMEOUT = 30
-    @staticmethod
-    def get_tool_config(tool_name):
-        return {
-            'timeout': 30,
-            'max_concurrent': 50,
-            'rate_limit': 10
-        }
+# A /22: the most addresses one run may cover. Larger ranges are refused
+# before any probe rather than silently truncated.
+MAX_HOSTS = 1024
 
-class SimpleSecurityConfig:
-    MAX_BATCH_SIZE = 1000
-    
-    @staticmethod
-    def validate_scan_target(ip):
-        # Simple validation - check if it's a valid IP format
-        import re
-        pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
-        return re.match(pattern, ip) is not None
-    
-    @staticmethod
-    def is_port_restricted(port):
-        # Basic port restrictions
-        restricted_ports = [22, 25, 135, 139, 445, 1433, 3389]
-        return port in restricted_ports
+# How long past its own -W deadline a ping may run before it is killed.
+PING_GRACE_SECONDS = 2.0
 
-# Use simplified configs
-ToolConfig = SimpleToolConfig
-SecurityConfig = SimpleSecurityConfig
+# Bound on the reverse DNS lookup of a live host.
+REVERSE_DNS_TIMEOUT = 2.0
 
-# Initialize rate limiter and metrics
-rate_limiter = RateLimiter(max_requests=50, time_window=60)  # 50 requests per minute
-metrics = MetricsCollector()
+PING_MISSING = (
+    "The 'ping' binary is not installed or not on PATH. Install iputils-ping "
+    "(it is in the tools image) to run host discovery."
+)
+
+
+def parse_targets(network: str) -> List[str]:
+    """The addresses ``network`` names, refusing more than MAX_HOSTS.
+
+    Accepts a single address, CIDR notation, or a last-octet IPv4 range such
+    as ``192.168.1.10-20``. The size is checked before the addresses are
+    listed, so an IPv6 /64 costs nothing to refuse.
+    """
+    text = network.strip()
+    if "-" in text and "/" not in text:
+        return _parse_last_octet_range(text)
+    try:
+        net = ipaddress.ip_network(text, strict=False)
+    except ValueError as e:
+        raise ValueError(f"Invalid network {network!r}: {e}") from None
+    if net.num_addresses > MAX_HOSTS:
+        raise ValueError(
+            f"Range is too large: {net.num_addresses} addresses, the limit is "
+            f"{MAX_HOSTS} (a /22)."
+        )
+    if net.num_addresses <= 2:
+        # A single address, or a /31 or /127 point-to-point link: every
+        # address is a host.
+        return [str(ip) for ip in net]
+    return [str(ip) for ip in net.hosts()]
+
+
+def _parse_last_octet_range(text: str) -> List[str]:
+    base, _, last = text.rpartition(".")
+    start_text, _, end_text = last.partition("-")
+    try:
+        first = ipaddress.IPv4Address(f"{base}.{start_text}")
+        final = ipaddress.IPv4Address(f"{base}.{end_text}")
+    except ValueError as e:
+        raise ValueError(f"Invalid network {text!r}: {e}") from None
+    if final < first:
+        raise ValueError(f"Invalid network {text!r}: the range ends before it starts")
+    return [str(ipaddress.IPv4Address(n)) for n in range(int(first), int(final) + 1)]
 
 
 class NetworkScanner:
-    """Secure network scanner implementation"""
-    
-    def __init__(self, config: Dict[str, Any]):
-        self.config = config
-        self.timeout = config.get('timeout', ToolConfig.DEFAULT_TIMEOUT)
-        self.max_concurrent = config.get('max_concurrent', 50)
-        
-    async def ping_host(self, ip: str) -> HostInfo:
-        """Ping a single host to check if it's alive with proper error handling"""
-        start_time = time.time()
-        
-        # Validate IP address first
-        try:
-            InputValidator.validate_ip(ip)
-        except ValueError as e:
-            logger.warning(f"Invalid IP address {ip}: {e}")
-            return HostInfo(
-                ip_address=ip,
-                hostname=None,
-                status="invalid",
-                response_time=None,
-                error=str(e)
-            )
-        
-        # Check if IP is allowed to be scanned
-        scan_validation = SecurityConfig.validate_scan_target(ip)
-        if not scan_validation['allowed']:
-            logger.warning(f"IP {ip} not allowed for scanning: {scan_validation['issues']}")
-            return HostInfo(
-                ip_address=ip,
-                hostname=None,
-                status="restricted",
-                response_time=None,
-                error="Target not allowed for scanning"
-            )
-        
-        # Apply rate limiting
-        await rate_limiter.acquire()
-        
-        try:
-            # Resolve the binary first and report its absence in terms an operator
-            # can act on, the way container_security_scanner does for trivy. The
-            # image installs iputils-ping; without this check a missing package
-            # surfaced as a bare FileNotFoundError (WILDBO-CONF-07).
-            ping_bin = shutil.which("ping")
-            if not ping_bin:
-                raise RuntimeError(
-                    "The 'ping' binary is not installed or not on PATH. Install "
-                    "iputils-ping (it is in the tools image) to run host discovery."
-                )
+    """Probes a list of addresses, at most ``max_concurrent`` at a time.
 
-            # NOTE: -W takes SECONDS on Linux (iputils), not milliseconds. This
-            # used to pass int(self.timeout * 1000), i.e. a timeout three orders
-            # of magnitude too large (WILDBO-CONF-07).
-            cmd = [ping_bin, '-c', '1', '-W', str(max(1, int(self.timeout))), ip]
-            
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            
+    The semaphore is taken per probe (one ping, one connect, one lookup),
+    never per host, so a host waiting for its port probes holds no slot.
+    """
+
+    def __init__(self, ping_bin: str, timeout: int, max_concurrent: int):
+        self.ping_bin = ping_bin
+        self.timeout = timeout
+        self.slots = asyncio.Semaphore(max_concurrent)
+
+    async def ping(self, ip: str) -> HostInfo:
+        """One echo request, run without a shell, the address as its own
+        argument. -W is in seconds with iputils ping."""
+        argv = [self.ping_bin, "-c", "1", "-W", str(self.timeout), ip]
+        async with self.slots:
+            start = time.monotonic()
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(), 
-                    timeout=self.timeout + 5  # Add buffer for subprocess timeout
+                process = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+            except OSError as e:
+                return HostInfo(ip_address=ip, status="error", error=f"ping: {e}")
+            try:
+                await asyncio.wait_for(
+                    process.communicate(), self.timeout + PING_GRACE_SECONDS
                 )
             except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
                 return HostInfo(
                     ip_address=ip,
-                    hostname=None,
                     status="timeout",
-                    response_time=None,
-                    error=f"Ping timeout after {self.timeout}s"
+                    error=f"ping did not return within {self.timeout}s",
                 )
-            
-            if process.returncode == 0:
-                # Host is alive, try to get hostname
-                hostname = await self._get_hostname(ip)
-                response_time = (time.time() - start_time) * 1000
-                
-                return HostInfo(
-                    ip_address=ip,
-                    hostname=hostname,
-                    status="alive",
-                    response_time=response_time
-                )
-            else:
-                return HostInfo(
-                    ip_address=ip,
-                    hostname=None,
-                    status="dead",
-                    response_time=None
-                )
-        
-        except OSError as e:
-            logger.error(f"OS error pinging {ip}: {e}")
-            return HostInfo(
-                ip_address=ip,
-                hostname=None,
-                status="error",
-                response_time=None,
-                error=f"OS error: {e}"
-            )
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Unexpected error pinging {ip}: {e}")
-            return HostInfo(
-                ip_address=ip,
-                hostname=None,
-                status="error",
-                response_time=None,
-                error=f"Unexpected error: {type(e).__name__}"
-            )
-    
-    async def _get_hostname(self, ip: str) -> Optional[str]:
-        """Get hostname for IP address with timeout"""
-        try:
-            # Use asyncio to make hostname resolution non-blocking
-            loop = asyncio.get_event_loop()
-            hostname = await asyncio.wait_for(
-                loop.run_in_executor(None, socket.gethostbyaddr, ip),
-                timeout=5.0  # 5 second timeout for hostname resolution
-            )
-            return hostname[0]
-        except (socket.herror, socket.gaierror, OSError, asyncio.TimeoutError):
-            # These are expected for many IPs
-            return None
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.debug(f"Unexpected error resolving hostname for {ip}: {e}")
-            return None
-    
-    async def tcp_scan_host(self, ip: str) -> HostInfo:
-        """Perform TCP scan on a host to detect open ports with proper error handling"""
-        # First ping the host
-        host_info = await self.ping_host(ip)
-        
-        if host_info.status != "alive":
-            return host_info
-        
-        # Scan common ports with connection pooling
-        open_ports = []
-        semaphore = asyncio.Semaphore(self.max_concurrent)
-        
-        async def scan_port(port: int) -> Optional[int]:
-            """Scan a single port with semaphore for concurrency control"""
-            async with semaphore:
-                # Check if port is restricted
-                if SecurityConfig.is_port_restricted(port):
-                    logger.debug(f"Skipping restricted port {port}")
-                    return None
-                
-                try:
-                    # Apply rate limiting
-                    await rate_limiter.acquire()
-                    
-                    future = asyncio.open_connection(ip, port)
-                    reader, writer = await asyncio.wait_for(future, timeout=self.timeout)
-                    
-                    # Properly close the connection
-                    writer.close()
-                    await writer.wait_closed()
-                    
-                    logger.debug(f"Port {port} open on {ip}")
-                    return port
-                    
-                except (asyncio.TimeoutError, ConnectionRefusedError, OSError):
-                    # These are expected for closed ports
-                    return None
-                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    logger.debug(f"Unexpected error scanning port {port} on {ip}: {e}")
-                    return None
-        
-        # Scan all ports concurrently
-        try:
-            port_tasks = [scan_port(port) for port in COMMON_PORTS]
-            results = await asyncio.gather(*port_tasks, return_exceptions=True)
-            
-            # Filter successful results
-            for result in results:
-                if isinstance(result, int):  # Successful port scan
-                    open_ports.append(result)
-                elif isinstance(result, Exception):
-                    logger.debug(f"Port scan exception: {result}")
-        
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Error during port scanning of {ip}: {e}")
-            host_info.error = f"Port scan error: {e}"
-        
-        # Update host info with port scan results
-        host_info.open_ports = sorted(open_ports) if open_ports else []
-        
-        return host_info
-    
-    def generate_ip_list(self, network: str) -> List[str]:
-        """Generate list of IP addresses from CIDR notation with proper validation"""
-        try:
-            # Try CIDR notation first
-            network_obj = ipaddress.ip_network(network, strict=False)
-            
-            # Limit the number of IPs to prevent abuse
-            max_ips = SecurityConfig.MAX_BATCH_SIZE
-            ips = list(network_obj.hosts())
-            
-            if len(ips) > max_ips:
-                logger.warning(f"Network {network} contains {len(ips)} IPs, limiting to {max_ips}")
-                ips = ips[:max_ips]
-            
-            return [str(ip) for ip in ips]
-            
-        except ValueError:
-            # Try to parse as single IP
+            elapsed_ms = (time.monotonic() - start) * 1000
+        if process.returncode == 0:
+            return HostInfo(ip_address=ip, status="alive", response_time=elapsed_ms)
+        return HostInfo(ip_address=ip, status="dead")
+
+    async def port_is_open(self, ip: str, port: int) -> bool:
+        """A TCP connect, given up after ``timeout`` seconds."""
+        async with self.slots:
             try:
-                InputValidator.validate_ip(network)
-                return [network]
-            except ValueError:
-                # Try range notation like 192.168.1.1-10
-                if '-' in network:
-                    try:
-                        base, range_part = network.rsplit('.', 1)
-                        if '-' in range_part:
-                            start, end = range_part.split('-')
-                            start_num = int(start)
-                            end_num = int(end)
-                            
-                            if not (0 <= start_num <= 255 and 0 <= end_num <= 255):
-                                raise ValueError("IP octets must be 0-255")
-                            
-                            if end_num < start_num:
-                                raise ValueError("End of range must be >= start")
-                            
-                            # Limit range size
-                            if (end_num - start_num + 1) > SecurityConfig.MAX_BATCH_SIZE:
-                                raise ValueError(f"IP range too large, max {SecurityConfig.MAX_BATCH_SIZE} IPs")
-                            
-                            ips = []
-                            for i in range(start_num, end_num + 1):
-                                ip = f"{base}.{i}"
-                                InputValidator.validate_ip(ip)  # Validate each IP
-                                ips.append(ip)
-                            
-                            return ips
-                    except (ValueError, IndexError) as e:
-                        raise ValueError(f"Invalid IP range format: {e}")
-                
-                raise ValueError(f"Invalid network format: {network}")
+                _, writer = await asyncio.wait_for(
+                    asyncio.open_connection(ip, port), self.timeout
+                )
+            except (OSError, asyncio.TimeoutError):
+                return False
+            writer.close()
+            try:
+                await writer.wait_closed()
+            except OSError:
+                pass
+            return True
+
+    async def hostname(self, ip: str) -> Optional[str]:
+        async with self.slots:
+            loop = asyncio.get_running_loop()
+            try:
+                name, _, _ = await asyncio.wait_for(
+                    loop.run_in_executor(None, socket.gethostbyaddr, ip),
+                    REVERSE_DNS_TIMEOUT,
+                )
+            except (OSError, asyncio.TimeoutError):
+                return None
+            return name
+
+    async def scan_host(self, ip: str, tcp: bool) -> HostInfo:
+        host = await self.ping(ip)
+        if host.status != "alive":
+            return host
+        host.hostname = await self.hostname(ip)
+        if tcp:
+            open_flags = await asyncio.gather(
+                *(self.port_is_open(ip, port) for port in COMMON_PORTS)
+            )
+            host.open_ports = [
+                port for port, is_open in zip(COMMON_PORTS, open_flags) if is_open
+            ]
+        return host
 
 
 def _scan_output(
@@ -345,12 +215,7 @@ def _scan_output(
     error: Optional[str] = None,
     message: Optional[str] = None,
 ) -> NetworkScannerOutput:
-    """The scan's result in NetworkScannerOutput's own fields.
-
-    execute_tool built the output with fields it does not have
-    (target_network, hosts_discovered, ...) and without the ones it requires,
-    so every run failed validation (#611).
-    """
+    """The scan's result in NetworkScannerOutput's own fields (#611)."""
     return NetworkScannerOutput(
         success=success,
         target=target_network,
@@ -368,158 +233,55 @@ def _scan_output(
 
 
 async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
-    """Execute the network scanner tool with comprehensive error handling"""
+    """Discover the live hosts of ``input_data.network``."""
     start_time = datetime.now()
-    
-    # Validate and sanitize network input before logging
-    if not input_data.network:
-        raise ValueError("Network parameter is required")
-    
-    # Sanitize network input for logging (remove any potentially dangerous chars)
-    safe_network = input_data.network.strip()[:100]  # Limit length and trim
-    logger.info(f"Starting network scan for {safe_network}")
-    
-    # Get tool configuration
-    tool_config = ToolConfig.get_tool_config('network_scanner')
-    
-    # Initialize scanner
-    scanner = NetworkScanner(tool_config)
-    
-    # Initialize metrics tracking
-    with metrics.timer("network_scanner.execution_time"):
-        try:
-            # Validate input
-            if not input_data.network:
-                raise ValueError("Network parameter is required")
-            
-            # Generate IP list
-            try:
-                ip_list = scanner.generate_ip_list(input_data.network)
-                logger.info(f"Generated {len(ip_list)} IPs to scan")
-            except ValueError as e:
-                metrics.counter("network_scanner.validation_error").increment()
-                return _scan_output(
-                    target_network=input_data.network,
-                    scan_type=input_data.scan_type,
-                    timestamp=start_time,
-                    execution_time=(datetime.now() - start_time).total_seconds(),
-                    hosts_discovered=[],
-                    total_hosts_scanned=0,
-                    alive_hosts=0,
-                    success=False,
-                    error=f"Invalid network format: {e}"
-                )
-            
-            # Check if we have any IPs to scan
-            if not ip_list:
-                return _scan_output(
-                    target_network=input_data.network,
-                    scan_type=input_data.scan_type,
-                    timestamp=start_time,
-                    execution_time=(datetime.now() - start_time).total_seconds(),
-                    hosts_discovered=[],
-                    total_hosts_scanned=0,
-                    alive_hosts=0,
-                    success=True,
-                    message="No valid IPs to scan in the specified network"
-                )
-            
-            # Perform scanning based on scan type
-            hosts_discovered = []
-            
-            if input_data.scan_type.lower() == "tcp":
-                logger.info(f"Performing TCP scan on {len(ip_list)} hosts")
-                scan_tasks = [scanner.tcp_scan_host(ip) for ip in ip_list]
-                results = await asyncio.gather(*scan_tasks, return_exceptions=True)
-                
-                for result in results:
-                    if isinstance(result, HostInfo):
-                        hosts_discovered.append(result)
-                    elif isinstance(result, Exception):
-                        logger.error(f"Scan task failed: {result}")
-            
-            else:  # Default to ping scan
-                logger.info(f"Performing ping scan on {len(ip_list)} hosts")
-                scan_tasks = [scanner.ping_host(ip) for ip in ip_list]
-                results = await asyncio.gather(*scan_tasks, return_exceptions=True)
-                
-                for result in results:
-                    if isinstance(result, HostInfo):
-                        hosts_discovered.append(result)
-                    elif isinstance(result, Exception):
-                        logger.error(f"Ping task failed: {result}")
-            
-            # Calculate statistics
-            alive_hosts = len([host for host in hosts_discovered if host.status == "alive"])
-            execution_time = (datetime.now() - start_time).total_seconds()
-            
-            # Update metrics
-            metrics.counter("network_scanner.success").increment()
-            metrics.gauge("network_scanner.hosts_scanned", len(ip_list))
-            metrics.gauge("network_scanner.alive_hosts", alive_hosts)
-            
-            logger.info(f"Network scan completed: {alive_hosts}/{len(ip_list)} hosts alive in {execution_time:.2f}s")
-            
-            return _scan_output(
-                target_network=input_data.network,
-                scan_type=input_data.scan_type,
-                timestamp=start_time,
-                execution_time=execution_time,
-                hosts_discovered=hosts_discovered,
-                total_hosts_scanned=len(ip_list),
-                alive_hosts=alive_hosts,
-                success=True
-            )
-        
-        except ValueError as e:
-            # Input validation errors
-            metrics.counter("network_scanner.validation_error").increment()
-            logger.warning(f"Validation error: {e}")
-            return _scan_output(
-                target_network=input_data.network,
-                scan_type=input_data.scan_type,
-                timestamp=start_time,
-                execution_time=(datetime.now() - start_time).total_seconds(),
-                hosts_discovered=[],
-                total_hosts_scanned=0,
-                alive_hosts=0,
-                success=False,
-                error=f"Invalid input: {e}"
-            )
-        
-        except asyncio.TimeoutError:
-            # Timeout errors
-            metrics.counter("network_scanner.timeout_error").increment()
-            logger.error("Network scan timed out")
-            return _scan_output(
-                target_network=input_data.network,
-                scan_type=input_data.scan_type,
-                timestamp=start_time,
-                execution_time=(datetime.now() - start_time).total_seconds(),
-                hosts_discovered=[],
-                total_hosts_scanned=0,
-                alive_hosts=0,
-                success=False,
-                error="Scan operation timed out"
-            )
-        
-        except RUN_ERRORS as e:
-            # Unexpected errors
-            metrics.counter("network_scanner.error").increment()
-            error_info = ToolExceptionHandler.handle_generic_error(e, "network_scanner")
-            logger.error(f"Unexpected error: {e}", exc_info=True)
-            
-            return _scan_output(
-                target_network=input_data.network,
-                scan_type=input_data.scan_type,
-                timestamp=start_time,
-                execution_time=(datetime.now() - start_time).total_seconds(),
-                hosts_discovered=[],
-                total_hosts_scanned=0,
-                alive_hosts=0,
-                success=False,
-                error=error_info['error']
-            )
+    scan_type = input_data.scan_type.lower()
+
+    def failed(error: str) -> NetworkScannerOutput:
+        return _scan_output(
+            target_network=input_data.network,
+            scan_type=scan_type,
+            timestamp=start_time,
+            execution_time=(datetime.now() - start_time).total_seconds(),
+            hosts_discovered=[],
+            total_hosts_scanned=0,
+            alive_hosts=0,
+            success=False,
+            error=error,
+        )
+
+    try:
+        ip_list = parse_targets(input_data.network)
+    except ValueError as e:
+        return failed(str(e))
+
+    ping_bin = shutil.which("ping")
+    if not ping_bin:
+        return failed(PING_MISSING)
+
+    scanner = NetworkScanner(ping_bin, input_data.timeout, input_data.max_threads)
+    logger.info("%s scan of %d addresses", scan_type, len(ip_list))
+    try:
+        hosts = await asyncio.gather(
+            *(scanner.scan_host(ip, tcp=scan_type == "tcp") for ip in ip_list)
+        )
+    except RUN_ERRORS as e:
+        logger.error("Network scan failed: %s", e, exc_info=True)
+        return failed(f"Scan failed: {type(e).__name__}: {e}")
+
+    alive = sum(1 for host in hosts if host.status == "alive")
+    execution_time = (datetime.now() - start_time).total_seconds()
+    return _scan_output(
+        target_network=input_data.network,
+        scan_type=scan_type,
+        timestamp=start_time,
+        execution_time=execution_time,
+        hosts_discovered=list(hosts),
+        total_hosts_scanned=len(ip_list),
+        alive_hosts=alive,
+        success=True,
+        message=f"{alive} of {len(ip_list)} hosts answered ({scan_type} scan)",
+    )
 
 
 # Export tool info for registration
