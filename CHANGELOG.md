@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`/response` no longer shows invented run statistics** (#570). Its
+  totals (45 runs, 2 running, 87% success) and three "recent runs" were
+  constants, shown whether or not the responder answered; only the
+  playbook count was real. The responder neither lists nor counts runs,
+  so the page now shows the playbooks it reports, "Unavailable" when it
+  cannot be reached, and says that run statistics are not available.
+  It also stops wrapping itself in a second copy of the main layout.
 - **The response pages reach the responder** (#570). They called
   `responderClient` with `/v1/...`, and the gateway already maps
   `/api/v1/responder/<x>` to the responder's `/v1/<x>`, so every request

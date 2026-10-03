@@ -31,6 +31,35 @@ async function responderPlaybooks(): Promise<PlaybookList> {
 test.describe('Response pages', { tag: '@backend' }, () => {
   test.use({ storageState: ADMIN_STATE })
 
+  test('the overview shows the responder playbooks and no invented run figures', async ({
+    page,
+  }) => {
+    const list = await responderPlaybooks()
+    expect(list.total, 'the stack ships playbooks; an empty list proves nothing').toBeGreaterThan(0)
+
+    await page.goto('/response')
+
+    await expect(page.getByTestId('response-playbook-count')).toHaveText(String(list.total), {
+      timeout: 30_000,
+    })
+    const listed = page.getByTestId('response-playbook-list')
+    for (const playbook of list.playbooks) {
+      await expect(listed.locator(`[data-playbook-id="${playbook.playbook_id}"]`)).toContainText(
+        playbook.name
+      )
+    }
+
+    // The responder neither lists nor counts runs, so the page must say so
+    // rather than show totals. These were the old constants.
+    await expect(page.getByTestId('response-run-stats-unavailable')).toContainText(
+      'Run statistics are not available'
+    )
+    const main = page.locator('main')
+    for (const invented of ['Success Rate', 'Running Now', 'Total Runs', '87%', 'run-001']) {
+      await expect(main).not.toContainText(invented)
+    }
+  })
+
   test('the playbooks page lists the playbooks the responder reports', async ({ page }) => {
     const list = await responderPlaybooks()
     expect(list.total, 'the stack ships playbooks; an empty list proves nothing').toBeGreaterThan(0)

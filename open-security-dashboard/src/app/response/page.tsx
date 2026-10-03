@@ -1,318 +1,121 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
 import Link from 'next/link'
-import {
-  Book,
-  Activity,
-  Clock,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  ChevronRight,
-  Zap,
-  AlertTriangle,
-  TrendingUp,
-} from 'lucide-react'
+import { Activity, Book, ChevronRight, Info, Loader2 } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { MainLayout } from '@/components/main-layout'
-import { getResponderPath, responderClient } from '@/lib/api-client'
+import { useResponderPlaybooks } from '@/hooks/use-responder-playbooks'
 
-interface DashboardStats {
-  totalPlaybooks: number
-  totalRuns: number
-  runningNow: number
-  successRate: number
-  recentRuns: Array<{
-    id: string
-    playbookName: string
-    status: string
-    startTime: string
-  }>
-}
-
-// Mock data for demonstration
-const mockStats: DashboardStats = {
-  totalPlaybooks: 3,
-  totalRuns: 45,
-  runningNow: 2,
-  successRate: 87,
-  recentRuns: [
-    {
-      id: 'run-001',
-      playbookName: 'IP Address Triage',
-      status: 'completed',
-      startTime: new Date(Date.now() - 30000).toISOString(),
-    },
-    {
-      id: 'run-002',
-      playbookName: 'URL Analysis and Response',
-      status: 'running',
-      startTime: new Date(Date.now() - 45000).toISOString(),
-    },
-    {
-      id: 'run-003',
-      playbookName: 'Simple Notification Test',
-      status: 'failed',
-      startTime: new Date(Date.now() - 120000).toISOString(),
-    },
-  ],
-}
-
-async function fetchDashboardStats(): Promise<DashboardStats> {
-  try {
-    // Try to fetch real data from multiple endpoints
-    const [playbooksResponse] = await Promise.allSettled([
-      responderClient.get<{ total?: number }>(getResponderPath('/api/v1/playbooks')),
-    ])
-
-    let totalPlaybooks = 0
-    if (playbooksResponse.status === 'fulfilled') {
-      totalPlaybooks = playbooksResponse.value?.total || 0
-    }
-
-    // For now, return mock data with real playbook count
-    return {
-      ...mockStats,
-      totalPlaybooks,
-    }
-  } catch (error) {
-    console.warn('API not available, using mock data:', error)
-    return mockStats
-  }
-}
-
-function getStatusIcon(status: string, size = 'h-4 w-4') {
-  switch (status) {
-    case 'completed':
-      return <CheckCircle className={`${size} text-green-500`} />
-    case 'running':
-      return <Loader2 className={`${size} animate-spin text-blue-500`} />
-    case 'failed':
-      return <XCircle className={`${size} text-red-500`} />
-    default:
-      return <Clock className={`${size} text-gray-500`} />
-  }
-}
-
-function formatTimeAgo(timestamp: string): string {
-  const seconds = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000)
-
-  if (seconds < 60) return `${seconds}s ago`
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
-  return `${Math.floor(seconds / 86400)}d ago`
-}
-
+/*
+ * Everything on this page comes from the responder's playbook list. The page
+ * used to show run statistics too -- 45 runs, 2 running, 87% success and three
+ * recent runs -- which were constants: the responder has no endpoint that
+ * lists or counts runs, so there is nothing real to show there.
+ */
 export default function ResponsePage() {
-  const {
-    data: stats,
-    isLoading,
-    refetch,
-  } = useQuery({
-    queryKey: ['response-dashboard'],
-    queryFn: fetchDashboardStats,
-    refetchInterval: 30000,
-  })
+  const { playbooks, total, isLoading, error, refetch } = useResponderPlaybooks()
 
   return (
-    <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Response & Automation</h1>
-            <p className="text-muted-foreground">
-              Incident response playbooks and automated security workflows
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={() => refetch()} variant="outline" size="sm">
-              Refresh
-            </Button>
-          </div>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Response & Automation</h1>
+          <p className="text-muted-foreground">
+            Incident response playbooks and automated security workflows
+          </p>
         </div>
+        <Button onClick={() => refetch()} variant="outline" size="sm">
+          Refresh
+        </Button>
+      </div>
 
-        {/* Quick Stats */}
-        {isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            {[...Array(4)].map((_, i) => (
-              <Card key={i} className="animate-pulse">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <div className="h-4 w-1/2 rounded bg-gray-200"></div>
-                  <div className="h-4 w-4 rounded bg-gray-200"></div>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-1 h-8 w-1/3 rounded bg-gray-200"></div>
-                  <div className="h-3 w-1/2 rounded bg-gray-200"></div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Playbooks</CardTitle>
-                <Book className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats?.totalPlaybooks || 0}</div>
-                <p className="text-xs text-muted-foreground">Available security workflows</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Total Runs</CardTitle>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{stats?.totalRuns || 0}</div>
-                <p className="text-xs text-muted-foreground">Executions this month</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Running Now</CardTitle>
-                <Zap className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-blue-600">{stats?.runningNow || 0}</div>
-                <p className="text-xs text-muted-foreground">Active executions</p>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-                <TrendingUp className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-green-600">{stats?.successRate || 0}%</div>
-                <p className="text-xs text-muted-foreground">Last 30 days</p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
-
-        {/* Quick Actions */}
-        <div className="grid gap-6 md:grid-cols-2">
-          <Card className="group transition-all duration-200 hover:shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Book className="h-5 w-5 text-blue-600" />
-                Playbooks
-              </CardTitle>
-              <CardDescription>View and execute automated response workflows</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Available playbooks</span>
-                  <Badge variant="outline">{stats?.totalPlaybooks || 0}</Badge>
-                </div>
-                <Link href="/response/playbooks">
-                  <Button className="w-full group-hover:bg-blue-700">
-                    Manage Playbooks
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="group transition-all duration-200 hover:shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-5 w-5 text-green-600" />
-                Execution History
-              </CardTitle>
-              <CardDescription>Monitor and review playbook run history</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between text-sm">
-                  <span>Total runs</span>
-                  <Badge variant="outline">{stats?.totalRuns || 0}</Badge>
-                </div>
-                <Link href="/response/runs">
-                  <Button className="w-full group-hover:bg-green-700" variant="default">
-                    View Run History
-                    <ChevronRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Recent Activity */}
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* Playbooks: the responder's answer, or why there is none */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Recent Activity
+              <Book className="h-5 w-5 text-blue-600" />
+              Playbooks
             </CardTitle>
-            <CardDescription>Latest playbook executions and their status</CardDescription>
+            <CardDescription>Automated response workflows the responder has loaded</CardDescription>
           </CardHeader>
-          <CardContent>
-            {stats?.recentRuns && stats.recentRuns.length > 0 ? (
-              <div className="space-y-3">
-                {stats.recentRuns.map(run => (
-                  <div
-                    key={run.id}
-                    className="flex items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
-                  >
-                    <div className="flex items-center gap-3">
-                      {getStatusIcon(run.status)}
-                      <div>
-                        <p className="font-medium">{run.playbookName}</p>
-                        <p className="text-sm text-muted-foreground">ID: {run.id}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <Badge
-                        className={
-                          run.status === 'completed'
-                            ? 'bg-green-100 text-green-800'
-                            : run.status === 'running'
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-red-100 text-red-800'
-                        }
-                      >
-                        {run.status}
-                      </Badge>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {formatTimeAgo(run.startTime)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                <div className="border-t pt-2">
-                  <Link href="/response/runs">
-                    <Button variant="outline" className="w-full">
-                      View All Runs
-                      <ChevronRight className="ml-2 h-4 w-4" />
-                    </Button>
-                  </Link>
-                </div>
-              </div>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-between text-sm">
+              <span>Available playbooks</span>
+              <span className="text-2xl font-bold" data-testid="response-playbook-count">
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : error ? (
+                  'Unavailable'
+                ) : (
+                  total
+                )}
+              </span>
+            </div>
+
+            {error ? (
+              <p className="text-sm text-muted-foreground">
+                The responder could not be reached: {error.message}
+              </p>
             ) : (
-              <div className="py-8 text-center">
-                <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h3 className="mb-2 text-lg font-semibold">No recent activity</h3>
-                <p className="text-muted-foreground">
-                  No playbook runs have been executed recently.
-                </p>
-              </div>
+              playbooks.length > 0 && (
+                <ul className="space-y-1 text-sm" data-testid="response-playbook-list">
+                  {playbooks.map(playbook => (
+                    <li
+                      key={playbook.playbook_id}
+                      className="flex items-center justify-between gap-2"
+                      data-playbook-id={playbook.playbook_id}
+                    >
+                      <span className="truncate">{playbook.name}</span>
+                      <Badge variant="outline" className="shrink-0">
+                        {playbook.steps_count} steps
+                      </Badge>
+                    </li>
+                  ))}
+                </ul>
+              )
             )}
+
+            <Link href="/response/playbooks">
+              <Button className="w-full">
+                Manage Playbooks
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+
+        {/* Runs: no counts, because the responder reports none */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Activity className="h-5 w-5 text-green-600" />
+              Runs
+            </CardTitle>
+            <CardDescription>Status of the playbook runs started here</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div
+              className="flex items-start gap-3 rounded-md border p-3 text-sm"
+              data-testid="response-run-stats-unavailable"
+            >
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+              <p>
+                Run statistics are not available: the responder does not list or count runs, so
+                there are no totals, success rates or recent runs to show.
+              </p>
+            </div>
+            <Link href="/response/runs">
+              <Button className="w-full" variant="outline">
+                View Runs
+                <ChevronRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
-    </MainLayout>
+    </div>
   )
 }
