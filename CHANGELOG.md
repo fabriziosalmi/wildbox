@@ -840,16 +840,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
-- **Prose Quality checks the Markdown and fails on findings**. The job
-  installed proselint unpinned and ran `proselint FILE ... || true`;
-  proselint 0.16 only accepts `proselint check FILE`, so every call
-  failed and the job passed having checked nothing. proselint is now
-  pinned to 0.16.0, its rules are in `.proselintrc.json`, and
-  `scripts/check_prose.py` lints every tracked Markdown file except the
-  vendored ones, with code blocks, inline code and HTML comments masked
-  so that commands are not read as prose. Each finding is a GitHub
-  annotation and any finding fails the job, which is no longer
-  advisory. The 16 findings left in the documentation are fixed.
+- **Prose Quality checks the Markdown and fails on findings** (#606).
+  The job installed proselint unpinned and ran
+  `proselint FILE ... || true`; proselint 0.16 only accepts
+  `proselint check FILE`, so every call failed and the job passed having
+  checked nothing. proselint is now pinned to 0.16.0, its rules are in
+  `.proselintrc.json`, and `scripts/check_prose.py` lints every tracked
+  Markdown file except the vendored ones, with code blocks, inline code
+  and HTML comments masked so that commands are not read as prose. Each
+  finding is a GitHub annotation and any finding fails the job, which is
+  no longer advisory. The 16 findings left in the documentation are
+  fixed.
 
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
