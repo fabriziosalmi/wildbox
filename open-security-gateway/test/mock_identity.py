@@ -23,6 +23,12 @@ the real endpoint, the blacklist is consulted *before* the rest of the work:
 a payload ``delay_ms`` makes the mock sleep after that check, standing in for
 the database query identity runs there, so a test can hold an authorization
 in flight across a logout deterministically.
+
+API keys (#593). Fixture keys report the id identity revokes them by
+(``api_key_id``); test-minted keys (see dynamic_api_key) also carry an
+expiry, reported as ``credential_expires_at``, and are refused after
+POST /__mock/revoke {"api_key_id": ...}, the way identity refuses a key it
+has marked inactive.
 """
 
 import base64
@@ -50,12 +56,23 @@ TOKENS = {
         "team_id": "team-4444",
         "role": "user",
         "scopes": ["read"],
+        "api_key_id": "key-readonly",
     },
     "wsk_toolsexec_ci_fixture": {
         "user_id": "user-5555",
         "team_id": "team-6666",
         "role": "user",
         "scopes": ["tools:execute"],
+        "api_key_id": "key-toolsexec",
+    },
+    # An answer for an API key that does not name the key, as identity
+    # before #593 gave: the gateway cannot check it against a revocation,
+    # so it must not serve it.
+    "wsk_unnamed_ci_fixture": {
+        "user_id": "user-9999",
+        "team_id": "team-9999",
+        "role": "user",
+        "scopes": ["read"],
     },
     # An account a team admin created, before it changed the initial
     # password (#573): identity reports password_change_required.
@@ -70,6 +87,24 @@ TOKENS = {
 
 authorize_calls = Counter()
 revoked_jtis = set()
+revoked_api_keys = set()
+
+
+def dynamic_api_key(token):
+    """An API key minted by a test (#593), or None.
+
+    ``wsk_dyn~<key id>~<delay_ms>~<expires_at>``: the key id is what identity
+    reports and revokes the key by, ``delay_ms`` holds the authorization in
+    flight after the revocation check (as ``delay_ms`` does for sessions), and
+    ``expires_at`` (epoch seconds, 0 for none) is when the key expires.
+    """
+    parts = token.split("~")
+    if len(parts) != 4 or parts[0] != "wsk_dyn" or not parts[1]:
+        return None
+    try:
+        return parts[1], int(parts[2]), float(parts[3])
+    except ValueError:
+        return None
 
 
 def jwt_claims(token):
@@ -131,6 +166,21 @@ class Handler(BaseHTTPRequestHandler):
         authorize_calls[token] += 1
 
         auth = TOKENS.get(token)
+        key = dynamic_api_key(token) if auth is None else None
+        if key is not None:
+            key_id, delay_ms, expires_at = key
+            if key_id in revoked_api_keys or (expires_at and expires_at <= time.time()):
+                self._reply(401, {"detail": "Invalid or inactive API key"})
+                return
+            time.sleep(delay_ms / 1000)
+            auth = {
+                "user_id": "user-" + key_id,
+                "team_id": "team-" + key_id,
+                "role": "user",
+                "scopes": ["*"],
+                "api_key_id": key_id,
+                "credential_expires_at": expires_at or None,
+            }
         claims = jwt_claims(token) if auth is None else None
         if claims is not None:
             if claims["jti"] in revoked_jtis:
@@ -161,12 +211,18 @@ class Handler(BaseHTTPRequestHandler):
                 "permissions": ["tool:basic", "tool:advanced", "feed", "cspm"],
                 "scopes": auth["scopes"],
                 "password_change_required": auth.get("password_change_required", False),
+                "api_key_id": auth.get("api_key_id"),
+                "credential_expires_at": auth.get("credential_expires_at"),
             },
         )
 
     def _revoke(self):
         length = int(self.headers.get("Content-Length") or 0)
         request = json.loads(self.rfile.read(length) or b"{}")
+        if "api_key_id" in request:
+            revoked_api_keys.add(request["api_key_id"])
+            self._reply(200, {"revoked": request["api_key_id"]})
+            return
         revoked_jtis.add(request["jti"])
         self._reply(200, {"revoked": request["jti"]})
 

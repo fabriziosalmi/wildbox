@@ -1,374 +1,124 @@
-# 🤖 Wildbox Open Security Automations
+# Wildbox Open Security Automations
 
-**The Automation Nerve Center of the Wildbox Security Platform**
+n8n workflows that call the Wildbox API on a schedule. n8n runs as the
+optional `automations` service of the stack (image `n8nio/n8n:1.74.0`); it has
+no UI or API of its own beyond n8n's.
 
-A headless automation engine built on n8n that orchestrates all Wildbox microservices through intelligent workflows. This system handles everything from support ticket triage to threat intelligence analysis, creating a unified automation layer across the entire security platform.
+## Workflows
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Docker](https://img.shields.io/badge/Docker-Supported-blue.svg)](https://docker.com)
-[![n8n](https://img.shields.io/badge/n8n-Automation-orange.svg)](https://n8n.io)
+| Workflow | File | Trigger | What it does |
+| -------- | ---- | ------- | ------------ |
+| Executive Security Dashboard Automation | `workflows/reporting/executive_security_dashboard.json` | Mondays 08:00 (n8n's timezone, UTC by default) | Reads the CSPM figures of the last 30 days and sends them by e-mail and to Slack |
 
----
+That is the whole inventory. Nine other workflows were removed in #592: every
+one called endpoints that do not exist (or services directly, which they do
+not accept), so none of them could run. UPGRADING.md, section 11, lists them
+with the reason for each.
 
-## 🎯 Project Overview
+### Executive Security Dashboard Automation
 
-Open Security Automations is the **central orchestration engine** for the Wildbox platform. It connects all microservices through intelligent, visual workflows that automate complex security operations without requiring code changes to individual services.
+The workflow makes three calls through the gateway, each with
+`X-API-Key: $WILDBOX_API_KEY`:
 
-### 🧠 Core Philosophy
+| Call | Used for |
+| ---- | -------- |
+| `GET /api/v1/cspm/dashboard/summary?days=30` | accounts assessed, retained scans, compliance score, failed checks by severity |
+| `GET /api/v1/cspm/compliance/summary?days=30` | resources with a failed check, compliance by framework |
+| `GET /api/v1/cspm/compliance/findings?status=failed&days=30&limit=1000` | the failing checks, grouped by check: most severe first, then by resources affected (top five), with each check's remediation text |
 
-- **Headless by Design**: No UI of its own - orchestrates other services
-- **Visual Workflow Logic**: n8n's low-code approach for rapid development
-- **Event-Driven Architecture**: Responds to triggers across the platform
-- **Service Orchestration**: Maintains service separation while enabling cooperation
-- **Intelligence Layer**: Adds smart decision-making between services
+All the figures come from the newest completed CSPM scan of each account in
+the period. When no
+scan completed in the period, the report says that there is nothing to report
+instead of showing zeros or a score. When there are more than 1000 failed
+checks, the report says the grouping covers the first 1000.
 
-### 🎪 What This System Does
+The report contains no figure that the API does not return: there is no
+"posture score", trend or threat level, and no fixed list of risks or
+recommendations. If an API call fails, the execution fails and n8n records
+the error; nothing is sent.
 
-- **Support Automation**: Intelligent ticket triage and auto-responses
-- **Threat Intelligence**: Daily OSINT reports and IoC enrichment
-- **Content Generation**: Automated security reports and documentation
-- **Incident Response**: Workflow-driven security playbooks
-- **Data Orchestration**: Cross-service data synchronization
-- **Monitoring Automation**: Alert correlation and escalation
+## Setup
 
----
-
-## 🏗️ Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    Wildbox Automations                      │
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
-│  │   Support   │  │ Intelligence │  │   Content   │        │
-│  │  Workflows  │  │  Workflows   │  │  Workflows  │        │
-│  └─────────────┘  └─────────────┘  └─────────────┘        │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                 n8n Engine                         │   │
-│  │  • Visual Workflow Designer                        │   │
-│  │  • JavaScript Code Nodes                           │   │
-│  │  • Webhook & Cron Triggers                         │   │
-│  │  • HTTP Request Orchestration                      │   │
-│  └─────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                 Wildbox Microservices                       │
-│                                                             │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
-│  │   API    │ │  Agents  │ │   Data   │ │ Identity │      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
-│                                                             │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
-│  │ Guardian │ │ Responder│ │  Sensor  │ │Dashboard │      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker 20.10+
-- Docker Compose 2.0+
-- Access to other Wildbox services
-
-### 1. Start the Automation Engine
-
-```bash
-# Clone and navigate
-cd wildbox/open-security-automations
-
-# Start n8n with all dependencies
-docker-compose up -d
-
-# View logs
-docker-compose logs -f n8n
-```
-
-### 2. Access n8n Interface
-
-- **Local Development**: http://localhost:5678
-- **Production**: Configure through your reverse proxy
-
-### 3. Import Workflows
-
-```bash
-# The workflows are automatically available in n8n
-# Import them through the n8n UI or use the CLI
-```
-
----
-
-## 📊 Workflow Inventory
-
-| Workflow | Trigger | Purpose | Status |
-| ---------- | --------- | --------- | -------- |
-| **Support Ticket Triage** | Email (IMAP) | Automatically categorize and route support emails | ✅ Ready |
-| **Daily OSINT Report** | Cron (06:00 UTC) | Generate daily cybersecurity intelligence reports | ✅ Ready |
-| **Honeypot Alert Classifier** | Webhook | Classify and enrich honeypot attack logs | ✅ Ready |
-| **Vulnerability Sync** | Cron (12:00 UTC) | Sync CVE data across all services | 🔄 Planned |
-| **Incident Response Orchestrator** | Webhook | Execute security playbooks automatically | 🔄 Planned |
-| **Threat Feed Processor** | Cron (Every 4h) | Process and distribute threat intelligence | 🔄 Planned |
-
----
-
-## 🔧 Configuration
-
-### Environment Variables
-
-```bash
-# n8n Configuration
-N8N_BASIC_AUTH_ACTIVE=true
-N8N_BASIC_AUTH_USER=admin
-N8N_BASIC_AUTH_PASSWORD=your_secure_password
-
-# Wildbox Integration
-WILDBOX_API_GATEWAY_URL=http://wildbox-gateway:8000
-WILDBOX_API_KEY=your_wildbox_api_key
-
-# External Integrations
-SUPPORT_EMAIL_HOST=imap.your-domain.com
-SUPPORT_EMAIL_USER=support@wildbox.security
-SUPPORT_EMAIL_PASSWORD=your_email_password
-
-# Notification Services
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
-```
-
-### Credentials Setup in n8n
-
-1. **Wildbox API Credential**
-   - Type: Header Auth
-   - Name: `Authorization`
-   - Value: `Bearer your_wildbox_api_key`
-
-2. **Email Integration**
-   - Type: IMAP
-   - Host: Your email server
-   - User: support@wildbox.security
-
-3. **External Services**
-   - Discord/Slack webhooks for notifications
-   - GitHub tokens for issue creation
-   - Third-party API keys as needed
-
----
-
-## 📁 Project Structure
-
-```bash
-open-security-automations/
-├── docker-compose.yml           # Main orchestration file
-├── n8n-data/                   # Persistent n8n data
-│   ├── custom/                 # Custom nodes (future)
-│   └── .n8n/                  # n8n internal data
-├── workflows/                  # Exported workflow definitions
-│   ├── support/
-│   │   ├── triage.json         # Support ticket classification
-│   │   └── auto_response.json  # Automated responses
-│   ├── intelligence/
-│   │   ├── daily_report.json   # OSINT report generation
-│   │   ├── honeypot_classifier.json # Attack classification
-│   │   └── threat_enrichment.json  # IoC enrichment
-│   ├── content/
-│   │   ├── blog_generator.json # Automated content creation
-│   │   └── documentation_sync.json # Doc synchronization
-│   └── monitoring/
-│       ├── health_checks.json  # Service health monitoring
-│       └── alert_correlation.json # Cross-service alerting
-├── scripts/
-│   ├── export_workflows.sh     # Export all workflows to JSON
-│   ├── import_workflows.sh     # Import workflows from JSON
-│   └── backup_n8n.sh          # Backup n8n data
-├── docs/
-│   ├── workflow_design.md      # Workflow design patterns
-│   ├── integration_guide.md    # Service integration guide
-│   └── troubleshooting.md      # Common issues and solutions
-└── README.md                   # This file
-```
-
----
-
-## 🔗 Service Integration
-
-### Wildbox API Gateway
-
-- **Endpoint**: `http://wildbox-gateway:8000`
-- **Purpose**: Central API routing to all services
-- **Auth**: Bearer token authentication
-
-### Open Security Agents
-
-- **Endpoint**: `http://open-security-agents:8001/v1/`
-- **Purpose**: AI-powered analysis and classification
-- **Use Cases**: Email triage, log analysis, content generation
-
-### Open Security Data
-
-- **Endpoint**: `http://open-security-data:8002/v1/`
-- **Purpose**: Data lake operations and analytics
-- **Use Cases**: Log enrichment, report data, metrics
-
-### Other Services
-
-- Integration patterns for all Wildbox microservices
-- Webhook endpoints for event-driven workflows
-- Health check monitoring for all components
-
----
-
-## 🛠️ Development
-
-### Adding New Workflows
-
-1. **Design in n8n UI**
+1. Start the stack, including the gateway, so that it writes its TLS
+   certificate to `open-security-gateway/ssl/`. Then start n8n:
 
    ```bash
-   # Access the n8n interface
-   open http://localhost:5678
+   docker compose --profile automations up -d automations
    ```
 
-2. **Test Thoroughly**
-   - Use test data
-   - Verify all integrations
-   - Check error handling
+2. Create a personal API key in the dashboard (Settings > API keys) with the
+   `read` scope, and set the variables in the root `.env`:
 
-3. **Export and Version**
+   | Variable | Value |
+   | -------- | ----- |
+   | `AUTOMATIONS_WILDBOX_API_KEY` | the API key (passed to n8n as `WILDBOX_API_KEY`) |
+   | `WILDBOX_API_GATEWAY_URL` | optional; default `https://open-security-gateway` |
+   | `SLACK_WEBHOOK_URL` | a Slack incoming webhook |
+   | `EXECUTIVE_REPORT_EMAIL_FROM`, `EXECUTIVE_REPORT_EMAIL_TO` | sender and recipient of the report |
+
+   Recreate the container after changing them
+   (`docker compose --profile automations up -d automations`).
+
+3. Import the workflows:
 
    ```bash
-   # Export workflow from n8n UI
-   # Save to appropriate workflows/ subdirectory
-   # Commit to Git with descriptive message
+   ./open-security-automations/scripts/import_workflows.sh
    ```
 
-### Workflow Development Guidelines
+   The script stages every JSON file under `workflows/` in the container and
+   runs `n8n import:workflow`. Each workflow has a fixed id, so importing
+   again updates it rather than adding a copy.
 
-- **Modular Design**: Keep workflows focused on single purposes
-- **Error Handling**: Always include error handling nodes
-- **Logging**: Add logging nodes for debugging
-- **Documentation**: Include clear node descriptions
-- **Testing**: Test with realistic data volumes
+4. In n8n (<http://localhost:5678>), attach an SMTP credential to the
+   "Send Executive Email" node, then activate the workflow. Imported
+   workflows start inactive.
 
-### Custom Node Development
+### Reaching the gateway
 
-```bash
-# If you need custom functionality
-cd n8n-data/custom/
-# Create custom node packages here
-# Restart n8n to load new nodes
-```
+The gateway serves the API on its HTTPS listener only; port 80 and 8080
+answer every API path with a redirect. The certificate the gateway generates
+for development names `open-security-gateway`, and docker-compose.yml mounts
+it (the certificate, not the key) into n8n and points `NODE_EXTRA_CA_CERTS`
+at it, so n8n verifies the connection. With your own certificate, set
+`WILDBOX_API_GATEWAY_URL` to a name the certificate covers and that resolves
+from the n8n container.
 
----
+## Writing a workflow
 
-## 📈 Monitoring & Maintenance
+- Call Wildbox only through the gateway, with the URL starting
+  `{{ $env.WILDBOX_API_GATEWAY_URL }}/api/v1/`. The services accept calls only
+  from the gateway.
+- Authenticate with an `X-API-Key` header (or `Authorization: Bearer`). The
+  gateway does not accept a cookie.
+- Give the workflow a fixed `"id"`, so that importing it twice does not
+  create a copy.
+- Show only what the API returns. When it has no data, say so; do not fill
+  in a default value.
+- Run the check that CI runs on every pull request:
 
-### Health Monitoring
+  ```bash
+  python3 scripts/check_automation_workflows.py
+  ```
 
-```bash
-# Check n8n status
-curl http://localhost:5678/healthz
+  It resolves the URL of every HTTP Request node, matches the path against
+  the gateway configuration (`open-security-gateway/nginx/conf.d/wildbox_gateway.conf`)
+  and the target service's routes, checks the method and the authentication
+  header, and fails on a call that would not reach an existing route.
 
-# Monitor workflow executions
-# Use n8n UI execution history
+## Scripts
 
-# Check Docker containers
-docker-compose ps
-```
+| Script | What it does |
+| ------ | ------------ |
+| `scripts/import_workflows.sh [file]` | imports every workflow (or one file) into the running container with the n8n CLI |
+| `scripts/export_workflows.sh` | exports every workflow from n8n to `backups/workflows/<timestamp>/` |
+| `scripts/backup_n8n.sh` | backs up n8n's data directory and database |
 
-### Backup & Recovery
+The import and export scripts take the container name from `N8N_CONTAINER`
+(default `open-security-automations`). They used n8n's REST API with HTTP
+basic auth before, which n8n 1.x answers with 401.
 
-```bash
-# Backup n8n data
-./scripts/backup_n8n.sh
+## Standalone development
 
-# Export all workflows
-./scripts/export_workflows.sh
-
-# Restore from backup
-docker-compose down
-# Restore n8n-data/ from backup
-docker-compose up -d
-```
-
-### Performance Optimization
-
-- **Workflow Optimization**: Review execution times in n8n UI
-- **Resource Limits**: Configure Docker resource constraints
-- **Queue Management**: Monitor n8n job queues
-- **Database Maintenance**: Regular SQLite maintenance
-
----
-
-## 🔒 Security Considerations
-
-### Access Control
-
-- n8n basic authentication enabled
-- Secure credential storage in n8n
-- Network isolation via Docker networks
-
-### API Security
-
-- All external calls use secure authentication
-- Credentials encrypted at rest
-- Regular credential rotation
-
-### Data Privacy
-
-- No sensitive data in workflow definitions
-- Secure handling of email content
-- Audit logging for all operations
-
----
-
-## 📖 Documentation
-
-- **[Workflow Design Guide](docs/workflow_design.md)**: Best practices for creating workflows
-- **[Integration Guide](docs/integration_guide.md)**: How to integrate with Wildbox services
-- **[Troubleshooting](docs/troubleshooting.md)**: Common issues and solutions
-- **[n8n Documentation](https://docs.n8n.io/)**: Official n8n documentation
-
----
-
-## 🤝 Contributing
-
-1. **Fork** the repository
-2. **Create** a feature branch
-3. **Design** your workflow in n8n
-4. **Test** thoroughly with real data
-5. **Export** workflow to JSON
-6. **Document** the workflow purpose and usage
-7. **Submit** a pull request
-
-### Workflow Contribution Guidelines
-
-- Include clear descriptions for all nodes
-- Add error handling for external API calls
-- Test with various input scenarios
-- Document trigger requirements
-- Follow naming conventions
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🆘 Support
-
-- **Issues**: [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
-- **Documentation**: [Wildbox Docs](https://wildbox.security/docs)
-- **Community**: [Discord Server](https://discord.gg/wildbox)
-- **Email**: support@wildbox.security
-
----
-
-**Built with ❤️ for the cybersecurity community**
+`docker-compose.yml` in this directory runs n8n on its own, for working on
+workflows; its settings are in `.env.example`. The supported deployment is
+the `automations` profile of the root `docker-compose.yml`.

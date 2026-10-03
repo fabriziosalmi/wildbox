@@ -184,7 +184,7 @@ cp .env.example .env
 | `AUTH_CACHE_TTL` | `300` | Authentication cache TTL in seconds (recommended: 300) |
 | `GATEWAY_DEBUG` | `false` | Enable debug mode (⚠️ Never enable in production!) |
 
-⚠️ **SECURITY WARNING**: Always change `GATEWAY_INTERNAL_SECRET` in production! Never use default values.
+⚠️ **SECURITY WARNING**: Always change `GATEWAY_INTERNAL_SECRET` in production. Never use default values.
 
 ### Backend Service URLs
 

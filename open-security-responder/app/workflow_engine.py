@@ -10,7 +10,10 @@ import logging
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
-from jinja2 import DictLoader, TemplateSyntaxError, UndefinedError
+from jinja2 import (
+    DictLoader, TemplateRuntimeError, TemplateSyntaxError, UndefinedError, nodes
+)
+from jinja2.utils import missing
 from jinja2.sandbox import SandboxedEnvironment, SecurityError
 import redis
 import dramatiq
@@ -47,6 +50,48 @@ jinja_env = SandboxedEnvironment(
     loader=DictLoader({}),
     autoescape=True,
     undefined=StrictUndefined
+)
+
+
+class _UndefinedReferenceError(UndefinedError):
+    """UndefinedError that carries the Undefined which raised it."""
+
+    def __init__(self, message: str, undefined: "_ConditionUndefined"):
+        super().__init__(message)
+        self.undefined = undefined
+
+
+class _ConditionUndefined(StrictUndefined):
+    """StrictUndefined that says which reference was undefined.
+
+    Used only for step conditions (#595). It fails exactly like
+    StrictUndefined, but the error it raises carries the Undefined itself, so
+    that evaluate_condition can name the missing reference in the run log.
+
+    The sandbox builds its "unsafe attribute" placeholders from this same
+    class with exc=SecurityError; those keep raising SecurityError, which is
+    not an UndefinedError, so a sandbox violation never reads as an undefined
+    name.
+    """
+
+    __slots__ = ()
+
+    def __init__(self, hint=None, obj=missing, name=None, exc=UndefinedError):
+        super().__init__(hint=hint, obj=obj, name=name, exc=exc)
+        if exc is UndefinedError:
+            self._undefined_exception = self._reference_error
+
+    def _reference_error(self, message: str) -> _UndefinedReferenceError:
+        return _UndefinedReferenceError(message, self)
+
+
+# Conditions are rendered in their own environment so that the lenient
+# handling of undefined names there cannot leak into action inputs, which are
+# rendered by jinja_env above and stay strict.
+condition_env = SandboxedEnvironment(
+    loader=DictLoader({}),
+    autoescape=True,
+    undefined=_ConditionUndefined
 )
 
 
@@ -341,40 +386,155 @@ class WorkflowEngine:
         'compile(', 'open(', 'getattr(', 'setattr(',
     ]
 
-    def evaluate_condition(self, condition: str, context: Dict[str, Any]) -> bool:
+    def evaluate_condition(
+        self,
+        condition: str,
+        context: Dict[str, Any],
+        run_id: Optional[str] = None,
+    ) -> bool:
         """
         Evaluate a Jinja2 condition expression
+
+        A condition that references an undefined name -- a trigger field
+        that was not sent, an attribute an earlier step did not return --
+        evaluates to false, and the reference is logged (to the run log too
+        when run_id is given). The reference is reported as written in the
+        condition; no value from the context is logged (#595).
+
+        Every other template error still raises TemplateRenderError: a syntax
+        error, a sandbox violation and a blocked pattern are faults in the
+        playbook, not facts about the data, and must not pass for a condition
+        that does not hold.
 
         Args:
             condition: Jinja2 condition expression
             context: Template rendering context
+            run_id: Run whose log records an undefined reference, if any
 
         Returns:
             Boolean result of condition evaluation
+
+        Raises:
+            TemplateRenderError: If the condition is not a valid expression,
+                contains a blocked pattern or is blocked by the sandbox
         """
         if not condition:
             return True
 
-        # SECURITY: Reject conditions containing dangerous patterns
-        condition_lower = condition.lower()
-        for pattern in self._DANGEROUS_PATTERNS:
-            if pattern.lower() in condition_lower:
-                logger.warning(
-                    f"Blocked dangerous pattern '{pattern}' in playbook condition: {condition[:100]}"
-                )
-                return False
+        template_str, template = self.compile_condition(condition)
 
         try:
-            # Wrap condition in an if statement to get boolean result
-            template_str = f"{{% if {condition} %}}true{{% else %}}false{{% endif %}}"
-            result = self.render_template(template_str, context)
-            return result == "true"
-        except (TemplateSyntaxError, UndefinedError, SecurityError) as e:
-            logger.error(f"Condition evaluation failed (template error): {e}")
+            result = template.render(**context)
+        except SecurityError as e:
+            raise TemplateRenderError(f"Condition blocked by sandbox: {e}")
+        except _UndefinedReferenceError as e:
+            reference = self._undefined_reference(template_str, e.undefined, context)
+            message = (
+                f"Condition references an undefined name ({reference}); "
+                "evaluating it as false"
+            )
+            logger.warning(message)
+            if run_id:
+                self.add_log(run_id, message, level="WARNING")
             return False
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Condition evaluation failed: {e}")
             return False
+        return result == "true"
+
+    def compile_condition(self, condition: str):
+        """Check and compile a step condition without evaluating it.
+
+        Used by evaluate_condition, and by the tests that check every shipped
+        playbook, so that both apply the same rules.
+
+        Returns:
+            (template source, compiled template)
+
+        Raises:
+            TemplateRenderError: If the condition contains a blocked pattern
+                or is not a valid expression
+        """
+        # SECURITY: Reject conditions containing dangerous patterns
+        condition_lower = condition.lower()
+        for pattern in self._DANGEROUS_PATTERNS:
+            if pattern.lower() in condition_lower:
+                # Raise, as the sandbox does: an attempt to reach Python
+                # internals must fail the step, not pass for a condition
+                # that does not hold.
+                logger.warning(
+                    f"Blocked dangerous pattern '{pattern}' in playbook condition: {condition[:100]}"
+                )
+                raise TemplateRenderError(
+                    f"Condition contains blocked pattern: '{pattern}'"
+                )
+
+        # Wrap condition in an if statement to get boolean result
+        template_str = f"{{% if {condition} %}}true{{% else %}}false{{% endif %}}"
+        try:
+            template = condition_env.from_string(template_str)
+        except TemplateSyntaxError as e:
+            raise TemplateRenderError(f"Condition is not a valid expression: {e}")
+        return template_str, template
+
+    @staticmethod
+    def _undefined_reference(
+        template_str: str, undefined: StrictUndefined, context: Dict[str, Any]
+    ) -> str:
+        """Name the reference that produced ``undefined``, as written in the condition.
+
+        The name is taken from the condition's source, never from the
+        context: a subscript computed at run time could carry a value, so a
+        reference that is not spelled out in the condition is described
+        generically.
+        """
+        name = undefined._undefined_name
+        if undefined._undefined_obj is missing:
+            # A bare name: it can only come from the source.
+            return f"'{name}'"
+
+        def static_path(node):
+            if isinstance(node, nodes.Name):
+                return (node.name,)
+            if isinstance(node, nodes.Getattr):
+                base = static_path(node.node)
+                return base + (node.attr,) if base else None
+            if (
+                isinstance(node, nodes.Getitem)
+                and isinstance(node.arg, nodes.Const)
+                and isinstance(node.arg.value, (str, int))
+            ):
+                base = static_path(node.node)
+                return base + (node.arg.value,) if base else None
+            return None
+
+        def resolve(path):
+            value = context.get(path[0], condition_env.globals.get(path[0], missing))
+            for part in path[1:]:
+                if isinstance(part, str):
+                    value = condition_env.getattr(value, part)
+                else:
+                    value = condition_env.getitem(value, part)
+            return value
+
+        def spell(path):
+            text = str(path[0])
+            for part in path[1:]:
+                text += f".{part}" if isinstance(part, str) else f"[{part}]"
+            return text
+
+        ast = condition_env.parse(template_str)
+        for node in ast.find_all((nodes.Getattr, nodes.Getitem)):
+            path = static_path(node)
+            if not path or path[-1] != name:
+                continue
+            try:
+                parent = resolve(path[:-1])
+            except (TemplateRuntimeError, TypeError, ValueError, LookupError):
+                continue  # a sibling path that cannot be resolved is not the one
+            if parent is undefined._undefined_obj:
+                return f"'{spell(path)}'"
+        return "a key computed at run time"
 
 
 # Global workflow engine instance
@@ -454,8 +614,9 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
                 # Evaluate condition if present
                 if step.condition:
                     condition_result = workflow_engine.evaluate_condition(
-                        step.condition, 
-                        execution_result.context
+                        step.condition,
+                        execution_result.context,
+                        run_id=run_id,
                     )
                     if not condition_result:
                         workflow_engine.add_log(

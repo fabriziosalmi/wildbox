@@ -8,15 +8,14 @@ the entry expired (WILDBO-AUTH-03). Combined with the absence of revocation
 (WILDBO-AUTH-01), the practical time-to-cut-off for a stolen token was its full
 remaining lifetime.
 
-Two calls, with different contracts:
-
-* ``purge_gateway_auth_cache()`` is best effort: a purge failure must never
-  prevent the state change that triggered it (a user or key deactivated). The
-  change is already durable in Postgres; the purge only shortens the window,
-  and the TTL remains the backstop.
-* ``revoke_jtis_at_gateway()`` is not: it backs a logout, which must not report
-  success while the gateway can still serve the session (#571). It retries,
-  and raises unless the gateway confirms every jti it was given.
+Every revocation is confirmed (#571). It backs a change that must not
+report success while the gateway can still serve the credential: a logout
+(``revoke_jtis_at_gateway()``), a password change
+(``revoke_user_sessions_at_gateway()``, #569) and an API key disabled
+(``revoke_api_keys_at_gateway()``, #593). Each retries, and raises unless the
+gateway confirms every item it was given. The best-effort full flush that
+user deactivation used, ``purge_gateway_auth_cache()``, is gone with #593:
+deactivation now revokes the account's keys and sessions the same way.
 """
 
 from __future__ import annotations
@@ -37,48 +36,6 @@ _DEFAULT_URL = os.getenv(
     "GATEWAY_INTERNAL_URL",
     "http://open-security-gateway:8081/internal/gateway/purge-auth-cache",
 )
-
-
-async def purge_gateway_auth_cache(
-    token: Optional[str] = None,
-    token_type: str = "bearer",
-    timeout: float = 2.0,
-) -> bool:
-    """
-    Ask the gateway to drop cached decisions.
-
-    Pass ``token`` to purge one entry; omit it to flush the whole cache (used when
-    a user or key is deactivated, since the identity service does not hold the
-    caller's raw token at that point).
-    """
-    secret = os.getenv("GATEWAY_INTERNAL_SECRET")
-    if not secret:
-        logger.warning(
-            "GATEWAY_INTERNAL_SECRET is not set; cannot purge the gateway auth "
-            "cache. Revocation will take effect when the cache entry expires."
-        )
-        return False
-
-    payload = {"token": token, "token_type": token_type} if token else {}
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(
-                _DEFAULT_URL, json=payload, headers={"X-Gateway-Secret": secret}
-            )
-        if response.status_code == 200:
-            return True
-        logger.warning(
-            "Gateway auth-cache purge returned %s; the entry will expire on its "
-            "own TTL",
-            response.status_code,
-        )
-    except Exception as exc:  # noqa: BLE001 - never block the state change
-        logger.warning(
-            "Gateway auth-cache purge failed (%s); the entry will expire on its "
-            "own TTL",
-            exc,
-        )
-    return False
 
 
 class GatewayRevocationError(RuntimeError):
@@ -169,6 +126,39 @@ async def revoke_user_sessions_at_gateway(
         scope="users",
         timeout=timeout,
     )
+
+
+#: The most ids the gateway accepts in one body.
+_MAX_API_KEYS_PER_CALL = 1000
+
+
+async def revoke_api_keys_at_gateway(
+    api_key_ids: Collection[str],
+    ttl_seconds: int,
+    timeout: float = 2.0,
+) -> None:
+    """
+    Make the gateway refuse every request made with one of these API keys
+    (#593), named by their ids: identity does not keep the raw key, so it
+    cannot name the gateway's cache entry for it, and reports the id with
+    every authorization it grants for the key instead.
+
+    The gateway keeps a marker per key for ``ttl_seconds`` (raised to its
+    auth-cache TTL) and checks it on every request, cached decision or not,
+    so a decision cached before the revocation, or one in flight across it,
+    is not served. Raises GatewayRevocationError unless the gateway confirms
+    every key; an older gateway, which does not know this body, flushes its
+    cache and answers without the count, and is refused.
+    """
+    ids = [str(api_key_id) for api_key_id in api_key_ids]
+    for start in range(0, len(ids), _MAX_API_KEYS_PER_CALL):
+        chunk = ids[start : start + _MAX_API_KEYS_PER_CALL]
+        await _post_confirmed(
+            {"api_keys": chunk, "ttl": max(int(ttl_seconds), 1)},
+            len(chunk),
+            scope="api_keys",
+            timeout=timeout,
+        )
 
 
 async def _post_confirmed(

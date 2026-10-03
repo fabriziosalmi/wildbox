@@ -98,8 +98,37 @@ def _write_self_signed_certificate(directory: Path) -> tuple:
     return cert_path, key_path
 
 
+@pytest.fixture
+def allow_loopback_targets(monkeypatch):
+    """Let the SSRF guard accept 127.0.0.1, and only it, for one test.
+
+    The tools refuse loopback targets on every connection (app.safe_http),
+    so a test that talks to a server on 127.0.0.1 has to say so. Every other
+    private, local or metadata address is still refused.
+    """
+    from app.input_validation import InputSanitizer
+
+    original = InputSanitizer._is_blocked_ip
+    loopback = ipaddress.ip_address(HOST)
+
+    def is_blocked(addr):
+        return False if addr == loopback else original(addr)
+
+    monkeypatch.setattr(InputSanitizer, "_is_blocked_ip", staticmethod(is_blocked))
+
+
+@pytest.fixture
+def https_server(_https_server_process, allow_loopback_targets):
+    """A local HTTPS server with a self-signed certificate, reachable by tools.
+
+    The server runs on 127.0.0.1, so the SSRF guard is told to accept that
+    one address for the test (see ``allow_loopback_targets``).
+    """
+    return _https_server_process
+
+
 @pytest.fixture(scope="module")
-def https_server(tmp_path_factory):
+def _https_server_process(tmp_path_factory):
     """A local HTTPS server presenting a self-signed certificate."""
     directory = tmp_path_factory.mktemp("tls")
     cert_path, key_path = _write_self_signed_certificate(directory)

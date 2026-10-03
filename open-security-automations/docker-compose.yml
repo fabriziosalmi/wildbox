@@ -35,19 +35,16 @@ services:
       - N8N_SECURE_COOKIE=true
       - N8N_METRICS=false
       
-      # Wildbox Integration Environment Variables
-      - WILDBOX_API_GATEWAY_URL=${WILDBOX_API_GATEWAY_URL:-http://wildbox-gateway:8000}
+      # Wildbox Integration Environment Variables (see .env.example). Nothing
+      # listens on the old default, http://wildbox-gateway:8000: the gateway
+      # serves the API on its HTTPS listener only.
+      - WILDBOX_API_GATEWAY_URL=${WILDBOX_API_GATEWAY_URL:-https://open-security-gateway}
       - WILDBOX_API_KEY=${WILDBOX_API_KEY:-}
-      
-      # External Service Configuration
-      - SUPPORT_EMAIL_HOST=${SUPPORT_EMAIL_HOST:-}
-      - SUPPORT_EMAIL_USER=${SUPPORT_EMAIL_USER:-}
-      - SUPPORT_EMAIL_PASSWORD=${SUPPORT_EMAIL_PASSWORD:-}
-      
-      # Notification Services
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+
+      # Executive Security Dashboard workflow
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - EXECUTIVE_REPORT_EMAIL_FROM=${EXECUTIVE_REPORT_EMAIL_FROM:-}
+      - EXECUTIVE_REPORT_EMAIL_TO=${EXECUTIVE_REPORT_EMAIL_TO:-}
       
     volumes:
       # Persistent data storage
