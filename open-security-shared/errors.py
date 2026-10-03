@@ -24,6 +24,7 @@ the unhandled-exception catch-all, so no route can answer with a different shape
 from __future__ import annotations
 
 import logging
+from enum import Enum
 from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, HTTPException, Request
@@ -100,7 +101,11 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             "path": str(request.url.path),
         },
     )
-    message = str(exc.detail)
+    detail = exc.detail
+    # fastapi-users raises its codes as a str Enum (ErrorCode), whose str()
+    # is the member name, "ErrorCode.REGISTER_USER_ALREADY_EXISTS", not the
+    # code (#589).
+    message = str(detail.value) if isinstance(detail, Enum) else str(detail)
     details = None
     # fastapi-users answers {"code": "REGISTER_INVALID_PASSWORD", "reason":
     # "..."}; str() of it reached the client as a Python dict literal. The

@@ -7,11 +7,10 @@ import { Shield, Eye, EyeOff, Loader2, User, Mail, Lock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/components/auth-provider'
+import { CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
 import { getErrorMessage } from '@/lib/utils'
 import {
   MAX_PASSWORD_LENGTH,
-  MIN_PASSWORD_LENGTH,
   PASSWORD_RULE_HINT,
   passwordPolicyProblem,
 } from '@/lib/password-policy'
@@ -26,15 +25,17 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { register, isAuthenticated, isLoading: authLoading } = useAuth()
+  const { register, isAuthenticated, isLoading: authLoading, user } = useAuth()
   const router = useRouter()
+  const mustChangePassword = !!user?.must_change_password
 
-  // Redirect to dashboard if already authenticated
+  // Redirect to dashboard if already authenticated, or first to the
+  // change-password screen for an account with an initial password (#573).
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
-      router.replace('/dashboard')
+      router.replace(mustChangePassword ? CHANGE_PASSWORD_PAGE : '/dashboard')
     }
-  }, [isAuthenticated, authLoading, router])
+  }, [isAuthenticated, authLoading, mustChangePassword, router])
 
   // Show loading while checking auth state
   if (authLoading) {
@@ -74,9 +75,9 @@ export default function SignupPage() {
     }
 
     try {
+      // Signs the new account in and redirects; a refusal (the password
+      // policy's reason, an address already registered) lands below.
       await register(email, password, name)
-      // Don't redirect here - let the auth provider handle the redirect
-      // to prevent race conditions
     } catch (err) {
       setError(getErrorMessage(err, 'Registration failed. Please try again.'))
     } finally {
@@ -108,7 +109,9 @@ export default function SignupPage() {
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
-                  <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                  <p className="text-sm text-red-600 dark:text-red-400" data-testid="signup-error">
+                    {error}
+                  </p>
                 </div>
               )}
 
@@ -165,6 +168,8 @@ export default function SignupPage() {
                 </label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  {/* No minLength: the browser's own "lengthen this text" bubble
+                      would stop the form before it can show the policy's reason. */}
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
@@ -172,7 +177,6 @@ export default function SignupPage() {
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Create a password"
                     required
-                    minLength={MIN_PASSWORD_LENGTH}
                     maxLength={MAX_PASSWORD_LENGTH}
                     autoComplete="new-password"
                     aria-describedby="password-rule"
