@@ -15,8 +15,6 @@ tests hold the fix in place:
   secret, and still does after the JWT secret is rotated.
 """
 
-import hashlib
-import hmac
 import os
 import sys
 from pathlib import Path
@@ -37,6 +35,14 @@ JWT_OLD = "3f9c1e7a5b2d8f4096e1c7a3b5d9f2e48a6c0b1d3e5f7a9c2b4d6e8f0a1c3e5b"
 JWT_NEW = "c4e6a8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a4c6"
 HASH_SECRET = "9d1f3b5e7a0c2e4f6b8d0a2c4e6f8b1d3a5c7e9f0b2d4a6c8e0f1b3d5a7c9e2f"
 API_KEY = "wsk_ab12.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+# Known answers: HMAC-SHA256 of API_KEY keyed by HASH_SECRET and by JWT_OLD,
+# computed independently of app.auth.
+DIGEST_UNDER_HASH_SECRET = (
+    "8ef16da4fa661c4f3e0d3912227ea6e55796eec5c058e0d57e8a7390add606e5"
+)
+DIGEST_UNDER_JWT_OLD = (
+    "9637b1bd17a3db150f6b0d2646c06f9a0bc852c917a564d2547ec1d895498f70"
+)
 
 
 def _settings(monkeypatch, **env):
@@ -52,10 +58,6 @@ def _settings(monkeypatch, **env):
 def _use(monkeypatch, settings):
     """Make app.auth hash with these settings."""
     monkeypatch.setattr(auth, "settings", settings)
-
-
-def _hmac(secret, key=API_KEY):
-    return hmac.new(secret.encode(), key.encode(), hashlib.sha256).hexdigest()
 
 
 # --- production requires the secret ---------------------------------------
@@ -87,7 +89,7 @@ def test_development_without_the_secret_falls_back_to_the_jwt_key(monkeypatch):
     settings = _settings(monkeypatch, ENVIRONMENT="development")
     _use(monkeypatch, settings)
     assert auth.api_key_hash_secret_is_fallback() is True
-    assert auth.hash_api_key(API_KEY) == _hmac(JWT_OLD)
+    assert auth.hash_api_key(API_KEY) == DIGEST_UNDER_JWT_OLD
 
 
 @pytest.mark.parametrize(
@@ -122,8 +124,8 @@ def test_the_digest_is_keyed_by_the_hash_secret(monkeypatch):
         ),
     )
     assert auth.api_key_hash_secret_is_fallback() is False
-    assert auth.hash_api_key(API_KEY) == _hmac(HASH_SECRET)
-    assert auth.hash_api_key(API_KEY) != _hmac(JWT_OLD)
+    assert auth.hash_api_key(API_KEY) == DIGEST_UNDER_HASH_SECRET
+    assert auth.hash_api_key(API_KEY) != DIGEST_UNDER_JWT_OLD
 
 
 def test_a_key_created_with_the_hash_secret_verifies(monkeypatch):
@@ -135,7 +137,9 @@ def test_a_key_created_with_the_hash_secret_verifies(monkeypatch):
     )
     full_key, _prefix, stored = auth.generate_api_key()
     assert stored == auth.hash_api_key(full_key)
-    assert stored == _hmac(HASH_SECRET, full_key)
+    # Not what the JWT key would give.
+    _use(monkeypatch, _settings(monkeypatch, ENVIRONMENT="development"))
+    assert auth.hash_api_key(full_key) != stored
 
 
 def test_rotating_the_jwt_key_does_not_change_a_stored_digest(monkeypatch):
