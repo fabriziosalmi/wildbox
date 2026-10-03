@@ -107,7 +107,12 @@ steps:
     name: "🚨 Create Security Vulnerability"
     action: "wildbox.create_vulnerability"
     description: "Create vulnerability in Guardian if threat detected"
-    condition: "{{ steps.threat_assessment.result.severity != 'low' }}"
+    # A step's result is stored under `output`; `result` never existed, so
+    # this reference could not resolve. Guarded because the severity is
+    # optional: without one, no vulnerability is created.
+    condition: >-
+      steps.threat_assessment.output.severity is defined
+      and steps.threat_assessment.output.severity != 'low'
     input:
       title: "All-Star Test: Potential Threat from {{ trigger.ip }}"
       description: |

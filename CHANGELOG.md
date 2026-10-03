@@ -51,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `__class__` evaluated to false, so the attempt was hidden behind a
   skipped step. It now raises like a sandbox violation, and the step
   fails according to its `on_failure` policy.
+- **The shipped responder playbooks' conditions are valid expressions**
+  (#595).
+  `triage_ip.yml`, `triage_url.yml` and `all_star_e2e.yml` wrote their
+  conditions as `"{{ ... }}"`. A condition is the body of an `{% if %}`,
+  so each was a syntax error and every conditional step failed. They are
+  now plain expressions, with `is defined` guards where the data is
+  optional, and `all_star_e2e.yml` reads the step result from `output`
+  instead of `result`, which never existed. A unit test compiles every
+  condition and every input template of every shipped playbook, so a
+  broken one fails CI.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to

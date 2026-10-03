@@ -421,6 +421,40 @@ class WorkflowEngine:
         if not condition:
             return True
 
+        template_str, template = self.compile_condition(condition)
+
+        try:
+            result = template.render(**context)
+        except SecurityError as e:
+            raise TemplateRenderError(f"Condition blocked by sandbox: {e}")
+        except _UndefinedReferenceError as e:
+            reference = self._undefined_reference(template_str, e.undefined, context)
+            message = (
+                f"Condition references an undefined name ({reference}); "
+                "evaluating it as false"
+            )
+            logger.warning(message)
+            if run_id:
+                self.add_log(run_id, message, level="WARNING")
+            return False
+        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+            logger.error(f"Condition evaluation failed: {e}")
+            return False
+        return result == "true"
+
+    def compile_condition(self, condition: str):
+        """Check and compile a step condition without evaluating it.
+
+        Used by evaluate_condition, and by the tests that check every shipped
+        playbook, so that both apply the same rules.
+
+        Returns:
+            (template source, compiled template)
+
+        Raises:
+            TemplateRenderError: If the condition contains a blocked pattern
+                or is not a valid expression
+        """
         # SECURITY: Reject conditions containing dangerous patterns
         condition_lower = condition.lower()
         for pattern in self._DANGEROUS_PATTERNS:
@@ -441,25 +475,7 @@ class WorkflowEngine:
             template = condition_env.from_string(template_str)
         except TemplateSyntaxError as e:
             raise TemplateRenderError(f"Condition is not a valid expression: {e}")
-
-        try:
-            result = template.render(**context)
-        except SecurityError as e:
-            raise TemplateRenderError(f"Condition blocked by sandbox: {e}")
-        except _UndefinedReferenceError as e:
-            reference = self._undefined_reference(template_str, e.undefined, context)
-            message = (
-                f"Condition references an undefined name ({reference}); "
-                "evaluating it as false"
-            )
-            logger.warning(message)
-            if run_id:
-                self.add_log(run_id, message, level="WARNING")
-            return False
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            logger.error(f"Condition evaluation failed: {e}")
-            return False
-        return result == "true"
+        return template_str, template
 
     @staticmethod
     def _undefined_reference(

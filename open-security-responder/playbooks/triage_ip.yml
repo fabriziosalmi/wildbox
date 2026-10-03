@@ -23,7 +23,7 @@ steps:
         target: "{{ trigger.ip }}"
         scan_type: "quick"
         ports: "1-1000"
-    condition: "{{ steps.validate_ip.output.valid == true }}"
+    condition: "steps.validate_ip.output.valid == true"
     
   - name: "check_reputation"
     action: "api.run_tool"
@@ -32,7 +32,7 @@ steps:
       params:
         ip: "{{ trigger.ip }}"
         sources: ["virustotal", "abuseipdb", "shodan"]
-    condition: "{{ steps.validate_ip.output.valid == true }}"
+    condition: "steps.validate_ip.output.valid == true"
     
   - name: "whois_lookup"
     action: "api.run_tool"
@@ -40,7 +40,12 @@ steps:
       tool_name: "whois"
       params:
         target: "{{ trigger.ip }}"
-    condition: "{{ steps.scan_ports.output.open_ports|length > 0 }}"
+    # scan_ports is skipped for an invalid IP, and open_ports is whatever the
+    # tool returns, so both are guarded.
+    condition: >-
+      steps.scan_ports is defined
+      and steps.scan_ports.output.open_ports is defined
+      and steps.scan_ports.output.open_ports | length > 0
     
   - name: "threat_assessment"
     action: "system.evaluate"
