@@ -249,7 +249,7 @@ and a notification log; `guardian` applies it when it starts.
 - `trigger_count` and `last_triggered` now count and date the times a rule
   started firing, not every evaluation that found it firing.
 
-### 16. guardian runs the discovery rules and report schedules users define
+### 15. guardian runs the discovery rules and report schedules users define
 
 Asset discovery rules and report schedules were stored and never run. A new
 periodic task, sent by `guardian-beat` every minute
@@ -282,7 +282,7 @@ describes what can be scheduled.
   3389 (a refused connection counts as up), not by ping, which was not
   installed in the image. A host that answers only ICMP is not found.
 
-### 17. Rebuild the dashboard image; leave `NEXT_PUBLIC_GATEWAY_URL` empty
+### 16. Rebuild the dashboard image; leave `NEXT_PUBLIC_GATEWAY_URL` empty
 
 `NEXT_PUBLIC_*` is compiled into the dashboard's browser code when the image
 is built, and the production Dockerfile took no value for it, so a production
@@ -305,7 +305,7 @@ reads from `.env`.
 
 See the [deployment guide](https://www.wildbox.io/guides/deployment/#the-dashboards-browser-settings).
 
-### 18. `PATCH /auth/users/me` no longer changes the password
+### 17. `PATCH /auth/users/me` no longer changes the password
 
 It changed the password without asking for the current one. It now answers
 400 (`UPDATE_USER_INVALID_PASSWORD`) to a request with a `password` field and
@@ -316,7 +316,7 @@ user's own password must call
 `new_password` (at least 12 characters). Administrators resetting another
 account's password through `PATCH /auth/users/{id}` are not affected.
 
-### 19. Account changes need the current password; a password change ends the other sessions
+### 18. Account changes need the current password; a password change ends the other sessions
 
 identity adds one column, `users.tokens_valid_after` (alembic revision
 `a6b7c8d9e0f1`), which it applies itself at start (`alembic upgrade head` in
