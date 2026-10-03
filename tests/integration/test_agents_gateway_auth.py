@@ -70,7 +70,9 @@ def test_a_session_submits_an_analysis_and_reads_it_back():
         headers=_bearer(_session_token()),
         timeout=TIMEOUT,
     )
-    assert other.status_code == 403, other.text[:300]
+    # Another user's task answers like a task that does not exist (#650),
+    # so a task id cannot be probed.
+    assert other.status_code == 404, other.text[:300]
 
 
 def test_the_agents_routes_require_a_credential():
