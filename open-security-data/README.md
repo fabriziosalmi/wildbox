@@ -1,315 +1,229 @@
 # Open Security Data
 
-A comprehensive security data lake platform that automatically collects, processes, and serves threat intelligence and security-related information from public sources.
+The Wildbox data service collects threat-intelligence indicators from public
+feeds, stores them in PostgreSQL and serves them through a REST API. It is a
+FastAPI application (`app/api/main.py`) with a separate collection scheduler
+(`app/scheduler/main.py`).
 
-## Overview
+## What it does
 
-Open Security Data is designed to build and maintain a centralized repository of security information including:
+- Collects indicators (IP addresses, domains, URLs, file hashes and other
+  types) from configured sources on a per-source interval.
+- Validates and normalizes each indicator, then inserts it or updates the
+  existing row for the same source, type and normalized value.
+- Serves search, lookup, bulk lookup and an NDJSON feed of recent indicators.
+- Scopes indicators and sources to the caller's team: a caller sees its own
+  team's rows and the global rows (`team_id` empty).
+- Stores the telemetry the sensor sends through the gateway
+  (`POST /api/v1/data/ingest`) under the team of the sensor's API key, and
+  serves it to that team only: telemetry has no global rows (#640, #660). See
+  [Sending telemetry to Wildbox](../open-security-sensor/README.md#sending-telemetry-to-wildbox).
 
-- **Denylists**: IP addresses, domains, URLs flagged as malicious
-- **Threat Intelligence**: IOCs, malware signatures, attack patterns
-- **Vulnerability Data**: CVE information, exploit databases
-- **Certificate Intelligence**: SSL/TLS certificate transparency logs
-- **DNS Intelligence**: Malicious domains, DNS resolution data
-- **Network Intelligence**: Botnet C&C servers, scanning sources
-- **File Intelligence**: Malware hashes, file reputation data
+The service has no GraphQL, WebSocket or STIX interface.
 
 ## Architecture
 
 ```text
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Data Sources  │    │   Ingestion      │    │   Processing    │
-│                 │    │                  │    │                 │
-│ • Threat Feeds  │───▶│ • Collectors     │───▶│ • Validation    │
-│ • Public APIs   │    │ • Schedulers     │    │ • Normalization │
-│ • RSS Feeds     │    │ • Rate Limiters  │    │ • Enrichment    │
-│ • Git Repos     │    │ • Transformers   │    │ • Deduplication │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                                         │
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│      APIs       │    │     Storage      │    │   Data Lake     │
-│                 │    │                  │    │                 │
-│ • REST API      │◀───│ • PostgreSQL     │◀───│ • Raw Data      │
-│ • GraphQL       │    │ • Redis Cache    │    │ • Processed     │
-│ • WebSocket     │    │ • File Storage   │    │ • Enriched      │
-│ • Export        │    │ • Time Series    │    │ • Analytics     │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
+client --HTTPS--> gateway (443) --HTTP + identity headers--> data API (8002) --> PostgreSQL
+                                                             data-scheduler   --> PostgreSQL
 ```
 
-## Features
+The root `docker-compose.yml` runs two containers from the same image:
 
-### Data Collection
+- `data`: the API, `python -m app.api.main` (uvicorn) on port 8002, published
+  on `127.0.0.1:8002` only.
+- `data-scheduler`: `python -m app.scheduler.main`, which loads enabled sources
+  from the database and runs each one when its `collection_interval` elapses.
 
-- **Automated Collectors**: Scheduled collection from 50+ public threat intelligence sources
-- **Rate Limiting**: Respectful API usage with configurable rate limits
-- **Error Handling**: Robust error handling and retry mechanisms
-- **Source Management**: Dynamic addition/removal of data sources
+The API applies the Alembic migrations in `alembic/versions/` at startup. Set
+`RUN_MIGRATIONS_ON_STARTUP=false` to skip that when migrations run as a
+separate deploy step. The scheduler waits for the schema instead of creating it.
 
-### Data Processing
+## Authentication
 
-- **Validation**: Schema validation and data quality checks
-- **Normalization**: Standardized data formats across all sources
-- **Enrichment**: Geographic, ASN, and contextual data enrichment
-- **Deduplication**: Intelligent duplicate detection and merging
+The service accepts only requests that arrive through the gateway. Clients
+authenticate to the gateway with `Authorization: Bearer <JWT>` or
+`X-API-Key: <key>`; the gateway checks the credential with the identity
+service and forwards `X-Wildbox-*` identity headers together with the shared
+`GATEWAY_INTERNAL_SECRET`. The service verifies both through
+`open_security_shared.gateway_auth` (`app/auth.py`) and rejects anything else.
+Only `/health`, `/metrics` and the development-only API docs answer without
+gateway headers.
 
-### Storage & Performance
+## Running it
 
-- **Multi-tier Storage**: Hot, warm, and cold data storage strategies
-- **Caching**: Redis-based caching for frequently accessed data
-- **Indexing**: Optimized database indexes for fast queries
-- **Partitioning**: Time-based and source-based data partitioning
-
-### APIs & Access
-
-- **REST API**: Full CRUD operations with OpenAPI documentation
-- **GraphQL**: Flexible query interface for complex data relationships
-- **Real-time**: WebSocket connections for live threat feeds
-- **Export**: Bulk export in multiple formats (JSON, CSV, STIX)
-
-### Monitoring & Analytics
-
-- **Metrics**: Collection quality, API usage, and performance metrics
-- **Dashboards**: Grafana dashboards for operational visibility
-- **Alerting**: Real-time alerts for data quality issues
-- **Reports**: Automated threat intelligence reports
-
-## Quick Start
-
-### Using Docker (Recommended)
+Start the data service as part of the Wildbox stack from the repository root;
+see the root [README](../README.md) for secrets and first start:
 
 ```bash
-# Clone the repository
-git clone https://github.com/fabriziosalmi/wildbox.git
-cd wildbox/open-security-data
-
-# Start the platform
-docker-compose up -d
-
-# Initialize the database
-docker-compose exec api python manage.py migrate
-docker-compose exec api python manage.py create-admin
-
-# Start data collection
-docker-compose exec scheduler python -m app.scheduler.main
+docker compose up -d data data-scheduler gateway
 ```
 
-### Manual Installation
+### Seed the default sources
+
+A fresh database has no sources, so the scheduler has nothing to collect.
+`manage.py` adds a default set and manages it:
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your configuration
-
-# Initialize database
-python manage.py migrate
-python manage.py create-admin
-
-# Start services
-python -m app.api.main &          # API server
-python -m app.scheduler.main &    # Data collection scheduler
-python -m app.workers.main &      # Background workers
+docker compose exec data python manage.py sources add-defaults
+docker compose exec data python manage.py sources list
+docker compose exec data python manage.py sources disable "PhishTank"
+docker compose exec data python manage.py sources enable "PhishTank"
+docker compose exec data python manage.py sources test "Feodo Tracker"
 ```
+
+`manage.py` has no other commands besides `init` and `reset`. Both use
+SQLAlchemy `create_all()` rather than Alembic, and `reset` drops every table;
+with the full stack, let the API apply the migrations instead.
+
+### Standalone compose file
+
+`open-security-data/docker-compose.yml` predates the shared stack and does not
+start as shipped:
+
+- It mounts files that are not in the repository: `nginx/nginx.conf`,
+  `nginx/ssl`, `prometheus/prometheus.yml`, `grafana/dashboards`,
+  `grafana/datasources` and `scripts/init-db.sql`.
+- Its API runs with `ENVIRONMENT=production` but sets no `SECRET_KEY`, which
+  `app/config.py` refuses at startup, and no `GATEWAY_INTERNAL_SECRET`, so no
+  request would authenticate.
+- Its ports clash with the main stack: the API on `127.0.0.1:8002`, nginx on
+  80 and 443 (the gateway), Prometheus on 9090, and Grafana on 3000, the port
+  the dashboard publishes.
+- Grafana takes its admin password from `GRAFANA_ADMIN_PASSWORD`. The file
+  does not require the variable, so set it yourself before starting Grafana.
+
+Use the root `docker-compose.yml`.
+
+## Collectors
+
+Collectors live in `app/collectors/`. The collector for a source is chosen by
+its `source_type` through `CollectorRegistry`:
+
+| `source_type` | Collector |
+| --- | --- |
+| `http`, `https`, `json`, `csv`, `txt` | `HTTPCollector` (generic) |
+| `rss`, `atom` | `RSSCollector` |
+| `malware_domain_list` | `MalwareDomainListCollector` |
+| `abuseipdb` | `AbuseIPDBCollector` |
+| `urlvoid` | `URLVoidCollector` |
+| `phishtank` | `PhishTankCollector` |
+| `feodo_tracker` | `FeodoTrackerCollector` |
+| `malwarebazaar` | `MalwareBazaarCollector` |
+| `threatfox` | `ThreatFoxCollector` |
+
+The seven source-specific collectors are in `app/collectors/sources.py`.
+`sources add-defaults` creates five sources (Malware Domain List, PhishTank,
+Feodo Tracker, AbuseIPDB Blacklist, URLVoid Reputation) with `source_type`
+`txt` or `json`, so they use the generic `HTTPCollector`. AbuseIPDB and
+URLVoid need an API key in the source configuration.
+`scripts/init_feeds.py` creates sources with `source_type` `api` or `feed`,
+for which no collector is registered, so those sources fail to collect.
+
+To add a source type, subclass `BaseCollector` or `HTTPCollector` in
+`app/collectors/sources.py` and register it with
+`CollectorRegistry.register_collector()`.
+
+## API
+
+Paths below are as the gateway exposes them: `/api/v1/data/<path>` is
+forwarded to the service's `/api/v1/<path>`, and `/api/v1/data/health` to
+`/health`.
+
+| Method | Gateway path | Purpose |
+| --- | --- | --- |
+| GET | `/api/v1/data/health` | Liveness |
+| GET | `/api/v1/data/stats` | Indicator and source counts |
+| GET | `/api/v1/data/indicators/search` | Search with filters and pagination |
+| GET | `/api/v1/data/indicators/{id}` | One indicator by UUID |
+| POST | `/api/v1/data/indicators/lookup` | Bulk lookup |
+| GET | `/api/v1/data/ips/{ip}` | IP intelligence |
+| GET | `/api/v1/data/domains/{domain}` | Domain intelligence |
+| GET | `/api/v1/data/hashes/{hash}` | File hash intelligence |
+| GET | `/api/v1/data/sources` | Configured sources |
+| GET | `/api/v1/data/feeds/realtime` | NDJSON stream of recent indicators, up to 1000 |
+| GET | `/api/v1/data/dashboard/threat-intel` | Dashboard summary |
+| POST | `/api/v1/data/ingest` | Telemetry batch from a sensor; a key with the `data:ingest` scope is enough |
+| GET | `/api/v1/data/telemetry/events` | The team's telemetry events |
+| GET | `/api/v1/data/telemetry/stats` | The team's telemetry counts |
+| GET | `/api/v1/data/sensors` | The team's sensors |
+| GET | `/api/v1/data/sensors/{sensor_id}` | One of the team's sensors |
+
+The OpenAPI UI (`/docs`, `/redoc`) is enabled only when `ENVIRONMENT` is
+`development`, and only on the service port (`http://127.0.0.1:8002/docs`), not
+through the gateway. Prometheus metrics are at `http://127.0.0.1:8002/metrics`.
+
+The dashboard reaches the service through `dataClient` in
+`open-security-dashboard/src/lib/api-client.ts`, whose base URL is the gateway
+plus `/api/v1/data`.
+
+### Examples
+
+These use the gateway's certificate and a token obtained as in the root
+[README](../README.md):
+
+```bash
+CA=open-security-gateway/ssl/wildbox.crt
+
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  "https://localhost/api/v1/data/indicators/search?indicator_type=ip_address&threat_types=malware&limit=50"
+
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/data/ips/203.0.113.10
+
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -X POST https://localhost/api/v1/data/indicators/lookup \
+  -d '{"indicators": [{"indicator_type": "domain", "value": "example.com"}]}'
+
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  "https://localhost/api/v1/data/feeds/realtime?since_minutes=60"
+```
+
+Indicator types are `ip_address`, `domain`, `url`, `file_hash`, `email`,
+`certificate`, `asn` and `vulnerability` (`app/models.py`).
 
 ## Configuration
 
-Key configuration options in `.env`:
+Settings are read from environment variables in `app/config.py`;
+`.env.example` lists them. In the root compose file the service receives:
 
-```env
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/securitydata
+- `DATABASE_URL`: from `DATA_DATABASE_URL`, falling back to `DATABASE_URL`.
+- `SECRET_KEY`: from `DATA_SECRET_KEY`; required when `ENVIRONMENT` is
+  `production`.
+- `GATEWAY_INTERNAL_SECRET`: shared with the gateway.
+- `ENVIRONMENT`, `DEBUG`, `LOG_LEVEL`, `CORS_ORIGINS`.
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
-# API Configuration
-API_HOST=0.0.0.0
-API_PORT=8000
-API_WORKERS=4
-
-# Data Collection
-COLLECTION_INTERVAL=3600  # 1 hour
-MAX_CONCURRENT_COLLECTORS=10
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=60
-
-# Storage
-DATA_RETENTION_DAYS=365
-ARCHIVE_AFTER_DAYS=90
-```
-
-## Data Sources
-
-### Currently Supported Sources
-
-| Source | Type | Data | Update Frequency |
-| -------- | ------ | ------ | ------------------ |
-| Malware Domain List | Denylist | Domains | Daily |
-| Spamhaus | IP/Domain | Blocklists | Hourly |
-| URLVoid | URL | Reputation | On-demand |
-| VirusTotal | Hash/URL/IP | Intelligence | On-demand |
-| AlienVault OTX | IOC | Threat Intel | Real-time |
-| MISP | IOC | Threat Intel | Real-time |
-| Certificate Transparency | Certificate | SSL/TLS Certs | Real-time |
-| Shodan | IP/Port | Network Intel | Daily |
-| GreyNoise | IP | Internet Scan Data | Real-time |
-| AbuseIPDB | IP | Abuse Reports | Real-time |
-
-### Adding New Sources
-
-1. Create a collector in `app/collectors/sources/`
-2. Define the data schema in `app/schemas/`
-3. Add configuration in `config/sources.yaml`
-4. Register in `app/collectors/registry.py`
-
-## API Usage
-
-### REST API Examples
-
-```bash
-# Get recent malicious IPs
-curl "http://localhost:8002/api/v1/ips?status=malicious&limit=100"
-
-# Search for domain intelligence
-curl "http://localhost:8002/api/v1/domains/example.com"
-
-# Get threat intelligence by hash
-curl "http://localhost:8002/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
-
-# Real-time threat feed
-curl "http://localhost:8002/api/v1/feeds/realtime" \
-  -H "Accept: application/x-ndjson"
-```
-
-### GraphQL Examples
-
-```graphql
-# Complex threat intelligence query
-query ThreatIntelligence($domain: String!) {
-  domain(name: $domain) {
-    name
-    reputation
-    firstSeen
-    lastSeen
-    associatedIps {
-      address
-      asn
-      country
-    }
-    certificates {
-      issuer
-      subject
-      validFrom
-      validTo
-    }
-    threatFeeds {
-      source
-      category
-      confidence
-      description
-    }
-  }
-}
-```
+Collection settings such as `COLLECTION_INTERVAL`, `MAX_CONCURRENT_COLLECTORS`
+and `COLLECTION_TIMEOUT` have defaults in `app/config.py`. Each source's own
+`collection_interval` decides when the scheduler runs it. `REDIS_URL` is
+configurable but the service does not use Redis.
 
 ## Development
 
-### Project Structure
-
-```bash
+```text
 open-security-data/
-├── app/                     # Main application code
-│   ├── api/                # REST API and GraphQL endpoints
-│   ├── collectors/         # Data collection modules
-│   ├── processors/         # Data processing pipelines
-│   ├── storage/            # Database models and storage
-│   ├── scheduler/          # Job scheduling and management
-│   ├── workers/            # Background task workers
-│   └── utils/              # Shared utilities
-├── config/                 # Configuration files
-├── docker/                 # Docker configuration
-├── docs/                   # Documentation
-├── scripts/                # Utility scripts
-├── tests/                  # Test suite
-└── requirements/           # Python dependencies
+├── alembic/            # Migrations (applied by the API at startup)
+├── app/
+│   ├── api/main.py     # FastAPI application and routes
+│   ├── auth.py         # Gateway authentication dependency
+│   ├── collectors/     # Collector base classes, registry, source collectors
+│   ├── config.py       # Settings
+│   ├── models.py       # SQLAlchemy models
+│   ├── scheduler/      # Collection scheduler
+│   ├── schemas/        # Pydantic request and response models
+│   └── utils/          # Database, validation, normalization, rate limiting
+├── manage.py           # Source management CLI
+├── scripts/            # init_feeds.py (not used by the stack)
+└── tests/unit/
 ```
 
-### Running Tests
+Run the unit tests from this directory:
 
 ```bash
-# Run all tests
 pytest
-
-# Run with coverage
-pytest --cov=app --cov-report=html
-
-# Run specific test category
-pytest tests/collectors/
-pytest tests/api/
 ```
-
-### Code Quality
-
-```bash
-# Format code
-black app/ tests/
-
-# Lint code
-flake8 app/ tests/
-
-# Type checking
-mypy app/
-
-# Security scanning
-bandit -r app/
-```
-
-## Deployment
-
-### Production Deployment
-
-See [docs/deployment.md](docs/deployment.md) for detailed production deployment instructions including:
-
-- Kubernetes manifests
-- Database optimization
-- Monitoring setup
-- Backup strategies
-- Security hardening
-
-### Scaling
-
-The platform is designed to scale horizontally:
-
-- **API**: Multiple API server instances behind a load balancer
-- **Collectors**: Distributed collection workers
-- **Database**: Read replicas and sharding support
-- **Cache**: Redis clustering
-- **Storage**: Object storage for large datasets
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Run quality checks
-6. Submit a pull request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Support
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/your-org/open-security-data/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-org/open-security-data/discussions)
-- **Security**: security@your-org.com
-
-## Acknowledgments
-
-This project builds upon the excellent work of the threat intelligence community and incorporates data from numerous public sources. We thank all the organizations and individuals who make their threat intelligence available to the community.
+MIT; see [LICENSE](../LICENSE).

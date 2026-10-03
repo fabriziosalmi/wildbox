@@ -1,203 +1,100 @@
-# Open Security Data
+# Open Security Data quick start
 
-## Quick Start Guide
+This guide starts the data service inside the Wildbox stack, seeds its
+sources and queries it through the gateway. See [README.md](README.md) for the
+architecture, the full route list and configuration.
 
-Congratulations! You now have a comprehensive security data lake platform. Here's how to get started:
+## 1. Start the services
 
-### 1. Setup Environment
-
-```bash
-# Copy environment configuration
-cp .env.example .env
-
-# Edit configuration as needed
-nano .env
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### 2. Initialize Database
+From the repository root, after generating secrets as described in the root
+[README](../README.md):
 
 ```bash
-# Initialize database tables
-python manage.py init
-
-# Add default threat intelligence sources
-python manage.py sources add-defaults
-
-# List configured sources
-python manage.py sources list
+docker compose up -d data data-scheduler gateway
+docker compose ps data data-scheduler
 ```
 
-### 3. Start the Platform
+The gateway depends on every backend it routes to, so this starts the rest of
+the stack too.
 
-#### Option A: Docker (Recommended)
+The `data` container applies the database migrations at startup. Its port,
+8002, is published on `127.0.0.1` only; clients go through the gateway on
+HTTPS port 443.
+
+## 2. Add sources
+
+The database starts without sources. Add the default set and check it:
 
 ```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
+docker compose exec data python manage.py sources add-defaults
+docker compose exec data python manage.py sources list
 ```
 
-#### Option B: Manual
+The default sources are Malware Domain List, PhishTank, Feodo Tracker,
+AbuseIPDB Blacklist and URLVoid Reputation. AbuseIPDB and URLVoid need an API
+key in their source configuration before they collect anything.
+
+Enable, disable or run a source once:
 
 ```bash
-# Start API server
-python -m app.api.main &
-
-# Start data collection scheduler
-python -m app.scheduler.main &
+docker compose exec data python manage.py sources disable "Malware Domain List"
+docker compose exec data python manage.py sources enable "Malware Domain List"
+docker compose exec data python manage.py sources test "Feodo Tracker"
 ```
 
-### 4. Access the Platform
+`data-scheduler` runs each enabled source when its collection interval
+elapses; follow it with `docker compose logs -f data-scheduler`.
 
-- **API Documentation**: http://localhost:8001/docs
-- **Health Check**: http://localhost:8001/health
-- **Statistics**: http://localhost:8001/api/v1/stats
+## 3. Query the API
 
-### 5. Basic Usage Examples
-
-#### Search for indicators
+Get a token as shown in the root [README](../README.md), then call the
+service through the gateway. `/api/v1/data/<path>` maps to the service's
+`/api/v1/<path>`:
 
 ```bash
-# Search for malicious IPs
-curl "http://localhost:8001/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware"
+CA=open-security-gateway/ssl/wildbox.crt
+AUTH="Authorization: Bearer $TOKEN"
 
-# Search for phishing domains
-curl "http://localhost:8001/api/v1/indicators/search?indicator_type=domain&threat_types=phishing"
+# Health and statistics
+curl --cacert "$CA" -H "$AUTH" https://localhost/api/v1/data/health
+curl --cacert "$CA" -H "$AUTH" https://localhost/api/v1/data/stats
+
+# Search
+curl --cacert "$CA" -H "$AUTH" \
+  "https://localhost/api/v1/data/indicators/search?indicator_type=domain&threat_types=phishing"
+
+# Lookups
+curl --cacert "$CA" -H "$AUTH" https://localhost/api/v1/data/ips/203.0.113.10
+curl --cacert "$CA" -H "$AUTH" https://localhost/api/v1/data/domains/example.com
+curl --cacert "$CA" -H "$AUTH" \
+  https://localhost/api/v1/data/hashes/d41d8cd98f00b204e9800998ecf8427e
+
+# Bulk lookup
+curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
+  -X POST https://localhost/api/v1/data/indicators/lookup \
+  -d '{"indicators": [
+        {"indicator_type": "ip_address", "value": "203.0.113.10"},
+        {"indicator_type": "domain", "value": "example.com"}
+      ]}'
+
+# Indicators seen in the last hour, as NDJSON
+curl --cacert "$CA" -H "$AUTH" \
+  "https://localhost/api/v1/data/feeds/realtime?since_minutes=60"
 ```
 
-#### Lookup specific indicators
+An API key works in place of the token: send `X-API-Key: <key>` instead of
+the `Authorization` header.
+
+## Sensor telemetry
+
+The sensor posts telemetry to `https://<gateway>/api/v1/data/ingest` with an
+identity API key scoped to `data:ingest`, and the service stores it under that
+key's team. Any member of the team reads it:
 
 ```bash
-# Check IP address
-curl "http://localhost:8001/api/v1/ips/1.2.3.4"
-
-# Check domain
-curl "http://localhost:8001/api/v1/domains/malicious.example.com"
-
-# Check file hash
-curl "http://localhost:8001/api/v1/hashes/d41d8cd98f00b204e9800998ecf8427e"
+curl --cacert "$CA" -H "$AUTH" \
+  "https://localhost/api/v1/data/telemetry/events?limit=10"
 ```
 
-#### Bulk lookup
-
-```bash
-curl -X POST "http://localhost:8001/api/v1/indicators/lookup" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "indicators": [
-      {"indicator_type": "ip_address", "value": "1.2.3.4"},
-      {"indicator_type": "domain", "value": "example.com"}
-    ]
-  }'
-```
-
-#### Real-time threat feed
-
-```bash
-# Get recent threats (NDJSON format)
-curl "http://localhost:8001/api/v1/feeds/realtime?since_minutes=60"
-```
-
-### 6. Configuration
-
-#### Adding API Keys for Premium Sources
-
-Edit your `.env` file or source configurations:
-
-```bash
-# AbuseIPDB
-python manage.py sources enable "AbuseIPDB Denylist"
-
-# URLVoid (configure domains to check)
-# Edit source config via database or API
-```
-
-#### Configuring Data Sources
-
-```bash
-# Enable/disable sources
-python manage.py sources enable "PhishTank"
-python manage.py sources disable "Malware Domain List"
-
-# Test a source
-python manage.py sources test "PhishTank"
-```
-
-### 7. Monitoring
-
-Access Grafana dashboard: http://localhost:3000 (admin/admin123)
-
-### 8. Data Architecture
-
-The platform collects data from:
-
-- **Public Threat Feeds**: Malware Domain List, PhishTank, Feodo Tracker
-- **API Services**: AbuseIPDB, URLVoid, VirusTotal (with API keys)
-- **RSS Feeds**: Security blogs and threat intelligence feeds
-- **File-based Sources**: CSV, JSON, text files
-
-Data is automatically:
-
-- **Validated** for correctness
-- **Normalized** for consistency  
-- **Enriched** with geolocation, ASN, and other metadata
-- **Deduplicated** to avoid redundancy
-- **Indexed** for fast searching
-
-### 9. Integration Examples
-
-#### Python Client
-
-```python
-import requests
-
-# Search for indicators
-response = requests.get("http://localhost:8001/api/v1/indicators/search", 
-                       params={"q": "malware", "limit": 100})
-indicators = response.json()
-
-# Check if IP is malicious
-response = requests.get("http://localhost:8001/api/v1/ips/1.2.3.4")
-if response.status_code == 200:
-    print("IP found in threat intelligence!")
-```
-
-#### SIEM Integration
-
-Use the real-time feed endpoint to stream threats into your SIEM:
-
-```bash
-curl -N "http://localhost:8001/api/v1/feeds/realtime" | jq .
-```
-
-### 10. Development
-
-#### Adding New Data Sources
-
-1. Create collector in `app/collectors/sources.py`
-2. Register in `app/collectors/__init__.py`
-3. Add configuration to database
-4. Test collection
-
-#### Extending the API
-
-1. Add new endpoints in `app/api/main.py`
-2. Define schemas in `app/schemas/api.py`
-3. Update documentation
-
-### Next Steps
-
-- Configure premium API sources with your API keys
-- Set up monitoring and alerting
-- Integrate with your security tools
-- Customize collection intervals
-- Add custom threat intelligence sources
-
-For detailed documentation, see the `/docs` directory.
-
-For support, check the GitHub issues or discussions.
+Setting up the sensor's member and key is described in
+[the sensor README](../open-security-sensor/README.md#sending-telemetry-to-wildbox).
