@@ -476,6 +476,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **An agents task never sends another task's caller identity** (#594).
+  The analysis task set the caller identity, a `ContextVar` the Wildbox
+  client forwards on every tool call, only when its caller had both a user
+  and a team id, and never reset it. A Celery worker runs one task after
+  another in the same context, so a task arriving with no caller, or a
+  partial one, would have made its tool calls as the previous task's user
+  and team. Each task now runs inside `caller_identity(caller)`, which
+  refuses a missing or incomplete caller with `CallerIdentityUnavailable`
+  before any work and restores the previous value when the task ends,
+  however it ends; the task is marked failed in Redis. `/v1/analyze`
+  refuses such a caller with 403 before writing any state or enqueuing
+  anything, `set_caller_identity()` returns the `ContextVar` token and
+  refuses a blank id, and the client refuses an identity without a user or
+  team id. The agent's tool calls run in asyncio tasks, several at once
+  through `asyncio.gather`, and a sync tool would run in LangChain's
+  thread pool under `copy_context()`; both inherit the task's context, and
+  the tests check the identity reaches the wire through each.
 - **One password policy for every path that sets a password** (#583).
   Registration and the reset-password flow accepted a one-character
   password: fastapi-users' `BaseUserCreate` does not check it and its
