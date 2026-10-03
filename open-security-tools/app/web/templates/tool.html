@@ -203,8 +203,8 @@
                         <label class="form-label small fw-semibold text-muted">ENDPOINT</label>
                         <div class="input-group input-group-sm">
                             <span class="input-group-text">POST</span>
-                            <input type="text" class="form-control" value="/api/tools/{{ tool_name }}" readonly>
-                            <button class="btn btn-outline-secondary" onclick="copyToClipboard('/api/tools/{{ tool_name }}')">
+                            <input type="text" class="form-control" value="/api/v1/tools/{{ tool_name }}" readonly>
+                            <button class="btn btn-outline-secondary" onclick="copyToClipboard('/api/v1/tools/{{ tool_name }}')">
                                 <i class="fas fa-copy"></i>
                             </button>
                         </div>
@@ -292,7 +292,7 @@
 const TOOL_CONFIG = {
     name: {{ tool_name | tojson | safe }},
     inputSchema: {{ input_schema | tojson | safe }},
-    apiEndpoint: {{ ('/api/tools/' + tool_name) | tojson | safe }},
+    apiEndpoint: {{ ('/api/v1/tools/' + tool_name) | tojson | safe }},
     version: {{ (tool_info.version if tool_info and tool_info.version else '1.0.0') | tojson | safe }},
     category: {{ (tool_info.category if tool_info and tool_info.category else 'general') | tojson | safe }}
 };
