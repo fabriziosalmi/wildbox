@@ -74,4 +74,4 @@ worker: ## Start Dramatiq worker locally
 
 test-playbook: ## Run playbooks through the gateway (needs the whole stack)
 	@echo "$(YELLOW)Testing playbook execution...$(NC)"
-	cd .. && python -m pytest tests/integration/test_responder_tenancy.py tests/integration/test_responder_metrics.py -v -o addopts=""
+	cd .. && python -m pytest tests/integration/test_responder_tenancy.py tests/integration/test_responder_metrics.py tests/integration/test_responder_playbook_identity.py -v -o addopts=""

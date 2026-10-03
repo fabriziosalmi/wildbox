@@ -8,6 +8,12 @@
 >
 > All IDs, keys (such as `your-api-key`) and host names in the examples are
 > fictitious placeholders.
+>
+> The playbook and connector examples below are illustrative: the responder
+> has no Jira, Slack, ticketing or host-isolation connector. The connector
+> actions that exist, the routes they call and the identity a run acts for
+> are documented in the responder README (`open-security-responder/README.md`,
+> "Who a run acts for" and "Connector actions").
 
 **Gateway path**: `https://<host>/api/v1/responder/...` (proxied to the service's `/v1/...`)  
 **Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  

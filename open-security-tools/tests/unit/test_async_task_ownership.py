@@ -9,6 +9,7 @@ not exist.
 
 import json
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -68,6 +69,22 @@ def backend(monkeypatch):
         async_router.execute_tool_async, "apply_async", fake.apply_async
     )
     monkeypatch.setattr(async_router, "AsyncResult", fake.result_for)
+
+    # The router reads a task's meta from the result backend in one call; it
+    # answers from the same FakeResult (test_async_task_states.py exercises a
+    # real Celery backend).
+    class ResultBackend:
+        def get_task_meta(self, task_id):
+            result = fake.results.get(task_id, FakeResult())
+            return {
+                "status": result.state,
+                "result": result.result,
+                "date_done": result.date_done,
+            }
+
+    monkeypatch.setattr(
+        async_router, "celery_app", SimpleNamespace(backend=ResultBackend())
+    )
     return fake
 
 

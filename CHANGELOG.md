@@ -59,6 +59,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agents routes accept a session token, and `/stats` is reachable**
+  (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
+  with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
+  analysis, although the API documentation says a JWT or an API key works
+  on every route. Both work now (see Security). `/api/v1/agents/stats`
+  mapped to the service's `/v1/stats`, which does not exist; it now
+  reaches `/stats`, authenticated.
+- **The gateway declares `RATE_LIMIT_PER_HOUR` and refuses a bad value**
+  (#627). `auth_handler.lua` reads the per-team budget with `os.getenv`,
+  but `nginx.conf` did not list it with `env`, and nginx hands its
+  processes only the variables listed there. The setting took effect
+  only because `init_by_lua` loads the module in the master process,
+  whose environment is still complete on a cold start; a module loaded
+  anywhere else, or a master started by a binary upgrade, saw nothing
+  and used 10000. It is now declared. A value that is not a whole number
+  from 1 to 1000000000 (`0`, `10k`, `1.5`, an empty string) used to
+  become 10000 without a word; the gateway now logs
+  `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start
+  (`nginx -t` does not run `init_by_lua` and does not catch it).
+  `scripts/check_gateway_config.py`, run by the Gateway Lint workflow,
+  fails when the gateway's Lua or nginx configuration reads a variable
+  `nginx.conf` does not declare; the six other variables the gateway
+  reads were already declared. The
+  gateway harness starts a gateway with `RATE_LIMIT_PER_HOUR=120` and
+  checks that the third request in a minute gets 429, and starts one per
+  invalid value and checks that each exits. The deployment guide
+  documents the variable.
+
+- **Reading a just-cancelled async task no longer answers 500** (#619).
+  `GET /api/v1/tasks/{id}` read `AsyncResult.state` and then
+  `AsyncResult.info`: two reads of the result backend while the task
+  has not finished. When the worker marked the task REVOKED in between,
+  `info` held a `TaskRevokedError` that the response could not
+  serialize (`PydanticSerializationError`), and the read failed. The
+  tools service now reads a task's state, result and completion time
+  once, and every state has a defined answer: REVOKED is `cancelled`,
+  FAILURE is `failed` with the exception class only (no message or
+  traceback, which can carry internal paths and hosts), and a result
+  Celery cannot decode, such as a FAILURE stored with a custom meta, is
+  read from the raw record instead of raising. A running task shows
+  its progress fields and no longer the worker's host name and process
+  ID. Cancelling and listing read the same way, and an unreachable
+  result backend is a 503. The tools service now logs the class and
+  traceback of a request that fails, and the integration workflow
+  uploads every service's full log when it fails.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,
@@ -262,6 +307,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   malicious, benign and invalid inputs. The stubbed responses and the
   parameters sent to each tool are checked against the services' own
   schemas.
+- **Responder playbooks reach the services they call, as the user who
+  ran them** (#616). No step that called another service could succeed:
+  - No request carried an identity, and tools, agents, data and guardian
+    accept only the gateway's `X-Wildbox-*` headers with
+    `X-Gateway-Secret`. A run now records the gateway-authenticated user
+    who started it, and every connector request carries that user's
+    identity and the secret, so each service authorizes the call for that
+    user and team. A run without a complete caller fails before its first
+    step, and nothing is sent without one. The identity is scoped to the
+    run and reset when it ends.
+  - The tools connector posted a `params` envelope to
+    `/api/v1/tools/{tool}/execute`. It now posts the tool's input to
+    `/api/tools/{tool}`, or to `/api/tools/{tool}/async` with
+    `async_execution`, and reads and cancels tasks at `/api/tasks/{id}`.
+  - `wildbox.analyze_ioc` sends the agents service's
+    `{"ioc": {"type", "value"}, "priority"}` and returns the task it
+    queues; the verdict is read later from the task's `result_url`.
+  - `wildbox.create_vulnerability` records the vulnerability against the
+    Guardian asset named or addressed by `asset_name`, and fails the step
+    when there is none. Guardian's list and asset routes now have their
+    real paths.
+  - Actions whose routes exist in no service are removed: the blacklist
+    actions (the data service has no blacklist), `isolate_endpoint`,
+    `create_ticket`, and the data connector's IOC writes, reputation,
+    feed and asset actions. The data connector now has
+    `search_indicators` and `lookup_indicators`. `triage_url.yml` alerts
+    on a malicious URL and no longer claims to blacklist it.
+  - `docker-compose.yml` gives the responder the services' addresses
+    (`WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL`,
+    `WILDBOX_AGENTS_URL`); every connector used to target `localhost`
+    inside the container. The responder's own defaults are now those
+    addresses too, and checked at startup: Guardian's default named port
+    8003, where Guardian does not listen.
+
+  A new playbook, `hash_evidence.yml`, queues the hashing of a piece of
+  evidence as the caller. Unit tests call every connector action and check
+  its route, body and query against the target service's source, and its
+  headers against the run's caller. An integration test starts
+  `hash_evidence` through the gateway and checks that the tools task it
+  queues belongs to that user and to nobody else.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
@@ -838,7 +923,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host name is still resolved again by most tools when they connect, so
   a name whose answer changes in between (DNS rebinding) is a remaining
   window, documented in the module. See UPGRADING section 29.
-
+- **The agents routes authenticate through `auth_handler` like every
+  other route** (#630). `location ~ ^/api/v1/agents/(.*)$` carried its
+  own copy of the authentication in inline Lua, "for regex location
+  compatibility", which it never needed: the tools route is a regex
+  location and calls `authenticate()`. The copy called identity's
+  `/internal/authorize` at a fixed address rather than
+  `IDENTITY_SERVICE_URL`, cached nothing, did not retry a connection
+  identity had just closed (#609), applied no per-team rate limit, and
+  checked the API-key revocation marker (#593) and the
+  must-change-password refusal (#573) only because both were added to
+  it by hand; every later fix to `auth_handler` had to be repeated
+  there. Nor did it set `$wildbox_user_id`, `$wildbox_team_id` and
+  `$wildbox_role`, from which `proxy_params.conf` sets the `X-Wildbox-*`
+  headers, so the service received no caller identity at all (nginx
+  drops a header whose value is empty), even for an accepted key. The
+  location now calls `auth_handler.authenticate()`, so the agents
+  routes get the cache, every revocation marker (logout,
+  password change, API key, team removal), `PASSWORD_CHANGE_REQUIRED`,
+  the API-key scopes, the rate limit, the retry and the JSON 503, and
+  the same client-header stripping and `X-Wildbox-*` identity headers.
+  The three functions `auth_handler` exported only for that copy are
+  gone, and `scripts/check_gateway_config.py` now fails when an nginx
+  configuration file calls `/internal/authorize` itself. The gateway
+  harness covers the agents routes (session and API key accepted, no
+  credential 401, scopes, must-change-password, cache, revoked API key,
+  logout, password change, team removal, retry, 503, rate limit), and
+  an integration test submits an analysis with a session token through
+  the gateway and gets 202.
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
   `/internal/authorize` resolves the oldest membership on every request,

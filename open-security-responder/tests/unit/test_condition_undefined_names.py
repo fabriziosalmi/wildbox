@@ -174,7 +174,10 @@ def test_a_run_skips_the_step_and_carries_on(monkeypatch):
     )
 
     result = module.execute_playbook_actor.fn(
-        "run-7", "optional_field", {"ip": "192.168.1.100"}
+        "run-7",
+        "optional_field",
+        {"ip": "192.168.1.100"},
+        {"user_id": "user-1", "team_id": "team-1", "role": "member"},
     )
 
     assert result["status"] == "completed"

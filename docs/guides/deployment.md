@@ -151,6 +151,18 @@ by. Images built before this setting existed fell back to
 `http://localhost:80`: in a browser on any other machine every API call,
 the login first, went to that machine and failed.
 
+### The gateway's per-team rate limit
+
+`RATE_LIMIT_PER_HOUR` in `.env` is the number of API requests a team may make
+in an hour, through the gateway, on every authenticated route. The default is
+10000. The gateway enforces it per minute, as one sixtieth of the hourly
+figure (at least one request a minute), and reports it on every response in
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` and
+`X-RateLimit-Policy`. The value must be a whole number between 1 and
+1000000000: with any other value the gateway logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
+the gateway after changing it (`docker compose up -d gateway`).
+
 ### Redis memory
 
 Redis is not a cache here. It holds the token blacklist, failed-login lockout
@@ -352,6 +364,31 @@ reports `"celery": "healthy"` once a worker answers.
   worker deletes them as soon as it has read them.
 - **Providers.** Only AWS scans run; GCP and Azure scans fail when the
   worker takes them.
+
+### The responder's playbooks
+
+A playbook run calls the tools, data, guardian and agents services as the
+user who started it: each request carries that user's gateway identity and
+`GATEWAY_INTERNAL_SECRET`, and the service authorizes it for that user and
+team. The playbook worker runs inside the `responder` container, so the
+container's environment is what it uses.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RESPONDER_WILDBOX_API_URL` | `http://open-security-tools:8000` | Tools service, passed as `WILDBOX_API_URL` |
+| `RESPONDER_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL` |
+| `RESPONDER_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL` |
+| `RESPONDER_WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service, passed as `WILDBOX_AGENTS_URL` |
+
+The defaults are the services' addresses in both compose files. In the
+production overlay the responder reaches them on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
+- **Permissions follow the user.** A step the user may not take fails:
+  Guardian lets only owners and admins create a vulnerability, so
+  `all_star_e2e` records none when a member runs it.
+- **Results belong to the user.** A tool task or an AI analysis a run
+  queues is listed and readable by the user who ran it, and by nobody else.
 
 ### Internal targets of the network tools
 
