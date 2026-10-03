@@ -1016,6 +1016,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **The dashboard E2E specs no longer race the toast announcement**
+  (#602). Radix renders a toast's text twice for about a second: in the
+  toast, and in a visually hidden `aria-live` span outside it for screen
+  readers. A page-wide `getByText` on toast text matched both while the
+  announcement lasted and failed Playwright's strict mode, which made
+  "creates a user from the form" flaky. Each toast now carries
+  `data-testid="toast"`, and the admin and settings specs find toast text
+  only inside it through a `toast()` helper, with the outcome still
+  asserted through the API. No retry or timeout was added. Repeated 30
+  times with no retries, the test failed 9 of 30 runs before the change
+  and passed 30 of 30 after it.
+
 - **Prose Quality checks the Markdown and fails on findings** (#606).
   The job installed proselint unpinned and ran
   `proselint FILE ... || true`; proselint 0.16 only accepts
