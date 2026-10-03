@@ -1,10 +1,13 @@
 """WHOIS Lookup Tool - Retrieves domain registration information."""
 
+import ipaddress
 import socket
 import re
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
+from ...input_validation import InputSanitizer
+from ...url_guard import is_local_hostname, parse_target_url
 from .schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -47,24 +50,72 @@ def get_whois_server(domain: str) -> str:
     tld = domain.split('.')[-1].lower()
     return WHOIS_SERVERS.get(tld, 'whois.iana.org')
 
-def query_whois_server(domain: str, server: str, timeout: int) -> str:
-    """Query a WHOIS server for domain information."""
+
+WHOIS_PORT = 43
+
+
+def resolve_referral_server(server: str) -> tuple:
+    """Check a referral WHOIS server and return the address to connect to.
+
+    The "Whois Server:" line comes from a WHOIS response, so the remote side
+    picks the host this tool connects to next. It gets the same treatment as
+    a URL a caller supplies (#610): a canonical host name or IP literal with
+    no port, path or user info; not a local or metadata name; and every
+    address it resolves to public. A name that does not resolve is refused.
+
+    Returns ``(family, sockaddr)`` of the first address. The caller connects
+    to that address rather than resolving the name again, so the checked
+    address is the one dialed. Raises ValueError if the server is refused.
+    """
+    server = server.strip()
+    if not server or any(ch in server for ch in "/@?#:[]\\"):
+        raise ValueError(f"Referral WHOIS server {server!r} is not a bare host name")
+    target = parse_target_url(f"whois://{server}", allowed_schemes=("whois",))
+    if is_local_hostname(target.host) or target.host in InputSanitizer.BLOCKED_HOSTNAMES:
+        raise ValueError(f"Referral WHOIS server {target.host!r} is blocked (SSRF protection)")
     try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        infos = socket.getaddrinfo(target.host, WHOIS_PORT, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ValueError(f"Referral WHOIS server {target.host!r} could not be resolved") from exc
+    if not infos:
+        raise ValueError(f"Referral WHOIS server {target.host!r} could not be resolved")
+    for _family, _type, _proto, _canon, sockaddr in infos:
+        addr = ipaddress.ip_address(sockaddr[0])
+        if InputSanitizer._is_blocked_ip(addr):
+            raise ValueError(
+                f"Referral WHOIS server {target.host!r} resolves to blocked address {addr} (SSRF protection)"
+            )
+    family, _type, _proto, _canon, sockaddr = infos[0]
+    return family, sockaddr
+
+
+def query_whois_server(domain: str, server: str, timeout: int, address: Optional[tuple] = None) -> str:
+    """Query a WHOIS server for domain information.
+
+    ``address`` is a ``(family, sockaddr)`` pair from
+    :func:`resolve_referral_server`; when given, the connection goes to that
+    checked address instead of resolving ``server`` again.
+    """
+    try:
+        if address is not None:
+            family, sockaddr = address
+        else:
+            family, sockaddr = socket.AF_INET, (server, WHOIS_PORT)
+        sock = socket.socket(family, socket.SOCK_STREAM)
         sock.settimeout(timeout)
-        sock.connect((server, 43))
+        sock.connect(sockaddr)
         sock.send(f"{domain}\r\n".encode())
-        
+
         response = b""
         while True:
             data = sock.recv(4096)
             if not data:
                 break
             response += data
-        
+
         sock.close()
         return response.decode('utf-8', errors='ignore')
-    
+
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         raise Exception(f"Failed to query WHOIS server {server}: {str(e)}")
 
@@ -254,7 +305,12 @@ def execute_tool(input_data: WHOISLookupInput) -> WHOISLookupOutput:
             redirect_server = redirect_match.group(1).strip()
             if redirect_server != whois_server:
                 try:
-                    raw_data = query_whois_server(domain, redirect_server, input_data.timeout)
+                    # The referral comes from the response: check it with the
+                    # SSRF rules and connect to the checked address.
+                    address = resolve_referral_server(redirect_server)
+                    raw_data = query_whois_server(
+                        domain, redirect_server, input_data.timeout, address=address
+                    )
                 except (socket.error, socket.timeout, Exception) as e:
                     logger.error(f"Error querying redirect WHOIS server {redirect_server}: {e}")
                     pass  # Use original data if redirect fails

@@ -468,8 +468,9 @@ markdownlint "**/*.md" --config .markdownlint.json
 # Link validation
 markdown-link-check README.md --config .markdown-link-check.json
 
-# Prose quality (advisory)
-proselint README.md
+# Prose quality (rules in .proselintrc.json; code is masked)
+pip install proselint==0.16.0
+python scripts/check_prose.py README.md
 
 # Inclusive language
 alex "**/*.md"

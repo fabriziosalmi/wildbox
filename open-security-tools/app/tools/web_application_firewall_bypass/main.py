@@ -31,6 +31,9 @@ _BLOCK_STATUS_CODES = {403, 406, 429, 501, 503}
 _MAX_REQUESTS = 200
 _CONCURRENCY = 5
 
+from ...input_validation import InputSanitizer
+from ...safe_http import UnsafeTargetError, guarded_session
+from ...url_guard import parse_target_url
 from .schemas import (
     WAFBypassRequest, WAFBypassResponse, WAFBypassPayload, 
     WAFBypassTechnique
@@ -112,10 +115,12 @@ class WAFBypassTester:
             "modsecurity": ["mod_security", "modsec"]
         }
     
-        # Add target authorization validation
+        # Hosts this tool may test without an operator allowlist entry.
+        # Local names and addresses are not here: whether a host may be
+        # reached at all is the shared SSRF guard's decision, made first in
+        # _validate_target_authorization (#610).
         self.authorized_domains = [
             "httpbin.org", "example.com", "safe.example.com",
-            "localhost", "127.0.0.1", "test.local"
         ]
 
     def _encode_payload(self, payload: str, encoding: str) -> str:
@@ -235,6 +240,9 @@ class WAFBypassTester:
         except aiohttp.ClientError as exc:
             return {"status_code": 0, "headers": {}, "body": "", "size": 0,
                     "error": f"request failed: {exc}"}
+        except UnsafeTargetError as exc:
+            return {"status_code": 0, "headers": {}, "body": "", "size": 0,
+                    "error": f"request refused: {exc}"}
 
     def _generate_technique_stats(self, payloads: List[WAFBypassPayload]) -> List[WAFBypassTechnique]:
         """Generate statistics for each technique"""
@@ -348,31 +356,28 @@ class WAFBypassTester:
         return improvements
 
     def _validate_target_authorization(self, url: str) -> bool:
-        """Validate that target URL is authorized for testing"""
-        from urllib.parse import urlparse
-        
+        """True if ``url`` may be tested.
+
+        Two conditions, both required:
+
+        * the shared SSRF guard accepts the URL: http(s), no user info, a
+          canonical host whose every resolved address is public. The guard
+          is the only policy on which hosts may be reached; this tool used
+          to allow localhost, 127.0.0.1, *.local and *.test on its own;
+        * its host (as parsed by the guard, so "allowed.example@evil.example"
+          is refused rather than matched by its user info) is on the built-in
+          list or in WAF_BYPASS_AUTHORIZED_DOMAINS, or is a subdomain of one.
+        """
         try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.lower()
-            
-            # Remove port if present
-            if ':' in domain:
-                domain = domain.split(':')[0]
-            
-            # Check against authorized domains (built-in + operator-supplied)
-            for authorized in self.authorized_domains + _ENV_AUTHORIZED:
-                if domain == authorized or domain.endswith(f".{authorized}"):
-                    return True
-            
-            # Additional checks for explicit testing consent
-            # Could check for special headers or domain patterns
-            if domain.endswith('.test') or domain.endswith('.local'):
+            host = parse_target_url(url.strip()).host
+            InputSanitizer.validate_url(url)
+        except (ValueError, TypeError, AttributeError):
+            return False
+
+        for authorized in self.authorized_domains + _ENV_AUTHORIZED:
+            if host == authorized or host.endswith(f".{authorized}"):
                 return True
-                
-            return False
-            
-        except Exception:
-            return False
+        return False
 
 async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
     """Execute WAF bypass testing"""
@@ -424,10 +429,10 @@ async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
 
     payload_results: List[WAFBypassPayload] = []
     timeout = aiohttp.ClientTimeout(total=request.timeout)
-    connector = aiohttp.TCPConnector(ssl=request.verify_ssl)
     semaphore = asyncio.Semaphore(_CONCURRENCY)
 
-    async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+    # Guarded: every connection is checked again by the shared SSRF guard.
+    async with guarded_session(timeout=timeout, ssl=request.verify_ssl) as session:
 
         async def run_job(job):
             payload_type, base_payload, encoding, obfuscation, modified = job
@@ -477,9 +482,9 @@ async def execute_tool(request: WAFBypassRequest) -> WAFBypassResponse:
     bypass_rate = successful_bypasses / total_payloads if total_payloads > 0 else 0
     
     # Detect the WAF from a clean baseline request to the real target.
-    async with aiohttp.ClientSession(
+    async with guarded_session(
         timeout=aiohttp.ClientTimeout(total=request.timeout),
-        connector=aiohttp.TCPConnector(ssl=request.verify_ssl),
+        ssl=request.verify_ssl,
     ) as session:
         baseline = await tester._send_request(session, request.target_url, "wildbox-baseline")
     waf_detected, waf_type = tester._detect_waf(baseline["headers"], baseline["body"])

@@ -1,6 +1,6 @@
 # Contributing to Wildbox
 
-We welcome contributions from the security community! This guide will help you get started with contributing to Wildbox.
+We welcome contributions from the security community. This guide will help you get started with contributing to Wildbox.
 
 ## Table of Contents
 
@@ -196,7 +196,7 @@ git push origin feature/my-feature-name
 
 **Found a security vulnerability?**
 
-**DO NOT create a public GitHub issue!**
+**DO NOT create a public GitHub issue.**
 
 Follow our [Security Policy](SECURITY.md):
 
@@ -418,7 +418,7 @@ Contributors are recognized in:
 - GitHub contributor graphs
 - Community highlights in discussions
 
-**Thank you for contributing to Wildbox! 🙏**
+**Thank you for contributing to Wildbox. 🙏**
 
 ## High Priority Contributions (Evaluation Phase)
 

@@ -13,6 +13,8 @@ from io import BytesIO
 # Initialize logger
 logger = logging.getLogger(__name__)
 
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_session
 from .schemas import (
     MobileSecurityAnalyzerInput,
     MobileSecurityAnalyzerOutput,
@@ -162,7 +164,10 @@ async def execute_tool(data: MobileSecurityAnalyzerInput) -> MobileSecurityAnaly
 async def download_app_file(url: str) -> Optional[bytes]:
     """Download app file from URL"""
     try:
-        async with aiohttp.ClientSession() as session:
+        # SSRF protection: the shared guard checks the URL, and the guarded
+        # session checks every hop again when it connects (#610).
+        InputSanitizer.validate_url(url)
+        async with guarded_session() as session:
             async with session.get(url, timeout=60) as response:
                 if response.status == 200:
                     return await response.read()

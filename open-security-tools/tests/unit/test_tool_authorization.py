@@ -12,7 +12,7 @@ refuses to run it without a caller, asks the authorization manager whether that
 caller may run it against its target, and then passes the caller to the tool.
 Tools that do not declare ``user_id`` are called exactly as before.
 
-No test touches the network: ``requests.get`` is replaced with a fake and the
+No test touches the network: the guarded HTTP session is replaced with a fake and the
 targets are IP literals, so the SSRF guard resolves nothing.
 """
 
@@ -54,11 +54,18 @@ def http(monkeypatch):
     """Record every request the scanner sends instead of sending it."""
     sent = []
 
-    def fake_get(url, headers=None, timeout=None):
-        sent.append(url)
-        return FakeResponse()
+    class FakeSession:
+        def __enter__(self):
+            return self
 
-    monkeypatch.setattr(sqli_scanner.requests, "get", fake_get)
+        def __exit__(self, *exc):
+            return False
+
+        def get(self, url, headers=None, timeout=None):
+            sent.append(url)
+            return FakeResponse()
+
+    monkeypatch.setattr(sqli_scanner, "guarded_requests_session", FakeSession)
     return sent
 
 

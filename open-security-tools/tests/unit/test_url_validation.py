@@ -144,7 +144,20 @@ def test_url_field_schema_uses_the_shared_parser(resolver):
 # --- sql_injection_scanner input path --------------------------------------
 
 
-def test_sql_injection_scanner_accepts_http_target_with_query(monkeypatch):
+class _FakeSession:
+    """Stands in for the guarded requests session; calls ``get``."""
+
+    def __init__(self, get):
+        self.get = get
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_sql_injection_scanner_accepts_http_target_with_query(monkeypatch, resolver):
     """An http:// target with a query string reaches the scan (#561).
 
     Before the fix the validator refused it ("dangerous content"), so the
@@ -161,7 +174,9 @@ def test_sql_injection_scanner_accepts_http_target_with_query(monkeypatch):
         requested.append(url)
         return FakeResponse()
 
-    monkeypatch.setattr(sqli_scanner.requests, "get", fake_get)
+    monkeypatch.setattr(
+        sqli_scanner, "guarded_requests_session", lambda: _FakeSession(fake_get)
+    )
 
     target = "http://shop.example.com/page?id=1"
     result = sqli_scanner.execute_tool(
@@ -180,7 +195,9 @@ def test_sql_injection_scanner_refuses_private_target(monkeypatch):
     def fail(*args, **kwargs):  # pragma: no cover - must not be reached
         raise AssertionError("no request may be sent")
 
-    monkeypatch.setattr(sqli_scanner.requests, "get", fail)
+    monkeypatch.setattr(
+        sqli_scanner, "guarded_requests_session", lambda: _FakeSession(fail)
+    )
     with pytest.raises(ValueError):
         sqli_scanner.execute_tool(
             SQLInjectionScannerInput(target_url="http://127.1/page?id=1"),

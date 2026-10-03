@@ -8,6 +8,7 @@ targets.
 """
 import asyncio
 import os
+import socket
 import sys
 from pathlib import Path
 
@@ -72,9 +73,25 @@ class FakeSession:
         return False
 
 
+PUBLIC_IP = "93.184.215.14"
+
+
+@pytest.fixture(autouse=True)
+def resolver(monkeypatch):
+    """Resolve every name to PUBLIC_IP unless mapped otherwise; no real DNS."""
+    answers = {}
+
+    def fake_getaddrinfo(host, *args, **kwargs):
+        ip = answers.get(host, PUBLIC_IP)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    return answers
+
+
 @pytest.fixture
 def request_factory():
-    def _make(url="https://test.local/app", **overrides):
+    def _make(url="https://app.example.com/app", **overrides):
         params = dict(
             target_url=url,
             payload_types=["xss"],
@@ -88,11 +105,8 @@ def request_factory():
 
 
 def _patch_session(monkeypatch, responder):
-    """Make every aiohttp.ClientSession the tool opens a FakeSession."""
-    monkeypatch.setattr(
-        waf.aiohttp, "ClientSession", lambda *a, **k: FakeSession(responder)
-    )
-    monkeypatch.setattr(waf.aiohttp, "TCPConnector", lambda *a, **k: None)
+    """Make every guarded session the tool opens a FakeSession."""
+    monkeypatch.setattr(waf, "guarded_session", lambda *a, **k: FakeSession(responder))
     monkeypatch.setattr(waf.aiohttp, "ClientTimeout", lambda *a, **k: None)
 
 
@@ -117,6 +131,55 @@ class TestAuthorization:
         out = asyncio.run(waf.execute_tool(request_factory(url="https://mytarget.example/x")))
         assert out.success is True
         assert out.total_payloads_tested > 0
+
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://localhost/app",
+            "http://127.0.0.1/app",
+            "http://app.local/app",
+            "http://app.test/app",
+            "http://169.254.169.254/latest/meta-data/",
+        ],
+    )
+    def test_local_targets_are_not_authorised(self, request_factory, monkeypatch, url):
+        """The tool's own list no longer allows local hosts (#610)."""
+        called = []
+        _patch_session(monkeypatch, lambda u: called.append(u) or FakeResponse(200))
+        out = asyncio.run(waf.execute_tool(request_factory(url=url)))
+        assert out.success is False
+        assert called == []
+
+    def test_local_targets_stay_refused_when_allowlisted(self, request_factory, monkeypatch, resolver):
+        """The operator allowlist cannot override the SSRF guard."""
+        resolver["app.local"] = "192.168.1.20"  # what mDNS would answer
+        monkeypatch.setattr(waf, "_ENV_AUTHORIZED", ["localhost", "127.0.0.1", "app.local"])
+        called = []
+        _patch_session(monkeypatch, lambda u: called.append(u) or FakeResponse(200))
+        for url in ("http://localhost/", "http://127.0.0.1/", "http://app.local/"):
+            out = asyncio.run(waf.execute_tool(request_factory(url=url)))
+            assert out.success is False
+        assert called == []
+
+    def test_user_info_cannot_borrow_an_authorised_name(self, request_factory, monkeypatch):
+        """'example.com@evil.example' used to match the allowlist by its user info."""
+        called = []
+        _patch_session(monkeypatch, lambda u: called.append(u) or FakeResponse(200))
+        for url in ("https://example.com@evil.example/", "https://x@app.example.com/"):
+            out = asyncio.run(waf.execute_tool(request_factory(url=url)))
+            assert out.success is False
+        assert called == []
+
+    def test_authorised_name_resolving_to_a_private_address_is_refused(
+        self, request_factory, monkeypatch, resolver
+    ):
+        resolver["app.example.com"] = "10.0.0.7"
+        called = []
+        _patch_session(monkeypatch, lambda u: called.append(u) or FakeResponse(200))
+        out = asyncio.run(waf.execute_tool(request_factory()))
+        assert out.success is False
+        assert called == []
 
 
 class TestBypassVerdicts:
@@ -161,7 +224,6 @@ class TestPayloadTransformationsAreReal:
             seen.append(url)
             return FakeResponse(200, body="ok")
 
-        monkeypatch.setattr(waf, "_ENV_AUTHORIZED", ["test.local"])
         _patch_session(monkeypatch, responder)
         asyncio.run(
             waf.execute_tool(
