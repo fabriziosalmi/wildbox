@@ -378,6 +378,36 @@ production overlay the responder reaches them on `backend`;
 - **Results belong to the user.** A tool task or an AI analysis a run
   queues is listed and readable by the user who ran it, and by nobody else.
 
+### Internal targets of the network tools
+
+The network tools (port and vulnerability scanners, the TLS and
+certificate analyzers, `network_scanner`, `iot_security_scanner`,
+`database_security_analyzer`, `dns_enumerator`, and the image registry of
+`container_security_scanner`) refuse internal targets: private, loopback,
+link-local, multicast, reserved and shared addresses, ranges that contain
+one, names that resolve to one, and the stack's own service names. A
+range holds at most 1024 addresses. Refusals answer 400.
+
+To scan an internal lab, list its ranges and hosts in `.env`, then
+recreate `api` and `tools-worker`:
+
+```bash
+TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-worker
+```
+
+- **Entries.** CIDR ranges with their host bits zero, IP addresses and
+  host names, comma-separated. A name is matched exactly. A bad entry
+  stops both containers at start-up; `docker compose logs api` names it.
+- **Keep the stack out.** Every caller of every network tool can scan
+  what is listed. Do not list the stack's Docker networks (by default in
+  `172.16.0.0/12`); its service names stay refused unless listed by name.
+
+The tools README, "Network targets", lists the fields checked per tool.
+
 ---
 
 ## 5. Verify

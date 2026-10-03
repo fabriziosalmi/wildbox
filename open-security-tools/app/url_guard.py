@@ -192,6 +192,65 @@ def parse_target_url(
     return ParsedTarget(scheme=scheme, host=host, port=port, ip=None)
 
 
+def parse_host(host: object) -> ParsedTarget:
+    """Parse a bare host: an IP literal or a DNS name, nothing around it.
+
+    The network target policy (``app.target_policy``) checks host, IP and
+    CIDR inputs with this, so a bare host is held to the same spelling rules
+    as the host of a URL: no whitespace or control characters, a valid DNS
+    name, and only the canonical dotted-quad spelling for anything a
+    resolver would read as IPv4 (``127.1``, ``0x7f000001`` and
+    ``2130706433`` are refused rather than normalized).
+
+    Two rules are stricter than for a URL host, because the value is handed
+    to the socket layer as written rather than through a URL parser:
+
+    * a name must be ASCII (use the ``xn--`` form): Python's socket module
+      encodes a non-ASCII name with IDNA 2003, which maps some characters
+      differently from the UTS #46 encoding checked here, so the checked
+      name and the dialed name could differ;
+    * an IPv6 literal is written without brackets, as sockets take it.
+
+    The returned ``scheme`` is empty and ``port`` is ``None``.
+    """
+    if not isinstance(host, str) or not host:
+        raise ValueError("Host must be a non-empty string")
+    if len(host) > 253 + 1:
+        raise ValueError("Host has an invalid length")
+    _reject_control_and_space(host)
+
+    if ":" in host:
+        # Only an IPv6 literal contains a colon. A zone id ("%eth0") only
+        # makes sense for link-local addresses and is refused.
+        if "%" in host:
+            raise ValueError("Host must not carry an IPv6 zone id")
+        try:
+            ip6 = ipaddress.IPv6Address(host)
+        except ValueError as exc:
+            raise ValueError("Host is not a valid IPv6 address or host name") from exc
+        return ParsedTarget(scheme="", host=str(ip6), port=None, ip=ip6)
+
+    if not host.isascii():
+        raise ValueError(
+            "Host name must be ASCII; write an internationalized name in its "
+            "xn-- form"
+        )
+    ascii_host = _encode_hostname(host)
+
+    if _looks_numeric(ascii_host):
+        # IPv4Address accepts the canonical dotted quad only: no leading
+        # zeros, no fewer parts, no hex or octal.
+        try:
+            ip4 = ipaddress.IPv4Address(ascii_host)
+        except ValueError as exc:
+            raise ValueError(
+                "Host must be a dotted-quad IPv4 address or a domain name"
+            ) from exc
+        return ParsedTarget(scheme="", host=ascii_host, port=None, ip=ip4)
+
+    return ParsedTarget(scheme="", host=ascii_host, port=None, ip=None)
+
+
 def is_local_hostname(host: str) -> bool:
     """True for names that always mean this machine (RFC 6761)."""
     host = host.lower().rstrip(".")

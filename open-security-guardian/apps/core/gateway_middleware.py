@@ -100,10 +100,9 @@ class GatewayAuthMiddleware(MiddlewareMixin):
     Reads X-Wildbox-* headers injected by the gateway and creates
     a GatewayUser object attached to the request.
     
-    Priority:
-    1. Gateway headers (production mode)
-    2. Legacy API key (backward compatibility during migration)
-    3. Reject request
+    A request under /api/ is authenticated by the gateway's headers, with the
+    shared secret as proof of origin, or it is refused. There is no other way
+    in: guardian keeps no credentials of its own (#629).
     """
     
     def process_request(self, request):
@@ -121,7 +120,7 @@ class GatewayAuthMiddleware(MiddlewareMixin):
         if request.path == '/health/':
             return None
         
-        # Priority 1: Gateway headers (production mode)
+        # Gateway headers: the only authentication guardian accepts.
         user_id_header = request.META.get('HTTP_X_WILDBOX_USER_ID')
         team_id_header = request.META.get('HTTP_X_WILDBOX_TEAM_ID')
 
@@ -184,61 +183,27 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                     'code': 'INVALID_GATEWAY_HEADERS'
                 }, status=400)
         
-        # Priority 2: Legacy API key (backward compatibility)
-        # Check for X-API-Key header for direct access during migration
-        api_key_header = request.META.get('HTTP_X_API_KEY')
-        
-        if api_key_header:
-            logger.warning(
-                f"[GATEWAY-AUTH] Legacy API key authentication used for {request.path} - "
-                "migrate to gateway authentication"
-            )
-            
-            # Import here to avoid circular dependency
-            from apps.core.models import APIKey
-            
-            try:
-                key_obj = APIKey.objects.select_related('user').get(
-                    key=api_key_header,
-                    is_active=True
-                )
-                
-                if key_obj.is_expired():
-                    return JsonResponse({
-                        'error': 'api_key_expired',
-                        'message': 'The provided API key has expired'
-                    }, status=401)
-                
-                # Legacy keys get full access during migration.
-                request.gateway_user = GatewayUser(
-                    user_id=str(key_obj.user.id),
-                    team_id=str(getattr(key_obj, 'team_id', '00000000-0000-0000-0000-000000000001')),
-                    role='admin'
-                )
-                # key_obj.user is already a real auth.User row — use it directly
-                # (privileged in-memory to match the legacy admin role) so writes
-                # persist instead of 500ing.
-                db_user = key_obj.user
-                db_user.is_staff = True
-                db_user.is_superuser = True
-                request.user = db_user
-                request.api_key = key_obj  # Keep for backward compatibility
-                
-                return None
-                
-            except APIKey.DoesNotExist:
-                return JsonResponse({
-                    'error': 'invalid_api_key',
-                    'message': 'The provided API key is not valid'
-                }, status=401)
-        
-        # No authentication provided
+        # Anything else did not come through the gateway. guardian used to
+        # accept its own APIKey rows from an X-API-Key header here, as an admin
+        # and a superuser, beside the gateway: that path skipped identity, key
+        # revocation, team scoping and the gateway's rate limits (#629). It is
+        # gone. A direct request is refused whatever header it carries, with
+        # the answer the other services give (open-security-shared's
+        # gateway_auth).
+        logger.warning(
+            "[GATEWAY-AUTH] Refused %s %s: no gateway authentication headers",
+            request.method,
+            request.path,
+        )
         return JsonResponse({
-            'error': 'authentication_required',
-            'message': 'Authentication required. Provide X-API-Key header or access via gateway.',
-            'code': 'NO_AUTH'
-        }, status=401)
-    
+            'error': 'Gateway authentication required',
+            'message': (
+                'This service must be accessed through the API gateway. '
+                'Direct access is not permitted.'
+            ),
+            'code': 'GATEWAY_AUTH_REQUIRED',
+        }, status=403)
+
     def process_response(self, request, response):
         """Process outgoing response."""
         # Add security headers

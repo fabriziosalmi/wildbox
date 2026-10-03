@@ -89,6 +89,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails the task with a detail-free exception, and a scan whose stored
   status is final no longer reads the result backend.
 
+- **network_scanner scans again** (#615). Every run failed before the
+  first probe: `ping_host` indexed the boolean that a stub target check
+  returned, and `asyncio.gather` swallowed the `TypeError`, so each scan
+  reported success with no hosts. The tool now pings each address with
+  an argument list and no shell, probes the common ports of live hosts
+  with a TCP connect when `scan_type` is `tcp`, and honors `timeout` and
+  `max_threads` from the request: it ignored both before. A range larger
+  than 1024 addresses is refused before any probe instead of being
+  listed in full and then truncated, which hung the service on a `/0` or
+  an IPv6 `/64`. The stubs went with the defect: a rate limiter that
+  slept while holding its lock, which held a `/24` for minutes, and a
+  port "restriction" that skipped 22, 135, 139, 445 and 3389. A failed
+  probe of a host now reports why in the host's new `error` field. The
+  tool stays separate from port_scanner and network_port_scanner, which
+  scan one host each; it is the only tool that sweeps a range.
 - **hash_generator runs with its defaults** (#611). `hash_types`
   defaulted to md5, sha1, sha256 and sha512 while the tool no longer
   implemented md5 or sha1, so a run with the defaults, and the form the
@@ -775,6 +790,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **guardian accepts gateway-authenticated requests only** (#629). Its
+  middleware accepted rows of guardian's own `APIKey` table from an
+  `X-API-Key` header on a direct request, authenticated the caller as role
+  `admin` and set `is_superuser` on the user, and DRF's
+  `APIKeyAuthentication` accepted the same keys, also from
+  `Authorization: Bearer`. That path skipped identity, the revocation
+  markers, team scoping and the gateway's rate limits: anything that
+  reached guardian's port with such a key was an administrator. Both are
+  removed; a direct request answers 403 `GATEWAY_AUTH_REQUIRED`, as on
+  the other services. The permission classes no longer read the user's
+  staff flags as a role when there is no gateway identity, which only
+  that path produced. Nothing in the repository called guardian with
+  these keys except three manual check scripts under `tests/`, which now
+  use a personal API key through the gateway. Unit tests send a direct
+  request with a key row present and expect the refusal; an integration
+  test reads and writes guardian through the gateway with a personal API
+  key from identity, and expects 403 for the same key sent directly.
+
+- **Network tools refuse internal targets unless the operator allows
+  them** (#614). The URL guard covered tools that fetch a URL; the tools
+  that take a host, an address, a range, a DNS server or an image
+  reference connected to whatever they were given, so any authenticated
+  user could scan the platform's own network (Redis, PostgreSQL, the
+  other services, cloud metadata) from inside it. One check,
+  `app/target_policy.py`, now runs before every tool on the synchronous
+  endpoint, in the Celery task and in each security_automation_orchestrator
+  step, together with the URL guard. It refuses private, loopback,
+  link-local, unspecified, multicast, reserved and shared
+  (`100.64.0.0/10`) addresses, IPv4 addresses embedded in IPv6 ones,
+  ranges with any such address, host names that resolve to one (every
+  answer is checked) or do not resolve, non-canonical spellings such as
+  `127.1`, and the deployment's own names (any name without a dot,
+  `localhost`, `*.local`, `*.internal`, metadata names). A range holds at
+  most 1024 addresses. The fields checked are declared per tool, with
+  their kind, in `NETWORK_TARGET_FIELDS`; a unit test fails when a tool
+  has a host-like field that is neither declared nor listed as reviewed
+  with a reason. Operators allow internal lab ranges and hosts with
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` (CIDR ranges, IP addresses and host
+  names; empty by default; a bad entry stops the service at start-up).
+  The authorization manager's `authorized_targets` (#564) is not reused:
+  it narrows which public targets a caller may attack and never lifts
+  the SSRF guard. dns_enumerator applies the policy to the name servers
+  it attempts a zone transfer from and connects to the checked address,
+  which also makes the transfers work: they passed a name dnspython does
+  not accept. port_scanner refuses a target with other characters
+  instead of removing them, which turned `::1` into `1` (0.0.0.1). A
+  host name is still resolved again by most tools when they connect, so
+  a name whose answer changes in between (DNS rebinding) is a remaining
+  window, documented in the module. See UPGRADING section 29.
 
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
@@ -1542,6 +1607,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **guardian's `APIKey` model and its plain-text table** (#629), with
+  `APIKeyAuthentication`, the unused `APIKeyMiddleware` and
+  `generate_api_key()`. Migration `core.0002_remove_apikey` drops
+  `core_apikey` and the audit log's `api_key_id` column. guardian's
+  `.env.example` loses `GUARDIAN_API_KEY` and `API_KEY_HEADER`, which
+  nothing read. Use identity's personal API keys through the gateway;
+  UPGRADING.md says how.
 
 - **Nine n8n workflows that could not run** (#592): Security Compliance
   Automation, Daily OSINT Report, Honeypot Alert Classifier, Threat

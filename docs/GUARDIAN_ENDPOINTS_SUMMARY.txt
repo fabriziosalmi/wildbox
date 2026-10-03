@@ -426,7 +426,7 @@ Key Apps & Models:
    - WebhookEndpoint, IntegrationLog, NotificationChannel
 
 8. apps.core
-   - APIKey, SystemConfiguration
+   - SystemConfiguration, AuditLog
 
 ================================================================================
 SUMMARY STATISTICS
