@@ -36,6 +36,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A responder step condition on an undefined name is false** (#595).
+  Templates render with `StrictUndefined`, so a condition that checked
+  an optional field, such as `trigger.tag == 'urgent'` when the trigger
+  carried no `tag`, raised and failed the step instead of skipping it.
+  Such a condition now evaluates to false, the step is skipped, and the
+  run log records a warning naming the reference as written in the
+  condition, without any value from the context. A condition that is not
+  a valid expression or that the sandbox blocks still fails the step, and
+  an undefined name in a step's input is still an error. The semantics
+  are in the playbook reference (`open-security-responder/README.md`).
+- **A responder condition that reaches for Python internals fails the
+  step** (#595). A condition containing a blocked pattern such as
+  `__class__` evaluated to false, so the attempt was hidden behind a
+  skipped step. It now raises like a sandbox violation, and the step
+  fails according to its `on_failure` policy.
+- **The shipped responder playbooks' conditions are valid expressions**
+  (#595).
+  `triage_ip.yml`, `triage_url.yml` and `all_star_e2e.yml` wrote their
+  conditions as `"{{ ... }}"`. A condition is the body of an `{% if %}`,
+  so each was a syntax error and every conditional step failed. They are
+  now plain expressions, with `is defined` guards where the data is
+  optional, and `all_star_e2e.yml` reads the step result from `output`
+  instead of `result`, which never existed. A unit test compiles every
+  condition and every input template of every shipped playbook, so a
+  broken one fails CI.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
@@ -71,6 +96,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docker-compose.yml` passes the automations container the gateway URL,
   the API key, the report recipients and the gateway's certificate
   (not its key), so a workflow can reach the API over verified HTTPS.
+
+
+- **cspm keeps scan reports for 90 days, and batch scans count** (#591).
+  The compliance summary and findings, the dashboard summary and the
+  cloud security overview read scan reports from the Celery result
+  backend, which drops results after a day, so every scan older than
+  that dropped out of them while its metadata lived on for 30 days. The
+  worker now stores each report in Redis under its scan, and the report,
+  the scan's metadata and its entry in the team's scan index share one
+  retention, `CSPM_REPORT_RETENTION_DAYS` (default 90, validated at
+  start); the index is a sorted set scored by expiry, pruned on every
+  read and write. Reports are read from there only. Celery results now
+  expire after two hours, and a finished scan's status comes from its
+  metadata. `POST /api/v1/batch/scans` stored each scan's credentials
+  unencrypted, which the worker cannot decrypt, and wrote no scan
+  metadata, so batch scans failed, answered 404 by id and never counted
+  in the summaries; each scan of a batch now goes through the
+  single-scan path, under the caller's team. See UPGRADING.md for the
+  memory to plan for and for scans completed before the upgrade.
 - **The cloud security overview shows what cspm reports, and says when
   it cannot** (#578). When cspm did not answer, `/cloud-security`
   dropped the failure and showed "0 scans", "0%" compliance, "0 critical
