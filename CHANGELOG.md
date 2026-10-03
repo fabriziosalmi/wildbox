@@ -36,6 +36,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A responder step condition on an undefined name is false** (#595).
+  Templates render with `StrictUndefined`, so a condition that checked
+  an optional field, such as `trigger.tag == 'urgent'` when the trigger
+  carried no `tag`, raised and failed the step instead of skipping it.
+  Such a condition now evaluates to false, the step is skipped, and the
+  run log records a warning naming the reference as written in the
+  condition, without any value from the context. A condition that is not
+  a valid expression or that the sandbox blocks still fails the step, and
+  an undefined name in a step's input is still an error. The semantics
+  are in the playbook reference (`open-security-responder/README.md`).
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could

@@ -104,8 +104,35 @@ steps:
       tool_name: "whois"
       params:
         ip: "{{ trigger.ip }}"
-    condition: "{{ steps.scan_ports.output.open_ports|length > 0 }}"
+    condition: "steps.scan_ports.output.open_ports|length > 0"
 ```
+
+### Step conditions
+
+A step's `condition` is a Jinja2 expression, the body of an
+`{% if %}`, written without `{{ }}`: the step runs when it is true and is
+skipped when it is false. It sees the same context as the step's input:
+`trigger` and `steps.<id or name>`.
+
+- **Undefined names.** A condition that references a name that is not
+  defined, such as a trigger field that was not sent or an output field an
+  earlier step did not return, evaluates to false and the step is skipped.
+  The run log records a `WARNING` naming the reference as written in the
+  condition, for example
+  `Condition references an undefined name ('trigger.tag'); evaluating it as false`.
+  No value from the context is logged; a key computed at run time is
+  described as such. To test for an optional field explicitly, write
+  `trigger.tag is defined and trigger.tag == 'urgent'`.
+- **Other errors still fail the step.** A condition that is not a valid
+  expression (including one wrapped in `{{ }}`) or that the sandbox blocks
+  raises, and the step fails according to its `on_failure` policy; neither
+  is treated as a false condition. A condition containing a blocked
+  pattern such as `__class__` is refused and the step is skipped.
+- **Inputs stay strict.** An undefined name in a step's `input` template
+  is an error that fails the step, as before.
+- **No load-time check of paths.** A playbook's trigger declares no schema
+  of its fields, so a misspelt trigger field in a condition cannot be
+  detected when the playbook loads; it shows up as the warning above.
 
 ## 🔧 Configuration
 
