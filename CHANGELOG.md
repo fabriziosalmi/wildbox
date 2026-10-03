@@ -836,6 +836,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Sensor telemetry is scoped to the team that ingested it** (#641).
+  `telemetry_events` and `sensor_metadata` had no team column, and the
+  data service's telemetry routes queried the whole tables: any
+  authenticated member of any team listed every team's events
+  (including `raw_data` and host names), sensors and statistics. A
+  sensor ID was unique across all teams, so a batch posted under
+  another team's sensor ID updated that team's sensor record. Both
+  tables now carry `team_id` (alembic revision `0005_telemetry_team`),
+  and a sensor ID is unique per team. `POST /api/v1/ingest` stores the
+  caller's team from the gateway, never one named in the batch, and
+  looks the sensor up by team and ID. `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{sensor_id}` return the
+  caller's team's rows only, and another team's sensor answers 404.
+  Rows written before the upgrade have no team and are shown to no
+  team; UPGRADING section 32 gives the SQL to assign them. Unit tests
+  run the scenario of the issue (team B lists nothing of team A's,
+  gets 404 for A's sensor, and a batch of B's under A's sensor ID
+  leaves A's record unchanged); removing the team predicate from any
+  of the reads, or from the ingest's sensor lookup, fails them. An
+  integration test does the same through the gateway with two
+  accounts.
+
 - **agents: the analysis rate limit is counted per user** (#651). The
   limiter on `POST /v1/analyze` was keyed by the client address. Every
   request reaches the service through the gateway, so that address was
