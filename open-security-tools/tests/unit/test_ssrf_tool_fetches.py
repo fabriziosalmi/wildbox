@@ -34,6 +34,8 @@ from app.tools.sql_injection_scanner.schemas import (  # noqa: E402
     SQLInjectionScannerInput,
 )
 from app.tools.url_security_scanner import main as url_scanner  # noqa: E402
+from app.tools.whois_lookup import main as whois  # noqa: E402
+from app.tools.whois_lookup.schemas import WHOISLookupInput  # noqa: E402
 
 PUBLIC_IP = "93.184.215.14"
 PUBLIC_IP_2 = "93.184.215.15"
@@ -298,3 +300,62 @@ def test_sqli_scanner_resolves_the_target(dns, monkeypatch, host):
             user_id="user-1",
         )
     assert recorder.urls == []
+
+
+# --- whois_lookup: referral server -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "server",
+    [
+        "10.0.0.1",
+        "169.254.169.254",
+        "localhost",
+        "internal.example",
+        "rebind.example",
+        "unknown.example",
+        "whois.public.example:4343",
+        "whois://whois.public.example",
+        "x@whois.public.example",
+        "whois.public.example/path",
+        "[::1]",
+    ],
+)
+def test_whois_referral_is_checked(dns, server):
+    with pytest.raises(ValueError):
+        whois.resolve_referral_server(server)
+
+
+def test_whois_referral_returns_the_checked_address(dns):
+    family, sockaddr = whois.resolve_referral_server("whois.public.example")
+    assert family == socket.AF_INET
+    assert sockaddr == (PUBLIC_IP, 43)
+
+
+@pytest.fixture
+def whois_server(monkeypatch):
+    calls = []
+
+    def fake_query(domain, server, timeout, address=None):
+        calls.append((server, address))
+        return f"Domain Name: {domain}\nWhois Server: {fake_query.referral}\n"
+
+    fake_query.referral = ""
+    monkeypatch.setattr(whois, "query_whois_server", fake_query)
+    return calls, fake_query
+
+
+@pytest.mark.parametrize("referral", ["10.0.0.1", "internal.example", "localhost"])
+def test_whois_does_not_follow_an_internal_referral(dns, whois_server, referral):
+    calls, fake_query = whois_server
+    fake_query.referral = referral
+    out = whois.execute_tool(WHOISLookupInput(domain="example.com"))
+    assert out.success is True
+    assert [server for server, _ in calls] == ["whois.verisign-grs.com"]
+
+
+def test_whois_follows_a_public_referral_to_the_checked_address(dns, whois_server):
+    calls, fake_query = whois_server
+    fake_query.referral = "whois.public.example"
+    whois.execute_tool(WHOISLookupInput(domain="example.com"))
+    assert calls[1] == ("whois.public.example", (socket.AF_INET, (PUBLIC_IP, 43)))
