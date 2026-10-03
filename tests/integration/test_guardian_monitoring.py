@@ -808,12 +808,3 @@ class TestGuardianMonitoring:
                 timeout=TIMEOUT,
             )
 
-
-def run_tests() -> dict:
-    """Entry point kept for tests/test_pulse_check_system.py; runs this module."""
-    started = time.time()
-    code = pytest.main([__file__, "-q"])
-    return {
-        "success": code == 0,
-        "summary": f"pytest exit code {code} in {time.time() - started:.1f}s",
-    }

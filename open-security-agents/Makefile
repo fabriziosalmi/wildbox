@@ -39,10 +39,11 @@ redis:
 
 # Testing
 test:
-	python -m pytest tests/ -v
+	python -m pytest tests/unit/ -v
 
+# Needs the whole stack running (docker compose up); goes through the gateway.
 test-e2e:
-	python scripts/test_agents.py
+	cd .. && python -m pytest tests/integration/test_agents_ai.py -v -o addopts=""
 
 # Docker commands
 docker-build:
