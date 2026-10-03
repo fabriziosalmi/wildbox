@@ -513,6 +513,53 @@ There are no composition rules. Rebuild identity (section 1 does).
   applies to every service using `open_security_shared.errors`, for any
   HTTP error whose detail is an object with a `reason`.
 
+### 24. cspm keeps scan reports for 90 days (`CSPM_REPORT_RETENTION_DAYS`)
+
+The compliance summary and findings, the dashboard summary and the cloud
+security overview are built from the reports of the team's completed
+scans. cspm read them from the Celery result backend, which drops results
+after a day, so every scan older than that dropped out of those pages. The
+worker now stores each report in Redis under its scan, and keeps the
+report, the scan's metadata and its entry in the team's scan index for
+`CSPM_REPORT_RETENTION_DAYS` days (#591). Rebuild cspm, and its worker if
+you run one (section 1 does).
+
+- **New variable, optional.** `CSPM_REPORT_RETENTION_DAYS` defaults to
+  90; `docker-compose.yml` passes it to cspm. It must be a whole number
+  from 1 to 3650, or cspm stops at start with the reason. A worker you
+  run yourself needs the same value: the worker writes the reports.
+- **Size Redis for it.** Redis runs with `noeviction`: when it reaches
+  `REDIS_MAXMEMORY` (1 GB by default) it refuses writes for every service
+  instead of dropping keys. A stored report takes about 100 bytes per
+  check result, so 10 accounts scanned daily with 2,000 results each
+  need about 180 MB at 90 days. Check the memory in use with
+  `scripts/check_redis_config.py runtime`, then lower the retention or
+  raise `REDIS_MAXMEMORY` (and `REDIS_MEMORY_LIMIT`, at least twice as
+  much). The cspm README, "Scan retention and Redis memory", has the
+  details.
+- **Reports of scans completed before the upgrade are not shown.** The
+  stored report is the only source. A scan completed before the upgrade
+  has its report only in the Celery result backend, for at most a day
+  after it completed, and keeps counting in `total_scans` for up to 30
+  days, but its findings and score are not in the summaries and
+  `GET /api/v1/scans/{id}/report` answers 400. Run the scan again to see
+  its findings.
+- **Celery results expire after two hours** (twice
+  `SCAN_TIMEOUT_SECONDS`), no longer after a day. Finished scans take
+  their status from their metadata, which `GET /api/v1/scans/{id}` now
+  reads, so a completed scan stays `completed`. A script that read a
+  report from the task result must call `GET /api/v1/scans/{id}/report`:
+  the result holds a summary of the scan, not the report.
+- **Batch scans now work.** `POST /api/v1/batch/scans` stored each scan's
+  cloud credentials unencrypted, which the worker cannot read, so every
+  batch scan failed; it wrote no scan metadata either, so `GET
+  /api/v1/scans/{id}` answered 404 for its scans and they never counted
+  in the summaries. Each scan of a batch is now started like a single
+  scan. Batch scans started before the upgrade stay unreadable; start
+  them again. Unencrypted credentials they left in Redis expired five
+  minutes after each batch, but may remain in the append-only file until
+  Redis next rewrites it.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

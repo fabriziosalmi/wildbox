@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import json
 
-from celery import Celery
+from celery import Celery, Task
 from celery.signals import worker_ready, worker_shutting_down
 import boto3
 import redis as redis_lib
@@ -20,6 +20,7 @@ from .credential_crypto import decrypt_credentials
 from .checks.runner import check_runner
 from .checks.framework import CloudProvider, ScanReport
 from . import schemas
+from . import scan_store
 
 # Configure logging
 logging.basicConfig(
@@ -49,7 +50,34 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,
     task_acks_late=True,
     worker_max_tasks_per_child=100,
+    # Explicit, and short: reports are stored by scan_store with their own
+    # retention (CSPM_REPORT_RETENTION_DAYS), so nothing reads a finished
+    # task's result for its report any more. Celery's default kept results
+    # for a day, and the compliance pages lost every scan older than that
+    # (#591). What the backend still serves is the state of queued and
+    # running scans, which GET /api/v1/scans/{id} reports; twice the scan
+    # time limit keeps that state for as long as a scan can run.
+    result_expires=2 * settings.scan_timeout_seconds,
 )
+
+# Redis holds the scan records (scan_store). from_url does not connect, so
+# importing this module needs no Redis.
+redis_client = redis_lib.from_url(settings.redis_url, decode_responses=True)
+
+
+class ScanTask(Task):
+    """Marks the scan failed in its metadata, whatever made the task fail.
+
+    The task's own except clause catches only some errors, and once the
+    Celery result expires the stored status is the only record of the
+    failure.
+    """
+
+    def on_failure(self, exc, task_id, args, kwargs, einfo):
+        try:
+            scan_store.fail_scan(redis_client, task_id, datetime.utcnow().isoformat())
+        except (redis_lib.RedisError, ValueError, TypeError) as error:
+            logger.error(f"Could not mark scan {task_id} failed: {error}")
 
 
 @worker_ready.connect
@@ -117,7 +145,7 @@ class CloudSessionManager:
         raise NotImplementedError("Azure session creation not yet implemented")
 
 
-@celery_app.task(bind=True, name="run_cspm_scan")
+@celery_app.task(bind=True, base=ScanTask, name="run_cspm_scan")
 def run_cspm_scan_task(
     self,
     scan_config: Dict[str, Any]
@@ -144,7 +172,7 @@ def run_cspm_scan_task(
     logger.info(f"Starting CSPM scan {scan_id} for {provider_str}")
 
     # Retrieve credentials from secure Redis reference (not from task args)
-    redis_worker = redis_lib.from_url(settings.redis_url, decode_responses=True)
+    redis_worker = redis_client
     credential_ref = scan_config.get("credential_ref")
     if not credential_ref:
         raise ValueError("Missing credential reference in scan config")
@@ -203,36 +231,32 @@ def run_cspm_scan_task(
         finally:
             loop.close()
         
-        # Convert report to dict for serialization
-        report_dict = report.model_dump()
-        
-        # Update task state
-        self.update_state(
-            state="SUCCESS",
-            meta={
-                "status": "completed",
-                "provider": provider_str,
-                "account_id": account_id,
-                "scan_id": scan_id,
-                "completed_at": datetime.utcnow().isoformat(),
-                "total_checks": report.total_checks,
-                "failed_checks": report.failed_checks,
-                "compliance_score": report.compliance_score
-            }
+        completed_at = datetime.utcnow().isoformat()
+
+        # Store the report under the scan, with the retention its metadata
+        # and its team index entry have, and mark the scan completed (#591).
+        # The report is no longer part of the task's result: the result
+        # backend keeps results for hours, and nothing reads reports there.
+        scan_store.complete_scan(
+            redis_worker, scan_id, report.model_dump(mode="json"), completed_at
         )
-        
+
         logger.info(
             f"CSMP scan {scan_id} completed: "
             f"{report.passed_checks} passed, {report.failed_checks} failed"
         )
-        
+
         return {
             "scan_id": scan_id,
             "status": "completed",
-            "report": report_dict,
-            "metadata": scan_config.get("metadata", {})
+            "provider": provider_str,
+            "account_id": account_id,
+            "completed_at": completed_at,
+            "total_checks": report.total_checks,
+            "failed_checks": report.failed_checks,
+            "compliance_score": report.compliance_score,
         }
-        
+
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"CSPM scan {scan_id} failed: {e}", exc_info=True)
 

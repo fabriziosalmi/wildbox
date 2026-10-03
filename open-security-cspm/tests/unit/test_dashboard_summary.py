@@ -3,18 +3,17 @@
 The endpoint read ``scan:{id}:results``, a key nothing writes, so findings
 and the compliance score were 0 even after a real scan; the severity
 buckets were hard-coded to 0; and every scan counted as active, because the
-stored scan status is never updated after the scan starts. It now reads the
-reports GET /api/v1/compliance/summary reads (the newest completed scan of
-each of the team's accounts, from the Celery result backend), takes each
+stored scan status was never updated after the scan started. It now reads
+the reports GET /api/v1/compliance/summary reads (the newest completed scan
+of each of the team's accounts, as the worker stored it, #591), takes each
 failed check's severity from the check catalog, and reports no scan status
 counts at all.
 
-The endpoint is called directly with a fake Redis and a fake Celery result
-backend, so these tests need no service running.
+The endpoint is called directly with a fake Redis (tests/unit/conftest.py),
+so these tests need no service running.
 """
 
 import asyncio
-import json
 import os
 import sys
 from datetime import datetime, timedelta
@@ -31,7 +30,7 @@ os.environ.setdefault(
     "CSPM_CREDENTIAL_KEY", "dGVzdC1vbmx5LWtleS1ub3QtdXNlZC1mb3ItY3J5cHRvISE="
 )
 
-from app import main, schemas  # noqa: E402
+from app import main, scan_store, schemas  # noqa: E402
 
 CATALOG = [
     {"check_id": "S3_PUBLIC", "severity": "critical", "title": "S3 bucket is public"},
@@ -42,36 +41,6 @@ CATALOG = [
 
 TEAM_A = "team-a"
 TEAM_B = "team-b"
-
-
-class FakeRedis:
-    def __init__(self):
-        self.values = {}
-        self.sets = {}
-
-    def get(self, key):
-        return self.values.get(key)
-
-    def smembers(self, key):
-        return set(self.sets.get(key, set()))
-
-    def keys(self, pattern):
-        prefix, suffix = pattern.split("*")
-        return [k for k in self.values if k.startswith(prefix) and k.endswith(suffix)]
-
-
-class FakeResult:
-    def __init__(self, status, result=None):
-        self.status = status
-        self.result = result
-
-
-class FakeBackend:
-    def __init__(self):
-        self.results = {}
-
-    def AsyncResult(self, task_id):  # noqa: N802 - Celery's name
-        return self.results.get(task_id, FakeResult("PENDING"))
 
 
 def _check(check_id, resource_id, status):
@@ -89,11 +58,8 @@ def _check(check_id, resource_id, status):
 
 
 @pytest.fixture
-def store(monkeypatch):
-    redis = FakeRedis()
-    backend = FakeBackend()
-    monkeypatch.setattr(main, "redis_client", redis)
-    monkeypatch.setattr(main, "celery_app", backend)
+def store(monkeypatch, fake_redis):
+    monkeypatch.setattr(main, "redis_client", fake_redis)
     monkeypatch.setattr(main.check_runner, "get_available_checks", lambda: CATALOG)
 
     counter = {"n": 0}
@@ -102,27 +68,27 @@ def store(monkeypatch):
         counter["n"] += 1
         scan_id = f"00000000-0000-0000-0000-{counter['n']:012d}"
         started = datetime.utcnow() - timedelta(hours=hours_ago)
-        redis.values[f"scan:{scan_id}:metadata"] = json.dumps(
+        scan_store.save_metadata(
+            fake_redis,
             {
                 "scan_id": scan_id,
                 "provider": "aws",
                 "account_id": account_id,
-                "status": "started",  # what start_scan stores, and never changes
+                "status": "started",
                 "started_at": started.isoformat(),
                 "team_id": team_id,
+            },
+        )
+        if status == "SUCCESS":
+            completed_at = (started + timedelta(minutes=5)).isoformat()
+            report = {
+                "scan_id": scan_id,
+                "account_id": account_id,
+                "started_at": started.isoformat(),
+                "completed_at": completed_at,
+                "results": results or [],
             }
-        )
-        redis.sets.setdefault(f"cspm:team:{team_id}:scans", set()).add(scan_id)
-        report = {
-            "scan_id": scan_id,
-            "account_id": account_id,
-            "started_at": started.isoformat(),
-            "completed_at": (started + timedelta(minutes=5)).isoformat(),
-            "results": results or [],
-        }
-        backend.results[scan_id] = FakeResult(
-            status, {"report": report} if status == "SUCCESS" else None
-        )
+            scan_store.complete_scan(fake_redis, scan_id, report, completed_at)
         return started
 
     return add_scan
