@@ -527,6 +527,11 @@ local function required_scope_for_request(uri, method)
        or uri:find("^/api/v1/agents/") then
         return is_read and "tools:read" or "tools:execute"
     end
+    -- Asynchronous tool tasks (#567): reading and listing them is tools:read,
+    -- cancelling one is tools:execute, as running the tool was.
+    if uri == "/api/v1/tasks" or uri:find("^/api/v1/tasks/") then
+        return is_read and "tools:read" or "tools:execute"
+    end
     -- Automation (n8n) workflow management is administrative.
     if uri:find("^/api/v1/automations/") then
         return "tools:admin"
