@@ -157,9 +157,9 @@ def delete_account(user, password):
     )
 
 
-def profile_password(user, current):
+def profile_email(user, current):
     return users.update_my_profile(
-        UserProfileUpdate(current_password=current, new_password="n" * 16),
+        UserProfileUpdate(email="mallory@example.com", current_password=current),
         current_user=user,
         db=FakeSession(),
     )
@@ -167,8 +167,8 @@ def profile_password(user, current):
 
 @pytest.mark.parametrize(
     "call",
-    [change_password, delete_account, profile_password],
-    ids=["change-password", "delete-account", "profile"],
+    [change_password, delete_account, profile_email],
+    ids=["change-password", "delete-account", "profile-email"],
 )
 def test_each_route_counts_and_locks(counter, call):
     user = make_user()

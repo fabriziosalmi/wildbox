@@ -513,8 +513,24 @@ async def update_my_profile(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    User endpoint: Update own profile information.
+    User endpoint: Update own profile information (the email address).
+
+    It does not set a password (#569). It used to, with no length rule and
+    without UserManager's validation, hashing the new password directly --
+    a second, weaker way to do what change-password does, which nothing
+    used (the dashboard calls change-password). A request carrying
+    new_password is refused rather than silently ignored, so a client that
+    relied on it learns where to go.
     """
+    if profile_update.new_password is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "The password cannot be changed here. Use "
+                f"{UserManager.CHANGE_PASSWORD_ROUTE} with your current password."
+            ),
+        )
+
     updates_made = False
     
     # Update email if provided
@@ -541,21 +557,6 @@ async def update_my_profile(
         # As fastapi-users does on an email change: the new address is not
         # verified yet.
         current_user.is_verified = False
-        updates_made = True
-    
-    # Update password if provided
-    if profile_update.new_password:
-        if not profile_update.current_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password required to set new password"
-            )
-        
-        # Verify current password; a wrong one counts towards the lockout.
-        await verify_current_password(current_user, profile_update.current_password)
-
-        # Hash and set new password
-        current_user.hashed_password = get_password_hash(profile_update.new_password)
         updates_made = True
     
     if updates_made:

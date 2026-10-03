@@ -194,7 +194,11 @@ UserWithTeams.model_rebuild()
 # Additional schemas for extended user management
 class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
+    # Required to change the email (#569).
     current_password: Optional[str] = None
+    # Refused: a password is changed through change-password (#569). Kept in
+    # the schema so a request that sends one is told so instead of having the
+    # field silently dropped.
     new_password: Optional[str] = None
 
 
