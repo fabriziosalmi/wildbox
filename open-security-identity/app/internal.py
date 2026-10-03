@@ -14,7 +14,7 @@ from .models import User, Team, TeamMembership, ApiKey
 from .schemas import AuthorizationResponse
 from .auth import token_predates_cutoff, verify_access_token
 from .config import settings
-from datetime import datetime
+from datetime import datetime, timezone
 import hmac
 import logging
 
@@ -150,6 +150,8 @@ async def authorize_request(
                 scopes=None,
                 # The gateway refuses every request of such a session (#573).
                 password_change_required=bool(getattr(user, "must_change_password", False)),
+                # The gateway does not serve the decision past the token (#593).
+                credential_expires_at=_epoch(payload.get("exp")),
             )
             
         elif request_data.token_type == "api_key":
@@ -188,8 +190,12 @@ async def authorize_request(
 
             api_key_obj, user, team, membership = row
             
-            # Check if key is expired
-            if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
+            # Check if key is expired. expires_at is a timestamptz, read back
+            # timezone-aware; it was compared with a naive utcnow(), which
+            # raises TypeError, so every key with an expiry failed to
+            # authorize with a 500 (#593).
+            key_expires_at = _aware(api_key_obj.expires_at)
+            if key_expires_at is not None and key_expires_at <= datetime.now(timezone.utc):
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="API key has expired"
@@ -209,6 +215,12 @@ async def authorize_request(
                 permissions=_get_permissions_for_role(membership.role),
                 scopes=api_key_obj.scopes,
                 password_change_required=bool(getattr(user, "must_change_password", False)),
+                # What the gateway revokes the key by, and when it stops
+                # serving a cached decision for it (#593).
+                api_key_id=str(api_key_obj.id),
+                credential_expires_at=(
+                    key_expires_at.timestamp() if key_expires_at is not None else None
+                ),
             )
         else:
             raise HTTPException(
@@ -223,6 +235,20 @@ async def authorize_request(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Authorization failed"
         )
+
+
+def _aware(moment: Optional[datetime]) -> Optional[datetime]:
+    """``moment`` as an aware datetime; a naive one is read as UTC."""
+    if moment is None or moment.tzinfo is not None:
+        return moment
+    return moment.replace(tzinfo=timezone.utc)
+
+
+def _epoch(value) -> Optional[float]:
+    """A JWT time claim as epoch seconds, or None when it is not a number."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _get_permissions_for_role(role: str) -> list[str]:

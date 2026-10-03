@@ -158,6 +158,23 @@ Team keys, which require the `admin` or `owner` role in the team:
 | GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
 | DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
 
+### Revocation Takes Effect at Once
+
+A revoked key is refused by the gateway on the next request. Before it marks
+the key inactive, identity has the gateway refuse it, by the key's id, and
+the gateway confirms; if it does not, the key stays active and the DELETE
+answers **503**, to be repeated. The same holds, with the same 503, for every
+other change that disables keys: deactivating or deleting an account (all its
+keys and sessions), deleting one's own account, and removing a member from a
+team (the member's keys for that team). A key's `expires_at` is honored even
+when the gateway has a decision for the key in its cache. See
+[Revoking an API key](../../guides/authentication.md#revoking-an-api-key).
+
+`/internal/authorize` reports, for an API key, `api_key_id` (what the gateway
+revokes the key by) and `credential_expires_at` (the key's expiry in epoch
+seconds, or null); for a session token, `credential_expires_at` is the
+token's `exp`.
+
 ---
 
 ## Teams
@@ -235,6 +252,10 @@ is not enough.
 
 fastapi-users also registers `GET`, `PATCH` and `DELETE` on
 `/api/v1/users/{id}` for superusers.
+
+Deactivating an account (through either route) or deleting it ends its API
+keys and sessions at the gateway before the change is committed; when the
+gateway does not confirm, nothing changes and the answer is 503.
 
 ---
 
