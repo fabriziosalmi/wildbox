@@ -751,6 +751,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **agents: reading or cancelling a task fails closed on its owner
+  record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
+  when the owner record existed, so with the record missing any
+  authenticated caller, of any team, could revoke someone else's
+  analysis. The record could be missing while the task was still
+  addressable: the celery id was written after it with the same TTL and
+  outlived it, and eviction can drop one key and keep the other. `GET`
+  and `DELETE` now share one check: no celery id, no owner record, or
+  another user's task all answer 404 `Task not found`, before anything is
+  read or revoked. Another user's task used to answer 403 on `GET`, which
+  confirmed that the task id was live. The owner record is now written
+  with five minutes more time to live than the task's other keys, and is
+  rewritten in the same transaction as the celery id, so it outlives
+  every key that can address the task. Unit tests cover a missing owner
+  record, another user's task and the owner's own task on both methods,
+  and the TTLs written on submission.
+
 - **guardian accepts gateway-authenticated requests only** (#629). Its
   middleware accepted rows of guardian's own `APIKey` table from an
   `X-API-Key` header on a direct request, authenticated the caller as role

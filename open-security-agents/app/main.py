@@ -313,7 +313,7 @@ async def analyze_ioc(
         )
         pipe.setex(
             f"task:{task_id}:user_id",
-            settings.task_result_expires,
+            owner_record_ttl(),
             str(user.user_id),
         )
         pipe.incr("stats:total_analyses")
@@ -338,12 +338,25 @@ async def analyze_ioc(
 
         # The celery id is the last thing written: if this fails the task is
         # already running, so revoke it rather than orphaning it.
+        #
+        # The owner record is rewritten in the same transaction, so its
+        # expiry is measured from the same instant as the celery id's and
+        # it outlives the celery id by OWNER_RECORD_GRACE_SECONDS. Written
+        # separately, the celery id expired after the owner record, and in
+        # that window the task was addressable with no owner (#650).
         try:
-            redis_client.setex(
+            pipe = redis_client.pipeline()
+            pipe.setex(
                 f"task:{task_id}:celery_id",
                 settings.task_result_expires,
                 celery_task.id,
             )
+            pipe.setex(
+                f"task:{task_id}:user_id",
+                owner_record_ttl(),
+                str(user.user_id),
+            )
+            pipe.execute()
         except Exception:
             logger.error(
                 f"Could not record celery id for task {task_id}; revoking the "
@@ -385,6 +398,57 @@ async def analyze_ioc(
         )
 
 
+# The owner record outlives everything that can address the task. It is
+# written with the task's other keys and rewritten together with the celery
+# id, always with this much more time to live than either (#650).
+OWNER_RECORD_GRACE_SECONDS = 300
+
+
+def owner_record_ttl() -> int:
+    """Seconds the task:{id}:user_id record lives."""
+    return settings.task_result_expires + OWNER_RECORD_GRACE_SECONDS
+
+
+def _task_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Task not found",
+    )
+
+
+def _authorize_task(task_id: str, user: GatewayUser) -> bytes:
+    """Return the task's celery id if ``user`` owns the task; 404 otherwise.
+
+    Every handler that reads or acts on a task goes through here, so the
+    ownership rule is written once. It fails closed:
+
+    - no celery id: the task does not exist (or has expired);
+    - no owner record: the task cannot be attributed to anyone. This is an
+      inconsistency, not an anonymous task, so nobody may use it. DELETE
+      used to read ``if task_owner and ...`` and let any caller revoke
+      such a task (#650); GET had the same defect (WILDBO-ERR-05);
+    - another user's task: answered exactly like a task that does not
+      exist, so the answer does not confirm that a task id is live.
+    """
+    celery_task_id = redis_client.get(f"task:{task_id}:celery_id")
+    if not celery_task_id:
+        raise _task_not_found()
+
+    task_owner = redis_client.get(f"task:{task_id}:user_id")
+    if not task_owner:
+        logger.error(f"Task {task_id} has no owner record; refusing access")
+        raise _task_not_found()
+
+    if task_owner.decode() != str(user.user_id):
+        logger.warning(
+            f"User {user.user_id} asked for task {task_id}, which belongs to "
+            "another user; answering 404"
+        )
+        raise _task_not_found()
+
+    return celery_task_id
+
+
 @app.get("/v1/analyze/{task_id}")
 async def get_analysis_result(
     task_id: str = Path(..., regex=r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"),
@@ -394,36 +458,7 @@ async def get_analysis_result(
     Get the status and results of an analysis task. Requires authentication.
     """
     try:
-        # Get Celery task ID
-        celery_task_id = redis_client.get(f"task:{task_id}:celery_id")
-        if not celery_task_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Task not found"
-            )
-
-        # Verify the task belongs to the requesting user.
-        #
-        # Fail closed on an absent owner record. This used to read
-        # `if task_owner and ...`, so a missing key skipped the comparison
-        # entirely and any authenticated caller with the task id got the result.
-        # The preceding celery_id lookup already established that the task
-        # exists, so a missing owner is an inconsistency, not an anonymous task
-        # (WILDBO-ERR-05).
-        task_owner = redis_client.get(f"task:{task_id}:user_id")
-        if not task_owner:
-            logger.error(
-                f"Task {task_id} has no owner record; refusing access"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Task not found"
-            )
-        if task_owner.decode() != str(user.user_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only view your own tasks"
-            )
+        celery_task_id = _authorize_task(task_id, user)
 
         # Get Celery task result
         celery_task = AsyncResult(celery_task_id.decode(), app=celery_app)
@@ -487,22 +522,9 @@ async def cancel_analysis(
 ):
     """Cancel a pending or running analysis task. Requires authentication."""
     try:
-        # Verify the task belongs to the requesting user
-        task_owner = redis_client.get(f"task:{task_id}:user_id")
-        if task_owner and task_owner.decode() != str(user.user_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only cancel your own tasks"
-            )
+        # Ownership is established before anything is revoked.
+        celery_task_id = _authorize_task(task_id, user)
 
-        # Get Celery task ID
-        celery_task_id = redis_client.get(f"task:{task_id}:celery_id")
-        if not celery_task_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Task not found"
-            )
-        
         # Revoke the Celery task
         celery_app.control.revoke(celery_task_id.decode(), terminate=True)
         
@@ -512,7 +534,7 @@ async def cancel_analysis(
         
     except HTTPException:
         raise
-    except (ConnectionError, TimeoutError) as e:
+    except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:
         logger.error(f"Task queue connection error cancelling {task_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
