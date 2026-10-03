@@ -70,8 +70,10 @@ def test_patch_me_refuses_to_change_the_password():
 
     assert response.status_code == 400, response.text[:200]
     # The canonical error body (open_security_shared.errors) carries
-    # fastapi-users' {"code", "reason"} detail as its message.
-    assert "UPDATE_USER_INVALID_PASSWORD" in response.json()["error"]["message"]
+    # fastapi-users' reason as its message and {"code", "reason"} as details.
+    error = response.json()["error"]
+    assert error["details"]["code"] == "UPDATE_USER_INVALID_PASSWORD"
+    assert "change-password" in error["message"]
     assert login(email, password).status_code == 200
     assert login(email, new_password).status_code == 400
 

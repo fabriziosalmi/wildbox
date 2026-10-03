@@ -103,6 +103,33 @@ Every route that sets a password hashes it with Argon2id through
 fastapi-users' `PasswordHelper`, the same helper login verifies with; bcrypt
 hashes from older releases still verify.
 
+### Password Policy
+
+Every route that sets a password applies the same rule
+(`UserManager.validate_password()`): 12 to 128 characters, not containing
+the account's email address or the part before the `@` (when it has at
+least 4 characters), and not one of the 10,000 most common passwords of
+that length (a list vendored in identity). There are no composition rules.
+The [authentication guide](../../guides/authentication.md#password-policy)
+explains the choices.
+
+| Route | Refusal |
+| --- | --- |
+| `POST /api/v1/auth/register` | 400, `error.details.code` `REGISTER_INVALID_PASSWORD` |
+| `POST /api/v1/auth/reset-password` | 400, `error.details.code` `RESET_PASSWORD_INVALID_PASSWORD` |
+| `PATCH /api/v1/users/{id}` (superuser) | 400, `error.details.code` `UPDATE_USER_INVALID_PASSWORD` |
+| `POST /api/v1/admin/me/change-password`, `PUT /api/v1/admin/me/password` | 400; 422 for fewer than 12 or more than 128 characters |
+| `POST /api/v1/admin/teams/{team_id}/members` | 400; 422 for fewer than 12 or more than 128 characters |
+
+`error.message` carries the reason, for example:
+
+```json
+{"error": {"code": 400, "message": "The password must be at least 12 characters long.",
+  "type": "HTTPException", "request_id": "...",
+  "details": {"code": "REGISTER_INVALID_PASSWORD",
+              "reason": "The password must be at least 12 characters long."}}}
+```
+
 ```bash
 curl -s --cacert open-security-gateway/ssl/wildbox.crt \
   -H "Authorization: Bearer $TOKEN" https://localhost/api/v1/identity/users/me
@@ -156,8 +183,8 @@ is sent: the administrator gives the new member the initial password.
 {"email": "new.member@example.com", "password": "an initial password", "role": "member"}
 ```
 
-- `password`: at least 12 characters. The account is created with
-  `must_change_password: true`.
+- `password`: must meet the [password policy](#password-policy). The
+  account is created with `must_change_password: true`.
 - `role`: `member` (the default) or `admin`, strictly below the caller's
   own role: an owner (or a superuser) creates admins and members, an admin
   creates members. `owner` is never accepted.
@@ -167,8 +194,9 @@ is sent: the administrator gives the new member the initial password.
 | 201 | Created; the body is the new membership, as in the member list |
 | 403 | The caller is not an owner or admin of the team, or the role is not one it may give |
 | 404 | A superuser named a team that does not exist |
+| 400 | The password does not meet the policy; `error.message` says why |
 | 409 | The email is already registered (in any letter case) |
-| 422 | Invalid email, unknown role or a password under 12 characters |
+| 422 | Invalid email, unknown role, or a password under 12 or over 128 characters |
 
 The creation is logged (`audit: team_member_created`) with the caller, the
 new account, the team and the role, never the password.

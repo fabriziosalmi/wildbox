@@ -6,7 +6,7 @@ that waits for the docker-compose stack and fails the test if it is absent. That
 is right for the integration suite and wrong here: these exercise a script over
 fixture files on disk, and their whole value is that they run without a stack.
 Overriding the fixture with a no-op keeps that true, the same way tests/shared
-and tests/tools already do.
+already does.
 """
 
 import pytest

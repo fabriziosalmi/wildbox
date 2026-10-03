@@ -1,9 +1,10 @@
 """Unit tests for token/credential helpers in app/auth.py.
 
-Pure-logic, no DB needed - the existing tests/test_basic.py exercises full
-HTTP+Postgres flows and can't run in the unit-test matrix job (no DB
-service there), so this file covers the underlying JWT/API-key/password
-logic directly instead, per the migration guidance in #245.
+Pure-logic, no DB needed. The HTTP+Postgres flows are covered by the
+integration suite (tests/integration/test_identity_service.py) and can't run in
+the unit-test matrix job (no DB service there), so this file covers the
+underlying JWT/API-key/password logic directly instead, per the migration
+guidance in #245.
 """
 import os
 import sys

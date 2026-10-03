@@ -31,6 +31,14 @@ def client():
     def forbidden():
         raise HTTPException(status_code=403, detail="Direct access is not permitted")
 
+    @app.post("/register")
+    def register():
+        # fastapi-users' shape for a refused password.
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "REGISTER_INVALID_PASSWORD", "reason": "Too short."},
+        )
+
     @app.post("/validated")
     def validated(body: Body):
         return {"value": body.value}
@@ -59,6 +67,18 @@ def test_one_expression_extracts_every_message(client):
         body = client.get(path).json()
         assert body["error"]["message"], f"no message for {path}"
         assert body["error"]["code"] == expected
+
+
+def test_a_fastapi_users_reason_is_the_message(client):
+    """A {code, reason} detail used to arrive as a Python dict literal (#583)."""
+    r = client.post("/register")
+    assert r.status_code == 400
+    body = r.json()
+    assert body["error"]["message"] == "Too short."
+    assert body["error"]["details"] == {
+        "code": "REGISTER_INVALID_PASSWORD",
+        "reason": "Too short.",
+    }
 
 
 def test_validation_error_is_the_same_shape(client):

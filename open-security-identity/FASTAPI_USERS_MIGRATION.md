@@ -111,10 +111,11 @@ ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT FALSE;
 
 ## Testing
 
-Usa il script `test_migration.py` per verificare la migrazione:
+Usa i test di integrazione (`tests/integration/`, in CI) per
+verificare la migrazione:
 
 ```bash
-python test_migration.py
+pytest tests/integration/test_identity_service.py -v
 ```
 
 ## Vantaggi della Migrazione

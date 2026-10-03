@@ -139,11 +139,11 @@ Security tools available to the AI agent:
 ### Testing
 
 ```bash
-# Run tests
-pytest
+# Unit tests (no services needed)
+pytest tests/unit/
 
-# Test specific analysis
-python scripts/test_agents.py
+# Analysis through the gateway (needs the whole stack running)
+make test-e2e
 ```
 
 ## Deployment
