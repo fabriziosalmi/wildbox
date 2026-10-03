@@ -16,6 +16,9 @@ interface AuthContextType {
   refetchUser: () => Promise<void>
 }
 
+/** Where an account with an initial password changes it (#573). */
+export const CHANGE_PASSWORD_PAGE = '/auth/change-password'
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 // Cookie options for the auth token. `secure` is derived from the actual
@@ -93,8 +96,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
       setUser(userData)
 
-      // Redirect immediately after successful login to prevent race conditions
-      router.replace('/dashboard')
+      // Redirect immediately after successful login to prevent race conditions.
+      // An account a team admin created must change its initial password
+      // first: identity and the gateway refuse everything else until then.
+      router.replace(userData.must_change_password ? CHANGE_PASSWORD_PAGE : '/dashboard')
     } catch (error) {
       throw error
     }

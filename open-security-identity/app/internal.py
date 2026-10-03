@@ -147,7 +147,9 @@ async def authorize_request(
                 team_id=str(team.id),
                 role=membership.role,
                 permissions=_get_permissions_for_role(membership.role),
-                scopes=None
+                scopes=None,
+                # The gateway refuses every request of such a session (#573).
+                password_change_required=bool(getattr(user, "must_change_password", False)),
             )
             
         elif request_data.token_type == "api_key":
@@ -205,7 +207,8 @@ async def authorize_request(
                 team_id=str(team.id),
                 role=membership.role,
                 permissions=_get_permissions_for_role(membership.role),
-                scopes=api_key_obj.scopes
+                scopes=api_key_obj.scopes,
+                password_change_required=bool(getattr(user, "must_change_password", False)),
             )
         else:
             raise HTTPException(

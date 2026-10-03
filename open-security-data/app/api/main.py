@@ -712,19 +712,25 @@ async def get_threat_intel_metrics(current_user: GatewayUser = Depends(get_curre
         Indicator.created_at < previous_period_end
     ).scalar() or 0
 
-    # Calculate trend percentage
-    if prev_indicators > 0:
-        trend_change = ((new_indicators - prev_indicators) / prev_indicators) * 100
-    else:
-        trend_change = 100.0 if new_indicators > 0 else 0.0
-    
     return {
         "total_feeds": total_sources,
         "active_feeds": active_sources,
         "last_updated": last_updated,
         "new_indicators": new_indicators,
-        "trends_change": round(trend_change, 1)
+        "trends_change": percent_change(prev_indicators, new_indicators),
     }
+
+
+def percent_change(previous: int, current: int) -> Optional[float]:
+    """Percentage change from ``previous`` to ``current``, one decimal.
+
+    None when ``previous`` is zero: a change from nothing has no
+    percentage. This used to report +100% for any growth from an empty
+    previous period and 0% for an empty one in both periods (#573).
+    """
+    if previous == 0:
+        return None
+    return round((current - previous) / previous * 100, 1)
 
 # Telemetry ingestion endpoints
 # #182 policy: machine-to-machine telemetry ingest from sensors (not a user

@@ -13,6 +13,8 @@ const protectedRoutes = [
   '/ai-analyst',
   '/settings',
   '/api-docs',
+  // Where an account with an initial password is sent first (#573).
+  '/auth/change-password',
 ]
 
 // Routes that require superuser access
@@ -49,5 +51,6 @@ export const config = {
     '/settings/:path*',
     '/api-docs/:path*',
     '/admin/:path*',
+    '/auth/change-password',
   ],
 }

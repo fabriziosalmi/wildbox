@@ -3,11 +3,13 @@ User management endpoints - Admin functionality only.
 """
 
 import logging
+import uuid
 from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi_users import exceptions as user_exceptions
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -17,7 +19,8 @@ from ...models import User, Team, TeamMembership, TeamRole, ApiKey
 from ...schemas import (
     UserResponse, UserWithTeams,
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
-    UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
+    UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo,
+    TeamMemberCreate,
 )
 from ...user_manager import (
     current_superuser, current_active_user, get_jwt_strategy, get_user_manager,
@@ -610,8 +613,14 @@ async def change_my_password(
     # Verify current password; a wrong one counts towards the lockout (#569).
     await verify_current_password(current_user, password_change.current_password)
 
-    # Through UserManager, which ends the other sessions with the change.
-    user = await user_manager.set_password(current_user, password_change.new_password)
+    # Through UserManager, which applies the password policy (#583) and ends
+    # the other sessions with the change.
+    try:
+        user = await user_manager.set_password(current_user, password_change.new_password)
+    except user_exceptions.InvalidPasswordException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.reason)
+        )
     access_token = await get_jwt_strategy().write_token(user)
 
     return {
@@ -696,6 +705,10 @@ async def get_my_activity_log(
         select(TeamMembership)
         .options(selectinload(TeamMembership.team))
         .where(TeamMembership.user_id == current_user.id)
+        # The order /internal/authorize picks a session's team in, so the
+        # first entry -- the one the dashboard shows -- is the team the
+        # user's session works in (#573).
+        .order_by(TeamMembership.joined_at.asc(), TeamMembership.team_id.asc())
     )
     
     api_keys = await db.execute(
@@ -744,7 +757,7 @@ async def get_team_members(
         )
     )
     
-    if not membership_check.scalar_one_or_none():
+    if not current_user.is_superuser and not membership_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied"
@@ -776,6 +789,125 @@ async def get_team_members(
     return members
 
 
+# The rank of each team role, as api_keys.py ranks them.
+TEAM_ROLE_RANK = {
+    TeamRole.OWNER.value: 3,
+    TeamRole.ADMIN.value: 2,
+    TeamRole.MEMBER.value: 1,
+}
+# A platform superuser ranks above every team role.
+SUPERUSER_RANK = 4
+
+
+def assignable_role(role: str, caller_rank: int) -> bool:
+    """Whether a caller of `caller_rank` may create a member with `role` (#573).
+
+    Never OWNER: a team has the owner that created it, and ownership is not
+    handed out by adding someone. Otherwise only a role strictly below the
+    caller's own: an owner (or a superuser) creates admins and members, an
+    admin creates members. Making someone an admin hands over the right to
+    manage the team, which is the owner's to give, not a peer admin's.
+    """
+    if role == TeamRole.OWNER.value or role not in TEAM_ROLE_RANK:
+        return False
+    return TEAM_ROLE_RANK[role] < caller_rank
+
+
+@router.post("/teams/{team_id}/members", status_code=status.HTTP_201_CREATED)
+async def create_team_member(
+    team_id: uuid.UUID,
+    member: TeamMemberCreate,
+    current_user: User = Depends(current_active_user),
+    db: AsyncSession = Depends(get_db),
+    user_manager: UserManager = Depends(get_user_manager),
+):
+    """Create an account directly in a team (#573).
+
+    For the team's owners and admins, and for platform superusers. The new
+    account belongs to this team only -- it gets no team of its own -- so
+    its sessions work in this team. Its initial password is the one given
+    here, and it must change it at its first login: until then identity
+    and the gateway refuse every other request of its sessions
+    (PASSWORD_CHANGE_REQUIRED).
+
+    An email that is already registered answers 409 without saying more.
+    An existing account cannot be added: it would have to leave its own
+    team, which only its user can decide.
+    """
+    caller = await db.execute(
+        select(TeamMembership).where(
+            TeamMembership.team_id == team_id,
+            TeamMembership.user_id == current_user.id,
+        )
+    )
+    caller_membership = caller.scalar_one_or_none()
+    caller_role = caller_membership.role if caller_membership else None
+
+    if current_user.is_superuser:
+        caller_rank = SUPERUSER_RANK
+        if await db.get(Team, team_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Team not found"
+            )
+    elif caller_role in (TeamRole.OWNER.value, TeamRole.ADMIN.value):
+        caller_rank = TEAM_ROLE_RANK[caller_role]
+    else:
+        # The same answer whether the team exists or not.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Owner or Admin role required"
+        )
+
+    role = member.role.value
+    if not assignable_role(role, caller_rank):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"You cannot create a member with the role '{role}'",
+        )
+
+    try:
+        user = await user_manager.create_team_member(
+            member.email, member.password, team_id, role
+        )
+    except user_exceptions.UserAlreadyExists:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This email address cannot be used for a new account",
+        )
+    except user_exceptions.InvalidPasswordException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.reason)
+        )
+
+    # Audit trail: who created whom, in which team, with which role. Never
+    # the password.
+    logger.info(
+        "audit: team_member_created actor=%s actor_is_superuser=%s user=%s "
+        "team=%s role=%s",
+        current_user.id, current_user.is_superuser, user.id, team_id, role,
+    )
+
+    joined = await db.execute(
+        select(TeamMembership).where(
+            TeamMembership.team_id == team_id, TeamMembership.user_id == user.id
+        )
+    )
+    membership = joined.scalar_one()
+    return {
+        "user_id": str(user.id),
+        "team_id": str(team_id),
+        "role": membership.role,
+        "joined_at": membership.joined_at.isoformat(),
+        "user": {
+            "id": str(user.id),
+            "email": user.email,
+            "is_active": user.is_active,
+            "created_at": user.created_at.isoformat(),
+            "must_change_password": user.must_change_password,
+        },
+    }
+
+
 @router.put("/teams/{team_id}")
 async def update_team(
     team_id: str,
@@ -796,7 +928,7 @@ async def update_team(
         )
     )
     
-    if not membership_check.scalar_one_or_none():
+    if not current_user.is_superuser and not membership_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Owner or Admin role required"
@@ -842,7 +974,7 @@ async def remove_team_member(
         )
     )
     
-    if not membership_check.scalar_one_or_none():
+    if not current_user.is_superuser and not membership_check.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Owner or Admin role required"

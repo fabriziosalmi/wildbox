@@ -132,7 +132,10 @@ covers the caller's team and the global feeds, the same scope as
 - `last_updated` (datetime or null): End of the last completed collection
   run of a visible feed; null when none has completed
 - `new_indicators` (int): New indicators in last 24 hours
-- `trends_change` (float): Percentage change vs previous 24 hours
+- `trends_change` (float or null): Percentage change of `new_indicators`
+  vs the previous 24 hours, one decimal (-100.0 when the last 24 hours had
+  none); null when the previous 24 hours had no indicators, since a change
+  from zero has no percentage
 
 ---
 

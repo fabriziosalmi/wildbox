@@ -17,6 +17,7 @@ const BACKEND_FILES = [
   /vulnerabilities\.spec\.ts/,
   /api-docs\.spec\.ts/,
   /toolbox\.spec\.ts/,
+  /team-members\.spec\.ts/,
 ]
 
 /**

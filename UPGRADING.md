@@ -436,6 +436,83 @@ service, its worker and the gateway together (section 1 does).
   `wildbox:tools:task-owner:*` and `wildbox:tools:user-tasks:*`, and expire
   after a day. Without Redis the task endpoints answer 503.
 
+### 20. `trends_change` can be null
+
+`GET /api/v1/dashboard/threat-intel` (data) answers `trends_change: null`
+when the previous 24 hours had no indicators; it used to report 100.0 (or
+0.0 when both periods were empty). A client that reads the field must
+accept null. Every other value is unchanged.
+
+### 21. `users.recent_logins` is gone from identity's system statistics
+
+`GET /api/v1/analytics/admin/system-stats` no longer returns
+`users.recent_logins`. It counted users whose record changed in the last
+day, not logins, and identity has no login count to put in its place. A
+script that reads it must stop; the dashboard never did.
+
+### 22. Team admins can create accounts; those accounts change their password first
+
+identity adds one column, `users.must_change_password` (alembic revision
+`b7c8d9e0f1a2`), which it applies itself at start. It is `NOT NULL` with a
+default of false, so no existing account is affected.
+
+- **New endpoint:** `POST /api/v1/identity/admin/teams/{team_id}/members`
+  with `{"email", "password", "role"}` creates a new account in the team
+  (no team of its own). Owners and admins of the team, and superusers, may
+  call it; the role must be below the caller's (an owner creates `admin`
+  or `member`, an admin creates `member`). 409 means the email is already
+  registered. No email is sent: give the new member the initial password
+  yourself, privately. See the
+  [identity API reference](https://www.wildbox.io/api/identity/endpoints/#create-a-member).
+- **Accounts created this way must change the initial password** before
+  anything else. Until they do, identity answers 403
+  `PASSWORD_CHANGE_REQUIRED` to every route except `GET /auth/users/me`,
+  change-password and logout, and the gateway answers 403
+  `{"error": "PASSWORD_CHANGE_REQUIRED"}` for every other service. A
+  script that uses such an account must first call
+  `POST /api/v1/identity/admin/me/change-password` and continue with the
+  token it returns.
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). An older gateway ignores `password_change_required` and would let
+  such a session use the other services; an older identity never reports
+  it.
+- `GET /api/v1/identity/admin/me/activity` lists `team_memberships` oldest
+  first. Superusers can now list, rename and remove the members of any
+  team.
+
+### 23. New passwords must meet the password policy
+
+identity applies one password rule wherever a password is set (#583):
+registration, the reset-password flow, change-password, an
+administrator's reset through `PATCH /auth/users/{id}`, the accounts a
+team administrator creates (section 22) and the creation of the first
+administrator. A password must have 12 to 128 characters,
+must not contain the account's email address or the part before the `@`,
+and must not be one of the 10,000 most common passwords of that length.
+There are no composition rules. Rebuild identity (section 1 does).
+
+- **Existing accounts are not affected.** Their passwords keep working
+  and are not checked; the rule applies the next time the password is
+  set. Nothing is migrated.
+- **`INITIAL_ADMIN_PASSWORD` must comply on a fresh install.** identity
+  creates the first administrator only when the account does not exist
+  yet; if the password is refused, identity now stops at start with the
+  reason (it used to log the failure and run without an administrator).
+  `scripts/generate_secrets.py` generates a compliant 24-character value.
+  An existing administrator is not affected.
+- **Scripts that register accounts or set passwords** with short or
+  common values (`password1234`, `qwerty123456`) now get 400; registration
+  answers `REGISTER_INVALID_PASSWORD`, reset-password
+  `RESET_PASSWORD_INVALID_PASSWORD`, an administrator's reset
+  `UPDATE_USER_INVALID_PASSWORD`. Use long random values.
+- **The error body of these refusals changed.** fastapi-users' detail
+  `{"code", "reason"}` used to be stringified into `error.message` as a
+  Python dict literal. `error.message` is now the reason, readable as is,
+  and `error.details` holds `{"code", "reason"}`. A client that searched
+  `error.message` for the code must read `error.details.code`. This
+  applies to every service using `open_security_shared.errors`, for any
+  HTTP error whose detail is an object with a `reason`.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

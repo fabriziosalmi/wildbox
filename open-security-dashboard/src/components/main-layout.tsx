@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { usePathname } from 'next/navigation'
-import { useAuth } from '@/components/auth-provider'
+import { useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
 import Link from 'next/link'
 import {
   LayoutDashboard,
@@ -136,6 +136,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [expandedItems, setExpandedItems] = useState<string[]>([])
   const pathname = usePathname()
   const { user, logout, isAuthenticated, isLoading } = useAuth()
+  const router = useRouter()
 
   // Get navigation items based on user role
   const navigation = getNavigation(user)
@@ -168,8 +169,15 @@ export function MainLayout({ children }: MainLayoutProps) {
     return 'text-gray-600 border-gray-600'
   }
 
+  // An account with an initial password changes it before anything else
+  // (#573); every other request of its session is refused meanwhile.
+  const mustChangePassword = !!user?.must_change_password
+  useEffect(() => {
+    if (mustChangePassword) router.replace(CHANGE_PASSWORD_PAGE)
+  }, [mustChangePassword, router])
+
   // If authentication is still loading, show loading state
-  if (isLoading) {
+  if (isLoading || mustChangePassword) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">

@@ -181,3 +181,50 @@ def test_last_updated_is_null_when_only_another_team_has_runs(session):
     session.commit()
 
     assert _metrics(session, TEAM_A)["last_updated"] is None
+
+
+# trends_change is null when the previous period is empty (#573): a change
+# from zero has no percentage, and the endpoint reported +100% for it.
+
+
+@pytest.mark.parametrize(
+    "previous, current, expected",
+    [
+        (0, 0, None),
+        (0, 7, None),
+        (4, 0, -100.0),
+        (4, 4, 0.0),
+        (4, 5, 25.0),
+        (5, 4, -20.0),
+        (3, 4, 33.3),
+    ],
+)
+def test_percent_change(previous, current, expected):
+    assert main.percent_change(previous, current) == expected
+
+
+def test_trends_change_is_null_without_indicators_in_the_previous_day(session):
+    source = _source(session, "fresh-feed", TEAM_A)
+    _indicators(session, source, 3, NOW - timedelta(hours=1))
+    session.commit()
+
+    metrics = _metrics(session, TEAM_A)
+    assert metrics["new_indicators"] == 3
+    assert metrics["trends_change"] is None
+
+
+def test_trends_change_is_null_when_both_days_are_empty(session):
+    _source(session, "quiet-feed", TEAM_A)
+    session.commit()
+
+    metrics = _metrics(session, TEAM_A)
+    assert metrics["new_indicators"] == 0
+    assert metrics["trends_change"] is None
+
+
+def test_trends_change_is_minus_100_when_the_last_day_is_empty(session):
+    source = _source(session, "stopped-feed", TEAM_A)
+    _indicators(session, source, 2, NOW - timedelta(hours=30))
+    session.commit()
+
+    assert _metrics(session, TEAM_A)["trends_change"] == -100.0

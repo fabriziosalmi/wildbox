@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A team owner or admin can create accounts in the team** (#573).
+  identity had no way to put a second person in a team since the
+  invitation endpoint, which sent nothing, was removed (#570):
+  registration always creates a team of its own. `POST
+  /api/v1/admin/teams/{team_id}/members` with `email`, `password` and
+  `role` now creates a new account whose only membership is that team,
+  so its sessions work in it. It is open to the team's owners and admins
+  and to superusers; the role must be below the caller's own (an owner
+  creates admins and members, an admin creates members, nobody creates
+  an owner), and an email that is already registered answers 409. An
+  existing account cannot be added and no email is sent: the
+  administrator gives the initial password to the new member. The
+  creation is logged without the password. The Team page has an "Add
+  member" form for owners and admins.
+- **An account created that way must change its password first** (#573).
+  The administrator chose its initial password, so the account carries
+  `must_change_password` (a new column, alembic revision
+  `b7c8d9e0f1a2`) until its user changes it. Meanwhile its sessions can
+  only read the account, change the password and log out: identity
+  answers 403 `PASSWORD_CHANGE_REQUIRED` to every other route, and the
+  gateway does the same for every other service, as
+  `/internal/authorize` now reports `password_change_required`. The
+  dashboard takes such a user from the login to a "Choose your
+  password" screen, and back to it from any other page.
+
 ### Fixed
 
 - **The cloud security overview shows what cspm reports, and says when
@@ -89,6 +116,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read as a toolbox with 0 tools and the page's error state was
   unreachable. The error now shows the service's message, and its retry
   asks the service again instead of reloading the page.
+- **The Team and Profile pages show the team the session works in**
+  (#573). `GET /api/v1/admin/me/activity` listed the memberships in no
+  particular order and both pages took the first; it now lists them
+  oldest first, the order `/internal/authorize` picks a session's team
+  in. Superusers can now list, rename and remove the members of any
+  team, as they can create members in it; the three routes used to
+  answer them 403 unless they belonged to the team.
+- **The threat-intel trend no longer invents +100%** (#573).
+  `GET /api/v1/dashboard/threat-intel` reported `trends_change: 100.0`
+  whenever the previous 24 hours had no indicators and the last 24 had
+  any, and 0.0 when both were empty. A change from zero has no
+  percentage, so the field is now null in both cases. The dashboard
+  home page and the threat-intel feeds page show "no prior data"
+  instead of a trend; the home page used to render a null as a red
+  "0%".
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
@@ -402,6 +444,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **One password policy for every path that sets a password** (#583).
+  Registration and the reset-password flow accepted a one-character
+  password: fastapi-users' `BaseUserCreate` does not check it and its
+  `validate_password()` is a no-op, which identity did not override, so
+  only change-password asked for 12 characters. identity's
+  `UserManager.validate_password()` now refuses a password shorter than
+  12 or longer than 128 characters, containing the account's email
+  address or the part before the `@`, or among the 10,000 most common
+  passwords of that length (vendored from SecLists, MIT license; no
+  network access). There are no composition rules, as NIST SP 800-63B
+  advises. Registration, reset-password, change-password, an
+  administrator's reset of another account, the members a team
+  administrator creates (#573) and the first administrator
+  (`INITIAL_ADMIN_PASSWORD`, whose refusal now stops identity's start
+  with the reason instead of starting without an administrator) all go
+  through it. A refusal answers 400 with the reason as `error.message`;
+  fastapi-users' `{"code", "reason"}` detail used to reach clients as a
+  Python dict literal and is now in `error.details`. The dashboard's
+  signup, profile, change-password, add-member and user-creation forms
+  check the same length and email rules before submitting (signup and
+  user creation asked for only 8 characters) and show the server's
+  reason. Existing passwords are not
+  checked until they are next changed.
 - **Changing the password ends the account's other sessions** (#569).
   A password change updated the hash and nothing else, so every token
   already issued stayed valid until it expired and changing the password
@@ -964,6 +1029,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scan counted as active, forever. The Celery state that could replace
   it cannot tell a queued scan from one whose result has expired, so the
   fields are removed rather than estimated.
+
+- **`users.recent_logins` in identity's system statistics** (#573).
+  `GET /api/v1/analytics/admin/system-stats` reported as "recent logins"
+  the number of users whose `updated_at` changed in the last day, so a
+  profile change counted as a login and a login that changed nothing
+  did not. identity keeps no record of successful logins (the lockout
+  counts only failures, and clears them on success), and nothing in
+  the dashboard read the field, so it is removed rather than estimated.
+
 - **The gateway's `/api/tools/` alias** (#567). It served the tools API
   beside the canonical `/api/v1/tools/`, with `Deprecation` and `Sunset`
   headers announcing its removal on 1 July 2026. Nothing in the

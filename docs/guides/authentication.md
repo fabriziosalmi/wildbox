@@ -181,10 +181,44 @@ logins are not counted or refused.
 Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`.
 Hashes written by older releases with bcrypt still verify.
 
+### Password Policy
+
+Every new password goes through one rule, in identity's
+`UserManager.validate_password()` (`app/password_policy.py`). It follows
+NIST SP 800-63B: length and a list of passwords actually in use, no
+composition rules. A password is refused when it:
+
+- is shorter than 12 or longer than 128 characters;
+- contains the account's email address, or the part before the `@` when
+  that part has at least 4 characters (case does not matter);
+- is one of the 10,000 most common passwords of 12 characters or more
+  (case does not matter). The list is vendored in identity
+  (`app/data/common_passwords.txt`, from SecLists, MIT license); it is
+  never fetched over the network.
+
+There is no requirement for an uppercase letter, a digit or a symbol:
+such rules push people towards predictable patterns without making
+passwords harder to guess. The maximum bounds the work a single request
+can cause (Argon2 digests the whole input on every hash); 128 characters
+is well beyond any passphrase or password manager.
+
+The rule applies wherever a password is set: registration, the
+reset-password flow, change-password, an administrator's reset of another
+account (`PATCH /auth/users/{id}`), the accounts a team owner or admin
+creates (`POST /api/v1/identity/admin/teams/{team_id}/members`) and the
+first administrator created from `INITIAL_ADMIN_PASSWORD`, whose creation
+stops identity's start with the reason if the password does not comply.
+A refused password answers
+400 with the reason as the error message (registration:
+`REGISTER_INVALID_PASSWORD`, reset: `RESET_PASSWORD_INVALID_PASSWORD`,
+administrator's reset: `UPDATE_USER_INVALID_PASSWORD`, in
+`error.details.code`). Existing passwords are not checked; an account
+meets the rule the next time its password is set.
+
 A user changes their own password with
 `POST /api/v1/identity/admin/me/change-password` (or
 `PUT /api/v1/identity/admin/me/password`), with `current_password` and
-`new_password` (at least 12 characters). It checks the current password
+`new_password` (subject to the policy above). It checks the current password
 first, ends the account's other sessions and answers with a new access
 token for this one. `PATCH /auth/users/me` and
 `PATCH /api/v1/identity/admin/me/profile` refuse a password, and so does

@@ -113,9 +113,21 @@ async def create_initial_superuser():
         
         # Create admin user
         from app.schemas import UserCreate
+        from fastapi_users.exceptions import InvalidPasswordException
         user_create = UserCreate(email=admin_email, password=admin_password)
         
-        admin_user = await user_manager.create(user_create, safe=False)
+        try:
+            admin_user = await user_manager.create(user_create, safe=False)
+        except InvalidPasswordException as exc:
+            # The first administrator goes through the same password policy
+            # as every account (#583). Stop here rather than start a stack
+            # nobody can log in to; the reason never includes the password.
+            print(f'❌ INITIAL_ADMIN_PASSWORD does not meet the password policy: {exc.reason}')
+            print('   Set a password of 12 to 128 characters that does not contain')
+            print('   INITIAL_ADMIN_EMAIL and is not a common password, then restart.')
+            print('   scripts/generate_secrets.py generates one that does.')
+            await db.close()
+            sys.exit(1)
         
         # Make user superuser
         admin_user.is_superuser = True

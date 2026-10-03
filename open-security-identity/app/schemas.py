@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from .models import TeamRole
+from .password_policy import MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH
 
 
 """
@@ -30,14 +31,21 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
     """Schema for reading user data (responses)."""
     created_at: datetime
     updated_at: datetime
+    # True until the user changes the initial password a team admin set
+    # (#573); the dashboard sends such a user to change it first.
+    must_change_password: bool = False
     
     class Config:
         from_attributes = True
 
 
 class UserCreate(schemas.BaseUserCreate):
-    """Schema for creating new users."""
-    pass  # BaseUserCreate già include email e password con validazione
+    """Schema for creating new users.
+
+    BaseUserCreate does not check the password. The policy is applied by
+    UserManager.validate_password() (#583), which registration runs, so a
+    refused password answers 400 REGISTER_INVALID_PASSWORD with the reason.
+    """
 
 
 class UserUpdate(schemas.BaseUserUpdate):
@@ -186,6 +194,10 @@ class AuthorizationResponse(BaseModel):
     # API-key scopes for least-privilege enforcement at the gateway.
     # None => unrestricted (interactive/JWT auth, or a legacy key with no scopes).
     scopes: Optional[List[str]] = None
+    # The account must change the initial password a team admin chose
+    # (#573): the gateway answers 403 PASSWORD_CHANGE_REQUIRED to every
+    # request it authenticates for it.
+    password_change_required: bool = False
 
 
 # Update forward references
@@ -204,7 +216,11 @@ class UserProfileUpdate(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     current_password: str
-    new_password: str = Field(..., min_length=12)
+    # An early 422 for the length; UserManager.validate_password() applies
+    # the whole policy (#583).
+    new_password: str = Field(
+        ..., min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
+    )
 
 
 class AccountDeletionRequest(BaseModel):
@@ -218,6 +234,16 @@ class UserStatusUpdate(BaseModel):
 
 class TeamRoleUpdate(BaseModel):
     new_role: TeamRole
+
+
+class TeamMemberCreate(BaseModel):
+    """A new account, created directly in a team by its owner or admin (#573)."""
+    email: EmailStr
+    # The initial password; the account must change it at its first login.
+    password: str = Field(
+        ..., min_length=MIN_PASSWORD_LENGTH, max_length=MAX_PASSWORD_LENGTH
+    )
+    role: TeamRole = TeamRole.MEMBER
 
 
 class UserActivityResponse(BaseModel):
