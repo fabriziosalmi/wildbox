@@ -162,6 +162,7 @@ def test_a_run_skips_the_step_and_carries_on(monkeypatch):
     monkeypatch.setattr(module.playbook_parser, "get_playbook", lambda _id: playbook)
     monkeypatch.setattr(engine, "get_execution_state", lambda run_id: None)
     monkeypatch.setattr(engine, "save_execution_state", lambda run_id, result: None)
+    monkeypatch.setattr(engine, "cancel_requested", lambda run_id: False)
     monkeypatch.setattr(
         engine,
         "add_log",
@@ -174,7 +175,10 @@ def test_a_run_skips_the_step_and_carries_on(monkeypatch):
     )
 
     result = module.execute_playbook_actor.fn(
-        "run-7", "optional_field", {"ip": "192.168.1.100"}
+        "run-7",
+        "optional_field",
+        {"ip": "192.168.1.100"},
+        {"user_id": "user-1", "team_id": "team-1", "role": "member"},
     )
 
     assert result["status"] == "completed"

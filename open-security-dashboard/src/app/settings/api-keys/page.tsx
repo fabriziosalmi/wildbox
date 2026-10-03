@@ -43,6 +43,11 @@ const availableScopes = [
   { id: 'data:read', name: 'Data Read', description: 'Read access to data services' },
   { id: 'data:write', name: 'Data Write', description: 'Write access to data services' },
   { id: 'data:delete', name: 'Data Delete', description: 'Delete access to data services' },
+  {
+    id: 'data:ingest',
+    name: 'Telemetry Ingest',
+    description: 'Send sensor telemetry only (for a sensor)',
+  },
   { id: 'reports:read', name: 'Reports Read', description: 'Read access to reports' },
   { id: 'reports:write', name: 'Reports Write', description: 'Create and modify reports' },
   { id: 'team:read', name: 'Team Read', description: 'Read team information' },

@@ -2,6 +2,7 @@
 
 import asyncio
 import socket
+import dns.exception
 import dns.resolver
 import dns.zone
 import dns.query
@@ -9,6 +10,7 @@ from datetime import datetime
 from typing import Dict, Any, List
 import logging
 
+from ...target_policy import TargetRefused, check_host
 from .schemas import (
     DNSEnumeratorInput, DNSEnumeratorOutput, DNSRecord, SubdomainInfo,
     ZoneTransferResult, RecordType, EnumerationMode
@@ -179,13 +181,27 @@ async def enumerate_subdomains(domain: str, mode: EnumerationMode, max_subdomain
 
 
 async def attempt_zone_transfer(domain: str, name_servers: List[str], timeout: int) -> List[ZoneTransferResult]:
-    """Attempt zone transfer (AXFR) from name servers."""
+    """Attempt zone transfer (AXFR) from name servers.
+
+    The name servers come from the domain's NS records, so whoever runs the
+    domain chooses them. Each one goes through the network target policy
+    (#614) like a target the caller named, and the transfer connects to the
+    address that was checked, not to the name: dns.query.xfr takes an
+    address, and passing it the NS name made every attempt fail.
+    """
     results = []
     
     for ns in name_servers[:5]:  # Test up to 5 name servers
         try:
+            try:
+                addresses = check_host(ns)
+            except TargetRefused as exc:
+                results.append(ZoneTransferResult(
+                    server=ns, successful=False, records=[], error=str(exc)
+                ))
+                continue
             # Attempt zone transfer
-            zone = dns.zone.from_xfr(dns.query.xfr(ns, domain, timeout=timeout))
+            zone = dns.zone.from_xfr(dns.query.xfr(str(addresses[0]), domain, timeout=timeout))
             
             # Zone transfer successful - extract records
             records = []
@@ -207,7 +223,11 @@ async def attempt_zone_transfer(domain: str, name_servers: List[str], timeout: i
                 error=None
             )
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except (
+            ValueError, KeyError, TypeError, OSError, EOFError, dns.exception.DNSException
+        ) as e:
+            # A refused or failed transfer, a reset connection, a timeout:
+            # an unsuccessful result for this server, not a failed run.
             result = ZoneTransferResult(
                 server=ns,
                 successful=False,

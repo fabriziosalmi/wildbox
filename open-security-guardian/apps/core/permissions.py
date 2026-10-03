@@ -3,8 +3,9 @@ Custom permissions for the Guardian application.
 
 Mutating requests are gated on the caller's gateway role (owner/admin); plain
 members get read-only access at the service layer (#181). The role comes from
-``request.gateway_user`` (set by GatewayAuthMiddleware); for the legacy API-key
-path we fall back to the mirrored ``auth.User`` staff flags.
+``request.gateway_user`` (set by GatewayAuthMiddleware) and nowhere else: the
+legacy API-key path that left it unset is gone (#629), so a request without a
+gateway identity is never more than a member.
 """
 
 from rest_framework.permissions import BasePermission, SAFE_METHODS
@@ -15,11 +16,9 @@ def _gateway_role(request):
     gu = getattr(request, "gateway_user", None)
     if gu is not None and getattr(gu, "role", None):
         return gu.role
-    user = getattr(request, "user", None)
-    if getattr(user, "is_superuser", False):
-        return "owner"
-    if getattr(user, "is_staff", False):
-        return "admin"
+    # No gateway identity: the staff flags of request.user are not a role.
+    # They were the fallback for guardian's own API keys, which set them on
+    # the user to grant admin beside the gateway (#629).
     return "member"
 
 

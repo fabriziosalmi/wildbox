@@ -129,7 +129,9 @@ def test_task_status_reports_the_backend_state(client, state, ready, successful,
 @pytest.mark.django_db
 def test_task_status_needs_a_credential(client):
     response = client.get(f"/api/v1/tasks/{uuid.uuid4()}/", secure=True)
-    assert response.status_code == 401, response.status_code
+    # 403 GATEWAY_AUTH_REQUIRED, as every service answers a direct call (#629).
+    assert response.status_code == 403, response.status_code
+    assert response.json()["code"] == "GATEWAY_AUTH_REQUIRED"
 
 
 @pytest.mark.django_db

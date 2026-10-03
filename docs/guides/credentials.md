@@ -41,6 +41,12 @@ copy a value from documentation into `.env`.
 You choose one value yourself: `INITIAL_ADMIN_EMAIL`, the login of the first
 administrator.
 
+Two are API keys that Wildbox issues once it is running, so `.env` starts
+with them empty: `SENSOR_DATA_LAKE_API_KEY`, the key the sensor sends
+telemetry with (scope `data:ingest`, see the
+[deployment guide](deployment.md#the-sensors-telemetry)), and
+`AUTOMATIONS_WILDBOX_API_KEY`, the key of the optional automations workflows.
+
 ---
 
 ## The First Administrator

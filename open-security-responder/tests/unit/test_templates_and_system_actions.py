@@ -141,6 +141,23 @@ def test_log_falls_back_to_info_for_an_unknown_level():
     assert run("log", message="hello", level="loud")["level"] == "info"
 
 
+def test_notification_says_it_was_logged_not_sent():
+    """Nothing is delivered, and the result must not claim otherwise (#639)."""
+    result = run("notification", channel="soc", message="hi", priority="high")
+    assert result["status"] == "logged"
+    assert result["delivered"] is False
+    assert (result["channel"], result["message"], result["priority"]) == (
+        "soc",
+        "hi",
+        "high",
+    )
+
+
+def test_the_notification_action_is_described_as_logging_only():
+    actions = connector_registry.get_connector("system").get_available_actions()
+    assert "nothing is delivered" in actions["notification"]
+
+
 @pytest.mark.parametrize(
     "kind, value, valid",
     [

@@ -1,10 +1,25 @@
 # Open Security Sensor Configuration
 
 # Data Lake Connection
+# Batches go to the gateway, https://<gateway>/api/v1/data/ingest, which
+# authenticates the key and forwards them to the data service under the key's
+# team. See README.md, "Connecting the sensor to Wildbox".
 data_lake:
-  endpoint: "http://open-security-data:8002/api/v1/ingest"
-  api_key: "CONFIGURE_VIA_ENV"  # Set via SENSOR_DATA_LAKE_API_KEY env var
+  # The gateway URL (or the full .../api/v1/data/ingest URL). HTTPS only.
+  # Overridden by SENSOR_DATA_LAKE_ENDPOINT.
+  endpoint: "https://open-security-gateway"
+  # An identity personal API key (wsk_...) of the team member created for the
+  # sensor, with the data:ingest scope. Set it with SENSOR_DATA_LAKE_API_KEY,
+  # not here. Unset, the sensor runs but forwards nothing.
+  api_key: ""
+  # Verify the gateway's certificate. Leave it on.
   tls_verify: true
+  # PEM file to trust for the gateway's certificate, when no public CA signed
+  # it. Overridden by SENSOR_DATA_LAKE_CA_BUNDLE.
+  ca_bundle: ""
+  # How this sensor is named in the data service. Defaults to the hostname.
+  # Overridden by SENSOR_DATA_LAKE_SENSOR_ID.
+  sensor_id: ""
   batch_size: 100
   flush_interval: 30
   timeout: 30

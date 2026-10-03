@@ -12,7 +12,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # API Keys
-GUARDIAN_API_KEY="your-guardian-api-key"
+# guardian has no API keys of its own (#629): use a personal API key from
+# identity, sent through the gateway.
+WILDBOX_API_KEY="${WILDBOX_API_KEY:-your-personal-api-key}"
 TOOLS_API_KEY="your-tools-api-key"
 
 # Test counters
@@ -85,22 +87,22 @@ test_endpoint \
     "Guardian Stats (via Gateway)" \
     "http://localhost/api/v1/guardian/vulnerabilities/stats/" \
     "GET" \
-    "$GUARDIAN_API_KEY" \
+    "$WILDBOX_API_KEY" \
     "200"
 
 test_endpoint \
     "Guardian Vulnerabilities List (via Gateway)" \
     "http://localhost/api/v1/guardian/vulnerabilities/?page=1&page_size=5" \
     "GET" \
-    "$GUARDIAN_API_KEY" \
+    "$WILDBOX_API_KEY" \
     "200"
 
 test_endpoint \
-    "Guardian Direct Stats (bypass gateway)" \
+    "Guardian Direct Stats (bypass gateway) is refused" \
     "http://localhost:8013/api/v1/vulnerabilities/vulnerabilities/stats/" \
     "GET" \
-    "$GUARDIAN_API_KEY" \
-    "200"
+    "$WILDBOX_API_KEY" \
+    "403"
 
 # ============================================================================
 # THREAT INTEL ENDPOINTS

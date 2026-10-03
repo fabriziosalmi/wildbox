@@ -12,13 +12,19 @@ description: |
     exposes more than two services;
   - compiles a report of every step.
 
+  Every call is made as the user who ran the playbook. Guardian records the
+  vulnerability against the asset it knows by that address, and lets owners
+  and admins create vulnerabilities: for an address that is not a Guardian
+  asset, or a run started by a member, that step fails and the run carries
+  on.
+
   The AI analysis runs asynchronously: the Agents service answers with a task
   (`task_id`, `result_url`), not a verdict, so the assessment does not wait
   for it. The finding cites the task, where the verdict can be read.
 
   An address that is not valid ends the run after validation, completed.
 
-version: "1.1"
+version: "1.2"
 author: "Wildbox Security Team"
 tags: ["integration", "e2e", "all-star"]
 
@@ -44,15 +50,13 @@ steps:
     name: "🤖 AI-Powered Threat Analysis"
     action: "wildbox.analyze_ioc"
     description: "Submit the IP to the Agents service for AI analysis"
+    # The Agents service takes the IOC and a priority, nothing else
+    # (AnalysisTaskRequest). The task it queues belongs to the user who ran
+    # the playbook, who reads its verdict from the task's result_url.
     input:
       ioc_type: "ipv4"
       ioc_value: "{{ trigger.ip }}"
-      context:
-        source: "all_star_e2e_test"
-        requester: "responder_playbook"
-        # `run` is part of every step's context; there is no `system`.
-        run_id: "{{ run.id }}"
-        requested_at: "{{ run.started_at }}"
+      priority: "normal"
     condition: "steps.validate_ip.output.valid"
     timeout: 60
     on_failure: "continue"

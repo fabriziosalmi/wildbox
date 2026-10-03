@@ -160,6 +160,18 @@ by. Images built before this setting existed fell back to
 `http://localhost:80`: in a browser on any other machine every API call,
 the login first, went to that machine and failed.
 
+### The gateway's per-team rate limit
+
+`RATE_LIMIT_PER_HOUR` in `.env` is the number of API requests a team may make
+in an hour, through the gateway, on every authenticated route. The default is
+10000. The gateway enforces it per minute, as one sixtieth of the hourly
+figure (at least one request a minute), and reports it on every response in
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` and
+`X-RateLimit-Policy`. The value must be a whole number between 1 and
+1000000000: with any other value the gateway logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
+the gateway after changing it (`docker compose up -d gateway`).
+
 ### Redis memory
 
 Redis is not a cache here. It holds the token blacklist, failed-login lockout
@@ -364,6 +376,99 @@ reports `"celery": "healthy"` once a worker answers.
   Supported providers: aws."), before anything is stored or queued, and a
   batch that names one is refused whole. `GET /api/v1/cspm/providers` lists
   the providers that can be scanned, with their number of checks.
+
+### The responder's playbooks
+
+A playbook run calls the tools, data, guardian and agents services as the
+user who started it: each request carries that user's gateway identity and
+`GATEWAY_INTERNAL_SECRET`, and the service authorizes it for that user and
+team. The playbook worker runs inside the `responder` container, so the
+container's environment is what it uses.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RESPONDER_WILDBOX_API_URL` | `http://open-security-tools:8000` | Tools service, passed as `WILDBOX_API_URL` |
+| `RESPONDER_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL` |
+| `RESPONDER_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL` |
+| `RESPONDER_WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service, passed as `WILDBOX_AGENTS_URL` |
+
+The defaults are the services' addresses in both compose files. In the
+production overlay the responder reaches them on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
+- **Permissions follow the user.** A step the user may not take fails:
+  Guardian lets only owners and admins create a vulnerability, so
+  `all_star_e2e` records none when a member runs it.
+- **Results belong to the user.** A tool task or an AI analysis a run
+  queues is listed and readable by the user who ran it, and by nobody else.
+
+### Internal targets of the network tools
+
+The network tools (port and vulnerability scanners, the TLS and
+certificate analyzers, `network_scanner`, `iot_security_scanner`,
+`database_security_analyzer`, `dns_enumerator`, and the image registry of
+`container_security_scanner`) refuse internal targets: private, loopback,
+link-local, multicast, reserved and shared addresses, ranges that contain
+one, names that resolve to one, and the stack's own service names. A
+range holds at most 1024 addresses. Refusals answer 400.
+
+To scan an internal lab, list its ranges and hosts in `.env`, then
+recreate `api` and `tools-worker`:
+
+```bash
+TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-worker
+```
+
+- **Entries.** CIDR ranges with their host bits zero, IP addresses and
+  host names, comma-separated. A name is matched exactly. A bad entry
+  stops both containers at start-up; `docker compose logs api` names it.
+- **Keep the stack out.** Every caller of every network tool can scan
+  what is listed. Do not list the stack's Docker networks (by default in
+  `172.16.0.0/12`); its service names stay refused unless listed by name.
+
+The tools README, "Network targets", lists the fields checked per tool.
+
+### The sensor's telemetry
+
+The `sensor` service sends host telemetry to the gateway,
+`https://open-security-gateway/api/v1/data/ingest`, authenticated with an
+identity personal API key; the data service stores it under the key's team.
+It trusts the gateway's certificate, which the gateway copies (never its key)
+into the `gateway_cert` volume at every start, so a certificate you replace
+under `open-security-gateway/ssl/` reaches the sensor at the next restart of
+both. In the production overlay the sensor is on `frontend` with the gateway:
+it reaches no backend service directly.
+
+It forwards nothing until it has a key:
+
+1. As a team owner or admin, add a member for the sensor (Settings > Team >
+   Add member) in the team the telemetry belongs to, and sign in as it once
+   to change its password.
+2. As that member, create a personal API key with the **Telemetry Ingest**
+   (`data:ingest`) scope only (Settings > API keys).
+3. Put it in `.env` and restart the sensor:
+
+   ```bash
+   SENSOR_DATA_LAKE_API_KEY=wsk_...
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d sensor
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml exec sensor \
+     python main.py --config /etc/security-sensor/config.yaml --test-connection
+   ```
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SENSOR_DATA_LAKE_API_KEY` | empty | The sensor's key. Empty: the sensor runs and forwards nothing |
+| `SENSOR_DATA_LAKE_ENDPOINT` | `https://open-security-gateway` | The gateway's HTTPS URL as the sensor reaches it |
+| `SENSOR_DATA_LAKE_CA_BUNDLE` | `/etc/ssl/wildbox/wildbox.crt` | The certificate the sensor trusts for the gateway. Set it to an empty value to use the system trust store instead |
+| `SENSOR_DATA_LAKE_SENSOR_ID` | `open-security-sensor` | The sensor's name in the data service, unique within the team |
+
+Revoking the key, or removing the member from the team, stops the sensor's
+telemetry at its next batch. Sensors on other hosts are set up the same way;
+see the sensor README, "Sending telemetry to Wildbox".
 
 ---
 

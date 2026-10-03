@@ -97,6 +97,16 @@ See [LLM_SETUP.md](LLM_SETUP.md) for detailed configuration guide.
 - `REDIS_URL`: Redis connection URL
 - `WILDBOX_API_URL`: Open Security API base URL
 - `DEBUG`: Enable debug mode
+- `ANALYZE_RATE_LIMIT`: analysis requests each authenticated user may
+  submit, in the `limits` notation (default `5/minute`; several limits are separated by
+  `;`, for example `5/minute;50/day`). The limit is counted per user, as
+  identified by the gateway, not per client address.
+- `ANALYZE_TEAM_RATE_LIMIT`: optional ceiling for all users of one team
+  together, in the same notation (default: no ceiling).
+
+The service refuses to start when either value cannot be parsed. A request
+over a limit answers 429, and the body names the limit that was hit, per
+user or per team.
 
 ## Supported IOC Types
 

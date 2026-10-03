@@ -161,13 +161,15 @@ This exploration produced three comprehensive documentation files:
 
 ## Authentication Details Discovered
 
-### API Key Authentication
+### Gateway Authentication
 
-- **Implementation File**: `apps/core/authentication.py`
-- **Class**: `APIKeyAuthentication`
-- **Headers Supported**: `X-API-Key`, `Authorization: Bearer`
-- **Model**: `APIKey` (with expiration support)
-- **Status Code on Failure**: 401 Unauthorized
+- **Implementation Files**: `apps/core/gateway_middleware.py`,
+  `apps/core/authentication.py`
+- **Class**: `GatewayHeaderAuthentication`
+- **Accepted**: the gateway's `X-Wildbox-*` headers with the shared secret
+- **Status Code on Failure**: 403 `GATEWAY_AUTH_REQUIRED`
+- guardian's own `APIKey` model and `APIKeyAuthentication` were removed
+  (#629); clients use identity's personal API keys through the gateway.
 
 ### JWT Token Authentication
 
@@ -254,10 +256,10 @@ SPECTACULAR_SETTINGS = {
 
 ### Authentication & Security
 
-- `apps/core/authentication.py` - API Key authentication
+- `apps/core/authentication.py` - Gateway authentication for DRF
 - `apps/core/permissions.py` - Permission classes
 - `apps/core/middleware.py` - Custom middleware
-- `apps/core/models.py` - APIKey and SystemConfiguration models
+- `apps/core/models.py` - SystemConfiguration and AuditLog models
 
 ### Views & Endpoints
 

@@ -48,26 +48,8 @@ docker-compose exec guardian python manage.py migrate
 docker-compose exec guardian python manage.py createsuperuser
 # Follow prompts to set username, email, password
 
-# 6. Generate API key for service-to-service authentication
-docker-compose exec guardian python manage.py shell << 'EOF'
-from apps.core.models import APIKey
-import secrets
-
-# Generate a secure API key
-key_value = f"wsk_grd.{secrets.token_hex(32)}"
-api_key = APIKey.objects.create(
-    name="Guardian Service Key",
-    key=key_value,
-    is_active=True
-)
-print(f"\n{'='*60}")
-print(f"API Key Created Successfully!")
-print(f"{'='*60}")
-print(f"Name: {api_key.name}")
-print(f"Key:  {key_value}")
-print(f"\nSave this key - it won't be shown again!")
-print(f"{'='*60}\n")
-EOF
+# 6. guardian has no API keys of its own: call it through the gateway with
+#    a personal API key from identity (see Authentication below)
 
 # 7. Verify service health
 curl http://localhost:8013/health
@@ -100,19 +82,20 @@ http://localhost:8013/docs
 
 ### Authentication
 
-Guardian uses API key authentication. Include your key in requests:
+Guardian accepts requests through the gateway only. The gateway
+authenticates the caller, with a JWT or a personal API key created in
+identity (`POST /api/v1/identity/api-keys`, or Settings > API keys in the
+dashboard), and forwards the caller's identity, team and role to guardian:
 
 ```bash
-curl -H "X-API-Key: wsk_grd.your-key-here" \
-  http://localhost:8013/api/v1/assets/assets/
+curl -H "X-API-Key: $WILDBOX_API_KEY" \
+  https://localhost/api/v1/guardian/assets/assets/
 ```
 
-When accessed through the gateway (production):
-
-```bash
-curl -H "X-API-Key: wsk_your-key" \
-  http://localhost/api/v1/guardian/assets/assets/
-```
+A request made directly to guardian's port answers 403
+`GATEWAY_AUTH_REQUIRED`, whatever key it carries. guardian's own API keys
+(`apps.core.models.APIKey`) were removed (#629): they authenticated beside
+the gateway, as an administrator.
 
 ---
 
@@ -121,8 +104,8 @@ curl -H "X-API-Key: wsk_your-key" \
 ### Create an Asset
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/assets/assets/ \
-  -H "X-API-Key: wsk_grd.your-key" \
+curl -X POST https://localhost/api/v1/guardian/assets/assets/ \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "name": "production-web-server",
@@ -137,8 +120,8 @@ curl -X POST http://localhost:8013/api/v1/assets/assets/ \
 ### Track a Vulnerability
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/vulnerabilities/ \
-  -H "X-API-Key: wsk_grd.your-key" \
+curl -X POST https://localhost/api/v1/guardian/vulnerabilities/ \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "asset": 1,
@@ -155,14 +138,14 @@ curl -X POST http://localhost:8013/api/v1/vulnerabilities/ \
 
 ```bash
 # Mark as in progress
-curl -X PATCH http://localhost:8013/api/v1/vulnerabilities/1/ \
-  -H "X-API-Key: wsk_grd.your-key" \
+curl -X PATCH https://localhost/api/v1/guardian/vulnerabilities/1/ \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"status": "in_progress"}'
 
 # Mark as resolved
-curl -X PATCH http://localhost:8013/api/v1/vulnerabilities/1/ \
-  -H "X-API-Key: wsk_grd.your-key" \
+curl -X PATCH https://localhost/api/v1/guardian/vulnerabilities/1/ \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"status": "resolved"}'
 ```
@@ -170,8 +153,8 @@ curl -X PATCH http://localhost:8013/api/v1/vulnerabilities/1/ \
 ### Get Asset with Risk Score
 
 ```bash
-curl http://localhost:8013/api/v1/assets/assets/1/ \
-  -H "X-API-Key: wsk_grd.your-key" | jq '{
+curl https://localhost/api/v1/guardian/assets/assets/1/ \
+  -H "X-API-Key: $WILDBOX_API_KEY" | jq '{
     name,
     criticality,
     vulnerability_count,
@@ -314,27 +297,14 @@ docker-compose exec guardian mypy apps/
 docker-compose exec guardian python manage.py migrate
 ```
 
-### Issue: API Key Authentication Fails
+### Issue: API Requests Are Refused
 
-**Symptom:** 401 Unauthorized on all requests
+**Symptom:** 403 `GATEWAY_AUTH_REQUIRED` on every request
 
-**Solution:**
-
-```bash
-# Verify API key exists
-docker-compose exec guardian python manage.py shell
->>> from apps.core.models import APIKey
->>> APIKey.objects.all()
-
-# Create new API key if needed
->>> import secrets
->>> key = APIKey.objects.create(
-...     name="New Key",
-...     key=f"wsk_grd.{secrets.token_hex(32)}",
-...     is_active=True
-... )
->>> print(key.key)
-```
+**Solution:** the request did not go through the gateway. Send it to
+`https://<host>/api/v1/guardian/...` with a JWT or a personal API key from
+identity; guardian has no API keys of its own. A 401 from the gateway means
+the key is unknown, revoked or expired: create a new one in identity.
 
 ### Issue: Database Connection Refused
 
@@ -486,7 +456,7 @@ For production deployments:
 curl http://localhost:8013/health
 
 # Detailed health check (includes database connectivity)
-curl http://localhost:8013/api/v1/health/detailed
+curl https://localhost/api/v1/guardian/health/detailed
 ```
 
 ### Logs

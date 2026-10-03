@@ -59,6 +59,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The responder's `system.notification` no longer claims to have sent
+  anything** (#639). It wrote a log line and answered `"status": "sent"`,
+  though no e-mail, webhook or chat message ever left the system, so
+  `triage_url` reported an alert that nobody received. It now answers
+  `"status": "logged"` and `"delivered": false`, and its description in
+  `GET /v1/connectors` says that nothing is delivered. `triage_url`'s
+  step `notify_security_team` is renamed `log_security_alert`, and
+  `simple_notification` is named "Simple Logging Test". The responder
+  README documents the action, and the connector example in
+  `docs/api/responder/endpoints.md`, which listed Jira and Slack
+  connectors that do not exist, shows the real response. Delivery is not
+  implemented.
+
+- **Cancelling a responder run stops it** (#653). `DELETE
+  /v1/runs/{run_id}` only rewrote the stored status: the worker never
+  read it again, so a cancelled run executed every remaining step, side
+  effects included, and then wrote `completed` over `cancelled`, and a
+  run cancelled while queued was set back to running and executed in
+  full. The cancel is now a request stored with the run, which the
+  worker checks before the run starts and before each step. A queued run
+  is cancelled at once and runs no step; a running run becomes the new
+  status `cancelling`, its step in progress runs to its end and is
+  recorded as it ended, no further step starts, and the run ends
+  `cancelled`. The worker's writes are compare-and-set (WATCH/MULTI)
+  against the run's status and the request, so a `cancelled` run is
+  never recorded as anything else and a race between completion and
+  cancel goes to whichever commits first. `DELETE` answers 200 with
+  `cancelled`, 202 with `cancelling`, or 200 with the status of a run
+  that had ended, and is checked against the run's team as before. A
+  run's `logs` also keep every line again: saving the worker's copy of
+  the record replaced the lines written since the run started.
+
+- **The agents routes accept a session token, and `/stats` is reachable**
+  (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
+  with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
+  analysis, although the API documentation says a JWT or an API key works
+  on every route. Both work now (see Security). `/api/v1/agents/stats`
+  mapped to the service's `/v1/stats`, which does not exist; it now
+  reaches `/stats`, authenticated.
+- **The gateway declares `RATE_LIMIT_PER_HOUR` and refuses a bad value**
+  (#627). `auth_handler.lua` reads the per-team budget with `os.getenv`,
+  but `nginx.conf` did not list it with `env`, and nginx hands its
+  processes only the variables listed there. The setting took effect
+  only because `init_by_lua` loads the module in the master process,
+  whose environment is still complete on a cold start; a module loaded
+  anywhere else, or a master started by a binary upgrade, saw nothing
+  and used 10000. It is now declared. A value that is not a whole number
+  from 1 to 1000000000 (`0`, `10k`, `1.5`, an empty string) used to
+  become 10000 without a word; the gateway now logs
+  `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start
+  (`nginx -t` does not run `init_by_lua` and does not catch it).
+  `scripts/check_gateway_config.py`, run by the Gateway Lint workflow,
+  fails when the gateway's Lua or nginx configuration reads a variable
+  `nginx.conf` does not declare; the six other variables the gateway
+  reads were already declared. The
+  gateway harness starts a gateway with `RATE_LIMIT_PER_HOUR=120` and
+  checks that the third request in a minute gets 429, and starts one per
+  invalid value and checks that each exits. The deployment guide
+  documents the variable.
+
+- **Reading a just-cancelled async task no longer answers 500** (#619).
+  `GET /api/v1/tasks/{id}` read `AsyncResult.state` and then
+  `AsyncResult.info`: two reads of the result backend while the task
+  has not finished. When the worker marked the task REVOKED in between,
+  `info` held a `TaskRevokedError` that the response could not
+  serialize (`PydanticSerializationError`), and the read failed. The
+  tools service now reads a task's state, result and completion time
+  once, and every state has a defined answer: REVOKED is `cancelled`,
+  FAILURE is `failed` with the exception class only (no message or
+  traceback, which can carry internal paths and hosts), and a result
+  Celery cannot decode, such as a FAILURE stored with a custom meta, is
+  read from the raw record instead of raising. A running task shows
+  its progress fields and no longer the worker's host name and process
+  ID. Cancelling and listing read the same way, and an unreachable
+  result backend is a 503. The tools service now logs the class and
+  traceback of a request that fails, and the integration workflow
+  uploads every service's full log when it fails.
+
+
+- **Sensor telemetry reaches the data service, under the sensor's team**
+  (#628). The sensor's forwarder posted to the data service's
+  `/api/v1/ingest` directly with `Authorization: Bearer <key>`, but the
+  data service accepts only requests the gateway has authenticated, so
+  every batch was refused and no telemetry was ever stored. The sensor
+  now posts to the gateway, `https://<gateway>/api/v1/data/ingest`, with
+  an identity personal API key in `X-API-Key`: the key of a team member
+  created for the sensor. The gateway resolves the key, refuses it once
+  it is revoked, expired or its member removed (#593, #608), and forwards
+  the key's team; the data service stores the events and the sensor's
+  record under that team. A new API key scope, `data:ingest` (identity's
+  vocabulary, the dashboard's API keys page, the gateway's scope map),
+  allows `POST /api/v1/data/ingest` and nothing else; `write` and
+  `data:write` keep allowing it. The sensor verifies the gateway's
+  certificate by default, against `data_lake.ca_bundle` when set
+  (`SENSOR_DATA_LAKE_CA_BUNDLE`), sends the key in no other header, does
+  not follow redirects with it and never logs it; a 401 or 403 is no
+  longer retried. At start-up it refuses, with a message naming the
+  setting, an endpoint that is not an `https://` gateway URL (the old
+  direct URL included), a key that is not an identity key and a CA
+  bundle that does not exist; with no key it runs and logs that
+  forwarding is disabled. `--test-connection` posts an empty batch and
+  reports the answer: it used to print success without connecting.
+  Batches are now in the shape the data service validates (sensor ID,
+  one of its event types, the collected event kept whole in
+  `event_data`, the collector's type as a tag); the forwarder sent the
+  processor's own shape, which the data service would have refused too.
+  `docker-compose.yml` points the sensor at `https://open-security-gateway`
+  and gives it the gateway's certificate (never its key), which the
+  gateway now publishes into a `gateway_cert` volume when it starts; in
+  the production overlay the sensor moves from `backend` to `frontend`,
+  reaching the gateway and no backend service
+  (`scripts/check_network_segmentation.py` asserts both). In the data
+  service, telemetry events and sensor records have a `team_id` (alembic
+  revision `0005_telemetry_team`); `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's only, where they showed every team's; a sensor ID is unique per
+  team, where one team's sensor could update another's record. Three
+  defects on the same path that the refused credential had hidden are
+  fixed with it: a batch of more than one event from a new sensor
+  inserted its record twice and failed with 500, the events and sensors
+  listings answered 500 as soon as they had a row (their `id` was
+  declared a string), and a batch whose commit fails now answers 503,
+  so that the sensor sends it again, instead of 200 with nothing stored.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,
@@ -89,6 +212,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails the task with a detail-free exception, and a scan whose stored
   status is final no longer reads the result backend.
 
+- **network_scanner scans again** (#615). Every run failed before the
+  first probe: `ping_host` indexed the boolean that a stub target check
+  returned, and `asyncio.gather` swallowed the `TypeError`, so each scan
+  reported success with no hosts. The tool now pings each address with
+  an argument list and no shell, probes the common ports of live hosts
+  with a TCP connect when `scan_type` is `tcp`, and honors `timeout` and
+  `max_threads` from the request: it ignored both before. A range larger
+  than 1024 addresses is refused before any probe instead of being
+  listed in full and then truncated, which hung the service on a `/0` or
+  an IPv6 `/64`. The stubs went with the defect: a rate limiter that
+  slept while holding its lock, which held a `/24` for minutes, and a
+  port "restriction" that skipped 22, 135, 139, 445 and 3389. A failed
+  probe of a host now reports why in the host's new `error` field. The
+  tool stays separate from port_scanner and network_port_scanner, which
+  scan one host each; it is the only tool that sweeps a range.
 - **hash_generator runs with its defaults** (#611). `hash_types`
   defaulted to md5, sha1, sha256 and sha512 while the tool no longer
   implemented md5 or sha1, so a run with the defaults, and the form the
@@ -247,6 +385,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   malicious, benign and invalid inputs. The stubbed responses and the
   parameters sent to each tool are checked against the services' own
   schemas.
+- **Responder playbooks reach the services they call, as the user who
+  ran them** (#616). No step that called another service could succeed:
+  - No request carried an identity, and tools, agents, data and guardian
+    accept only the gateway's `X-Wildbox-*` headers with
+    `X-Gateway-Secret`. A run now records the gateway-authenticated user
+    who started it, and every connector request carries that user's
+    identity and the secret, so each service authorizes the call for that
+    user and team. A run without a complete caller fails before its first
+    step, and nothing is sent without one. The identity is scoped to the
+    run and reset when it ends.
+  - The tools connector posted a `params` envelope to
+    `/api/v1/tools/{tool}/execute`. It now posts the tool's input to
+    `/api/tools/{tool}`, or to `/api/tools/{tool}/async` with
+    `async_execution`, and reads and cancels tasks at `/api/tasks/{id}`.
+  - `wildbox.analyze_ioc` sends the agents service's
+    `{"ioc": {"type", "value"}, "priority"}` and returns the task it
+    queues; the verdict is read later from the task's `result_url`.
+  - `wildbox.create_vulnerability` records the vulnerability against the
+    Guardian asset named or addressed by `asset_name`, and fails the step
+    when there is none. Guardian's list and asset routes now have their
+    real paths.
+  - Actions whose routes exist in no service are removed: the blacklist
+    actions (the data service has no blacklist), `isolate_endpoint`,
+    `create_ticket`, and the data connector's IOC writes, reputation,
+    feed and asset actions. The data connector now has
+    `search_indicators` and `lookup_indicators`. `triage_url.yml` alerts
+    on a malicious URL and no longer claims to blacklist it.
+  - `docker-compose.yml` gives the responder the services' addresses
+    (`WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL`,
+    `WILDBOX_AGENTS_URL`); every connector used to target `localhost`
+    inside the container. The responder's own defaults are now those
+    addresses too, and checked at startup: Guardian's default named port
+    8003, where Guardian does not listen.
+
+  A new playbook, `hash_evidence.yml`, queues the hashing of a piece of
+  evidence as the caller. Unit tests call every connector action and check
+  its route, body and query against the target service's source, and its
+  headers against the run's caller. An integration test starts
+  `hash_evidence` through the gateway and checks that the tools task it
+  queues belongs to that user and to nobody else.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
@@ -736,6 +914,143 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Sensor telemetry is scoped to the team that ingested it** (#641).
+  `telemetry_events` and `sensor_metadata` had no team column, and the
+  data service's telemetry routes queried the whole tables: any
+  authenticated member of any team listed every team's events
+  (including `raw_data` and host names), sensors and statistics. A
+  sensor ID was unique across all teams, so a batch posted under
+  another team's sensor ID updated that team's sensor record. Both
+  tables now carry `team_id` (alembic revision `0005_telemetry_team`),
+  and a sensor ID is unique per team. `POST /api/v1/ingest` stores the
+  caller's team from the gateway, never one named in the batch, and
+  looks the sensor up by team and ID. `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{sensor_id}` return the
+  caller's team's rows only, and another team's sensor answers 404.
+  Rows written before the upgrade have no team and are shown to no
+  team; UPGRADING section 32 gives the SQL to assign them. Unit tests
+  run the scenario of the issue (team B lists nothing of team A's,
+  gets 404 for A's sensor, and a batch of B's under A's sensor ID
+  leaves A's record unchanged); removing the team predicate from any
+  of the reads, or from the ingest's sensor lookup, fails them. An
+  integration test does the same through the gateway with two
+  accounts.
+
+- **agents: the analysis rate limit is counted per user** (#651). The
+  limiter on `POST /v1/analyze` was keyed by the client address. Every
+  request reaches the service through the gateway, so that address was
+  the gateway's for every caller: the whole platform shared one budget
+  of five analysis requests a minute, and one user of one team could exhaust it
+  for all the others. The limit is now keyed by the user ID of the
+  gateway-authenticated caller, taken from the verified identity after
+  the gateway secret has been checked; no header is read for the key, so
+  `X-Forwarded-For` cannot move a request to another bucket, and a
+  request without a verified identity is refused before it is counted.
+  Per user rather than per team, so that one member cannot use up the
+  budget of their teammates. The value is configurable with
+  `ANALYZE_RATE_LIMIT` (default `5/minute`), and
+  `ANALYZE_TEAM_RATE_LIMIT` adds an optional ceiling for a whole team;
+  the service refuses to start on a value it cannot parse, where slowapi
+  would have dropped the limit silently. The 429 body says whether the
+  user or the team limit was hit. Unit tests check that two users each
+  get their own budget, that the same user is limited, that a spoofed
+  `X-Forwarded-For` leaves the bucket unchanged, the team ceiling, and
+  the validation of both settings.
+
+- **agents: reading or cancelling a task fails closed on its owner
+  record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
+  when the owner record existed, so with the record missing any
+  authenticated caller, of any team, could revoke someone else's
+  analysis. The record could be missing while the task was still
+  addressable: the celery id was written after it with the same TTL and
+  outlived it, and eviction can drop one key and keep the other. `GET`
+  and `DELETE` now share one check: no celery id, no owner record, or
+  another user's task all answer 404 `Task not found`, before anything is
+  read or revoked. Another user's task used to answer 403 on `GET`, which
+  confirmed that the task id was live. The owner record is now written
+  with five minutes more time to live than the task's other keys, and is
+  rewritten in the same transaction as the celery id, so it outlives
+  every key that can address the task. Unit tests cover a missing owner
+  record, another user's task and the owner's own task on both methods,
+  and the TTLs written on submission.
+
+- **guardian accepts gateway-authenticated requests only** (#629). Its
+  middleware accepted rows of guardian's own `APIKey` table from an
+  `X-API-Key` header on a direct request, authenticated the caller as role
+  `admin` and set `is_superuser` on the user, and DRF's
+  `APIKeyAuthentication` accepted the same keys, also from
+  `Authorization: Bearer`. That path skipped identity, the revocation
+  markers, team scoping and the gateway's rate limits: anything that
+  reached guardian's port with such a key was an administrator. Both are
+  removed; a direct request answers 403 `GATEWAY_AUTH_REQUIRED`, as on
+  the other services. The permission classes no longer read the user's
+  staff flags as a role when there is no gateway identity, which only
+  that path produced. Nothing in the repository called guardian with
+  these keys except three manual check scripts under `tests/`, which now
+  use a personal API key through the gateway. Unit tests send a direct
+  request with a key row present and expect the refusal; an integration
+  test reads and writes guardian through the gateway with a personal API
+  key from identity, and expects 403 for the same key sent directly.
+
+- **Network tools refuse internal targets unless the operator allows
+  them** (#614). The URL guard covered tools that fetch a URL; the tools
+  that take a host, an address, a range, a DNS server or an image
+  reference connected to whatever they were given, so any authenticated
+  user could scan the platform's own network (Redis, PostgreSQL, the
+  other services, cloud metadata) from inside it. One check,
+  `app/target_policy.py`, now runs before every tool on the synchronous
+  endpoint, in the Celery task and in each security_automation_orchestrator
+  step, together with the URL guard. It refuses private, loopback,
+  link-local, unspecified, multicast, reserved and shared
+  (`100.64.0.0/10`) addresses, IPv4 addresses embedded in IPv6 ones,
+  ranges with any such address, host names that resolve to one (every
+  answer is checked) or do not resolve, non-canonical spellings such as
+  `127.1`, and the deployment's own names (any name without a dot,
+  `localhost`, `*.local`, `*.internal`, metadata names). A range holds at
+  most 1024 addresses. The fields checked are declared per tool, with
+  their kind, in `NETWORK_TARGET_FIELDS`; a unit test fails when a tool
+  has a host-like field that is neither declared nor listed as reviewed
+  with a reason. Operators allow internal lab ranges and hosts with
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` (CIDR ranges, IP addresses and host
+  names; empty by default; a bad entry stops the service at start-up).
+  The authorization manager's `authorized_targets` (#564) is not reused:
+  it narrows which public targets a caller may attack and never lifts
+  the SSRF guard. dns_enumerator applies the policy to the name servers
+  it attempts a zone transfer from and connects to the checked address,
+  which also makes the transfers work: they passed a name dnspython does
+  not accept. port_scanner refuses a target with other characters
+  instead of removing them, which turned `::1` into `1` (0.0.0.1). A
+  host name is still resolved again by most tools when they connect, so
+  a name whose answer changes in between (DNS rebinding) is a remaining
+  window, documented in the module. See UPGRADING section 29.
+- **The agents routes authenticate through `auth_handler` like every
+  other route** (#630). `location ~ ^/api/v1/agents/(.*)$` carried its
+  own copy of the authentication in inline Lua, "for regex location
+  compatibility", which it never needed: the tools route is a regex
+  location and calls `authenticate()`. The copy called identity's
+  `/internal/authorize` at a fixed address rather than
+  `IDENTITY_SERVICE_URL`, cached nothing, did not retry a connection
+  identity had just closed (#609), applied no per-team rate limit, and
+  checked the API-key revocation marker (#593) and the
+  must-change-password refusal (#573) only because both were added to
+  it by hand; every later fix to `auth_handler` had to be repeated
+  there. Nor did it set `$wildbox_user_id`, `$wildbox_team_id` and
+  `$wildbox_role`, from which `proxy_params.conf` sets the `X-Wildbox-*`
+  headers, so the service received no caller identity at all (nginx
+  drops a header whose value is empty), even for an accepted key. The
+  location now calls `auth_handler.authenticate()`, so the agents
+  routes get the cache, every revocation marker (logout,
+  password change, API key, team removal), `PASSWORD_CHANGE_REQUIRED`,
+  the API-key scopes, the rate limit, the retry and the JSON 503, and
+  the same client-header stripping and `X-Wildbox-*` identity headers.
+  The three functions `auth_handler` exported only for that copy are
+  gone, and `scripts/check_gateway_config.py` now fails when an nginx
+  configuration file calls `/internal/authorize` itself. The gateway
+  harness covers the agents routes (session and API key accepted, no
+  credential 401, scopes, must-change-password, cache, revoked API key,
+  logout, password change, team removal, retry, 503, rate limit), and
+  an integration test submits an analysis with a session token through
+  the gateway and gets 202.
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
   `/internal/authorize` resolves the oldest membership on every request,
@@ -1524,6 +1839,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **guardian's `APIKey` model and its plain-text table** (#629), with
+  `APIKeyAuthentication`, the unused `APIKeyMiddleware` and
+  `generate_api_key()`. Migration `core.0002_remove_apikey` drops
+  `core_apikey` and the audit log's `api_key_id` column. guardian's
+  `.env.example` loses `GUARDIAN_API_KEY` and `API_KEY_HEADER`, which
+  nothing read. Use identity's personal API keys through the gateway;
+  UPGRADING.md says how.
 
 - **Nine n8n workflows that could not run** (#592): Security Compliance
   Automation, Daily OSINT Report, Honeypot Alert Classifier, Threat

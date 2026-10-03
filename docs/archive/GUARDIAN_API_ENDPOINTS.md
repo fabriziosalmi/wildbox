@@ -6,9 +6,9 @@
 
 The Open Security Guardian is a Django-based REST API for vulnerability management, compliance tracking, asset inventory, and security reporting. This document provides a complete inventory of all HTTP endpoints organized by category.
 
-> **Base URL**: `http://localhost:8013/api/v1/`
+> **Base URL**: `https://<host>/api/v1/guardian/` on the gateway (the service's own `/api/v1/`, which refuses direct requests)
 >
-> **Authentication**: All endpoints require authentication via API Key or JWT token
+> **Authentication**: All endpoints require a JWT or a personal API key, validated by the gateway
 >
 > **Guardian Service Port**: 8013 (NOT 8000 which is the Gateway)
 
@@ -18,17 +18,15 @@ The Open Security Guardian is a Django-based REST API for vulnerability manageme
 
 ### Authentication Methods
 
-1. **API Key Authentication**
-   - Header: `X-API-Key: your-api-key-here`
-   - Alternative: `Authorization: Bearer your-api-key-here`
-   - Class: `APIKeyAuthentication`
+Guardian accepts gateway-authenticated requests only. The gateway validates
+a JWT or a personal API key created in identity and forwards the caller's
+identity (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`) with
+the shared gateway secret.
 
-2. **JWT Token Authentication**
-   - Header: `Authorization: Bearer your-jwt-token-here`
-   - Class: `SessionAuthentication`
-
-3. **Session Authentication**
-   - Standard Django session authentication for web interface
+- Middleware: `apps.core.gateway_middleware.GatewayAuthMiddleware`
+- DRF class: `GatewayHeaderAuthentication`
+- A direct request answers 403 `GATEWAY_AUTH_REQUIRED`. guardian's own
+  `APIKey` model and `APIKeyAuthentication` were removed (#629).
 
 ### Permission Classes
 

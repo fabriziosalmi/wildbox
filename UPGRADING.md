@@ -709,6 +709,301 @@ one of them in the worker; it now refuses them when they are submitted
 - **GCP or Azure scans queued before the upgrade** fail when the worker
   takes them, as they did before.
 
+### 29. Network tools refuse internal targets (`TOOLS_ALLOWED_INTERNAL_TARGETS`)
+
+The tools that scan a host, an address or a range now refuse internal
+targets before they run (#614), as the tools that fetch a URL already
+did. Refused: private, loopback, link-local, unspecified, multicast,
+reserved and shared (`100.64.0.0/10`) addresses; a CIDR or address range
+with any such address in it; a host name that resolves to one, or does
+not resolve; and the deployment's own names (every name without a dot,
+such as `wildbox-redis`, plus `localhost`, `*.local`, `*.internal` and
+the cloud metadata names). Rebuild the tools service and its worker
+(section 1 does).
+
+- **If you scan an internal lab, set the allowlist.**
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` takes comma-separated CIDR ranges, IP
+  addresses and host names, for example
+  `TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01`.
+  It is empty by default. `docker-compose.yml` passes it to `api` and
+  `tools-worker`; a deployment of its own must give it to both. A range
+  must have its host bits zero (`10.20.0.0/16`, not `10.20.0.1/16`), and
+  a name is matched exactly, without its subdomains. A bad entry stops
+  both at start-up with the reason.
+- **Do not allow the stack's own network.** A listed range lets every
+  caller of every network tool scan it. Keep the Docker networks of the
+  stack (by default in `172.16.0.0/12`) out of the list. A service name
+  stays refused even when its address is listed, unless the name is
+  listed too.
+- **Refusals answer 400** on `POST /api/v1/tools/{name}`, with a message
+  that names the network target policy. An asynchronous task ends as
+  `failed` with that message, and a workflow step of
+  security_automation_orchestrator fails with it.
+- **Other services are refused too.** The responder's `triage_ip` and
+  `all_star_e2e` playbooks and the agents' port scans call the same
+  endpoint: for a private address in an alert the scan step now fails
+  (the playbooks continue without it) unless its range is listed.
+- **One range holds at most 1024 addresses** (an IPv4 `/22`, an IPv6
+  `/118`), allow-listed or not. network_scanner used to accept a larger
+  range and sweep its first 1000 hosts, iot_security_scanner its first
+  256: split a larger range into several requests.
+- **Which inputs are checked**: `target` of ssl_analyzer, ca_analyzer,
+  port_scanner, network_port_scanner and network_vulnerability_scanner;
+  pki_certificate_manager's `domain`; iot_security_scanner's `target_ip`
+  and `ip_range`; network_scanner's `network`; database_security_analyzer's
+  `host`; dns_enumerator's `dns_servers` (which must be IP addresses) and
+  the name servers it attempts a zone transfer from; the registry of
+  container_security_scanner's `image_name` (`localhost:5000/app` is
+  refused, `alpine:3.19` is not).
+- **Host names must be ASCII.** Write an internationalized name in its
+  `xn--` form. port_scanner also refuses a target with characters other
+  than letters, digits, dots, hyphens and underscores instead of removing
+  them, so it takes no IPv6 literal.
+- dns_enumerator's zone transfers now connect to the name server's
+  checked address. They passed the server's name, which dnspython does
+  not accept, so every attempt failed; a zone that allows transfers is
+  now reported as such.
+
+### 30. guardian's own API keys no longer authenticate
+
+guardian accepted rows of its own `APIKey` table from an `X-API-Key` (or
+`Authorization: Bearer`) header on a direct request, as an administrator
+and a Django superuser, beside the gateway (#629). It now accepts
+gateway-authenticated requests only, as every other service does.
+
+- **Use a personal API key from identity, through the gateway.** Create
+  one in the dashboard (Settings > API keys) or with
+  `POST /api/v1/identity/api-keys`, and send it as `X-API-Key` to
+  `https://<host>/api/v1/guardian/...` (guardian's `/api/v1/...`). The
+  key acts with its owner's team and role: a member's key reads, an
+  owner's or admin's key also writes.
+- **A direct request to guardian answers 403** `GATEWAY_AUTH_REQUIRED`
+  (`"This service must be accessed through the API gateway"`), whatever
+  key it carries. Before, a direct request without a key answered 401
+  `NO_AUTH`.
+- **The table is dropped.** guardian's migration
+  `core.0002_remove_apikey`, applied at start, drops `core_apikey`, where
+  the keys were stored in plain text, and the audit log's `api_key_id`
+  column. The keys are not migrated to identity: create new ones. Back up
+  first if you want a record of them; reversing the migration recreates
+  an empty table.
+- **`GUARDIAN_API_KEY` and `API_KEY_HEADER`** are gone from
+  `open-security-guardian/.env.example`. Nothing read them; remove them
+  from your `.env` if you copied them.
+
+### 31. Responder playbooks call the services as the user who ran them
+
+The responder's connectors now call the tools, data, guardian and agents
+services at their real routes, with the identity of the user who started the
+run and `GATEWAY_INTERNAL_SECRET` (#616). Before, every step that called one
+of them failed.
+
+- **New variables, optional.** `docker-compose.yml` sets the responder's
+  `WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL` and
+  `WILDBOX_AGENTS_URL` to the services' container addresses. Override them
+  with `RESPONDER_WILDBOX_API_URL` and its siblings. A deployment that runs
+  the responder elsewhere must set them, and `GATEWAY_INTERNAL_SECRET`, in
+  the environment of the process that runs the playbook worker
+  (`python -m dramatiq app.workflow_engine`); without the secret every
+  connector step fails.
+- **The URL defaults changed.** They named `localhost`, and Guardian's
+  port 8003, where Guardian does not listen; they are now the container
+  addresses of `docker-compose.yml`. A responder run outside the stack
+  must set the URLs. Each must be an absolute `http(s)` URL, or the
+  responder does not start.
+- **A run acts for its caller, with their role.** The services authorize
+  each call for that user and team: Guardian lets only owners and admins
+  create a vulnerability, so `all_star_e2e`'s `create_finding` fails, and
+  the run carries on, when a member runs it. A Guardian vulnerability needs
+  an asset Guardian knows by the address.
+- **Runs queued before the upgrade fail before their first step**: their
+  message records no caller. Start them again.
+- **Removed actions.** `data.add_to_blacklist`, `remove_from_blacklist`,
+  `check_blacklist`, `query_iocs`, `add_ioc`, `get_threat_feed`,
+  `update_reputation`, `get_asset_inventory`, `wildbox.add_to_blacklist`,
+  `isolate_endpoint` and `create_ticket` called routes no service serves.
+  A playbook of your own that uses one fails at that step as an unknown
+  action; use `data.search_indicators` or `data.lookup_indicators` to read
+  threat intelligence. `triage_url` no longer has a blacklist step.
+- **Changed actions.** `wildbox.analyze_ioc` takes `ioc_type`,
+  `ioc_value` and `priority` (no `context`) and returns the agents task.
+  `wildbox.query_threat_intel` takes `query`, `indicator_type` and `limit`.
+  `wildbox.create_vulnerability` requires `asset_name`, and
+  `wildbox.get_asset_info` reads a Guardian asset by its UUID.
+  `api.list_tools` returns `{"tools": [...]}`.
+- With the production overlay, the responder reaches these services on
+  `backend`, as before; `scripts/check_network_segmentation.py runtime`
+  checks it.
+
+### 32. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
+
+The gateway reads the per-team budget from `RATE_LIMIT_PER_HOUR` (#627). A
+value that was not a number used to become the default, 10000, without a
+word; the gateway now refuses to start with it and logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...`. Before you upgrade, check
+the line in `.env`: it must be a whole number from 1 to 1000000000, or be
+left out for the default. The compose file passes 10000 when it is empty.
+
+### 33. The agents routes accept a session token and count against the team's rate limit
+
+`/api/v1/agents/*` now authenticates like every other gateway route (#630).
+Rebuild the gateway (section 1 does).
+
+- **A session token works.** The routes accepted only `X-API-Key` and
+  answered a JWT with 401 `NO_API_KEY`; both credentials work now. A
+  client that relied on the `NO_API_KEY` or `INVALID_API_KEY` codes gets
+  the gateway's usual 401 `authentication_required` or `invalid_token`.
+- **The per-team rate limit applies** to the agents routes too, as do
+  the revocation of sessions and API keys and the must-change-password
+  refusal.
+- **`/api/v1/agents/stats` answers** with the service's statistics,
+  authenticated, where it answered 404.
+
+### 34. Sensor telemetry belongs to a team (data schema change)
+
+The data service stored telemetry events and sensor records without a
+team, and served every team's to any caller (#641). The data service
+adds `team_id` to `telemetry_events` and `sensor_metadata` (alembic
+revision `0005_telemetry_team`). The data API applies it at start,
+unless `RUN_MIGRATIONS_ON_STARTUP=false`.
+
+- **A schema you migrate yourself** needs `alembic upgrade head` from
+  `open-security-data` before the new data API starts, with
+  `DATABASE_URL` set to the data database. The revision adds a nullable
+  `team_id` column and an index to both tables. It replaces the unique
+  index on `sensor_metadata.sensor_id` with a plain index and a unique
+  constraint `uq_sensor_metadata_team_sensor` on `(team_id, sensor_id)`,
+  so two teams can use the same sensor ID. It rewrites no rows.
+- **Telemetry is always private to a team.** `POST /api/v1/ingest`
+  stores events and the sensor record under the caller's team, the one
+  the gateway forwards, and ignores any team the batch names. The
+  events, sensors, sensor-by-ID and statistics routes return the
+  caller's team's rows only: another team's sensor ID answers 404.
+  Unlike indicators, telemetry has no global rows.
+- **Existing rows are hidden from every team.** Rows written before the
+  upgrade keep `team_id` NULL, and no API call returns or updates them.
+  A sensor that reports again after the upgrade gets a new record in
+  its team. To count the legacy rows, in the data database (`data` in
+  the default stack):
+
+  ```bash
+  docker compose exec postgres psql -U postgres -d data -c \
+    "SELECT 'events', count(*) FROM telemetry_events WHERE team_id IS NULL
+     UNION ALL
+     SELECT 'sensors', count(*) FROM sensor_metadata WHERE team_id IS NULL"
+  ```
+
+- **To give the legacy rows to a team**, take the team's ID from
+  identity (`SELECT id, name FROM teams` in the `identity` database)
+  and run the following. It is one transaction, and it merges a legacy
+  sensor record into the team's record of the same sensor ID, if the
+  sensor has already reported since the upgrade. Add
+  `AND sensor_id = '...'` to every statement to move one sensor only.
+
+  ```bash
+  docker compose exec -T postgres psql -U postgres -d data \
+    -v ON_ERROR_STOP=1 -v team='<team-uuid>' <<'SQL'
+  BEGIN;
+  UPDATE telemetry_events SET team_id = :'team' WHERE team_id IS NULL;
+  UPDATE sensor_metadata AS t
+     SET total_events = t.total_events + l.total_events,
+         first_seen = LEAST(t.first_seen, l.first_seen)
+    FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL AND t.team_id = :'team'
+     AND t.sensor_id = l.sensor_id;
+  DELETE FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL
+     AND EXISTS (SELECT 1 FROM sensor_metadata AS t
+                  WHERE t.team_id = :'team' AND t.sensor_id = l.sensor_id);
+  UPDATE sensor_metadata SET team_id = :'team' WHERE team_id IS NULL;
+  COMMIT;
+  SQL
+  ```
+
+  To drop them instead: `DELETE FROM telemetry_events WHERE team_id IS
+  NULL;` and `DELETE FROM sensor_metadata WHERE team_id IS NULL;`.
+- **Downgrading** to `0004_trgm` restores the global unique index on
+  `sensor_id`, and fails while two teams share a sensor ID. Delete or
+  rename one of the records first.
+
+### 35. Sensors send telemetry through the gateway, with an identity API key
+
+No sensor telemetry was ever stored: the sensor posted to the data
+service's `/api/v1/ingest` with a bearer key the data service never
+accepted (#628). The sensor now sends to the gateway,
+`https://<gateway>/api/v1/data/ingest`, authenticated with an identity
+personal API key, and the data service stores the events under that key's
+team. Rebuild the sensor, the data service, identity, the gateway and the
+dashboard (section 1 does); the data service applies alembic revision
+`0005_telemetry_team` at start.
+
+- **Give each sensor a key.** As a team owner or admin, add a member for
+  the sensor (Settings > Team > Add member), sign in as it once to change
+  its password, and create a personal API key with the new
+  **Telemetry Ingest** (`data:ingest`) scope only (Settings > API keys).
+  Set it as `SENSOR_DATA_LAKE_API_KEY`. Its telemetry belongs to that
+  member's team; revoking the key or removing the member stops the
+  sensor at its next batch.
+- **The sensor in `docker-compose.yml`** is already pointed at
+  `https://open-security-gateway` and trusts the certificate the gateway
+  publishes into the new `gateway_cert` volume. Add
+  `SENSOR_DATA_LAKE_API_KEY=wsk_...` to `.env` and
+  `docker compose up -d sensor`. Without a key it starts and logs
+  `Telemetry forwarding is disabled`.
+- **Sensors elsewhere** need three settings: `data_lake.endpoint` (or
+  `SENSOR_DATA_LAKE_ENDPOINT`) set to the gateway's HTTPS URL,
+  `data_lake.api_key` (or `SENSOR_DATA_LAKE_API_KEY`) set to the key, and,
+  when no public CA signed the gateway's certificate,
+  `data_lake.ca_bundle` (or `SENSOR_DATA_LAKE_CA_BUNDLE`) set to a PEM
+  file holding it. A sensor still configured with an `http://` endpoint
+  or the data service's `/api/v1/ingest` URL, or with a key that does not
+  begin with `wsk_`, now stops at start-up with a message naming the
+  setting. Check one with `python main.py --test-connection`.
+- **Production overlay:** the sensor moves from the `backend` network to
+  `frontend`. It reaches the gateway, and no longer the data service or
+  any other backend service directly.
+- **Telemetry is per team.** `GET /api/v1/data/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's telemetry only. Rows written before the upgrade, which only a
+  hand-made insert can have produced, have no team and are shown to no
+  team.
+- **API key scopes:** `data:ingest` is new. A key with `write` or
+  `data:write` can still post to `/api/v1/data/ingest`; a `data:ingest`
+  key gets 403 `insufficient_scope` everywhere else.
+
+### 36. Cancelling a responder run stops it
+
+`DELETE /api/v1/responder/runs/{run_id}` now stops the run instead of only
+relabelling it (#653).
+
+- **New status `cancelling`.** A run cancelled while a step is running
+  reads `cancelling` until the worker stops it, then `cancelled`. A client
+  that waits for `completed`, `failed` or `cancelled` keeps working; one
+  that lists the statuses it knows must add `cancelling`.
+- **The answer says what happened.** `DELETE` answers 202 with
+  `"status": "cancelling"` for a running run, 200 with `cancelled` for a
+  queued one, and 200 with the run's status when it had already ended. It
+  used to answer 200 `cancelled` in every case. The body carries `run_id`,
+  `status` and `message`.
+- **A cancelled run's steps.** The step in progress when the cancel
+  arrives runs to its end and is kept in `step_results`; the steps after it
+  do not run. A run whose last step had already started when the cancel
+  arrived reads `cancelled` with every step in `step_results`.
+
+### 37. The responder's notification action says it only logs
+
+`system.notification` never delivered anything; it now says so (#639).
+
+- **Its result changed.** The step output has `"status": "logged"` and
+  `"delivered": false` instead of `"status": "sent"`. A playbook or client
+  that tests for `sent` must test for `logged`; no notification is sent
+  either way.
+- **A step was renamed.** `triage_url`'s `notify_security_team` is now
+  `log_security_alert`. A client that reads that step from a run's
+  `step_results` or `context.steps` must use the new name.
+- To have an alert reach people, read it from the run, or forward it from
+  whatever polls the run.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

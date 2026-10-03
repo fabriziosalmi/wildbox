@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import HTTPException
 
 from ...execution_manager import tool_acts_for_caller
-from ...input_validation import InputSanitizer
+from ...target_policy import TargetRefused, enforce_target_policy
 from ...tool_loader import find_schema_classes
 from .schemas import (
     AutomationWorkflowInput,
@@ -228,8 +228,9 @@ class SecurityAutomationOrchestrator:
         what the API applies before a tool runs (#610):
 
         * the input is validated by the tool's own input model;
-        * the SSRF guard (``InputSanitizer.validate_request_urls``) checks
-          every URL in that validated input;
+        * the target policy (``app.target_policy.enforce_target_policy``)
+          checks every URL in that validated input (SSRF guard) and the
+          tool's network target fields (#614);
         * a tool that acts on behalf of a caller (its execute_tool declares
           ``user_id``, #563/#564) is refused: the orchestrator has no
           authenticated caller to authorize, so such a tool must be called
@@ -277,12 +278,15 @@ class SecurityAutomationOrchestrator:
                 )
 
             # Validate the parameters with the tool's input model, then
-            # check every URL in the validated input with the SSRF guard.
+            # apply the target policy the API applies: the SSRF guard on
+            # every URL and the network target policy on the tool's host,
+            # address and range fields (#614). It resolves names, so it runs
+            # in a thread.
             tool_input = self._create_tool_input(tool_name, parameters)
             try:
-                InputSanitizer.validate_request_urls(tool_input)
-            except ValueError as e:
-                raise HTTPException(status_code=400, detail=f"Blocked SSRF target: {e}")
+                await asyncio.to_thread(enforce_target_policy, tool_name, tool_input)
+            except TargetRefused as e:
+                raise HTTPException(status_code=400, detail=f"Blocked target: {e}")
 
             result = execute_func(tool_input)
             if inspect.isawaitable(result):

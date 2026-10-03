@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 import redis
 
 from .models import (
-    PlaybookExecutionRequest, PlaybookExecutionResult, 
+    ExecutionStatus, PlaybookExecutionRequest, PlaybookExecutionResult,
     PlaybookListResponse, HealthCheckResponse
 )
 from .config import settings
@@ -23,6 +23,7 @@ from .playbook_parser import playbook_parser
 from .workflow_engine import start_execution, workflow_engine
 from .connectors.base import connector_registry
 from .auth import get_current_user, require_role, GatewayUser
+from .caller import CallerIdentityUnavailable
 
 # Configure logging
 logging.basicConfig(
@@ -216,10 +217,18 @@ async def execute_playbook(
         # Start execution. The owning team is recorded inside start_execution,
         # before the actor message is sent, so there is no window in which a run
         # is executing with no owner (WILDBO-DATA-06).
+        #
+        # The run acts for the user the gateway authenticated: their identity
+        # goes with the run to the worker, and every call the run makes to
+        # another service carries it (#616).
         run_id = start_execution(
             playbook_id,
             request.trigger_data,
-            team_id=current_user.team_id,
+            caller={
+                "user_id": str(current_user.user_id),
+                "team_id": str(current_user.team_id),
+                "role": current_user.role,
+            },
         )
 
         return JSONResponse(
@@ -236,6 +245,14 @@ async def execute_playbook(
         
     except HTTPException:
         raise
+    except CallerIdentityUnavailable as e:
+        # Not reachable through gateway_auth, which only yields complete
+        # users; refused rather than run for nobody if that ever changes.
+        logger.warning(f"Refusing to execute playbook {playbook_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A user and team identity is required to run a playbook",
+        )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to execute playbook {playbook_id}: {e}")
         raise HTTPException(
@@ -310,35 +327,45 @@ async def list_connectors(current_user: GatewayUser = Depends(get_current_user))
 
 @app.delete("/v1/runs/{run_id}")
 async def cancel_execution(run_id: str, current_user: GatewayUser = Depends(get_current_user)):
-    """Cancel a running execution"""
-    try:
-        # For now, we'll just mark it as cancelled in Redis
-        execution_result = workflow_engine.get_execution_state(run_id)
+    """Cancel a run, and say what the cancel did (#653).
 
+    - A queued run is cancelled: no step will run. 200, ``cancelled``.
+    - A running run becomes ``cancelling``: the step in progress runs to its
+      end and is recorded as it ended, no further step starts, and the
+      worker then records the run as ``cancelled``. 202; poll the run.
+    - A run that has ended is left as it is: 200 with its status.
+    """
+    try:
         # "Not yours" -> 404, identical to "not found", to avoid cross-team leak.
-        if not execution_result or not workflow_engine.is_run_owner(run_id, current_user.team_id):
+        outcome = None
+        if workflow_engine.is_run_owner(run_id, current_user.team_id):
+            outcome = workflow_engine.request_cancel(run_id)
+        if outcome is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Execution '{run_id}' not found"
             )
-        
-        if execution_result.status in ["completed", "failed", "cancelled"]:
-            return {
-                "message": f"Execution '{run_id}' is already {execution_result.status}",
-                "status": execution_result.status
-            }
-        
-        # Mark as cancelled (simplified implementation)
-        execution_result.status = "cancelled"
-        execution_result.end_time = datetime.utcnow()
-        workflow_engine.save_execution_state(run_id, execution_result)
-        workflow_engine.add_log(run_id, "Execution cancelled by user request")
-        
-        return {
-            "message": f"Execution '{run_id}' cancelled successfully",
-            "status": "cancelled"
-        }
-        
+
+        run_status, accepted = outcome
+        if run_status == ExecutionStatus.CANCELLING:
+            message = (
+                "Cancel requested. The step in progress runs to its end and is "
+                "recorded as it ends; no further step will start. The run's "
+                "status becomes 'cancelled' when the worker stops it."
+            )
+            code = status.HTTP_202_ACCEPTED
+        elif run_status == ExecutionStatus.CANCELLED and accepted:
+            message = "Cancelled before it started: no step ran."
+            code = status.HTTP_200_OK
+        else:
+            message = f"Execution '{run_id}' is already {run_status.value}"
+            code = status.HTTP_200_OK
+
+        return JSONResponse(
+            status_code=code,
+            content={"run_id": run_id, "status": run_status.value, "message": message},
+        )
+
     except HTTPException:
         raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
