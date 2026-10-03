@@ -43,9 +43,7 @@ run_migrations() {
     echo "🔄 Running database migrations..."
     
     # Run Alembic migrations
-    alembic upgrade head
-    
-    if [ $? -eq 0 ]; then
+    if alembic upgrade head; then
         echo "✅ Database migrations completed successfully!"
     else
         echo "❌ Database migrations failed!"
@@ -138,7 +136,7 @@ async def create_initial_superuser():
 
         print(f'✅ Created initial admin user: {admin_email}')
         # Never print the password itself: container logs are read by anyone
-        # with `docker logs`, log shippers and CI artifacts (#493).
+        # with docker logs, log shippers and CI artifacts (#493).
         print('🔑 Password: the value of INITIAL_ADMIN_PASSWORD in .env')
         print('⚠️  Please change the default password after first login!')
         
@@ -174,8 +172,20 @@ main() {
     echo "🚀 Starting application server..."
     echo ""
     
-    # Start the application
-    exec uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    start_server
+}
+
+# Start the application. --reload is a development aid: it runs the
+# server in a child process and restarts it whenever a file under the
+# source tree changes. This script is the image's CMD, so production ran
+# that file-watching reloader too (#664). It is used only when ENVIRONMENT
+# is development, as docker-compose.yml sets by default; anything else,
+# or nothing, starts the server as is, one process as before.
+start_server() {
+    if [ "${ENVIRONMENT:-}" = "development" ]; then
+        exec uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+    fi
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8001
 }
 
 # Run main function

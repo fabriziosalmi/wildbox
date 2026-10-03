@@ -1113,6 +1113,40 @@ and reports (#642). Each request now acts on the caller's team's rows only.
 - **Commands that create rows need a team.** `import_vulnerabilities` and
   `generate_compliance_report` take a required `--team-id`.
 
+### 40. identity's admin metrics need a superuser's token
+
+`GET /api/v1/identity/admin/metrics` (identity's
+`GET /api/v1/admin/metrics`) answered anyone, because it trusted the
+gateway secret and the gateway sent that secret on every request (#664).
+Rebuild identity and the gateway (section 1 does).
+
+- **A script that read the counts** must send a platform superuser's
+  bearer token. Without a token it gets 401; with a non-superuser's token,
+  403. The `X-Gateway-Secret` header no longer opens the route, through
+  the gateway or on identity's port. The counts are now real: they were
+  always zero, with `"error": "unavailable"`.
+- **The gateway sends `X-Gateway-Secret` only on routes it authenticates.**
+  A custom service behind a location that does not run
+  `auth_handler.authenticate()` but checks the header will now refuse
+  every request. Authenticate that location, as the other service routes
+  do.
+
+### 41. The self-service API-key routes list and revoke the caller's own keys
+
+`GET` and `DELETE /api/v1/identity/api-keys[/{key_prefix}]` acted on every
+key of the caller's team, so a member could revoke the owner's key (#664).
+They now act on the keys the caller created. Rebuild identity (section 1
+does).
+
+- **The dashboard's API keys page** lists your own keys only. A team owner
+  or admin who managed other members' keys there uses the team routes:
+  `GET /api/v1/identity/teams/{team_id}/api-keys` to list them and
+  `DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}` to
+  revoke one.
+- **A script that revoked another member's key** through
+  `/api/v1/identity/api-keys/{key_prefix}` now gets 404, and the key keeps
+  working. Use the team route above with an owner's or admin's token.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

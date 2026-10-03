@@ -24,45 +24,42 @@ def test_identity_health(service_urls: Dict[str, str]):
 @pytest.mark.integration
 @pytest.mark.smoke
 def test_identity_metrics(service_urls: Dict[str, str]):
-    """Test identity service metrics endpoint (gateway-secret protected)."""
+    """Test identity service metrics endpoint (superuser only)."""
     import os
-    # /metrics exposes user/team counts, so it is gated behind the gateway
-    # secret. Authenticate with the same secret the service was started with.
-    gateway_secret = os.environ.get("GATEWAY_INTERNAL_SECRET", "")
-    if not gateway_secret:
-        pytest.skip("GATEWAY_INTERNAL_SECRET not set (e.g. fork PR without secrets)")
+    # The counts are for platform superusers, authenticated by identity from
+    # the bearer token. The gateway secret used to open them on its own, and
+    # the gateway sent it on every request, so anyone could read them (#664).
+    email = os.environ.get("TEST_ADMIN_EMAIL", "")
+    password = os.environ.get("TEST_ADMIN_PASSWORD", "")
+    if not email or not password:
+        pytest.skip("TEST_ADMIN_EMAIL / TEST_ADMIN_PASSWORD not set")
+    login = requests.post(
+        f"{service_urls['identity']}/api/v1/auth/jwt/login",
+        data={"username": email, "password": password},
+        timeout=10,
+    )
+    assert login.status_code == 200, login.text[:200]
     # /api/v1/admin/metrics, not /metrics: the latter is the Prometheus text
     # exposition. The two used to collide on one path, where the exposition won.
     response = requests.get(
         f"{service_urls['identity']}/api/v1/admin/metrics",
-        headers={"X-Gateway-Secret": gateway_secret},
+        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
         timeout=10,
     )
     assert response.status_code == 200
 
     data = response.json()
-    # Success path reports the human app name; the DB-unavailable fallback
-    # reports the "identity" slug — accept either.
     assert "identity" in data.get("service", "").lower()
     assert "metrics" in data
     assert "timestamp" in data
-    
+
+    # The database is up in this suite: real counts, not the fallback. The
+    # handler used to import a model that does not exist and always fell back.
     metrics = data["metrics"]
-    # Metrics may have error field if database isn't fully initialized
-    if "error" not in metrics:
-        assert "users_total" in metrics
-        assert "teams_total" in metrics
-        assert "api_keys_active" in metrics
-        
-        # Verify metrics are integers
-        assert isinstance(metrics["users_total"], int)
-        assert isinstance(metrics["teams_total"], int)
-        assert isinstance(metrics["api_keys_active"], int)
-    else:
-        # If there's a database error, at least verify structure is correct
-        assert metrics["users_total"] == 0
-        assert metrics["teams_total"] == 0
-        assert metrics["api_keys_active"] == 0
+    assert "error" not in metrics, metrics
+    for name in ("users_total", "teams_total", "api_keys_active"):
+        assert isinstance(metrics[name], int)
+    assert metrics["users_total"] >= 1
 
 
 @pytest.mark.integration

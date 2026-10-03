@@ -145,18 +145,23 @@ returned once, when the key is created.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/v1/api-keys` | Create a key for the caller |
-| GET | `/api/v1/api-keys` | List the caller's keys |
-| GET | `/api/v1/api-keys/{key_prefix}` | Show one key |
-| DELETE | `/api/v1/api-keys/{key_prefix}` | Revoke a key |
+| GET | `/api/v1/api-keys` | List the caller's own keys |
+| GET | `/api/v1/api-keys/{key_prefix}` | Show one of the caller's keys |
+| DELETE | `/api/v1/api-keys/{key_prefix}` | Revoke one of the caller's keys |
 
-Team keys, which require the `admin` or `owner` role in the team:
+These act in the caller's primary team and on the keys the caller created:
+another member's key answers 404, as a key that does not exist does. They
+used to match any key of the team, so a member could revoke a teammate's or
+the owner's key (#664).
 
-| Method | Path |
-| --- | --- |
-| POST | `/api/v1/teams/{team_id}/api-keys` |
-| GET | `/api/v1/teams/{team_id}/api-keys` |
-| GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
-| DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
+All the keys of a team, whoever created them:
+
+| Method | Path | Role in the team |
+| --- | --- | --- |
+| POST | `/api/v1/teams/{team_id}/api-keys` | `admin` or `owner` |
+| GET | `/api/v1/teams/{team_id}/api-keys` | any member |
+| GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` | any member |
+| DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` | `admin` or `owner` |
 
 ### Revocation Takes Effect at Once
 
@@ -249,6 +254,13 @@ is not enough.
 | GET | `/api/v1/analytics/admin/system-stats` | Platform statistics |
 | GET | `/api/v1/analytics/admin/user-activity` | User activity |
 | GET | `/api/v1/analytics/admin/usage-summary` | Usage summary |
+| GET | `/api/v1/admin/metrics` | User, team and active API-key counts |
+
+`/api/v1/admin/metrics` used to accept the `X-Gateway-Secret` header in
+place of a user, and the gateway sent that header on every request it passed
+to identity, so anyone could read the counts (#664). It now takes a
+superuser's bearer token like the other routes here, and the gateway sends
+its secret only on requests it authenticated itself.
 
 fastapi-users also registers `GET`, `PATCH` and `DELETE` on
 `/api/v1/users/{id}` for superusers.
@@ -265,8 +277,11 @@ gateway does not confirm, nothing changes and the answer is 503.
 | --- | --- | --- |
 | GET | `/health` | Health check |
 | GET | `/` | Service information |
-| GET | `/api/v1/admin/metrics` | User, team and API-key counts; requires `X-Gateway-Secret`, not a user token |
 | POST | `/internal/authorize` | Token and API-key validation for the gateway; requires `X-Gateway-Secret` and is not routed by the gateway |
+
+`/internal/authorize` is the only identity route that accepts
+`X-Gateway-Secret`. The gateway calls it on its own behalf, with the secret
+from its environment; no gateway location maps a client path to `/internal`.
 
 ---
 
