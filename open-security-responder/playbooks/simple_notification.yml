@@ -1,9 +1,9 @@
 playbook_id: "simple_notification"
-name: "Simple Notification Test"
-description: "A basic playbook that logs a message for testing the workflow engine"
+name: "Simple Logging Test"
+description: "A basic playbook that logs a message for testing the workflow engine; it sends no notification"
 version: "1.0"
 author: "Wildbox Security"
-tags: ["test", "notification"]
+tags: ["test", "log"]
 
 trigger:
   type: "api"

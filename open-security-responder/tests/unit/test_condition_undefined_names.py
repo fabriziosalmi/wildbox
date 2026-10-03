@@ -162,6 +162,7 @@ def test_a_run_skips_the_step_and_carries_on(monkeypatch):
     monkeypatch.setattr(module.playbook_parser, "get_playbook", lambda _id: playbook)
     monkeypatch.setattr(engine, "get_execution_state", lambda run_id: None)
     monkeypatch.setattr(engine, "save_execution_state", lambda run_id, result: None)
+    monkeypatch.setattr(engine, "cancel_requested", lambda run_id: False)
     monkeypatch.setattr(
         engine,
         "add_log",

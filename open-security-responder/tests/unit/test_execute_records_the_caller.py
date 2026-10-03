@@ -35,7 +35,7 @@ def started(monkeypatch):
     monkeypatch.setattr(
         main_module.playbook_parser,
         "get_playbook",
-        lambda playbook_id: SimpleNamespace(name="Simple Notification Test"),
+        lambda playbook_id: SimpleNamespace(name="Simple Logging Test"),
     )
     return runs
 

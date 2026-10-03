@@ -92,7 +92,7 @@ calls the gateway, not port 8018.
 | `GET /v1/playbooks` | List the loaded playbooks | any member |
 | `POST /v1/playbooks/{playbook_id}/execute` | Start a run; body `{"trigger_data": {...}}`; answers 202 with `run_id` | any member |
 | `GET /v1/runs/{run_id}` | A run's status, step results and log | the run's team |
-| `DELETE /v1/runs/{run_id}` | Mark a run cancelled | the run's team |
+| `DELETE /v1/runs/{run_id}` | Cancel a run (see [Cancelling a run](#cancelling-a-run)) | the run's team |
 | `POST /v1/playbooks/reload` | Reload the playbooks from disk | owner, admin |
 | `GET /v1/connectors` | List the connectors and their actions | any member |
 | `GET /health` | Health check, no authentication | anyone |
@@ -100,6 +100,36 @@ calls the gateway, not port 8018.
 
 A run of another team answers 404, as a run that does not exist does.
 `/docs` serves the OpenAPI page outside production.
+
+### Cancelling a run
+
+`DELETE /v1/runs/{run_id}` asks the worker to stop the run, and answers
+with the status the run is in afterwards:
+
+| Run was | Answer | What happens |
+| --- | --- | --- |
+| queued | 200, `cancelled` | The worker that picks it up runs no step. |
+| running | 202, `cancelling` | The step in progress runs to its end; no further step starts. The run then reads `cancelled`. |
+| cancelling | 202, `cancelling` | Nothing more: the first request stands. |
+| completed, failed or cancelled | 200, its status | Nothing: the run has ended. |
+
+- **A step in progress is not interrupted.** Its call to another service
+  has been sent and may already have taken effect, so it runs to its end
+  and is recorded as it ended, `completed` or `failed`, in
+  `step_results`. Those are the steps that ran; the run's log names the
+  steps that did not.
+- **A cancelled run stays cancelled.** The worker's writes are
+  compare-and-set against the run's status and its cancel request, so it
+  cannot write `completed` or `failed` over a cancel. Whichever commits
+  first decides: a cancel accepted before the run's last write ends the
+  run `cancelled`, even when every step had already run, and a cancel
+  after it answers with `completed` or `failed` and changes nothing. A
+  step that fails while the run is cancelling leaves the run `cancelled`,
+  with the failure in `error`.
+- **The request is durable.** It is stored in Redis with the run, so a
+  worker that picks the run up later still sees it; a worker that dies
+  while a run is cancelling leaves it to the abandoned-run reaper, which
+  records it as `cancelled`.
 
 ### Example Playbook Execution
 
@@ -233,7 +263,7 @@ guards later steps on `overall_result`.
         bad_reputation: "{{ steps.reputation.output.overall_threat_score >= 70 }}"
       min_true: 1        # omitted: every condition must hold
 
-  - name: "notify_security_team"
+  - name: "log_security_alert"
     action: "system.notification"
     condition: "steps.threat_verdict is defined and steps.threat_verdict.output.overall_result"
     # ...
@@ -244,6 +274,27 @@ It returns `overall_result`, `conditions` (each name and whether it held),
 `min_true` and `timestamp`. Each condition must render to `True` or
 `False`, or be a boolean; any other value, such as a nested mapping or a
 word like `malicious`, fails the step instead of being guessed at.
+
+### system.notification
+
+`system.notification` delivers nothing. No e-mail, webhook or chat message
+leaves the responder: the message is written to the service log, and the
+step's input and output to the run's log and record, where whoever reads
+the run (`GET /v1/runs/{run_id}`) sees it.
+
+```yaml
+  - name: "log_security_alert"
+    action: "system.notification"
+    input:
+      channel: "security-alerts"   # a label, recorded as given
+      message: "Malicious URL: {{ trigger.url }}"
+      priority: "high"
+```
+
+It returns `status: logged`, `delivered: false`, and the `channel`,
+`message` and `priority` it was given, with a `timestamp`. No channel is
+looked up or contacted. To have an alert reach people, read it from the
+run, or have whatever polls the run forward it.
 
 ### Connector actions
 

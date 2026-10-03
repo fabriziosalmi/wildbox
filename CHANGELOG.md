@@ -59,6 +59,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The responder's `system.notification` no longer claims to have sent
+  anything** (#639). It wrote a log line and answered `"status": "sent"`,
+  though no e-mail, webhook or chat message ever left the system, so
+  `triage_url` reported an alert that nobody received. It now answers
+  `"status": "logged"` and `"delivered": false`, and its description in
+  `GET /v1/connectors` says that nothing is delivered. `triage_url`'s
+  step `notify_security_team` is renamed `log_security_alert`, and
+  `simple_notification` is named "Simple Logging Test". The responder
+  README documents the action, and the connector example in
+  `docs/api/responder/endpoints.md`, which listed Jira and Slack
+  connectors that do not exist, shows the real response. Delivery is not
+  implemented.
+
+- **Cancelling a responder run stops it** (#653). `DELETE
+  /v1/runs/{run_id}` only rewrote the stored status: the worker never
+  read it again, so a cancelled run executed every remaining step, side
+  effects included, and then wrote `completed` over `cancelled`, and a
+  run cancelled while queued was set back to running and executed in
+  full. The cancel is now a request stored with the run, which the
+  worker checks before the run starts and before each step. A queued run
+  is cancelled at once and runs no step; a running run becomes the new
+  status `cancelling`, its step in progress runs to its end and is
+  recorded as it ended, no further step starts, and the run ends
+  `cancelled`. The worker's writes are compare-and-set (WATCH/MULTI)
+  against the run's status and the request, so a `cancelled` run is
+  never recorded as anything else and a race between completion and
+  cancel goes to whichever commits first. `DELETE` answers 200 with
+  `cancelled`, 202 with `cancelling`, or 200 with the status of a run
+  that had ended, and is checked against the run's team as before. A
+  run's `logs` also keep every line again: saving the worker's copy of
+  the record replaced the lines written since the run started.
+
 - **The agents routes accept a session token, and `/stats` is reachable**
   (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
   with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
@@ -104,6 +136,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result backend is a 503. The tools service now logs the class and
   traceback of a request that fails, and the integration workflow
   uploads every service's full log when it fails.
+
+
+- **Sensor telemetry reaches the data service, under the sensor's team**
+  (#628). The sensor's forwarder posted to the data service's
+  `/api/v1/ingest` directly with `Authorization: Bearer <key>`, but the
+  data service accepts only requests the gateway has authenticated, so
+  every batch was refused and no telemetry was ever stored. The sensor
+  now posts to the gateway, `https://<gateway>/api/v1/data/ingest`, with
+  an identity personal API key in `X-API-Key`: the key of a team member
+  created for the sensor. The gateway resolves the key, refuses it once
+  it is revoked, expired or its member removed (#593, #608), and forwards
+  the key's team; the data service stores the events and the sensor's
+  record under that team. A new API key scope, `data:ingest` (identity's
+  vocabulary, the dashboard's API keys page, the gateway's scope map),
+  allows `POST /api/v1/data/ingest` and nothing else; `write` and
+  `data:write` keep allowing it. The sensor verifies the gateway's
+  certificate by default, against `data_lake.ca_bundle` when set
+  (`SENSOR_DATA_LAKE_CA_BUNDLE`), sends the key in no other header, does
+  not follow redirects with it and never logs it; a 401 or 403 is no
+  longer retried. At start-up it refuses, with a message naming the
+  setting, an endpoint that is not an `https://` gateway URL (the old
+  direct URL included), a key that is not an identity key and a CA
+  bundle that does not exist; with no key it runs and logs that
+  forwarding is disabled. `--test-connection` posts an empty batch and
+  reports the answer: it used to print success without connecting.
+  Batches are now in the shape the data service validates (sensor ID,
+  one of its event types, the collected event kept whole in
+  `event_data`, the collector's type as a tag); the forwarder sent the
+  processor's own shape, which the data service would have refused too.
+  `docker-compose.yml` points the sensor at `https://open-security-gateway`
+  and gives it the gateway's certificate (never its key), which the
+  gateway now publishes into a `gateway_cert` volume when it starts; in
+  the production overlay the sensor moves from `backend` to `frontend`,
+  reaching the gateway and no backend service
+  (`scripts/check_network_segmentation.py` asserts both). In the data
+  service, telemetry events and sensor records have a `team_id` (alembic
+  revision `0005_telemetry_team`); `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's only, where they showed every team's; a sensor ID is unique per
+  team, where one team's sensor could update another's record. Three
+  defects on the same path that the refused credential had hidden are
+  fixed with it: a batch of more than one event from a new sensor
+  inserted its record twice and failed with 500, the events and sensors
+  listings answered 500 as soon as they had a row (their `id` was
+  declared a string), and a batch whose commit fails now answers 503,
+  so that the sensor sends it again, instead of 200 with nothing stored.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,

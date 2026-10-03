@@ -1,7 +1,7 @@
 playbook_id: "triage_url"
 name: "URL Analysis and Response"
-description: "Analyze a suspicious URL and alert the security team when it is malicious"
-version: "1.2"
+description: "Analyze a suspicious URL and record an alert in the run log when it is malicious"
+version: "1.3"
 author: "Wildbox Security"
 tags: ["triage", "url", "malware"]
 
@@ -80,9 +80,13 @@ steps:
     condition: "steps.validate_url.output.valid"
 
   # There is no blacklist step. The data service serves no blacklist, and a
-  # step that called one failed on every run (#616). The notification says
-  # what was found; blocking the URL is left to whoever receives it.
-  - name: "notify_security_team"
+  # step that called one failed on every run (#616). The alert says what was
+  # found; blocking the URL is left to whoever reads it.
+  #
+  # system.notification delivers nothing (#639): the alert is written to the
+  # run's log and record, with status "logged". Read it from the run, or have
+  # whatever polls the run forward it.
+  - name: "log_security_alert"
     action: "system.notification"
     input:
       channel: "security-alerts"

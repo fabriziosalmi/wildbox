@@ -153,14 +153,17 @@ docker-compose --profile monitoring up -d
 
 ### Configuration
 
-Edit the configuration file with your environment details:
+Edit the configuration file with your environment details. The
+`data_lake` section is described in
+[Sending telemetry to Wildbox](#sending-telemetry-to-wildbox).
 
 ```yaml
-# Data Lake Connection
+# Where telemetry goes: the Wildbox gateway, over HTTPS
 data_lake:
-  endpoint: "https://your-security-data-platform.com/api/v1/ingest"
-  api_key: "your-api-key-here"
+  endpoint: "https://wildbox.example.com"
+  api_key: ""        # set SENSOR_DATA_LAKE_API_KEY instead
   tls_verify: true
+  ca_bundle: ""      # PEM file, if no public CA signed the gateway's certificate
   batch_size: 100
   flush_interval: 30
 
@@ -191,6 +194,133 @@ performance:
   max_cpu_percent: 5
 ```
 
+## Sending telemetry to Wildbox
+
+The sensor sends telemetry to the Wildbox gateway, never to the data service
+directly:
+
+```text
+sensor --HTTPS, X-API-Key--> gateway /api/v1/data/ingest --> data service
+                             (checks the key and its scope,  (stores the events
+                              forwards the key's team)        under that team)
+```
+
+It authenticates with an identity personal API key. The gateway checks the
+key at identity on every batch, refuses it once it is revoked or expired or
+its member has left the team, and forwards the batch with the key's team; the
+data service stores the events under that team and shows them to that team
+only. A batch names no team, and one it claims is ignored.
+
+### 1. Create a team member for the sensor
+
+Give the sensor an account of its own in the team its telemetry belongs to,
+so it can be revoked without touching anyone else's access. A team owner or
+admin adds it in the dashboard under **Settings > Team > Add member**, or
+through the API:
+
+```bash
+curl -X POST "https://<gateway>/api/v1/identity/admin/teams/<team-id>/members" \
+  -H "Authorization: Bearer <admin session token>" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "sensor-web-1@example.com", "password": "<initial password>", "role": "member"}'
+```
+
+Sign in once as that member and change the initial password: until then
+Wildbox refuses everything else the account does.
+
+### 2. Create its API key, scoped to ingest
+
+Signed in as the sensor's member, create a personal API key under
+**Settings > API keys** with the **Telemetry Ingest** (`data:ingest`) scope
+only, or:
+
+```bash
+curl -X POST "https://<gateway>/api/v1/identity/api-keys" \
+  -H "Authorization: Bearer <the member's session token>" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "sensor web-1", "scopes": ["data:ingest"]}'
+```
+
+The key (`wsk_...`) is shown once. A `data:ingest` key can post telemetry to
+`/api/v1/data/ingest` and nothing else: the gateway answers every other route
+with 403 `insufficient_scope`. A key with the `write` or `data:write` scope can
+ingest too, but can also write everything else that scope allows. The gateway
+is where scopes are enforced: the data service only learns the key's user and
+team, not its scopes (#637).
+
+### 3. Configure the sensor
+
+| Setting | Environment variable | Value |
+| --- | --- | --- |
+| `data_lake.endpoint` | `SENSOR_DATA_LAKE_ENDPOINT` | The gateway, `https://<gateway>`, or the full `https://<gateway>/api/v1/data/ingest`. HTTPS only. |
+| `data_lake.api_key` | `SENSOR_DATA_LAKE_API_KEY` | The key from step 2. Prefer the variable to the file. |
+| `data_lake.tls_verify` | `SENSOR_DATA_LAKE_TLS_VERIFY` | `true` (the default). Leave it on. |
+| `data_lake.ca_bundle` | `SENSOR_DATA_LAKE_CA_BUNDLE` | A PEM file to trust for the gateway's certificate, when no public CA signed it (the development certificate the gateway generates). Unset: the system trust store. |
+| `data_lake.sensor_id` | `SENSOR_DATA_LAKE_SENSOR_ID` | The sensor's name in Wildbox. Default: the hostname. Unique within the team. |
+
+The sensor validates these when it starts and stops with a message naming the
+setting that cannot work: an `http://` endpoint, the data service's old
+`/api/v1/ingest` URL, a key that is not an identity key, a CA bundle that does
+not exist. With no key at all it starts, logs that forwarding is disabled, and
+discards events until a key is set and the sensor restarted: the key cannot
+exist before the stack that issues it has started.
+
+To check the connection without waiting for a batch:
+
+```bash
+python main.py --config /etc/security-sensor/config.yaml --test-connection
+```
+
+It posts an empty batch with the configured key and reports what the gateway
+answered: 200 means the URL, the TLS trust, the key and its scope are right;
+401 means the key is invalid, expired or revoked; 403 means it lacks the
+`data:ingest` scope.
+
+The sensor sends the key in the `X-API-Key` header only, does not follow
+redirects with it, and never logs it. A batch the gateway refuses with 401 or
+403 is not retried; network errors, 429 and 5xx answers are, with backoff.
+
+### In the Wildbox stack
+
+The sensor in `docker-compose.yml` is already pointed at the gateway,
+`https://open-security-gateway`, and trusts the certificate the gateway
+publishes into the `gateway_cert` volume (the certificate only, never its
+key). Set the key and restart it:
+
+```bash
+# .env
+SENSOR_DATA_LAKE_API_KEY=wsk_...
+
+docker compose up -d sensor
+```
+
+In the production overlay the sensor is on the `frontend` network with the
+gateway and the dashboard: it reaches the gateway's HTTPS listener and no
+backend service, as a sensor on another host would.
+
+### Reading the telemetry
+
+Any member of the team reads it through the gateway:
+
+```bash
+curl -H "X-API-Key: <a key with the read scope>" \
+  "https://<gateway>/api/v1/data/telemetry/events?sensor_id=web-1&limit=10"
+```
+
+`/api/v1/data/telemetry/stats` and `/api/v1/data/sensors` are scoped to the
+team the same way. Each event keeps what the sensor collected in
+`event_data`; its `event_type` is one of the data service's types
+(`process_event`, `network_connection`, `file_change`, `user_event`,
+`system_inventory`, `security_event` for logs and anything else), and the
+collector's own type, such as `log.nginx_access`, is its first tag.
+
+### Revoking a sensor
+
+Revoke its key (**Settings > API keys**, or
+`DELETE /api/v1/identity/api-keys/<prefix>`) or remove its member from the
+team. The gateway refuses the key on the sensor's next batch, with no cache
+delay.
+
 ## Docker Deployment
 
 ### Quick Start with Docker Compose
@@ -218,13 +348,19 @@ cp config.docker.yaml config.yaml
 nano config.yaml
 ```
 
-Update the configuration with your data lake endpoint:
+Point it at your Wildbox gateway, and give it the sensor's API key through
+the environment (see
+[Sending telemetry to Wildbox](#sending-telemetry-to-wildbox)):
 
 ```yaml
 data_lake:
-  endpoint: "https://your-security-data-platform.com/api/v1/ingest"
-  api_key: "your-api-key-here"
+  endpoint: "https://wildbox.example.com"
   tls_verify: true
+  ca_bundle: ""  # the gateway's certificate, if no public CA signed it
+```
+
+```bash
+export SENSOR_DATA_LAKE_API_KEY=wsk_...
 ```
 
 ```bash
@@ -609,15 +745,22 @@ sudo systemctl restart security-sensor
 **Connection issues**
 
 ```bash
-# Test connectivity
-security-sensor --test-connection
+# Post an empty batch with the configured key and show the answer
+python main.py --config /etc/security-sensor/config.yaml --test-connection
 
-# Check TLS certificate
-openssl s_client -connect your-data-lake.com:443
+# Check the gateway's certificate against the bundle the sensor trusts
+openssl s_client -connect wildbox.example.com:443 -CAfile /path/to/ca_bundle.pem
 
-# Verify API key
-curl -H "Authorization: Bearer YOUR-API-KEY" https://your-data-lake.com/api/v1/health
+# Check the key: 200 with an empty batch means it is valid and has data:ingest
+curl --cacert /path/to/ca_bundle.pem -X POST \
+  -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" -H "Content-Type: application/json" \
+  -d '{"events": []}' https://wildbox.example.com/api/v1/data/ingest
 ```
+
+The forwarder's log says why a batch was refused: 401, the key is invalid,
+expired or revoked; 403 `insufficient_scope`, it lacks `data:ingest`; a
+certificate error, the gateway's certificate is not trusted (set
+`data_lake.ca_bundle`).
 
 ## Contributing
 
