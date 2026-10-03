@@ -168,6 +168,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   level, trend) is gone: nothing computes it. The home dashboard's cloud
   compliance card reads the same summary. See UPGRADING.md for the field
   changes.
+
+- **Signing up no longer reports an error after creating the account**
+  (#589). The dashboard read an `access_token` from `POST /auth/register`,
+  which answers 201 with the created user, so it stored no token, its
+  `/users/me` call answered 401 and the form showed an error; a second
+  attempt then failed with "already exists". The dashboard now signs the
+  new account in with the same credentials through the login flow and
+  opens the dashboard. identity's login does not require a verified
+  address; should the sign-in be refused anyway, the user lands on the
+  login page with "Your account has been created. Sign in to continue."
+  A refusal of the registration itself (the password policy's reason, an
+  address already registered) is shown in the form, and a password that
+  is too short now shows the policy's reason there instead of the
+  browser's generic hint. fastapi-users' error codes no longer reach the
+  client as `ErrorCode.REGISTER_USER_ALREADY_EXISTS`: the shared error
+  handler sends the code itself, `REGISTER_USER_ALREADY_EXISTS` (also
+  `LOGIN_BAD_CREDENTIALS` on the login page).
+- **Logging out always lands on the login page** (#590). After the token
+  was revoked, the page's own requests answered 401 and the API client
+  answered each one with a hard redirect to `/`, which raced the logout's
+  client-side redirect to `/auth/login` and sometimes won. The logout is
+  now the only owner of that navigation: it suspends the API client's
+  redirect, revokes the token, removes the cookie and then replaces the
+  page with `/auth/login` (a full navigation, which also drops the old
+  session's client state). The `/auth/logout` page no longer issues a
+  second redirect of its own, and the unused `useLogout` hook, a third
+  one, is removed.
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could
