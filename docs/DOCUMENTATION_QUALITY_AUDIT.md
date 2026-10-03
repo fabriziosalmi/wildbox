@@ -27,7 +27,7 @@ find . -name "*.md" -exec markdown-link-check {} \;
 
 - ✅ No hardcoded API keys found in code blocks
 - ⚠️ .env.example files contain placeholder secrets (acceptable)
-- ⚠️ Some example JWTs exist but are obviously fake
+- ⚠️ Some example JWTs exist but are visibly fake
 
 **Recommendation**: Add pre-commit hook to scan for real secrets in docs.
 
@@ -165,8 +165,8 @@ POSTGRES_PASSWORD=
 **Action**: Run through passive voice detector
 
 ```bash
-# Install: pip install proselint
-proselint docs/**/*.md
+# Install: pip install proselint==0.16.0
+python scripts/check_prose.py docs/**/*.md
 ```
 
 ### 10. ⚠️ "Click Here" Links
@@ -522,7 +522,7 @@ grep -r "!\[\](" docs/
 | `markdownlint-cli` | Enforce markdown standards | `npm i -g markdownlint-cli` |
 | `markdown-link-check` | Validate links | `npm i -g markdown-link-check` |
 | `cspell` | Spell checking | `npm i -g cspell` |
-| `proselint` | Prose quality | `pip install proselint` |
+| `proselint` | Prose quality | `pip install proselint==0.16.0` |
 | `alex` | Insensitive language detection | `npm i -g alex` |
 | `write-good` | Passive voice detection | `npm i -g write-good` |
 

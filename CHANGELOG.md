@@ -840,6 +840,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **Prose Quality checks the Markdown and fails on findings**. The job
+  installed proselint unpinned and ran `proselint FILE ... || true`;
+  proselint 0.16 only accepts `proselint check FILE`, so every call
+  failed and the job passed having checked nothing. proselint is now
+  pinned to 0.16.0, its rules are in `.proselintrc.json`, and
+  `scripts/check_prose.py` lints every tracked Markdown file except the
+  vendored ones, with code blocks, inline code and HTML comments masked
+  so that commands are not read as prose. Each finding is a GitHub
+  annotation and any finding fails the job, which is no longer
+  advisory. The 16 findings left in the documentation are fixed.
+
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
   beside the services' `tests/unit/`, at a service's root, under
@@ -1409,7 +1420,7 @@ Truthful security tooling. The headline is a catalog-wide cleanup: every tool th
 ### Privacy
 
 - **Self-hosted ReDoc and fonts (#301, #306)** — no third-party CDN at runtime.
-- **`/privacy` notice added and linked** from the footer and previously-orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
+- **`/privacy` notice added and linked** from the footer and previously orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
 
 ### Features
 
@@ -1486,7 +1497,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 
 ### Security
 
-- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially-forged headers (#163).
+- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially forged headers (#163).
 - Backend service ports are now bound to `127.0.0.1`; only the gateway is published publicly (#164).
 - The central tools SSRF guard now also inspects `file_url`, `app_url`, and `download_url`, closing the bypass in `metadata_extractor` and `mobile_security_analyzer` (#165).
 
@@ -1671,7 +1682,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 ### Fixed
 
 - Removed hardcoded API keys from example code (replaced with clear placeholders)
-- Removed TODO placeholders from production documentation
+- Removed unfinished placeholder notes from production documentation
 - Fixed broken hyperlinks throughout documentation
 - Corrected grammar in success messages
 - Standardized header capitalization across documentation

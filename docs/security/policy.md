@@ -278,7 +278,7 @@ If you discover a security vulnerability:
 
 ### Bug Bounty Program
 
-We value security researchers! Valid vulnerability reports receive:
+We value security researchers. Valid vulnerability reports receive:
 
 - **Critical**: Recognition + merchandise
 - **High**: Recognition
