@@ -48,10 +48,16 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       # For integration with main stack, use:
       # - REDIS_URL=redis://wildbox-redis:6379/2
-      - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8002
-      - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_SENSOR_URL=http://localhost:8004
+      # The services the playbooks call, as published on the host by the
+      # main stack, and the secret their requests carry with the run's
+      # caller (#616). localhost would be this container.
+      - WILDBOX_API_URL=${WILDBOX_API_URL:-http://host.docker.internal:8000}
+      - WILDBOX_DATA_URL=${WILDBOX_DATA_URL:-http://host.docker.internal:8002}
+      - WILDBOX_GUARDIAN_URL=${WILDBOX_GUARDIAN_URL:-http://host.docker.internal:8013}
+      - WILDBOX_AGENTS_URL=${WILDBOX_AGENTS_URL:-http://host.docker.internal:8006}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy
@@ -76,10 +82,16 @@ services:
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       # For integration with main stack, use:
       # - REDIS_URL=redis://wildbox-redis:6379/2
-      - WILDBOX_API_URL=http://localhost:8000
-      - WILDBOX_DATA_URL=http://localhost:8002
-      - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_SENSOR_URL=http://localhost:8004
+      # The services the playbooks call, as published on the host by the
+      # main stack, and the secret their requests carry with the run's
+      # caller (#616). localhost would be this container.
+      - WILDBOX_API_URL=${WILDBOX_API_URL:-http://host.docker.internal:8000}
+      - WILDBOX_DATA_URL=${WILDBOX_DATA_URL:-http://host.docker.internal:8002}
+      - WILDBOX_GUARDIAN_URL=${WILDBOX_GUARDIAN_URL:-http://host.docker.internal:8013}
+      - WILDBOX_AGENTS_URL=${WILDBOX_AGENTS_URL:-http://host.docker.internal:8006}
+      - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET:?GATEWAY_INTERNAL_SECRET is required}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - responder

@@ -247,6 +247,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   malicious, benign and invalid inputs. The stubbed responses and the
   parameters sent to each tool are checked against the services' own
   schemas.
+- **Responder playbooks reach the services they call, as the user who
+  ran them** (#616). No step that called another service could succeed:
+  - No request carried an identity, and tools, agents, data and guardian
+    accept only the gateway's `X-Wildbox-*` headers with
+    `X-Gateway-Secret`. A run now records the gateway-authenticated user
+    who started it, and every connector request carries that user's
+    identity and the secret, so each service authorizes the call for that
+    user and team. A run without a complete caller fails before its first
+    step, and nothing is sent without one. The identity is scoped to the
+    run and reset when it ends.
+  - The tools connector posted a `params` envelope to
+    `/api/v1/tools/{tool}/execute`. It now posts the tool's input to
+    `/api/tools/{tool}`, or to `/api/tools/{tool}/async` with
+    `async_execution`, and reads and cancels tasks at `/api/tasks/{id}`.
+  - `wildbox.analyze_ioc` sends the agents service's
+    `{"ioc": {"type", "value"}, "priority"}` and returns the task it
+    queues; the verdict is read later from the task's `result_url`.
+  - `wildbox.create_vulnerability` records the vulnerability against the
+    Guardian asset named or addressed by `asset_name`, and fails the step
+    when there is none. Guardian's list and asset routes now have their
+    real paths.
+  - Actions whose routes exist in no service are removed: the blacklist
+    actions (the data service has no blacklist), `isolate_endpoint`,
+    `create_ticket`, and the data connector's IOC writes, reputation,
+    feed and asset actions. The data connector now has
+    `search_indicators` and `lookup_indicators`. `triage_url.yml` alerts
+    on a malicious URL and no longer claims to blacklist it.
+  - `docker-compose.yml` gives the responder the services' addresses
+    (`WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL`,
+    `WILDBOX_AGENTS_URL`); every connector used to target `localhost`
+    inside the container.
+
+  A new playbook, `hash_evidence.yml`, queues the hashing of a piece of
+  evidence as the caller. Unit tests call every connector action and check
+  its route, body and query against the target service's source, and its
+  headers against the run's caller. An integration test starts
+  `hash_evidence` through the gateway and checks that the tools task it
+  queues belongs to that user and to nobody else.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to

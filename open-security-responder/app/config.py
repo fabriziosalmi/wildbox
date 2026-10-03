@@ -20,7 +20,9 @@ class Settings(BaseSettings):
     redis_url: str = Field(default="redis://localhost:6381/0", env="REDIS_URL")
     redis_key_prefix: str = Field(default="responder:", env="REDIS_KEY_PREFIX")
     
-    # Wildbox service URLs
+    # Wildbox service URLs. The connectors call the services here directly,
+    # on the internal network, as the run's caller (app/caller.py);
+    # docker-compose.yml sets the container addresses.
     wildbox_api_url: str = Field(
         default="http://localhost:8000",
         env="WILDBOX_API_URL",
@@ -46,7 +48,17 @@ class Settings(BaseSettings):
         env="WILDBOX_AGENTS_URL",
         description="Open Security Agents AI service URL"
     )
-    
+
+    # The proof of origin the services require with the gateway identity
+    # headers. The responder checks it on the requests it receives (through
+    # open_security_shared.gateway_auth) and sends it, with the run's caller,
+    # on the requests its connectors make (app/caller.py, #616).
+    gateway_internal_secret: Optional[str] = Field(
+        default=None,
+        env="GATEWAY_INTERNAL_SECRET",
+        description="Shared secret proving a request comes from the gateway",
+    )
+
     # API configuration
     # Binding all interfaces is intended: the service runs in a container and
     # is reached through the container network. Override with API_HOST if needed.
