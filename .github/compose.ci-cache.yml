@@ -10,7 +10,7 @@
 # One scope per build context, named as in docker-build-validation.yml, which
 # builds the same Dockerfiles with the same shared context: the two jobs fill
 # and read the same cache. Where several services build one context (tools,
-# data, guardian) only the first writes, so concurrent exports do not race
+# data, guardian, cspm) only the first writes, so concurrent exports do not race
 # for one scope; the others read it.
 #
 # Staleness: every Dockerfile copies its lockfile (requirements.txt,
@@ -72,6 +72,9 @@ services:
     build:
       cache_from: ['type=gha,scope=cspm']
       cache_to: ['type=gha,scope=cspm,mode=max']
+  cspm-worker:
+    build:
+      cache_from: ['type=gha,scope=cspm']
   agents:
     build:
       cache_from: ['type=gha,scope=agents']

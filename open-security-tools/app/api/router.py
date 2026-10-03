@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
 from open_security_shared.gateway_auth import GatewayUser
+from pydantic import ValidationError
 
 from app.auth import verify_api_key
 from app.execution_manager import ToolExecutionManager
@@ -98,6 +99,19 @@ async def get_tool_info(tool_name: str, request: Request, api_key: str = Depends
     }
 
 
+def input_field_errors(error: ValidationError) -> List[Dict[str, Any]]:
+    """The location, message and type of each validation error, nothing else.
+
+    Pydantic's own error list also carries the rejected input and, for a
+    custom validator, the exception object in ``ctx``: the first can be a
+    secret, the second is not JSON.
+    """
+    return [
+        {"loc": list(item["loc"]), "msg": item["msg"], "type": item["type"]}
+        for item in error.errors(include_url=False)
+    ]
+
+
 def register_tool_endpoint(app, tool_name: str, tool_module: Any):
     """
     Dynamically register an endpoint for a tool.
@@ -142,6 +156,18 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         # Validate input data using the schema
         try:
             validated_input = input_schema_class(**input_data)
+        except ValidationError as e:
+            logger.error(f"Input validation failed for {tool_name}: {str(e)}")
+            # Which fields failed and why, so a client can point at them
+            # (#585). The submitted values are not echoed back: a field may
+            # hold a credential.
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "reason": "Input validation failed",
+                    "errors": input_field_errors(e),
+                },
+            )
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             logger.error(f"Input validation failed for {tool_name}: {str(e)}")
             raise HTTPException(

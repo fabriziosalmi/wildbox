@@ -16,6 +16,12 @@ so tests can assert exactly which headers the gateway forwarded upstream
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
 
+A dropped connection (#609). For a token starting with ``drop-once-`` the
+mock closes the connection without answering the first time it sees it, as
+identity does when its keep-alive timeout closes a connection the gateway is
+writing into, and authorizes it afterwards. ``drop-always-`` tokens are
+dropped every time.
+
 Revocation (#571). Besides the fixture tokens, the mock accepts JWT-shaped
 tokens whose (unsigned) payload carries a ``jti``, the way identity's login
 tokens do, until POST /__mock/revoke {"jti": ...} blacklists that jti. Like
@@ -95,6 +101,7 @@ TOKENS = {
 
 authorize_calls = Counter()
 revoked_jtis = set()
+dropped_tokens = set()
 revoked_api_keys = set()
 removed_members = set()  # (user_id, team_id)
 
@@ -174,6 +181,13 @@ class Handler(BaseHTTPRequestHandler):
         token = request.get("token", "")
         authorize_calls[token] += 1
 
+        if token.startswith("drop-always-") or (
+            token.startswith("drop-once-") and token not in dropped_tokens
+        ):
+            dropped_tokens.add(token)
+            self.close_connection = True  # no reply: the gateway reads EOF
+            return
+
         auth = TOKENS.get(token)
         key = dynamic_api_key(token) if auth is None else None
         if key is not None:
@@ -189,6 +203,13 @@ class Handler(BaseHTTPRequestHandler):
                 "scopes": ["*"],
                 "api_key_id": key_id,
                 "credential_expires_at": expires_at or None,
+            }
+        if auth is None and token.startswith("drop-once-"):
+            auth = {
+                "user_id": "user-9999",
+                "team_id": "team-9999",
+                "role": "user",
+                "scopes": None,
             }
         claims = jwt_claims(token) if auth is None else None
         if claims is not None:

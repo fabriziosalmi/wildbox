@@ -10,6 +10,8 @@
 #   * X-Gateway-Secret proof-of-origin propagation (wrong secret -> 403)
 #   * auth-cache short-circuit (one /internal/authorize call for N requests)
 #   * the removed standalone tools UI (/tools/ answers 404, #581)
+#   * a dropped identity connection is retried once; 503s are JSON with
+#     Retry-After (#609)
 
 set -u
 
@@ -173,6 +175,37 @@ assert_json "tools API reaches the service" '.path' '/api/v1/tools/echo'
 request "auth_token cookie alone is not a credential" 401 \
     -H "Cookie: auth_token=valid-bearer-token" "$GATEWAY_URL/api/v1/tools/echo"
 assert_json "cookie-only error code" '.error' 'authentication_required'
+
+# 10g-10j. A connection identity closes under the gateway (#609). Asking
+#          identity is a read, so the gateway sends it again on another
+#          connection instead of answering 503; when identity cannot be
+#          reached at all, the 503 is JSON and carries Retry-After.
+DROP_ONCE="drop-once-$(date +%s)-$$"
+request "authorization survives a dropped connection" 200 \
+    -H "Authorization: Bearer $DROP_ONCE" "$GATEWAY_URL/api/v1/tools/echo"
+assert_json "identity user forwarded after the retry" '.headers["x-wildbox-user-id"]' 'user-9999'
+request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
+assert_json "dropped authorization sent exactly twice" ".\"$DROP_ONCE\"" '2'
+
+DROP_ALWAYS="drop-always-$(date +%s)-$$"
+STATUS=$(curl -s -o /tmp/body.json -D /tmp/headers.txt -w "%{http_code}" \
+    -H "Authorization: Bearer $DROP_ALWAYS" "$GATEWAY_URL/api/v1/tools/echo")
+BODY=$(cat /tmp/body.json)
+if [ "$STATUS" = 503 ]; then
+    pass "identity unreachable answers 503"
+else
+    fail "identity unreachable: expected 503, got $STATUS — body: $(head -c 300 /tmp/body.json)"
+fi
+assert_json "unreachable error code" '.error' 'service_unavailable'
+assert_strict_json "unreachable error body"
+RETRY_AFTER=$(tr -d '\r' < /tmp/headers.txt | awk -F': ' 'tolower($1)=="retry-after"{print $2}')
+if echo "$RETRY_AFTER" | grep -Eq '^[1-9][0-9]*$'; then
+    pass "unreachable 503 carries Retry-After ($RETRY_AFTER)"
+else
+    fail "unreachable 503: expected a Retry-After in seconds, got '$RETRY_AFTER'"
+fi
+request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
+assert_json "an unreachable identity is tried twice, not more" ".\"$DROP_ALWAYS\"" '2'
 
 # 11. Proof-of-origin: a gateway configured with the wrong
 #     GATEWAY_INTERNAL_SECRET is rejected by identity (403) and must NOT

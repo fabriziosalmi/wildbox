@@ -29,16 +29,22 @@ def _require_secret() -> str:
     return secret
 
 
+# GCP, with a service account key that is not one: cspm-worker now runs every
+# scan (#601), and fails these at once without calling any cloud API. With
+# fake AWS keys it would send each scan's checks to AWS from CI and keep the
+# worker busy for the other tests.
+CREDENTIALS = {
+    "auth_method": "service_account",
+    "project_id": "wildbox-ci-project",
+    "service_account_key": {"type": "service_account", "note": "not a key"},
+}
+
+
 def _start_scan(base: str, headers: Dict[str, str]) -> str:
     payload = {
-        "provider": "aws",
-        "account_id": "123456789012",
-        "credentials": {
-            "auth_method": "access_key",
-            "access_key_id": "AKIAFAKEFAKEFAKEFAKE",
-            "secret_access_key": "fake-secret-for-ci-only",
-            "region": "us-east-1",
-        },
+        "provider": "gcp",
+        "account_id": "wildbox-ci-project",
+        "credentials": CREDENTIALS,
     }
     resp = requests.post(f"{base}/api/v1/scans", headers=headers, json=payload, timeout=15)
     assert resp.status_code == 202, resp.text
@@ -112,17 +118,12 @@ def test_cspm_batch_scans_are_recorded_for_their_team(service_urls):
 
     scans = [
         {
-            "provider": "aws",
+            "provider": "gcp",
             "account_id": account_id,
             "metadata": metadata,
-            "credentials": {
-                "auth_method": "access_key",
-                "access_key_id": "AKIAFAKEFAKEFAKEFAKE",
-                "secret_access_key": "fake-secret-for-ci-only",
-                "region": "us-east-1",
-            },
+            "credentials": CREDENTIALS,
         }
-        for account_id, metadata in (("111111111111", {}), ("222222222222", {"team_id": team_b}))
+        for account_id, metadata in (("ci-project-1", {}), ("ci-project-2", {"team_id": team_b}))
     ]
     resp = requests.post(
         f"{base}/api/v1/batch/scans",

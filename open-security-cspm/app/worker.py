@@ -58,7 +58,29 @@ celery_app.conf.update(
     # running scans, which GET /api/v1/scans/{id} reports; twice the scan
     # time limit keeps that state for as long as a scan can run.
     result_expires=2 * settings.scan_timeout_seconds,
+    # Redis hands an unacknowledged task to another worker once this many
+    # seconds have passed since it was delivered. Tasks are acknowledged
+    # late (task_acks_late, above), so with the default of an hour a scan
+    # running close to SCAN_TIMEOUT_SECONDS would be started a second time.
+    # Longer than the time limit, so that never happens.
+    broker_transport_options={"visibility_timeout": settings.scan_timeout_seconds + 600},
 )
+
+# The queue each task is published to. cspm-worker consumes exactly these
+# (its -Q in docker-compose.yml; a unit test compares the two), so no task
+# is published to a queue nobody reads, which is what happened to every
+# scan while the worker was commented out (#601). "celery" is the queue
+# these tasks always went to without a route, so the scans an earlier
+# release queued are consumed after an upgrade: their credentials have
+# expired, and they end as failed instead of staying queued.
+SCAN_QUEUE = "celery"
+TASK_QUEUES = {
+    SCAN_QUEUE: ("run_cspm_scan", "get_available_checks", "health_check"),
+}
+celery_app.conf.task_default_queue = SCAN_QUEUE
+celery_app.conf.task_routes = {
+    name: {"queue": queue} for queue, names in TASK_QUEUES.items() for name in names
+}
 
 # Redis holds the scan records (scan_store). from_url does not connect, so
 # importing this module needs no Redis.

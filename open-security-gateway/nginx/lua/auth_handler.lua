@@ -78,11 +78,12 @@ local function check_circuit_breaker()
     -- Circuit open - too many failures
     if failures >= CIRCUIT_BREAKER_THRESHOLD then
         if now - last_failure < CIRCUIT_BREAKER_TIMEOUT then
+            local remaining = CIRCUIT_BREAKER_TIMEOUT - (now - last_failure)
             utils.log("warn", "Circuit breaker OPEN - identity service unavailable", {
                 failures = failures,
-                timeout_remaining = CIRCUIT_BREAKER_TIMEOUT - (now - last_failure)
+                timeout_remaining = remaining
             })
-            return false
+            return false, remaining
         else
             -- Reset circuit breaker
             circuit_cache:delete(failures_key)
@@ -110,8 +111,9 @@ end
 -- Call identity service to validate token with improved error handling
 local function validate_token_with_identity(token, token_type, config)
     -- Check circuit breaker
-    if not check_circuit_breaker() then
-        return nil, "circuit_breaker_open"
+    local closed, retry_after = check_circuit_breaker()
+    if not closed then
+        return nil, "circuit_breaker_open", retry_after
     end
 
     local url = config.identity_service_url .. "/internal/authorize"
@@ -141,7 +143,11 @@ local function validate_token_with_identity(token, token_type, config)
             ["X-Gateway-Secret"] = config.gateway_secret,
             ["X-Request-ID"] = ngx.var.request_id or utils.generate_request_id()
         },
-        timeout = TIMEOUT_SECONDS * 1000 -- Convert to milliseconds
+        timeout = TIMEOUT_SECONDS * 1000, -- Convert to milliseconds
+        -- Authorizing is a read: identity changes nothing for it, so a
+        -- request that met a connection identity had just closed can be
+        -- sent again (#609).
+        retry_stale = true
     })
 
     local duration = (ngx.now() - start_time) * 1000
@@ -828,6 +834,21 @@ local function set_auth_headers(auth_data)
     ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
 end
 
+-- The gateway could not get an authorization decision. That is transient
+-- by nature, so say so the way HTTP does: a JSON body like every other
+-- refusal here, and Retry-After. The generic branch used to exit with no
+-- body at all, which nginx filled with its HTML error page (#609).
+local function service_unavailable(retry_after)
+    ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
+    ngx.header.content_type = "application/json"
+    ngx.header["Retry-After"] = tostring(math.max(1, math.ceil(tonumber(retry_after) or 1)))
+    ngx.say(utils.json_encode({
+        error = "service_unavailable",
+        message = "Authentication service temporarily unavailable"
+    }))
+    ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+end
+
 -- Main authentication handler
 function _M.authenticate()
     local request_start = ngx.now()
@@ -912,8 +933,8 @@ function _M.authenticate()
         local generation = auth_generation()
         local rid = revocation_id(token, token_type, cache_key)
 
-        local validation_err
-        auth_data, validation_err = validate_token_with_identity(token, token_type, config)
+        local validation_err, retry_after
+        auth_data, validation_err, retry_after = validate_token_with_identity(token, token_type, config)
 
         if validation_err then
             if validation_err == "unauthorized" then
@@ -927,16 +948,10 @@ function _M.authenticate()
             elseif validation_err == "forbidden" then
                 ngx.exit(ngx.HTTP_FORBIDDEN)
             elseif validation_err == "circuit_breaker_open" then
-                ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
-                ngx.header.content_type = "application/json"
-                ngx.say(utils.json_encode({
-                    error = "service_unavailable",
-                    message = "Authentication service temporarily unavailable"
-                }))
-                ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+                service_unavailable(retry_after)
             else
                 utils.log("error", "Authentication service error", {error = validation_err})
-                ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+                service_unavailable(1)
             end
         end
 

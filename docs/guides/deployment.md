@@ -318,6 +318,41 @@ For example, "more than 5 unresolved critical vulnerabilities":
   `last_value` and `last_evaluated_at`. `trigger_count` counts the times it
   started firing.
 
+### cspm's scan worker
+
+`cspm-worker` runs the cloud security scans that `cspm` queues, one at a
+time per worker process. It uses cspm's image and settings and, in the
+production overlay, sits on `data` (Redis) and `egress` (the cloud provider
+APIs). Without it every scan stays `queued`, and the compliance pages, the
+cloud security overview and the reports have nothing to show.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CSPM_SCAN_TIMEOUT_SECONDS` | `3600` | Time limit of one scan, from 120 to 86400 seconds. The worker is also given this long to stop, so `docker compose stop` or `down` can wait this long while a scan runs |
+| `CSPM_REPORT_RETENTION_DAYS` | `90` | Days a scan and its report are kept in Redis; see [Redis memory](#redis-memory) |
+
+Check that it is up and reading its queue:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps cspm-worker
+docker compose -f docker-compose.yml -f docker-compose.prod.yml exec cspm-worker \
+  sh -c 'celery -A app.worker:celery_app inspect active_queues -d "celery@$HOSTNAME"'
+```
+
+The second command lists one queue, `celery`. `GET /health` on cspm also
+reports `"celery": "healthy"` once a worker answers.
+
+- **Capacity.** One worker runs two scans at once (`--concurrency=2`, one
+  CPU, 1 GB). For more, run more workers,
+  `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --scale cspm-worker=3`,
+  or raise the concurrency together with the container's limits. The cspm
+  README, "The scan worker", compares the two.
+- **Credentials.** The API keeps a scan's encrypted credentials in Redis for
+  five minutes; a scan that no worker takes within that time fails. The
+  worker deletes them as soon as it has read them.
+- **Providers.** Only AWS scans run; GCP and Azure scans fail when the
+  worker takes them.
+
 ---
 
 ## 5. Verify

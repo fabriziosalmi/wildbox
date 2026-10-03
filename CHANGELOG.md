@@ -33,6 +33,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/internal/authorize` now reports `password_change_required`. The
   dashboard takes such a user from the login to a "Choose your
   password" screen, and back to it from any other page.
+- **Run a tool from the dashboard** (#585). `/toolbox` was a catalog
+  since the tools service's standalone pages were removed (#581). Each
+  tool's "Run" button now opens `/toolbox/<name>`, a form generated from
+  the input schema of `GET /api/v1/tools/<name>/info`: strings, numbers
+  and integers with their bounds, enums (also behind `$ref`), booleans,
+  arrays of primitives, and a JSON text area for anything else; `anyOf`
+  with `null` is an optional field, and the schema's description,
+  default and example are the help text, initial value and placeholder.
+  The schema's constraints are checked before anything is sent, and an
+  empty optional field is left to the service's default. The run is
+  either synchronous (`POST /api/v1/tools/<name>`) or a background task
+  (`POST .../async`, then `GET /api/v1/tasks/<id>` until it finishes),
+  which can be cancelled. The result is the service's answer as it came,
+  as key/value tables and lists plus the raw JSON, with "Copy JSON",
+  "Download JSON" and "Copy as cURL" (the request with the form's body;
+  the token comes from `$WILDBOX_TOKEN`). Refusals are shown with the
+  service's reason: field errors under their fields, SSRF-blocked
+  targets (400) and tools the caller is not authorized for (403).
+- **A tool's 422 names the fields that failed** (#585). The tool
+  endpoint answered every invalid body with the bare message "Input
+  validation failed". The canonical error body now also carries
+  `details.errors`, the location, message and type of each failure,
+  without the submitted values.
 
 ### Fixed
 
@@ -91,6 +114,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A workflow step gets its tool's input model** (#611). The
   orchestrator took the first schema class whose name ends in "Input",
   which was the imported `BaseToolInput` for every tool.
+- **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
+  cspm worker commented out and `docker-compose.prod.yml` declared none,
+  so every scan stayed `queued` and the compliance pages, the cloud
+  security overview and the reports never had data. A new service,
+  `cspm-worker`, built like cspm and with its settings (credential key,
+  Redis URLs with the password, `CSPM_REPORT_RETENTION_DAYS`, scan time
+  limit), consumes exactly the queue the scan tasks are routed to, now
+  named in `app/worker.py` and checked against the service by a unit
+  test. It has a health check that pings its own node, resource limits,
+  `restart: unless-stopped`, `no-new-privileges`, the image's non-root
+  user, and a `stop_grace_period` equal to the scan time limit, which is
+  now `CSPM_SCAN_TIMEOUT_SECONDS` (default 3600, validated from 120 to
+  86400). Redis redelivers an unfinished task only after that limit plus
+  ten minutes, so a long scan is never run twice. In production it sits
+  on `data` and `egress`; `check_network_segmentation.py` covers it. A
+  scan a worker has taken reads `running` instead of `unknown`. The
+  Production Stack job checks that each replica answers a ping and reads
+  the routed queue, and an integration test submits a scan through the
+  gateway and waits for the worker to finish it.
+
+- **tools resolve host names again.** aiohttp resolves through aiodns when it
+  is installed, and the lock paired aiodns 3.2.0 with pycares 5.0.1: aiodns
+  called pycares' `getaddrinfo` with the pycares 4 signature, so every lookup
+  raised `TypeError` and every tool that fetched a host name through aiohttp
+  failed before connecting. aiodns is now 4.0.4, which requires pycares 5, and
+  a unit test resolves `localhost` through aiohttp's default resolver.
+- **A protected route no longer answers 503 when identity closes an idle
+  connection** (#609). The gateway asks identity to authorize every
+  uncached token over connections it keeps alive, and kept them idle for
+  60 s, while identity (uvicorn) closes them after 5 s. A request written
+  into a connection identity was closing failed with "connection reset
+  by peer" or "broken pipe", and the gateway answered 503 with nginx's
+  HTML error page: about one E2E repetition in a hundred, at times three.
+  Ten of those within a minute opened the circuit breaker, and every
+  uncached token then got 503 for a minute. The gateway now gives an
+  idle connection up after 4 s, for its Lua calls and for every upstream
+  it proxies to (a POST written into a closing connection got a 502), and
+  sends an authorization that met a closed connection once more, on
+  another one: authorizing changes nothing at identity. Only a failure
+  that survives that counts toward the circuit breaker. When identity
+  cannot be reached, the 503 is now JSON, like every other refusal of
+  the gateway, with `Retry-After`.
+
 - **A responder step condition on an undefined name is false** (#595).
   Templates render with `StrictUndefined`, so a condition that checked
   an optional field, such as `trigger.tag == 'urgent'` when the trigger
@@ -1118,6 +1184,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finding is a GitHub annotation and any finding fails the job, which is
   no longer advisory. The 16 findings left in the documentation are
   fixed.
+
+- **A failed E2E run keeps what is needed to trace it** (#609). The
+  workflow printed the last 150 lines of `docker compose logs`, which do
+  not include the gateway's access and error logs: they are files. On
+  failure it now uploads them, with the state and restart count of every
+  container and the full, timestamped logs of gateway, identity and
+  data, and prints the access log's 5xx lines. The access log records
+  `$request_id`, `$upstream_addr` and `$upstream_status`, so a 5xx line
+  says whether an upstream answered it or the gateway did.
 
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
