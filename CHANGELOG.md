@@ -134,6 +134,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   level, trend) is gone: nothing computes it. The home dashboard's cloud
   compliance card reads the same summary. See UPGRADING.md for the field
   changes.
+
+- **Signing up no longer reports an error after creating the account**
+  (#589). The dashboard read an `access_token` from `POST /auth/register`,
+  which answers 201 with the created user, so it stored no token, its
+  `/users/me` call answered 401 and the form showed an error; a second
+  attempt then failed with "already exists". The dashboard now signs the
+  new account in with the same credentials through the login flow and
+  opens the dashboard. identity's login does not require a verified
+  address; should the sign-in be refused anyway, the user lands on the
+  login page with "Your account has been created. Sign in to continue."
+  A refusal of the registration itself (the password policy's reason, an
+  address already registered) is shown in the form, and a password that
+  is too short now shows the policy's reason there instead of the
+  browser's generic hint. fastapi-users' error codes no longer reach the
+  client as `ErrorCode.REGISTER_USER_ALREADY_EXISTS`: the shared error
+  handler sends the code itself, `REGISTER_USER_ALREADY_EXISTS` (also
+  `LOGIN_BAD_CREDENTIALS` on the login page).
+- **Logging out always lands on the login page** (#590). After the token
+  was revoked, the page's own requests answered 401 and the API client
+  answered each one with a hard redirect to `/`, which raced the logout's
+  client-side redirect to `/auth/login` and sometimes won. The logout is
+  now the only owner of that navigation: it suspends the API client's
+  redirect, revokes the token, removes the cookie and then replaces the
+  page with `/auth/login` (a full navigation, which also drops the old
+  session's client state). The `/auth/logout` page no longer issues a
+  second redirect of its own, and the unused `useLogout` hook, a third
+  one, is removed.
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could
@@ -604,6 +631,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `asyncio.gather`, and a sync tool would run in LangChain's
   thread pool under `copy_context()`; both inherit the task's context, and
   the tests check the identity reaches the wire through each.
+- **A revoked API key is refused on the next request** (#593). The
+  gateway caches the decision for a key for `AUTH_CACHE_TTL` (300 s), and
+  revoking a key only marked it inactive in identity's database, so a key
+  revoked because it leaked kept working for up to five minutes on every
+  route the gateway authenticates. Deleting or deactivating the account
+  behind a key, or removing the member from the team, did the same; only
+  the admin status route flushed the gateway's cache, after the commit and
+  best effort. identity now reports the key's id with every authorization
+  it grants for a key (`api_key_id`), and every change that disables keys
+  -- revoking a key (own or team), deactivating an account
+  (`/admin/users/{id}/status` or `PATCH /users/{id}`), deleting one
+  (`/admin/users/{id}`, `DELETE /users/{id}`, `/admin/me/account`) and
+  removing a member from a team -- first sends the gateway
+  `{"api_keys": [<ids>], "ttl": ...}` on its internal listener and
+  commits only once the gateway confirms the count; otherwise nothing
+  changes and the request answers 503, as logout does since #571. The
+  gateway keeps a marker per key, shared by its workers, and refuses a
+  decision for that key on a cache hit and after a fresh authorization,
+  so a request in flight across the revocation is refused too.
+  Deactivating or deleting an account also ends its sessions there, with
+  the per-user cutoff a password change uses (#569), and stores it in
+  `users.tokens_valid_after`. A password change still does not revoke API
+  keys.
+- **An API key with an expiry works until it expires, and not after**
+  (#593). `/internal/authorize` compared the key's `expires_at`, read back
+  timezone-aware, with a naive `utcnow()`: the comparison raised, so every
+  key created with an expiry answered 500 and the gateway 503. Once that
+  was fixed, the gateway would have kept serving a cached decision for up
+  to its TTL past the expiry. identity now reports `credential_expires_at`
+  (the key's expiry, or a session token's `exp`), and the gateway caches a
+  decision no longer than that and does not serve it afterwards.
 - **One password policy for every path that sets a password** (#583).
   Registration and the reset-password flow accepted a one-character
   password: fastapi-users' `BaseUserCreate` does not check it and its
@@ -957,6 +1015,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
+
+- **Prose Quality checks the Markdown and fails on findings** (#606).
+  The job installed proselint unpinned and ran
+  `proselint FILE ... || true`; proselint 0.16 only accepts
+  `proselint check FILE`, so every call failed and the job passed having
+  checked nothing. proselint is now pinned to 0.16.0, its rules are in
+  `.proselintrc.json`, and `scripts/check_prose.py` lints every tracked
+  Markdown file except the vendored ones, with code blocks, inline code
+  and HTML comments masked so that commands are not read as prose. Each
+  finding is a GitHub annotation and any finding fails the job, which is
+  no longer advisory. The 16 findings left in the documentation are
+  fixed.
 
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
@@ -1548,7 +1618,7 @@ Truthful security tooling. The headline is a catalog-wide cleanup: every tool th
 ### Privacy
 
 - **Self-hosted ReDoc and fonts (#301, #306)** — no third-party CDN at runtime.
-- **`/privacy` notice added and linked** from the footer and previously-orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
+- **`/privacy` notice added and linked** from the footer and previously orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
 
 ### Features
 
@@ -1625,7 +1695,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 
 ### Security
 
-- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially-forged headers (#163).
+- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially forged headers (#163).
 - Backend service ports are now bound to `127.0.0.1`; only the gateway is published publicly (#164).
 - The central tools SSRF guard now also inspects `file_url`, `app_url`, and `download_url`, closing the bypass in `metadata_extractor` and `mobile_security_analyzer` (#165).
 
@@ -1810,7 +1880,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 ### Fixed
 
 - Removed hardcoded API keys from example code (replaced with clear placeholders)
-- Removed TODO placeholders from production documentation
+- Removed unfinished placeholder notes from production documentation
 - Fixed broken hyperlinks throughout documentation
 - Corrected grammar in success messages
 - Standardized header capitalization across documentation

@@ -72,6 +72,20 @@ def hash_api_key(api_key: str) -> str:
     ).hexdigest()
 
 
+def api_key_expired(expires_at: Optional[datetime]) -> bool:
+    """Whether an API key's expires_at has passed (#593).
+
+    The column is a timestamptz and is read back timezone-aware; it was
+    compared with a naive utcnow(), which raises TypeError. A naive value is
+    read as UTC.
+    """
+    if expires_at is None:
+        return False
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    return expires_at <= datetime.now(timezone.utc)
+
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against its hash (Argon2id or legacy bcrypt)."""
     verified, _ = password_helper.verify_and_update(plain_password, hashed_password)
@@ -312,7 +326,7 @@ async def get_current_user_from_api_key(
     api_key_obj, user = row
     
     # Check if key is expired
-    if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
+    if api_key_expired(api_key_obj.expires_at):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key expired",
@@ -387,7 +401,7 @@ async def verify_api_key(api_key: str, db: AsyncSession) -> Optional[Dict[str, A
     api_key_obj, user, team, membership = row
     
     # Check if key is expired
-    if api_key_obj.expires_at and api_key_obj.expires_at < datetime.utcnow():
+    if api_key_expired(api_key_obj.expires_at):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key expired",

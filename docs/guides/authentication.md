@@ -107,9 +107,8 @@ Limits to know:
   than one gateway replica, the others refuse the token only once their
   cached decision expires (`AUTH_CACHE_TTL`, 300 seconds by default).
 
-Deactivating a user (`PATCH /api/v1/identity/admin/users/{user_id}/status`)
-also clears the gateway's authorization cache, and the gateway refuses
-inactive users' tokens and API keys from then on.
+Deactivating or deleting an account ends its sessions and its API keys at
+once; see [Revoking an API key](#revoking-an-api-key).
 
 ### A Password Change Ends the Other Sessions
 
@@ -134,6 +133,42 @@ This applies to `change-password`, to the reset-password flow and to an
 administrator's reset through `PATCH /auth/users/{id}`. As with logout,
 other gateway replicas than the one identity reaches refuse those sessions
 only once their cached decisions expire.
+
+### Revoking an API Key
+
+`DELETE /api/v1/identity/api-keys/{key_prefix}` revokes one of the caller's
+keys; a team owner or admin revokes a team's key with
+`DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}`. The key is
+refused on the next request, although the gateway caches the decision
+for a key:
+
+- before it marks the key inactive, identity tells the gateway to refuse
+  it, by the key's id (identity does not keep the key itself, and reports
+  the id with every authorization it grants for the key). The gateway
+  records a marker shared by all its workers and checks it on every
+  request, cached decision or not, so a request that was being authorized
+  while the key was revoked is refused too;
+- if the gateway does not confirm, the key is not revoked and the request
+  answers 503; try again.
+
+Every other change that disables a key does the same, with the same 503
+when the gateway does not confirm:
+
+| Change | Keys refused at once |
+| --- | --- |
+| An administrator deactivates the account (`PATCH /api/v1/identity/admin/users/{user_id}/status`, or `PATCH /auth/users/{id}` with `is_active: false`) | All the account's keys, and every session of the account |
+| An administrator deletes the account (`DELETE /api/v1/identity/admin/users/{user_id}` or `DELETE /auth/users/{id}`) | All the account's keys, the keys of the teams deleted with it, and every session |
+| A user deletes their own account (`DELETE /api/v1/identity/admin/me/account`) | All the account's keys, and every session, the current one included |
+| A team owner or admin removes a member (`DELETE /api/v1/identity/admin/teams/{team_id}/members/{user_id}`) | The member's keys for that team |
+
+A key with an expiry (`expires_at` when it is created) is refused from that
+moment: identity reports the expiry with every authorization, and the
+gateway does not serve a cached decision past it.
+
+A password change does not revoke API keys: they are not sessions. Revoke a
+key that may be compromised on its own. As with logout, the marker is kept by
+the gateway instance identity reaches; other replicas refuse the key once
+their cached decision expires.
 
 ---
 

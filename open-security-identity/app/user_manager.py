@@ -24,6 +24,7 @@ from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .access_revocation import active_api_key_ids, end_account_access_or_503
 from .auth import token_predates_cutoff, verify_access_token, verify_password
 from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
@@ -260,7 +261,31 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
                     ),
                 ) from exc
             update_dict = {**update_dict, "tokens_valid_after": not_before}
+        if update_dict.get("is_active") is False and user.is_active:
+            # An administrator's deactivation (PATCH /users/{id}): the
+            # account's API keys and sessions stop working at the gateway
+            # first, or the account stays active (503) (#593).
+            not_before = await end_account_access_or_503(
+                await self._active_api_key_ids(user), user.id, "The deactivation"
+            )
+            update_dict = {**update_dict, "tokens_valid_after": not_before}
         return await super()._update(user, update_dict)
+
+    async def _active_api_key_ids(self, user):
+        return await active_api_key_ids(self.user_db.session, user_id=user.id)
+
+    async def delete(self, user, request=None) -> None:
+        """Delete an account (DELETE /users/{id}), ending its access first.
+
+        The rows go with the account (its keys and memberships cascade), and
+        the gateway would go on accepting the account's keys and sessions for
+        up to its cache TTL. It is told first and must confirm, or nothing is
+        deleted (503) (#593).
+        """
+        await end_account_access_or_503(
+            await self._active_api_key_ids(user), user.id, "The deletion"
+        )
+        await super().delete(user, request=request)
 
     async def set_password(self, user, password: str):
         """Set the user's password, ending their other sessions (see _update).

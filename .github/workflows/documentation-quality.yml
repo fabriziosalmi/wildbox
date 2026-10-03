@@ -7,6 +7,9 @@ on:
       - 'docs/**'
       - '.cspell.json'
       - '.markdownlint.json'
+      - '.proselintrc.json'
+      - 'scripts/check_prose.py'
+      - '.github/workflows/documentation-quality.yml'
   push:
     branches:
       - main
@@ -90,10 +93,9 @@ jobs:
         continue-on-error: true
 
   prose-quality:
-    name: Prose Quality (Advisory)
+    name: Prose Quality
     runs-on: ubuntu-latest
     timeout-minutes: 10  # observed max 0.5 min
-    continue-on-error: true
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -103,13 +105,20 @@ jobs:
         with:
           python-version: '3.11'
 
+      # Pinned: proselint 0.16 replaced `proselint FILE` with
+      # `proselint check FILE`, and an unpinned install broke the old
+      # invocation without anyone noticing. Bump deliberately.
       - name: Install proselint
-        run: pip install proselint
+        run: pip install proselint==0.16.0
 
-      - name: Run proselint on docs
+      # Rules live in .proselintrc.json. scripts/check_prose.py masks
+      # code blocks, inline code and comments, prints each finding as an
+      # annotation, and fails the job when there is any. Vendored
+      # third-party docs are not ours to edit.
+      - name: Run proselint on Markdown
         run: |
-          find docs -name "*.md" -exec proselint {} \; || true
-          find . -maxdepth 1 -name "*.md" -exec proselint {} \; || true
+          git ls-files -z '*.md' ':!:docs/vendor/**' ':!:docs/api/vendor/**' \
+            | xargs -0 python scripts/check_prose.py --config .proselintrc.json
 
   inclusive-language:
     name: Inclusive Language Check

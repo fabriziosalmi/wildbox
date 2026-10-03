@@ -1,0 +1,8 @@
+{
+  "checks": {
+    "typography.symbols.curly_quotes": false,
+    "typography.symbols.ellipsis": false,
+    "typography.diacritical_marks": false,
+    "needless_variants": false
+  }
+}
