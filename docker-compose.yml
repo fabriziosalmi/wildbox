@@ -50,6 +50,13 @@ services:
       # logout revoked nothing (#475). The failures were logged and swallowed.
       - REDIS_URL=${IDENTITY_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/0}
       - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      # Keys the HMAC of stored API-key digests, separately from the JWT
+      # key, so rotating JWT_SECRET_KEY leaves API keys valid. It was
+      # generated into .env but never passed here, so identity fell back to
+      # JWT_SECRET_KEY and a JWT rotation invalidated every API key (#648).
+      # An existing deployment seeds it from JWT_SECRET_KEY first; see
+      # UPGRADING.md.
+      - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:?API_KEY_HASH_SECRET is required; see UPGRADING.md before setting it on an existing deployment}
       # Shared secret the gateway presents to /internal/authorize. Without it
       # identity returns "Service misconfigured" and ALL gateway auth fails.
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}

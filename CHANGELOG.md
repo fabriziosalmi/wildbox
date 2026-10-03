@@ -461,7 +461,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the API key, the report recipients and the gateway's certificate
   (not its key), so a workflow can reach the API over verified HTTPS.
 
-
 - **cspm keeps scan reports for 90 days, and batch scans count** (#591).
   The compliance summary and findings, the dashboard summary and the
   cloud security overview read scan reports from the Celery result
@@ -1001,6 +1000,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   foreign key against a second team; a mutation that removes the team
   filter fails 124 of them. An integration test registers two accounts
   and checks the same through the gateway.
+
+- **API-key digests no longer depend on `JWT_SECRET_KEY`** (#648).
+  `API_KEY_HASH_SECRET` was generated into `.env` and documented, but
+  compose never passed it to identity, which then keyed every stored
+  API-key digest with `JWT_SECRET_KEY` without a warning. Rotating the JWT
+  key, the routine rotation `SECURITY.md` recommends, invalidated every
+  API key with no way back, and the guard in `scripts/rotate_secrets.sh`
+  could not catch it: it checked `.env`, where the generator always writes
+  the variable. `docker-compose.yml` and the production overlay now pass
+  it to identity as a required variable, identity refuses to start
+  without it when `ENVIRONMENT=production` (a short, placeholder or
+  low-entropy value is refused too, and the error no longer echoes the
+  settings it validated), and outside production a missing value still
+  falls back to the JWT key with a warning at start-up. The rotation
+  guard now refuses `JWT_SECRET_KEY` unless `docker compose config` passes
+  the variable to identity and the running identity container, if any,
+  has it. `--init` (`make init-api-key-hash`) copies `JWT_SECRET_KEY` into
+  `API_KEY_HASH_SECRET` inside `.env` without printing either, does
+  nothing when they already match, and the script no longer passes a new
+  value on a command line, where `ps` could read it. An existing
+  deployment runs `--init` once before upgrading, so keys issued so far
+  keep working; see UPGRADING.md. Unit tests cover the production
+  refusal, the digest keyed by the hash secret, a JWT rotation that
+  leaves digests unchanged and a pre-upgrade key that still verifies
+  after seeding; script tests cover both compose files and the guard
+  against a stub `docker`.
 
 - **guardian accepts gateway-authenticated requests only** (#629). Its
   middleware accepted rows of guardian's own `APIKey` table from an
