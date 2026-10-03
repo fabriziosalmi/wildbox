@@ -52,5 +52,3 @@
       path: security/status.md
     - title: Security policy
       path: security/policy.md
-    - title: Tools service audit (2025)
-      path: security/tools-service-audit.md
