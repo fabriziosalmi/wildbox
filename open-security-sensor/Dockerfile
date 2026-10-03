@@ -82,10 +82,10 @@ RUN chmod 755 /etc/security-sensor
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8899/health || exit 1
+    CMD curl -f http://localhost:8004/health || exit 1
 
 # Expose API port
-EXPOSE 8899
+EXPOSE 8004
 
 # Switch to non-root user
 USER sensor

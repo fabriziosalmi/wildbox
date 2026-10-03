@@ -9,7 +9,7 @@ scrape_configs:
   # Sensor metrics
   - job_name: 'open-security-sensor'
     static_configs:
-      - targets: ['sensor:8899']
+      - targets: ['sensor:8004']
     metrics_path: '/metrics'
     scrape_interval: 30s
 

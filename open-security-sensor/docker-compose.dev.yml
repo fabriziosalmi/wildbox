@@ -33,7 +33,7 @@ services:
     
     # Network configuration
     ports:
-      - "127.0.0.1:8899:8899"  # Local API port
+      - "127.0.0.1:8004:8004"  # Local API port (config.yaml.example binds 8004)
       - "127.0.0.1:5678:5678"  # Debug port
     
     # Security context (relaxed for development)
@@ -60,7 +60,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8899/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
       timeout: 10s
       retries: 3
