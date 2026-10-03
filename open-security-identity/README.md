@@ -28,7 +28,7 @@ The service will automatically:
 - **Admin Email**: admin@wildbox.security
 - **Admin Password**: Set via INITIAL_ADMIN_PASSWORD environment variable (see .env.example)
 
-⚠️ **Change the default admin password after first login!**
+⚠️ **Change the default admin password after first login.**
 
 ## 📋 New FastAPI Users Features
 

@@ -171,12 +171,14 @@ jobs:
           cd open-security-dashboard
           # Frontend-only smoke: these specs are backend-free by design (they
           # assert the dashboard builds, the login UI renders, form validation,
-          # and the client-side auth-guard redirects). The backend-dependent
-          # specs are tagged @backend and run against the full compose stack
-          # in e2e-fullstack.yml (#103).
+          # and the client-side auth-guard redirects), plus tool-schema.spec.ts,
+          # the toolbox's schema-to-form mapping, which needs no page (#585).
+          # The backend-dependent specs are tagged @backend and run against
+          # the full compose stack in e2e-fullstack.yml (#103).
           npx playwright test --project=chromium \
             tests/e2e/admin-ui-only.spec.ts \
-            tests/e2e/quick-login-test.spec.ts
+            tests/e2e/quick-login-test.spec.ts \
+            tests/e2e/tool-schema.spec.ts
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
@@ -357,6 +359,14 @@ jobs:
       # because touching one line of an unformatted 400-line module would
       # otherwise force an unrelated reformat into the diff. To widen tier 2,
       # reformat a service and add its path to that step.
+
+      # The n8n workflows are JSON that nothing else executes in CI, so a
+      # removed or renamed endpoint broke them silently: the executive
+      # dashboard workflow called two endpoints that did not exist (#592).
+      # This resolves every HTTP node's URL against the gateway's locations
+      # and the target service's routes. Standard library only.
+      - name: Automation workflows call existing API routes
+        run: python3 scripts/check_automation_workflows.py
 
       # Tier 1 -- real defects, whole tree, always blocking.
       - name: Flake8 (correctness, whole tree)

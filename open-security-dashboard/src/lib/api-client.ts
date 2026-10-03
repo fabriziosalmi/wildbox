@@ -10,11 +10,26 @@ export interface ApiError {
   details?: unknown
 }
 
+/** Per-request options: a timeout other than the client's, or a way to abort. */
+export interface RequestOptions {
+  timeout?: number
+  signal?: AbortSignal
+}
+
 /** Error bodies the services answer with, canonical and legacy shapes. */
 interface ErrorBody {
   error?: { message?: string; type?: string; request_id?: string }
   detail?: string
   message?: string
+}
+
+/* Set by the logout for the rest of this page's life: the logout ends with a
+   full navigation to the login page, which starts a fresh module. */
+let signingOut = false
+
+/** Hands the post-logout navigation to the logout alone (#590). */
+export function beginSignOut() {
+  signingOut = true
 }
 
 class ApiClient {
@@ -87,6 +102,11 @@ class ApiClient {
               this.handleAuthError()
             }
           }
+        } else if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+          // The client's own timeout, not the network: no answer came in time.
+          apiError.message = `No response within ${Math.round((error.config?.timeout ?? 0) / 1000)} s`
+          apiError.status = 0
+          apiError.code = 'timeout'
         } else if (error.request) {
           apiError.message = 'Network error - please check your connection'
           apiError.status = 0
@@ -100,6 +120,11 @@ class ApiClient {
   }
 
   private handleAuthError() {
+    // A logout in progress owns the navigation (#590): the requests it
+    // overtakes answer 401 once the token is revoked or the cookie gone,
+    // and a redirect from here would race the one to the login page.
+    if (signingOut) return
+
     // Check if this is a gateway request that might need different handling
     const isGatewayRequest = this.baseURL.includes('localhost:80') || this.baseURL.includes(':80')
 
@@ -125,13 +150,13 @@ class ApiClient {
   }
 
   // Generic request methods
-  async get<T = unknown>(endpoint: string, params?: object): Promise<T> {
-    const response = await this.client.get(endpoint, { params })
+  async get<T = unknown>(endpoint: string, params?: object, options?: RequestOptions): Promise<T> {
+    const response = await this.client.get(endpoint, { params, ...options })
     return response.data
   }
 
-  async post<T = unknown>(endpoint: string, data?: unknown): Promise<T> {
-    const response = await this.client.post(endpoint, data)
+  async post<T = unknown>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
+    const response = await this.client.post(endpoint, data, options)
     return response.data
   }
 

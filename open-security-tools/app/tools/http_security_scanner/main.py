@@ -8,6 +8,8 @@ from typing import Dict, Any, List, Optional, Tuple
 import logging
 import re
 
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 logger = logging.getLogger(__name__)
@@ -72,10 +74,11 @@ class HttpSecurityScanner:
     async def __aenter__(self):
         # Certificates are verified unless the caller set verify_ssl=False
         # for this scan.
-        connector = aiohttp.TCPConnector(ssl=client_ssl(self.verify_ssl))
+        # The guarded session refuses non-public targets on every
+        # connection, redirect hops included.
         timeout = aiohttp.ClientTimeout(total=self.timeout)
-        self.session = aiohttp.ClientSession(
-            connector=connector, 
+        self.session = guarded_session(
+            ssl=client_ssl(self.verify_ssl),
             timeout=timeout,
             headers={"User-Agent": "Wildbox-Security-Scanner/1.0"}
         )
@@ -86,10 +89,17 @@ class HttpSecurityScanner:
             await self.session.close()
 
     def normalize_url(self, url: str) -> str:
-        """Normalize URL by adding protocol if missing."""
-        if not url.startswith(('http://', 'https://')):
-            return f"https://{url}"
-        return url
+        """Return the URL to fetch: add https:// if no scheme, then validate.
+
+        The input may be a bare host name. The generic SSRF guard only sees
+        values that already start with http(s)://, so the URL built here is
+        checked by the same guard (public host, every resolved address)
+        before anything is fetched. Raises ValueError if it is refused.
+        """
+        url = url.strip()
+        if not re.match(r'^https?://', url, re.IGNORECASE):
+            url = f"https://{url}"
+        return InputSanitizer.validate_url(url)
 
     async def fetch_headers(self, url: str, follow_redirects: bool = True) -> Tuple[Dict[str, str], int, str]:
         """Fetch HTTP headers from the given URL."""

@@ -1080,6 +1080,17 @@ services:
       - DB_SQLITE_DATABASE=/home/node/.n8n/database.sqlite
       - N8N_SECURE_COOKIE=true
       - N8N_METRICS=true
+      # Read by the workflows in open-security-automations/workflows (#592).
+      # They call the API through the gateway's HTTPS listener, with a
+      # personal API key in X-API-Key; see open-security-automations/README.md.
+      # The development certificate the gateway generates names
+      # open-security-gateway and is trusted through NODE_EXTRA_CA_CERTS.
+      - WILDBOX_API_GATEWAY_URL=${WILDBOX_API_GATEWAY_URL:-https://open-security-gateway}
+      - WILDBOX_API_KEY=${AUTOMATIONS_WILDBOX_API_KEY:-}
+      - NODE_EXTRA_CA_CERTS=/etc/ssl/wildbox/wildbox.crt
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - EXECUTIVE_REPORT_EMAIL_FROM=${EXECUTIVE_REPORT_EMAIL_FROM:-}
+      - EXECUTIVE_REPORT_EMAIL_TO=${EXECUTIVE_REPORT_EMAIL_TO:-}
     deploy:
       resources:
         limits:
@@ -1090,6 +1101,17 @@ services:
           memory: 512M
     volumes:
       - ./open-security-automations/n8n-data:/home/node/.n8n
+      # The gateway's certificate only, not its key, for NODE_EXTRA_CA_CERTS.
+      # create_host_path: false, because the short form would create a
+      # directory named wildbox.crt when the gateway has not written its
+      # certificate yet, and the gateway would then fail to start. Start the
+      # gateway once before this profile.
+      - type: bind
+        source: ./open-security-gateway/ssl/wildbox.crt
+        target: /etc/ssl/wildbox/wildbox.crt
+        read_only: true
+        bind:
+          create_host_path: false
     networks:
       - wildbox
     healthcheck:

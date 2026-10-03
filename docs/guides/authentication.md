@@ -107,9 +107,8 @@ Limits to know:
   than one gateway replica, the others refuse the token only once their
   cached decision expires (`AUTH_CACHE_TTL`, 300 seconds by default).
 
-Deactivating a user (`PATCH /api/v1/identity/admin/users/{user_id}/status`)
-also clears the gateway's authorization cache, and the gateway refuses
-inactive users' tokens and API keys from then on.
+Deactivating or deleting an account ends its sessions and its API keys at
+once; see [Revoking an API key](#revoking-an-api-key).
 
 ### A Password Change Ends the Other Sessions
 
@@ -134,6 +133,70 @@ This applies to `change-password`, to the reset-password flow and to an
 administrator's reset through `PATCH /auth/users/{id}`. As with logout,
 other gateway replicas than the one identity reaches refuse those sessions
 only once their cached decisions expire.
+
+### Revoking an API Key
+
+`DELETE /api/v1/identity/api-keys/{key_prefix}` revokes one of the caller's
+keys; a team owner or admin revokes a team's key with
+`DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}`. The key is
+refused on the next request, although the gateway caches the decision
+for a key:
+
+- before it marks the key inactive, identity tells the gateway to refuse
+  it, by the key's id (identity does not keep the key itself, and reports
+  the id with every authorization it grants for the key). The gateway
+  records a marker shared by all its workers and checks it on every
+  request, cached decision or not, so a request that was being authorized
+  while the key was revoked is refused too;
+- if the gateway does not confirm, the key is not revoked and the request
+  answers 503; try again.
+
+Every other change that disables a key does the same, with the same 503
+when the gateway does not confirm:
+
+| Change | Keys refused at once |
+| --- | --- |
+| An administrator deactivates the account (`PATCH /api/v1/identity/admin/users/{user_id}/status`, or `PATCH /auth/users/{id}` with `is_active: false`) | All the account's keys, and every session of the account |
+| An administrator deletes the account (`DELETE /api/v1/identity/admin/users/{user_id}` or `DELETE /auth/users/{id}`) | All the account's keys, the keys of the teams deleted with it, and every session |
+| A user deletes their own account (`DELETE /api/v1/identity/admin/me/account`) | All the account's keys, and every session, the current one included |
+| A team owner or admin, or a superuser, removes a member (`DELETE /api/v1/identity/admin/teams/{team_id}/members/{user_id}`) | The member's keys for that team, and their sessions in that team; see [Removing a member from a team](#removing-a-member-from-a-team) |
+
+A key with an expiry (`expires_at` when it is created) is refused from that
+moment: identity reports the expiry with every authorization, and the
+gateway does not serve a cached decision past it.
+
+A password change does not revoke API keys: they are not sessions. Revoke a
+key that may be compromised on its own. As with logout, the marker is kept by
+the gateway instance identity reaches; other replicas refuse the key once
+their cached decision expires.
+
+### Removing a Member from a Team
+
+A session is not bound to a team: on every request the gateway does not
+answer from its cache, identity resolves the session's team as the user's
+oldest membership, and the gateway caches that decision. Removing a member
+ends their sessions in that team on the next request, and only there:
+
+- before it deletes the membership, identity sends the gateway the user, the
+  team and the time of the removal, after the member's API keys for the
+  team. The gateway records a marker shared by all its workers and refuses
+  a session decision of that user in that team whose token was issued up to
+  the removal, cached decision or not, so a request that was being
+  authorized during the removal is refused too;
+- if the gateway does not confirm, the member is not removed and the request
+  answers 503; try again;
+- the refused request answers 403 `team_membership_ended`, not 401: the
+  session is still valid. The gateway drops the cached decision, so the next
+  request with the same session is authorized afresh and works in the
+  oldest team the user still belongs to. A user with no team left gets 401;
+- a session issued before the removal does not work in that team again,
+  even if the user is added back, until it expires; a new login does.
+
+A team is deleted only with the account that is its sole member, and
+deleting an account ends all its sessions. Members cannot remove
+themselves. As with logout, other gateway replicas than the one identity
+reaches refuse the session in the team only once their cached decisions
+expire.
 
 ---
 

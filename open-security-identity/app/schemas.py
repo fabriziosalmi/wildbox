@@ -198,6 +198,13 @@ class AuthorizationResponse(BaseModel):
     # (#573): the gateway answers 403 PASSWORD_CHANGE_REQUIRED to every
     # request it authenticates for it.
     password_change_required: bool = False
+    # The API key this decision is for (#593). The gateway refuses the
+    # decision, cached or not, once identity has revoked the key by this id.
+    api_key_id: Optional[str] = None
+    # When the credential stops being valid, in epoch seconds: the API key's
+    # expires_at, or the session token's exp. The gateway does not serve a
+    # cached decision past it (#593).
+    credential_expires_at: Optional[float] = None
 
 
 # Update forward references

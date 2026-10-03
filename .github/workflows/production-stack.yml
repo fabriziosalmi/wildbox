@@ -229,7 +229,9 @@ jobs:
           GATEWAY_INTERNAL_SECRET="$(env_value GATEWAY_INTERNAL_SECRET)"
           SENSOR_API_KEY="$(env_value SENSOR_API_KEY)"
           DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
-          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN
+          IDENTITY_DB="$(env_value POSTGRES_DB)"
+          IDENTITY_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/${IDENTITY_DB:-identity}"
+          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN IDENTITY_DB_DSN
           python -m pytest tests/integration/ \
             -v -rs \
             --tb=short \

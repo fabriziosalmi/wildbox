@@ -1,0 +1,25 @@
+{
+  "name": "Fixture: calls the removed CSPM executive summary",
+  "nodes": [
+    {
+      "parameters": {
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/v1/cspm/dashboard/executive-summary",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WILDBOX_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "Get Executive Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 300]
+    }
+  ],
+  "connections": {}
+}

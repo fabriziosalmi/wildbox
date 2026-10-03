@@ -36,7 +36,7 @@ class _SqlErrorHandler(BaseHTTPRequestHandler):
 
 
 @pytest.fixture
-def http_server(request):
+def http_server(request, allow_loopback_targets):
     handler = type("Handler", (_SqlErrorHandler,), {"leak_error": request.param})
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)

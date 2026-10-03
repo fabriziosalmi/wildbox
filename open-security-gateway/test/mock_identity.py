@@ -16,6 +16,12 @@ so tests can assert exactly which headers the gateway forwarded upstream
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
 
+A dropped connection (#609). For a token starting with ``drop-once-`` the
+mock closes the connection without answering the first time it sees it, as
+identity does when its keep-alive timeout closes a connection the gateway is
+writing into, and authorizes it afterwards. ``drop-always-`` tokens are
+dropped every time.
+
 Revocation (#571). Besides the fixture tokens, the mock accepts JWT-shaped
 tokens whose (unsigned) payload carries a ``jti``, the way identity's login
 tokens do, until POST /__mock/revoke {"jti": ...} blacklists that jti. Like
@@ -23,6 +29,20 @@ the real endpoint, the blacklist is consulted *before* the rest of the work:
 a payload ``delay_ms`` makes the mock sleep after that check, standing in for
 the database query identity runs there, so a test can hold an authorization
 in flight across a logout deterministically.
+
+API keys (#593). Fixture keys report the id identity revokes them by
+(``api_key_id``); test-minted keys (see dynamic_api_key) also carry an
+expiry, reported as ``credential_expires_at``, and are refused after
+POST /__mock/revoke {"api_key_id": ...}, the way identity refuses a key it
+has marked inactive.
+
+Team memberships (#613). A session whose payload lists ``teams`` (oldest
+membership first) is authorized in the first of them its user has not been
+removed from, the way identity resolves a session's team; POST
+/__mock/remove_member {"user_id": ..., "team_id": ...} commits a removal.
+The team is resolved before the ``delay_ms`` pause, so an authorization held
+in flight across a removal still answers with the team that was left, as
+identity's would when its query ran before the commit.
 """
 
 import base64
@@ -50,12 +70,23 @@ TOKENS = {
         "team_id": "team-4444",
         "role": "user",
         "scopes": ["read"],
+        "api_key_id": "key-readonly",
     },
     "wsk_toolsexec_ci_fixture": {
         "user_id": "user-5555",
         "team_id": "team-6666",
         "role": "user",
         "scopes": ["tools:execute"],
+        "api_key_id": "key-toolsexec",
+    },
+    # An answer for an API key that does not name the key, as identity
+    # before #593 gave: the gateway cannot check it against a revocation,
+    # so it must not serve it.
+    "wsk_unnamed_ci_fixture": {
+        "user_id": "user-9999",
+        "team_id": "team-9999",
+        "role": "user",
+        "scopes": ["read"],
     },
     # An account a team admin created, before it changed the initial
     # password (#573): identity reports password_change_required.
@@ -70,6 +101,26 @@ TOKENS = {
 
 authorize_calls = Counter()
 revoked_jtis = set()
+dropped_tokens = set()
+revoked_api_keys = set()
+removed_members = set()  # (user_id, team_id)
+
+
+def dynamic_api_key(token):
+    """An API key minted by a test (#593), or None.
+
+    ``wsk_dyn~<key id>~<delay_ms>~<expires_at>``: the key id is what identity
+    reports and revokes the key by, ``delay_ms`` holds the authorization in
+    flight after the revocation check (as ``delay_ms`` does for sessions), and
+    ``expires_at`` (epoch seconds, 0 for none) is when the key expires.
+    """
+    parts = token.split("~")
+    if len(parts) != 4 or parts[0] != "wsk_dyn" or not parts[1]:
+        return None
+    try:
+        return parts[1], int(parts[2]), float(parts[3])
+    except ValueError:
+        return None
 
 
 def jwt_claims(token):
@@ -130,20 +181,60 @@ class Handler(BaseHTTPRequestHandler):
         token = request.get("token", "")
         authorize_calls[token] += 1
 
+        if token.startswith("drop-always-") or (
+            token.startswith("drop-once-") and token not in dropped_tokens
+        ):
+            dropped_tokens.add(token)
+            self.close_connection = True  # no reply: the gateway reads EOF
+            return
+
         auth = TOKENS.get(token)
+        key = dynamic_api_key(token) if auth is None else None
+        if key is not None:
+            key_id, delay_ms, expires_at = key
+            if key_id in revoked_api_keys or (expires_at and expires_at <= time.time()):
+                self._reply(401, {"detail": "Invalid or inactive API key"})
+                return
+            time.sleep(delay_ms / 1000)
+            auth = {
+                "user_id": "user-" + key_id,
+                "team_id": "team-" + key_id,
+                "role": "user",
+                "scopes": ["*"],
+                "api_key_id": key_id,
+                "credential_expires_at": expires_at or None,
+            }
+        if auth is None and token.startswith("drop-once-"):
+            auth = {
+                "user_id": "user-9999",
+                "team_id": "team-9999",
+                "role": "user",
+                "scopes": None,
+            }
         claims = jwt_claims(token) if auth is None else None
         if claims is not None:
             if claims["jti"] in revoked_jtis:
                 self._reply(401, {"detail": "Token has been revoked"})
                 return
-            # Past the blacklist check: the real endpoint now queries the
-            # database, and a logout landing meanwhile goes unnoticed.
+            user_id = claims.get("sub", "user-jwt")
+            # A team per session unless the session lists its user's teams:
+            # the gateway's per-team rate limit must not turn a test's
+            # repeated probes into 429s.
+            team_id = "team-" + claims["jti"]
+            teams = claims.get("teams")
+            if isinstance(teams, list):
+                remaining = [t for t in teams if (user_id, t) not in removed_members]
+                if not remaining:
+                    self._reply(401, {"detail": "User not found or inactive"})
+                    return
+                team_id = remaining[0]
+            # Past the blacklist check and the membership query: the real
+            # endpoint goes on with its work, and a logout or a removal
+            # landing meanwhile goes unnoticed.
             time.sleep(int(claims.get("delay_ms") or 0) / 1000)
             auth = {
-                "user_id": claims.get("sub", "user-jwt"),
-                # A team per session: the gateway's per-team rate limit must
-                # not turn a test's repeated probes into 429s.
-                "team_id": "team-" + claims["jti"],
+                "user_id": user_id,
+                "team_id": team_id,
                 "role": "user",
                 "scopes": None,
             }
@@ -161,19 +252,29 @@ class Handler(BaseHTTPRequestHandler):
                 "permissions": ["tool:basic", "tool:advanced", "feed", "cspm"],
                 "scopes": auth["scopes"],
                 "password_change_required": auth.get("password_change_required", False),
+                "api_key_id": auth.get("api_key_id"),
+                "credential_expires_at": auth.get("credential_expires_at"),
             },
         )
 
     def _revoke(self):
         length = int(self.headers.get("Content-Length") or 0)
         request = json.loads(self.rfile.read(length) or b"{}")
+        if self.path == "/__mock/remove_member":
+            removed_members.add((request["user_id"], request["team_id"]))
+            self._reply(200, {"removed": [request["user_id"], request["team_id"]]})
+            return
+        if "api_key_id" in request:
+            revoked_api_keys.add(request["api_key_id"])
+            self._reply(200, {"revoked": request["api_key_id"]})
+            return
         revoked_jtis.add(request["jti"])
         self._reply(200, {"revoked": request["jti"]})
 
     def do_POST(self):
         if self.path == "/internal/authorize":
             self._authorize()
-        elif self.path == "/__mock/revoke":
+        elif self.path in ("/__mock/revoke", "/__mock/remove_member"):
             self._revoke()
         else:
             self._echo()
