@@ -455,28 +455,36 @@ curl -X GET "http://localhost:8018/v1/runs?status=success&time_range=24h" \
 
 ### DELETE /runs/{run_id}
 
-Cancel a running playbook execution.
+Cancel a playbook execution. The answer is the status the run is in
+afterwards; a run of another team answers 404, as an unknown run does.
 
 **Method**: `DELETE`
-**Endpoint**: `/api/v1/runs/{run_id}`
+**Endpoint**: `/api/v1/responder/runs/{run_id}` (through the gateway)
 **Authentication**: Required (Bearer Token)
 
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://localhost/api/v1/responder/runs/550e8400-e29b-41d4-a716-446655440000 \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
-**Response (200 OK)**:
+**Response (202 Accepted)**, for a running run:
 
 ```json
 {
-  "message": "Execution cancelled",
-  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
-  "status": "cancelled"
+  "run_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "cancelling",
+  "message": "Cancel requested. The step in progress runs to its end and is recorded as it ends; no further step will start. The run's status becomes 'cancelled' when the worker stops it."
 }
 ```
+
+| Run was | Status code | `status` |
+| --- | --- | --- |
+| queued | 200 | `cancelled`: no step runs |
+| running | 202 | `cancelling`: the step in progress runs to its end, no further step starts, then `cancelled` |
+| cancelling | 202 | `cancelling` |
+| ended | 200 | `completed`, `failed` or `cancelled`, unchanged |
 
 ---
 
@@ -484,64 +492,40 @@ curl -X DELETE http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-4466554
 
 ### GET /connectors
 
-List all configured connectors for playbook actions.
+List the connectors playbook steps can call, and their actions.
 
 **Method**: `GET`
-**Endpoint**: `/api/v1/connectors`
+**Endpoint**: `/api/v1/responder/connectors` (through the gateway)
 **Authentication**: Required (Bearer Token)
-
-**Query Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| category | string | Filter by category: ticketing, notification, orchestration, threat_intel |
-| status | string | Filter by status: active, inactive, error |
 
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8018/v1/connectors?status=active" \
+curl -X GET "https://localhost/api/v1/responder/connectors" \
   -H "Authorization: Bearer your-jwt-token"
 ```
 
-**Response (200 OK)**:
+**Response (200 OK)**, shortened:
 
 ```json
 {
-  "count": 12,
-  "results": [
-    {
-      "id": "conn-jira-001",
-      "name": "Jira - Ticketing",
-      "category": "ticketing",
-      "platform": "Atlassian JIRA",
-      "status": "active",
-      "version": "1.0",
-      "supported_actions": [
-        "create_issue",
-        "update_issue",
-        "add_comment",
-        "transition_issue",
-        "assign_issue"
-      ],
-      "last_tested": "2024-11-07T16:30:00Z"
-    },
-    {
-      "id": "conn-slack-001",
-      "name": "Slack - Notifications",
-      "category": "notification",
-      "platform": "Slack",
-      "status": "active",
-      "supported_actions": [
-        "send_message",
-        "post_file",
-        "update_status",
-        "create_channel"
-      ]
+  "connectors": {
+    "system": {
+      "name": "system",
+      "config": {},
+      "actions": {
+        "log": "Log a message",
+        "notification": "Record a notification in the run log; nothing is delivered"
+      }
     }
-  ]
+  },
+  "total": 4
 }
 ```
+
+No connector delivers notifications: `system.notification` writes the
+message to the run's log and answers `status: logged`, `delivered: false`.
+There is no ticketing or chat connector.
 
 ---
 

@@ -971,6 +971,39 @@ dashboard (section 1 does); the data service applies alembic revision
   `data:write` can still post to `/api/v1/data/ingest`; a `data:ingest`
   key gets 403 `insufficient_scope` everywhere else.
 
+### 36. Cancelling a responder run stops it
+
+`DELETE /api/v1/responder/runs/{run_id}` now stops the run instead of only
+relabelling it (#653).
+
+- **New status `cancelling`.** A run cancelled while a step is running
+  reads `cancelling` until the worker stops it, then `cancelled`. A client
+  that waits for `completed`, `failed` or `cancelled` keeps working; one
+  that lists the statuses it knows must add `cancelling`.
+- **The answer says what happened.** `DELETE` answers 202 with
+  `"status": "cancelling"` for a running run, 200 with `cancelled` for a
+  queued one, and 200 with the run's status when it had already ended. It
+  used to answer 200 `cancelled` in every case. The body carries `run_id`,
+  `status` and `message`.
+- **A cancelled run's steps.** The step in progress when the cancel
+  arrives runs to its end and is kept in `step_results`; the steps after it
+  do not run. A run whose last step had already started when the cancel
+  arrived reads `cancelled` with every step in `step_results`.
+
+### 37. The responder's notification action says it only logs
+
+`system.notification` never delivered anything; it now says so (#639).
+
+- **Its result changed.** The step output has `"status": "logged"` and
+  `"delivered": false` instead of `"status": "sent"`. A playbook or client
+  that tests for `sent` must test for `logged`; no notification is sent
+  either way.
+- **A step was renamed.** `triage_url`'s `notify_security_team` is now
+  `log_security_alert`. A client that reads that step from a run's
+  `step_results` or `context.steps` must use the new name.
+- To have an alert reach people, read it from the run, or forward it from
+  whatever polls the run.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

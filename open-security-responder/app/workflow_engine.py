@@ -10,7 +10,7 @@ import logging
 import asyncio
 from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Mapping, Optional, List
+from typing import Dict, Any, Mapping, Optional, List, Tuple
 from jinja2 import (
     DictLoader, TemplateRuntimeError, TemplateSyntaxError, UndefinedError, nodes
 )
@@ -118,6 +118,30 @@ def run_context(run_id: str, playbook_id: str, started_at: datetime) -> Dict[str
     }
 
 
+# A run in one of these states has ended; nothing changes it any more.
+TERMINAL_STATUSES = frozenset(
+    {ExecutionStatus.COMPLETED, ExecutionStatus.FAILED, ExecutionStatus.CANCELLED}
+)
+
+
+def _decode(value) -> Optional[str]:
+    """A Redis reply as text (redis-py returns bytes by default)."""
+    if isinstance(value, (bytes, bytearray)):
+        return value.decode()
+    return value
+
+
+class RunCancelled(Exception):
+    """Raised in the worker when it finds that the run's cancel was accepted.
+
+    Carries the names of the steps that will not run (#653).
+    """
+
+    def __init__(self, not_run: List[str]):
+        super().__init__("cancelled at the user's request")
+        self.not_run = not_run
+
+
 class ExecutionStateCorruptError(Exception):
     """Raised when a persisted execution record exists but cannot be parsed.
 
@@ -151,40 +175,167 @@ class WorkflowEngine:
         """Get Redis key for execution logs"""
         return f"{self.key_prefix}run:{run_id}:logs"
     
-    def save_execution_state(self, run_id: str, execution_result: PlaybookExecutionResult):
-        """Save execution state to Redis"""
-        key = self._get_execution_key(run_id)
+    def _get_cancel_key(self, run_id: str) -> str:
+        """Get Redis key recording that a cancel of the run was accepted"""
+        return f"{self.key_prefix}run:{run_id}:cancel"
+
+    @staticmethod
+    def _retention_seconds() -> int:
+        return settings.execution_retention_days * 24 * 60 * 60
+
+    @staticmethod
+    def _state_mapping(execution_result: PlaybookExecutionResult) -> Dict[str, str]:
+        """The hash fields a run's record is stored as."""
         data = execution_result.dict()
-        
+
         # Convert datetime objects to ISO strings for JSON serialization
         for field in ['start_time', 'end_time']:
             if data.get(field):
                 data[field] = data[field].isoformat()
-        
+
         # Handle step results datetime fields
         for step_result in data.get('step_results', []):
             for field in ['start_time', 'end_time']:
                 if step_result.get(field):
                     step_result[field] = step_result[field].isoformat()
-        
-        # Write and expiry in one pipeline: a crash between the hset and the
-        # expire used to leave a record with no TTL, in a Redis with a 512MB
-        # ceiling and an eviction policy that then discards other records
-        # (WILDBO-DATA-07).
-        expire_seconds = settings.execution_retention_days * 24 * 60 * 60
-        pipe = self.redis_client.pipeline()
-        pipe.hset(key, mapping={
+
+        now = datetime.utcnow().isoformat()
+        return {
             'data': json.dumps(data),
-            'status': execution_result.status,
+            'status': ExecutionStatus(execution_result.status).value,
             'playbook_id': execution_result.playbook_id,
-            'updated_at': datetime.utcnow().isoformat(),
+            'updated_at': now,
             # Heartbeat: lets a reaper tell an abandoned run from a live one
             # (WILDBO-REL-02).
-            'heartbeat_at': datetime.utcnow().isoformat(),
-        })
-        pipe.expire(key, expire_seconds)
-        pipe.execute()
-        
+            'heartbeat_at': now,
+        }
+
+    @staticmethod
+    def resolve_status(
+        requested: ExecutionStatus,
+        stored: Optional[str],
+        cancel_requested: bool,
+    ) -> ExecutionStatus:
+        """The status a write may record, given what is stored (#653).
+
+        - A run recorded as cancelled stays cancelled: no write turns it
+          back into running, completed or failed.
+        - Once a cancel has been accepted, a run that is still going is
+          cancelling, and a run that ends -- completed or failed -- ends
+          cancelled. Its step results say which steps ran and how.
+        - Otherwise the requested status is recorded.
+        """
+        requested = ExecutionStatus(requested)
+        if stored == ExecutionStatus.CANCELLED.value:
+            return ExecutionStatus.CANCELLED
+        if not cancel_requested:
+            return requested
+        if requested in TERMINAL_STATUSES:
+            return ExecutionStatus.CANCELLED
+        return ExecutionStatus.CANCELLING
+
+    def save_execution_state(self, run_id: str, execution_result: PlaybookExecutionResult):
+        """Save execution state to Redis.
+
+        The write is a compare-and-set against the stored status and the
+        run's cancel request (WATCH/MULTI), so it cannot undo a cancel that
+        landed after the caller read the record: see resolve_status. When
+        the status recorded differs from the one requested, it is also set
+        on ``execution_result``, so the caller sees what was stored (#653).
+        """
+        key = self._get_execution_key(run_id)
+        cancel_key = self._get_cancel_key(run_id)
+        logs_key = self._get_logs_key(run_id)
+
+        def write(pipe):
+            stored = _decode(pipe.hget(key, 'status'))
+            # The log list is the run's log. The worker holds a copy of the
+            # record loaded when the run started, and saving that copy used
+            # to replace every line add_log had written since -- including
+            # the line saying the run was cancelled.
+            logs = pipe.lrange(logs_key, 0, -1)
+            if logs:
+                execution_result.logs = [_decode(line) for line in logs]
+            status = self.resolve_status(
+                execution_result.status, stored, bool(pipe.exists(cancel_key))
+            )
+            if status != execution_result.status:
+                execution_result.status = status
+                if status in TERMINAL_STATUSES and execution_result.end_time is None:
+                    execution_result.end_time = datetime.utcnow()
+            # Write and expiry in one transaction: a crash between the hset
+            # and the expire used to leave a record with no TTL, in a Redis
+            # with a 512MB ceiling and an eviction policy that then discards
+            # other records (WILDBO-DATA-07).
+            pipe.multi()
+            pipe.hset(key, mapping=self._state_mapping(execution_result))
+            pipe.expire(key, self._retention_seconds())
+
+        self.redis_client.transaction(write, key, cancel_key, logs_key)
+
+    def cancel_requested(self, run_id: str) -> bool:
+        """True once a cancel of the run has been accepted."""
+        return bool(self.redis_client.exists(self._get_cancel_key(run_id)))
+
+    def request_cancel(self, run_id: str) -> Optional[Tuple[ExecutionStatus, bool]]:
+        """Ask for a run to stop; return its resulting status (#653).
+
+        The request is durable: it is a key the worker reads before the run
+        starts and before every step, kept as long as the run's record.
+
+        - A queued run is cancelled at once: the worker that picks it up
+          finds the request and runs no step.
+        - A running run becomes cancelling. The step in progress runs to its
+          end and is recorded as it ended -- its call may already have taken
+          effect -- and no further step starts; the worker then records the
+          run as cancelled.
+        - A run that has ended is left as it is.
+
+        Returns ``(status, accepted)``: the run's status after the call and
+        whether this call recorded the request (False when the run had ended
+        or a cancel was already requested). None when there is no such run.
+        Check ownership before calling.
+        """
+        key = self._get_execution_key(run_id)
+        cancel_key = self._get_cancel_key(run_id)
+        logs_key = self._get_logs_key(run_id)
+
+        def cancel(pipe):
+            raw = pipe.hget(key, 'data')
+            if not raw:
+                return None
+            state = self._parse_state(run_id, raw)
+            status = ExecutionStatus(state.status)
+            if status in TERMINAL_STATUSES or pipe.exists(cancel_key):
+                return status, False
+
+            now = datetime.utcnow()
+            if status == ExecutionStatus.RUNNING:
+                state.status = ExecutionStatus.CANCELLING
+                line = (
+                    "Cancel requested: the step in progress runs to its end; "
+                    "no further step will start"
+                )
+            else:
+                state.status = ExecutionStatus.CANCELLED
+                state.end_time = now
+                state.duration_seconds = (now - state.start_time).total_seconds()
+                line = "Cancelled before it started: no step will run"
+            entry = f"[{now.isoformat()}] WARNING: {line}"
+            logs = pipe.lrange(logs_key, 0, -1)
+            state.logs = [_decode(item) for item in logs] + [entry]
+
+            pipe.multi()
+            pipe.set(cancel_key, now.isoformat(), ex=self._retention_seconds())
+            pipe.hset(key, mapping=self._state_mapping(state))
+            pipe.expire(key, self._retention_seconds())
+            pipe.rpush(logs_key, entry)
+            return ExecutionStatus(state.status), True
+
+        return self.redis_client.transaction(
+            cancel, key, cancel_key, logs_key, value_from_callable=True
+        )
+
 
     def reap_abandoned_runs(self, stale_after_seconds: int = 900) -> int:
         """
@@ -209,14 +360,18 @@ class WorkflowEngine:
 
         for key in self.redis_client.scan_iter(match=pattern, count=100):
             key_s = key.decode() if isinstance(key, (bytes, bytearray)) else str(key)
-            if key_s.endswith(":team") or key_s.endswith(":logs"):
+            if key_s.endswith((":team", ":logs", ":cancel")):
                 continue
 
             raw_status = self.redis_client.hget(key_s, "status")
             if raw_status is None:
                 continue
             status = raw_status.decode() if isinstance(raw_status, (bytes, bytearray)) else str(raw_status)
-            if status not in (ExecutionStatus.RUNNING.value, ExecutionStatus.QUEUED.value):
+            if status not in (
+                ExecutionStatus.RUNNING.value,
+                ExecutionStatus.QUEUED.value,
+                ExecutionStatus.CANCELLING.value,
+            ):
                 continue
 
             raw_hb = self.redis_client.hget(key_s, "heartbeat_at") or self.redis_client.hget(key_s, "updated_at")
@@ -244,8 +399,15 @@ class WorkflowEngine:
                 f"Run abandoned: no heartbeat since {hb}. The worker executing it "
                 "stopped without reporting a terminal status."
             )
+            # A run whose cancel was accepted is recorded as cancelled
+            # (resolve_status); its error still says the worker stopped.
             self.save_execution_state(run_id, execution_result)
-            self.add_log(run_id, "Run reconciled as FAILED: worker heartbeat expired", level="ERROR")
+            self.add_log(
+                run_id,
+                f"Run reconciled as {ExecutionStatus(execution_result.status).value.upper()}: "
+                "worker heartbeat expired",
+                level="ERROR",
+            )
             logger.warning(f"Reaped abandoned run {run_id} (last heartbeat {hb})")
             reaped += 1
 
@@ -257,10 +419,14 @@ class WorkflowEngine:
         """Retrieve execution state from Redis"""
         key = self._get_execution_key(run_id)
         data = self.redis_client.hget(key, 'data')
-        
+
         if not data:
             return None
-        
+        return self._parse_state(run_id, data)
+
+    @staticmethod
+    def _parse_state(run_id: str, data) -> PlaybookExecutionResult:
+        """Parse a stored record; raise ExecutionStateCorruptError if it cannot be."""
         try:
             parsed_data = json.loads(data)
             
@@ -625,6 +791,10 @@ def execute_playbook_actor(
                 context={"trigger": trigger_data}
             )
         else:
+            # A run cancelled while it was queued never starts (#653).
+            if workflow_engine.cancel_requested(run_id):
+                raise RunCancelled([step.name for step in playbook.steps])
+
             # Update status to RUNNING
             execution_result.status = ExecutionStatus.RUNNING
             execution_result.playbook_name = playbook.name
@@ -653,7 +823,14 @@ def execute_playbook_actor(
         )
         
         # Execute each step
-        for step in playbook.steps:
+        for index, step in enumerate(playbook.steps):
+            # A cancel is honored between steps (#653). A step already
+            # running is not interrupted: its connector call has been sent
+            # and may have taken effect, so it runs to its end and is
+            # recorded as it ended, completed or failed, never dropped.
+            if workflow_engine.cancel_requested(run_id):
+                raise RunCancelled([s.name for s in playbook.steps[index:]])
+
             step_start_time = datetime.utcnow()
             
             try:
@@ -790,13 +967,47 @@ def execute_playbook_actor(
         execution_result.end_time = datetime.utcnow()
         execution_result.duration_seconds = (execution_result.end_time - execution_result.start_time).total_seconds()
         
-        # FIX: Persist completed state to Redis
+        # FIX: Persist completed state to Redis. A cancel accepted after the
+        # last step started makes this write record CANCELLED instead
+        # (resolve_status), and save_execution_state says so.
         workflow_engine.save_execution_state(run_id, execution_result)
+        if execution_result.status == ExecutionStatus.CANCELLED:
+            workflow_engine.add_log(
+                run_id,
+                "Run cancelled at the user's request after its last step had "
+                "started; every step ran",
+                level="WARNING",
+            )
+        else:
+            workflow_engine.add_log(
+                run_id,
+                f"Playbook execution completed successfully in {execution_result.duration_seconds:.2f}s"
+            )
+
+    except RunCancelled as cancelled:
+        # The cancel was found before a step started: no further step runs.
+        # The steps that did run are in step_results, as they ended (#653).
+        # A run cancelled while queued keeps the time it was cancelled.
+        if not (
+            execution_result.status == ExecutionStatus.CANCELLED
+            and execution_result.end_time
+        ):
+            execution_result.end_time = datetime.utcnow()
+        execution_result.status = ExecutionStatus.CANCELLED
+        execution_result.duration_seconds = (
+            execution_result.end_time - execution_result.start_time
+        ).total_seconds()
+        workflow_engine.save_execution_state(run_id, execution_result)
+        ran = [result.step_name for result in execution_result.step_results]
         workflow_engine.add_log(
-            run_id, 
-            f"Playbook execution completed successfully in {execution_result.duration_seconds:.2f}s"
+            run_id,
+            "Run cancelled at the user's request. "
+            f"Steps that ran: {', '.join(ran) or 'none'}. "
+            f"Steps not run: {', '.join(cancelled.not_run) or 'none'}.",
+            level="WARNING",
         )
-        
+        logger.info(f"Playbook execution {run_id} cancelled")
+
     except Exception as e:
         # Catch Exception here too. WorkflowExecutionError -- which the step
         # handler above raises deliberately to fail the run -- is an Exception
@@ -832,7 +1043,11 @@ def execute_playbook_actor(
         # handlers above, record it as FAILED rather than persisting a lie that
         # nothing will ever correct (WILDBO-ERR-02/WILDBO-REL-02).
         if 'execution_result' in locals():
-            if execution_result.status in (ExecutionStatus.RUNNING, ExecutionStatus.QUEUED):
+            if execution_result.status in (
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.CANCELLING,
+            ):
                 execution_result.status = ExecutionStatus.FAILED
                 execution_result.end_time = datetime.utcnow()
                 if not getattr(execution_result, "error", None):
