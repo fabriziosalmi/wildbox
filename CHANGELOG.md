@@ -1788,6 +1788,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **Service READMEs describe the code on main.** The README of every
+  service (tools, gateway, identity, agents, cspm, dashboard, data,
+  guardian, sensor) and the use cases are rewritten from the code: real
+  routes, gateway paths, ports, settings and counts (52 tools, 22 CSPM
+  checks, AWS only, 7 data collectors), gateway-only authentication, no
+  plans or billing, and no invented releases, badges or performance
+  figures. The sensor and data documents describe telemetry as it now
+  flows, through the gateway and per team (#640, #660). Seven obsolete
+  reports and migration notes are
+  deleted (tools `DOCKER_SETUP.md`, `SECURITY_AUDIT_SUMMARY.md`,
+  `SECURITY_FIXES_APPLIED.md`; guardian `QUEUE_MANAGEMENT_REPORT.md`;
+  identity `FASTAPI_USERS_MIGRATION.md`; agents `LLM_SETUP.md`,
+  `MIGRATION_LM_STUDIO_TO_VLLM.md`). Standalone configs follow: the agents
+  compose loses its OpenAI-compatible `llm` service, the standalone sensor
+  binds and publishes 8004 and passes the telemetry settings through, and
+  the dashboard and tools `.env.example` list
+  only variables the code reads.
+
 - **An Authentication and sessions guide, and the operator documents
   re-checked against today's code.** `guides/authentication.md` covers login,
   token lifetime, logout and revocation (including the gateway's internal
