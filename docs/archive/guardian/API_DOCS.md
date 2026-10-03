@@ -1,5 +1,7 @@
 # Open Security Guardian API Documentation
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/guardian/endpoints/>.
+
 ## Overview
 
 The Open Security Guardian provides a comprehensive REST API for vulnerability management, compliance tracking, asset inventory, and security reporting. This document outlines the available endpoints, authentication methods, and usage examples.

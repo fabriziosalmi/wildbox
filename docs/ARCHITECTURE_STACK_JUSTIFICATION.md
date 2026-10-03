@@ -1,5 +1,11 @@
 # Architecture Stack Evaluation
 
+> **Partly superseded.** This evaluation was written in November 2025. The
+> reasoning still stands, but several statements about the deployment were
+> wrong or have changed; they are corrected in place below, and the
+> benchmark figures cannot be reproduced. For the services that run today see
+> <https://www.wildbox.io/guides/ports/>.
+
 **Purpose**: Justify technical choices for Wildbox's infrastructure stack and identify simplification opportunities.
 
 ## Current Stack
@@ -65,8 +71,10 @@
 
 **Current State**:
 
-- **1 PostgreSQL instance, 11 databases** (identity, data, guardian, tools, etc.)
-- **Shared connection pool** (max 100 connections per DB)
+- **1 PostgreSQL instance, 3 databases**: `identity` (the default
+  `POSTGRES_DB`), plus `guardian` and `data` created by
+  `scripts/init-databases.sql`
+- Each service keeps its own connection pool; there is no PgBouncer
 
 **Simplification Needed?**:
 
@@ -88,14 +96,19 @@
 - **Performance**: 100k+ ops/sec in-memory
 - **Celery broker**: Task queue requires Redis or RabbitMQ
 - **Session storage**: TTL-based expiry (JWT denylisting, API rate limits)
-- **Gateway cache**: Auth validation results cached (5-minute TTL reduces DB load)
 - **Atomic operations**: INCR for rate limiting (thread-safe without locks)
+
+The gateway does not use Redis for its authorization cache or its per-team
+rate limit counters: both live in nginx shared memory (`lua_shared_dict
+auth_cache` and `rate_limit_cache` in `open-security-gateway/nginx/nginx.conf`).
 
 **Current Usage**:
 
-- **1 Redis instance, 15 logical databases** (DB 0 = identity, DB 1 = guardian, etc.)
-- **Celery broker**: DB 10
-- **Gateway auth cache**: DB 5
+- **1 Redis instance, 5 logical databases in use** (the server allows 16):
+  DB 0 identity, DB 1 guardian, DB 2 tools and responder, DB 3 CSPM, DB 4
+  agents
+- **Celery brokers**: each service's Celery app uses that service's database;
+  there is no shared broker database
 
 **Alternatives Considered**:
 
@@ -130,9 +143,12 @@
 
 **Current Usage**:
 
-- **Tools service**: 55+ security tools as Celery tasks
-- **Data service**: Threat feed updates (every 6 hours)
-- **Guardian service**: Vulnerability scanning (on-demand + scheduled)
+- **Tools service**: tool runs execute in the `tools-worker` container
+- **Guardian service**: `guardian-worker` and `guardian-beat` (scans, alert
+  rules, reports)
+- **CSPM service**: scans execute in the `cspm-worker` container
+- **Data service**: does not use Celery; feed collection runs in the
+  `data-scheduler` container (`python -m app.scheduler.main`)
 
 **Alternatives Considered**:
 
@@ -159,7 +175,7 @@
 
 ### 1. Consolidate Redis Logical Databases
 
-**Current**: 15 logical databases  
+**Current**: 5 logical databases in use  
 **Proposed**: 2 databases with key prefixes
 
 ```python
@@ -192,13 +208,16 @@ redis_client.set('guardian:vuln:456', data)
 
 **Analysis**:
 
-- **Automations (n8n)**: Upstream marked `down` in gateway config, not used
+- **Automations (n8n)**: at the time, upstream marked `down` in gateway config
 - **CSPM**: 314 files, extensive testing required before production
 
-**Action**:
+**Outcome**:
 
-- **Automations**: Disable in docker-compose.yml, document removal in v0.4.0
-- **CSPM**: Mark as beta, require explicit opt-in (`ENABLE_CSPM=true`)
+- **Automations**: done differently. n8n is now in the `automations` Compose
+  profile, off by default, and the gateway resolves it at request time on
+  `/api/v1/automations/`.
+- **CSPM**: not done. CSPM starts by default and no `ENABLE_CSPM` setting
+  exists.
 
 ---
 
@@ -280,6 +299,11 @@ services:
 
 ## Performance Benchmarks (Justify Complexity)
 
+> **Not reproducible.** No script or result file in the repository produced
+> these figures, so treat them as illustrations, not measurements. The Redis
+> hit-rate example does not measure the gateway's authorization cache, which
+> is held in nginx shared memory, not in Redis.
+
 ### Gateway Performance (OpenResty)
 
 ```bash
@@ -337,7 +361,8 @@ Results:
 ### Simplify (Low effort, high clarity)
 
 - ✅ **Consolidate Redis DBs**: Use key prefixes instead of logical databases
-- ✅ **Disable unused services**: Remove n8n automations, mark CSPM as beta
+- ✅ **Disable unused services**: n8n is now an opt-in Compose profile; CSPM
+  still starts by default
 
 ### Defer (Optimize at scale)
 

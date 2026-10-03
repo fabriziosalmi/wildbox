@@ -1,5 +1,7 @@
 # Guardian Service Codebase Exploration - Complete Index
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/guardian/endpoints/>.
+
 **Exploration Date**: November 7, 2025  
 **Service Location**: `/Users/fab/GitHub/wildbox/open-security-guardian/`
 

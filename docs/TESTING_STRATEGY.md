@@ -5,7 +5,25 @@
 > maintained integration layer is **`.github/workflows/integration-tests.yml`**,
 > which starts the backend services and runs `pytest tests/integration/` in CI.
 > This document is kept for context only; commands referencing
-> `docker-compose.test.yml` no longer work.
+> `docker-compose.test.yml` no longer work, and the Makefile has none of the
+> `test-setup`, `test-unit`, `test-integration`, `test-e2e`, `test-coverage`
+> or `test-teardown` targets proposed below. `make test` exists but does
+> something else: it runs `pytest tests/` inside the running `identity`
+> container and `python manage.py test` inside `guardian`.
+>
+> The test suites that run today:
+>
+> - **Unit Tests** and **Shared Package Unit Tests** jobs in
+>   `.github/workflows/test.yml`: per-service unit tests.
+> - **E2E Tests (Playwright)** in `test.yml` and **E2E Full-Stack
+>   (Playwright @backend)** in `.github/workflows/e2e-fullstack.yml`:
+>   dashboard end-to-end tests.
+> - `.github/workflows/integration-tests.yml`: `tests/integration/` against a
+>   started stack.
+> - `.github/workflows/chaos-and-load.yml`: `tests/chaos/` and the load
+>   suite, on a schedule or on demand.
+>
+> The marker definitions are in the root `pytest.ini`.
 
 ## Current State
 

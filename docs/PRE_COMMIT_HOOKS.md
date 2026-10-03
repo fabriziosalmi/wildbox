@@ -11,8 +11,12 @@ Git hooks that **automatically run checks before each commit**, preventing:
 - ❌ Hardcoded secrets/passwords
 - ❌ Trailing whitespace and formatting issues
 - ❌ Large files (>1MB) being committed
-- ❌ Python/TypeScript linting errors
-- ❌ Security vulnerabilities (via bandit)
+- ❌ Python formatting and lint errors (Black, isort, Flake8)
+- ❌ Shell script errors (ShellCheck)
+
+The hooks are opt-in: they run only in a clone where someone ran
+`pre-commit install`, and no CI workflow runs them. See
+[CI Coverage](#ci-coverage) for what CI checks instead.
 
 ## Quick Start
 
@@ -36,7 +40,7 @@ pre-commit --version
 ### 2. Install hooks in repository
 
 ```bash
-cd /Users/fab/GitHub/wildbox
+cd wildbox   # the repository root
 pre-commit install
 ```
 
@@ -57,10 +61,9 @@ pre-commit run --all-files
 - Format all Python files with Black
 - Sort imports with isort
 - Run flake8 linting
-- Check for secrets
-- Format TypeScript/JS with Prettier
-- Run ESLint
-- ... and 15+ more checks
+- Check for secrets against `.secrets.baseline`
+- Run ShellCheck on shell scripts
+- Run the general file checks listed below
 
 **First run takes 2-5 minutes** (installs hook environments).  
 Subsequent commits are fast (<10 seconds).
@@ -117,35 +120,48 @@ git commit -m "Quick fix"
 
 ## Configured Checks
 
+This is the complete list in `.pre-commit-config.yaml`. Files under
+`migrations/`, `node_modules/`, `.next/`, virtual environments and
+`*-lock.json` are excluded globally.
+
+### General Checks (pre-commit-hooks v4.5.0)
+
+- **trailing-whitespace** (skips `.md` files)
+- **end-of-file-fixer**
+- **check-yaml** (with `--unsafe`, so custom tags are accepted)
+- **check-added-large-files** (over 1000 KB)
+- **check-json**
+- **check-merge-conflict**
+- **detect-private-key** (skips `tests/fixtures/`)
+- **mixed-line-ending** (rewrites to LF)
+
 ### Python Checks
 
-- **Black** - Code formatter (120 char lines)
-- **isort** - Import sorting
-- **Flake8** - Linting (PEP 8 compliance)
-- **Bandit** - Security vulnerability scanner
-- **Detect-secrets** - Finds hardcoded credentials
+- **Black** 23.12.1 - Code formatter
+- **isort** 5.13.2 - Import sorting, Black profile
+- **Flake8** 6.1.0 - `--max-line-length=120`, ignores E203, W503 and E501
 
-### TypeScript/JavaScript Checks
+### Secrets
 
-- **Prettier** - Code formatter
-- **ESLint** - Linting (Next.js config)
+- **detect-secrets** v1.4.0 - Compares against `.secrets.baseline`; skips
+  `package-lock.json`, `.env.example` and `requirements.txt`
 
-### General Checks
+### Shell Scripts
 
-- **Trailing whitespace** removal
-- **End-of-file** fixer (ensures newline)
-- **Large files** blocker (>1MB)
-- **YAML/JSON** syntax validation
-- **Private key** detection
-- **Merge conflict** markers
-- **Dockerfile** linting (hadolint)
-- **Shell script** linting (shellcheck)
+- **ShellCheck** (shellcheck-py v0.9.0.6) - Severity `warning` and above
 
 ### Custom Checks
 
-- **Prevent debug statements** - Blocks `console.log`, `print()`
-- **Prevent hardcoded secrets** - Regex for password/token patterns
-- **Requirements sync** - Ensures `requirements.txt` matches `.in`
+- **Prevent debug statements** - Fails on `console.log` or `print(` in
+  `.py`, `.js`, `.ts`, `.jsx` and `.tsx` files, except test files
+
+There is no Bandit, Prettier, ESLint or hadolint hook. ESLint runs in the
+dashboard with `npm run lint` (`open-security-dashboard/eslint.config.mjs`).
+
+A separate, older hook script lives in `.githooks/pre-commit` (it blocks
+`.env` files and scans staged changes for secret patterns). It runs only if
+you set `git config core.hooksPath .githooks`; git then ignores the hook in
+`.git/hooks` that `pre-commit install` writes, so use one or the other.
 
 ## Bypassing Hooks (Emergency Only)
 
@@ -155,7 +171,7 @@ git commit -m "Quick fix"
 git commit --no-verify -m "Emergency hotfix"
 ```
 
-⚠️ **WARNING**: Only use for critical production issues. CI/CD will still catch violations.
+⚠️ **WARNING**: Only use for critical production issues. CI does not run these hooks; only its own checks (see [CI Coverage](#ci-coverage)) apply.
 
 ## Skipping Specific Checks
 
@@ -204,35 +220,29 @@ pre-commit install
 pre-commit run --all-files
 ```
 
-### "ESLint cannot find module"
+### detect-secrets flags a file that was only moved or renamed
+
+`.secrets.baseline` records findings by file path, so a known false positive
+in a moved file is reported again under its new path. Refresh the baseline
+and review the diff before committing it:
 
 ```bash
-cd open-security-dashboard
-npm install
-cd ..
-pre-commit run eslint --all-files
+detect-secrets scan --baseline .secrets.baseline
+git diff .secrets.baseline
 ```
 
-### "Detect-secrets baseline missing"
+## CI Coverage
 
-```bash
-# Generate initial baseline
-detect-secrets scan > .secrets.baseline
-git add .secrets.baseline
-```
+No GitHub Actions workflow runs `pre-commit`, so a commit made with
+`--no-verify`, or from a clone without the hooks, is not caught by these
+hooks. CI has its own, different checks, among them:
 
-## CI/CD Integration
-
-**GitHub Actions already runs these checks!**
-
-See `.github/workflows/lint.yml`:
-
-```yaml
-- name: Run pre-commit
-  run: pre-commit run --all-files --show-diff-on-failure
-```
-
-Even if you bypass locally, CI will catch violations and fail the build.
+- **Gitleaks** (`.github/workflows/secret-scan.yml`) scans the checked-out
+  tree for secrets on every pull request and on pushes to `main`.
+- **Security Scanning** (`.github/workflows/test.yml`) runs Trivy and Bandit;
+  Bandit reports to code scanning and does not gate.
+- **Documentation Quality** (`.github/workflows/documentation-quality.yml`)
+  runs markdownlint, cspell and proselint on Markdown files.
 
 ## Configuration Files
 
@@ -240,9 +250,8 @@ Even if you bypass locally, CI will catch violations and fail the build.
 | ------ | --------- |
 | `.pre-commit-config.yaml` | Hook configuration |
 | `.secrets.baseline` | Known false-positive secrets |
-| `pyproject.toml` | Black/isort settings (if exists) |
-| `.flake8` | Flake8 configuration (if exists) |
-| `.eslintrc.json` | ESLint rules (in dashboard/) |
+| `.githooks/pre-commit` | Optional standalone hook (see above) |
+| `open-security-dashboard/eslint.config.mjs` | Dashboard ESLint rules (not a hook) |
 
 ## Performance
 
@@ -262,7 +271,7 @@ Even if you bypass locally, CI will catch violations and fail the build.
 ✅ **Automatic formatting** - no more "fix whitespace" comments  
 ✅ **Security enforcement** - catches secrets/vulnerabilities early  
 ✅ **Consistent code style** across all contributors  
-✅ **Faster CI/CD** - fewer lint failures in CI  
+✅ **Fewer surprises in review**  
 ✅ **Educational** - teaches best practices through feedback
 
 ## Team Adoption
@@ -298,10 +307,8 @@ Check Yaml.................................Passed
 black......................................Passed
 isort......................................Passed
 flake8.....................................Passed
-bandit.....................................Passed
 detect-secrets.............................Passed
 Prevent debug statements...................Passed
-Prevent hardcoded secrets..................Passed
 
 [main abc1234] feat: Add new API endpoint
  3 files changed, 45 insertions(+), 2 deletions(-)
@@ -334,4 +341,4 @@ app/api.py:67:    console.log('Testing')
 
 **Setup Status:** ✅ Configured and ready  
 **Team Adoption:** Recommended for all contributors  
-**CI Enforcement:** Active in GitHub Actions
+**CI Enforcement:** None; the hooks run locally only

@@ -18,7 +18,7 @@ service and the endpoint.
 | **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
 | **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
 | **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
-| **CSPM** | Not written yet. The service runs 31 checks (22 for AWS against live accounts; Azure and GCP on sample data); its routes are under `/api/v1/cspm/` | - |
+| **CSPM** | Not written yet. The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400`. `GET /api/v1/cspm/providers` lists the providers a scan can be submitted for and their check counts. Its routes are under `/api/v1/cspm/` | - |
 
 ## Reaching the APIs
 
@@ -32,8 +32,15 @@ backend ports are bound to `127.0.0.1` only.
 To authenticate, log in with a form-encoded `POST /auth/jwt/login` (fields
 `username` and `password`) and send the returned `access_token` as
 `Authorization: Bearer <token>`. The gateway also accepts an API key in the
-`X-API-Key` header. The [Quick Start](../guides/quickstart.md) shows the
-complete sequence.
+`X-API-Key` header. Create one with `POST /api/v1/identity/api-keys` (a user
+key) or `POST /api/v1/identity/teams/{team_id}/api-keys` (a team key). The
+[Quick Start](../guides/quickstart.md) shows the complete sequence.
+
+The agents routes (`/api/v1/agents/`) are the exception: they accept only an
+API key in `X-API-Key`, and answer `401` (`NO_API_KEY`) to a request that
+carries only a bearer token. Issue
+[#630](https://github.com/fabriziosalmi/wildbox/issues/630) tracks it; see the
+[agents reference](agents/endpoints.md#authentication).
 
 Login, tokens, logout and the failed-login lockout are described in the
 [Authentication and sessions guide](../guides/authentication.md). The
@@ -144,9 +151,14 @@ To contribute API documentation:
 ## FAQ
 
 **Q: What are the rate limits?**
-A: The gateway limits requests per team. The budget comes from
-`RATE_LIMIT_PER_HOUR` in `.env`, and every authenticated response carries
-`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`.
+A: The gateway allows 10000 requests per hour per team, enforced in fixed
+60-second windows of 166 requests. Responses on routes the gateway
+authenticates carry `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+`X-RateLimit-Reset` for the current minute, and `X-RateLimit-Policy:
+10000;w=3600`. `RATE_LIMIT_PER_HOUR` in `.env` is currently ignored
+([#627](https://github.com/fabriziosalmi/wildbox/issues/627)). The agents
+routes do not go through this limit (#630); the agents service limits
+analysis requests itself, to 5 per minute.
 
 **Q: How do I refresh my JWT token?**
 A: There is no refresh endpoint. When a token expires, log in again. The

@@ -36,24 +36,40 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
 
 ### Current Implementation
 
-- **API Key Authentication**: Optional (controlled by `API_KEY_REQUIRED` config)
-- **Header**: `X-API-Key` (configurable via `API_KEY_HEADER`)
-- **CORS**: Configurable with origins whitelist
-- **Rate Limiting**:
-  - Per-endpoint: 100 requests/60 seconds (configurable)
-  - Batch operations: Limited by `max_batch_size` (default: 1000)
-  - Query size limit: 10000 characters (default)
+- **Gateway only**: clients reach the service through the API gateway, at
+  `https://<host>/api/v1/data/...` (proxied to the service's `/api/v1/...`)
+  and `https://<host>/api/v1/data/health` (proxied to `/health`). The
+  gateway authenticates every one of these routes, health included, with a
+  JWT bearer token or an API key sent as `X-API-Key`. There is no anonymous
+  access.
+- **Proof of origin**: the gateway forwards the caller as
+  `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role` with the
+  `X-Gateway-Secret` header. Every `/api/v1` route depends on
+  `get_current_user` (`app/auth.py`, which is
+  `open_security_shared.gateway_auth.get_user_from_gateway_headers`); it
+  answers 403 to a request without those headers or with a wrong secret, and
+  503 when `GATEWAY_INTERNAL_SECRET` is not set. The service's own `/health`
+  is the only route without that dependency.
+- **No service API key**: `API_KEY_REQUIRED` and `API_KEY_HEADER` were
+  removed from `app/config.py` because nothing read them.
+- **Team scope**: indicators and sources are filtered to the caller's team
+  plus the global (`team_id IS NULL`) rows. Telemetry events and sensors
+  have no team column and are not filtered.
+- **API key scopes** (checked by the gateway): `read` for `GET`, `write` for
+  `POST`.
+- **Rate limiting**: none in the service; `RATE_LIMIT_ENABLED`,
+  `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` are read into the
+  configuration and used by nothing. The gateway limits each team to 10000
+  requests per hour, enforced in fixed 60-second windows of 166 requests.
+- **Batch operations**: limited by `MAX_BATCH_SIZE` (default 1000) and by
+  the request schemas (1000 items).
+- **CORS**: configurable with an origins allow list.
 
 ### Security Configuration
 
 ```text
-API_KEY_REQUIRED=false                    # Enable API key requirement
-API_KEY_HEADER=X-API-Key                 # Header name for API key
-RATE_LIMIT_ENABLED=true                  # Enable rate limiting
-RATE_LIMIT_REQUESTS=100                  # Requests per window
-RATE_LIMIT_WINDOW=60                     # Time window in seconds
+GATEWAY_INTERNAL_SECRET=...              # Shared with the gateway; required
 MAX_BATCH_SIZE=1000                      # Max items in batch operations
-MAX_QUERY_SIZE=10000                     # Max query size in characters
 ```
 
 ### Data Validation
@@ -73,18 +89,18 @@ MAX_QUERY_SIZE=10000                     # Max query size in characters
 ```http
 GET /health
 Tags: Health
-Response: HealthResponse
+Response: Object
 ```
 
-Returns service health status and version information.
+Returns the service status. Through the gateway it is
+`GET /api/v1/data/health`, which requires authentication.
 
 **Response Example:**
 
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-11-07T20:30:00Z",
-  "version": "1.0.0"
+  "timestamp": "2025-11-07T20:30:00+00:00"
 }
 ```
 
@@ -289,8 +305,10 @@ Path Parameters:
 - `asn_organization` (string): ASN organization name
 - `country_code` (string): 2-letter country code
 - `city` (string): City location
-- `ip_version` (int): 4 or 6
 - `coordinates` (object): Latitude/longitude if available
+
+`ip_version` is in the enrichment of `GET /api/v1/indicators/{indicator_id}`,
+not in this one.
 
 **Response:**
 
@@ -340,6 +358,11 @@ Path Parameters:
 - `mx_records` (string[]): Mail exchange records
 - `ns_records` (string[]): Nameserver records
 
+This endpoint returns `tld`, `registrar`, `creation_date`, `expiration_date`,
+`ip_addresses`, `mx_records` and `ns_records`; `subdomain`, `apex_domain` and
+`dns_resolves` are only in the enrichment of
+`GET /api/v1/indicators/{indicator_id}`.
+
 ---
 
 ### File Intelligence
@@ -364,6 +387,9 @@ Path Parameters:
 - `malware_family` (string): Known malware family
 - `signature_names` (string[]): Detection signatures
 - `detection_ratio` (string): Format like "45/67" (detections/vendors)
+
+`mime_type` is only in the enrichment of
+`GET /api/v1/indicators/{indicator_id}`, not in this endpoint's.
 
 ---
 
@@ -424,9 +450,8 @@ Each line is a complete JSON object:
 
 **Characteristics:**
 
-- Streaming response (keep-alive connection)
-- Server-sent events compatible
-- Limited to 1000 most recent indicators per stream
+- Computed once and returned as NDJSON; not a long-lived stream
+- Limited to 1000 most recent indicators per response
 
 ---
 
@@ -1130,17 +1155,27 @@ SENTRY_ENABLED=false                  # Optional error tracking
 ### HTTP Status Codes
 
 - `200 OK`: Successful GET/POST
-- `400 Bad Request`: Invalid parameters, max batch size exceeded
-- `404 Not Found`: Indicator/sensor not found
-- `429 Too Many Requests`: Rate limit exceeded
+- `400 Bad Request`: Max batch size exceeded
+- `403 Forbidden`: Request without the gateway headers or secret (the
+  gateway's own 401/403 answers come first for a client)
+- `404 Not Found`: Indicator/sensor not found, or not visible to the caller
+- `422 Unprocessable Entity`: Invalid parameter or request body
+- `429 Too Many Requests`: Gateway per-team rate limit exceeded (the service
+  has no limit of its own)
 - `500 Internal Server Error`: Server-side error
 
 ### Error Response Format
 
+The canonical shape of `open_security_shared.errors`:
+
 ```json
 {
-  "detail": "Error message description",
-  "status_code": 400
+  "error": {
+    "code": 404,
+    "message": "Indicator not found",
+    "type": "HTTPException",
+    "request_id": "..."
+  }
 }
 ```
 
@@ -1160,11 +1195,11 @@ Status: 404
 Detail: "Indicator not found"
 ```
 
-**Invalid Indicator Type:**
+**Invalid Indicator Type (bulk lookup):**
 
 ```yaml
-Status: 400
-Detail: "Invalid indicator type"
+Status: 422
+Message: "Request validation failed"
 ```
 
 ---
@@ -1191,11 +1226,9 @@ Optimized for common queries:
 
 ### Rate Limiting
 
-Default: 100 requests/60 seconds
-
-- Per-endpoint enforcement
-- Can be disabled per config
-- Returns 429 status when exceeded
+The service enforces no rate limit; its `RATE_LIMIT_*` settings are unused.
+The gateway limits each team to 10000 requests per hour (fixed 60-second
+windows of 166 requests) and answers 429 past it.
 
 ### Response Compression
 
@@ -1206,22 +1239,31 @@ Default: 100 requests/60 seconds
 
 ## Integration Examples
 
+Every example goes through the gateway with a token from
+`POST https://<host>/auth/jwt/login` (or an API key sent as `X-API-Key`).
+
+```bash
+CA=open-security-gateway/ssl/wildbox.crt
+AUTH="Authorization: Bearer $TOKEN"
+```
+
 ### Retrieve All Malware IPs
 
 ```bash
-curl "http://localhost:8002/api/v1/indicators/search?indicator_type=ip_address&threat_types=malware&limit=1000"
+curl -s --cacert "$CA" -H "$AUTH" \
+  "https://<host>/api/v1/data/indicators/search?indicator_type=ip_address&threat_types=malware&limit=1000"
 ```
 
 ### Check IP Reputation
 
 ```bash
-curl "http://localhost:8002/api/v1/ips/192.0.2.1"
+curl -s --cacert "$CA" -H "$AUTH" "https://<host>/api/v1/data/ips/192.0.2.1"
 ```
 
 ### Bulk Lookup IOCs
 
 ```bash
-curl -X POST "http://localhost:8002/api/v1/indicators/lookup" \
+curl -s --cacert "$CA" -H "$AUTH" -X POST "https://<host>/api/v1/data/indicators/lookup" \
   -H "Content-Type: application/json" \
   -d '{
     "indicators": [
@@ -1234,14 +1276,17 @@ curl -X POST "http://localhost:8002/api/v1/indicators/lookup" \
 ### Real-Time Feed Stream
 
 ```bash
-curl "http://localhost:8002/api/v1/feeds/realtime?since_minutes=60&min_severity=7" \
-  -H "Accept: application/x-ndjson"
+curl -s --cacert "$CA" -H "$AUTH" \
+  "https://<host>/api/v1/data/feeds/realtime?since_minutes=60&min_severity=7"
 ```
 
 ### Ingest Sensor Events
 
+Sensor telemetry does not reach this endpoint today: the sensor posts to the
+service directly, without the gateway headers, and is refused (#628).
+
 ```bash
-curl -X POST "http://localhost:8002/api/v1/ingest" \
+curl -s --cacert "$CA" -H "$AUTH" -X POST "https://<host>/api/v1/data/ingest" \
   -H "Content-Type: application/json" \
   -d '{
     "batch_id": "batch-001",
@@ -1286,13 +1331,8 @@ CORS_ORIGINS=*
 ### Security
 
 ```text
-API_KEY_REQUIRED=false
-API_KEY_HEADER=X-API-Key
+GATEWAY_INTERNAL_SECRET=...   # Required; shared with the gateway
 MAX_BATCH_SIZE=1000
-MAX_QUERY_SIZE=10000
-RATE_LIMIT_ENABLED=true
-RATE_LIMIT_REQUESTS=100
-RATE_LIMIT_WINDOW=60
 ```
 
 ### Collection

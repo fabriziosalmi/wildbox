@@ -1,176 +1,183 @@
-# Security Secrets Rotation Guide
+# Secrets Rotation
 
-**CRITICAL**: Git history contains hardcoded secrets. All credentials must be rotated immediately.
+How to replace the secrets a Wildbox deployment keeps in `.env`, with the
+tool the repository provides, `scripts/rotate_secrets.sh`, and what each
+rotation costs. Every command below works on your own `.env`; none of them
+prints a secret, and neither should anything you add to this procedure.
 
-## Compromised Secrets Inventory
+## Where the secrets live
 
-### 1. JWT Secrets
+`make generate-secrets` (`scripts/generate_secrets.py`) writes `.env` with
+random values and owner-only permissions (`0600`). `docker-compose.yml` reads
+them from there and passes each one to the containers that need it.
+`make validate-secrets` checks the file.
 
-**Location**: `.env.example`, `.env.template`, service-specific configs  
-**Risk**: Token forgery, privilege escalation  
-**Action Required**:
+## The rotation tool
 
-```bash
-# Generate new secure JWT secret (256-bit minimum)
-openssl rand -base64 64 > /tmp/new_jwt_secret.txt
-
-# Update in .env (DO NOT COMMIT)
-JWT_SECRET_KEY=$(cat /tmp/new_jwt_secret.txt)
-```
-
-### 2. Database Passwords
-
-**Location**: `docker-compose.yml`, `.env.example`, hardcoded in connection strings  
-**Risk**: Full database compromise  
-**Action Required**:
+List the secrets the tool can rotate, with the cost of rotating each one:
 
 ```bash
-# Generate strong database password
-POSTGRES_PASSWORD=$(openssl rand -base64 32)
-
-# Update docker-compose.yml environment variables
-# Update service DATABASE_URL connection strings
-# Recreate database containers with new credentials
+make rotate-secrets          # runs ./scripts/rotate_secrets.sh --list
 ```
 
-### 3. API Keys
-
-**Location**: Test files, example configurations  
-**Risk**: Unauthorized API access  
-**Action Required**:
-
-- Revoke all API keys generated before secret rotation
-- Force re-generation of all team API keys
-- Implement key rotation policy (90-day expiry)
-
-### 4. Redis Passwords
-
-**Location**: Service configurations, docker-compose  
-**Risk**: Cache poisoning, session hijacking  
-**Action Required**:
+Rotate one secret:
 
 ```bash
-# Generate Redis password
-REDIS_PASSWORD=$(openssl rand -hex 32)
-
-# Update redis.conf requirepass directive
-# Update all service REDIS_URL connection strings
+./scripts/rotate_secrets.sh --secret GATEWAY_INTERNAL_SECRET
 ```
 
-### 5. Stripe API Keys (if production)
+What the script does:
 
-**Location**: `.env.example`  
-**Risk**: Payment data exposure, financial fraud  
-**Action Required**:
+1. Accepts only these names: `GATEWAY_INTERNAL_SECRET`, `JWT_SECRET_KEY`,
+   `API_KEY_HASH_SECRET`, `API_KEY`, `CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD`,
+   `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`. Any other name exits with an error.
+2. Works on `.env` in the repository root, or on the file named by the
+   `ENV_FILE` environment variable, and exits if the file does not exist.
+3. Refuses `JWT_SECRET_KEY` while `.env` has no non-empty
+   `API_KEY_HASH_SECRET` (see [JWT_SECRET_KEY](#jwt_secret_key)).
+4. Copies the file to `.env.bak.<timestamp>` with mode `0600`. The copy
+   holds the **old** secret: delete it once the rotation is verified.
+5. Generates the new value with Python's `secrets.token_urlsafe(48)` (64
+   URL-safe characters), replaces the `NAME=` line or appends one, and sets
+   `.env` back to `0600`. With `--secret API_KEY_HASH_SECRET --init` it copies
+   the current `JWT_SECRET_KEY` value instead of generating one.
+6. Prints the next step. It does not restart anything.
 
-- Rotate keys in Stripe Dashboard
-- Update webhook signing secrets
-- Audit transaction logs for unauthorized access
-
-## Rotation Procedure
-
-### Phase 1: Immediate Lockdown (0-2 hours)
-
-1. **Revoke all known API keys** in identity service database
-2. **Invalidate all JWT tokens** by changing JWT_SECRET_KEY (forces re-login)
-3. **Reset all service-to-service authentication** tokens
-4. **Audit access logs** for suspicious activity during compromise window
-
-### Phase 2: Credential Rotation (2-6 hours)
-
-1. Generate new secrets using cryptographically secure methods (above)
-2. Update secrets in production environment (secrets manager, NOT git)
-3. Restart all services with new credentials
-4. Verify health checks and authentication flows
-
-### Phase 3: Git History Sanitization (6-24 hours)
+The script changes `.env` only. Running containers keep the old value until
+they are recreated, which is what the script suggests:
 
 ```bash
-# WARNING: This rewrites git history. Coordinate with all developers.
-git filter-branch --force --index-filter \
-  "git rm --cached --ignore-unmatch .env .env.local open-security-*/.env" \
-  --prune-empty --tag-name-filter cat -- --all
-
-# Force push to remote (requires team coordination)
-git push origin --force --all
-git push origin --force --tags
+docker compose up -d --force-recreate
+make health
 ```
 
-**Alternative**: Treat repository as compromised, create fresh repository with sanitized code.
+Recreate with the same compose files you start the stack with (for example
+the production overlay), so the services come back with their usual
+configuration.
 
-### Phase 4: Prevention (Ongoing)
+## What each secret costs to rotate
 
-1. **Implement pre-commit hooks** to block secret commits:
+### GATEWAY_INTERNAL_SECRET
+
+The gateway sends it as `X-Gateway-Secret` on every proxied request, and each
+backend compares it with its own environment value; identity also requires it
+on `/internal/authorize`. A service still holding the old value refuses
+requests from one holding the new value, so a rolling restart produces `403`
+answers until every container has the same value. Recreate all services
+together.
+
+### JWT_SECRET_KEY
+
+Identity signs session tokens with it. Rotating it ends every session: users
+have to log in again.
+
+Identity also keys the HMAC of stored API-key digests with it whenever
+`API_KEY_HASH_SECRET` is unset
+(`open-security-identity/app/auth.py`, `_api_key_hash_secret()`), so in that
+case rotating it also makes every stored API key invalid. That is why the
+script refuses `JWT_SECRET_KEY` until `.env` sets `API_KEY_HASH_SECRET`.
+
+> **Current limitation.** `docker-compose.yml` does not pass
+> `API_KEY_HASH_SECRET` to the identity container: its environment lists
+> `JWT_SECRET_KEY` but not `API_KEY_HASH_SECRET`, and `.env` is not copied into
+> the image. Identity therefore keys API-key digests with `JWT_SECRET_KEY`
+> whatever `.env` says, and rotating `JWT_SECRET_KEY` invalidates every stored
+> API key even though the script's check passes. Until the compose file
+> passes the variable, plan a JWT rotation as an API-key rotation as well:
+> every user and team re-creates its keys afterwards.
+
+### API_KEY_HASH_SECRET
+
+The HMAC key for stored API-key digests. Rotating it to a new random value
+makes every stored API key invalid.
+
+`--init` is the safe first step on an existing deployment: it sets
+`API_KEY_HASH_SECRET` to the current `JWT_SECRET_KEY`, so existing digests
+still verify, and from then on the two can be rotated separately:
+
+```bash
+./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
+```
+
+`make generate-secrets` writes a random `API_KEY_HASH_SECRET` that differs
+from `JWT_SECRET_KEY`. Today that value does not reach identity (see the
+limitation above). If you make it reach identity, keys created while identity
+used `JWT_SECRET_KEY` stop working, so run `--init` first.
+
+### API_KEY
+
+A static key that the `api`, `tools-worker` and `tools-flower` containers
+require at startup (`open-security-tools/app/config.py`). The tools service no
+longer accepts it as a credential (#565), so rotating it affects no client.
+Recreate those three containers.
+
+### CSPM_CREDENTIAL_KEY
+
+Encrypts cloud credentials before the CSPM service writes them to Redis for a
+pending scan. Used by `cspm` and `cspm-worker`. Credentials of scans still
+in flight can no longer be decrypted, so those scans fail and have to be
+submitted again.
+
+### REDIS_PASSWORD
+
+The Redis container starts with `--requirepass ${REDIS_PASSWORD}`, and
+`docker-compose.yml` builds every service's Redis and Celery URL from the
+same variable. Recreate all services together. Redis keeps its data
+(append-only file) across the restart.
+
+If `.env` overrides any of those URLs (variables such as
+`IDENTITY_REDIS_URL` or `AGENTS_REDIS_URL`), the password inside them is not
+updated by the script: edit them by hand.
+
+### POSTGRES_PASSWORD
+
+PostgreSQL reads `POSTGRES_PASSWORD` only when it initializes an empty data
+directory; on an existing deployment the password lives in the database. The
+script changes only the `POSTGRES_PASSWORD=` line, while `DATABASE_URL`,
+`DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and `RESPONDER_DATABASE_URL`
+embed the password and are left as they are. A complete rotation is:
+
+1. Run `./scripts/rotate_secrets.sh --secret POSTGRES_PASSWORD`.
+2. While the old containers are still running, set the same value in the
+   database. `\password` prompts for it, so it does not appear on the
+   command line or in shell history (replace `postgres` with your
+   `POSTGRES_USER` if you changed it):
 
    ```bash
-   # Install gitleaks or detect-secrets
-   pip install detect-secrets
-   detect-secrets scan --baseline .secrets.baseline
+   docker compose exec postgres psql -U postgres -c '\password postgres'
    ```
 
-2. **Use environment-specific secret management**:
-   - Development: `.env.local` (git-ignored)
-   - Staging: AWS Secrets Manager / Azure Key Vault
-   - Production: Kubernetes Secrets / HashiCorp Vault
+3. Replace the old password with the new one in the four connection strings
+   above in `.env`.
+4. Recreate all services.
 
-3. **Enforce secret rotation policies**:
-   - JWT secrets: Rotate quarterly
-   - Database passwords: Rotate semi-annually
-   - API keys: 90-day expiry, auto-revocation
+### NEXTAUTH_SECRET
 
-4. **Audit secret access**:
+Passed to the dashboard container, but the dashboard source does not read it,
+so rotating it has no visible effect.
 
-   ```bash
-   # Add to CI/CD pipeline
-   git log -p | grep -i 'password\|secret\|key' | grep -v '.example'
-   ```
+## API keys issued to users and teams
 
-## Verification Checklist
+Users and teams hold their own API keys, issued by identity. They are not in
+`.env` and are rotated through the identity API, with a session token:
 
-- [ ] All JWT_SECRET_KEY values rotated across services
-- [ ] POSTGRES_PASSWORD changed and database reconnected
-- [ ] REDIS_PASSWORD updated and services reconnected
-- [ ] All API keys revoked and regenerated
-- [ ] Stripe keys rotated (if applicable)
-- [ ] Git history scanned with `git-secrets` or `gitleaks`
-- [ ] Pre-commit hooks installed on developer machines
-- [ ] Secrets stored in proper secrets manager (not .env files)
-- [ ] Documentation updated with secret management best practices
-- [ ] Incident postmortem completed (how secrets leaked, prevention measures)
+- user keys: `GET`, `POST /api/v1/identity/api-keys`, and
+  `DELETE /api/v1/identity/api-keys/{key_prefix}`;
+- team keys: the same under `/api/v1/identity/teams/{team_id}/api-keys`.
 
-## Detection of Exposed Secrets
+Create the replacement key, move clients to it, then delete the old one.
 
-Run these commands to audit for exposed secrets:
+## If `.env` has leaked
 
-```bash
-# Scan git history for secrets
-docker run --rm -v "$(pwd):/path" zricethezav/gitleaks:latest detect \
-  --source="/path" --verbose --redact
+Treat every value in it as known. Rotate `GATEWAY_INTERNAL_SECRET`,
+`JWT_SECRET_KEY` (with its API-key consequence above), `REDIS_PASSWORD`,
+`POSTGRES_PASSWORD` and `CSPM_CREDENTIAL_KEY`, and change the other
+credentials the file holds, such as `INITIAL_ADMIN_PASSWORD` and third-party
+API keys, with their providers. Then delete the `.env.bak.*` copies and
+report the incident as described in [SECURITY.md](../SECURITY.md).
 
-# Search for common secret patterns
-git log -p | grep -E 'sk_live_|sk_test_|AKIA|ghp_|pk_live_|pk_test_'
+## After a rotation
 
-# Check for hardcoded passwords
-git grep -i 'password.*=' | grep -v '.example' | grep -v '.md'
-```
-
-## Post-Rotation Monitoring
-
-1. **Monitor authentication failures** (spike indicates leaked credentials still in use)
-2. **Track API key usage patterns** (anomalies indicate compromise)
-3. **Alert on database connection errors** (verify password rotation successful)
-4. **Verify JWT signature validation** (ensure no tokens signed with old secret)
-
-## Contact for Security Incidents
-
-Report security incidents immediately:
-
-- **Email**: security@wildbox.security (if configured)
-- **GitHub Security Advisory**: Use "Report a vulnerability" in repository settings
-- **Slack**: #security-incidents (if team workspace exists)
-
----
-
-**Last Updated**: 2025-11-24  
-**Next Rotation Due**: Set based on policy (quarterly recommended)  
-**Responsible Team**: Security / DevOps
+1. `make health`.
+2. Log in and call one authenticated route through the gateway.
+3. Delete the `.env.bak.*` copies the script made.

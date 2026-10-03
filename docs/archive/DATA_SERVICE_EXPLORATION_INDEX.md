@@ -1,5 +1,7 @@
 # Data Service - Comprehensive Exploration Index
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/data/endpoints/>.
+
 ## Documents Overview
 
 This index provides navigation to all documentation related to the Open Security Data Service codebase exploration.

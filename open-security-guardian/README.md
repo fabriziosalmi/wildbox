@@ -520,7 +520,7 @@ Key metrics:
 
 ## Additional Resources
 
-- **Full Documentation**: `/docs/guardian/` in main repository
+- **Full Documentation**: [Guardian API reference](https://www.wildbox.io/api/guardian/endpoints/) (the older guides are kept for history in [docs/archive/guardian/](../docs/archive/guardian/))
 - **API Reference**: `http://localhost:8013/docs` (Swagger)
 - **Issue Tracker**: GitHub Issues
 
@@ -538,7 +538,7 @@ See main repository LICENSE file
 For questions or issues:
 
 1. Check this README and troubleshooting section
-2. Check `/docs/guardian/` for detailed documentation
+2. Check the [Guardian API reference](https://www.wildbox.io/api/guardian/endpoints/)
 3. Open an issue on GitHub
 
 ---

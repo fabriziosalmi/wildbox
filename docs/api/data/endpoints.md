@@ -1,593 +1,559 @@
 # Data Service API
 
-> **Hand-written reference.** This page was written in November 2024 and
-> has not been re-checked endpoint by endpoint against the code since.
-> Paths, fields and examples may have drifted; the service's own OpenAPI
-> document is authoritative. Corrections are welcome as issues or pull
-> requests.
->
-> All IDs, keys (such as `your-api-key`) and host names in the examples are
-> fictitious placeholders.
+**Gateway path**: `https://<host>/api/v1/data/...` (proxied to the service's
+`/api/v1/...`)
+**Health**: `https://<host>/api/v1/data/health` (proxied to the service's
+`/health`)
+**Authentication**: through the gateway only, with a JWT bearer token or an
+API key sent as `X-API-Key`. There is no anonymous access.
 
-**Gateway path**: `https://<host>/api/v1/data/...` (proxied to the service's `/api/v1/...`)  
-**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: Optional (API Key for enhanced features)
-
----
+Host names, IDs and keys in the examples are placeholders.
 
 ## Overview
 
-The Data Service aggregates, normalizes, and provides access to security intelligence data from 50+ threat intelligence sources. It maintains a data lake of indicators of compromise (IOCs), enriches them with geolocation and WHOIS information, and provides powerful query and filtering capabilities for security analysis.
+The data service stores threat intelligence indicators (IP addresses,
+domains, URLs, file hashes and other types) collected from public feeds, and
+the telemetry that security sensors send to it. It answers searches and
+lookups over the indicators, a real-time feed, dashboard figures, and
+queries over telemetry and sensors.
+
+Indicators and sources are team-scoped: a caller sees the global ones
+(collected from the public feeds, with no team) and those of its own team.
+Telemetry events and sensors carry no team; see [Telemetry](#telemetry).
 
 ## Table of Contents
 
 - [Authentication](#authentication)
-- [Indicators Search](#indicators-search)
+- [Endpoint Summary](#endpoint-summary)
+- [Health](#health)
+- [Indicators](#indicators)
 - [Intelligence Lookups](#intelligence-lookups)
-- [Sources & Feeds](#sources--feeds)
+- [Sources, Feeds and Statistics](#sources-feeds-and-statistics)
 - [Telemetry](#telemetry)
-- [Error Codes](#error-codes)
-- [Rate Limiting](#rate-limiting)
-
----
+- [Errors](#errors)
+- [Rate Limits](#rate-limits)
+- [Examples](#examples)
 
 ## Authentication
 
-### Optional API Key Authentication
-
-Use an optional API key to unlock enhanced features and higher rate limits:
+Every request goes through the gateway. The gateway validates the
+credential with the identity service and forwards the caller to the data
+service as `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`
+headers, with the `X-Gateway-Secret` proof of origin. The data service
+refuses, with 403, a request without those headers or with a wrong secret
+(`open-security-data/app/auth.py`, which uses
+`open_security_shared/gateway_auth.py`), so its own port is not an entry
+point. It reads no API key of its own: the `API_KEY_REQUIRED` and
+`API_KEY_HEADER` settings were removed because nothing read them.
 
 ```bash
-curl -X GET "http://localhost:8002/api/v1/indicators/search" \
-  -H "X-API-Key: your-api-key"
+CA=open-security-gateway/ssl/wildbox.crt
+TOKEN=$(curl -s --cacert "$CA" -X POST https://<host>/auth/jwt/login \
+  --data-urlencode "username=$ADMIN_EMAIL" \
+  --data-urlencode "password=$ADMIN_PASSWORD" | jq -r .access_token)
+
+curl -s --cacert "$CA" "https://<host>/api/v1/data/indicators/search?q=example.com" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-### No Authentication Required
+An API key (`POST /api/v1/identity/api-keys`, or
+`POST /api/v1/identity/teams/{team_id}/api-keys` for a team key) is sent as
+`X-API-Key: <key>`. A key with scopes needs `read` for `GET` requests and
+`write` for `POST` requests on `/api/v1/data/...`, including the read-only
+`POST /indicators/lookup`; the gateway answers 403 `insufficient_scope`
+otherwise. A JWT is not limited by scopes. The
+[Authentication and sessions guide](../../guides/authentication.md) covers
+both credentials.
 
-Public endpoints work without authentication:
+## Endpoint Summary
+
+Paths are relative to `https://<host>/api/v1/data`.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/health` | Service health |
+| `GET` | `/indicators/search` | Search indicators |
+| `GET` | `/indicators/{indicator_id}` | One indicator with its enrichment |
+| `POST` | `/indicators/lookup` | Look up many indicators at once |
+| `GET` | `/ips/{ip_address}` | Indicators for an IP address |
+| `GET` | `/domains/{domain}` | Indicators for a domain |
+| `GET` | `/hashes/{file_hash}` | Indicators for a file hash |
+| `GET` | `/sources` | Threat intelligence sources |
+| `GET` | `/feeds/realtime` | Recent indicators as NDJSON |
+| `GET` | `/stats` | Indicator and source counts |
+| `GET` | `/dashboard/threat-intel` | Dashboard figures |
+| `POST` | `/ingest` | Ingest a batch of telemetry events |
+| `GET` | `/telemetry/events` | Query telemetry events |
+| `GET` | `/telemetry/stats` | Telemetry counts |
+| `GET` | `/sensors` | Sensors that sent telemetry |
+| `GET` | `/sensors/{sensor_id}` | One sensor |
+
+## Health
+
+### GET /api/v1/data/health
+
+Authenticated like every other data route; the gateway forwards it to the
+service's `/health`.
 
 ```bash
-curl -X GET "http://localhost:8002/api/v1/indicators/search?q=example.com"
-```
-
----
-
-## Indicators Search
-
-### GET /indicators/search
-
-Search for indicators of compromise in the threat intelligence database.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/indicators/search`
-**Authentication**: Optional (API Key for higher limits)
-**Rate Limit**: 100 requests/minute
-
-**Query Parameters**:
-
-| Name | Type | Required | Default | Description |
-| ------ | ------ | ---------- | --------- | ------------- |
-| q | string | Yes | - | Search query (IP, domain, hash, URL, email) |
-| type | string | No | - | Filter by type: ipv4, ipv6, domain, url, md5, sha1, sha256, email |
-| threat_level | string | No | - | Filter by threat: malware, phishing, botnet, ransomware, etc. |
-| confidence | float | No | - | Minimum confidence score (0.0-1.0) |
-| severity | string | No | - | Filter by severity: critical, high, medium, low, info |
-| source | string | No | - | Filter by data source name |
-| limit | integer | No | 20 | Number of results (max: 10,000) |
-| offset | integer | No | 0 | Pagination offset |
-| sort | string | No | -last_seen | Sort by field (use - for descending) |
-| active_only | boolean | No | true | Only return currently active indicators |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8002/api/v1/indicators/search?q=malicious-domain.com&limit=20" \
-  -H "X-API-Key: your-api-key"
+curl -s --cacert "$CA" https://<host>/api/v1/data/health \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 **Response (200 OK)**:
 
 ```json
 {
-  "count": 1,
-  "next": null,
-  "previous": null,
-  "results": [
+  "status": "healthy",
+  "timestamp": "2026-10-03T10:00:00.000000+00:00"
+}
+```
+
+## Indicators
+
+An indicator in a response has these fields:
+
+| Field | Description |
+| --- | --- |
+| `id` | Indicator UUID |
+| `indicator_type` | `ip_address`, `domain`, `url`, `file_hash`, `email`, `certificate`, `asn` or `vulnerability` |
+| `value`, `normalized_value` | The value as collected and its normalized form |
+| `threat_types` | List, for example `malware`, `phishing`, `botnet` |
+| `confidence` | `low`, `medium`, `high` or `verified` |
+| `severity` | 1 to 10 |
+| `description`, `tags` | Free text and a list of tags |
+| `first_seen`, `last_seen`, `expires_at` | Timestamps |
+| `active` | Whether the indicator is active |
+| `source_id` | UUID of the source that provided it |
+| `indicator_metadata` | Additional metadata (an object) |
+| `created_at`, `updated_at` | Record timestamps |
+
+### GET /api/v1/data/indicators/search
+
+Search the indicators the caller can see, most recently seen first.
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `q` | string | | Case-insensitive substring of the value, the normalized value or the description |
+| `indicator_type` | string | | Exact type, for example `ip_address` |
+| `threat_types` | string, repeatable | | Indicators that have every threat type given |
+| `confidence` | string | | `low`, `medium`, `high` or `verified` |
+| `min_severity`, `max_severity` | integer | | 1 to 10 |
+| `source_id` | string | | Source UUID |
+| `since` | datetime | | Indicators last seen at or after this time |
+| `active_only` | boolean | `true` | Only active indicators |
+| `limit` | integer | 100 | 1 to 10000 |
+| `offset` | integer | 0 | Pagination offset |
+
+```bash
+curl -s --cacert "$CA" \
+  "https://<host>/api/v1/data/indicators/search?indicator_type=ip_address&threat_types=malware&min_severity=7&limit=50" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response (200 OK)**:
+
+```json
+{
+  "indicators": [
     {
-      "id": "ind-001",
-      "type": "domain",
-      "value": "malicious-domain.com",
-      "threat_level": "malware",
-      "confidence": 0.95,
-      "severity": "critical",
-      "last_seen": "2024-11-07T16:30:00Z",
-      "first_seen": "2024-10-15T08:00:00Z",
-      "sources": ["AlienVault OTX", "Abuse.ch"],
-      "status": "active",
-      "tags": ["botnet", "c2", "apt"]
+      "id": "0b8d3b1e-5d0f-4c55-9a43-3f2a7b0c9e11",
+      "indicator_type": "ip_address",
+      "value": "192.0.2.1",
+      "normalized_value": "192.0.2.1",
+      "threat_types": ["malware"],
+      "confidence": "high",
+      "severity": 8,
+      "description": "Known malicious IP",
+      "tags": ["botnet"],
+      "first_seen": "2026-10-01T10:00:00Z",
+      "last_seen": "2026-10-03T09:00:00Z",
+      "expires_at": null,
+      "active": true,
+      "source_id": "6a0f8e52-1c3b-4b7e-8d55-2e9f0a1b2c3d",
+      "indicator_metadata": {},
+      "created_at": "2026-10-01T10:00:00Z",
+      "updated_at": "2026-10-03T09:00:00Z"
     }
   ],
-  "pagination": {
-    "limit": 20,
-    "offset": 0,
-    "total": 1
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
+  "query_time": "2026-10-03T10:00:00Z"
+}
+```
+
+`total` counts every match before `limit` and `offset` apply.
+
+### GET /api/v1/data/indicators/{indicator_id}
+
+One indicator the caller can see, with `enrichment` (type-specific data, an
+empty object when there is none) and `raw_data` (the data as the source
+provided it).
+
+`indicator_id` must be a lowercase UUID; anything else answers 422.
+**404** (`Indicator not found`) for an unknown indicator or one of another
+team.
+
+| `indicator_type` | `enrichment` fields |
+| --- | --- |
+| `ip_address` | `ip_version`, `asn`, `asn_organization`, `country_code`, `city`, `coordinates` |
+| `domain` | `tld`, `subdomain`, `apex_domain`, `registrar`, `creation_date`, `expiration_date`, `dns_resolves`, `ip_addresses`, `mx_records`, `ns_records` |
+| `file_hash` | `hash_type`, `file_name`, `file_size`, `file_type`, `mime_type`, `malware_family`, `signature_names`, `detection_ratio` |
+
+### POST /api/v1/data/indicators/lookup
+
+Look up many indicators in one request. Read-only, although it is a `POST`.
+
+```bash
+curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/indicators/lookup \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "indicators": [
+      {"indicator_type": "ip_address", "value": "192.0.2.1"},
+      {"indicator_type": "domain", "value": "example.com"}
+    ]
+  }'
+```
+
+`indicator_type` must be one of the indicator types listed above (422
+otherwise). A value matches an active indicator of that type by its value
+or its normalized value (lowercase, trimmed).
+
+**Response (200 OK)**:
+
+```json
+{
+  "results": [
+    {"indicator_type": "ip_address", "value": "192.0.2.1", "found": true, "matches": [{"id": "0b8d3b1e-5d0f-4c55-9a43-3f2a7b0c9e11", "...": "..."}]},
+    {"indicator_type": "domain", "value": "example.com", "found": false, "matches": []}
+  ],
+  "total_queried": 2,
+  "total_found": 1,
+  "query_time": "2026-10-03T10:00:00Z"
+}
+```
+
+At most 1000 items: more answers 422, and 400 when the service's
+`MAX_BATCH_SIZE` is set lower than 1000.
+
+## Intelligence Lookups
+
+Each lookup returns the active indicators of one type matching the value,
+the enrichment of the first match, and the query time. **404** when the
+caller can see no matching indicator.
+
+### GET /api/v1/data/ips/{ip_address}
+
+```bash
+curl -s --cacert "$CA" https://<host>/api/v1/data/ips/192.0.2.1 \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**Response (200 OK)**:
+
+```json
+{
+  "ip_address": "192.0.2.1",
+  "threat_count": 1,
+  "indicators": [{"id": "0b8d3b1e-5d0f-4c55-9a43-3f2a7b0c9e11", "...": "..."}],
+  "enrichment": {
+    "asn": 64496,
+    "asn_organization": "Example Networks",
+    "country_code": "US",
+    "city": "Example City",
+    "coordinates": {"latitude": 40.0, "longitude": -74.0}
+  },
+  "query_time": "2026-10-03T10:00:00Z"
+}
+```
+
+`enrichment` is `null` when the indicator has none.
+
+### GET /api/v1/data/domains/{domain}
+
+Same shape, with `domain` in place of `ip_address`. The domain is matched as
+given and lowercased. `enrichment` fields: `tld`, `registrar`,
+`creation_date`, `expiration_date`, `ip_addresses`, `mx_records`,
+`ns_records`.
+
+### GET /api/v1/data/hashes/{file_hash}
+
+Same shape, with `file_hash` in place of `ip_address`. The hash is matched
+as given and lowercased. `enrichment` fields: `hash_type`, `file_name`,
+`file_size`, `file_type`, `malware_family`, `signature_names`,
+`detection_ratio`.
+
+## Sources, Feeds and Statistics
+
+### GET /api/v1/data/sources
+
+The sources the caller can see, by name.
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled_only` | boolean | `true` | Only enabled sources |
+
+Each item has `id`, `name`, `description`, `source_type`, `enabled`,
+`status`, `last_collection`, `collection_count` and `error_count`.
+
+### GET /api/v1/data/feeds/realtime
+
+Recent indicators as newline-delimited JSON (`application/x-ndjson`), most
+recently seen first, at most 1000. The response is computed once and ends;
+it is not a long-lived stream.
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `indicator_types` | string, repeatable | | Only these types |
+| `threat_types` | string, repeatable | | Indicators that have every threat type given |
+| `min_severity` | integer | | 1 to 10 |
+| `since_minutes` | integer | 60 | Indicators last seen in this many minutes, 1 to 1440 |
+
+```bash
+curl -s --cacert "$CA" \
+  "https://<host>/api/v1/data/feeds/realtime?since_minutes=60&min_severity=7" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Each line holds `id`, `indicator_type`, `value`, `threat_types`,
+`confidence`, `severity`, `description`, `tags`, `first_seen`, `last_seen`
+and `source_id`.
+
+### GET /api/v1/data/stats
+
+```json
+{
+  "total_indicators": 1520,
+  "indicator_types": {"ip_address": 900, "domain": 420, "url": 200},
+  "total_sources": 12,
+  "active_sources": 10,
+  "recent_collections": 24,
+  "timestamp": "2026-10-03T10:00:00Z"
+}
+```
+
+Indicator and source counts cover what the caller can see (active
+indicators only). `recent_collections` counts every collection run started
+in the last 24 hours, of any team.
+
+### GET /api/v1/data/dashboard/threat-intel
+
+The figures of the dashboard's threat intelligence card, over the caller's
+team and the global sources and indicators.
+
+```json
+{
+  "total_feeds": 12,
+  "active_feeds": 10,
+  "last_updated": "2026-10-03T09:00:00+00:00",
+  "new_indicators": 35,
+  "trends_change": 12.5
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `total_feeds`, `active_feeds` | Sources, and enabled sources |
+| `last_updated` | End of the last completed collection run of a visible source; `null` when none has completed |
+| `new_indicators` | Active indicators created in the last 24 hours |
+| `trends_change` | Percent change of `new_indicators` from the 24 hours before, one decimal; `null` when that earlier period had none |
+
+## Telemetry
+
+Telemetry events and sensor records have no team column, so the telemetry
+routes are not team-scoped: any authenticated caller sees every event and
+every sensor.
+
+### POST /api/v1/data/ingest
+
+Ingest a batch of telemetry events. A sensor that is not known yet is
+registered from its first event.
+
+> **Sensor telemetry does not reach this endpoint today (#628).** The
+> sensor is configured to post to the data service directly
+> (`open-security-sensor/config.yaml`), without the gateway headers, and
+> the service refuses such requests. The endpoint itself works through the
+> gateway, as below.
+
+```bash
+curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/ingest \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "batch_id": "batch-001",
+    "events": [
+      {
+        "sensor_id": "sensor-001",
+        "event_type": "process_event",
+        "timestamp": "2026-10-03T09:59:00Z",
+        "source_host": "workstation-01",
+        "event_data": {"process_name": "cmd.exe"},
+        "severity": 5,
+        "tags": ["process"]
+      }
+    ]
+  }'
+```
+
+| Event field | Required | Description |
+| --- | --- | --- |
+| `sensor_id` | Yes | Sensor identifier |
+| `event_type` | Yes | `process_event`, `network_connection`, `file_change`, `user_event`, `system_inventory`, `authentication` or `security_event` |
+| `timestamp` | Yes | When the event happened |
+| `event_data` | Yes | Event-specific object |
+| `source_host` | No | Host the event came from |
+| `raw_data` | No | Raw event as a string |
+| `severity` | No | 1 to 10 (default 1) |
+| `tags` | No | List of strings |
+
+`batch_id` is optional; the service generates one when it is absent.
+
+**Response (200 OK)**:
+
+```json
+{
+  "batch_id": "batch-001",
+  "events_received": 1,
+  "events_ingested": 1,
+  "errors": [],
+  "ingested_at": "2026-10-03T10:00:00Z"
+}
+```
+
+An event that cannot be processed is reported in `errors` as
+`Event <index>: processing failed` and the rest are kept. If the batch
+cannot be saved, `events_ingested` is 0 and `errors` holds
+`Batch commit failed`. At most 1000 events: more answers 422, and 400 when
+`MAX_BATCH_SIZE` is set lower.
+
+### GET /api/v1/data/telemetry/events
+
+Events, newest first.
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sensor_id` | string | | One sensor |
+| `event_type` | string | | One event type |
+| `start_time`, `end_time` | datetime | | Event time range, inclusive |
+| `limit` | integer | 100 | At most 1000 |
+| `offset` | integer | 0 | Pagination offset |
+
+Each event has the ingest fields plus `id`, `ingested_at`, `processed` and
+`processed_at`.
+
+### GET /api/v1/data/telemetry/stats
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `sensor_id` | string | | One sensor |
+| `hours` | integer | 24 | Time window |
+
+```json
+{
+  "time_window_hours": 24,
+  "total_events": 120,
+  "active_sensors": 2,
+  "events_by_type": {"process_event": 80, "network_connection": 40},
+  "query_time": "2026-10-03T10:00:00+00:00"
+}
+```
+
+`active_sensors` counts active sensors seen within the window, whatever
+`sensor_id` is.
+
+### GET /api/v1/data/sensors
+
+Sensors, most recently seen first.
+
+| Query parameter | Type | Default | Description |
+| --- | --- | --- | --- |
+| `active_only` | boolean | `true` | Only active sensors |
+
+Each sensor has `id`, `sensor_id`, `hostname`, `platform`,
+`sensor_version`, `config`, `first_seen`, `last_seen`, `active`,
+`total_events` and `last_event_at`.
+
+### GET /api/v1/data/sensors/{sensor_id}
+
+One sensor by its `sensor_id`. **404** (`Sensor not found`) when there is
+none.
+
+## Errors
+
+The gateway answers its own refusals with
+`{"error": "<code>", "message": "..."}`:
+
+| Status | `error` | Cause |
+| --- | --- | --- |
+| 401 | `authentication_required` | No bearer token and no `X-API-Key` |
+| 401 | `invalid_token` | Token or key invalid, expired or revoked |
+| 403 | `insufficient_scope` | API key without the required scope |
+| 403 | `team_membership_ended` | The user was removed from the team the credential is for |
+| 403 | `PASSWORD_CHANGE_REQUIRED` | The account must change its initial password first |
+| 429 | `rate_limit_exceeded` | Per-team limit; see [Rate Limits](#rate-limits) |
+| 503 | `service_unavailable` | The gateway could not reach the identity service |
+
+The data service answers in the shape every Wildbox service uses:
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "Indicator not found",
+    "type": "HTTPException",
+    "request_id": "6f1c2d..."
   }
 }
 ```
 
----
-
-### POST /indicators/bulk-lookup
-
-Perform bulk lookup of multiple indicators at once.
-
-**Method**: `POST`
-**Endpoint**: `/api/v1/indicators/bulk-lookup`
-**Authentication**: Optional
-
-**Request Body**:
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| indicators | array | Yes | Array of indicator values (max: 1,000) |
-| include_enrichment | boolean | No | Include WHOIS/geolocation data (default: false) |
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:8002/api/v1/indicators/bulk-lookup \
-  -H "Content-Type: application/json" \
-  -d '{
-    "indicators": ["8.8.8.8", "example.com", "192.168.1.1"],
-    "include_enrichment": true
-  }'
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "results": [
-    {
-      "value": "8.8.8.8",
-      "type": "ipv4",
-      "found": true,
-      "threat_level": "benign",
-      "confidence": 1.0,
-      "enrichment": {
-        "asn": "AS15169",
-        "organization": "Google LLC",
-        "country": "US",
-        "is_public": true
-      }
-    },
-    {
-      "value": "example.com",
-      "type": "domain",
-      "found": false
-    }
-  ]
-}
-```
-
----
-
-## Intelligence Lookups
-
-### GET /intelligence/ip/{ip}
-
-Get detailed threat intelligence for an IP address.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/intelligence/ip/{ip}`
-**Authentication**: Optional
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| ip | string | IPv4 or IPv6 address |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8002/api/v1/intelligence/ip/192.168.1.100
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "ip": "192.168.1.100",
-  "reputation_score": 45,
-  "threat_indicators": [
-    {
-      "source": "AlienVault",
-      "type": "spam",
-      "last_reported": "2024-11-05T10:00:00Z"
-    }
-  ],
-  "geolocation": {
-    "country": "US",
-    "city": "Los Angeles",
-    "latitude": 34.0522,
-    "longitude": -118.2437
-  },
-  "asn": {
-    "asn": "AS15169",
-    "organization": "Google LLC",
-    "prefix": "8.8.8.0/24"
-  },
-  "whois": {
-    "registrar": "ARIN",
-    "created_date": "2010-01-01",
-    "updated_date": "2024-01-01"
-  },
-  "is_public": true,
-  "is_hosting": true
-}
-```
-
----
-
-### GET /intelligence/domain/{domain}
-
-Get detailed threat intelligence for a domain.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/intelligence/domain/{domain}`
-**Authentication**: Optional
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| domain | string | Domain name (FQDN) |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8002/api/v1/intelligence/domain/example.com
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "domain": "example.com",
-  "reputation_score": 95,
-  "threat_indicators": [],
-  "whois": {
-    "registrar": "VeriSign Global Registry Services",
-    "registrant_name": "IANA Domains",
-    "created_date": "1995-01-31",
-    "expires_date": "2024-12-31",
-    "name_servers": [
-      "a.iana-servers.net",
-      "b.iana-servers.net"
-    ]
-  },
-  "dns": {
-    "a_records": ["93.184.216.34"],
-    "mx_records": ["mail.example.com"],
-    "ns_records": ["a.iana-servers.net", "b.iana-servers.net"]
-  },
-  "ssl_certificate": {
-    "issuer": "DigiCert",
-    "valid_from": "2024-01-01",
-    "valid_to": "2025-01-01",
-    "san": ["www.example.com"]
-  },
-  "is_sinkhole": false,
-  "is_dga": false
-}
-```
-
----
-
-### GET /intelligence/hash/{hash}
-
-Get detailed threat intelligence for a file hash.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/intelligence/hash/{hash}`
-**Authentication**: Optional
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| hash | string | MD5, SHA1, or SHA256 file hash |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8002/api/v1/intelligence/hash/e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "hash_type": "sha256",
-  "threat_level": "malware",
-  "confidence": 0.98,
-  "first_submission": "2024-01-15T10:30:00Z",
-  "last_analysis": "2024-11-07T16:00:00Z",
-  "detections": 45,
-  "submissions": 123,
-  "file_name": "trojan.exe",
-  "file_size": 1024000,
-  "file_type": "PE32 executable",
-  "magic": "7F45 4C46",
-  "threat_names": [
-    "Trojan.Win32.Generic",
-    "Backdoor.Win32.Agent"
-  ],
-  "file_tags": ["trojan", "backdoor", "executable"]
-}
-```
-
----
-
-## Sources & Feeds
-
-### GET /sources
-
-List all configured threat intelligence sources and feeds.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/sources`
-**Authentication**: Optional
-
-**Query Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| limit | integer | Results per page (default: 50) |
-| offset | integer | Pagination offset |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8002/api/v1/sources?limit=20
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "count": 52,
-  "results": [
-    {
-      "id": "src-001",
-      "name": "AlienVault OTX",
-      "description": "Open Threat Exchange - Open source threat intelligence",
-      "source_type": "commercial",
-      "url": "https://otx.alienvault.com",
-      "last_update": "2024-11-07T18:00:00Z",
-      "indicators_count": 125000,
-      "reliability_score": 0.95
-    },
-    {
-      "id": "src-002",
-      "name": "Abuse.ch URLhaus",
-      "description": "Database of malicious URLs",
-      "source_type": "open_source",
-      "url": "https://urlhaus.abuse.ch",
-      "last_update": "2024-11-07T17:30:00Z",
-      "indicators_count": 85000,
-      "reliability_score": 0.93
-    }
-  ]
-}
-```
-
----
-
-### GET /sources/{source_id}/stream
-
-Stream newly added indicators from a specific source (NDJSON format).
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/sources/{source_id}/stream`
-**Authentication**: Optional
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| source_id | string | Source ID |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8002/api/v1/sources/src-001/stream \
-  --stream
-```
-
-**Response (200 OK) - Streaming NDJSON**:
-
-```json
-{"value":"8.8.8.8","type":"ipv4","threat":"spam","timestamp":"2024-11-07T18:00:00Z"}
-{"value":"malware-domain.com","type":"domain","threat":"malware","timestamp":"2024-11-07T18:00:01Z"}
-{"value":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","type":"sha256","threat":"malware","timestamp":"2024-11-07T18:00:02Z"}
-```
-
----
-
-## Telemetry
-
-### POST /telemetry/events
-
-Ingest telemetry events from sensors and endpoints.
-
-**Method**: `POST`
-**Endpoint**: `/api/v1/telemetry/events`
-**Authentication**: Optional
-
-**Request Body**:
-
-| Field | Type | Required | Description |
-| ------- | ------ | ---------- | ------------- |
-| events | array | Yes | Array of telemetry events |
-| events[].type | string | Yes | Event type: network_connection, file_operation, process_execution, dns_query |
-| events[].sensor_id | string | Yes | Sensor/endpoint identifier |
-| events[].timestamp | string | Yes | ISO-8601 timestamp |
-| events[].data | object | Yes | Event-specific data |
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:8002/api/v1/telemetry/events \
-  -H "Content-Type: application/json" \
-  -d '{
-    "events": [
-      {
-        "type": "network_connection",
-        "sensor_id": "sensor-001",
-        "timestamp": "2024-11-07T18:00:00Z",
-        "data": {
-          "source_ip": "192.168.1.100",
-          "destination_ip": "8.8.8.8",
-          "destination_port": 53,
-          "protocol": "udp"
-        }
-      }
-    ]
-  }'
-```
-
-**Response (202 Accepted)**:
-
-```json
-{
-  "ingested": 1,
-  "errors": 0,
-  "message": "Events queued for processing"
-}
-```
-
----
-
-### GET /telemetry/statistics
-
-Get aggregated telemetry statistics and metrics.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/telemetry/statistics`
-**Authentication**: Optional
-
-**Query Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| time_range | string | 1h, 24h, 7d, 30d (default: 24h) |
-| sensor_id | string | Filter by specific sensor |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8002/api/v1/telemetry/statistics?time_range=24h"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "total_events": 45000,
-  "events_by_type": {
-    "network_connection": 30000,
-    "dns_query": 10000,
-    "file_operation": 4000,
-    "process_execution": 1000
-  },
-  "active_sensors": 15,
-  "events_per_sensor": 3000,
-  "suspicious_events": 45
-}
-```
-
----
-
-## Error Codes
-
-| Code | Status | Description |
-| ------ | -------- | ------------- |
-| 200 | OK | Request successful |
-| 202 | Accepted | Data successfully ingested (async processing) |
-| 400 | Bad Request | Invalid query parameters or request body |
-| 401 | Unauthorized | Invalid API key (if provided) |
-| 404 | Not Found | Requested indicator or resource not found |
-| 429 | Too Many Requests | Rate limit exceeded |
-| 500 | Internal Server Error | Server error (contact support) |
-
----
-
-## Rate Limiting
-
-The Data Service enforces rate limits based on authentication:
-
-- **Anonymous requests**: 100 requests/minute
-- **Authenticated requests (API Key)**: 1,000 requests/minute
-
-Rate limit information is returned in response headers:
-
-```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1730963100
-```
-
----
+| Status | Cause |
+| --- | --- |
+| 400 | Batch larger than `MAX_BATCH_SIZE` |
+| 404 | Indicator, IP address, domain, hash or sensor not found (or not visible to the caller) |
+| 422 | Invalid parameter or body; `details` lists the errors |
+| 500 | Server error |
+
+## Rate Limits
+
+The data service applies no rate limit of its own: its
+`RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW`
+settings are read by nothing. The gateway limits each team to 10000
+requests per hour, enforced in fixed 60-second windows of 166 requests,
+and reports the current window in `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset`, with
+`X-RateLimit-Policy: 10000;w=3600`. Past the limit it answers 429 with
+`Retry-After`. The `RATE_LIMIT_PER_HOUR` variable is ignored today (#627).
+The gateway also limits each client IP to 100 requests per second with a
+burst of 10.
 
 ## Examples
 
-### Search for Malicious Domains
+### Check a List of IP Addresses
 
 ```bash
-# Search for domains with high threat level
-curl -X GET "http://localhost:8002/api/v1/indicators/search?type=domain&threat_level=malware&severity=critical" \
-  -H "X-API-Key: your-api-key"
-```
+CA=open-security-gateway/ssl/wildbox.crt
 
-### Bulk Check IP Addresses
-
-```bash
-#!/bin/bash
-
-IPS=("8.8.8.8" "1.1.1.1" "192.168.1.1" "10.0.0.1")
-
-curl -X POST http://localhost:8002/api/v1/indicators/bulk-lookup \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"indicators\": $(echo "${IPS[@]}" | jq -R -s -c 'split(" ")')
-  }" | jq '.results[] | select(.threat_level != "benign")'
-```
-
-### Real-time Threat Feed Integration
-
-```bash
-# Stream malware indicators from Abuse.ch
-curl -X GET http://localhost:8002/api/v1/sources/abuse-ch/stream \
-  --stream | while IFS= read -r line; do
-  THREAT=$(echo "$line" | jq -r '.threat')
-  VALUE=$(echo "$line" | jq -r '.value')
-
-  if [ "$THREAT" = "malware" ]; then
-    echo "New malware detected: $VALUE"
-    # Send to alerting system
-  fi
+for ip in 192.0.2.1 198.51.100.7; do
+  curl -s --cacert "$CA" "https://<host>/api/v1/data/ips/$ip" \
+    -H "X-API-Key: $WILDBOX_API_KEY" | jq '{ip_address, threat_count}'
 done
 ```
 
----
+### Read the Last Hour of High-Severity Indicators
+
+```bash
+curl -s --cacert "$CA" \
+  "https://<host>/api/v1/data/feeds/realtime?since_minutes=60&min_severity=7" \
+  -H "X-API-Key: $WILDBOX_API_KEY" \
+  | jq -c '{indicator_type, value, severity}'
+```
 
 ## Related Documentation
 
+- [Authentication and sessions](../../guides/authentication.md) - Tokens and API keys
 - [Security Policy](../../security/policy.md) - Authentication requirements
 - [API Reference Hub](../../api-reference.html) - All service endpoints
 - [Guardian Service API](../guardian/endpoints.md) - Vulnerability management
 - [Agents Service API](../agents/endpoints.md) - Threat analysis
-

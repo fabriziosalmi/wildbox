@@ -1,5 +1,7 @@
 # 🛡️ Open Security Guardian - Quick Start Guide
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/guides/quickstart/>.
+
 ## Getting Started with Guardian
 
 This guide will help you get the Open Security Guardian platform up and running quickly.

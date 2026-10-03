@@ -1,152 +1,84 @@
 # Observability Roadmap
 
-**Status:** PLANNED  
-**Priority:** MEDIUM  
-**Timeline:** Q1 2026
+> **Partly superseded.** Phase 1 (Prometheus metrics) is done, though not in
+> the way this plan proposed; the sections below say what exists. Phases 2 to
+> 5 remain plans. For the services and ports that run today see
+> <https://www.wildbox.io/guides/ports/>.
+
+**Status:** Phase 1 done; phases 2 to 5 planned  
+**Priority:** MEDIUM
 
 ## Current State
 
 **Working:**
 
-- Service health checks (`/health` endpoints)
-- Basic uptime monitoring via health checks
-- Service status indicators in admin UI
-- Docker Compose service orchestration
+- Service health checks (`/health` endpoints, wired into Compose
+  `healthcheck` entries)
+- `/metrics` in Prometheus exposition format on identity, tools, data,
+  responder, CSPM and agents, through `install_observability()` in
+  `open-security-shared/observability.py` (request count and latency by
+  method, path template and status, plus an `X-Request-ID` correlation header)
+- Guardian serves its own `/metrics/` view (`apps/core/views.py`, on when
+  `PROMETHEUS_ENABLED` is true, the default), but Prometheus does not scrape it
+- A Prometheus server in the `monitoring` Compose profile, with scrape targets
+  in `monitoring/prometheus.yml` and alert rules in `monitoring/alert_rules.yml`
 
 **Missing:**
 
-- **Prometheus metrics scraping**
+- **Guardian and gateway scraping** (not in `monitoring/prometheus.yml`)
+- **Alert delivery**: the rules are evaluated, but there is no Alertmanager and
+  `monitoring/prometheus.yml` has no `alerting` section, so alerts are visible
+  only in the Prometheus UI
 - **Grafana dashboards**
-- **Distributed tracing** (Jaeger/Tempo)
-- **Application Performance Monitoring (APM)**
+- **Distributed tracing**: `open-security-shared/tracing.py` initializes
+  OpenTelemetry only when its dependencies are installed, and no Compose file
+  runs a trace collector
 - **Log aggregation** (ELK/Loki)
-- **Alerting** (PagerDuty/OpsGenie)
 
-## Phase 1: Prometheus Metrics (Priority)
+## Phase 1: Prometheus Metrics (Done)
 
-### 1.1 Add Prometheus Exporters
+### 1.1 Metrics Endpoints
 
-**FastAPI Services** (identity, tools, agents, responder, cspm):
+The FastAPI services do not use `prometheus-fastapi-instrumentator`; they call
+`install_observability(app, ...)` from the shared package, which exposes
+`/metrics` with `prometheus_client`. If `prometheus_client` is missing the
+middleware keeps only the request ID, so a service still starts.
 
-```python
-# pip install prometheus-fastapi-instrumentator
-from prometheus_fastapi_instrumentator import Instrumentator
+Guardian (Django) does not use `django-prometheus`; it has a `MetricsView`
+that returns `prometheus_client.generate_latest()`.
 
-app = FastAPI()
-Instrumentator().instrument(app).expose(app)  # Exposes /metrics endpoint
+The gateway exposes no Prometheus metrics.
+
+### 1.2 Prometheus Service
+
+Start it with the `monitoring` profile:
+
+```bash
+docker compose --profile monitoring up -d
 ```
 
-**Django Services** (guardian, data):
-
-```python
-# pip install django-prometheus
-INSTALLED_APPS = [
-    'django_prometheus',
-    # ...
-]
-
-MIDDLEWARE = [
-    'django_prometheus.middleware.PrometheusBeforeMiddleware',
-    # ... other middleware ...
-    'django_prometheus.middleware.PrometheusAfterMiddleware',
-]
-```
-
-**Nginx/OpenResty Gateway**:
-
-```nginx
-# Add to nginx.conf
-server {
-    location /metrics {
-        stub_status on;
-        access_log off;
-        allow 172.16.0.0/12;  # Docker network
-        deny all;
-    }
-}
-```
-
-### 1.2 Add Prometheus Service
-
-**docker-compose.yml addition:**
+The `prometheus` service in `docker-compose.yml` runs
+`prom/prometheus:v2.55.1`, publishes the UI on `127.0.0.1:9090` only, and
+mounts `monitoring/prometheus.yml` and `monitoring/alert_rules.yml`.
+`monitoring/prometheus.yml` scrapes every 30 seconds, in one job named
+`wildbox-services`:
 
 ```yaml
-  prometheus:
-    image: prom/prometheus:v2.48.0
-    container_name: wildbox-prometheus
-    restart: unless-stopped
-    ports:
-      - "9090:9090"
-    volumes:
-      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - prometheus-data:/prometheus
-    command:
-      - '--config.file=/etc/prometheus/prometheus.yml'
-      - '--storage.tsdb.path=/prometheus'
-      - '--storage.tsdb.retention.time=30d'
-    networks:
-      - wildbox-network
-
-volumes:
-  prometheus-data:
-```
-
-**monitoring/prometheus/prometheus.yml:**
-
-```yaml
-global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
-
 scrape_configs:
-  - job_name: 'gateway'
+  - job_name: wildbox-services
+    metrics_path: /metrics
     static_configs:
-      - targets: ['gateway:80']
-    metrics_path: '/metrics'
-
-  - job_name: 'identity'
-    static_configs:
-      - targets: ['identity:8001']
-    metrics_path: '/metrics'
-
-  - job_name: 'tools'
-    static_configs:
-      - targets: ['tools:8000']
-    metrics_path: '/metrics'
-
-  - job_name: 'data'
-    static_configs:
-      - targets: ['data:8002']
-    metrics_path: '/metrics'
-
-  - job_name: 'guardian'
-    static_configs:
-      - targets: ['guardian:8013']
-    metrics_path: '/metrics'
-
-  - job_name: 'responder'
-    static_configs:
-      - targets: ['responder:8018']
-    metrics_path: '/metrics'
-
-  - job_name: 'agents'
-    static_configs:
-      - targets: ['agents:8006']
-    metrics_path: '/metrics'
-
-  - job_name: 'cspm'
-    static_configs:
-      - targets: ['cspm:8019']
-    metrics_path: '/metrics'
-
-  - job_name: 'postgres'
-    static_configs:
-      - targets: ['postgres-exporter:9187']
-
-  - job_name: 'redis'
-    static_configs:
-      - targets: ['redis-exporter:9121']
+      - targets:
+          - open-security-identity:8001
+          - open-security-tools:8000
+          - open-security-data:8002
+          - open-security-responder:8018
+          - open-security-cspm:8019
+          - open-security-agents:8006
 ```
+
+There are no PostgreSQL or Redis exporters.
+
 
 ### 1.3 Key Metrics to Track
 
@@ -278,7 +210,12 @@ services:
 
 ### 5.1 Prometheus AlertManager
 
-**monitoring/prometheus/alerts.yml:**
+Alert rules already exist in `monitoring/alert_rules.yml` (`WildboxServiceDown`,
+`WildboxHighErrorRate`, `WildboxNoToolExecutions`, `WildboxToolFailureRate`).
+What this phase still needs is an Alertmanager and an `alerting` section in
+`monitoring/prometheus.yml`. The original proposal follows.
+
+**Proposed rules (original plan):**
 
 ```yaml
 groups:
@@ -358,7 +295,7 @@ const systemHealth = await metricsClient.getSystemHealth()
 
 | Phase | Effort | Timeline | Dependencies |
 | ------- | -------- | ---------- | -------------- |
-| 1. Prometheus | 2 weeks | Q1 2026 | None |
+| 1. Prometheus | Done | Done | None |
 | 2. Grafana | 1 week | Q1 2026 | Phase 1 |
 | 3. Tracing | 2 weeks | Q2 2026 | Phase 1 |
 | 4. Logging | 1 week | Q2 2026 | None |
@@ -383,8 +320,8 @@ const systemHealth = await metricsClient.getSystemHealth()
 
 After Phase 1 & 2 completion:
 
-- [ ] All services expose `/metrics` endpoint
-- [ ] Prometheus scraping all services every 15s
+- [x] Services expose a `/metrics` endpoint
+- [ ] Prometheus scraping all services (today: six services every 30s; guardian and the gateway are not scraped)
 - [ ] Grafana dashboards show real-time data
 - [ ] Dashboard UI displays actual metrics (no N/A)
 - [ ] 95th percentile response time < 200ms
@@ -401,5 +338,4 @@ After Phase 1 & 2 completion:
 ---
 
 **Document Owner:** Platform Team  
-**Last Updated:** November 23, 2025  
-**Next Review:** January 2026
+**Last Updated:** October 3, 2026

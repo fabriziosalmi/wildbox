@@ -1,5 +1,20 @@
 # Error Handling Refactoring Guide
 
+> **Partly superseded.** The FastAPI services (identity, tools, data,
+> responder, CSPM, agents) now install a shared error contract,
+> `install_error_handlers()` from `open-security-shared/errors.py`. Every
+> `HTTPException`, validation error and unhandled exception answers with one
+> body shape, not FastAPI's default `{"detail": ...}`:
+>
+> ```json
+> {"error": {"code": 403, "message": "...", "type": "HTTPException", "request_id": "..."}}
+> ```
+>
+> The data service is FastAPI, not Django; guardian is the only Django
+> service. The advice to raise `HTTPException` instead of returning
+> `{"success": False}` still applies. For the API reference see
+> <https://www.wildbox.io/docs.html#api-docs>.
+
 **Status:** 🟡 IN PROGRESS  
 **Priority:** HIGH  
 **Impact:** Monitoring, Observability, API Standards
@@ -81,12 +96,12 @@ def execute_tool(params):
 
 ### ⏳ Pending
 
-- [ ] Review all FastAPI route handlers in:
-  - `open-security-identity/app/api_v1/endpoints/*.py`
-  - `open-security-guardian/api/views.py` (Django REST)
-  - `open-security-data/api/views.py` (Django REST)
-  - `open-security-responder/app/api/*.py`
-  - `open-security-cspm/app/api/*.py`
+- [ ] Review the route handlers in:
+  - `open-security-identity/app/api_v1/endpoints/*.py` (FastAPI)
+  - `open-security-data/app/api/main.py` (FastAPI)
+  - `open-security-responder/app/main.py` (FastAPI)
+  - `open-security-cspm/app/main.py` (FastAPI)
+  - `open-security-guardian/apps/*/views.py` (Django REST Framework)
 
 ## Refactoring Patterns
 
@@ -205,7 +220,7 @@ HTTP/1.1 200 OK
 ```bash
 $ curl -X POST /api/tool/execute -d '{"tool": "invalid"}'
 HTTP/1.1 403 Forbidden
-{"detail": "Tool 'invalid' not authorized. Available tools: ..."}
+{"error": {"code": 403, "message": "Tool 'invalid' not authorized. Available tools: ...", "type": "HTTPException", "request_id": "..."}}
 
 # Prometheus records: 403 Forbidden ❌ (CORRECT!)
 ```
@@ -227,7 +242,7 @@ For each file being refactored:
 
 1. **Phase 1** (Current): Core orchestrator and shared utilities
 2. **Phase 2**: FastAPI services (identity, responder, cspm)
-3. **Phase 3**: Django services (guardian, data) - use DRF exception handlers
+3. **Phase 3**: Django service (guardian) - use DRF exception handlers
 4. **Phase 4**: Frontend updates to remove `.success` checks
 5. **Phase 5**: Update monitoring dashboards and alerts
 

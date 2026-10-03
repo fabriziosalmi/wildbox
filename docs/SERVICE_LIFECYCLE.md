@@ -4,80 +4,68 @@
 
 ## Service Architecture
 
-Wildbox operates as a containerized microservices platform with the following core services:
+The list below follows the `services:` section of `docker-compose.yml`. Host
+ports are bound to `127.0.0.1` except the gateway's, so clients reach the
+backends through the gateway (`https://<host>/api/v1/<service>/...`).
 
-### Active Production Services
+### Default Services
 
-1. **Gateway** (OpenResty/Nginx) - Port 80/443
-   - API gateway with Lua-based authentication
-   - Handles all external traffic routing
-   - Rate limiting and request validation
+These start with a plain `docker compose up -d`.
 
-2. **Identity** (FastAPI) - Port 8001
-   - Authentication and authorization (JWT, API keys)
-   - User and team management
-   - Subscription handling
+| Compose service | Role | Stack | Host port |
+| --- | --- | --- | --- |
+| `gateway` | Only ingress: TLS, Lua authentication, routing, per-team rate limit | OpenResty (nginx + Lua) | 80, 443, 8080 |
+| `identity` | Users, teams, JWT login, API keys | FastAPI | 127.0.0.1:8001 |
+| `api` | Tools service: security tool catalog and execution | FastAPI | 127.0.0.1:8000 |
+| `tools-worker` | Celery worker for tool runs | Celery (tools image) | none |
+| `tools-flower` | Celery Flower UI, basic auth | Celery Flower (tools image) | 127.0.0.1:5555 |
+| `data` | Threat intelligence and IOC storage | FastAPI | 127.0.0.1:8002 |
+| `data-scheduler` | Feed collection scheduler (`python -m app.scheduler.main`) | Python (data image) | none |
+| `guardian` | Vulnerabilities, assets, compliance, reports | Django REST Framework | 127.0.0.1:8013 |
+| `guardian-worker` | Celery worker for guardian tasks | Celery (guardian image) | none |
+| `guardian-beat` | Celery beat scheduler for guardian | Celery (guardian image) | none |
+| `responder` | Incident response playbooks | FastAPI | 127.0.0.1:8018 |
+| `cspm` | Cloud security posture checks (AWS only) | FastAPI | 127.0.0.1:8019 |
+| `cspm-worker` | Celery worker that runs CSPM scans | Celery (cspm image) | none |
+| `agents` | AI-assisted analysis through the Anthropic API (optional key) | FastAPI | 127.0.0.1:8006 |
+| `sensor` | Host telemetry agent | Python with osquery | 127.0.0.1:8004 |
+| `dashboard` | Web UI | Next.js | 127.0.0.1:3000 |
+| `postgres` | PostgreSQL 15 (`identity`, `data`, `guardian` databases) | `postgres:15` | none |
+| `wildbox-redis` | Redis 7, AOF on, `noeviction`, password required | `redis:7-alpine` | none |
 
-3. **Tools** (FastAPI) - Port 8000
-   - 55+ security tools (port scanning, DNS enum, etc.)
-   - API key authentication
-   - Celery background workers
+### Profile Services
 
-4. **Data** (Django) - Port 8002
-   - Threat intelligence database
-   - IOC (Indicators of Compromise) management
-   - Integration with external feeds
+These start only when their Compose profile is named, for example
+`docker compose --profile monitoring up -d`.
 
-5. **Guardian** (Django) - Port 8013
-   - Vulnerability management
-   - CVE tracking and remediation
-   - Asset inventory
-
-6. **Responder** (FastAPI) - Port 8018
-   - Incident response automation
-   - Playbook execution
-   - SOAR (Security Orchestration) capabilities
-
-7. **Agents** (FastAPI) - Port 8006
-   - AI-powered security analysis (GPT-4o integration)
-   - Automated threat hunting
-   - Log analysis
-
-8. **CSPM** (FastAPI) - Port 8019
-   - Cloud Security Posture Management
-   - 22 cloud security checks, AWS only (GCP and Azure are not supported)
-   - Compliance reporting
-
-9. **Sensor** (Rust) - Port 8004
-   - Endpoint monitoring (osquery integration)
-   - System telemetry collection
-   - Certificate-based authentication
-
-10. **Dashboard** (Next.js 14) - Port 3000
-    - User interface (App Router, React Server Components)
-    - Session + JWT authentication
-    - Real-time updates via WebSockets (planned)
-
-11. **Automations** (n8n) - Port 5678
-    - Workflow automation
-    - Integration orchestration
-    - Basic authentication
+| Compose service | Profile | Role | Host port |
+| --- | --- | --- | --- |
+| `automations` | `automations` | n8n workflow automation (`n8nio/n8n:1.74.0`) | 127.0.0.1:5678 |
+| `backup` | `backup` | Periodic PostgreSQL backup with `scripts/backup_postgres.sh` | none |
+| `prometheus` | `monitoring` | Prometheus with `monitoring/prometheus.yml` | 127.0.0.1:9090 |
 
 ### Shared Infrastructure
 
-- **PostgreSQL 15**: Single instance, multiple databases (`identity`, `data`, `guardian`, etc.)
-- **Redis 7**: Single instance, logical DB separation (DB 0-15)
+- **PostgreSQL 15**: Single instance; the default database is `identity`
+  (`POSTGRES_DB`), and `scripts/init-databases.sql` creates the
+  `guardian` and `data` databases next to the default one.
+- **Redis 7**: Single instance, logical databases: 0 identity, 1 guardian,
+  2 tools and responder, 3 CSPM, 4 agents.
 
 ## Service States
 
-### Development State
+### Not Routed by the Gateway
 
-Services under active development with incomplete features.
+- **Sensor**: the gateway has no upstream for it (commented out in
+  `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`). Its telemetry
+  does not reach the data service today; see
+  [issue #628](https://github.com/fabriziosalmi/wildbox/issues/628).
 
-**Current Development Services**:
+### Optional Services
 
-- **Sensor**: 50% complete, Rust implementation in progress
-- **CSPM**: Feature complete, requires extensive testing (314 files)
+- **Automations (n8n)**: in the `automations` profile. The gateway resolves it
+  at request time on `/api/v1/automations/`, so the gateway starts without it
+  and that route answers 502 until the profile is started.
 
 ### Deprecated Services
 
@@ -88,54 +76,30 @@ Previously active services that have been consolidated or replaced.
 - Standalone scripts in `scripts/debug/` (replaced by integrated testing)
 - Legacy authentication endpoints (migrated to identity service)
 
-### Disabled Services
-
-Services configured in docker-compose but not active in production.
-
-**Disabled**:
-
-- Automations service (upstream marked `down` in gateway config)
-
 ## Service Startup Sequence
 
-Proper startup order prevents dependency failures:
+`depends_on` with health conditions in `docker-compose.yml` orders startup, so
+one command starts the stack:
 
 ```bash
-# Phase 1: Infrastructure (0-30s)
-docker-compose up -d postgres wildbox-redis
-
-# Phase 2: Core Services (30-60s)
-docker-compose up -d identity
-
-# Phase 3: Application Services (60-120s)
-docker-compose up -d gateway data guardian tools responder agents cspm
-
-# Phase 4: Frontend & Monitoring (120-180s)
-docker-compose up -d dashboard sensor
+docker compose up -d
+docker compose ps   # the STATUS column shows each container's health
 ```
 
-**Critical**: Wait for health checks to pass before starting dependent services.
+**Critical**: the gateway lists identity, guardian, responder, agents and api
+in `depends_on`, and nginx refuses to start when an upstream host name does not
+resolve. Starting the gateway alone, or with one of those backends stopped,
+leaves it restarting.
 
-### Health Check Endpoints
+### Health Checks
 
-All services expose `/health` endpoint:
+Every backend defines a Compose `healthcheck` that calls its `/health`
+endpoint inside the container. Check them with `docker compose ps`, or
+through the gateway for the routes that expose one, for example:
 
 ```bash
-# Check service health
-curl http://localhost:8001/health  # Identity
-curl http://localhost:8000/health  # Tools
-curl http://localhost:8002/health  # Data
-# etc.
-```
-
-**Expected Response**:
-
-```json
-{
-  "status": "healthy",
-  "service": "identity",
-  "timestamp": "2025-11-24T12:00:00Z"
-}
+CA=open-security-gateway/ssl/wildbox.crt
+curl --cacert "$CA" https://<host>/api/v1/data/health
 ```
 
 ## Service Communication Patterns
@@ -151,10 +115,11 @@ All production traffic flows through gateway with authentication injection via `
 ### Direct Access (Development Only)
 
 ```text
-Client → Backend Service (port 8000-8019)
+Client on the Docker host → 127.0.0.1:<backend port>
 ```
 
-Used for debugging and local development. **Never expose in production.**
+Backend ports are published on `127.0.0.1` only, for debugging on the Docker
+host. **Never expose them on a public interface.**
 
 ## Database Migrations
 
@@ -162,16 +127,16 @@ Used for debugging and local development. **Never expose in production.**
 
 ```bash
 # Identity service example
-docker-compose exec identity alembic upgrade head
-docker-compose exec identity alembic revision -m "Add new column"
+docker compose exec identity alembic upgrade head
+docker compose exec identity alembic revision -m "Add new column"
 ```
 
 ### Django Services (Django Migrations)
 
 ```bash
 # Guardian service example
-docker-compose exec guardian python manage.py migrate
-docker-compose exec guardian python manage.py makemigrations
+docker compose exec guardian python manage.py migrate
+docker compose exec guardian python manage.py makemigrations
 ```
 
 ## Service Decommissioning Process
@@ -179,7 +144,7 @@ docker-compose exec guardian python manage.py makemigrations
 When removing a service:
 
 1. **Mark as deprecated** in documentation (this file)
-2. **Disable in gateway** by setting upstream `down`
+2. **Remove its gateway route** and upstream
 3. **Update docker-compose.yml** with comment explaining deprecation
 4. **Remove after 2 release cycles** (minimum 60 days)
 5. **Archive code** to `archive/` directory
@@ -216,11 +181,12 @@ See `docs/OBSERVABILITY_ROADMAP.md` for detailed monitoring setup.
 
 **Current State**:
 
-- Health checks: ✅ Implemented
-- Metrics endpoints: ⚠️ Partial (identity, tools)
-- Prometheus integration: ❌ Planned
-- Distributed tracing: ❌ Planned
-- Centralized logging: ⚠️ Docker logs only
+- Health checks: implemented for every backend
+- Metrics endpoints: services expose `/metrics` in Prometheus format
+- Prometheus: `monitoring` profile; scrapes identity, tools, data, responder,
+  CSPM and agents (guardian is not scraped)
+- Distributed tracing: not implemented
+- Centralized logging: Docker logs only
 
 ## Troubleshooting Service Issues
 
@@ -228,39 +194,34 @@ See `docs/OBSERVABILITY_ROADMAP.md` for detailed monitoring setup.
 
 ```bash
 # Check logs
-docker-compose logs -f <service-name>
+docker compose logs -f <service-name>
 
 # Verify dependencies
-docker-compose ps
-
-# Check database connectivity
-docker-compose exec <service-name> python -c "import psycopg2; print('DB OK')"
+docker compose ps
 ```
 
 ### Service Crashes on Startup
 
 ```bash
-# Run migrations
-docker-compose exec <service-name> alembic upgrade head
-
-# Check environment variables
-docker-compose exec <service-name> env | grep DATABASE
+# Check which database URL the container received (prints the value;
+# do not paste the output anywhere public)
+docker compose exec <service-name> env | grep DATABASE
 
 # Rebuild with fresh dependencies
-docker-compose up -d --build --no-deps <service-name>
+docker compose up -d --build --no-deps <service-name>
 ```
 
 ### Gateway Can't Reach Service
 
 ```bash
 # Verify service is running
-docker-compose ps <service-name>
+docker compose ps <service-name>
 
 # Check gateway logs for upstream errors
-docker-compose logs -f gateway | grep "upstream"
+docker compose logs -f gateway | grep "upstream"
 
 # Restart gateway after service is healthy
-docker-compose restart gateway
+docker compose restart gateway
 ```
 
 ## Service Dependencies Graph
@@ -273,16 +234,21 @@ Gateway
   ├─> Guardian (vulnerabilities)
   ├─> Responder (incidents)
   ├─> Agents (AI analysis)
-  └─> CSPM (cloud security)
+  ├─> CSPM (cloud security)
+  └─> Dashboard (web UI)
 
 Identity
   ├─> PostgreSQL (user data)
-  └─> Redis (session cache)
+  └─> Redis DB 0
 
-Tools
-  ├─> PostgreSQL (tool results)
-  ├─> Redis (rate limiting)
-  └─> Celery (background jobs)
+Tools (api)
+  ├─> Redis DB 2
+  └─> tools-worker (Celery)
+
+Guardian
+  ├─> PostgreSQL (guardian database)
+  ├─> Redis DB 1 (Celery tasks)
+  └─> guardian-worker, guardian-beat
 
 Dashboard
   └─> Gateway (all API calls)
@@ -303,8 +269,7 @@ Before releasing a new version:
 
 ---
 
-**Last Updated**: 2025-11-24  
-**Maintainer**: DevOps Team  
+**Last Updated**: 2026-10-03  
 **Related Docs**:
 
 - `docs/OBSERVABILITY_ROADMAP.md`

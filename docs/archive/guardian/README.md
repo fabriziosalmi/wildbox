@@ -1,5 +1,7 @@
 # Open Security Guardian
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/guardian/endpoints/>.
+
 **The Guardian: Proactive Vulnerability Management**
 
 A comprehensive, Django-based vulnerability lifecycle management platform that moves beyond simple vulnerability scanning to provide risk-based prioritization, automated remediation tracking, and intelligent asset management.
@@ -635,14 +637,14 @@ python manage.py test
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the [LICENSE](../../../LICENSE) file for details.
 
 ## Support
 
 - **Documentation**:
   - [Getting Started Guide](GETTING_STARTED.md)
   - [API Documentation](API_DOCS.md)
-  - [Development Setup](setup_dev.sh)
+  - [Development Setup](../../../open-security-guardian/setup_dev.sh)
 - **Issues**: Report bugs and feature requests on GitHub
 - **Security**: Report security issues responsibly
 

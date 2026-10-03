@@ -1,662 +1,360 @@
 # Responder Service API
 
-> **Hand-written reference.** This page was written in November 2024 and
-> has not been re-checked endpoint by endpoint against the code since.
-> Paths, fields and examples may have drifted; the service's own OpenAPI
-> document is authoritative. Corrections are welcome as issues or pull
-> requests.
->
-> All IDs, keys (such as `your-api-key`) and host names in the examples are
-> fictitious placeholders.
+The responder is the FastAPI service that runs playbooks: YAML workflows loaded at
+startup, whose steps a background worker executes in order. This page lists the routes
+defined in `open-security-responder/app/main.py` and how to reach them through the
+gateway.
 
-**Gateway path**: `https://<host>/api/v1/responder/...` (proxied to the service's `/v1/...`)  
-**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: Bearer Token (JWT, JSON Web Token) required
-
----
-
-## Overview
-
-The Responder Service orchestrates incident response and remediation workflows through SOAR (Security Orchestration, Automation, and Response) playbooks. It executes automated response actions, manages incident tickets, tracks remediation progress, and integrates with external connectors for alert triage, ticket creation, and remediation execution.
+In the examples, `<host>` is the name you reach the gateway by, and IDs and
+credentials are placeholders.
 
 ## Table of Contents
 
-- [Authentication](#authentication)
-- [Playbook Management](#playbook-management)
-- [Execution & Monitoring](#execution--monitoring)
-- [Connector Management](#connector-management)
-- [Error Codes](#error-codes)
-- [Rate Limiting](#rate-limiting)
+- [Base URL and routing](#base-url-and-routing)
+- [Authentication and permissions](#authentication-and-permissions)
+- [Endpoint summary](#endpoint-summary)
+- [List playbooks](#list-playbooks)
+- [Execute a playbook](#execute-a-playbook)
+- [Read a run](#read-a-run)
+- [Cancel a run](#cancel-a-run)
+- [Reload playbooks](#reload-playbooks)
+- [List connectors](#list-connectors)
+- [Health check](#health-check)
+- [Rate limits](#rate-limits)
+- [Errors](#errors)
 
 ---
 
-## Authentication
+## Base URL and routing
 
-All Responder Service endpoints require JWT Bearer token authentication:
+The responder serves its API under `/v1/`. The gateway strips
+`/api/v1/responder/` and adds `/v1/`:
+
+```text
+https://<host>/api/v1/responder/<path>  ->  responder /v1/<path>
+```
+
+So `/v1/playbooks` on the service is `https://<host>/api/v1/responder/playbooks`
+through the gateway. Set up a shell for the examples:
 
 ```bash
-curl -X GET http://localhost:8018/v1/playbooks \
-  -H "Authorization: Bearer your-jwt-token"
+CA=open-security-gateway/ssl/wildbox.crt
+BASE="https://<host>/api/v1/responder"
 ```
 
 ---
 
-## Playbook Management
+## Authentication and permissions
 
-### GET /playbooks
+The gateway authenticates every request and passes the caller's user, team and role
+to the responder in trusted headers. Use either credential:
 
-List all available SOAR playbooks.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/playbooks`
-**Authentication**: Required (Bearer Token)
-**Rate Limit**: 100 requests/minute
-
-**Query Parameters**:
-
-| Name | Type | Required | Description |
-| ------ | ------ | ---------- | ------------- |
-| category | string | No | Filter by category: incident_response, malware, threat_intel, access_control |
-| enabled | boolean | No | Filter by enabled status |
-| limit | integer | No | Number of results (default: 50) |
-| offset | integer | No | Pagination offset |
-| search | string | No | Search playbook name or description |
-
-**Request**:
+- **JWT bearer token.** Sign in with `POST https://<host>/auth/jwt/login`
+  (form-encoded `username` and `password`) and send the `access_token` as
+  `Authorization: Bearer <token>`.
+- **API key.** Create one with `POST /api/v1/identity/api-keys` or
+  `POST /api/v1/identity/teams/{team_id}/api-keys` (see the
+  [Identity Service API](../identity/endpoints.md)) and send it as
+  `X-API-Key: <key>`.
 
 ```bash
-curl -X GET "http://localhost:8018/v1/playbooks?category=incident_response&enabled=true" \
-  -H "Authorization: Bearer your-jwt-token"
+TOKEN=$(curl -s --cacert "$CA" -X POST "https://<host>/auth/jwt/login" \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  --data-urlencode "username=analyst@example.com" \
+  --data-urlencode "password=<password>" | jq -r .access_token)
 ```
 
-**Response (200 OK)**:
+An API key with scopes needs `read` (or `write`) for `GET` requests and `write` for
+`POST` and `DELETE`; a key created without scopes, or with `admin`, is unrestricted.
+
+Roles:
+
+- Any team member can list playbooks and connectors, execute a playbook, and read
+  or cancel the team's runs.
+- Only `owner` and `admin` can reload playbooks (`403` otherwise).
+- Runs belong to the team that started them. Another team's run answers `404`, the
+  same as a run that does not exist.
+
+---
+
+## Endpoint summary
+
+| Method | Gateway path | Service path | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/responder/playbooks` | `/v1/playbooks` | List loaded playbooks |
+| `POST` | `/api/v1/responder/playbooks/{playbook_id}/execute` | `/v1/playbooks/{playbook_id}/execute` | Start a run |
+| `GET` | `/api/v1/responder/runs/{run_id}` | `/v1/runs/{run_id}` | Read a run |
+| `DELETE` | `/api/v1/responder/runs/{run_id}` | `/v1/runs/{run_id}` | Mark a run canceled |
+| `POST` | `/api/v1/responder/playbooks/reload` | `/v1/playbooks/reload` | Reload playbooks from disk (owner/admin) |
+| `GET` | `/api/v1/responder/connectors` | `/v1/connectors` | List connectors and their actions |
+
+There is no route to read a single playbook definition and no route to list runs;
+none of the list routes takes filter or paging parameters.
+
+---
+
+## List playbooks
+
+`GET /api/v1/responder/playbooks`
+
+```bash
+curl -s --cacert "$CA" "$BASE/playbooks" \
+  -H "Authorization: Bearer $TOKEN"
+```
 
 ```json
 {
-  "count": 24,
-  "results": [
+  "playbooks": [
     {
-      "id": "pb-001",
-      "name": "Malware Detection Response",
-      "category": "malware",
-      "description": "Automated response to malware detection alerts",
-      "enabled": true,
-      "created_at": "2024-06-15T10:30:00Z",
-      "updated_at": "2024-11-07T14:25:00Z",
-      "version": "2.1",
-      "triggers": ["malware_detected", "suspicious_process"],
-      "actions": [
-        "isolate_host",
-        "kill_process",
-        "create_ticket",
-        "notify_team"
-      ],
-      "execution_timeout_seconds": 600,
-      "success_rate": 0.98
-    },
-    {
-      "id": "pb-002",
-      "name": "Brute Force Attack Response",
-      "category": "access_control",
-      "description": "Respond to repeated failed authentication attempts",
-      "enabled": true,
-      "triggers": ["failed_login_threshold"],
-      "actions": ["block_ip", "reset_password", "create_ticket", "alert_security"]
+      "playbook_id": "simple_notification",
+      "name": "Simple Notification Test",
+      "description": "A basic playbook that logs a message for testing the workflow engine",
+      "version": "1.0",
+      "author": "Wildbox Security",
+      "tags": ["test", "notification"],
+      "steps_count": 3,
+      "trigger_type": "api"
     }
   ],
-  "pagination": {
-    "limit": 50,
-    "offset": 0,
-    "total": 24
-  }
+  "total": 1
 }
 ```
 
----
-
-### GET /playbooks/{playbook_id}
-
-Get detailed information about a specific playbook.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/playbooks/{playbook_id}`
-**Authentication**: Required (Bearer Token)
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| playbook_id | string | Playbook identifier |
-
-**Request**:
-
-```bash
-curl -X GET http://localhost:8018/v1/playbooks/pb-001 \
-  -H "Authorization: Bearer your-jwt-token"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "id": "pb-001",
-  "name": "Malware Detection Response",
-  "category": "malware",
-  "description": "Comprehensive automated response to malware detection alerts",
-  "enabled": true,
-  "version": "2.1",
-  "created_by": "security-team",
-  "created_at": "2024-06-15T10:30:00Z",
-  "updated_at": "2024-11-07T14:25:00Z",
-  "triggers": [
-    {
-      "type": "malware_detected",
-      "source": "antivirus",
-      "severity": "critical"
-    },
-    {
-      "type": "suspicious_process",
-      "source": "edr",
-      "severity": "high"
-    }
-  ],
-  "steps": [
-    {
-      "step_id": 1,
-      "name": "Isolate Host",
-      "action": "isolate_host",
-      "connector": "network_isolation",
-      "parameters": {
-        "action": "network_isolation",
-        "duration_minutes": 60
-      },
-      "timeout_seconds": 60,
-      "retry_count": 2
-    },
-    {
-      "step_id": 2,
-      "name": "Kill Malicious Process",
-      "action": "kill_process",
-      "connector": "endpoint_security",
-      "parameters": {
-        "process_criteria": "detection_source"
-      },
-      "timeout_seconds": 30
-    },
-    {
-      "step_id": 3,
-      "name": "Create Incident Ticket",
-      "action": "create_ticket",
-      "connector": "jira",
-      "parameters": {
-        "project": "SEC",
-        "issue_type": "Incident",
-        "priority": "Highest"
-      }
-    },
-    {
-      "step_id": 4,
-      "name": "Notify Security Team",
-      "action": "notify_team",
-      "connector": "slack",
-      "parameters": {
-        "channel": "#security-incidents",
-        "mention_on_call": true
-      }
-    }
-  ],
-  "execution_timeout_seconds": 600,
-  "success_rate": 0.98,
-  "last_run": "2024-11-07T16:30:00Z",
-  "total_executions": 156
-}
-```
+The response lists every playbook the service loaded. The repository ships
+`simple_notification`, `triage_ip`, `triage_url` and `all_star_e2e` in
+`open-security-responder/playbooks/`.
 
 ---
 
-### POST /playbooks/{playbook_id}/execute
+## Execute a playbook
 
-Execute a playbook with specified parameters.
+`POST /api/v1/responder/playbooks/{playbook_id}/execute`
 
-**Method**: `POST`
-**Endpoint**: `/api/v1/playbooks/{playbook_id}/execute`
-**Authentication**: Required (Bearer Token)
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| playbook_id | string | Playbook identifier |
-
-**Request Body**:
-
-| Field | Type | Required | Description |
-| ------- | ------ | ---------- | ------------- |
-| trigger_data | object | Yes | Data from the triggering event |
-| alert_id | string | No | Associated alert ID |
-| incident_id | string | No | Associated incident ID |
-| priority | string | No | Priority: low, normal, high, critical (default: normal) |
-
-**Request**:
+The body is optional. `trigger_data` is an object the playbook's steps read as
+`trigger` in their templates (for example `{{ trigger.message }}`); it defaults to
+`{}`.
 
 ```bash
-curl -X POST http://localhost:8018/v1/playbooks/pb-001/execute \
-  -H "Authorization: Bearer your-jwt-token" \
+curl -s --cacert "$CA" -X POST "$BASE/playbooks/simple_notification/execute" \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{
-    "trigger_data": {
-      "host": "workstation-42",
-      "process_name": "malware.exe",
-      "severity": "critical"
-    },
-    "alert_id": "alert-12345",
-    "priority": "critical"
-  }'
+  -d '{"trigger_data": {"message": "hello from the API"}}'
 ```
 
 **Response (202 Accepted)**:
 
 ```json
 {
-  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
-  "playbook_id": "pb-001",
-  "playbook_name": "Malware Detection Response",
-  "status": "started",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": "2024-11-07T18:35:02Z",
-  "completed_at": null,
-  "progress": "Step 1/4: Isolating host..."
+  "run_id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+  "playbook_id": "simple_notification",
+  "playbook_name": "Simple Notification Test",
+  "status": "accepted",
+  "status_url": "/v1/runs/6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+  "message": "Playbook 'Simple Notification Test' execution started"
 }
 ```
+
+`status_url` is the service path. Through the gateway, read the run at
+`/api/v1/responder/runs/{run_id}`.
+
+An unknown `playbook_id` answers `404`.
 
 ---
 
-## Execution & Monitoring
+## Read a run
 
-### GET /runs/{run_id}
-
-Get the status and results of a playbook execution.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/runs/{run_id}`
-**Authentication**: Required (Bearer Token)
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| run_id | string | Execution run identifier |
-
-**Request**:
+`GET /api/v1/responder/runs/{run_id}`
 
 ```bash
-curl -X GET http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
-  -H "Authorization: Bearer your-jwt-token"
+curl -s --cacert "$CA" "$BASE/runs/<run-id>" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-**Response (200 OK) - In Progress**:
+Abridged response for a finished run of `simple_notification` (three steps; only
+the first is shown in `step_results`, and the log list is shortened):
 
 ```json
 {
-  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
-  "playbook_id": "pb-001",
-  "playbook_name": "Malware Detection Response",
-  "status": "running",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": "2024-11-07T18:35:02Z",
-  "completed_at": null,
-  "current_step": 2,
-  "total_steps": 4,
-  "progress": "Step 2/4: Killing malicious process...",
-  "steps_completed": [
+  "run_id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+  "playbook_id": "simple_notification",
+  "playbook_name": "Simple Notification Test",
+  "status": "completed",
+  "start_time": "2026-10-03T09:15:02.118000",
+  "end_time": "2026-10-03T09:15:04.461000",
+  "trigger_data": {"message": "hello from the API"},
+  "step_results": [
     {
-      "step_id": 1,
-      "name": "Isolate Host",
-      "status": "success",
-      "started_at": "2024-11-07T18:35:02Z",
-      "completed_at": "2024-11-07T18:35:45Z",
-      "duration_seconds": 43,
-      "result": {
-        "host": "workstation-42",
-        "action": "isolated",
-        "isolation_id": "iso-789"
-      }
-    }
-  ]
-}
-```
-
-**Response (200 OK) - Completed**:
-
-```json
-{
-  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
-  "playbook_id": "pb-001",
-  "playbook_name": "Malware Detection Response",
-  "status": "success",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": "2024-11-07T18:35:02Z",
-  "completed_at": "2024-11-07T18:37:32Z",
-  "total_duration_seconds": 150,
-  "current_step": 4,
-  "total_steps": 4,
-  "steps_completed": [
-    {
-      "step_id": 1,
-      "name": "Isolate Host",
-      "status": "success",
-      "started_at": "2024-11-07T18:35:02Z",
-      "completed_at": "2024-11-07T18:35:45Z",
-      "duration_seconds": 43,
-      "result": {
-        "host": "workstation-42",
-        "action": "isolated"
-      }
-    },
-    {
-      "step_id": 2,
-      "name": "Kill Malicious Process",
-      "status": "success",
-      "started_at": "2024-11-07T18:35:45Z",
-      "completed_at": "2024-11-07T18:35:62Z",
-      "duration_seconds": 17,
-      "result": {
-        "process": "malware.exe",
-        "action": "terminated"
-      }
-    },
-    {
-      "step_id": 3,
-      "name": "Create Incident Ticket",
-      "status": "success",
-      "started_at": "2024-11-07T18:35:62Z",
-      "completed_at": "2024-11-07T18:36:15Z",
-      "duration_seconds": 53,
-      "result": {
-        "ticket_id": "SEC-2024-001234",
-        "url": "https://jira.example.com/browse/SEC-2024-001234"
-      }
-    },
-    {
-      "step_id": 4,
-      "name": "Notify Security Team",
-      "status": "success",
-      "started_at": "2024-11-07T18:36:15Z",
-      "completed_at": "2024-11-07T18:36:32Z",
-      "duration_seconds": 17,
-      "result": {
-        "channel": "#security-incidents",
-        "message_id": "msg-xyz789"
-      }
+      "step_name": "log_message",
+      "status": "completed",
+      "start_time": "2026-10-03T09:15:02.201000",
+      "end_time": "2026-10-03T09:15:02.233000",
+      "output": {"<key>": "<value returned by the system.log action>"},
+      "error": null,
+      "duration_seconds": 0.032
     }
   ],
-  "summary": {
-    "host_isolated": true,
-    "process_terminated": true,
-    "ticket_created": "SEC-2024-001234",
-    "team_notified": true
-  }
-}
-```
-
----
-
-### GET /runs
-
-List playbook executions with filtering and pagination.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/runs`
-**Authentication**: Required (Bearer Token)
-
-**Query Parameters**:
-
-| Name | Type | Description |
-| ------ | ------ | ------------- |
-| playbook_id | string | Filter by playbook |
-| status | string | Filter by status: running, success, failed, cancelled |
-| limit | integer | Results per page (default: 50) |
-| offset | integer | Pagination offset |
-| time_range | string | 1h, 24h, 7d, 30d |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8018/v1/runs?status=success&time_range=24h" \
-  -H "Authorization: Bearer your-jwt-token"
-```
-
-**Response (200 OK)**:
-
-```json
-{
-  "count": 45,
-  "results": [
-    {
-      "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
-      "playbook_id": "pb-001",
-      "playbook_name": "Malware Detection Response",
-      "status": "success",
-      "created_at": "2024-11-07T18:35:00Z",
-      "completed_at": "2024-11-07T18:37:32Z",
-      "duration_seconds": 150
+  "context": {
+    "trigger": {"message": "hello from the API"},
+    "run": {
+      "id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+      "playbook_id": "simple_notification",
+      "started_at": "2026-10-03T09:15:02.118000+00:00"
+    },
+    "steps": {
+      "log_message": {"output": {"<key>": "<value>"}, "status": "completed", "duration": 0.032}
     }
-  ]
+  },
+  "logs": [
+    "[2026-10-03T09:15:02.120000] INFO: Playbook 'Simple Notification Test' queued for execution"
+  ],
+  "error": null,
+  "duration_seconds": 2.343
 }
 ```
 
+The timestamps and IDs above are illustrative. The fields come from
+`PlaybookExecutionResult` in `app/models.py`:
+
+| Field | Description |
+| --- | --- |
+| `status` | `queued`, `pending`, `running`, `completed`, `failed` or `cancelled` |
+| `step_results` | One entry per step that ran, with its own `status`, `output`, `error` and timing |
+| `context` | The run's template context: `trigger`, `run` and the outputs of finished steps under `steps` |
+| `logs` | Log lines recorded during the run |
+| `error` | The failure reason when `status` is `failed` |
+
+Run records are kept for 30 days by default, then expire. When the service starts,
+it marks as `failed` any run still recorded as `running` or `queued` whose worker
+has not updated it for 15 minutes.
+
 ---
 
-### DELETE /runs/{run_id}
+## Cancel a run
 
-Cancel a running playbook execution.
-
-**Method**: `DELETE`
-**Endpoint**: `/api/v1/runs/{run_id}`
-**Authentication**: Required (Bearer Token)
-
-**Request**:
+`DELETE /api/v1/responder/runs/{run_id}`
 
 ```bash
-curl -X DELETE http://localhost:8018/v1/runs/run-550e8400-e29b-41d4-a716-446655440000 \
-  -H "Authorization: Bearer your-jwt-token"
+curl -s --cacert "$CA" -X DELETE "$BASE/runs/<run-id>" \
+  -H "Authorization: Bearer $TOKEN"
 ```
-
-**Response (200 OK)**:
 
 ```json
 {
-  "message": "Execution cancelled",
-  "run_id": "run-550e8400-e29b-41d4-a716-446655440000",
+  "message": "Execution '6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f' cancelled successfully",
   "status": "cancelled"
 }
 ```
 
+A run that is already `completed`, `failed` or `cancelled` is left unchanged and
+the response reports its status. Canceling only marks the stored run record: it does
+not stop a worker that is already executing the run's steps, and that worker can
+still record its own final status afterward.
+
 ---
 
-## Connector Management
+## Reload playbooks
 
-### GET /connectors
+`POST /api/v1/responder/playbooks/reload` (owner or admin)
 
-List all configured connectors for playbook actions.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/connectors`
-**Authentication**: Required (Bearer Token)
-
-**Query Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| category | string | Filter by category: ticketing, notification, orchestration, threat_intel |
-| status | string | Filter by status: active, inactive, error |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8018/v1/connectors?status=active" \
-  -H "Authorization: Bearer your-jwt-token"
-```
-
-**Response (200 OK)**:
+Reloads the playbook files from disk and returns what was loaded:
 
 ```json
 {
-  "count": 12,
-  "results": [
-    {
-      "id": "conn-jira-001",
-      "name": "Jira - Ticketing",
-      "category": "ticketing",
-      "platform": "Atlassian JIRA",
-      "status": "active",
-      "version": "1.0",
-      "supported_actions": [
-        "create_issue",
-        "update_issue",
-        "add_comment",
-        "transition_issue",
-        "assign_issue"
-      ],
-      "last_tested": "2024-11-07T16:30:00Z"
-    },
-    {
-      "id": "conn-slack-001",
-      "name": "Slack - Notifications",
-      "category": "notification",
-      "platform": "Slack",
-      "status": "active",
-      "supported_actions": [
-        "send_message",
-        "post_file",
-        "update_status",
-        "create_channel"
-      ]
-    }
-  ]
+  "message": "Playbooks reloaded successfully",
+  "total_loaded": 4,
+  "playbooks": ["simple_notification", "triage_ip", "triage_url", "all_star_e2e"]
 }
 ```
 
 ---
 
-## Error Codes
+## List connectors
 
-| Code | Status | Description |
-| ------ | -------- | ------------- |
-| 200 | OK | Request successful |
-| 202 | Accepted | Playbook execution started |
-| 400 | Bad Request | Invalid request parameters |
-| 401 | Unauthorized | Missing or invalid token |
-| 404 | Not Found | Playbook or execution not found |
-| 409 | Conflict | Playbook disabled or execution already running |
-| 429 | Too Many Requests | Rate limit exceeded |
-| 500 | Internal Server Error | Service error |
+`GET /api/v1/responder/connectors`
 
----
-
-## Rate Limiting
-
-The Responder Service enforces rate limits per token:
-
-- **Standard tokens**: 100 requests/minute
-- **Privileged tokens**: 1,000 requests/minute
-
-Rate limit information is returned in response headers:
-
-```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1730963100
-```
-
----
-
-## Examples
-
-### Automated Incident Response Workflow
+Lists the connectors registered in the service and the actions each one offers.
+Playbook steps call an action as `connector.action`.
 
 ```bash
-# 1. List available playbooks
-PLAYBOOKS=$(curl -s http://localhost:8018/v1/playbooks?category=malware \
-  -H "Authorization: Bearer $TOKEN" | jq '.')
-
-# 2. Execute malware response playbook
-RUN_ID=$(curl -s -X POST http://localhost:8018/v1/playbooks/pb-001/execute \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "trigger_data": {
-      "host": "infected-host",
-      "process": "malware.exe",
-      "severity": "critical"
-    },
-    "priority": "critical"
-  }' | jq -r '.run_id')
-
-echo "Playbook execution started: $RUN_ID"
-
-# 3. Monitor execution progress
-while true; do
-  RUN=$(curl -s http://localhost:8018/v1/runs/$RUN_ID \
-    -H "Authorization: Bearer $TOKEN")
-
-  STATUS=$(echo "$RUN" | jq -r '.status')
-  PROGRESS=$(echo "$RUN" | jq -r '.progress')
-
-  echo "[$STATUS] $PROGRESS"
-
-  if [[ "$STATUS" == "success" ]] || [[ "$STATUS" == "failed" ]]; then
-    echo "Execution complete!"
-    echo "$RUN" | jq '.summary'
-    break
-  fi
-
-  sleep 2
-done
+curl -s --cacert "$CA" "$BASE/connectors" \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
-### Trigger Playbook from Alert
+Response shape:
 
-```bash
-#!/bin/bash
-
-# Receive alert from SIEM
-ALERT_DATA=$(cat <<'EOF'
+```json
 {
-  "alert_id": "alert-001",
-  "severity": "critical",
-  "title": "Suspicious Activity Detected",
-  "host": "prod-web-01",
-  "alert_type": "suspicious_network_activity"
+  "connectors": {
+    "<connector-name>": {
+      "name": "<connector-name>",
+      "config": {},
+      "actions": {
+        "<action-name>": "<description>"
+      }
+    }
+  },
+  "total": 4
 }
-EOF
-)
-
-# Execute appropriate playbook
-if grep -q "suspicious_network" <<< "$ALERT_DATA"; then
-  PLAYBOOK_ID="pb-network-isolation"
-else
-  PLAYBOOK_ID="pb-generic-response"
-fi
-
-# Execute playbook
-curl -X POST "http://localhost:8018/v1/playbooks/$PLAYBOOK_ID/execute" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"trigger_data\": $ALERT_DATA,
-    \"alert_id\": \"$(echo $ALERT_DATA | jq -r '.alert_id')\",
-    \"priority\": \"critical\"
-  }"
 ```
+
+Connector configuration is not covered here: it is being reworked in
+[issue #616](https://github.com/fabriziosalmi/wildbox/issues/616).
+
+---
+
+## Health check
+
+The responder's health check is `GET /health` on the service's own port (bound to
+`127.0.0.1:8018` in `docker-compose.yml`). It is not under `/v1/`, so the gateway
+does not route it (`/api/v1/responder/health` maps to `/v1/health`, which does not
+exist). It returns `{"status": "healthy", "timestamp": "..."}`, or
+`"status": "unhealthy"` when Redis does not answer.
+
+---
+
+## Rate limits
+
+The responder has no rate limit of its own. The gateway allows 10000 requests per
+hour per team, enforced in fixed 60-second windows of 166 requests;
+`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` describe the
+current minute window, and `X-RateLimit-Policy` is `10000;w=3600`. A request over
+the limit gets `429`. The `RATE_LIMIT_PER_HOUR` variable is currently ignored
+([issue #627](https://github.com/fabriziosalmi/wildbox/issues/627)).
+
+---
+
+## Errors
+
+Responder errors use the shared Wildbox error format
+(`open-security-shared/errors.py`):
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "Playbook 'unknown_playbook' not found",
+    "type": "HTTPException",
+    "request_id": "<request id>"
+  }
+}
+```
+
+| Status | Meaning |
+| --- | --- |
+| `202` | Playbook run accepted |
+| `401` | No valid credential (answered by the gateway) |
+| `403` | Role or API key scope does not allow the request |
+| `404` | Unknown playbook, or a run that does not exist or belongs to another team |
+| `422` | The request body is not valid |
+| `429` | Gateway rate limit exceeded |
+| `500` | The service failed to handle the request |
 
 ---
 
 ## Related Documentation
 
-- [Security Policy](../../security/policy.md) - Authentication requirements
-- [API Reference Hub](../../api-reference.html) - All service endpoints
+- [Identity Service API](../identity/endpoints.md) - Sign-in and API keys
 - [Guardian Service API](../guardian/endpoints.md) - Asset and vulnerability management
 - [Tools Service API](../tools/endpoints.md) - Tool execution
-- [Quickstart Guide](../../guides/quickstart.md) - Getting started with APIs
-
+- [Authentication guide](../../guides/authentication.md) - Tokens and API keys through the gateway
+- [Security Policy](../../security/policy.md) - Authentication requirements

@@ -1,5 +1,7 @@
 # API Documentation Generation Guide
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/docs.html#api-docs>.
+
 This guide explains how to automatically generate static OpenAPI documentation for all Wildbox microservices.
 
 ## Overview
@@ -79,7 +81,7 @@ Key variables needed:
 - `JWT_SECRET_KEY` - JWT signing key
 - Other service-specific variables
 
-See [SECURITY.md](../../SECURITY.md) for production configuration.
+See [SECURITY.md](../../../SECURITY.md) for production configuration.
 
 ## Manual Generation with Bash Script
 
@@ -213,7 +215,7 @@ For issues with documentation generation:
 
 ## See Also
 
-- [API Documentation Index](swagger-index.html) - View all APIs
-- [API README](README.md) - Documentation overview
-- [SECURITY.md](../../SECURITY.md) - Security requirements
-- [DEPLOYMENT.md](../../DEPLOYMENT.md) - Production deployment
+- [API Documentation Index](../../api/swagger-index.html) - View all APIs
+- [API README](../../api/README.md) - Documentation overview
+- [SECURITY.md](../../../SECURITY.md) - Security requirements
+- DEPLOYMENT.md - Production deployment (file no longer exists)
