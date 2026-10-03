@@ -1,0 +1,42 @@
+playbook_id: "hash_evidence"
+name: "Evidence Hashing"
+description: "Queue the hashing of a piece of evidence in the tools service, for the user who runs the playbook"
+version: "1.0"
+author: "Wildbox Security"
+tags: ["evidence", "forensics", "hash"]
+
+trigger:
+  type: "api"
+  description: "Manual execution via API with the evidence as text"
+  required_parameters:
+    - text
+
+# Hashes a piece of evidence (a script, a command line, a message body) with
+# SHA-256 and SHA-512, so that it can be referenced and compared without
+# being copied around.
+#
+# The hashing runs in the background in the tools service. The run ends once
+# it is queued, with the task: the hashes are the task's result, read at its
+# status_url (GET /api/v1/tasks/{task_id} through the gateway) by the user
+# who ran the playbook, and by nobody else, because the task is theirs.
+#
+# hash_generator touches no network, so the result depends on the text
+# alone. A run without `text` fails at the first step.
+steps:
+  - name: "queue_hashing"
+    action: "api.run_tool"
+    input:
+      tool_name: "hash_generator"
+      params:
+        input_text: "{{ trigger.text }}"
+        hash_types: ["sha256", "sha512"]
+      async_execution: true
+
+  - name: "report"
+    action: "system.create_report"
+    input:
+      template: "evidence_hashing"
+      data:
+        run_id: "{{ run.id }}"
+        task_id: "{{ steps.queue_hashing.output.task_id }}"
+        status_url: "{{ steps.queue_hashing.output.status_url }}"

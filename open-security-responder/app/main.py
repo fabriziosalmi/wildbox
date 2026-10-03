@@ -23,6 +23,7 @@ from .playbook_parser import playbook_parser
 from .workflow_engine import start_execution, workflow_engine
 from .connectors.base import connector_registry
 from .auth import get_current_user, require_role, GatewayUser
+from .caller import CallerIdentityUnavailable
 
 # Configure logging
 logging.basicConfig(
@@ -216,10 +217,18 @@ async def execute_playbook(
         # Start execution. The owning team is recorded inside start_execution,
         # before the actor message is sent, so there is no window in which a run
         # is executing with no owner (WILDBO-DATA-06).
+        #
+        # The run acts for the user the gateway authenticated: their identity
+        # goes with the run to the worker, and every call the run makes to
+        # another service carries it (#616).
         run_id = start_execution(
             playbook_id,
             request.trigger_data,
-            team_id=current_user.team_id,
+            caller={
+                "user_id": str(current_user.user_id),
+                "team_id": str(current_user.team_id),
+                "role": current_user.role,
+            },
         )
 
         return JSONResponse(
@@ -236,6 +245,14 @@ async def execute_playbook(
         
     except HTTPException:
         raise
+    except CallerIdentityUnavailable as e:
+        # Not reachable through gateway_auth, which only yields complete
+        # users; refused rather than run for nobody if that ever changes.
+        logger.warning(f"Refusing to execute playbook {playbook_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A user and team identity is required to run a playbook",
+        )
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to execute playbook {playbook_id}: {e}")
         raise HTTPException(

@@ -213,6 +213,8 @@ services:
         max-file: "5"
 
   # Responder Service - Production
+  # backend carries its playbooks' calls to tools, data, guardian and agents
+  # (WILDBOX_*_URL in docker-compose.yml, #616); data carries Redis.
   responder:
     restart: always
     networks: !override

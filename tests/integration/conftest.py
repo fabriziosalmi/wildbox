@@ -404,6 +404,7 @@ _MODULE_SERVICE = {
     "test_identity_comprehensive": "identity",
     "test_identity_service": "identity",
     "test_responder_metrics": "responder",
+    "test_responder_playbook_identity": "responder",
     "test_responder_tenancy": "responder",
     "test_sensor_telemetry": "sensor",
     "test_tools_execution": "tools",
