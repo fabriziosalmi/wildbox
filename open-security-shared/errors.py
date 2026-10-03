@@ -100,11 +100,21 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             "path": str(request.url.path),
         },
     )
+    message = str(exc.detail)
+    details = None
+    # fastapi-users answers {"code": "REGISTER_INVALID_PASSWORD", "reason":
+    # "..."}; str() of it reached the client as a Python dict literal. The
+    # reason is the explanation meant for a person, the code stays readable
+    # in details.
+    if isinstance(exc.detail, dict) and isinstance(exc.detail.get("reason"), str):
+        message = exc.detail["reason"]
+        details = exc.detail
     return error_response(
         code=exc.status_code,
-        message=str(exc.detail),
+        message=message,
         error_type="HTTPException",
         request_id=request_id,
+        details=details,
         headers=getattr(exc, "headers", None),
     )
 

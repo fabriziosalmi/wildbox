@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/components/auth-provider'
 import { identityClient, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULE_HINT,
+  passwordPolicyProblem,
+} from '@/lib/password-policy'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -51,9 +57,6 @@ const CREATABLE_ROLES: Record<TeamRole, TeamRole[]> = {
   admin: ['member'],
   member: [],
 }
-
-// identity's minimum for a password (TeamMemberCreate, PasswordChangeRequest).
-const MIN_PASSWORD_LENGTH = 12
 
 interface TeamData {
   membership: MyMembership
@@ -182,10 +185,10 @@ export default function TeamPage() {
     e.preventDefault()
     if (!teamData) return
     setAddMemberError(null)
-    if (addMemberForm.password.length < MIN_PASSWORD_LENGTH) {
-      setAddMemberError(
-        `The initial password must be at least ${MIN_PASSWORD_LENGTH} characters long`
-      )
+    // identity's password rule (#583); its reason is shown if it refuses one.
+    const passwordProblem = passwordPolicyProblem(addMemberForm.password, addMemberForm.email)
+    if (passwordProblem) {
+      setAddMemberError(passwordProblem)
       return
     }
 
@@ -467,9 +470,15 @@ export default function TeamPage() {
                   autoComplete="new-password"
                   value={addMemberForm.password}
                   onChange={e => setAddMemberForm(prev => ({ ...prev, password: e.target.value }))}
+                  minLength={MIN_PASSWORD_LENGTH}
+                  maxLength={MAX_PASSWORD_LENGTH}
                   required
                   disabled={addingMember}
+                  aria-describedby="member-password-rule"
                 />
+                <p id="member-password-rule" className="mt-1 text-xs text-muted-foreground">
+                  {PASSWORD_RULE_HINT}
+                </p>
               </div>
               <div>
                 <label

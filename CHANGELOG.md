@@ -425,6 +425,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **One password policy for every path that sets a password** (#583).
+  Registration and the reset-password flow accepted a one-character
+  password: fastapi-users' `BaseUserCreate` does not check it and its
+  `validate_password()` is a no-op, which identity did not override, so
+  only change-password asked for 12 characters. identity's
+  `UserManager.validate_password()` now refuses a password shorter than
+  12 or longer than 128 characters, containing the account's email
+  address or the part before the `@`, or among the 10,000 most common
+  passwords of that length (vendored from SecLists, MIT license; no
+  network access). There are no composition rules, as NIST SP 800-63B
+  advises. Registration, reset-password, change-password, an
+  administrator's reset of another account, the members a team
+  administrator creates (#573) and the first administrator
+  (`INITIAL_ADMIN_PASSWORD`, whose refusal now stops identity's start
+  with the reason instead of starting without an administrator) all go
+  through it. A refusal answers 400 with the reason as `error.message`;
+  fastapi-users' `{"code", "reason"}` detail used to reach clients as a
+  Python dict literal and is now in `error.details`. The dashboard's
+  signup, profile, change-password, add-member and user-creation forms
+  check the same length and email rules before submitting (signup and
+  user creation asked for only 8 characters) and show the server's
+  reason. Existing passwords are not
+  checked until they are next changed.
 - **Changing the password ends the account's other sessions** (#569).
   A password change updated the hash and nothing else, so every token
   already issued stayed valid until it expired and changing the password

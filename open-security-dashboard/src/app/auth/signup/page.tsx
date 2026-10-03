@@ -9,6 +9,12 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/components/auth-provider'
 import { getErrorMessage } from '@/lib/utils'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULE_HINT,
+  passwordPolicyProblem,
+} from '@/lib/password-policy'
 
 export default function SignupPage() {
   const [name, setName] = useState('')
@@ -58,8 +64,11 @@ export default function SignupPage() {
       return
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long')
+    // identity's rule (#583); it also refuses common passwords, and its
+    // reason is shown below when it does.
+    const problem = passwordPolicyProblem(password, email)
+    if (problem) {
+      setError(problem)
       setIsLoading(false)
       return
     }
@@ -163,6 +172,10 @@ export default function SignupPage() {
                     onChange={e => setPassword(e.target.value)}
                     placeholder="Create a password"
                     required
+                    minLength={MIN_PASSWORD_LENGTH}
+                    maxLength={MAX_PASSWORD_LENGTH}
+                    autoComplete="new-password"
+                    aria-describedby="password-rule"
                     disabled={isLoading}
                     className="h-11 pl-10 pr-10"
                   />
@@ -174,8 +187,8 @@ export default function SignupPage() {
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Password must be at least 8 characters long
+                <p id="password-rule" className="text-xs text-gray-500 dark:text-gray-400">
+                  {PASSWORD_RULE_HINT}
                 </p>
               </div>
 
