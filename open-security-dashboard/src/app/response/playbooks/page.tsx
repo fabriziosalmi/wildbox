@@ -7,7 +7,6 @@ import {
   Clock,
   User,
   Settings,
-  ChevronRight,
   AlertCircle,
   Loader2,
   Play,
@@ -48,7 +47,11 @@ function PlaybookCard({
   onExecute: (playbook: PlaybookSummary) => void
 }) {
   return (
-    <Card className="group border-l-4 border-l-blue-500 transition-all duration-200 hover:shadow-lg">
+    <Card
+      className="group border-l-4 border-l-blue-500 transition-all duration-200 hover:shadow-lg"
+      data-testid="playbook-card"
+      data-playbook-id={playbook.playbook_id}
+    >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -102,15 +105,6 @@ function PlaybookCard({
             >
               <Play className="mr-2 h-4 w-4" />
               Execute
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                console.log('View details:', playbook.playbook_id)
-              }}
-            >
-              <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>

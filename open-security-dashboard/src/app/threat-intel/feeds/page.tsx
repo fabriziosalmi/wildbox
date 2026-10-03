@@ -39,7 +39,8 @@ interface Feed {
 interface FeedStats {
   total_feeds: number
   active_feeds: number
-  last_updated: string
+  /** null until a collection run has completed */
+  last_updated: string | null
   new_indicators: number
   trends_change: number
 }

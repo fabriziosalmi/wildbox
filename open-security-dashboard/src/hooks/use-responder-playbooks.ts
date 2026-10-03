@@ -13,7 +13,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { responderClient } from '@/lib/api-client'
+import { getResponderPath, responderClient } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -82,7 +82,9 @@ export interface PlaybookExecutionResponse {
  */
 async function fetchPlaybooks(): Promise<PlaybookListResponse> {
   // ApiClient already unwraps the axios response body.
-  return await responderClient.get<PlaybookListResponse>('/v1/playbooks')
+  // The gateway maps /api/v1/responder/<x> to the responder's /v1/<x>, so
+  // the path must not repeat /v1/ (that reached /v1/v1/playbooks).
+  return await responderClient.get<PlaybookListResponse>(getResponderPath('/api/v1/playbooks'))
 }
 
 /**
@@ -94,7 +96,7 @@ async function executePlaybook(
 ): Promise<PlaybookExecutionResponse> {
   // ApiClient already unwraps the axios response body.
   return await responderClient.post<PlaybookExecutionResponse>(
-    `/v1/playbooks/${encodeURIComponent(playbookId)}/execute`,
+    getResponderPath(`/api/v1/playbooks/${encodeURIComponent(playbookId)}/execute`),
     request
   )
 }

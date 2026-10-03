@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -25,33 +24,7 @@ import {
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { getErrorMessage } from '@/lib/utils'
-import {
-  CheckCircle2,
-  XCircle,
-  Clock,
-  AlertTriangle,
-  Plus,
-  Eye,
-  Download,
-  RefreshCw,
-  Construction,
-} from 'lucide-react'
-
-interface ScanStatus {
-  scan_id: string
-  provider: string
-  account_id: string
-  account_name?: string
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
-  created_at: string
-  started_at?: string
-  completed_at?: string
-  error_message?: string
-  progress?: number
-  total_checks?: number
-  completed_checks?: number
-  findings_count?: number
-}
+import { Info, Plus, Construction } from 'lucide-react'
 
 interface NewScanRequest {
   provider: 'aws' | 'gcp' | 'azure'
@@ -74,8 +47,9 @@ interface NewScanRequest {
 }
 
 export default function CloudSecurityScansPage() {
-  const [scans, setScans] = useState<ScanStatus[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  // The ID of the last scan started here: the CSPM service answers with it,
+  // and it is the only scan this page can name (see the notice below).
+  const [lastScanId, setLastScanId] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [showNewScanDialog, setShowNewScanDialog] = useState(false)
   const { toast } = useToast()
@@ -87,68 +61,6 @@ export default function CloudSecurityScansPage() {
       auth_method: 'access_key',
     },
   })
-
-  const fetchScans = useCallback(async () => {
-    try {
-      // Since we don't have a list scans endpoint, we'll create mock data
-      // In a real implementation, you'd call the API
-      const mockScans: ScanStatus[] = [
-        {
-          scan_id: 'scan-001',
-          provider: 'aws',
-          account_id: '123456789012',
-          account_name: 'Production AWS',
-          status: 'completed',
-          created_at: new Date(Date.now() - 3600000).toISOString(),
-          started_at: new Date(Date.now() - 3500000).toISOString(),
-          completed_at: new Date(Date.now() - 600000).toISOString(),
-          total_checks: 45,
-          completed_checks: 45,
-          findings_count: 12,
-        },
-        {
-          scan_id: 'scan-002',
-          provider: 'gcp',
-          account_id: 'my-project-123',
-          account_name: 'GCP Production',
-          status: 'running',
-          created_at: new Date(Date.now() - 1800000).toISOString(),
-          started_at: new Date(Date.now() - 1700000).toISOString(),
-          progress: 65,
-          total_checks: 38,
-          completed_checks: 25,
-        },
-        {
-          scan_id: 'scan-003',
-          provider: 'azure',
-          account_id: 'sub-456789',
-          account_name: 'Azure Development',
-          status: 'failed',
-          created_at: new Date(Date.now() - 7200000).toISOString(),
-          started_at: new Date(Date.now() - 7100000).toISOString(),
-          error_message: 'Authentication failed',
-        },
-      ]
-
-      setScans(mockScans)
-    } catch (error) {
-      console.error('Error fetching scans:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch scans. Please try again.',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }, [toast])
-
-  useEffect(() => {
-    fetchScans()
-    // Set up polling for active scans
-    const interval = setInterval(fetchScans, 10000) // Poll every 10 seconds
-    return () => clearInterval(interval)
-  }, [fetchScans])
 
   const createScan = async () => {
     try {
@@ -174,14 +86,12 @@ export default function CloudSecurityScansPage() {
         description: `Scan ${response.scan_id} has been created and will start shortly.`,
       })
 
+      setLastScanId(response.scan_id)
       setShowNewScanDialog(false)
       setNewScan({
         provider: 'aws',
         credentials: { auth_method: 'access_key' },
       })
-
-      // Refresh the scans list
-      fetchScans()
     } catch (error) {
       console.error('Error creating scan:', error)
       toast({
@@ -192,82 +102,6 @@ export default function CloudSecurityScansPage() {
     } finally {
       setIsCreating(false)
     }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <CheckCircle2 className="h-4 w-4 text-green-600" />
-      case 'running':
-        return <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-600" />
-      case 'pending':
-        return <Clock className="h-4 w-4 text-yellow-600" />
-      default:
-        return <Clock className="h-4 w-4 text-gray-600" />
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      completed: 'bg-green-50 text-green-700',
-      running: 'bg-blue-50 text-blue-700',
-      failed: 'bg-red-50 text-red-700',
-      pending: 'bg-yellow-50 text-yellow-700',
-      cancelled: 'bg-gray-50 text-gray-700',
-    }
-
-    return (
-      <Badge className={variants[status as keyof typeof variants] || variants.pending}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
-    )
-  }
-
-  const formatTime = (timestamp?: string) => {
-    if (!timestamp) return 'N/A'
-    return new Date(timestamp).toLocaleString()
-  }
-
-  const getProviderColor = (provider: string) => {
-    switch (provider) {
-      case 'aws':
-        return 'bg-orange-50 text-orange-700'
-      case 'gcp':
-        return 'bg-blue-50 text-blue-700'
-      case 'azure':
-        return 'bg-sky-50 text-sky-700'
-      default:
-        return 'bg-gray-50 text-gray-700'
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Cloud Security Scans</h1>
-          <p className="text-muted-foreground">
-            Manage and monitor security scans across your cloud environments
-          </p>
-        </div>
-
-        <div className="space-y-4">
-          {[...Array(3)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <div className="animate-pulse space-y-3">
-                  <div className="h-4 w-1/4 rounded bg-gray-200" />
-                  <div className="h-4 w-1/2 rounded bg-gray-200" />
-                  <div className="h-4 w-3/4 rounded bg-gray-200" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
   }
 
   return (
@@ -293,17 +127,10 @@ export default function CloudSecurityScansPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Cloud Security Scans</h1>
-          <p className="text-muted-foreground">
-            Manage and monitor security scans across your cloud environments
-          </p>
+          <p className="text-muted-foreground">Start security scans of your cloud environments</p>
         </div>
 
         <div className="flex space-x-2">
-          <Button variant="outline" onClick={fetchScans}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-
           <Dialog open={showNewScanDialog} onOpenChange={setShowNewScanDialog}>
             <DialogTrigger asChild>
               <Button>
@@ -418,102 +245,25 @@ export default function CloudSecurityScansPage() {
         </div>
       </div>
 
-      {/* Scans List */}
-      <div className="space-y-4">
-        {scans.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <AlertTriangle className="mb-4 h-12 w-12 text-gray-400" />
-              <h3 className="mb-2 text-lg font-medium">No scans found</h3>
-              <p className="mb-4 text-muted-foreground">
-                Get started by creating your first cloud security scan.
+      {/* Scan history: the CSPM service has no endpoint that lists scans. This
+          page used to fill the gap with three invented scans. */}
+      <Card data-testid="scan-history-unavailable">
+        <CardContent className="flex items-start gap-3 p-6 text-sm">
+          <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+          <div className="space-y-2">
+            <p className="font-medium">Scan history is not available</p>
+            <p className="text-muted-foreground">
+              The CSPM service does not list scans, so this page cannot show the scans that have
+              run. A scan you start here reports its ID when the service accepts it.
+            </p>
+            {lastScanId && (
+              <p data-testid="last-scan-id">
+                Last scan started: <span className="font-mono">{lastScanId}</span>
               </p>
-              <Button onClick={() => setShowNewScanDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Create First Scan
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          scans.map(scan => (
-            <Card key={scan.scan_id}>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="mb-2 flex items-center space-x-3">
-                      {getStatusIcon(scan.status)}
-                      <h3 className="font-semibold">{scan.account_name || scan.account_id}</h3>
-                      <Badge className={getProviderColor(scan.provider)}>
-                        {scan.provider.toUpperCase()}
-                      </Badge>
-                      {getStatusBadge(scan.status)}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4 text-sm text-muted-foreground md:grid-cols-4">
-                      <div>
-                        <span className="font-medium">Scan ID:</span> {scan.scan_id}
-                      </div>
-                      <div>
-                        <span className="font-medium">Created:</span> {formatTime(scan.created_at)}
-                      </div>
-                      {scan.completed_at && (
-                        <div>
-                          <span className="font-medium">Completed:</span>{' '}
-                          {formatTime(scan.completed_at)}
-                        </div>
-                      )}
-                      {scan.findings_count !== undefined && (
-                        <div>
-                          <span className="font-medium">Findings:</span> {scan.findings_count}
-                        </div>
-                      )}
-                    </div>
-
-                    {scan.status === 'running' && scan.progress && (
-                      <div className="mt-3">
-                        <div className="mb-1 flex justify-between text-sm">
-                          <span>Progress</span>
-                          <span>{scan.progress}%</span>
-                        </div>
-                        <div className="h-2 w-full rounded-full bg-gray-200">
-                          <div
-                            className="h-2 rounded-full bg-blue-600 transition-all duration-300"
-                            style={{ width: `${scan.progress}%` }}
-                          />
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {scan.completed_checks}/{scan.total_checks} checks completed
-                        </div>
-                      </div>
-                    )}
-
-                    {scan.error_message && (
-                      <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-3">
-                        <p className="text-sm text-red-700">{scan.error_message}</p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="ml-4 flex space-x-2">
-                    {scan.status === 'completed' && (
-                      <>
-                        <Button variant="outline" size="sm">
-                          <Eye className="mr-1 h-4 w-4" />
-                          View Report
-                        </Button>
-                        <Button variant="outline" size="sm">
-                          <Download className="mr-1 h-4 w-4" />
-                          Download
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        )}
-      </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

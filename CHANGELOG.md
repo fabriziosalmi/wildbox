@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`/cloud-security/scans` no longer lists invented scans** (#570).
+  The CSPM service has no endpoint that lists scans, and the page filled
+  the gap with three made-up ones, refreshed every 10 seconds, whose
+  View Report and Download buttons did nothing. It now says that scan
+  history is not available and shows the ID of a scan started from the
+  page; starting a scan is unchanged.
+- **`/response` no longer shows invented run statistics** (#570). Its
+  totals (45 runs, 2 running, 87% success) and three "recent runs" were
+  constants, shown whether or not the responder answered; only the
+  playbook count was real. The responder neither lists nor counts runs,
+  so the page now shows the playbooks it reports, "Unavailable" when it
+  cannot be reached, and says that run statistics are not available.
+  It also stops wrapping itself in a second copy of the main layout.
+- **The response pages reach the responder** (#570). They called
+  `responderClient` with `/v1/...`, and the gateway already maps
+  `/api/v1/responder/<x>` to the responder's `/v1/<x>`, so every request
+  went to `/v1/v1/...` and got a 404: no playbook list, no execution, no
+  run status. They now build their paths with `getResponderPath`, as the
+  home page does. The responder has no run list, so `/response/runs`
+  stops asking for one and stops claiming to show "demo data": it shows
+  the runs started from this browser with the status the responder
+  reports for each, and says that run history is not available. The
+  run cards' Cancel and View Details buttons, and the playbook cards'
+  details button, only logged to the console and are gone.
 - **A session token alone could change the account's password** (#559).
   fastapi-users' `PATCH /auth/users/me` applied a `password` field
   without the current password. identity now refuses a password there
@@ -298,6 +322,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The threat-intel dashboard metrics counted every team's data**
+  (#570). `GET /api/v1/data/dashboard/threat-intel` counted the sources
+  and indicators of all teams, so any signed-in user learned how many
+  feeds and new indicators other teams had, and when their feeds last
+  ran. Every figure now covers the caller's team and the global feeds,
+  the same scope as `/api/v1/indicators/search`. `last_updated` is the
+  end of the last completed collection run of a visible feed, and null
+  when there is none; it used to fall back to "one hour ago".
 - **The tools service validates target URLs by parsing them** (#561).
   `SecurityValidator.validate_url` ran the free-text injection patterns
   over the whole URL, so it refused `http://` targets, any query string,
@@ -777,6 +809,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Estimated request counts in identity's admin analytics** (#570).
+  `GET /api/v1/analytics/admin/usage-summary` returned
+  `summary.api_requests_today` as the number of API keys used in the
+  last day times 75, and `GET /api/v1/analytics/admin/system-stats`
+  returned `api_usage.estimated_requests_today` and
+  `api_usage.estimated_requests_week` the same way (times 50 and 200).
+  identity does not see API requests, the gateway serves them, so it has
+  no count to report; the three fields are removed rather than replaced
+  by another estimate. The dashboard's unused `useSystemStats` hook,
+  which read the first one and invented user counts when identity did
+  not answer, is deleted.
+- **identity's `POST /api/v1/admin/teams/{team_id}/invite`** (#570). It
+  answered "Invitation sent successfully" to a team owner or admin and
+  did nothing: no invitation was stored or sent, and the request body was
+  not read. Nothing in the stack called it since the dashboard dropped
+  its invite form (#559). The path now answers 404. identity still has
+  no way to add a user to an existing team: registering creates a team
+  of its own.
 - **Direct `X-API-Key` authentication on the tools service** (#565). A
   request that sent the service's static `API_KEY` straight to port 8000 as
   `X-API-Key` was answered with a `GatewayUser` built on the nil UUID,

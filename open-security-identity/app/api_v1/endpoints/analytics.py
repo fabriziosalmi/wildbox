@@ -138,10 +138,6 @@ async def get_system_analytics(
         inactive_users = total_users - active_users
         inactive_percentage = (inactive_users / max(total_users, 1)) * 100
         
-        # API usage approximation (based on key activity)
-        estimated_api_requests_today = api_keys_used_today * 50  # Rough estimate
-        estimated_api_requests_week = active_api_keys * 200  # Rough estimate
-        
         return {
             "period_days": days,
             "generated_at": now.isoformat(),
@@ -170,9 +166,9 @@ async def get_system_analytics(
             "api_usage": {
                 "total_keys": total_api_keys,
                 "active_keys": active_api_keys,
-                "keys_used_today": api_keys_used_today,
-                "estimated_requests_today": estimated_api_requests_today,
-                "estimated_requests_week": estimated_api_requests_week
+                "keys_used_today": api_keys_used_today
+                # No request counts: identity does not see the requests, and
+                # the keys x 50 / keys x 200 estimates were not counts (#570).
             },
             
             # Role distribution
@@ -313,16 +309,15 @@ async def get_usage_summary(
         )
         active_api_keys = active_api_keys.scalar() or 0
         
-        # Estimate API requests (active keys * average usage)
-        estimated_requests_today = active_api_keys * 75  # Conservative estimate
-        
+        # identity does not count API requests (the gateway serves them), so
+        # this summary reports none. It used to report active keys x 75 as
+        # "api_requests_today", a number no request ever produced (#570).
         return {
             "generated_at": now.isoformat(),
             "summary": {
                 "total_users": total_users,
                 "active_users": active_users,
                 "total_teams": total_teams,
-                "api_requests_today": estimated_requests_today,
                 "api_keys_active": active_api_keys
             }
         }

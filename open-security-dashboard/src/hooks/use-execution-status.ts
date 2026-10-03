@@ -12,7 +12,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { responderClient } from '@/lib/api-client'
+import { getResponderPath, responderClient } from '@/lib/api-client'
 
 // ============================================================================
 // TypeScript Interfaces (matching backend Pydantic schemas)
@@ -67,7 +67,11 @@ export interface PlaybookExecutionResult {
  * Fetch execution status by run_id
  */
 async function fetchExecutionStatus(runId: string): Promise<PlaybookExecutionResult> {
-  return await responderClient.get<PlaybookExecutionResult>(`/v1/runs/${encodeURIComponent(runId)}`)
+  // The gateway maps /api/v1/responder/<x> to the responder's /v1/<x>; a
+  // literal /v1/ here reached /v1/v1/runs/... and always got a 404.
+  return await responderClient.get<PlaybookExecutionResult>(
+    getResponderPath(`/api/v1/runs/${encodeURIComponent(runId)}`)
+  )
 }
 
 // ============================================================================
@@ -215,7 +219,7 @@ export interface ExecutionHistoryItem {
   started_at: string
 }
 
-const STORAGE_KEY = 'responder_execution_history'
+export const EXECUTION_HISTORY_KEY = 'responder_execution_history'
 
 /**
  * Get execution history from localStorage
@@ -224,7 +228,7 @@ export function getExecutionHistory(): ExecutionHistoryItem[] {
   if (typeof window === 'undefined') return []
 
   try {
-    const stored = localStorage.getItem(STORAGE_KEY)
+    const stored = localStorage.getItem(EXECUTION_HISTORY_KEY)
     return stored ? JSON.parse(stored) : []
   } catch {
     return []
@@ -243,7 +247,7 @@ export function addExecutionToHistory(item: ExecutionHistoryItem): void {
     // Add to front, limit to 50 items
     const updated = [item, ...history].slice(0, 50)
 
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    localStorage.setItem(EXECUTION_HISTORY_KEY, JSON.stringify(updated))
   } catch (error) {
     console.error('Failed to save execution history:', error)
   }
@@ -256,7 +260,7 @@ export function clearExecutionHistory(): void {
   if (typeof window === 'undefined') return
 
   try {
-    localStorage.removeItem(STORAGE_KEY)
+    localStorage.removeItem(EXECUTION_HISTORY_KEY)
   } catch (error) {
     console.error('Failed to clear execution history:', error)
   }

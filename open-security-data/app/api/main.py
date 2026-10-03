@@ -662,35 +662,56 @@ async def realtime_feed(
 # Dashboard metrics endpoint
 @app.get("/api/v1/dashboard/threat-intel", tags=["Dashboard"])
 async def get_threat_intel_metrics(current_user: GatewayUser = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get threat intelligence metrics for dashboard"""
-    
+    """Get threat intelligence metrics for dashboard.
+
+    Every figure covers what the caller can see -- its team's rows and the
+    global (``team_id IS NULL``) ones -- the same scope as
+    /api/v1/indicators/search. These counts used to span every team's
+    indicators and sources, and ``last_updated`` fell back to "one hour ago"
+    when no collection run had completed (#570).
+    """
+    indicator_scope = team_or_global_filter(Indicator, current_user)
+    source_scope = team_or_global_filter(Source, current_user)
+
     # Count active and total sources (feeds)
-    active_sources = db.query(func.count(Source.id)).filter(Source.enabled == True).scalar() or 0
-    total_sources = db.query(func.count(Source.id)).scalar() or 0
-    
-    # Get last updated time from most recent collection run
-    last_run = db.query(CollectionRun).filter(
-        CollectionRun.status == "completed"
-    ).order_by(CollectionRun.completed_at.desc()).first()
-    
-    last_updated = last_run.completed_at if last_run else datetime.now(timezone.utc) - timedelta(hours=1)
-    
+    active_sources = db.query(func.count(Source.id)).filter(
+        Source.enabled == True, source_scope
+    ).scalar() or 0
+    total_sources = db.query(func.count(Source.id)).filter(source_scope).scalar() or 0
+
+    # The last completed collection run of a source the caller can see; None
+    # when there is none, never an invented time.
+    last_run = (
+        db.query(CollectionRun)
+        .join(Source, CollectionRun.source_id == Source.id)
+        .filter(
+            CollectionRun.status == "completed",
+            CollectionRun.completed_at.isnot(None),
+            source_scope,
+        )
+        .order_by(CollectionRun.completed_at.desc())
+        .first()
+    )
+    last_updated = last_run.completed_at.isoformat() if last_run else None
+
     # Count new indicators in last 24 hours
     new_indicators = db.query(func.count(Indicator.id)).filter(
         Indicator.active == True,
+        indicator_scope,
         Indicator.created_at >= datetime.now(timezone.utc) - timedelta(hours=24)
     ).scalar() or 0
-    
+
     # Calculate trends (compare with previous 24h period)
     previous_period_start = datetime.now(timezone.utc) - timedelta(hours=48)
     previous_period_end = datetime.now(timezone.utc) - timedelta(hours=24)
-    
+
     prev_indicators = db.query(func.count(Indicator.id)).filter(
         Indicator.active == True,
+        indicator_scope,
         Indicator.created_at >= previous_period_start,
         Indicator.created_at < previous_period_end
     ).scalar() or 0
-    
+
     # Calculate trend percentage
     if prev_indicators > 0:
         trend_change = ((new_indicators - prev_indicators) / prev_indicators) * 100
@@ -700,7 +721,7 @@ async def get_threat_intel_metrics(current_user: GatewayUser = Depends(get_curre
     return {
         "total_feeds": total_sources,
         "active_feeds": active_sources,
-        "last_updated": last_updated.isoformat(),
+        "last_updated": last_updated,
         "new_indicators": new_indicators,
         "trends_change": round(trend_change, 1)
     }

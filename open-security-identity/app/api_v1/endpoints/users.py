@@ -757,37 +757,6 @@ async def get_team_members(
     return members
 
 
-@router.post("/teams/{team_id}/invite")
-async def invite_team_member(
-    team_id: str,
-    invite_data: dict,
-    current_user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_db)
-):
-    """
-    Invite a new member to the team.
-    """
-    # Check if user has permission to invite
-    membership_check = await db.execute(
-        select(TeamMembership)
-        .where(
-            TeamMembership.team_id == team_id,
-            TeamMembership.user_id == current_user.id,
-            TeamMembership.role.in_([TeamRole.OWNER, TeamRole.ADMIN])
-        )
-    )
-    
-    if not membership_check.scalar_one_or_none():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Owner or Admin role required"
-        )
-    
-    # For now, just return success - in a real implementation,
-    # this would send an email invitation
-    return {"message": "Invitation sent successfully"}
-
-
 @router.put("/teams/{team_id}")
 async def update_team(
     team_id: str,
