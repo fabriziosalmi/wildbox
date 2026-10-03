@@ -89,8 +89,8 @@ export LOG_LEVEL="INFO"
 # Start Redis
 redis-server
 
-# Start Celery worker
-celery -A app.worker worker --loglevel=info
+# Start the scan worker (see "The scan worker" below)
+celery -A app.worker:celery_app worker --loglevel=info --concurrency=2 -Q celery
 
 # Start FastAPI application
 uvicorn app.main:app --host 0.0.0.0 --port 8000
@@ -294,6 +294,8 @@ CORS_ORIGINS="http://localhost:3000,https://dashboard.wildbox.security"
 
 # Scan Configuration
 MAX_CONCURRENT_SCANS="10"
+# Time limit of one scan, 120 to 86400 seconds; the API and the worker refuse
+# to start otherwise. The Wildbox stack sets it from CSPM_SCAN_TIMEOUT_SECONDS.
 SCAN_TIMEOUT_SECONDS="3600"
 # Days a scan's metadata, team index entry and report are kept. Whole number
 # from 1 to 3650; the API and the worker refuse to start otherwise.
@@ -306,6 +308,64 @@ DEFAULT_SCAN_REGIONS_AZURE="eastus,westus2"
 WILDBOX_IDENTITY_URL="http://open-security-identity:8000"
 WILDBOX_DASHBOARD_URL="http://open-security-dashboard:3000"
 ```
+
+### The scan worker
+
+The API runs no scan itself. `POST /api/v1/scans` and each scan of
+`POST /api/v1/batch/scans` encrypt the credentials into Redis for five
+minutes, write the scan's metadata and queue a Celery task, and a worker
+runs it. In the Wildbox stack that worker is the `cspm-worker` service in
+`docker-compose.yml`, built from this directory like `cspm`. Until it
+existed every scan stayed `queued` and the compliance pages, the overview
+and the reports had no data (#601).
+
+| | |
+| --- | --- |
+| Command | `celery -A app.worker:celery_app worker --concurrency=2 -Q celery` |
+| Queue | `celery`, Redis database 3 (`CELERY_BROKER_URL`). Every task (`run_cspm_scan`, `get_available_checks`, `health_check`) is routed there by `TASK_QUEUES` in `app/worker.py`; a unit test checks that the service's `-Q` lists exactly those queues |
+| Settings | the API's: `SECRET_KEY`, `CSPM_CREDENTIAL_KEY` (it decrypts the credentials), `REDIS_URL`, `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` with the Redis password, `CSPM_REPORT_RETENTION_DAYS` (it writes the reports) and `SCAN_TIMEOUT_SECONDS` |
+| Health check | `celery inspect ping` against its own node name |
+| Stop | `stop_grace_period` equals the scan time limit, so a stop lets running scans finish |
+| Networks (production) | `data` for Redis and `egress` for the cloud provider APIs |
+
+A scan reads `queued` until a worker takes it, `running` while it runs, and
+then `completed`, with its report stored as described below, or `failed`.
+It fails when its credentials expired before a worker took it (five minutes
+after it was queued), when no session can be opened with them, or when it
+exceeds its time limit. Only AWS sessions are implemented: a GCP or Azure
+scan fails as soon as the worker takes it. AWS keys are only checked by the
+calls the checks make, so a scan with keys AWS rejects completes, with the
+rejected calls recorded by the checks.
+
+**Time limit.** `CSPM_SCAN_TIMEOUT_SECONDS` in `.env` (default 3600, from
+120 to 86400) is passed to both services as `SCAN_TIMEOUT_SECONDS`. The
+worker stops a scan after that long (the soft limit, a minute earlier, lets
+it fail cleanly) and is given that long to stop, so `docker compose stop`
+or `down` can wait that long while a scan runs. Tasks are acknowledged when
+they finish, and Redis gives an unacknowledged task to another worker ten
+minutes after the time limit, so a scan is never run twice; a worker killed
+mid-scan has its scan delivered again then, and it fails because its
+credentials were deleted when it started.
+
+**Concurrency and scaling.** Each worker process runs one scan at a time
+and takes the next only when it is done (`worker_prefetch_multiplier=1`),
+so `--concurrency` is the number of scans one container runs at once. The
+default is two processes in one CPU and 1 GB; an idle worker with two
+processes used about 125 MB. A scan spends most of its time waiting for the
+provider's API. Scans that wait in the queue are the sign to add capacity:
+
+- **One worker, higher concurrency.** Raise `--concurrency` and the
+  container's CPU and memory limits with it, after measuring a worker's
+  memory under your own scans (`docker stats`). Simplest; every scan still
+  shares one container's limits.
+- **Several workers.** `docker compose up -d --scale cspm-worker=3`. The
+  service has no fixed container name, every replica consumes the same
+  queue and Redis hands each scan to exactly one of them. Use this to
+  spread scans over CPUs or hosts, or to keep scanning while one worker
+  restarts.
+
+More concurrent scans of one cloud account also mean more calls to its API
+at once, and providers throttle API calls per account.
 
 ### Scan retention and Redis memory
 
@@ -448,25 +508,11 @@ actions:
 
 ### Scaling Recommendations
 
-```yaml
-# Production deployment
-services:
-  cspm-api:
-    replicas: 3
-    resources:
-      cpu: "1000m"
-      memory: "2Gi"
-  
-  cspm-worker:
-    replicas: 5
-    resources:
-      cpu: "2000m"
-      memory: "4Gi"
-  
-  redis:
-    resources:
-      memory: "8Gi"
-```
+Scans run in `cspm-worker`; see [The scan worker](#the-scan-worker) for its
+concurrency and for running several workers. The API only queues scans and
+reads Redis, so more API capacity does not run more scans. Size Redis for
+the reports you keep
+([Scan retention and Redis memory](#scan-retention-and-redis-memory)).
 
 ## 🔒 Security Considerations
 

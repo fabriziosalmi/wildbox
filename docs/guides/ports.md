@@ -39,7 +39,7 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | - |
 | `postgres` | `wildbox-postgres` | none | PostgreSQL 15 | `pg_isready` inside the container |
 | `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
-| `tools-worker`, `guardian-worker`, `data-scheduler`, `backup` | - | none | Background workers; `backup` only with `--profile backup` | - |
+| `tools-worker`, `guardian-worker`, `cspm-worker`, `data-scheduler`, `backup` | - | none | Background workers; `backup` only with `--profile backup` | - |
 | `guardian-beat` | `open-security-guardian-beat` | none | Sends guardian's periodic tasks; exactly one instance | heartbeat file updated within 60 s |
 
 `docker compose` commands take the **service name** from the first column

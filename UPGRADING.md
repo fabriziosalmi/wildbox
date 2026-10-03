@@ -570,6 +570,40 @@ you run one (section 1 does).
   minutes after each batch, but may remain in the append-only file until
   Redis next rewrites it.
 
+### 25. cspm has a scan worker (`cspm-worker`)
+
+cspm queued every scan for a Celery worker that `docker-compose.yml` had
+commented out, and `docker-compose.prod.yml` had none, so no scan ever ran
+(#601). A new service, `cspm-worker`, runs them. It is built from cspm's
+directory with cspm's settings, so it is built with the others (section 1),
+and in the production overlay it sits on `data` and `egress`.
+
+- **Scans queued before the upgrade end as `failed`.** They are still in
+  Redis, and the worker takes them as soon as it starts, but their
+  credentials expired five minutes after each was queued. Start them again.
+  Nothing has to be purged.
+- **New variable, optional.** `CSPM_SCAN_TIMEOUT_SECONDS` (default 3600)
+  is the time limit of one scan, passed to cspm and `cspm-worker` as
+  `SCAN_TIMEOUT_SECONDS`. It must be from 120 to 86400, or both stop at
+  start with the reason; an override that set `SCAN_TIMEOUT_SECONDS`
+  outside that range has to change. The worker is given this long to stop,
+  so `docker compose stop` and `down` can now wait up to an hour while a
+  scan runs.
+- **A worker you run yourself** must use the same `SECRET_KEY`,
+  `CSPM_CREDENTIAL_KEY`, Redis URLs, `CSPM_REPORT_RETENTION_DAYS` and
+  `SCAN_TIMEOUT_SECONDS` as cspm, and consume the queue `celery`
+  (`celery -A app.worker:celery_app worker -Q celery`). Remove it if you
+  now run `cspm-worker`, or the two share the scans.
+- **Expect outbound traffic.** A scan now calls the provider's API from
+  `cspm-worker`. Only AWS scans run; GCP and Azure scans fail when the
+  worker takes them, because cspm cannot open a session with those
+  providers yet.
+- `GET /api/v1/scans/{id}` reports a scan a worker has just taken as
+  `running`. With a worker of your own it read `unknown` until the scan's
+  first progress update.
+- cspm's `/health` reports `"status": "healthy"` once the worker answers.
+  It reported `degraded` while no worker ran.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

@@ -356,9 +356,12 @@ async def get_scan_status(
         task_status = task_result.status
         task_info = task_result.info or {}
         
-        # Map Celery status to our status
+        # Map Celery status to our status. STARTED is what a worker reports
+        # as soon as it takes the task (task_track_started), before the scan
+        # reports PROGRESS; it read "unknown" until a worker ran (#601).
         status_mapping = {
             "PENDING": "queued",
+            "STARTED": "running",
             "PROGRESS": "running",
             "SUCCESS": "completed",
             "FAILURE": "failed",

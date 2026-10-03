@@ -855,6 +855,10 @@ services:
       # Days a scan's metadata, team index entry and report are kept in Redis
       # (#591). The worker needs the same value.
       - CSPM_REPORT_RETENTION_DAYS=${CSPM_REPORT_RETENTION_DAYS:-90}
+      # The time limit of one scan, in seconds (120 to 86400; the service
+      # refuses to start otherwise). cspm-worker enforces it and gets as
+      # long to stop.
+      - SCAN_TIMEOUT_SECONDS=${CSPM_SCAN_TIMEOUT_SECONDS:-3600}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -874,24 +878,72 @@ services:
       timeout: 10s
       retries: 3
 
-  # CSPM Celery Worker (Background Tasks)
-  # cspm-worker:
-  #   build:
-  #     context: ./open-security-cspm
-  #     dockerfile: Dockerfile
-  #   container_name: open-security-cspm-worker
-  #   restart: unless-stopped
-  #   command: celery -A app.worker worker --loglevel=info --concurrency=4
-  #   environment:
-  #     - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
-  #     - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
-  #     - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
-  #     - CSPM_REPORT_RETENTION_DAYS=${CSPM_REPORT_RETENTION_DAYS:-90}
-  #     - LOG_LEVEL=INFO
-  #   depends_on:
-  #     - wildbox-redis
-  #   networks:
-  #     - wildbox
+  # CSPM Celery worker. cspm queues every scan, single or batch, as a task on
+  # Redis db 3, and this is what runs it. It was commented out, so every scan
+  # stayed queued forever and the compliance pages, the cloud security
+  # overview and the reports never had data (#601).
+  #
+  # Same build as cspm, so the same image: the second build is all cache hits,
+  # and the two images share every layer (Compose only labels each with its
+  # service). Same settings too: it decrypts the credentials cspm encrypted
+  # (CSPM_CREDENTIAL_KEY), writes the reports with the retention cspm reads
+  # them with (CSPM_REPORT_RETENTION_DAYS) and enforces the scan time limit
+  # (SCAN_TIMEOUT_SECONDS). Unit tests in open-security-cspm keep the builds
+  # and the environments equal. Nothing connects to it, so it publishes no
+  # port and needs no GATEWAY_INTERNAL_SECRET. No container_name, so it
+  # scales: `docker compose up -d --scale cspm-worker=N`.
+  cspm-worker:
+    build:
+      context: ./open-security-cspm
+      dockerfile: Dockerfile
+      additional_contexts:
+        shared: ./open-security-shared
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    security_opt:
+      - no-new-privileges:true
+    # Runs as the image's non-root user (cspm), like the API.
+    # -Q: exactly the queues in app/worker.py TASK_QUEUES (a unit test
+    # compares the two). --concurrency: scans run at the same time in this
+    # container, each up to SCAN_TIMEOUT_SECONDS; see the cspm README before
+    # raising it.
+    command: celery -A app.worker:celery_app worker --loglevel=info --concurrency=2 -Q celery
+    # A stop lets the scans in progress finish (Celery's warm shutdown), and
+    # none runs longer than its time limit. A scan killed earlier is not
+    # acknowledged (task_acks_late), so Redis delivers it again later; it
+    # then fails, since its credentials were deleted when it started.
+    stop_grace_period: ${CSPM_SCAN_TIMEOUT_SECONDS:-3600}s
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - SECRET_KEY=${CSPM_SECRET_KEY:?CSPM_SECRET_KEY is required}
+      - REDIS_URL=${CSPM_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      - CELERY_BROKER_URL=${CSPM_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      - CELERY_RESULT_BACKEND=${CSPM_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3}
+      - CSPM_CREDENTIAL_KEY=${CSPM_CREDENTIAL_KEY:?CSPM_CREDENTIAL_KEY is required}
+      - CSPM_REPORT_RETENTION_DAYS=${CSPM_REPORT_RETENTION_DAYS:-90}
+      - SCAN_TIMEOUT_SECONDS=${CSPM_SCAN_TIMEOUT_SECONDS:-3600}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      wildbox-redis:
+        condition: service_healthy
+    networks:
+      - wildbox
+    healthcheck:
+      # This worker, by node name, not any worker on the broker: the main
+      # process answers even while every child is busy with a scan.
+      test: ["CMD-SHELL", "celery -A app.worker:celery_app inspect ping -d celery@$$HOSTNAME"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
 
   # Agents Service (Security Agents)
   agents:

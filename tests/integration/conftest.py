@@ -393,6 +393,7 @@ _MODULE_SERVICE = {
     "test_automations_workflow": "automations",
     "test_cspm_compliance": "cspm",
     "test_cspm_tenancy": "cspm",
+    "test_cspm_worker": "cspm",
     "test_dashboard_frontend": "dashboard",
     "test_data_cross_tenant": "data",
     "test_data_integration": "data",

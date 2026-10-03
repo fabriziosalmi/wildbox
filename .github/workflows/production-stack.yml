@@ -171,6 +171,30 @@ jobs:
           echo "guardian-beat containers: $beats"
           test "$beats" -eq 1
 
+      - name: cspm-worker answers and consumes the routed queue
+        # Being up is not enough: the worker was missing altogether and
+        # every scan stayed queued (#601). Each replica must answer a ping
+        # by its own node name and read exactly the queue app/worker.py
+        # routes the scan tasks to. The integration suite then submits a
+        # scan through the gateway and waits for a worker to take it.
+        run: |
+          replicas="$(docker compose ps -q cspm-worker)"
+          test -n "$replicas"
+          for id in $replicas; do
+            docker exec "$id" sh -c \
+              'celery -A app.worker:celery_app inspect ping -d "celery@$HOSTNAME"'
+            docker exec "$id" sh -c \
+              'celery -A app.worker:celery_app inspect active_queues --json -d "celery@$HOSTNAME"' \
+              | python3 -c '
+          import json, sys
+          raw = sys.stdin.read()
+          (queues,) = json.loads(raw[raw.index("{"):]).values()
+          got = sorted(q["name"] for q in queues)
+          print("cspm-worker consumes:", got)
+          assert got == ["celery"], got
+          '
+          done
+
       - name: identity applies the production CORS_ORIGINS
         # .env carries CORS_ORIGINS comma-separated; identity used to crash-loop
         # on that form and the overlay stopped passing it (#531). A preflight
