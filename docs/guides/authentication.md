@@ -111,6 +111,30 @@ Deactivating a user (`PATCH /api/v1/identity/admin/users/{user_id}/status`)
 also clears the gateway's authorization cache, and the gateway refuses
 inactive users' tokens and API keys from then on.
 
+### A Password Change Ends the Other Sessions
+
+Changing a password ends every session of the account issued up to that
+moment, so changing it after a compromise locks the intruder out:
+
+- identity stores the time of the change (`users.tokens_valid_after`) and
+  refuses a session token whose `iat` is not later, on its own routes and
+  when the gateway asks. A token without an `iat` is refused too.
+- Before it changes the password, identity sends the same cutoff to the
+  gateway, which keeps it per user and checks it on every request, cached
+  decision or not. If the gateway does not confirm, the password is not
+  changed and the request answers 503; try again.
+- The session that made the change is ended as well, and
+  `change-password` answers with a new access token for it. Login tokens
+  carry a fractional `iat`, so the new token is told apart from the ones
+  it replaces even within the same second.
+- API keys are not sessions and keep working. Revoke them on the API keys
+  page if they may be compromised.
+
+This applies to `change-password`, to the reset-password flow and to an
+administrator's reset through `PATCH /auth/users/{id}`. As with logout,
+other gateway replicas than the one identity reaches refuse those sessions
+only once their cached decisions expire.
+
 ---
 
 ## Failed-Login Lockout
@@ -142,6 +166,11 @@ docker compose exec \
   redis-cli -n 0 DEL "login:lockout:user@example.com" "login:attempts:user@example.com"
 ```
 
+A wrong current password counts towards the same lock: on change-password,
+on account deletion and on an email change (below). A locked account is
+refused there with the same 429, so a session cannot be used to guess the
+password either.
+
 Like the blacklist, the lockout check is fail-open: while Redis is unreachable,
 logins are not counted or refused.
 
@@ -152,15 +181,20 @@ logins are not counted or refused.
 Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`.
 Hashes written by older releases with bcrypt still verify.
 
-A user changes their own password with either:
+A user changes their own password with
+`POST /api/v1/identity/admin/me/change-password` (or
+`PUT /api/v1/identity/admin/me/password`), with `current_password` and
+`new_password` (at least 12 characters). It checks the current password
+first, ends the account's other sessions and answers with a new access
+token for this one. `PATCH /auth/users/me` and
+`PATCH /api/v1/identity/admin/me/profile` refuse a password, and so does
+`PATCH /auth/users/{id}` when the id is the caller's own.
 
-- `PATCH /api/v1/identity/users/me` with `{"password": "<new password>"}`; or
-- `POST /api/v1/identity/admin/me/change-password` with `current_password`
-  and `new_password` (or `PUT /api/v1/identity/admin/me/password`), which
-  checks the current password first.
-
-Deleting one's own account (`DELETE /api/v1/identity/admin/me/account`)
-also requires the current password. The full list of routes is in the
+Changing the email address (`PATCH /auth/users/me` or
+`PATCH /api/v1/identity/admin/me/profile`) requires `current_password` as
+well, and so does deleting one's own account
+(`DELETE /api/v1/identity/admin/me/account`). A password-reset token stops
+working once the account's email changes. The full list of routes is in the
 [identity API reference](../api/identity/endpoints.md).
 
 ---
