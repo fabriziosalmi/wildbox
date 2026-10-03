@@ -39,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so the page now lists the gateway's routes, explains how to
   authenticate, and links the endpoint references in `docs/api/` and on
   the documentation site.
+- **`/toolbox` shows an error when the tools service fails** (#572). The
+  tool list request returned an empty list on any failure, so an outage
+  read as a toolbox with 0 tools and the page's error state was
+  unreachable. The error now shows the service's message, and its retry
+  asks the service again instead of reloading the page.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
