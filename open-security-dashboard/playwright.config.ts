@@ -13,6 +13,7 @@ const BACKEND_FILES = [
   /response\.spec\.ts/,
   /cloud-security-scans\.spec\.ts/,
   /cloud-security-compliance\.spec\.ts/,
+  /cloud-security-overview\.spec\.ts/,
   /vulnerabilities\.spec\.ts/,
   /api-docs\.spec\.ts/,
   /toolbox\.spec\.ts/,
