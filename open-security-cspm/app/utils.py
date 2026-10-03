@@ -333,5 +333,124 @@ def _generate_remediation_roadmap(scan_results: Dict[str, Any]) -> List[Dict[str
     for i, item in enumerate(roadmap):
         item["priority_score"] = len(item["affected_resources"]) * 10 + len(item["compliance_impact"]) * 5
         item["order"] = i + 1
-    
+
     return roadmap[:10]  # Return top 10 prioritized items
+
+
+# --- Compliance aggregation over stored scan reports -------------------------
+# GET /api/v1/compliance/summary and /findings used to return a hard-coded
+# account (1547 resources, 86.7%, CIS/NIST/PCI with invented control counts
+# and five invented findings) whatever the team had scanned. These helpers
+# build both answers from the reports of the team's completed scans, and
+# from nothing else.
+
+_VERDICTS = ("passed", "failed")
+
+
+def _plain(value: Any) -> Any:
+    """The JSON value of an enum or datetime that a report may still carry."""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return getattr(value, "value", value)
+
+
+def _report_time(report: Dict[str, Any]) -> Optional[str]:
+    value = _plain(report.get("completed_at") or report.get("started_at"))
+    return value if isinstance(value, str) else None
+
+
+def _latest(current: Optional[str], candidate: Optional[str]) -> Optional[str]:
+    # ISO-8601 timestamps written by one service, in UTC, sort as strings.
+    if candidate is None:
+        return current
+    return candidate if current is None or candidate > current else current
+
+
+def _summarize_compliance(reports: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Resource, framework and overall figures from completed scan reports.
+
+    Only verdicts count: a check that errored, was skipped or is not
+    implemented says nothing about compliance either way.
+    """
+    resource_statuses: Dict[tuple, set] = {}
+    frameworks: Dict[str, Dict[str, Any]] = {}
+    passed = failed = 0
+    last_updated: Optional[str] = None
+
+    for report in reports:
+        assessed = _report_time(report)
+        last_updated = _latest(last_updated, assessed)
+        account = report.get("account_id")
+        for result in report.get("results") or []:
+            verdict = _plain(result.get("status"))
+            if verdict not in _VERDICTS:
+                continue
+            resource_statuses.setdefault((account, result.get("resource_id")), set()).add(verdict)
+            if verdict == "passed":
+                passed += 1
+            else:
+                failed += 1
+            for name in result.get("compliance_frameworks") or []:
+                entry = frameworks.setdefault(
+                    name,
+                    {"name": name, "passed_checks": 0, "failed_checks": 0, "last_assessment": None},
+                )
+                entry[f"{verdict}_checks"] += 1
+                entry["last_assessment"] = _latest(entry["last_assessment"], assessed)
+
+    framework_rows = []
+    for entry in sorted(frameworks.values(), key=lambda e: e["name"]):
+        total = entry["passed_checks"] + entry["failed_checks"]
+        framework_rows.append({
+            **entry,
+            "total_checks": total,
+            "compliance_percentage": round(entry["passed_checks"] / total * 100, 1),
+        })
+
+    non_compliant = sum(1 for statuses in resource_statuses.values() if "failed" in statuses)
+    verdicts = passed + failed
+    return {
+        "total_resources": len(resource_statuses),
+        "compliant_resources": len(resource_statuses) - non_compliant,
+        "non_compliant_resources": non_compliant,
+        "overall_score": round(passed / verdicts * 100, 1) if verdicts else None,
+        "frameworks": framework_rows,
+        "scans_considered": len(reports),
+        "last_updated": last_updated,
+    }
+
+
+def _compliance_findings(
+    reports: List[Dict[str, Any]], check_catalog: Dict[str, Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """One finding per check verdict in the reports, newest scan first.
+
+    Title and severity come from the check's own metadata (``check_catalog``,
+    keyed by check id). A result whose check is not in the catalog keeps its
+    id as the title and has no severity, rather than a guessed one.
+    """
+    findings = []
+    for report in sorted(reports, key=lambda r: _report_time(r) or "", reverse=True):
+        scan_id = str(report.get("scan_id"))
+        for index, result in enumerate(report.get("results") or []):
+            verdict = _plain(result.get("status"))
+            if verdict not in _VERDICTS:
+                continue
+            check_id = str(result.get("check_id"))
+            check = check_catalog.get(check_id, {})
+            findings.append({
+                "finding_id": f"{scan_id}:{index}",
+                "scan_id": scan_id,
+                "check_id": check_id,
+                "title": check.get("title") or check_id,
+                "frameworks": list(result.get("compliance_frameworks") or []),
+                "resource_id": str(result.get("resource_id")),
+                "resource_type": str(result.get("resource_type")),
+                "region": result.get("region"),
+                "status": verdict,
+                "severity": _plain(check.get("severity")),
+                "description": str(result.get("message") or ""),
+                "remediation": result.get("remediation"),
+                "last_checked": _plain(result.get("timestamp")),
+            })
+    return findings

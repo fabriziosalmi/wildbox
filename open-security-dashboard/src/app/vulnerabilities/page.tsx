@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Search,
@@ -63,12 +63,11 @@ const statusColors = {
 }
 
 export default function VulnerabilitiesPage() {
-  const { isAuthenticated, isLoading: authLoading, user } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [search, setSearch] = useState('')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [page, setPage] = useState(1)
-  const [pageSize] = useState(25)
   // False during the server render and hydration, true on the client
   // afterwards, so the first client render matches the server HTML. Unlike
   // setting a flag in an effect, this does not force a second render.
@@ -78,99 +77,42 @@ export default function VulnerabilitiesPage() {
     () => false
   )
 
-  // Debug authentication state
-  useEffect(() => {
-    if (mounted) {
-      console.log('🔍 VulnerabilitiesPage Auth State:', {
-        isAuthenticated,
-        authLoading,
-        user: user?.email,
-        mounted,
-        canRunQueries: isAuthenticated && !authLoading && mounted,
-      })
-    }
-  }, [isAuthenticated, authLoading, user, mounted])
-
   // Use custom hook for vulnerability statistics
   const {
     data: stats,
-    isLoading: statsLoading,
+    isLoading: statsQueryLoading,
+    isPlaceholderData: statsArePlaceholder,
     isError: statsError,
     error: statsErrorDetails,
+    refetch: refetchStats,
   } = useVulnerabilityStats()
+  // The hook's placeholder is all zeros: shown as data, it announced "No
+  // Vulnerabilities Found" while the request was still in flight.
+  const statsLoading = statsQueryLoading || statsArePlaceholder
 
-  // Query for vulnerabilities list
+  // The vulnerability list. A failed request is an error and is shown as
+  // one. It used to be turned into an empty list, so an outage -- and the
+  // wrong path this page called, which never answered -- read as "No
+  // vulnerabilities found" (#572).
   const {
     data: vulnerabilities,
     isLoading: vulnsLoading,
+    isFetching: vulnsFetching,
     error: vulnsError,
     refetch,
-  } = useQuery<VulnerabilityListResponse>({
+  } = useQuery<VulnerabilityListResponse, ApiError>({
     queryKey: ['vulnerabilities', search, severityFilter, statusFilter, page],
-    queryFn: async (): Promise<VulnerabilityListResponse> => {
-      console.log('🔍 Starting vulnerabilities query...')
-      console.log('🔍 Auth state:', { isAuthenticated, authLoading, user: user?.email })
-      console.log('🔍 Query params:', { search, severityFilter, statusFilter, page })
+    queryFn: () => {
+      // guardian serves the list at /api/v1/vulnerabilities/ and pages it
+      // itself (PAGE_SIZE 50); it has no page_size parameter.
+      const params = new URLSearchParams({ page: page.toString() })
+      if (search.trim()) params.append('search', search.trim())
+      if (severityFilter !== 'all') params.append('severity', severityFilter)
+      if (statusFilter !== 'all') params.append('status', statusFilter)
 
-      try {
-        let originalPath = '/api/v1/vulnerabilities/vulnerabilities/'
-        const params = new URLSearchParams()
-
-        params.append('page', page.toString())
-        params.append('page_size', pageSize.toString())
-
-        if (search.trim()) {
-          params.append('search', search.trim())
-        }
-
-        if (severityFilter !== 'all') {
-          params.append('severity', severityFilter)
-        }
-
-        if (statusFilter !== 'all') {
-          params.append('status', statusFilter)
-        }
-
-        if (params.toString()) {
-          originalPath += '?' + params.toString()
-        }
-
-        const path = getGuardianPath(originalPath)
-        console.log('🔍 Original path:', originalPath)
-        console.log('🔍 Transformed path:', path)
-
-        const response = await guardianClient.get<Partial<VulnerabilityListResponse>>(path)
-        console.log('✅ Vulnerabilities API Response:', response)
-
-        // Ensure we always return a valid object with the correct structure
-        const data: VulnerabilityListResponse = {
-          count: response.count || 0,
-          next: response.next || undefined,
-          previous: response.previous || undefined,
-          results: Array.isArray(response.results) ? response.results : [],
-        }
-
-        console.log('✅ Returning vulnerabilities data:', data)
-        return data
-      } catch (error) {
-        console.error('❌ Vulnerabilities API Error:', error)
-        // The API client rejects with an ApiError: the response body is in
-        // `details`, there is no axios `response` on it.
-        const apiError = error as Partial<ApiError> | undefined
-        console.error('❌ Error details:', {
-          message: apiError?.message,
-          status: apiError?.status,
-          response: apiError?.details,
-        })
-
-        // Return default data instead of throwing to prevent undefined
-        const fallbackData: VulnerabilityListResponse = {
-          count: 0,
-          results: [],
-        }
-        console.log('🔄 Returning fallback vulnerabilities data:', fallbackData)
-        return fallbackData
-      }
+      return guardianClient.get<VulnerabilityListResponse>(
+        getGuardianPath(`/api/v1/vulnerabilities/?${params.toString()}`)
+      )
     },
     enabled: mounted && isAuthenticated && !authLoading,
     retry: false, // Disable retry to prevent loops
@@ -184,8 +126,6 @@ export default function VulnerabilitiesPage() {
     setPage(1)
     refetch()
   }
-
-  const totalPages = vulnerabilities ? Math.ceil(vulnerabilities.count / pageSize) : 0
 
   // Show loading state while authentication is in progress
   if (!mounted || authLoading) {
@@ -244,14 +184,18 @@ export default function VulnerabilitiesPage() {
 
         {/* Statistics Cards */}
         {statsError ? (
-          <Card>
+          <Card data-testid="vulnerability-stats-error" role="alert">
             <CardContent className="pt-6">
               <div className="py-4 text-center">
                 <AlertTriangle className="mx-auto mb-2 h-8 w-8 text-red-500" />
                 <p className="font-medium text-red-600">Failed to load statistics</p>
-                <p className="text-sm text-muted-foreground">
+                <p className="mb-4 text-sm text-muted-foreground">
                   {statsErrorDetails?.message || 'Unable to fetch vulnerability statistics'}
                 </p>
+                <Button onClick={() => refetchStats()} variant="outline" size="sm">
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Try Again
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -397,16 +341,20 @@ export default function VulnerabilitiesPage() {
           <CardHeader>
             <CardTitle>Vulnerabilities</CardTitle>
             <CardDescription>
-              {vulnerabilities ? `${vulnerabilities.count} total vulnerabilities` : 'Loading...'}
+              {vulnsError
+                ? 'Unavailable'
+                : vulnerabilities
+                  ? `${vulnerabilities.count} total vulnerabilities`
+                  : 'Loading...'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {vulnsError ? (
-              <div className="py-8 text-center">
+              <div className="py-8 text-center" data-testid="vulnerabilities-error" role="alert">
                 <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-500" />
                 <p className="mb-2 font-medium text-red-600">Failed to load vulnerabilities</p>
                 <p className="mb-4 text-sm text-muted-foreground">{vulnsError.message}</p>
-                <Button onClick={() => refetch()} variant="outline">
+                <Button onClick={() => refetch()} variant="outline" disabled={vulnsFetching}>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Try Again
                 </Button>
@@ -417,7 +365,7 @@ export default function VulnerabilitiesPage() {
                 <span className="ml-2">Loading vulnerabilities...</span>
               </div>
             ) : vulnerabilities?.results?.length === 0 ? (
-              <div className="py-8 text-center">
+              <div className="py-8 text-center" data-testid="vulnerabilities-empty">
                 <Bug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
                 <p className="text-muted-foreground">No vulnerabilities found</p>
               </div>
@@ -426,6 +374,7 @@ export default function VulnerabilitiesPage() {
                 {vulnerabilities?.results?.map(vuln => (
                   <div
                     key={vuln.id}
+                    data-testid="vulnerability-row"
                     className="rounded-lg border p-4 transition-colors hover:bg-muted/50"
                   >
                     <div className="flex items-start justify-between gap-4">
@@ -497,44 +446,27 @@ export default function VulnerabilitiesPage() {
               </div>
             )}
 
-            {/* Pagination */}
-            {totalPages > 1 && (
+            {/* Pagination: guardian decides the page size and says whether
+                there is a previous or next page. */}
+            {!vulnsError && (vulnerabilities?.previous || vulnerabilities?.next) && (
               <div className="mt-6 flex items-center justify-between">
                 <div className="text-sm text-muted-foreground">
-                  Showing {(page - 1) * pageSize + 1} to{' '}
-                  {Math.min(page * pageSize, vulnerabilities?.count || 0)} of{' '}
-                  {vulnerabilities?.count || 0} results
+                  Page {page}: {vulnerabilities.results.length} of {vulnerabilities.count} results
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage(page - 1)}
-                    disabled={page === 1}
+                    disabled={!vulnerabilities.previous}
                   >
                     Previous
                   </Button>
-                  <div className="flex items-center gap-1">
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      const pageNum = Math.max(1, Math.min(totalPages - 4, page - 2)) + i
-                      return (
-                        <Button
-                          key={pageNum}
-                          variant={pageNum === page ? 'default' : 'outline'}
-                          size="sm"
-                          onClick={() => setPage(pageNum)}
-                          className="h-8 w-8 p-0"
-                        >
-                          {pageNum}
-                        </Button>
-                      )
-                    })}
-                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setPage(page + 1)}
-                    disabled={page === totalPages}
+                    disabled={!vulnerabilities.next}
                   >
                     Next
                   </Button>

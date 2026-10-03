@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cloud compliance reports the team's scans, not an invented account**
+  (#572). cspm's `GET /api/v1/compliance/summary` and `/findings`
+  returned the same constants to every team (1547 resources, 86.7%
+  compliant, CIS / NIST / PCI figures, five findings on account
+  123456789012), and `/cloud-security/compliance` showed a copy of them
+  "for demo" whenever the request failed. Both endpoints now aggregate
+  the newest completed scan of each of the team's accounts; with none,
+  the counts are 0 and the score is null ("Not assessed"), not 0%. The
+  page shows only what the service returns, and an error with a retry
+  when it cannot. See UPGRADING.md for the field changes.
+- **`/vulnerabilities` lists what guardian holds, and says when it
+  cannot** (#572). The page asked guardian for
+  `/api/v1/vulnerabilities/vulnerabilities/`, which is not the list, and
+  turned that failure, like any other, into an empty result, so it
+  always read "No vulnerabilities found". It now calls
+  `/api/v1/vulnerabilities/`, pages with guardian's own previous / next
+  links instead of a page size guardian ignored, and shows a failed
+  request as an error with a retry. The statistics no longer announce
+  "No Vulnerabilities Found" while they are still loading, and their
+  error card gains a retry.
+- **`/api-docs` no longer documents endpoints that do not exist** (#572).
+  Its hand-written catalogue listed routes no service serves (responder
+  `GET /v1/metrics`, identity `GET /api/v1/user/profile`), showed
+  "healthy" on every service without probing any, labelled endpoints
+  with Free / Business plans that nothing enforces, and gave an example
+  response with invented indicator counts and an `api.wildbox.local` base
+  URL. The services' OpenAPI pages are not routed through the gateway,
+  so the page now lists the gateway's routes, explains how to
+  authenticate, and links the endpoint references in `docs/api/` and on
+  the documentation site.
+- **`/toolbox` shows an error when the tools service fails** (#572). The
+  tool list request returned an empty list on any failure, so an outage
+  read as a toolbox with 0 tools and the page's error state was
+  unreachable. The error now shows the service's message, and its retry
+  asks the service again instead of reloading the page.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose

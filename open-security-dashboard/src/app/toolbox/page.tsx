@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { apiClient, gatewayBaseUrl } from '@/lib/api-client'
+import { apiClient, gatewayBaseUrl, type ApiError } from '@/lib/api-client'
 
 // A tool's own page in the tools service, through the gateway's /tools/
 // route, which accepts the dashboard's session cookie. These links used
@@ -55,17 +55,11 @@ interface OpenedTool {
   openedAt: string
 }
 
-async function fetchSecurityTools(): Promise<SecurityTool[]> {
-  try {
-    // Use the gateway-aware API client
-    // apiClient base URL is http://localhost:80/api/v1 (when using gateway)
-    // Calling /tools results in full path: /api/v1/tools
-    const response = await apiClient.get<SecurityTool[]>('/tools')
-    return response
-  } catch (error) {
-    console.error('Failed to fetch security tools:', error)
-    return []
-  }
+// apiClient is mounted on the gateway's /api/v1, so this is GET /api/v1/tools.
+// A failure is left to reach the error state: it used to be turned into an
+// empty list, which read as a toolbox with 0 tools (#572).
+function fetchSecurityTools(): Promise<SecurityTool[]> {
+  return apiClient.get<SecurityTool[]>('/tools')
 }
 
 function getCategoryColor(category: string): string {
@@ -207,7 +201,9 @@ export default function ToolboxPage() {
     data: tools = [],
     isLoading,
     error,
-  } = useQuery({
+    refetch,
+    isFetching,
+  } = useQuery<SecurityTool[], ApiError>({
     queryKey: ['security-tools'],
     queryFn: fetchSecurityTools,
     refetchInterval: 30000, // Refresh every 30 seconds
@@ -273,15 +269,15 @@ export default function ToolboxPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-3xl font-bold">Security Toolbox</h1>
           </div>
-          <Card>
+          <Card data-testid="toolbox-error" role="alert">
             <CardContent className="pt-6">
               <div className="py-8 text-center">
                 <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-500" />
                 <h3 className="mb-2 text-lg font-semibold">Failed to Load Tools</h3>
                 <p className="mb-4 text-muted-foreground">
-                  Unable to connect to the security API service.
+                  {error.message || 'Unable to connect to the security API service.'}
                 </p>
-                <Button onClick={() => window.location.reload()} variant="outline">
+                <Button onClick={() => refetch()} variant="outline" disabled={isFetching}>
                   Try Again
                 </Button>
               </div>
@@ -319,7 +315,9 @@ export default function ToolboxPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Total Tools</p>
-                  <p className="text-xl font-bold">{tools.length}</p>
+                  <p className="text-xl font-bold" data-testid="toolbox-total">
+                    {tools.length}
+                  </p>
                 </div>
               </div>
             </CardContent>
