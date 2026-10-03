@@ -59,6 +59,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The responder's `system.notification` no longer claims to have sent
+  anything** (#639). It wrote a log line and answered `"status": "sent"`,
+  though no e-mail, webhook or chat message ever left the system, so
+  `triage_url` reported an alert that nobody received. It now answers
+  `"status": "logged"` and `"delivered": false`, and its description in
+  `GET /v1/connectors` says that nothing is delivered. `triage_url`'s
+  step `notify_security_team` is renamed `log_security_alert`, and
+  `simple_notification` is named "Simple Logging Test". The responder
+  README documents the action, and the connector example in
+  `docs/api/responder/endpoints.md`, which listed Jira and Slack
+  connectors that do not exist, shows the real response. Delivery is not
+  implemented.
+
 - **Cancelling a responder run stops it** (#653). `DELETE
   /v1/runs/{run_id}` only rewrote the stored status: the worker never
   read it again, so a cancelled run executed every remaining step, side

@@ -524,7 +524,7 @@ URL_STEPS = [
     "extract_domain",
     "domain_reputation",
     "threat_verdict",
-    "notify_security_team",
+    "log_security_alert",
 ]
 
 
@@ -560,7 +560,12 @@ def test_triage_url_alerts_on_a_malicious_url(run, playbooks):
         "indicator": "login.evil.example",
         "indicator_type": "domain",
     }
-    message = output(record, "notify_security_team")["message"]
+    alert = output(record, "log_security_alert")
+    # Logged, not sent: system.notification delivers nothing (#639).
+    assert alert["status"] == "logged"
+    assert alert["delivered"] is False
+    assert alert["channel"] == "security-alerts"
+    message = alert["message"]
     # The URL as submitted: input templates are not HTML-escaped.
     assert f"URL: {URL}" in message
     assert "Confidence: high" in message
@@ -578,8 +583,8 @@ def test_triage_url_alerts_on_two_of_three_signals(run, playbooks):
         "url_flagged",
         "url_reputation_bad",
     ]
-    assert outcomes(record)["notify_security_team"] == "ran"
-    assert "Confidence: medium" in output(record, "notify_security_team")["message"]
+    assert outcomes(record)["log_security_alert"] == "ran"
+    assert "Confidence: medium" in output(record, "log_security_alert")["message"]
 
 
 @pytest.mark.parametrize(

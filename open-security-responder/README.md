@@ -263,7 +263,7 @@ guards later steps on `overall_result`.
         bad_reputation: "{{ steps.reputation.output.overall_threat_score >= 70 }}"
       min_true: 1        # omitted: every condition must hold
 
-  - name: "notify_security_team"
+  - name: "log_security_alert"
     action: "system.notification"
     condition: "steps.threat_verdict is defined and steps.threat_verdict.output.overall_result"
     # ...
@@ -274,6 +274,27 @@ It returns `overall_result`, `conditions` (each name and whether it held),
 `min_true` and `timestamp`. Each condition must render to `True` or
 `False`, or be a boolean; any other value, such as a nested mapping or a
 word like `malicious`, fails the step instead of being guessed at.
+
+### system.notification
+
+`system.notification` delivers nothing. No e-mail, webhook or chat message
+leaves the responder: the message is written to the service log, and the
+step's input and output to the run's log and record, where whoever reads
+the run (`GET /v1/runs/{run_id}`) sees it.
+
+```yaml
+  - name: "log_security_alert"
+    action: "system.notification"
+    input:
+      channel: "security-alerts"   # a label, recorded as given
+      message: "Malicious URL: {{ trigger.url }}"
+      priority: "high"
+```
+
+It returns `status: logged`, `delivered: false`, and the `channel`,
+`message` and `priority` it was given, with a `timestamp`. No channel is
+looked up or contacted. To have an alert reach people, read it from the
+run, or have whatever polls the run forward it.
 
 ### Connector actions
 
