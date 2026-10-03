@@ -29,6 +29,10 @@ from app.tools.http_security_scanner import main as http_scanner  # noqa: E402
 from app.tools.http_security_scanner.schemas import (  # noqa: E402
     HttpSecurityScannerInput,
 )
+from app.tools.security_automation_orchestrator import main as orch  # noqa: E402
+from app.tools.security_automation_orchestrator.schemas import (  # noqa: E402
+    AutomationWorkflowInput,
+)
 from app.tools.sql_injection_scanner import main as sqli_scanner  # noqa: E402
 from app.tools.sql_injection_scanner.schemas import (  # noqa: E402
     SQLInjectionScannerInput,
@@ -359,3 +363,106 @@ def test_whois_follows_a_public_referral_to_the_checked_address(dns, whois_serve
     fake_query.referral = "whois.public.example"
     whois.execute_tool(WHOISLookupInput(domain="example.com"))
     assert calls[1] == ("whois.public.example", (socket.AF_INET, (PUBLIC_IP, 43)))
+
+
+# --- security_automation_orchestrator: steps run through the guard -----------
+
+
+def _workflow(*steps):
+    return AutomationWorkflowInput(
+        workflow_name="wf",
+        trigger_type="manual",
+        workflow_steps=list(steps),
+        execution_mode="sequential",
+    )
+
+
+@pytest.fixture
+def spy_tools(monkeypatch):
+    """Replace the step tools' execute_tool with spies; return their calls."""
+    calls = []
+
+    async def header_spy(params):
+        calls.append(("header_analyzer", params))
+        return {"success": True}
+
+    async def cookie_spy(input_data):
+        calls.append(("cookie_scanner", input_data))
+        return {"success": True}
+
+    def sqli_spy(input_data, user_id=None):
+        calls.append(("sql_injection_scanner", input_data))
+        return {"success": True}
+
+    from app.tools.cookie_scanner import main as cookie_main
+
+    monkeypatch.setattr(header_analyzer, "execute_tool", header_spy)
+    monkeypatch.setattr(cookie_main, "execute_tool", cookie_spy)
+    monkeypatch.setattr(sqli_scanner, "execute_tool", sqli_spy)
+    return calls
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {
+            "tool": "header_analyzer",
+            "parameters": {"url": "http://169.254.169.254/latest/meta-data/"},
+        },
+        {"tool": "header_analyzer", "parameters": {"url": "http://internal.example/"}},
+        {"tool": "cookie_scanner", "parameters": {"target_url": "http://10.0.0.1/"}},
+        {"tool": "cookie_scanner", "parameters": {"target_url": "HTTP://127.0.0.1/"}},
+    ],
+)
+def test_orchestrated_step_aimed_at_an_internal_target_is_refused(dns, spy_tools, step):
+    out = asyncio.run(orch.execute_tool(_workflow(step)))
+    result = out.workflow_execution.step_results[0]
+    assert result.status == "failed"
+    assert "Blocked SSRF target" in result.error_message
+    assert spy_tools == []
+
+
+def test_orchestrated_tool_acting_for_a_caller_is_refused(dns, spy_tools, monkeypatch):
+    """Even if listed, a tool that declares user_id cannot run as a step."""
+    monkeypatch.setattr(
+        orch.SecurityAutomationOrchestrator,
+        "__init__",
+        _with_extra_tool("sql_injection_scanner"),
+    )
+    step = {
+        "tool": "sql_injection_scanner",
+        "parameters": {"target_url": "http://public.example/?id=1"},
+    }
+    out = asyncio.run(orch.execute_tool(_workflow(step)))
+    result = out.workflow_execution.step_results[0]
+    assert result.status == "failed"
+    assert "acts on behalf of a caller" in result.error_message
+    assert spy_tools == []
+
+
+def _with_extra_tool(name):
+    original = orch.SecurityAutomationOrchestrator.__init__
+
+    def init(self):
+        original(self)
+        self.available_tools.append(name)
+
+    return init
+
+
+def test_orchestrated_step_gets_the_tools_own_validated_input(dns, spy_tools):
+    step = {"tool": "header_analyzer", "parameters": {"url": "https://example.com/"}}
+    out = asyncio.run(orch.execute_tool(_workflow(step)))
+    assert out.workflow_execution.step_results[0].status == "completed"
+    ((tool, params),) = spy_tools
+    assert tool == "header_analyzer"
+    assert type(params).__name__ == "HeaderAnalyzerInput"
+
+
+def test_orchestrated_step_with_invalid_parameters_fails_the_step(dns, spy_tools):
+    step = {"tool": "header_analyzer", "parameters": {"url": "not a url"}}
+    out = asyncio.run(orch.execute_tool(_workflow(step)))
+    result = out.workflow_execution.step_results[0]
+    assert result.status == "failed"
+    assert "Invalid parameters" in result.error_message
+    assert spy_tools == []
