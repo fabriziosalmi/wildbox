@@ -42,9 +42,15 @@ by calling `http://open-security-gateway:8081/internal/gateway/purge-auth-cache`
 on the Compose network. The port is not published, and should not be. If you
 run identity or the gateway outside the default Compose network, or set
 `GATEWAY_INTERNAL_URL` for identity, make sure identity can reach the
-gateway's port 8081. A failed purge is logged by identity; the revoked token
-then stays accepted from the gateway's cache for up to `AUTH_CACHE_TTL`
-(300 seconds).
+gateway's port 8081.
+
+Logout depends on it. identity answers a logout with success only once the
+gateway has confirmed that it refuses the token (#571); if the gateway cannot
+be reached, or still runs an older image that does not report revoked
+sessions, logout answers 503 and the token stays valid. Rebuild and restart
+the gateway together with identity (step 1 does), and with more than one
+gateway replica note that identity reaches only the one its URL resolves to.
+Deactivating a user or an API key still flushes the cache best effort.
 
 ### 4. Sessions issued before the upgrade cannot be revoked one by one
 

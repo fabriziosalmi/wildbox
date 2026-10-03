@@ -57,11 +57,13 @@ where `ADMIN_EMAIL` and `ADMIN_PASSWORD` come from.
 `POST /api/v1/auth/logout` (gateway: `POST /auth/logout`), or the
 fastapi-users route `POST /api/v1/auth/jwt/logout` (gateway:
 `POST /auth/jwt/logout`), with
-`Authorization: Bearer <token>`. Adds the token's `jti` to a blacklist until
-the token would have expired, and asks the gateway to drop it from its
-authorization cache. Returns 200 whether or not the token was already revoked;
-401 without a bearer token; 400 for a token without a `jti` (issued before
-the release that added it), which expires on its own.
+`Authorization: Bearer <token>`. Has the gateway refuse the token's `jti`
+and adds it to a blacklist until the token would have expired. Returns 200
+whether or not the token was already revoked; 401 without a bearer token;
+400 for a token without a `jti` (issued before the release that added it),
+which expires on its own; 503 when the gateway did not confirm the
+revocation or the blacklist could not be written, in which case the token is
+still valid and the logout can be repeated.
 
 ### Other Authentication Routes
 

@@ -330,6 +330,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same scope as `/api/v1/indicators/search`. `last_updated` is the
   end of the last completed collection run of a visible feed, and null
   when there is none; it used to fall back to "one hour ago".
+- **A logged-out token is refused at once, on every gateway worker**
+  (#571). The gateway caches authorization decisions; logout blacklisted
+  the token's `jti` and then purged that cache entry. A request that
+  missed the cache while the logout ran had already passed identity's
+  blacklist check, and stored its "allowed" after the purge,
+  so the revoked token was accepted from the cache for up to
+  `AUTH_CACHE_TTL` (300 s). The full-stack logout test failed
+  intermittently for this reason; the gateway harness reproduces it on
+  every attempt. The gateway now keeps a revocation marker per `jti`
+  in a dictionary shared by its workers, checks it on every request,
+  cached decision or not, and after every fresh authorization, and a
+  purge also discards any decision that was in flight across it, which
+  covers the full flush that follows a user or API key deactivation.
+  Logout fails closed: it answers 2xx only once the gateway has
+  confirmed the marker and the blacklist is written, retries the
+  gateway twice, and otherwise answers 503, which the client can
+  retry. A Redis error while blacklisting used to be logged and
+  ignored, so logout reported success with nothing revoked.
+  `app.logout.revoke_jtis()` revokes sessions by `jti` without their
+  raw tokens, for invalidating a user's other sessions.
 - **The tools service validates target URLs by parsing them** (#561).
   `SecurityValidator.validate_url` ran the free-text injection patterns
   over the whole URL, so it refused `http://` targets, any query string,

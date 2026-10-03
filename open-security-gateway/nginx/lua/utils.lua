@@ -106,6 +106,33 @@ function _M.generate_auth_cache_key(token, token_type)
     return "auth:" .. token_type .. ":" .. hash
 end
 
+-- The `jti` claim of a JWT, or nil.
+--
+-- Read without verifying the signature, and only ever used as the name of a
+-- revocation marker: identity has verified the token before any decision for
+-- it is cached, and a forged token naming someone else's jti can at most get
+-- itself refused.
+function _M.jwt_jti(token)
+    local segment = token:match("^[^.]+%.([^.]+)%.[^.]*$")
+    if not segment then
+        return nil
+    end
+    segment = segment:gsub("%-", "+"):gsub("_", "/")
+    local remainder = #segment % 4
+    if remainder > 0 then
+        segment = segment .. string.rep("=", 4 - remainder)
+    end
+    local raw = ngx.decode_base64(segment)
+    if not raw then
+        return nil
+    end
+    local claims = _M.json_decode(raw)
+    if type(claims) == "table" and type(claims.jti) == "string" and claims.jti ~= "" then
+        return claims.jti
+    end
+    return nil
+end
+
 -- Clean sensitive headers before forwarding to backend
 function _M.http_request(method, url, options)
     local httpc = http:new()

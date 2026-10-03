@@ -77,13 +77,19 @@ without a bearer token.
 
 What revocation does:
 
-1. identity writes the token's `jti` to a blacklist in Redis, kept until the
-   token would have expired anyway;
-2. identity's own routes refuse a blacklisted token from then on;
-3. identity asks the gateway to drop the token from its authorization cache,
-   on the gateway's internal listener (port 8081, reachable only on the
-   Compose network, not published to the host), so the gateway refuses it at
-   once instead of after its cache entry expires.
+1. identity tells the gateway to refuse the token's `jti`, on the gateway's
+   internal listener (port 8081, reachable only on the Compose network, not
+   published to the host). The gateway records a revocation marker shared
+   by all its workers and checks it on every request, whether or not it has
+   a cached decision for the token, so a request that was being authorized
+   while the logout ran is refused too;
+2. identity writes the `jti` to a blacklist in Redis, kept until the token
+   would have expired anyway, which identity's own routes and its
+   authorization endpoint refuse from then on.
+
+Logout answers success only once both are done. If the gateway does not
+confirm (identity tries three times) or Redis cannot be written, it answers
+503 and the token stays valid; repeating the logout is safe.
 
 Limits to know:
 
@@ -93,12 +99,13 @@ Limits to know:
 - Tokens issued before the upgrade that added the `jti` claim carry none.
   Logging out with one answers 400 ("Token carries no jti and cannot be
   revoked individually"); it expires within 30 minutes of being issued.
-- If the gateway cache purge fails (identity logs it), the gateway can keep
-  accepting the revoked token from its cache for up to `AUTH_CACHE_TTL`
-  (300 seconds by default). identity itself refuses it immediately.
 - The blacklist lives in Redis and is checked **fail-open**: if identity
   cannot reach Redis, it logs the error and treats tokens as not revoked.
-  Keep Redis available; a revocation is only as reliable as Redis is.
+  Traffic through the gateway is still refused by its marker, which lasts
+  for the token's remaining lifetime unless the gateway restarts.
+- The marker is kept by the gateway instance identity reaches. With more
+  than one gateway replica, the others refuse the token only once their
+  cached decision expires (`AUTH_CACHE_TTL`, 300 seconds by default).
 
 Deactivating a user (`PATCH /api/v1/identity/admin/users/{user_id}/status`)
 also clears the gateway's authorization cache, and the gateway refuses

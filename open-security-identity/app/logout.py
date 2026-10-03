@@ -14,24 +14,77 @@ internal.py: /internal/authorize now consults the blacklist, so revocation
 applies to gateway-mediated traffic rather than only to identity's own routes.
 """
 
+import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Mapping, Optional
 
 from fastapi import APIRouter, Header, HTTPException, status
 
 from .auth import verify_access_token
-from .gateway_cache import purge_gateway_auth_cache
+from .gateway_cache import GatewayRevocationError, revoke_jtis_at_gateway
 from .token_blacklist import blacklist_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 
+class RevocationError(RuntimeError):
+    """A revocation could not be made effective everywhere; see revoke_jtis."""
+
+
+async def revoke_jtis(sessions: Mapping[str, datetime]) -> None:
+    """Revoke sessions by jti, everywhere, or raise RevocationError.
+
+    ``sessions`` maps each jti to its token's expiry (naive UTC). Each jti is
+    blacklisted in Redis until then -- what identity's own routes and
+    /internal/authorize consult -- and the gateway is told to refuse it on
+    every worker, cached decision or not. Both steps must succeed: when this
+    returns, no request carrying one of these tokens is let through, and that
+    holds for a request whose authorization was already in flight (#571).
+
+    Nothing here needs the raw tokens, so it also serves revocations of
+    sessions other than the caller's, such as the other sessions of a user
+    whose password changed.
+
+    The gateway goes first. Its marker is what refuses a request already in
+    flight, and if it cannot be confirmed nothing has been written yet, so the
+    session is still whole and the caller can retry -- the other order would
+    blacklist the token first, and a retried POST /auth/jwt/logout would then
+    be refused as unauthenticated before it could reach the gateway again.
+    Both steps are idempotent.
+    """
+    if not sessions:
+        return
+    # Long enough to cover the longest-lived of these tokens: past its expiry
+    # the token is refused anyway.
+    now = datetime.utcnow()
+    ttl = max(
+        int((expires_at - now).total_seconds()) for expires_at in sessions.values()
+    )
+    try:
+        await revoke_jtis_at_gateway(list(sessions), ttl_seconds=ttl)
+    except GatewayRevocationError as exc:
+        raise RevocationError(str(exc)) from exc
+
+    try:
+        for jti, expires_at in sessions.items():
+            await blacklist_token(jti, expires_at)
+    except Exception as exc:
+        raise RevocationError("the blacklist could not be written") from exc
+
+
 async def revoke_token(token: str) -> None:
-    """Blacklist `token` by its jti and drop the gateway's cached decision.
+    """Revoke `token` everywhere, or fail with 503 (see revoke_jtis).
 
     Shared by POST /auth/logout and by the JWT strategy's destroy_token(), which
     fastapi-users calls for POST /auth/jwt/logout -- the route the dashboard's
     logout hook uses.
+
+    Fails closed. The revocation used to be followed by a best-effort purge of
+    the gateway's cache, whose failure was a log line: logout answered 200
+    while the gateway could go on serving the token until its cache TTL ran
+    out. Logout is idempotent, so a client told 503 can simply repeat it.
     """
     payload = verify_access_token(token)
 
@@ -50,12 +103,14 @@ async def revoke_token(token: str) -> None:
         else datetime.utcnow()
     )
 
-    await blacklist_token(jti, expires_at)
-
-    # Drop the gateway's cached decision for this token so the revocation takes
-    # effect now rather than after the cache TTL (WILDBO-AUTH-03). Best effort:
-    # the blacklist entry above is what makes it correct.
-    await purge_gateway_auth_cache(token=token, token_type="bearer")
+    try:
+        await revoke_jtis({jti: expires_at})
+    except RevocationError as exc:
+        logger.error("Logout could not revoke the session: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The session could not be revoked; retry the logout",
+        ) from exc
 
 
 @router.post("/logout", status_code=status.HTTP_200_OK, tags=["authentication"])

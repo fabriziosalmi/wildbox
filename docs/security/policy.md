@@ -231,7 +231,7 @@ repository's [Dependabot alerts](https://github.com/fabriziosalmi/wildbox/securi
 ### 1. Authentication & Authorization
 
 - JWT tokens signed with HS256 (minimum 32-character secret), valid for 30 minutes, without refresh
-- Revocation on logout: the token's `jti` is blacklisted in Redis and purged from the gateway's cache
+- Revocation on logout: the gateway refuses the token's `jti` on every worker and the `jti` is blacklisted in Redis; logout answers 503 rather than success if either cannot be confirmed
 - Failed-login lockout: 5 failures lock an email for 15 minutes
 - Password hashing with Argon2id through fastapi-users' `PasswordHelper`; see [Authentication and sessions](../guides/authentication.md)
 - Bearer token authentication on all protected endpoints

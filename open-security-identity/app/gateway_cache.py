@@ -8,16 +8,23 @@ the entry expired (WILDBO-AUTH-03). Combined with the absence of revocation
 (WILDBO-AUTH-01), the practical time-to-cut-off for a stolen token was its full
 remaining lifetime.
 
-Best-effort by design: a purge failure must never prevent the state change that
-triggered it. The change is already durable in Postgres or the blacklist; the
-purge only shortens the window, and the TTL remains the backstop.
+Two calls, with different contracts:
+
+* ``purge_gateway_auth_cache()`` is best effort: a purge failure must never
+  prevent the state change that triggered it (a user or key deactivated). The
+  change is already durable in Postgres; the purge only shortens the window,
+  and the TTL remains the backstop.
+* ``revoke_jtis_at_gateway()`` is not: it backs a logout, which must not report
+  success while the gateway can still serve the session (#571). It retries,
+  and raises unless the gateway confirms every jti it was given.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
-from typing import Optional
+from typing import Collection, Optional
 
 import httpx
 
@@ -72,3 +79,65 @@ async def purge_gateway_auth_cache(
             exc,
         )
     return False
+
+
+class GatewayRevocationError(RuntimeError):
+    """The gateway did not confirm a revocation; it may still accept the jtis."""
+
+
+# Pauses before the second and third attempt. Three attempts of at most
+# `timeout` each bound how long a logout can wait on an unreachable gateway.
+_RETRY_DELAYS = (0.1, 0.5)
+
+
+async def revoke_jtis_at_gateway(
+    jtis: Collection[str],
+    ttl_seconds: int,
+    timeout: float = 2.0,
+) -> None:
+    """
+    Make the gateway refuse every token carrying one of ``jtis``.
+
+    The gateway records a revocation marker per jti, shared by all of its
+    workers and checked on every request -- cached decision or not -- for
+    ``ttl_seconds`` (at least its auth-cache TTL). That is what makes the
+    revocation hold for a request whose authorization was already in flight
+    when the logout ran, which a purge of the cached entry alone did not.
+
+    Returns only once the gateway has answered that it recorded all of them;
+    raises GatewayRevocationError otherwise.
+    """
+    jtis = list(jtis)
+    if not jtis:
+        return
+    secret = os.getenv("GATEWAY_INTERNAL_SECRET")
+    if not secret:
+        raise GatewayRevocationError("GATEWAY_INTERNAL_SECRET is not set")
+
+    payload = {"jtis": jtis, "ttl": max(int(ttl_seconds), 1)}
+    problem = "no attempt made"
+    for attempt, delay in enumerate((0.0, *_RETRY_DELAYS), start=1):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.post(
+                    _DEFAULT_URL, json=payload, headers={"X-Gateway-Secret": secret}
+                )
+            if response.status_code != 200:
+                problem = f"HTTP {response.status_code}"
+            elif response.json().get("revoked") == len(jtis):
+                return
+            else:
+                # An older gateway flushes its cache and answers 200 without
+                # counting: it cannot refuse a decision already in flight.
+                problem = "the gateway did not report the jtis revoked"
+        except Exception as exc:  # noqa: BLE001 - retried, then raised
+            problem = type(exc).__name__
+        logger.warning(
+            "Gateway revocation attempt %d/%d not confirmed (%s)",
+            attempt,
+            len(_RETRY_DELAYS) + 1,
+            problem,
+        )
+    raise GatewayRevocationError(f"gateway did not confirm the revocation ({problem})")
