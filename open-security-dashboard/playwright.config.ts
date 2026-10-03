@@ -11,6 +11,7 @@ const BACKEND_FILES = [
   /threat-intel-lookup\.spec\.ts/,
   /dashboard-home\.spec\.ts/,
   /response\.spec\.ts/,
+  /cloud-security-scans\.spec\.ts/,
 ]
 
 /**

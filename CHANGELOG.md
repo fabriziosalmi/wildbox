@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`/cloud-security/scans` no longer lists invented scans** (#570).
+  The CSPM service has no endpoint that lists scans, and the page filled
+  the gap with three made-up ones, refreshed every 10 seconds, whose
+  View Report and Download buttons did nothing. It now says that scan
+  history is not available and shows the ID of a scan started from the
+  page; starting a scan is unchanged.
 - **`/response` no longer shows invented run statistics** (#570). Its
   totals (45 runs, 2 running, 87% success) and three "recent runs" were
   constants, shown whether or not the responder answered; only the
