@@ -25,7 +25,6 @@ paths = [
   # samples with "Authorization: Bearer <token>" / "X-API-Key: ..." lines.
   '''^docs/''',
   '''README\.md$''',
-  '''LLM_SETUP\.md$''',
   # Django migrations: the matches are verbose help_text strings
   # ("Encrypted API key", "Password for authentication"), not values.
   '''/migrations/\d+_.*\.py$''',

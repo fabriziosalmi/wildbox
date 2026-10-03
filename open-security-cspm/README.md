@@ -1,132 +1,148 @@
-# 🛡️ Open Security CSPM - Cloud Security Posture Manager
+# Open Security CSPM
 
-A Cloud Security Posture Management service for the Wildbox Security Suite. It runs security checks against cloud accounts and reports their results and compliance. It scans AWS only; see [Providers](#providers).
+Cloud Security Posture Management service for the Wildbox platform. It runs
+security checks against cloud accounts and reports their results and the
+compliance frameworks each check maps to. It scans AWS only; see
+[Providers](#providers).
 
-## 🚀 Features
+## Overview
 
-### Providers
+- FastAPI service on port 8019 (`app/main.py`), reached through the gateway
+  at `/api/v1/cspm/`.
+- Scans run in a separate Celery worker (`cspm-worker`); see
+  [The scan worker](#the-scan-worker).
+- Scan metadata, team indexes and reports are kept in Redis (database 3 in
+  the Wildbox stack); see
+  [Scan retention and Redis memory](#scan-retention-and-redis-memory).
+- Cloud credentials are encrypted with `CSPM_CREDENTIAL_KEY` before they are
+  written to Redis, kept for five minutes at most, and deleted when the
+  worker starts the scan.
+
+```text
+dashboard / API client
+        |  https://localhost/api/v1/cspm/...
+        v
+gateway (authentication) --> cspm API (8019) --> Redis db 3 (queue, metadata, reports)
+                                                      |
+                                                      v
+                                        cspm-worker (Celery) --> AWS APIs
+```
+
+## Providers
 
 Only AWS is scanned. `GET /api/v1/providers` lists the providers cspm can
 scan, with the number of checks a scan of each runs:
 
-| Provider | Scans | Checks |
+| Provider | Scans | Services checked |
 | --- | --- | --- |
 | AWS | yes | S3, EC2, IAM, RDS, VPC, CloudTrail, KMS, Lambda, SNS, SQS |
-| GCP | no | none: no session and no checks |
-| Azure | no | none: no session and no checks |
 
 A provider is supported when `app/providers.py` has a session factory for it
 (`SESSION_FACTORIES`) and the check runner loaded at least one enabled,
 implemented check for it (`app/checks/<provider>/`). The scan endpoints,
 `GET /api/v1/providers` and the dashboard's scan form all read that one
 registry. `POST /api/v1/scans` and `POST /api/v1/batch/scans` refuse any
-other provider with a 400 that names the supported ones, before they store
-credentials or queue anything; a batch that names one is refused whole.
+other provider (the request schema still accepts `gcp` and `azure`) with a
+400 that names the supported ones, before they store credentials or queue
+anything; a batch that names one is refused whole.
 
 The GCP and Azure checks that used to ship returned the same invented
 resources on every run and could never run anyway, because no GCP or Azure
 session existed; they were removed (#612). To add a provider, add its
 session factory and its checks together.
 
-### 📊 **Security Checks**
+AWS credentials use `auth_method` `access_key` (access key id and secret) or
+`assume_role` (the same plus `role_arn` and an optional `external_id`).
 
-- **Compliance Framework Support**: CIS Benchmarks, NIST CSF, SOC 2, PCI DSS, GDPR, HIPAA
-- **Real-time Assessment** with detailed remediation guidance
-- **Risk-based Prioritization** with severity scoring
+## Checks
 
-### 🎯 **Executive Reporting**
+There are 22 AWS checks, one class per file under `app/checks/aws/`:
 
-- **Dashboard Summary** with the scan count, failed checks by severity and
-  the compliance score of the newest completed scan of each account
-- **Compliance Scoring** per framework, from the same scan reports
+| Service | Check ids |
+| --- | --- |
+| CloudTrail | `AWS_CLOUDTRAIL_001` enabled, `AWS_CLOUDTRAIL_002` log file validation, `AWS_CLOUDTRAIL_003` multi-region |
+| EC2 | `AWS_EC2_001` EBS encryption |
+| IAM | `AWS_IAM_001` root MFA, `AWS_IAM_002` unused access keys, `AWS_IAM_003` password policy, `AWS_IAM_005` unused credentials, `AWS_IAM_006` inline user policies |
+| KMS | `AWS_KMS_001` key rotation, `AWS_KMS_002` key permissions |
+| Lambda | `AWS_LAMBDA_001` environment encryption, `AWS_LAMBDA_002` public access |
+| RDS | `AWS_RDS_003` Multi-AZ |
+| S3 | `AWS_S3_001` public buckets, `AWS_S3_003` versioning, `AWS_S3_004` MFA delete |
+| SNS | `AWS_SNS_001` topic encryption |
+| SQS | `AWS_SQS_001` queue encryption |
+| VPC | `AWS_VPC_001` flow logs, `AWS_VPC_002` default security group, `AWS_VPC_003` security groups open to the internet |
 
-### ⚡ **Advanced Operations**
+`GET /api/v1/checks` returns each check's metadata: title, description,
+service, category, severity, compliance frameworks, references and
+remediation. A scan runs every check in every requested region; without
+`regions` it uses `us-east-1`, `us-west-2` and `eu-west-1`.
 
-- **Batch Scanning** across multiple accounts
-- **Asynchronous Processing** with Celery task queue
-- **Multi-region Support** with concurrent execution
-- **API-first Design** for seamless integration
+### Compliance frameworks
 
-## 🏗️ Architecture
+Each check declares the frameworks it maps to in `compliance_frameworks`.
+The values in use are `AWS Security Best Practices`, `SOC 2`, `NIST CSF`,
+`PCI DSS`, `HIPAA`, `GDPR`, `AWS Well-Architected Framework`,
+`CIS AWS Foundations`, and CIS AWS Foundations Benchmark v1.4.0 entries that
+name a section (for example
+`CIS AWS Foundations Benchmark v1.4.0 - 2.1.5`). The compliance endpoints
+group results by these exact strings, so each CIS section is reported as its
+own entry. The mapping says which checks relate to a framework; it does not
+cover a framework's full set of controls.
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                    Wildbox Dashboard                        │
-│               (React + TypeScript)                         │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ REST API Calls
-┌─────────────────────▼───────────────────────────────────────┐
-│                 CSPM FastAPI                               │
-│     Authentication │ Validation │ Orchestration            │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ Task Queue
-┌─────────────────────▼───────────────────────────────────────┐
-│              Celery Workers                                 │
-│         Async Scan Execution                               │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ Security Checks
-┌─────────────────────▼───────────────────────────────────────┐
-│             Check Framework                                 │
-│   AWS Checks                                                │
-└─────────────────────┬───────────────────────────────────────┘
-                      │ Results Storage
-┌─────────────────────▼───────────────────────────────────────┐
-│               Redis Cache                                   │
-│     Scan Results │ Metadata │ Status                       │
-└─────────────────────────────────────────────────────────────┘
-```
+## Running
 
-## 🛠️ Quick Start
-
-### Docker Deployment
+In the Wildbox stack, from the repository root:
 
 ```bash
-# Clone the repository
-git clone https://github.com/your-org/wildbox
-cd wildbox/open-security-cspm
-
-# Start the CSPM service
-docker-compose up -d
-
-# Verify deployment
-curl http://localhost:8000/health
+docker compose up -d cspm cspm-worker
 ```
 
-### Manual Deployment
+The root `docker-compose.yml` requires `CSPM_SECRET_KEY`,
+`CSPM_CREDENTIAL_KEY`, `REDIS_PASSWORD` and `GATEWAY_INTERNAL_SECRET`. The
+service listens on `127.0.0.1:8019` on the host; its `/health` and
+`/health/live` answer there without authentication.
+
+## Authentication
+
+Every `/api/v1/*` route requires the gateway's identity headers
+(`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`) and the shared
+`GATEWAY_INTERNAL_SECRET`, checked by `open_security_shared.gateway_auth`.
+Call the API through the gateway with a JWT or an API key; the gateway maps
+`/api/v1/cspm/<path>` to `/api/v1/<path>` on the service:
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables
-export REDIS_URL="redis://localhost:6379"
-export CELERY_BROKER_URL="redis://localhost:6379/0"
-export LOG_LEVEL="INFO"
-
-# Start Redis
-redis-server
-
-# Start the scan worker (see "The scan worker" below)
-celery -A app.worker:celery_app worker --loglevel=info --concurrency=2 -Q celery
-
-# Start FastAPI application
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+curl --cacert open-security-gateway/ssl/wildbox.crt \
+  -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/cspm/providers
 ```
 
-## 📚 API Documentation
+Scans belong to the caller's team. Reading, cancelling or reporting on
+another team's scan answers 403.
 
-### Authentication
+## API
 
-All API endpoints require authentication. Include the bearer token in the Authorization header:
+Service paths; through the gateway, replace `/api/v1/` with
+`/api/v1/cspm/`.
 
-```bash
-curl -H "Authorization: Bearer YOUR_TOKEN" \
-     http://localhost:8000/api/v1/scans
-```
+| Method | Path | Description |
+| --- | --- | --- |
+| POST | `/api/v1/scans` | Start a scan (202) |
+| GET | `/api/v1/scans/{scan_id}` | Scan status |
+| GET | `/api/v1/scans/{scan_id}/report` | Full report of a completed scan |
+| GET | `/api/v1/scans/{scan_id}/compliance` | Per-framework results of one scan; optional `framework` filter |
+| DELETE | `/api/v1/scans/{scan_id}` | Cancel a scan |
+| POST | `/api/v1/batch/scans` | Start several scans |
+| GET | `/api/v1/providers` | Providers that can be scanned |
+| GET | `/api/v1/checks` | Check catalog; optional `provider`, `category`, `severity` filters |
+| GET | `/api/v1/dashboard/summary` | Team summary; `days` 1 to 365, default 30 |
+| GET | `/api/v1/compliance/summary` | Team compliance; `days`, `provider` |
+| GET | `/api/v1/compliance/findings` | Check verdicts; `framework`, `severity`, `status`, `days`, `provider`, `limit`, `offset` |
+| GET | `/health` | Redis and Celery status |
+| GET | `/health/live` | Liveness |
 
-### Core Endpoints
+`scan_id` must be a UUID. The interactive documentation (`/docs`, `/redoc`,
+`/openapi.json`) is served only when `DEBUG` is true.
 
-#### 1. Start a Security Scan
+### Start a scan
 
 **POST** `/api/v1/scans`
 
@@ -143,14 +159,9 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
   "account_name": "Production Account",
   "regions": ["us-east-1", "us-west-2"],
   "check_ids": null,
-  "metadata": {
-    "environment": "production",
-    "team": "security"
-  }
+  "metadata": {}
 }
 ```
-
-**Response:**
 
 ```json
 {
@@ -158,69 +169,69 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
   "status": "started",
   "provider": "aws",
   "account_id": "123456789012",
-  "started_at": "2025-06-25T10:30:00Z",
+  "started_at": "2026-10-03T10:30:00",
   "estimated_duration_minutes": 15
 }
 ```
 
-#### 2. Get Scan Status
+`estimated_duration_minutes` is a fixed heuristic from the provider and the
+number of regions and checks, not a measurement.
 
-**GET** `/api/v1/scans/{scan_id}/status`
+### Scan status
+
+**GET** `/api/v1/scans/{scan_id}`
 
 ```json
 {
   "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
   "status": "running",
-  "progress": 45,
-  "current_region": "us-west-2",
-  "checks_completed": 23,
-  "checks_total": 51,
-  "estimated_completion": "2025-06-25T10:45:00Z"
+  "provider": "aws",
+  "account_id": "123456789012",
+  "started_at": "2026-10-03T10:30:00",
+  "completed_at": null,
+  "progress": {
+    "current_status": "running",
+    "total_checks": 22,
+    "completed_checks": 9,
+    "current_region": "us-west-2"
+  }
 }
 ```
 
-#### 3. Get Detailed Report
+`status` is `queued`, `running`, `completed`, `failed` or `cancelled`.
+`progress` is set only while the scan runs; `completed_at` only once it
+completed.
+
+### Scan report
 
 **GET** `/api/v1/scans/{scan_id}/report`
 
 The report the worker stored when the scan completed, kept for
 `CSPM_REPORT_RETENTION_DAYS`. A scan that has not completed answers 400.
+The report carries `scan_id`, `provider`, `account_id`, `account_name`,
+`regions`, `started_at`, `completed_at`, `status`, the counts
+`total_checks`, `passed_checks`, `failed_checks`, `error_checks`,
+`skipped_checks`, `not_implemented_checks`, the failed findings by severity
+(`critical_findings` to `info_findings`), `compliance_score` and `results`.
+Each result looks like this:
 
 ```json
 {
-  "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "provider": "aws",
-  "account_id": "123456789012",
-  "started_at": "2025-06-25T10:30:00Z",
-  "completed_at": "2025-06-25T10:44:32Z",
-  "status": "completed",
-  "summary": {
-    "total_checks": 51,
-    "passed_checks": 38,
-    "failed_checks": 11,
-    "error_checks": 2,
-    "compliance_score": 74.5,
-    "critical_findings": 3,
-    "high_findings": 8
-  },
-  "results": [
-    {
-      "check_id": "AWS_S3_001",
-      "resource_id": "my-public-bucket",
-      "resource_type": "S3Bucket",
-      "region": "us-east-1",
-      "status": "failed",
-      "message": "S3 bucket is publicly accessible",
-      "compliance_frameworks": ["CIS", "NIST", "SOC2"],
-      "remediation": "Configure S3 bucket to block public access"
-    }
-  ]
+  "check_id": "AWS_S3_001",
+  "resource_id": "my-public-bucket",
+  "resource_type": "S3Bucket",
+  "resource_name": null,
+  "region": "us-east-1",
+  "status": "failed",
+  "message": "S3 bucket is publicly accessible",
+  "details": {},
+  "remediation": "Configure S3 bucket to block public access",
+  "compliance_frameworks": ["CIS AWS Foundations Benchmark v1.4.0 - 2.1.5", "SOC 2"],
+  "timestamp": "2026-10-03T10:41:12"
 }
 ```
 
-### Advanced Endpoints
-
-#### Dashboard Summary
+### Dashboard summary
 
 **GET** `/api/v1/dashboard/summary?days=30`
 
@@ -250,7 +261,7 @@ check declares. With no completed scan the counts are 0 and
 }
 ```
 
-#### Batch Scanning
+### Batch scans
 
 **POST** `/api/v1/batch/scans`
 
@@ -259,18 +270,17 @@ check declares. With no completed scan the counts are 0 and
   "scans": [
     {
       "provider": "aws",
-      "credentials": {...},
+      "credentials": {"auth_method": "access_key", "access_key_id": "...", "secret_access_key": "..."},
       "account_id": "111111111111",
       "regions": ["us-east-1"]
     },
     {
       "provider": "aws",
-      "credentials": {...},
+      "credentials": {"auth_method": "access_key", "access_key_id": "...", "secret_access_key": "..."},
       "account_id": "222222222222",
       "regions": ["us-west-2"]
     }
-  ],
-  "parallel_execution_limit": 3
+  ]
 }
 ```
 
@@ -278,9 +288,11 @@ Each scan of a batch is started exactly as `POST /api/v1/scans` starts one:
 its credentials are encrypted, and its metadata and team index entry are
 written, so it counts in the team's summaries and is read by id like any
 other scan. The team is always the caller's; a `team_id` in a scan's
-`metadata` is ignored.
+`metadata` is ignored. The request also accepts `parallel_execution_limit`,
+which is not used: every scan is queued at once and the workers'
+concurrency decides how many run together.
 
-#### Supported Providers
+### Supported providers
 
 **GET** `/api/v1/providers`
 
@@ -308,51 +320,30 @@ A scan, single or in a batch, that names another provider is refused:
 }
 ```
 
-## 🔧 Configuration
+## Configuration
 
-### Environment Variables
+Settings are read from the environment (`app/config.py`); the root
+`docker-compose.yml` sets the ones marked "stack".
 
-```bash
-# Application Settings
-APP_NAME="Open Security CSPM"
-APP_VERSION="1.0.0"
-LOG_LEVEL="INFO"
-DEBUG="false"
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `SECRET_KEY` | none | Required, at least 32 characters; the service does not start without it. Stack: from `CSPM_SECRET_KEY` |
+| `CSPM_CREDENTIAL_KEY` | falls back to `SECRET_KEY` | Encrypts cloud credentials in Redis. Required by the stack |
+| `GATEWAY_INTERNAL_SECRET` | none | Required; verifies that requests come from the gateway |
+| `REDIS_URL` | `redis://localhost:6379/0` | Scan metadata, indexes and reports. Stack: database 3 |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` | Celery. Stack: database 3 |
+| `HOST`, `PORT`, `WORKERS` | `0.0.0.0`, `8019`, `4` | Used only by `python -m app.main`; the image runs `uvicorn` on port 8019 |
+| `MAX_CONCURRENT_SCANS` | `5` | Check executions run at once within one scan |
+| `SCAN_TIMEOUT_SECONDS` | `3600` | Time limit of one scan, 120 to 86400; the API and the worker refuse to start otherwise. Stack: from `CSPM_SCAN_TIMEOUT_SECONDS` |
+| `CSPM_REPORT_RETENTION_DAYS` | `90` | Days a scan's metadata, index entry and report are kept, 1 to 3650; the API and the worker refuse to start otherwise |
+| `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed origins, as a JSON list |
+| `DEBUG` | `false` | Serves `/docs`, `/redoc` and `/openapi.json` when true |
+| `LOG_LEVEL` | `INFO` | Log level |
+| `ENVIRONMENT` | `development` | Environment name |
 
-# API Settings
-API_HOST="0.0.0.0"
-API_PORT="8000"
-API_WORKERS="4"
-
-# Redis Configuration
-REDIS_URL="redis://localhost:6379"
-REDIS_PASSWORD=""
-REDIS_DB="0"
-
-# Celery Configuration
-CELERY_BROKER_URL="redis://localhost:6379/0"
-CELERY_RESULT_BACKEND="redis://localhost:6379/0"
-
-# Security Settings
-SECRET_KEY="your-secret-key-here"
-CORS_ORIGINS="http://localhost:3000,https://dashboard.wildbox.security"
-
-# Scan Configuration
-MAX_CONCURRENT_SCANS="10"
-# Time limit of one scan, 120 to 86400 seconds; the API and the worker refuse
-# to start otherwise. The Wildbox stack sets it from CSPM_SCAN_TIMEOUT_SECONDS.
-SCAN_TIMEOUT_SECONDS="3600"
-# Days a scan's metadata, team index entry and report are kept. Whole number
-# from 1 to 3650; the API and the worker refuse to start otherwise.
-CSPM_REPORT_RETENTION_DAYS="90"
-DEFAULT_SCAN_REGIONS_AWS="us-east-1,us-west-2"
-DEFAULT_SCAN_REGIONS_GCP="us-central1,europe-west1"
-DEFAULT_SCAN_REGIONS_AZURE="eastus,westus2"
-
-# Integration Settings
-WILDBOX_IDENTITY_URL="http://open-security-identity:8000"
-WILDBOX_DASHBOARD_URL="http://open-security-dashboard:3000"
-```
+The `docker-compose.yml` in this directory is for standalone development.
+It does not set `GATEWAY_INTERNAL_SECRET` or `CSPM_CREDENTIAL_KEY`, so use
+the root stack to run scans end to end.
 
 ### The scan worker
 
@@ -400,8 +391,7 @@ credentials were deleted when it started.
 **Concurrency and scaling.** Each worker process runs one scan at a time
 and takes the next only when it is done (`worker_prefetch_multiplier=1`),
 so `--concurrency` is the number of scans one container runs at once. The
-default is two processes in one CPU and 1 GB; an idle worker with two
-processes used about 125 MB. A scan spends most of its time waiting for the
+default is two processes in one CPU and 1 GB. A scan spends most of its time waiting for the
 provider's API. Scans that wait in the queue are the sign to add capacity:
 
 - **One worker, higher concurrency.** Raise `--concurrency` and the
@@ -415,7 +405,8 @@ provider's API. Scans that wait in the queue are the sign to add capacity:
   restarts.
 
 More concurrent scans of one cloud account also mean more calls to its API
-at once, and providers throttle API calls per account.
+at once, and providers throttle API calls per account. The API only queues
+scans and reads Redis, so more API capacity does not run more scans.
 
 ### Scan retention and Redis memory
 
@@ -458,201 +449,58 @@ of `REDIS_MAXMEMORY`, lower `CSPM_REPORT_RETENTION_DAYS` or raise
 `REDIS_MAXMEMORY`, keeping `REDIS_MEMORY_LIMIT` at least twice
 `REDIS_MAXMEMORY`.
 
-### Custom Check Configuration
+## Adding a check
 
-Create custom security checks by extending the `BaseCheck` class:
+The check runner imports every module under `app/checks/<provider>/` and
+registers each `BaseCheck` subclass it finds. A check declares its metadata
+and returns one result per resource:
 
 ```python
-from app.checks.framework import BaseCheck, CheckMetadata, CheckSeverity
+from typing import Any, List, Optional
 
-class MyCustomCheck(BaseCheck):
+from ...framework import (
+    BaseCheck, CheckMetadata, CheckResult, CheckSeverity, CheckStatus, CloudProvider,
+)
+
+
+class CheckExample(BaseCheck):
     def get_metadata(self) -> CheckMetadata:
         return CheckMetadata(
-            check_id="CUSTOM_001",
-            title="My Custom Security Check",
-            description="Custom check for specific requirements",
+            check_id="AWS_EXAMPLE_001",
+            title="Example check",
+            description="What the check verifies",
             provider=CloudProvider.AWS,
-            service="CustomService",
-            category="Custom",
-            severity=CheckSeverity.HIGH,
-            compliance_frameworks=["Internal"],
-            remediation="Follow internal security guidelines"
+            service="Example",
+            category="Example",
+            severity=CheckSeverity.MEDIUM,
+            compliance_frameworks=["AWS Security Best Practices"],
+            remediation="How to fix a failed resource",
         )
-    
-    async def execute(self, session, region=None):
-        # Your custom check logic here
+
+    async def execute(self, session: Any, region: Optional[str] = None) -> List[CheckResult]:
+        # session is the boto3 session of the scan
         return [
             self.create_result(
-                resource_id="resource-123",
-                resource_type="CustomResource",
+                resource_id="resource-id",
+                resource_type="ExampleResource",
                 status=CheckStatus.PASSED,
-                message="Resource meets custom requirements"
+                message="Resource meets the requirement",
+                region=region,
             )
         ]
 ```
 
-## 🔗 Integration with Wildbox Ecosystem
+Place it in a package under `app/checks/aws/<service>/` with an
+`__init__.py`. A check must call the cloud API; scaffolding is marked
+`implemented=False` in its metadata and is not loaded.
 
-### Dashboard Integration
-
-The CSPM service integrates seamlessly with the Wildbox Dashboard:
-
-```typescript
-// Dashboard API calls
-const scanResult = await fetch('/api/cspm/scans', {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${token}` },
-  body: JSON.stringify(scanConfig)
-});
-
-const summary = await fetch('/api/v1/cspm/dashboard/summary');
-```
-
-### Guardian Integration
-
-Security Guardian uses CSPM results for risk correlation:
-
-```python
-# Guardian risk assessment
-cspm_findings = await cspm_client.get_scan_results(scan_id)
-for finding in csmp_findings:
-    risk_score = calculate_risk(finding, threat_intel, asset_context)
-    await create_alert_if_critical(risk_score, finding)
-```
-
-### Responder Integration
-
-Automated response playbooks triggered by CSPM findings:
-
-```yaml
-# Playbook: S3 Public Bucket Response
-trigger:
-  cspm_finding:
-    check_id: "AWS_S3_001"
-    severity: "critical"
-
-actions:
-  - name: "Create Ticket"
-    type: "jira"
-    priority: "high"
-  
-  - name: "Notify Team"
-    type: "slack"
-    channel: "#security-alerts"
-  
-  - name: "Auto-Remediate"
-    type: "aws_lambda"
-    function: "block-s3-public-access"
-```
-
-## 📈 Performance & Scalability
-
-### Metrics
-
-- **Throughput**: 100+ concurrent scans
-- **Latency**: < 2s API response time
-- **Scan Duration**: AWS, 10-20 minutes (full account)
-
-### Scaling Recommendations
-
-Scans run in `cspm-worker`; see [The scan worker](#the-scan-worker) for its
-concurrency and for running several workers. The API only queues scans and
-reads Redis, so more API capacity does not run more scans. Size Redis for
-the reports you keep
-([Scan retention and Redis memory](#scan-retention-and-redis-memory)).
-
-## 🔒 Security Considerations
-
-### Credentials Management
-
-- **Never store credentials in plain text**
-- Use AWS IAM roles, GCP service accounts, Azure managed identities when possible
-- Implement credential rotation policies
-- Encrypt credentials at rest
-
-### Network Security
-
-```yaml
-# Network policies
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: cspm-network-policy
-spec:
-  podSelector:
-    matchLabels:
-      app: csmp
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app: wildbox-dashboard
-```
-
-## 🚀 Roadmap
-
-### v1.1 (Q3 2025)
-
-- [ ] Multi-account AWS Organizations support
-- [ ] GCP Folder/Organization scanning
-- [ ] Azure Management Groups support
-- [ ] Custom compliance frameworks
-- [ ] Advanced threat modeling integration
-
-### v1.2 (Q4 2025)
-
-- [ ] Machine learning for anomaly detection
-- [ ] Infrastructure as Code scanning
-- [ ] Container security integration
-- [ ] Cost optimization recommendations
-- [ ] Advanced compliance reporting
-
-### v2.0 (Q1 2026)
-
-- [ ] Multi-cloud resource dependency mapping
-- [ ] Automated remediation engine
-- [ ] Real-time continuous monitoring
-- [ ] Advanced analytics and BI integration
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](../CONTRIBUTING.md) for details.
-
-### Development Setup
+## Development
 
 ```bash
-# Clone and setup
-git clone https://github.com/your-org/wildbox
-cd wildbox/open-security-cspm
-
-# Install development dependencies
 pip install -r requirements-dev.txt
-
-# Run tests
 pytest tests/
-
-# Run linting
-flake8 app/
-black app/
-
-# Start development environment
-docker-compose -f docker-compose.dev.yml up
 ```
 
-## 📄 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](../LICENSE) file for details.
-
-## 📞 Support
-
-- **Documentation**: [docs.wildbox.security](https://docs.wildbox.security)
-- **Issues**: [GitHub Issues](https://github.com/your-org/wildbox/issues)
-- **Community**: [Discord](https://discord.gg/wildbox-security)
-- **Enterprise**: [support@wildbox.security](mailto:support@wildbox.security)
-
----
-
-🛡️ **Secure by Design. Scalable by Nature. Open by Choice.**
+Part of the Wildbox platform; see the repository [LICENSE](../LICENSE).

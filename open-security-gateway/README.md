@@ -1,407 +1,312 @@
 # Wildbox Security Gateway
 
-🛡️ **Intelligent API Gateway for the Wildbox Security Suite**
+The gateway is the single entry point of the Wildbox stack. It is an
+OpenResty (nginx with LuaJIT) reverse proxy that terminates TLS, routes
+requests to the backend services, and authenticates API requests by asking
+the identity service. Backend services trust only requests that carry the
+gateway's identity headers and the shared `GATEWAY_INTERNAL_SECRET`.
 
-The Wildbox Security Gateway is the unified entry point for all Wildbox services, providing advanced routing, authentication, authorization, and security features. Built on OpenResty (NGINX + LuaJIT) for maximum performance and flexibility.
+The configuration lives in:
 
-## 🏗️ Architecture
+| File | Contents |
+| --- | --- |
+| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, CORS allowlist, exported environment variables |
+| `nginx/conf.d/wildbox_gateway.conf` | Upstreams, listeners and every `location` block |
+| `nginx/includes/` | Shared proxy, CORS and dashboard header settings, and the auth-cache purge endpoint |
+| `nginx/lua/auth_handler.lua` | Authentication, decision cache, revocation, API-key scopes, per-team rate limit |
+| `nginx/lua/utils.lua` | Token extraction, header cleanup, HTTP client helper |
+| `scripts/docker-entrypoint.sh` | Generates a self-signed certificate if none is mounted, then starts OpenResty with `nginx/nginx.conf` |
 
-The gateway acts as a reverse proxy and security enforcer, implementing:
+## Running
 
-- **Unified Routing**: Single entry point for all Wildbox services
-- **TLS Termination**: Centralized SSL/TLS certificate management
-- **Authentication & Authorization**: Token validation and user permission enforcement
-- **Plan-based Feature Gating**: Dynamic access control based on subscription plans
-- **Rate Limiting**: Per-plan API rate limiting
-- **Caching**: Intelligent response caching to reduce backend load
-- **Monitoring**: Comprehensive logging and metrics collection
-
-## 🚀 Quick Start
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Make (optional, for convenience commands)
-
-### 1. Configure Environment
-
-```bash
-# Clone and navigate to the gateway directory
-cd open-security-gateway
-
-# Copy environment template
-cp .env.example .env
-
-# IMPORTANT: Edit .env and set GATEWAY_INTERNAL_SECRET
-# Generate a secure secret: openssl rand -hex 32
-nano .env
-```
-
-### 2. Start the Gateway
+The gateway runs as the `gateway` service of the root `docker-compose.yml`
+(container `open-security-gateway`), on the `wildbox` network defined there.
+Docker prefixes the network with the Compose project name, so with the default
+project name it appears as `wildbox_wildbox` in `docker network ls`.
 
 ```bash
-# Generate SSL certificates and start services
-make start
+# From the repository root
+docker compose up -d --wait
 ```
 
-### 3. Configure Local DNS
+Published ports:
 
-Add these entries to your `/etc/hosts` file:
+| Port | Purpose |
+| --- | --- |
+| 443 | HTTPS: the dashboard and every API route |
+| 80 | `/health`; everything else answers `301` to HTTPS |
+| 8080 | `/health`; everything else answers `301` to HTTPS |
 
-```text
-127.0.0.1 wildbox.local
-127.0.0.1 api.wildbox.local
-127.0.0.1 dashboard.wildbox.local
-```
+The redirect target uses the first `server_name`, so `http://localhost/x` is
+redirected to `https://api.wildbox.local/x`. Use HTTPS directly.
 
-### 4. Verify Installation
+A fourth listener on port 8081 is not published. Only containers on the
+Compose network reach it; identity calls the auth-cache purge endpoint there.
+
+At first start the entrypoint writes a self-signed certificate to
+`open-security-gateway/ssl/` (mounted at `/etc/ssl/wildbox`), valid for
+`api.wildbox.local`, `wildbox.local`, `*.wildbox.local`, `localhost`,
+`gateway`, `open-security-gateway` and `127.0.0.1`. Trust it explicitly
+instead of disabling verification:
 
 ```bash
-# Check health
-curl -k https://wildbox.local/health
-
-# View logs
-make logs
+curl --cacert open-security-gateway/ssl/wildbox.crt https://localhost/health
 ```
 
-## 🛣️ Routing Configuration
+In production, mount a real certificate and key at
+`/etc/ssl/wildbox/wildbox.crt` and `/etc/ssl/wildbox/wildbox.key`.
 
-The gateway routes requests to backend services based on URL patterns:
+## Health check
 
-| Path Pattern | Backend Service | Authentication | Plan Requirement |
-| -------------- | ---------------- | ---------------- | ------------------ |
-| `/api/v1/auth/*` | open-security-identity | ❌ | None |
-| `/api/v1/users/*` | open-security-identity | ✅ | Any |
-| `/api/v1/admin/*` | open-security-identity | ✅ | Admin Only |
-| `/api/v1/data/*` | open-security-data | ✅ | Any |
-| `/api/v1/cspm/*` | open-security-cspm | ✅ | Personal+ |
-| `/api/v1/guardian/*` | open-security-guardian | ✅ | Any |
-| `/api/v1/responder/*` | open-security-responder | ✅ | Business+ |
-| `/api/v1/agents/*` | open-security-agents | ✅ | Enterprise |
-| `/api/v1/sensor/*` | open-security-sensor | ✅ | Any |
-| `/api/v1/automations/*` | open-security-automations | ✅ | Business+ |
-| `/ws/*` | WebSocket connections | ✅ | Any |
-| `/*` | open-security-dashboard | ✅ | Any |
-
-## 🔐 Authentication
-
-The gateway supports multiple authentication methods:
-
-### Bearer Token (Recommended)
-
-```bash
-curl -H "Authorization: Bearer <token>" https://api.wildbox.local/api/v1/data/feeds
-```
-
-### API Key
-
-```bash
-curl -H "X-API-Key: <api-key>" https://api.wildbox.local/api/v1/data/feeds
-```
-
-### Query Parameter (Limited use)
-
-```bash
-curl "https://api.wildbox.local/api/v1/data/feeds?token=<token>"
-```
-
-## 📊 Subscription Plans & Features
-
-The gateway enforces feature access based on subscription plans:
-
-### Free Plan
-
-- Dashboard access
-- Basic monitoring
-- Data feeds (limited)
-
-### Personal Plan
-
-- All Free features
-- CSPM scanning
-- Guardian threat detection
-- Sensor data collection
-
-### Business Plan
-
-- All Personal features
-- Incident response (Responder)
-- Workflow automation
-- Advanced analytics
-
-### Enterprise Plan
-
-- All Business features
-- AI-powered security agents
-- Custom integrations
-- Priority support
-
-## ⚡ Performance Features
-
-### Intelligent Caching
-
-- Authentication data cached for 5 minutes
-- API responses cached based on user plan
-- Static content cached with long TTLs
-
-### Rate Limiting
-
-- **Free**: 10 requests/second per team
-- **Personal**: 50 requests/second per team
-- **Business**: 200 requests/second per team
-- **Enterprise**: 1000 requests/second per team
-
-### Connection Pooling
-
-- HTTP/1.1 keep-alive connections to backends
-- Connection pooling for reduced latency
-- Automatic failover and health checks
-
-## 🔧 Configuration
-
-### Environment Variables
-
-Copy `.env.example` to `.env` and customize the values:
-
-```bash
-cp .env.example .env
-# Edit .env with your configuration
-```
-
-#### Required Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GATEWAY_INTERNAL_SECRET` | ⚠️ **REQUIRED** | Secret for authenticating internal service requests. Generate with `openssl rand -hex 32` |
-| `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | URL of the identity service for authentication |
-
-#### Optional Variables
-
-| Variable | Default | Description |
-| ---------- | --------- | ------------- |
-| `WILDBOX_ENV` | `development` | Environment mode (`development`, `staging`, `production`) |
-| `GATEWAY_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
-| `AUTH_CACHE_TTL` | `300` | Authentication cache TTL in seconds (recommended: 300) |
-| `GATEWAY_DEBUG` | `false` | Enable debug mode (⚠️ Never enable in production!) |
-
-⚠️ **SECURITY WARNING**: Always change `GATEWAY_INTERNAL_SECRET` in production. Never use default values.
-
-### Backend Service URLs
-
-Backend services are automatically discovered via Docker networking:
-
-| Service | Internal URL | Port |
-| --------- | ------------- | ------ |
-| Identity | `open-security-identity:8001` | 8001 |
-| Tools | `open-security-tools:8000` | 8000 |
-| Data | `open-security-data:8002` | 8002 |
-| Guardian | `open-security-guardian:8013` | 8013 |
-| Responder | `open-security-responder:8018` | 8018 |
-| Agents | `open-security-agents:8006` | 8006 |
-| Dashboard | `open-security-dashboard:3000` | 3000 |
-| Automations (n8n) | `open-security-automations:5678` | 5678 |
-
-> **Note**: Services in development (CSPM, Sensor) may use different ports. Check `docker-compose.yml` for current configuration.
-
-## 📋 Available Commands
-
-```bash
-# Basic operations
-make start          # Start the gateway
-make stop           # Stop the gateway
-make restart        # Restart the gateway
-make logs           # View logs
-
-# Development
-make dev-start      # Start in development mode
-make shell          # Open shell in container
-make config         # Test nginx configuration
-make reload         # Reload configuration
-
-# Maintenance
-make certs          # Generate SSL certificates
-make health         # Check service health
-make clean          # Clean up resources
-make backup         # Backup configuration
-```
-
-## 🐛 Debugging
-
-### Enable Debug Logging
-
-```bash
-GATEWAY_LOG_LEVEL=debug make start
-```
-
-### Debug Headers
-
-Set `gateway_debug=true` in nginx variables to enable debug headers:
-
-- `X-Debug-User-ID`
-- `X-Debug-Team-ID`
-- `X-Debug-Plan`
-- `X-Debug-Cache-Hit`
-
-### View Real-time Logs
-
-```bash
-# All logs
-make logs
-
-# Access logs only
-make metrics
-
-# Error logs
-docker-compose exec gateway tail -f /var/log/nginx/error.log
-```
-
-## 🔒 Security Features
-
-### TLS Configuration
-
-- TLS 1.2+ only
-- Strong cipher suites
-- HSTS headers
-- OCSP stapling
-
-### Security Headers
-
-- `Strict-Transport-Security`
-- `X-Frame-Options: DENY`
-- `X-Content-Type-Options: nosniff`
-- `X-XSS-Protection`
-- `Referrer-Policy`
-
-### Input Validation
-
-- Request size limits
-- Header validation
-- Path traversal protection
-
-## 📈 Monitoring
-
-### Health Check
-
-```bash
-curl -k https://wildbox.local/health
-```
-
-Response:
+`/health` needs no authentication. On port 443 and on port 80 it returns:
 
 ```json
-{
-  "status": "healthy",
-  "service": "wildbox-gateway",
-  "timestamp": "2024-01-15T10:30:00Z",
-  "ssl": "enabled"
-}
+{"status":"healthy","service":"wildbox-gateway","timestamp":"<nginx $time_iso8601>"}
 ```
 
-### Metrics
+On port 8080 it returns
+`{"status":"healthy","service":"wildbox-gateway","port":"8080-redirect-only"}`.
+The response is static: it does not check any backend service.
 
-The gateway logs detailed metrics in structured format:
+## Authentication
+
+Routes that authenticate at the gateway call `auth_handler.authenticate()`.
+It accepts exactly two credentials:
+
+- `Authorization: Bearer <JWT>`, a session token from the login endpoint
+- `X-API-Key: <key>`, an API key created in identity (`wsk_...`)
+
+There is no query-parameter token and no cookie authentication: a cookie alone
+is not a credential (`nginx/lua/utils.lua`, `extract_auth_token`).
+
+For each request without a cached decision, the gateway sends the token to
+identity's `POST /internal/authorize` with the `X-Gateway-Secret` header, and
+then:
+
+1. Caches the decision in the `auth_cache` shared dictionary for
+   `AUTH_CACHE_TTL` seconds (300 by default), never past the credential's own
+   expiry.
+2. Refuses the request if the token was revoked: logout, a password change, a
+   revoked API key, or the user's removal from the team. Identity sends these
+   revocations to the purge endpoint before it commits them, so a cached
+   decision does not outlive them.
+3. Answers `403 PASSWORD_CHANGE_REQUIRED` if the account must change its
+   initial password.
+4. Enforces API-key scopes (see below).
+5. Applies the per-team rate limit.
+6. Strips `Authorization`, `X-API-Key` and any client-supplied `X-Wildbox-*`
+   headers, then forwards `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
+   `X-Wildbox-Role`, `X-Gateway-Secret` and `X-Request-ID` to the service.
+
+If identity cannot be reached, the gateway answers `503` with a JSON body and
+`Retry-After`. After 10 failed calls a circuit breaker stops calling identity
+for 60 seconds.
+
+### API-key scopes
+
+A key whose `scopes` is a list is checked against the scope each request
+needs (`required_scope_for_request` in `auth_handler.lua`):
+
+| Path | Read (`GET`, `HEAD`, `OPTIONS`) | Other methods |
+| --- | --- | --- |
+| `/api/v1/tools/*`, `/api/v1/agents/*`, `/api/v1/tasks*` | `tools:read` | `tools:execute` |
+| `/api/v1/automations/*` | `tools:admin` | `tools:admin` |
+| `/api/v1/data/ingest` | `read` | `data:ingest`, also satisfied by `data:write` or `write` |
+| `/api/v1/guardian/*` | `data:read` | `data:write`, or `data:delete` for `DELETE` |
+| Any other authenticated path | `read` | `write` |
+
+`admin` and `*` satisfy every scope. Session tokens are not scope-limited.
+
+## Routing
+
+All routes below are on the HTTPS listener (port 443). "Gateway auth" means
+the location runs `auth_handler.authenticate()`; "identity" means the request
+is passed to identity with its `Authorization` header, and identity
+authenticates it.
+
+### Identity
+
+| Gateway path | Upstream | Auth |
+| --- | --- | --- |
+| `/auth/jwt/*` | `open-security-identity:8001` `/api/v1/auth/jwt/*` | identity (login is public) |
+| `/auth/register` | `open-security-identity:8001` `/api/v1/auth/register` | none |
+| `/auth/forgot-password` | `open-security-identity:8001` `/api/v1/auth/forgot-password` | none |
+| `/auth/reset-password` | `open-security-identity:8001` `/api/v1/auth/reset-password` | none |
+| `POST /auth/logout` | `open-security-identity:8001` `/api/v1/auth/logout` | identity |
+| `/auth/users/*` | `open-security-identity:8001` `/api/v1/users/*` | identity |
+| `/api/v1/identity/auth/*` | `open-security-identity:8001` `/api/v1/auth/*` | identity |
+| `/api/v1/identity/health` | `open-security-identity:8001` `/health` | gateway |
+| `/api/v1/identity/*` | `open-security-identity:8001` `/api/v1/*` | identity |
+
+`/auth/jwt/*` is limited to 5 requests per second per client IP (burst 3);
+`/auth/register` and `/auth/forgot-password` use the same zone with burst 2.
+Identity routes do not pass through `auth_handler`, so the per-team rate
+limit and API-key scopes do not apply to them; identity enforces the
+password-change requirement on them itself. Since the gateway authenticated
+nobody on these routes, it forwards no `X-Gateway-Secret` to identity
+(`$wildbox_gateway_secret` stays empty; `authenticate()` sets it only for the
+caller it verified, #664).
+
+### Other services
+
+| Gateway path | Upstream | Auth |
+| --- | --- | --- |
+| `/api/v1/data/health` | `open-security-data:8002` `/health` | gateway |
+| `/api/v1/data/*` | `open-security-data:8002` `/api/v1/*` | gateway |
+| `/api/v1/cspm/*` | `open-security-cspm:8019` `/api/v1/*` | gateway |
+| `/api/v1/responder/*` | `open-security-responder:8018` `/v1/*` | gateway |
+| `/api/v1/guardian/*` | `open-security-guardian:8013` `/api/v1/*` | gateway |
+| `/api/v1/agents/stats` | `open-security-agents:8006` `/stats` | gateway |
+| `/api/v1/agents/*` | `open-security-agents:8006` `/v1/*` | gateway |
+| `/api/v1/tools` | `open-security-tools:8000` `/api/tools` | gateway |
+| `/api/v1/tools/*` | `open-security-tools:8000` `/api/tools/*` | gateway |
+| `/api/v1/tasks` | `open-security-tools:8000` `/api/tasks` | gateway |
+| `/api/v1/tasks/*` | `open-security-tools:8000` `/api/tasks/*` | gateway |
+| `/api/v1/automations/*` | `open-security-automations:5678` `/*` | gateway |
+
+Notes:
+
+- `/api/v1/guardian/*` presents `Host: open-security-guardian` to the Django
+  service and forwards the caller's host as `X-Forwarded-Host`; redirects are
+  rewritten back to `/api/v1/guardian/`.
+- `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
+  Compose profile; the upstream is resolved at request time, so the route
+  answers `502` while n8n is not running. The gateway replaces the
+  `Authorization` header with n8n's basic auth from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`.
+
+### Dashboard and other locations
+
+| Gateway path | Upstream or response | Auth |
+| --- | --- | --- |
+| `/` | `open-security-dashboard:3000` | none (the dashboard enforces its own login) |
+| `= /auth/login`, `= /auth/signup`, `GET /auth/logout` | dashboard pages | none |
+| `/login/`, `/register/`, `/signup/` | dashboard | none |
+| `/_next/hmr` | dashboard, WebSocket upgrade (`next dev` hot reload) | none |
+| `/favicon.ico` and paths ending in `.css`, `.js`, or an image or font extension | dashboard, cached for one year | none |
+| `/ws/*` | dashboard, WebSocket upgrade | none at the gateway |
+| `/public/*` | files under `/var/www/public/` in the container (none are shipped) | none |
+| `/tools/*` | `404` JSON: the standalone tools UI was removed | none |
+| `/internal/gateway/purge-auth-cache` | auth-cache purge (see below) | private source IP and `X-Gateway-Secret` |
+| `/api/*` (anything not matched above) | `404` `{"error":"endpoint_not_found",...}` | none |
+| `/health` | static JSON (see above) | none |
+
+The sensor service has no gateway route: `/api/v1/sensor/*` falls through to
+the `/api/` catch-all and answers `404`. The sensor is a client of the
+gateway instead: it posts telemetry to `/api/v1/data/ingest` with an API key.
+
+### Example
 
 ```bash
-127.0.0.1 - - [15/Jan/2024:10:30:00 +0000] "GET /api/v1/data/feeds HTTP/1.1" 
-200 1234 "-" "curl/7.68.0" "-" rt=0.045 uct="0.001" uht="0.002" urt="0.042" 
-team_id="team_123" user_id="user_456" plan="business"
+# ADMIN_EMAIL and ADMIN_PASSWORD as in the root README's "Verify" step
+CA=open-security-gateway/ssl/wildbox.crt
+
+TOKEN=$(curl -s --cacert "$CA" \
+  --data-urlencode "username=$ADMIN_EMAIL" \
+  --data-urlencode "password=$ADMIN_PASSWORD" \
+  https://localhost/auth/jwt/login | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+
+# Identity authenticates this request itself
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/identity/users/me
+
+# The gateway authenticates this one and forwards X-Wildbox-* headers
+curl --cacert "$CA" -H "Authorization: Bearer $TOKEN" \
+  https://localhost/api/v1/tools
 ```
 
-## 🚨 Troubleshooting
+## Rate limiting
 
-### Common Issues
+Two independent limits apply:
 
-1. **SSL Certificate Errors**
+- **Per client IP** (`limit_req` in `nginx.conf`). The HTTPS server applies the
+  `global` zone, 100 requests per second with burst 10, to every location that
+  does not set its own. The auth endpoints use the `auth` zone (5 requests per
+  second) and static assets the `static_assets` zone (500 requests per second,
+  burst 200). Excess requests get `429`.
+- **Per team** (`apply_rate_limiting` in `auth_handler.lua`), on routes that
+  call `authenticate()`. `RATE_LIMIT_PER_HOUR` (default 10000) is enforced as a
+  fixed 60-second window of `RATE_LIMIT_PER_HOUR * 60 / 3600` requests, 166 by
+  default. Responses carry `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
+  `X-RateLimit-Reset` and `X-RateLimit-Policy`; over the limit the gateway
+  answers `429` with `Retry-After` and
+  `{"error":"rate_limit_exceeded",...}`.
 
-   ```bash
-   # Regenerate certificates
-   make certs
-   
-   # Trust certificate on macOS
-   sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ssl/wildbox.crt
-   ```
+There are no plans or tiers: every team gets the same limit.
 
-2. **Backend Service Unreachable**
+## Auth-cache purge
 
-   ```bash
-   # Check network connectivity
-   docker network ls
-   docker network inspect wildbox-net
-   
-   # Verify service status
-   docker-compose ps
-   ```
+`POST /internal/gateway/purge-auth-cache` lets identity revoke cached
+decisions. It is reachable on the internal listener (8081) and on 443, only
+from private address ranges, and only with the correct `X-Gateway-Secret`. The
+JSON body selects what is revoked: `users` (password change), `memberships`
+(team removal), `api_keys`, `jtis` (logout), a single `token`, or an empty body
+to flush the whole cache. The answer is
+`{"purged":true,"scope":"...","revoked":<n>}`.
 
-3. **Authentication Failures**
+## Configuration
 
-   ```bash
-   # Check identity service logs
-   docker-compose logs open-security-identity
-   
-   # Verify token format
-   curl -H "Authorization: Bearer <token>" -v https://api.wildbox.local/api/v1/identity/me
-   ```
+The root `docker-compose.yml` passes these variables to the gateway. Lua reads
+them through the `env` directives in `nginx.conf`.
 
-### Log Analysis
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `GATEWAY_INTERNAL_SECRET` | none, required | Sent to identity's `/internal/authorize` as `X-Gateway-Secret`, and forwarded to a service only on requests the gateway authenticated. If it is empty, every authorization fails. |
+| `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` |
+| `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
+| `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
+| `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` | `admin`, empty | Basic auth injected on `/api/v1/automations/*` |
+
+The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
+and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
+`WILDBOX_ENV` or `GATEWAY_LOG_LEVEL`, and `GATEWAY_DEBUG` is stored in the
+configuration but never used. The error log level is fixed at `warn` in
+`nginx.conf`.
+
+To accept cross-origin requests from a dashboard served on another origin, add
+the origin to the `$cors_allow_origin` map in `nginx.conf`. By default only
+`localhost` and `127.0.0.1` origins are allowed.
+
+## Logs
+
+Access logs use the `gateway` format in `nginx.conf`, which includes the
+request id (`rid=`), the upstream address and status, timings, and the team
+id from the `X-Wildbox-Team-ID` response header. Its `user_id` field reads a
+response header the gateway never sets, so it is always empty. Logs are
+written to
+`open-security-gateway/logs/` on the host.
 
 ```bash
-# Filter authentication errors
-docker-compose logs gateway | grep "authentication"
-
-# Monitor rate limiting
-docker-compose logs gateway | grep "rate_limit"
-
-# Check backend errors
-docker-compose logs gateway | grep "upstream"
+docker compose logs -f gateway
+docker compose exec gateway tail -f /var/log/nginx/access.log
 ```
 
-## 🔄 Updates and Maintenance
+## Development
 
-### Update Gateway
+Check and reload the configuration in the running container:
 
 ```bash
-make update
+docker compose exec gateway /usr/local/openresty/bin/openresty -c /etc/nginx/nginx.conf -t
+docker compose exec gateway /usr/local/openresty/bin/openresty -c /etc/nginx/nginx.conf -s reload
 ```
 
-### Backup Configuration
+To add a backend service, add an `upstream` and a `location` block to
+`nginx/conf.d/wildbox_gateway.conf`, call `auth_handler.authenticate()` in an
+`access_by_lua_block`, and add the service to the gateway's `depends_on` in the
+root `docker-compose.yml`: nginx resolves upstream names at startup and exits
+if one cannot be resolved.
 
-```bash
-make backup
-```
+CI runs two checks on this directory:
 
-### Rolling Updates (Production)
+- `.github/workflows/gateway-lint.yml` runs `luacheck` over `nginx/lua`.
+- `.github/workflows/gateway-tests.yml` builds `Dockerfile.test` and runs
+  `test/ci_auth_tests.sh` and `test/revocation_tests.sh` against a mock
+  identity (`test/mock_identity.py`).
 
-For zero-downtime updates in production:
+The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
+directory are for standalone use. They use a separate `wildbox-net` network
+and are not what the root stack or CI runs.
 
-1. Deploy new version alongside current
-2. Update load balancer to point to new version
-3. Wait for connections to drain
-4. Remove old version
+## License
 
-## 📚 Development
-
-### Adding New Backend Services
-
-1. Add upstream definition in `nginx/conf.d/wildbox_gateway.conf`
-2. Add location block with appropriate authentication
-3. Update documentation
-
-### Modifying Authentication Logic
-
-Edit `nginx/lua/auth_handler.lua` for authentication changes.
-
-### Custom Rate Limiting
-
-Modify rate limiting zones in `nginx/nginx.conf`.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Make changes
-4. Test thoroughly
-5. Submit pull request
-
-## 📄 License
-
-Copyright © 2024 Wildbox Security. All rights reserved.
+MIT, as the rest of the repository. See the root `LICENSE` file.

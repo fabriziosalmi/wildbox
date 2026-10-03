@@ -26,7 +26,7 @@ install:
 	pip install -r requirements.txt
 
 dev:
-	uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload
+	uvicorn app.main:app --host 0.0.0.0 --port 8006 --reload
 
 worker:
 	celery -A app.worker worker --loglevel=info --concurrency=4
@@ -71,21 +71,21 @@ clean:
 
 # Health checks
 health:
-	curl -X GET http://localhost:8004/health | jq .
+	curl -X GET http://localhost:8006/health | jq .
 
 stats:
-	curl -X GET http://localhost:8004/stats | jq .
+	curl -X GET http://localhost:8006/stats | jq .
 
 # Development workflow
 setup: install
 	@echo "Setting up development environment..."
 	@echo "1. Copy .env.example to .env"
-	@echo "2. Set your OPENAI_API_KEY in .env"
+	@echo "2. Set ANTHROPIC_API_KEY and GATEWAY_INTERNAL_SECRET in .env"
 	@echo "3. Run 'make docker-up' to start services"
 	@echo "4. Run 'make test-e2e' to verify everything works"
 
 # Production deployment
 deploy: docker-build docker-up
 	@echo "Deployed to production"
-	@echo "API available at http://localhost:8004"
+	@echo "API available at http://localhost:8006"
 	@echo "Flower UI available at http://localhost:5555"

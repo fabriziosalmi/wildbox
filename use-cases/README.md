@@ -1,77 +1,54 @@
 # Wildbox Use Cases
 
-This directory contains real-world use case examples demonstrating how to use Wildbox for various security operations scenarios.
+Worked examples of Wildbox for specific security operations scenarios.
 
-## 📚 Available Use Cases
+## Available use cases
 
-### 1. [Web Attack Detection](web-attack-detection/)
+### Web attack detection
 
-**Status**: ✅ Complete
-**Difficulty**: Beginner
-**Components Used**: Sensor, Data Lake
+Directory: [web-attack-detection/](web-attack-detection/)
+Components: sensor, gateway, data service
 
-Demonstrates log ingestion and parsing for detecting common web application attacks including:
+Ingests nginx access logs through the sensor and inspects them for common web
+attack patterns:
 
-- SQL Injection
-- Cross-Site Scripting (XSS)
-- Path Traversal
-- Command Injection
-- Brute Force Attacks
-- Security Scanner Activity
+- SQL injection
+- Cross-site scripting (XSS)
+- Path traversal
+- Command injection
+- Brute force login attempts
+- Security scanner activity
 
-**What you'll learn**:
+It covers:
 
-- How to configure the Wildbox Sensor for log forwarding
-- How to ingest and parse nginx/apache access logs
-- How to query and analyze ingested events via the Data Lake API
-- How to identify attack patterns in web traffic
-
-**Quick Start**:
+- Configuring the sensor for log forwarding
+- Generating sample nginx access logs that contain attack patterns
+- Querying stored telemetry events through the gateway
 
 ```bash
 cd web-attack-detection
 ./quick-start.sh
 ```
 
----
+## Ideas for further use cases
 
-## 🎯 Coming Soon
+None of these exist yet. Each line names the Wildbox components such a use case
+would build on.
 
-### 2. Cloud Security Monitoring (Planned)
+- **Cloud security monitoring** (CSPM, data service, agents): check AWS accounts
+  for misconfigurations. AWS is the only cloud provider the CSPM service
+  implements.
+- **Threat intelligence enrichment** (data service, agents): enrich events with
+  indicators from the data service's seven threat-feed collectors.
+- **Automated incident response** (responder, agents, gateway): respond to
+  incidents with the responder's YAML playbooks.
+- **Endpoint threat hunting** (sensor, data service, agents): hunt with osquery
+  queries run by the sensor.
+- **API security monitoring** (gateway, data service, agents).
 
-**Components**: CSPM, Data Lake, Agents
+## Use case template
 
-Monitor AWS/Azure/GCP for security misconfigurations and compliance violations.
-
-### 3. Threat Intelligence Enrichment (Planned)
-
-**Components**: Data Lake, Threat Feeds, Agents
-
-Enrich security events with threat intelligence from 50+ sources.
-
-### 4. Automated Incident Response (Planned)
-
-**Components**: Responder, Agents, Gateway
-
-Automatically respond to security incidents with YAML-based playbooks.
-
-### 5. Endpoint Threat Hunting (Planned)
-
-**Components**: Sensor, Data Lake, Agents
-
-Hunt for threats across your endpoint fleet using osquery.
-
-### 6. API Security Monitoring (Planned)
-
-**Components**: Gateway, Data Lake, Agents
-
-Monitor and protect your APIs from abuse and attacks.
-
----
-
-## 📋 Use Case Template
-
-Want to contribute a use case? Use this structure:
+To contribute a use case, use this structure:
 
 ```text
 use-cases/
@@ -87,73 +64,39 @@ use-cases/
         └── troubleshooting.md
 ```
 
-### Required Sections in README.md
+### Required sections in README.md
 
-1. **Overview** - What the use case demonstrates
-2. **Architecture** - Component diagram
-3. **Prerequisites** - What's needed to run it
-4. **Quick Start** - Step-by-step setup instructions
-5. **Testing** - How to verify it's working
-6. **Next Steps** - How to extend the use case
+1. **Overview**: what the use case demonstrates
+2. **Architecture**: component diagram
+3. **Prerequisites**: what is needed to run it
+4. **Quick start**: step-by-step setup instructions
+5. **Testing**: how to verify it works
+6. **Next steps**: how to extend the use case
 
----
+## Contributing use cases
 
-## 🏗️ Use Case Difficulty Levels
+1. Fork the repository.
+2. Create your use case following the template above.
+3. Test it on a fresh installation.
+4. Document every dependency and step.
+5. Open a pull request that describes the use case.
 
-| Level | Description | Best For |
-| ------- | ------------- | ---------- |
-| **Beginner** | Single component, basic setup | Learning Wildbox basics |
-| **Intermediate** | Multiple components, some integration | Real-world deployments |
-| **Advanced** | Full platform, custom integrations | Production environments |
+Guidelines:
 
----
+- Use real-world scenarios and include sample data.
+- Provide an automated setup script.
+- Do not include sensitive data.
+- Do not require paid external services unless clearly marked optional.
 
-## 🤝 Contributing Use Cases
+See [CONTRIBUTING.md](../CONTRIBUTING.md) for the general process.
 
-We welcome community contributions! To submit a use case:
+## Additional resources
 
-1. **Fork the repository**
-2. **Create your use case** following the template above
-3. **Test thoroughly** - Ensure it works on a fresh installation
-4. **Document completely** - Clear instructions for users
-5. **Submit a Pull Request** - With a description of the use case
+- [Wildbox documentation](../docs/)
+- [Architecture overview](../README.md#architecture)
+- [Quick start guide](../docs/guides/quickstart.md)
 
-### Guidelines
+## License
 
-- ✅ Use real-world scenarios
-- ✅ Include sample data
-- ✅ Provide automated setup scripts
-- ✅ Document all dependencies
-- ✅ Test on clean installation
-- ❌ Don't include sensitive data
-- ❌ Don't require external paid services (unless clearly marked optional)
-
----
-
-## 📖 Additional Resources
-
-- [Wildbox Main Documentation](../docs/)
-- [Component Documentation](../README.md#-components)
-- [QUICKSTART Guide](../docs/guides/quickstart.md)
-- [API Documentation](http://localhost:8001/docs) (when running)
-
----
-
-## 💡 Use Case Ideas
-
-Have an idea for a use case? Open an issue with the `use-case-idea` label:
-
-- Container Security Monitoring
-- DNS Tunneling Detection
-- Insider Threat Detection
-- Compliance Automation (PCI-DSS, HIPAA, etc.)
-- Malware Analysis Workflow
-- Zero Trust Network Monitoring
-- IoT Device Security
-- Supply Chain Security
-
----
-
-## 📄 License
-
-All use cases are part of the Wildbox project and licensed under the MIT License.
+The use cases are part of the Wildbox project and licensed under the MIT
+License.

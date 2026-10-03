@@ -6,7 +6,7 @@ set -e
 
 echo "Starting Open Security Agents..."
 echo "Environment: ${DEBUG:-production}"
-echo "OpenAI Model: ${OPENAI_MODEL:-gpt-4o}"
+echo "Anthropic model: ${ANTHROPIC_MODEL:-claude-opus-4-8}"
 
 # Start Celery worker in background
 echo "Starting Celery worker for AI agent tasks..."
