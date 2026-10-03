@@ -1059,6 +1059,10 @@ services:
       # gateway_cert volume below. `-`, not `:-`: an empty value selects the
       # system trust store, for a gateway with a publicly signed certificate.
       - SENSOR_DATA_LAKE_CA_BUNDLE=${SENSOR_DATA_LAKE_CA_BUNDLE-/etc/ssl/wildbox/wildbox.crt}
+      # The sensor's name in the data service. It defaults to the hostname,
+      # which in a container is its ID and changes when it is recreated:
+      # each recreation would appear as a new sensor.
+      - SENSOR_DATA_LAKE_SENSOR_ID=${SENSOR_DATA_LAKE_SENSOR_ID:-open-security-sensor}
       - PYTHONPATH=/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}

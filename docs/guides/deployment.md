@@ -452,6 +452,7 @@ It forwards nothing until it has a key:
 | `SENSOR_DATA_LAKE_API_KEY` | empty | The sensor's key. Empty: the sensor runs and forwards nothing |
 | `SENSOR_DATA_LAKE_ENDPOINT` | `https://open-security-gateway` | The gateway's HTTPS URL as the sensor reaches it |
 | `SENSOR_DATA_LAKE_CA_BUNDLE` | `/etc/ssl/wildbox/wildbox.crt` | The certificate the sensor trusts for the gateway. Set it to an empty value to use the system trust store instead |
+| `SENSOR_DATA_LAKE_SENSOR_ID` | `open-security-sensor` | The sensor's name in the data service, unique within the team |
 
 Revoking the key, or removing the member from the team, stops the sensor's
 telemetry at its next batch. Sensors on other hosts are set up the same way;
