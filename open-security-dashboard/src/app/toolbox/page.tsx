@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useQuery } from '@tanstack/react-query'
-import { Search, Settings, CheckCircle, AlertCircle, Book, Filter } from 'lucide-react'
+import { Search, Settings, CheckCircle, AlertCircle, Book, Filter, Play } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -12,7 +13,8 @@ import { apiClient, type ApiError } from '@/lib/api-client'
 
 // The route that runs a tool, as the gateway exposes it. Each card used to
 // open the tools service's own page for the tool at /tools/<name>; that
-// standalone UI is removed (#581), so the card names the API call instead.
+// standalone UI is removed (#581). The card names the API call, and opens
+// the dashboard's own page for the tool, which runs it (#585).
 const toolApiPath = (name: string) => `/api/v1/tools/${encodeURIComponent(name)}`
 
 // The tools service's own /docs is not routed through the gateway; the
@@ -86,6 +88,12 @@ function ToolCard({ tool }: { tool: SecurityTool }) {
             <code className="flex-1 truncate rounded bg-muted px-2 py-1 text-xs">
               POST {toolApiPath(tool.name)}
             </code>
+            <Button asChild size="sm" data-testid={`open-tool-${tool.name}`}>
+              <Link href={`/toolbox/${encodeURIComponent(tool.name)}`}>
+                <Play className="mr-1 h-4 w-4" />
+                Run
+              </Link>
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -191,7 +199,7 @@ export default function ToolboxPage() {
           <div>
             <h1 className="text-3xl font-bold">Security Toolbox</h1>
             <p className="text-muted-foreground">
-              Browse the security tools; run them through the API
+              Browse the security tools and run them here or through the API
             </p>
           </div>
           <div className="flex items-center gap-2">

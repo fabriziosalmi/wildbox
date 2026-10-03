@@ -106,7 +106,8 @@ jobs:
         # tests' own timeouts. A route that does not answer 200 fails the job.
         run: |
           for route in /auth/login / /dashboard /admin /settings /settings/profile \
-                       /settings/api-keys /settings/team /threat-intel/lookup; do
+                       /settings/api-keys /settings/team /threat-intel/lookup \
+                       /toolbox /toolbox/hash_generator; do
             for i in $(seq 1 20); do
               code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 120 \
                        -H 'Cookie: auth_token=warmup' "https://localhost$route" || true)

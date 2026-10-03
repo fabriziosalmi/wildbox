@@ -33,6 +33,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/internal/authorize` now reports `password_change_required`. The
   dashboard takes such a user from the login to a "Choose your
   password" screen, and back to it from any other page.
+- **Run a tool from the dashboard** (#585). `/toolbox` was a catalog
+  since the tools service's standalone pages were removed (#581). Each
+  tool's "Run" button now opens `/toolbox/<name>`, a form generated from
+  the input schema of `GET /api/v1/tools/<name>/info`: strings, numbers
+  and integers with their bounds, enums (also behind `$ref`), booleans,
+  arrays of primitives, and a JSON text area for anything else; `anyOf`
+  with `null` is an optional field, and the schema's description,
+  default and example are the help text, initial value and placeholder.
+  The schema's constraints are checked before anything is sent, and an
+  empty optional field is left to the service's default. The run is
+  either synchronous (`POST /api/v1/tools/<name>`) or a background task
+  (`POST .../async`, then `GET /api/v1/tasks/<id>` until it finishes),
+  which can be cancelled. The result is the service's answer as it came,
+  as key/value tables and lists plus the raw JSON, with "Copy JSON",
+  "Download JSON" and "Copy as cURL" (the request with the form's body;
+  the token comes from `$WILDBOX_TOKEN`). Refusals are shown with the
+  service's reason: field errors under their fields, SSRF-blocked
+  targets (400) and tools the caller is not authorized for (403).
+- **A tool's 422 names the fields that failed** (#585). The tool
+  endpoint answered every invalid body with the bare message "Input
+  validation failed". The canonical error body now also carries
+  `details.errors`, the location, message and type of each failure,
+  without the submitted values.
 
 ### Fixed
 
