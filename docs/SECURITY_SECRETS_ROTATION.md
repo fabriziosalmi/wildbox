@@ -91,16 +91,17 @@ It is required:
 - both `docker-compose.yml` and `docker-compose.prod.yml` pass it to
   identity as `${API_KEY_HASH_SECRET:?...}`, so Compose refuses to start
   without it;
-- with `ENVIRONMENT=production`, identity refuses to start when it is unset,
-  shorter than 32 characters, a placeholder from `.env.example`, or has too
-  few distinct characters.
+- identity refuses to start with a value shorter than 32 characters, a
+  placeholder from `.env.example`, or one with fewer than 10 distinct
+  characters, and, with `ENVIRONMENT=production`, without a value
+  (`open-security-identity/app/config.py`).
 
 `make generate-secrets` writes a random value for a new deployment. A
 deployment that ran before this variable reached identity has its API-key
 digests keyed by `JWT_SECRET_KEY`. Before upgrading it, seed the new variable
-from that key once, so existing keys keep working; the step is described in
-[UPGRADING.md](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md)
-under "Seed `API_KEY_HASH_SECRET` from `JWT_SECRET_KEY`":
+from that key once, so existing keys keep working, as
+[UPGRADING.md, section 38](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md#38-seed-api_key_hash_secret-from-jwt_secret_key-before-upgrading-required)
+describes:
 
 ```bash
 make init-api-key-hash
