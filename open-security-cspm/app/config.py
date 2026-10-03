@@ -53,7 +53,11 @@ class Settings(BaseSettings):
     
     # Scan configuration
     max_concurrent_scans: int = Field(default=5, env="MAX_CONCURRENT_SCANS")
-    scan_timeout_seconds: int = Field(default=3600, env="SCAN_TIMEOUT_SECONDS")  # 1 hour
+    # The time limit of one scan; the soft limit is a minute shorter, so the
+    # lower bound keeps it positive. docker-compose.yml passes
+    # CSPM_SCAN_TIMEOUT_SECONDS as SCAN_TIMEOUT_SECONDS to cspm and
+    # cspm-worker, and gives the worker as long to stop (#601).
+    scan_timeout_seconds: int = Field(default=3600, ge=120, le=86400)
     default_scan_regions: Dict[str, List[str]] = {
         "aws": ["us-east-1", "us-west-2", "eu-west-1"],
         "gcp": ["us-central1", "europe-west1"],

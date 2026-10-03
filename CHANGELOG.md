@@ -59,6 +59,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
+  cspm worker commented out and `docker-compose.prod.yml` declared none,
+  so every scan stayed `queued` and the compliance pages, the cloud
+  security overview and the reports never had data. A new service,
+  `cspm-worker`, built like cspm and with its settings (credential key,
+  Redis URLs with the password, `CSPM_REPORT_RETENTION_DAYS`, scan time
+  limit), consumes exactly the queue the scan tasks are routed to, now
+  named in `app/worker.py` and checked against the service by a unit
+  test. It has a health check that pings its own node, resource limits,
+  `restart: unless-stopped`, `no-new-privileges`, the image's non-root
+  user, and a `stop_grace_period` equal to the scan time limit, which is
+  now `CSPM_SCAN_TIMEOUT_SECONDS` (default 3600, validated from 120 to
+  86400). Redis redelivers an unfinished task only after that limit plus
+  ten minutes, so a long scan is never run twice. In production it sits
+  on `data` and `egress`; `check_network_segmentation.py` covers it. A
+  scan a worker has taken reads `running` instead of `unknown`. The
+  Production Stack job checks that each replica answers a ping and reads
+  the routed queue, and an integration test submits a scan through the
+  gateway and waits for the worker to finish it.
+
 - **tools resolve host names again.** aiohttp resolves through aiodns when it
   is installed, and the lock paired aiodns 3.2.0 with pycares 5.0.1: aiodns
   called pycares' `getaddrinfo` with the pycares 4 signature, so every lookup
