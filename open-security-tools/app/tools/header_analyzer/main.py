@@ -18,6 +18,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_session
 from .schemas import HeaderAnalyzerInput, HeaderAnalyzerOutput
 # Tool metadata
 TOOL_INFO = {
@@ -81,18 +83,6 @@ class HeaderSecurityAnalyzer:
         # Initialize rate limiter for external requests
         self.rate_limiter = RateLimiter(max_requests=10, time_window=60)
     
-    @staticmethod
-    def _is_private_ip(hostname: str) -> bool:
-        """Check if hostname resolves to a private/reserved IP (SSRF protection)"""
-        import socket
-        import ipaddress
-        try:
-            addr = socket.getaddrinfo(hostname, None)[0][4][0]
-            ip = ipaddress.ip_address(addr)
-            return ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local
-        except (socket.gaierror, ValueError):
-            return False
-
     async def analyze_headers(self, url: str, follow_redirects: bool = True) -> Dict[str, Any]:
         """Analyze HTTP headers for security issues"""
         try:
@@ -101,16 +91,12 @@ class HeaderSecurityAnalyzer:
             if not parsed_url.scheme or not parsed_url.netloc:
                 raise ValueError("Invalid URL format")
 
-            # SSRF protection: block requests to private/internal IPs
-            if self._is_private_ip(parsed_url.hostname or ""):
-                raise ValueError("Blocked: target resolves to private/internal IP address")
+            # SSRF protection: the shared guard checks the URL (every address
+            # the host resolves to must be public), and the guarded session
+            # checks every connection again, redirect hops included.
+            InputSanitizer.validate_url(url)
 
-            connector = aiohttp.TCPConnector()
-            
-            async with aiohttp.ClientSession(
-                timeout=self.timeout,
-                connector=connector
-            ) as session:
+            async with guarded_session(timeout=self.timeout) as session:
                 # Apply rate limiting before making external request
                 await self.rate_limiter.acquire()
                 

@@ -773,7 +773,10 @@
     "yocto",
     "Zeek",
     "zricethezav",
-    "zwitch"
+    "zwitch",
+    "aiodns",
+    "getaddrinfo",
+    "pycares"
   ],
   "ignoreWords": [
     "APIKEY",

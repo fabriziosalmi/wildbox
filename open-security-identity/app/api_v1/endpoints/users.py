@@ -26,7 +26,9 @@ from ...user_manager import (
     current_superuser, current_active_user, get_jwt_strategy, get_user_manager,
     UserManager, require_current_password, verify_current_password,
 )
-from ...gateway_cache import purge_gateway_auth_cache
+from ...access_revocation import (
+    active_api_key_ids, end_account_access_or_503, end_team_access_or_503,
+)
 from ...config import settings
 
 router = APIRouter()
@@ -256,17 +258,22 @@ async def update_user_status(
             detail="Cannot deactivate your own account"
         )
     
+    if not is_active and user.is_active:
+        # The gateway first, and it must confirm (#593). This used to flush
+        # its cache after the commit, best effort: when the flush was lost
+        # the account's keys and sessions kept working for up to the cache
+        # TTL (default 300s), and nothing said so (WILDBO-AUTH-03). Now the
+        # gateway refuses them before the account is marked inactive, or the
+        # deactivation is not made (503).
+        user.tokens_valid_after = await end_account_access_or_503(
+            await active_api_key_ids(db, user_id=user.id),
+            user.id,
+            "The deactivation",
+        )
+
     # Update status
     user.is_active = is_active
     await db.commit()
-
-    if not is_active:
-        # Flush the gateway's cached authorization decisions so the
-        # deactivation takes effect now. Without this the account kept working
-        # for up to the cache TTL (default 300s) with its old role attached,
-        # and the administrator had no way to tell how long was left
-        # (WILDBO-AUTH-03).
-        await purge_gateway_auth_cache()
 
     return {"message": f"User {'activated' if is_active else 'deactivated'} successfully"}
 
@@ -344,6 +351,24 @@ async def delete_user(
                 detail=f"Cannot delete user who owns {len(user.owned_teams)} team(s): {', '.join(team_names)}. Use force=true to automatically handle team ownership."
             )
         
+    # Before anything is deleted, the gateway must refuse what the account
+    # authenticated with (#593): its API keys, the keys of the teams deleted
+    # with it, and its sessions. It caches its decisions, and would go on
+    # accepting them for up to its cache TTL after the rows are gone. If it
+    # cannot confirm, nothing is deleted (503). A team is deleted only when
+    # the account is its sole member, so the account's session cutoff
+    # already ends every session that worked in it; a team that has other
+    # members is handed over, and they keep it (#613).
+    teams_deleted_with_user = [
+        team.id
+        for team in user.owned_teams
+        if not any(m.user_id != user.id for m in team.memberships)
+    ]
+    key_ids = set(await active_api_key_ids(db, user_id=user.id))
+    key_ids.update(await active_api_key_ids(db, team_ids=teams_deleted_with_user))
+    await end_account_access_or_503(sorted(key_ids), user.id, "The deletion")
+
+    if user.owned_teams:
         # Force deletion - handle each owned team
         for team in user.owned_teams:
             # Get other team members (excluding the user being deleted)
@@ -679,6 +704,16 @@ async def delete_my_account(
                 detail="Cannot delete account while being the sole owner of a team. Transfer ownership first."
             )
     
+    # The gateway first (#593): the account's API keys and sessions, this
+    # one included, stop working there before the account is deactivated,
+    # or the deletion is not made (503). It used to tell the gateway nothing,
+    # so both went on working for up to its cache TTL.
+    current_user.tokens_valid_after = await end_account_access_or_503(
+        await active_api_key_ids(db, user_id=current_user.id),
+        current_user.id,
+        "The account deletion",
+    )
+
     # Soft delete - deactivate and mark email as deleted
     current_user.is_active = False
     current_user.email = f"deleted_{current_user.id}@example.com"
@@ -1020,7 +1055,15 @@ async def remove_team_member(
                 detail="Cannot remove the last owner from a team"
             )
     
+    # The member's API keys for this team stop working with the membership
+    # (identity authorizes a key through it) (#593), and so do the member's
+    # sessions in this team: the gateway caches "allowed in this team" for
+    # them (#613). The gateway is told first and must confirm, or the member
+    # is not removed (503). Their sessions go on working in the teams they
+    # still belong to.
+    await end_team_access_or_503(db, target.user_id, target.team_id, "The removal")
+
     await db.delete(target)
     await db.commit()
-    
+
     return {"message": "Member removed successfully"}

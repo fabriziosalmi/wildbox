@@ -78,11 +78,12 @@ local function check_circuit_breaker()
     -- Circuit open - too many failures
     if failures >= CIRCUIT_BREAKER_THRESHOLD then
         if now - last_failure < CIRCUIT_BREAKER_TIMEOUT then
+            local remaining = CIRCUIT_BREAKER_TIMEOUT - (now - last_failure)
             utils.log("warn", "Circuit breaker OPEN - identity service unavailable", {
                 failures = failures,
-                timeout_remaining = CIRCUIT_BREAKER_TIMEOUT - (now - last_failure)
+                timeout_remaining = remaining
             })
-            return false
+            return false, remaining
         else
             -- Reset circuit breaker
             circuit_cache:delete(failures_key)
@@ -110,8 +111,9 @@ end
 -- Call identity service to validate token with improved error handling
 local function validate_token_with_identity(token, token_type, config)
     -- Check circuit breaker
-    if not check_circuit_breaker() then
-        return nil, "circuit_breaker_open"
+    local closed, retry_after = check_circuit_breaker()
+    if not closed then
+        return nil, "circuit_breaker_open", retry_after
     end
 
     local url = config.identity_service_url .. "/internal/authorize"
@@ -141,7 +143,11 @@ local function validate_token_with_identity(token, token_type, config)
             ["X-Gateway-Secret"] = config.gateway_secret,
             ["X-Request-ID"] = ngx.var.request_id or utils.generate_request_id()
         },
-        timeout = TIMEOUT_SECONDS * 1000 -- Convert to milliseconds
+        timeout = TIMEOUT_SECONDS * 1000, -- Convert to milliseconds
+        -- Authorizing is a read: identity changes nothing for it, so a
+        -- request that met a connection identity had just closed can be
+        -- sent again (#609).
+        retry_stale = true
     })
 
     local duration = (ngx.now() - start_time) * 1000
@@ -205,7 +211,7 @@ local function get_cached_auth_data(cache_key)
     if cached_data then
         local auth_data, err = utils.json_decode(cached_data)
         if not err then
-            local now = ngx.time()
+            local now = ngx.now()
             if auth_data.expires_at and auth_data.expires_at > now then
                 auth_data.cache_hit = true
                 utils.log("debug", "Using cached auth data", {
@@ -419,6 +425,161 @@ function _M.revoke_user_sessions(users, ttl)
     return stored
 end
 
+-- API keys (#593).
+--
+-- Revoking a key only set it inactive in identity's database, and the
+-- decision cached here for it went on being served for up to the cache TTL:
+-- a key revoked because it leaked kept working for five minutes. Identity
+-- does not keep the raw key, so it cannot name the cache key derived from
+-- it; it names the key by its id instead, which it also reports on every
+-- authorization it grants for the key (auth_data.api_key_id). The gateway
+-- keeps a marker "apikey:<id>" in auth_revoked and refuses a decision for
+-- that key on a cache hit and after a fresh authorization alike, like the
+-- jti markers above. Identity sends the marker before it commits the
+-- revocation, and every other change that disables keys (a user
+-- deactivated or deleted, a member removed from the team) does the same.
+local function api_key_marker(api_key_id)
+    return "apikey:" .. api_key_id
+end
+
+local function names_api_key(auth_data)
+    local id = auth_data and auth_data.api_key_id
+    return type(id) == "string" and id ~= ""
+end
+
+-- Whether a decision for an API key may not be served. A decision that does
+-- not name its key cannot be checked against a revocation, so it is not
+-- served either: identity names the key on every authorization it grants.
+local function api_key_revoked(token_type, auth_data)
+    if token_type ~= "api_key" then
+        return false
+    end
+    if not names_api_key(auth_data) then
+        return true
+    end
+    return is_revoked(api_key_marker(auth_data.api_key_id))
+end
+
+-- Record API-key revocation markers. Returns how many were stored. As for
+-- password-change cutoffs, a marker that cannot be kept is reported as not
+-- stored -- flushing the cache would not cover the time until identity
+-- commits the revocation -- so identity answers 503 and revokes nothing.
+function _M.revoke_api_keys(api_key_ids, ttl)
+    bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if not state then
+        return 0
+    end
+    ttl = math.min(
+        math.max(tonumber(ttl) or MAX_REVOCATION_TTL, configured_cache_ttl()),
+        MAX_REVOCATION_TTL
+    )
+    local stored = 0
+    for _, api_key_id in ipairs(api_key_ids) do
+        local ok, err = state:safe_set(api_key_marker(api_key_id), true, ttl)
+        if ok then
+            stored = stored + 1
+        else
+            utils.log("warn", "API-key revocation marker not stored", {error = err})
+        end
+    end
+    return stored
+end
+
+-- Team memberships (#613).
+--
+-- Removing a member from a team revokes their API keys for the team (#593),
+-- but a session is not bound to a team: identity resolves the team on every
+-- authorization (the oldest membership), and the gateway caches the answer.
+-- The removed member's sessions went on being served "allowed for team T"
+-- for up to the cache TTL. Identity now sends, before it commits the
+-- removal, a marker "member:<user id>:<team id>" = the instant of the
+-- removal, and the gateway refuses a session decision for that user in that
+-- team when the token was issued up to that instant, on a cache hit and
+-- after a fresh authorization alike -- the same comparison as the
+-- password-change cutoff, but for one team only. The user's sessions keep
+-- working in their other teams: the refused decision is dropped from the
+-- cache, and the next request is authorized afresh, by which time identity
+-- no longer resolves the team they left. Tokens issued after the removal
+-- (a new login, should the user be added back) carry a later iat and pass.
+local function membership_marker(user_id, team_id)
+    return "member:" .. tostring(user_id) .. ":" .. tostring(team_id)
+end
+
+local function removed_from_team(token, token_type, auth_data)
+    if token_type ~= "bearer" or not auth_data
+            or not auth_data.user_id or not auth_data.team_id then
+        return false
+    end
+    local state = ngx.shared.auth_revoked
+    local cutoff = state and state:get(membership_marker(auth_data.user_id, auth_data.team_id))
+    if type(cutoff) ~= "number" then
+        return false
+    end
+    -- A token without an iat cannot show that it is newer than the removal.
+    local iat = utils.jwt_iat(token)
+    return iat == nil or iat <= cutoff
+end
+
+-- Record membership markers: `memberships` is a list of {user_id, team_id,
+-- not_before}. Returns how many were stored. As for the other markers
+-- identity sends before it commits, one that cannot be kept is reported as
+-- not stored, and identity answers 503 and removes nobody.
+function _M.revoke_team_sessions(memberships, ttl)
+    bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if not state then
+        return 0
+    end
+    ttl = math.min(
+        math.max(tonumber(ttl) or MAX_REVOCATION_TTL, configured_cache_ttl()),
+        MAX_REVOCATION_TTL
+    )
+    local stored = 0
+    for _, entry in ipairs(memberships) do
+        local key = membership_marker(entry.user_id, entry.team_id)
+        local cutoff = entry.not_before
+        -- Two removals close together: keep the later cutoff.
+        local current = state:get(key)
+        if type(current) == "number" and current > cutoff then
+            cutoff = current
+        end
+        local ok, err = state:safe_set(key, cutoff, ttl)
+        if ok then
+            stored = stored + 1
+        else
+            utils.log("warn", "Team-membership marker not stored", {error = err})
+        end
+    end
+    return stored
+end
+
+-- A session that has left the team is refused with 403, not 401: the
+-- token is still valid, and the dashboard must not end the session over
+-- it. The next request is authorized afresh and lands in the team the user
+-- still belongs to, if any.
+local function refuse_left_team(auth_data)
+    utils.log("info", "Refused a session in a team its user was removed from", {
+        user_id = auth_data.user_id,
+        team_id = auth_data.team_id
+    })
+    ngx.status = ngx.HTTP_FORBIDDEN
+    ngx.header.content_type = "application/json"
+    ngx.say(utils.json_encode({
+        error = "team_membership_ended",
+        message = "The account no longer belongs to this team"
+    }))
+    ngx.exit(ngx.HTTP_FORBIDDEN)
+end
+
+-- Whether the credential behind a decision has expired: identity reports
+-- when an API key (or a session token) stops being valid, and a decision is
+-- not served past that, whatever is left of its cache TTL (#593).
+local function credential_expired(auth_data)
+    local expires = auth_data and auth_data.credential_expires_at
+    return type(expires) == "number" and expires <= ngx.now()
+end
+
 local function refuse_revoked()
     utils.log("info", "Refused a revoked token")
     ngx.status = ngx.HTTP_UNAUTHORIZED
@@ -449,13 +610,31 @@ end
 -- Exported for the regex locations that authenticate inline.
 _M.refuse_pending_password_change = refuse_pending_password_change
 
+-- For the same locations, which authenticate API keys only (#593).
+function _M.refuse_revoked_api_key(auth_data)
+    if api_key_revoked("api_key", auth_data) then
+        refuse_revoked()
+    end
+end
+
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
     local ttl = config.cache_ttl or CACHE_TTL
 
+    -- Never past the credential's own expiry (#593): an API key that
+    -- expires in ten seconds was cached, and served, for the full TTL.
+    local credential_expires = auth_data.credential_expires_at
+    if type(credential_expires) == "number" then
+        local remaining = credential_expires - ngx.now()
+        if remaining <= 0 then
+            return
+        end
+        ttl = math.min(ttl, remaining)
+    end
+
     -- Set expiration time
-    auth_data.expires_at = ngx.time() + ttl
+    auth_data.expires_at = ngx.now() + ttl
     auth_data.cache_hit = false
 
     local cached_data = utils.json_encode(auth_data)
@@ -655,6 +834,21 @@ local function set_auth_headers(auth_data)
     ngx.header["X-Wildbox-Team-ID"] = auth_data.team_id
 end
 
+-- The gateway could not get an authorization decision. That is transient
+-- by nature, so say so the way HTTP does: a JSON body like every other
+-- refusal here, and Retry-After. The generic branch used to exit with no
+-- body at all, which nginx filled with its HTML error page (#609).
+local function service_unavailable(retry_after)
+    ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
+    ngx.header.content_type = "application/json"
+    ngx.header["Retry-After"] = tostring(math.max(1, math.ceil(tonumber(retry_after) or 1)))
+    ngx.say(utils.json_encode({
+        error = "service_unavailable",
+        message = "Authentication service temporarily unavailable"
+    }))
+    ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+end
+
 -- Main authentication handler
 function _M.authenticate()
     local request_start = ngx.now()
@@ -700,6 +894,15 @@ function _M.authenticate()
     -- Try to get auth data from cache first
     local auth_data, cache_err = get_cached_auth_data(cache_key)
 
+    -- A decision cached before the gateway knew about API-key revocation
+    -- (#593) does not name its key, or one cached for a credential that has
+    -- since expired: ask identity again rather than serve it.
+    if auth_data and ((token_type == "api_key" and not names_api_key(auth_data))
+                      or credential_expired(auth_data)) then
+        ngx.shared.auth_cache:delete(cache_key)
+        auth_data, cache_err = nil, "cache_miss"
+    end
+
     -- A cache hit is only as good as the revocation markers allow (#571).
     -- Entries cached before the marker existed carry no revocation_id.
     if auth_data and is_revoked(auth_data.revocation_id
@@ -712,6 +915,16 @@ function _M.authenticate()
         ngx.shared.auth_cache:delete(cache_key)
         refuse_revoked()
     end
+    -- Nor the revocation of its API key (#593).
+    if auth_data and api_key_revoked(token_type, auth_data) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_revoked()
+    end
+    -- Nor the removal of its user from its team (#613).
+    if auth_data and removed_from_team(token, token_type, auth_data) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_left_team(auth_data)
+    end
 
     -- If not in cache, validate with identity service
     if cache_err == "cache_miss" then
@@ -720,8 +933,8 @@ function _M.authenticate()
         local generation = auth_generation()
         local rid = revocation_id(token, token_type, cache_key)
 
-        local validation_err
-        auth_data, validation_err = validate_token_with_identity(token, token_type, config)
+        local validation_err, retry_after
+        auth_data, validation_err, retry_after = validate_token_with_identity(token, token_type, config)
 
         if validation_err then
             if validation_err == "unauthorized" then
@@ -735,16 +948,10 @@ function _M.authenticate()
             elseif validation_err == "forbidden" then
                 ngx.exit(ngx.HTTP_FORBIDDEN)
             elseif validation_err == "circuit_breaker_open" then
-                ngx.status = ngx.HTTP_SERVICE_UNAVAILABLE
-                ngx.header.content_type = "application/json"
-                ngx.say(utils.json_encode({
-                    error = "service_unavailable",
-                    message = "Authentication service temporarily unavailable"
-                }))
-                ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+                service_unavailable(retry_after)
             else
                 utils.log("error", "Authentication service error", {error = validation_err})
-                ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
+                service_unavailable(1)
             end
         end
 
@@ -755,6 +962,16 @@ function _M.authenticate()
         end
         if predates_password_change(token, token_type, auth_data) then
             refuse_revoked()
+        end
+        -- Or before the revocation of its API key, which identity sends
+        -- here before it commits it (#593).
+        if api_key_revoked(token_type, auth_data) then
+            refuse_revoked()
+        end
+        -- Or before the removal of its user from the team it resolved,
+        -- which identity likewise sends here before it commits (#613).
+        if removed_from_team(token, token_type, auth_data) then
+            refuse_left_team(auth_data)
         end
 
         -- Cache the validation result, then drop it again if a purge ran

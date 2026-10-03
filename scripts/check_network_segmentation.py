@@ -53,6 +53,7 @@ EXPECTED_NETWORKS = {
     "tools-flower": {"data", "egress"},
     "guardian-worker": {"data", "egress"},
     "guardian-beat": {"data"},
+    "cspm-worker": {"data", "egress"},
     "data-scheduler": {"data", "egress"},
     "backup": {"data", "egress"},
     "postgres": {"data"},
@@ -97,6 +98,7 @@ MUST_CONNECT = [
     ("responder", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("responder", "wildbox-redis", 6379, "REDIS_URL"),
     ("cspm", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
+    ("cspm-worker", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "api", 8000, "WILDBOX_API_URL"),
     ("sensor", "open-security-data", 8002, "ingest endpoint"),
@@ -105,6 +107,7 @@ MUST_CONNECT = [
     ("tools-worker", "github.com", 443, "outbound internet via egress"),
     ("data-scheduler", "github.com", 443, "outbound internet via egress"),
     ("guardian-worker", "github.com", 443, "outbound internet via egress"),
+    ("cspm-worker", "sts.amazonaws.com", 443, "cloud provider APIs via egress"),
 ]
 
 MUST_NOT_CONNECT = [
@@ -126,6 +129,12 @@ MUST_NOT_CONNECT = [
     ),
     ("postgres", "github.com", 443, "data is internal: no route out"),
     ("guardian-beat", "github.com", 443, "beat is on data alone: no route out"),
+    (
+        "cspm-worker",
+        "open-security-gateway",
+        8080,
+        "cspm-worker is on data and egress, not backend",
+    ),
     (
         "guardian-beat",
         "open-security-gateway",

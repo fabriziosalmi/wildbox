@@ -38,10 +38,10 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 
 ### 🔧 **Security Toolbox**
 
-- 50+ integrated security tools
-- Dynamic form generation for tool parameters
-- Real-time execution monitoring
-- Output visualization and analysis
+- Every tool the tools service ships, listed with search and category filter
+- A form per tool, generated from the input schema the service publishes
+- Synchronous runs, or background tasks that are followed and can be cancelled
+- The output as tables and lists, with the raw JSON to copy or download
 
 ### ⚡ **Response Automation**
 
@@ -99,7 +99,7 @@ src/
 │   ├── auth/                    # Authentication pages
 │   ├── dashboard/               # Main dashboard
 │   ├── threat-intel/            # Threat intelligence features
-│   ├── toolbox/                 # Security tools catalog
+│   ├── toolbox/                 # Security tools catalog and runner
 │   ├── cloud-security/          # CSPM and compliance
 │   ├── endpoints/               # Endpoint management
 │   ├── vulnerabilities/         # Vulnerability management
@@ -214,10 +214,37 @@ The dashboard uses JWT-based authentication with secure HTTP-only cookies. Defau
 
 ### Security Toolbox
 
-- **Dynamic Tool Discovery**: Automatic tool registration
-- **Parameter Validation**: Type-safe input handling
-- **Execution Monitoring**: Real-time progress tracking
-- **Output Visualization**: JSON formatting and syntax highlighting
+`/toolbox` lists the tools from `GET /api/v1/tools`. Each tool's **Run**
+button opens `/toolbox/<name>`, which runs it (#585):
+
+- **The form** is generated from the `input_schema` of
+  `GET /api/v1/tools/<name>/info` (Pydantic JSON Schema), in
+  `src/lib/tool-schema.ts`. Strings are text inputs, `integer`/`number`
+  number inputs, `enum` (also behind a `$ref`) a select, `boolean` a
+  checkbox, an array of primitives one value per line (a group of
+  checkboxes when its items are an enum), and anything else, such as an
+  object, a JSON text area. `anyOf` with `null` is an optional field. The
+  schema's `title`, `description`, `default` and `example` are the label,
+  the help text, the initial value and the placeholder.
+- **Validation** applies the schema's own constraints before anything is
+  sent: required fields, `minimum`/`maximum` and their exclusive forms,
+  whole numbers, `minLength`/`maxLength`/`pattern`, `minItems`/`maxItems`.
+  An empty optional field is not sent, so the service applies its default.
+  When the service still refuses the input, its field errors (422) are
+  shown under the fields, and any other refusal (an SSRF-blocked target,
+  400; a tool the caller is not authorized for, 403) is shown with the
+  reason the service gives.
+- **Running**: "Wait for the result" is `POST /api/v1/tools/<name>`; the
+  gateway waits up to 60 s for it. "Run as a background task" is
+  `POST /api/v1/tools/<name>/async`, then `GET /api/v1/tasks/<id>` every
+  second until the task finishes, with `DELETE /api/v1/tasks/<id>` to
+  cancel it. Every call goes through `apiClient` with the session's Bearer
+  token. "Copy as cURL" copies the request with the form's body; the
+  command reads the token from `$WILDBOX_TOKEN` rather than containing it.
+- **The result** is the service's answer as it came: objects as key/value
+  tables, arrays as lists, the raw JSON, and "Copy JSON" / "Download
+  JSON". Values are rendered as text, never as HTML, and URLs in the
+  output are not links.
 
 ### Response Automation
 

@@ -33,10 +33,11 @@
 #   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup.
 #             guardian-beat is on data alone: it reads its schedule from
 #             PostgreSQL and publishes to Redis, and needs nothing else
-#   egress   tools-worker, tools-flower, guardian-worker, data-scheduler,
-#             backup: the services on `data` alone, which would otherwise have
-#             no outbound internet (tool execution, port scans, threat feeds,
-#             `apk add` in backup) and no loopback port (flower). Inter-container communication is
+#   egress   tools-worker, tools-flower, guardian-worker, cspm-worker,
+#             data-scheduler, backup: the services on `data` alone, which
+#             would otherwise have no outbound internet (tool execution, port
+#             scans, cloud provider APIs, threat feeds, `apk add` in backup)
+#             and no loopback port (flower). Inter-container communication is
 #             disabled on it, so it is never a path between two services.
 #
 # backend is NOT internal. Docker neither routes out nor publishes ports for a
@@ -405,6 +406,22 @@ services:
           # The gateway's cspm_service upstream and prometheus.
           - open-security-cspm
       data: {}
+
+  # The broker is on data; egress for the cloud provider APIs the scans
+  # call (AWS, GCP, Azure). Nothing looks the worker up by name (#601).
+  cspm-worker:
+    restart: always
+    networks: !override
+      - data
+      - egress
+    environment:
+      - DEBUG=false
+      - LOG_LEVEL=INFO
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
 
   sensor:
     networks: !override

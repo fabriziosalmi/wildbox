@@ -33,8 +33,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/internal/authorize` now reports `password_change_required`. The
   dashboard takes such a user from the login to a "Choose your
   password" screen, and back to it from any other page.
+- **Run a tool from the dashboard** (#585). `/toolbox` was a catalog
+  since the tools service's standalone pages were removed (#581). Each
+  tool's "Run" button now opens `/toolbox/<name>`, a form generated from
+  the input schema of `GET /api/v1/tools/<name>/info`: strings, numbers
+  and integers with their bounds, enums (also behind `$ref`), booleans,
+  arrays of primitives, and a JSON text area for anything else; `anyOf`
+  with `null` is an optional field, and the schema's description,
+  default and example are the help text, initial value and placeholder.
+  The schema's constraints are checked before anything is sent, and an
+  empty optional field is left to the service's default. The run is
+  either synchronous (`POST /api/v1/tools/<name>`) or a background task
+  (`POST .../async`, then `GET /api/v1/tasks/<id>` until it finishes),
+  which can be cancelled. The result is the service's answer as it came,
+  as key/value tables and lists plus the raw JSON, with "Copy JSON",
+  "Download JSON" and "Copy as cURL" (the request with the form's body;
+  the token comes from `$WILDBOX_TOKEN`). Refusals are shown with the
+  service's reason: field errors under their fields, SSRF-blocked
+  targets (400) and tools the caller is not authorized for (403).
+- **A tool's 422 names the fields that failed** (#585). The tool
+  endpoint answered every invalid body with the bare message "Input
+  validation failed". The canonical error body now also carries
+  `details.errors`, the location, message and type of each failure,
+  without the submitted values.
 
 ### Fixed
+
+- **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
+  cspm worker commented out and `docker-compose.prod.yml` declared none,
+  so every scan stayed `queued` and the compliance pages, the cloud
+  security overview and the reports never had data. A new service,
+  `cspm-worker`, built like cspm and with its settings (credential key,
+  Redis URLs with the password, `CSPM_REPORT_RETENTION_DAYS`, scan time
+  limit), consumes exactly the queue the scan tasks are routed to, now
+  named in `app/worker.py` and checked against the service by a unit
+  test. It has a health check that pings its own node, resource limits,
+  `restart: unless-stopped`, `no-new-privileges`, the image's non-root
+  user, and a `stop_grace_period` equal to the scan time limit, which is
+  now `CSPM_SCAN_TIMEOUT_SECONDS` (default 3600, validated from 120 to
+  86400). Redis redelivers an unfinished task only after that limit plus
+  ten minutes, so a long scan is never run twice. In production it sits
+  on `data` and `egress`; `check_network_segmentation.py` covers it. A
+  scan a worker has taken reads `running` instead of `unknown`. The
+  Production Stack job checks that each replica answers a ping and reads
+  the routed queue, and an integration test submits a scan through the
+  gateway and waits for the worker to finish it.
+
+- **tools resolve host names again.** aiohttp resolves through aiodns when it
+  is installed, and the lock paired aiodns 3.2.0 with pycares 5.0.1: aiodns
+  called pycares' `getaddrinfo` with the pycares 4 signature, so every lookup
+  raised `TypeError` and every tool that fetched a host name through aiohttp
+  failed before connecting. aiodns is now 4.0.4, which requires pycares 5, and
+  a unit test resolves `localhost` through aiohttp's default resolver.
+- **A protected route no longer answers 503 when identity closes an idle
+  connection** (#609). The gateway asks identity to authorize every
+  uncached token over connections it keeps alive, and kept them idle for
+  60 s, while identity (uvicorn) closes them after 5 s. A request written
+  into a connection identity was closing failed with "connection reset
+  by peer" or "broken pipe", and the gateway answered 503 with nginx's
+  HTML error page: about one E2E repetition in a hundred, at times three.
+  Ten of those within a minute opened the circuit breaker, and every
+  uncached token then got 503 for a minute. The gateway now gives an
+  idle connection up after 4 s, for its Lua calls and for every upstream
+  it proxies to (a POST written into a closing connection got a 502), and
+  sends an authorization that met a closed connection once more, on
+  another one: authorizing changes nothing at identity. Only a failure
+  that survives that counts toward the circuit breaker. When identity
+  cannot be reached, the 503 is now JSON, like every other refusal of
+  the gateway, with `Retry-After`.
 
 - **A responder step condition on an undefined name is false** (#595).
   Templates render with `StrictUndefined`, so a condition that checked
@@ -585,6 +651,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A member removed from a team loses the team at the gateway on the
+  next request** (#613). A session is not bound to a team:
+  `/internal/authorize` resolves the oldest membership on every request,
+  and the gateway caches the answer for `AUTH_CACHE_TTL` (300 s). Since
+  #593 the removal revoked the member's API keys for the team, but their
+  sessions kept the cached "allowed in this team" decision, and the
+  removed member went on acting in the team for up to five minutes.
+  Removing a member (`DELETE /api/v1/admin/teams/{team_id}/members/{user_id}`,
+  by the team's owner or an admin, or by a superuser) now also sends the
+  gateway `{"memberships": [{"user_id", "team_id", "not_before"}], "ttl": <seconds>}`
+  before it commits, and commits only once the gateway confirms the
+  count; otherwise nothing changes and the request answers 503. The
+  gateway keeps a marker per user and team and refuses, with 403
+  `team_membership_ended`, a session decision of that user in that team
+  whose token was issued up to the removal, on a cache hit and after a
+  fresh authorization, so a request in flight across the removal is
+  refused too. The refused decision is dropped from the cache: the next
+  request with the same session is authorized afresh, and works in the
+  team the user still belongs to, if any. The user's sessions in their
+  other teams are not ended, which the per-user cutoff a password change
+  uses (#569) would have done. Deleting an account already ended all its
+  sessions (#593), including in the teams deleted with it, whose only
+  member it is.
+
+- **The tools SSRF guard checks URL-typed and nested inputs** (#610).
+  `InputSanitizer.validate_request_urls`, which runs on every validated
+  tool input before the tool starts, on the synchronous endpoint and in the
+  Celery task alike, checked only top-level `str` fields named like a URL.
+  A field declared as `HttpUrl`, `AnyUrl` or `AnyHttpUrl` holds a pydantic
+  `Url` object after validation, so it was skipped, as was any URL inside
+  a nested model, a list or a dict. A tool that relied on the generic guard
+  for such a field could be pointed at loopback, private ranges or the
+  cloud metadata address. The guard now walks the whole input: every value
+  of a pydantic URL type is checked wherever it sits and whatever it is
+  called, through the same structural parser, host rules and DNS
+  resolution as string URLs, and a non-http(s) scheme in such a field is
+  refused; strings named like URL carriers are checked in nested models,
+  lists and dict values too. Input nested deeper than 16 levels is refused
+  rather than left unchecked. `header_analyzer` and `url_analyzer`, the
+  two tools with `HttpUrl` fields, are now covered by the generic guard
+  as well as by their own checks.
+
+  The guard on inputs could not see what a tool fetched afterwards, so the
+  same change closes the paths around it:
+
+  - _Redirects and DNS rebinding._ No tool checked redirect targets, and
+    aiohttp and requests follow redirects by default: a public URL that
+    answered `302 Location: http://169.254.169.254/` took the tool to the
+    metadata service. Every tool that fetches a caller-supplied URL now
+    opens its connections through `app/safe_http.py`. The aiohttp session
+    it builds checks scheme, host and port on every connection, redirect
+    hops included, and resolves names through a resolver that refuses the
+    name when any answer is not public; aiohttp then connects to those
+    checked addresses, so the resolution is pinned and a rebinding answer
+    cannot slip in between the check and the connection. Automatic
+    redirects stop after 5 hops, which also ends redirect loops. The
+    requests-based tools (`sql_injection_scanner`, `xss_scanner`,
+    `file_upload_scanner`, `email_harvester`) validate every hop the same
+    way but are not pinned: urllib3 resolves the name again when it
+    connects, which leaves a short window to a nameserver that answers
+    differently on the second lookup.
+  - _URLs built from other input._ `http_security_scanner` adds `https://`
+    to a bare host and `email_harvester` fetches pages of a bare domain;
+    neither value looked like a URL to the input guard. The URL actually
+    fetched is now validated, as is `api_security_tester`'s specification
+    URL, which was detected with a case-sensitive `startswith('http')`.
+  - _Tools' own weaker checks._ `header_analyzer` and
+    `url_security_scanner` looked at the first DNS answer only, let a name
+    that did not resolve through, and ignored multicast, unspecified and
+    shared addresses; `sql_injection_scanner` did no DNS resolution at all.
+    All three now use the shared guard and fail closed.
+    `web_application_firewall_bypass` allowed `localhost`, `127.0.0.1`,
+    `*.local` and `*.test` on its own allowlist and matched hosts with user
+    info still attached (`example.com@evil.example`); the shared guard now
+    decides first and the allowlist only narrows it.
+  - _WHOIS referrals._ `whois_lookup` followed the `Whois Server:` line of
+    a response to any host. The referral must now be a bare public host
+    name, and the tool connects to the address it checked.
+  - _Workflow steps._ `security_automation_orchestrator` called other
+    tools' `execute_tool` directly, skipping the SSRF guard and the
+    caller authorization of #563. Each step's parameters are now validated
+    by the tool's own input model (it used to pick `BaseToolInput` for
+    most tools), checked by the SSRF guard, and a tool that acts on behalf
+    of a caller is refused as a step.
+
+  Host, IP and CIDR targets of the network scanners are out of scope and
+  tracked in #614.
+
 - **An agents task never sends another task's caller identity** (#594).
   The analysis task set the caller identity, a `ContextVar` the Wildbox
   client forwards on every tool call, only when its caller had both a user
@@ -602,6 +756,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `asyncio.gather`, and a sync tool would run in LangChain's
   thread pool under `copy_context()`; both inherit the task's context, and
   the tests check the identity reaches the wire through each.
+- **A revoked API key is refused on the next request** (#593). The
+  gateway caches the decision for a key for `AUTH_CACHE_TTL` (300 s), and
+  revoking a key only marked it inactive in identity's database, so a key
+  revoked because it leaked kept working for up to five minutes on every
+  route the gateway authenticates. Deleting or deactivating the account
+  behind a key, or removing the member from the team, did the same; only
+  the admin status route flushed the gateway's cache, after the commit and
+  best effort. identity now reports the key's id with every authorization
+  it grants for a key (`api_key_id`), and every change that disables keys
+  -- revoking a key (own or team), deactivating an account
+  (`/admin/users/{id}/status` or `PATCH /users/{id}`), deleting one
+  (`/admin/users/{id}`, `DELETE /users/{id}`, `/admin/me/account`) and
+  removing a member from a team -- first sends the gateway
+  `{"api_keys": [<ids>], "ttl": ...}` on its internal listener and
+  commits only once the gateway confirms the count; otherwise nothing
+  changes and the request answers 503, as logout does since #571. The
+  gateway keeps a marker per key, shared by its workers, and refuses a
+  decision for that key on a cache hit and after a fresh authorization,
+  so a request in flight across the revocation is refused too.
+  Deactivating or deleting an account also ends its sessions there, with
+  the per-user cutoff a password change uses (#569), and stores it in
+  `users.tokens_valid_after`. A password change still does not revoke API
+  keys.
+- **An API key with an expiry works until it expires, and not after**
+  (#593). `/internal/authorize` compared the key's `expires_at`, read back
+  timezone-aware, with a naive `utcnow()`: the comparison raised, so every
+  key created with an expiry answered 500 and the gateway 503. Once that
+  was fixed, the gateway would have kept serving a cached decision for up
+  to its TTL past the expiry. identity now reports `credential_expires_at`
+  (the key's expiry, or a session token's `exp`), and the gateway caches a
+  decision no longer than that and does not serve it afterwards.
 - **One password policy for every path that sets a password** (#583).
   Registration and the reset-password flow accepted a one-character
   password: fastapi-users' `BaseUserCreate` does not check it and its
@@ -955,6 +1140,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
+
+- **The dashboard E2E specs no longer race the toast announcement**
+  (#602). Radix renders a toast's text twice for about a second: in the
+  toast, and in a visually hidden `aria-live` span outside it for screen
+  readers. A page-wide `getByText` on toast text matched both while the
+  announcement lasted and failed Playwright's strict mode, which made
+  "creates a user from the form" flaky. Each toast now carries
+  `data-testid="toast"`, and the admin and settings specs find toast text
+  only inside it through a `toast()` helper, with the outcome still
+  asserted through the API. No retry or timeout was added. Repeated 30
+  times with no retries, the test failed 9 of 30 runs before the change
+  and passed 30 of 30 after it.
+
+- **Prose Quality checks the Markdown and fails on findings** (#606).
+  The job installed proselint unpinned and ran
+  `proselint FILE ... || true`; proselint 0.16 only accepts
+  `proselint check FILE`, so every call failed and the job passed having
+  checked nothing. proselint is now pinned to 0.16.0, its rules are in
+  `.proselintrc.json`, and `scripts/check_prose.py` lints every tracked
+  Markdown file except the vendored ones, with code blocks, inline code
+  and HTML comments masked so that commands are not read as prose. Each
+  finding is a GitHub annotation and any finding fails the job, which is
+  no longer advisory. The 16 findings left in the documentation are
+  fixed.
+
+- **A failed E2E run keeps what is needed to trace it** (#609). The
+  workflow printed the last 150 lines of `docker compose logs`, which do
+  not include the gateway's access and error logs: they are files. On
+  failure it now uploads them, with the state and restart count of every
+  container and the full, timestamped logs of gateway, identity and
+  data, and prints the access log's 5xx lines. The access log records
+  `$request_id`, `$upstream_addr` and `$upstream_status`, so a 5xx line
+  says whether an upstream answered it or the gateway did.
 
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
@@ -1546,7 +1764,7 @@ Truthful security tooling. The headline is a catalog-wide cleanup: every tool th
 ### Privacy
 
 - **Self-hosted ReDoc and fonts (#301, #306)** — no third-party CDN at runtime.
-- **`/privacy` notice added and linked** from the footer and previously-orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
+- **`/privacy` notice added and linked** from the footer and previously orphaned pages (#265, #300); processor list corrected — Cloudflare is not involved (#266).
 
 ### Features
 
@@ -1623,7 +1841,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 
 ### Security
 
-- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially-forged headers (#163).
+- Gateway authentication now **fails closed**: the shared dependency, the per-service `auth.py` wrappers, and the Guardian middleware refuse to trust `X-Wildbox-*` identity headers and return `503` when `GATEWAY_INTERNAL_SECRET` is unset, instead of warning and trusting potentially forged headers (#163).
 - Backend service ports are now bound to `127.0.0.1`; only the gateway is published publicly (#164).
 - The central tools SSRF guard now also inspects `file_url`, `app_url`, and `download_url`, closing the bypass in `metadata_extractor` and `mobile_security_analyzer` (#165).
 
@@ -1808,7 +2026,7 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 ### Fixed
 
 - Removed hardcoded API keys from example code (replaced with clear placeholders)
-- Removed TODO placeholders from production documentation
+- Removed unfinished placeholder notes from production documentation
 - Fixed broken hyperlinks throughout documentation
 - Corrected grammar in success messages
 - Standardized header capitalization across documentation

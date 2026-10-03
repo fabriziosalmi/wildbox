@@ -596,6 +596,90 @@ you run one (section 1 does).
   minutes after each batch, but may remain in the append-only file until
   Redis next rewrites it.
 
+### 25. Disabling an API key or an account needs the gateway to confirm
+
+Revoking an API key, deactivating or deleting an account and removing a
+member from a team now take effect at the gateway on the next request
+(#593): identity has the gateway refuse the keys (and, for an account, its
+sessions) before it commits the change. No migration.
+
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). The gateway refuses an API-key decision that does not name its key
+  (`api_key_id`, which only the new identity reports), so a new gateway with
+  an old identity refuses every API key. An old gateway does not know the
+  `api_keys` purge body: with it, or with a gateway identity cannot reach
+  on port 8081 (section 3), every key revocation, account deactivation or
+  deletion and member removal answers 503 and changes nothing. Decisions
+  cached before the upgrade are not served; the gateway asks identity again.
+- **Scripts that revoke keys or deactivate accounts** must handle 503: the
+  change was not made, and repeating it is safe.
+- **Deactivating or deleting an account ends its sessions** as well as its
+  keys. A deactivated account that is reactivated must log in again.
+- **API keys with an expiry work.** They answered 500 at
+  `/internal/authorize` (503 at the gateway) on every request; now they work
+  until `expires_at` and are refused from then on, cached decision or not.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers; the others refuse a revoked key once their cached decision
+  expires (`AUTH_CACHE_TTL`), as for logout.
+
+### 26. Removing a member from a team ends their sessions in that team
+
+Removing a member from a team now also ends, at the gateway and in that
+team only, the member's sessions issued up to the removal (#613): identity
+sends the gateway a `memberships` marker before it commits the removal,
+alongside the API keys of section 25. No migration.
+
+- **Rebuild and restart identity and the gateway together**, as section 25
+  says. An old gateway does not know the `memberships` purge body: with it,
+  every member removal answers 503 and removes nobody.
+- **Scripts that remove members** must handle 503: the member was not
+  removed, and repeating the removal is safe.
+- **A removed member's next request in that team answers 403**
+  (`team_membership_ended`), not 401: the session is still valid. The
+  request after it is authorized afresh and works in the oldest team the
+  user still belongs to; a user with no team left gets 401. A client
+  should not end the session on that 403.
+- **A session issued before the removal does not work in that team again**,
+  even if the user is added back, until it expires (the access-token
+  lifetime); a new login does. Sessions in the user's other teams are not
+  affected.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers, as in section 25.
+
+### 27. cspm has a scan worker (`cspm-worker`)
+
+cspm queued every scan for a Celery worker that `docker-compose.yml` had
+commented out, and `docker-compose.prod.yml` had none, so no scan ever ran
+(#601). A new service, `cspm-worker`, runs them. It is built from cspm's
+directory with cspm's settings, so it is built with the others (section 1),
+and in the production overlay it sits on `data` and `egress`.
+
+- **Scans queued before the upgrade end as `failed`.** They are still in
+  Redis, and the worker takes them as soon as it starts, but their
+  credentials expired five minutes after each was queued. Start them again.
+  Nothing has to be purged.
+- **New variable, optional.** `CSPM_SCAN_TIMEOUT_SECONDS` (default 3600)
+  is the time limit of one scan, passed to cspm and `cspm-worker` as
+  `SCAN_TIMEOUT_SECONDS`. It must be from 120 to 86400, or both stop at
+  start with the reason; an override that set `SCAN_TIMEOUT_SECONDS`
+  outside that range has to change. The worker is given this long to stop,
+  so `docker compose stop` and `down` can now wait up to an hour while a
+  scan runs.
+- **A worker you run yourself** must use the same `SECRET_KEY`,
+  `CSPM_CREDENTIAL_KEY`, Redis URLs, `CSPM_REPORT_RETENTION_DAYS` and
+  `SCAN_TIMEOUT_SECONDS` as cspm, and consume the queue `celery`
+  (`celery -A app.worker:celery_app worker -Q celery`). Remove it if you
+  now run `cspm-worker`, or the two share the scans.
+- **Expect outbound traffic.** A scan now calls the provider's API from
+  `cspm-worker`. Only AWS scans run; GCP and Azure scans fail when the
+  worker takes them, because cspm cannot open a session with those
+  providers yet.
+- `GET /api/v1/scans/{id}` reports a scan a worker has just taken as
+  `running`. With a worker of your own it read `unknown` until the scan's
+  first progress update.
+- cspm's `/health` reports `"status": "healthy"` once the worker answers.
+  It reported `degraded` while no worker ran.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

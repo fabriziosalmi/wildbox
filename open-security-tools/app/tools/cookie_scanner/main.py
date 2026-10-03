@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import logging
 from datetime import datetime
 
+from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from .schemas import CookieScannerInput, CookieScannerOutput
 logger = logging.getLogger(__name__)
@@ -50,9 +51,10 @@ class CookieSecurityScanner:
         }
         
         try:
-            connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
-            async with aiohttp.ClientSession(
-                connector=connector,
+            # The guarded session refuses non-public targets on every
+            # connection, redirect hops included.
+            async with guarded_session(
+                ssl=client_ssl(verify_ssl),
                 timeout=self.timeout
             ) as session:
                 # Make request and capture response headers

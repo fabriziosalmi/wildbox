@@ -252,7 +252,7 @@ curl http://localhost:8080/v1/chat/completions \
 | Model | Verdict Accuracy | Report Quality | Reasoning Depth |
 | ------- | ------------------ | ---------------- | ----------------- |
 | Qwen2.5-0.5B | ⭐⭐⭐ Good | ⭐⭐⭐ Good | ⭐⭐ Basic |
-| Qwen2.5-3B | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐⭐ Very Good | ⭐⭐⭐ Moderate |
+| Qwen2.5-3B | ⭐⭐⭐⭐ Strong | ⭐⭐⭐⭐ Strong | ⭐⭐⭐ Moderate |
 | GPT-4o | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Excellent | ⭐⭐⭐⭐⭐ Deep |
 
 ## Cost Analysis
