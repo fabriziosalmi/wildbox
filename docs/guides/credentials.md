@@ -82,13 +82,20 @@ is described in one place: the
 ## Rotating Secrets
 
 `scripts/rotate_secrets.sh` rotates one secret at a time and knows which ones
-depend on each other (for example, it refuses to rotate `JWT_SECRET_KEY`
-while API-key digests are still keyed by it):
+depend on each other. For example, it refuses to rotate `JWT_SECRET_KEY`
+unless identity receives a separate `API_KEY_HASH_SECRET`, checked in the
+compose configuration and in the running container, because API-key digests
+would otherwise still be keyed by the JWT key:
 
 ```bash
 make rotate-secrets                                   # list rotatable secrets
 ./scripts/rotate_secrets.sh --secret GATEWAY_INTERNAL_SECRET
 ```
+
+A deployment that predates this check seeds `API_KEY_HASH_SECRET` from
+`JWT_SECRET_KEY` once, with `make init-api-key-hash`, so the API keys it has
+issued keep working; see
+[UPGRADING.md](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md).
 
 The procedure and the reasoning behind it are in
 [SECURITY_SECRETS_ROTATION.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/SECURITY_SECRETS_ROTATION.md).
@@ -118,3 +125,6 @@ The procedure and the reasoning behind it are in
   `make generate-secrets` again (it backs up the old file first).
 - **An API key stopped working after a rotation**: `./scripts/rotate_secrets.sh --list`
   explains what rotating each secret invalidates.
+- **identity exits naming `API_KEY_HASH_SECRET`**: it is required with
+  `ENVIRONMENT=production`. On an existing deployment run
+  `make init-api-key-hash`; on a fresh one, `make generate-secrets`.

@@ -5,8 +5,18 @@ Configuration management for Open Security Identity service.
 import json
 from typing import Annotated, Any, Optional
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode
+
+# API_KEY_HASH_SECRET strength. generate_secrets.py writes 64 hex characters;
+# an upgraded deployment seeds it from JWT_SECRET_KEY, which identity already
+# requires to be 32 characters or more. The distinct-character floor rejects
+# values such as "a" * 32 without tripping on random hex (16 symbols).
+API_KEY_HASH_SECRET_MIN_LENGTH = 32
+API_KEY_HASH_SECRET_MIN_UNIQUE_CHARS = 10
+# Markers of the values shipped in .env.example and the documentation. Matched
+# as substrings; none can plausibly occur in a random hex or URL-safe value.
+_PLACEHOLDER_MARKERS = ("generate-with", "change-me", "change-this", "changeme")
 
 
 class Settings(BaseSettings):
@@ -18,6 +28,9 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 8001
     
+    # "production" makes API_KEY_HASH_SECRET mandatory (see below).
+    environment: str = "development"
+
     # Database
     database_url: str = Field(..., description="Database connection URL")
     
@@ -26,12 +39,14 @@ class Settings(BaseSettings):
 
     # Keys the HMAC used to store API-key digests. Kept separate from the JWT
     # signing key so that rotating one does not invalidate the other
-    # (WILDBO-SEC-01). When unset, hash_api_key() falls back to jwt_secret_key
-    # so existing deployments are unaffected until they set this and re-issue.
+    # (WILDBO-SEC-01). Required when ENVIRONMENT=production. It used to be
+    # optional with a silent fallback to jwt_secret_key, and compose never
+    # passed it, so every digest stayed keyed by the JWT secret and a JWT
+    # rotation invalidated every API key (#648). Outside production an unset
+    # value still falls back to jwt_secret_key, with a warning at start-up.
     api_key_hash_secret: Optional[str] = Field(
         default=None,
-        min_length=32,
-        description="Secret keying the HMAC for stored API keys (defaults to JWT key)",
+        description="Secret keying the HMAC for stored API keys",
     )
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
@@ -82,9 +97,70 @@ class Settings(BaseSettings):
             return json.loads(text)
         return [origin.strip() for origin in text.split(",") if origin.strip()]
 
+    @field_validator("api_key_hash_secret", mode="before")
+    @classmethod
+    def _blank_hash_secret_is_unset(cls, value: Any) -> Any:
+        """Read an empty API_KEY_HASH_SECRET as unset.
+
+        Compose renders an undefined variable as an empty string, which
+        must take the same path as an absent one rather than fail as a
+        too-short secret.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("api_key_hash_secret")
+    @classmethod
+    def _hash_secret_is_strong(cls, value: Optional[str]) -> Optional[str]:
+        """Refuse a short, placeholder or low-entropy API_KEY_HASH_SECRET.
+
+        The messages name the variable but never echo its value.
+        """
+        if value is None:
+            return value
+        if len(value) < API_KEY_HASH_SECRET_MIN_LENGTH:
+            raise ValueError(
+                f"API_KEY_HASH_SECRET must be at least "
+                f"{API_KEY_HASH_SECRET_MIN_LENGTH} characters; generate one "
+                f"with 'make generate-secrets'"
+            )
+        lowered = value.lower()
+        if any(marker in lowered for marker in _PLACEHOLDER_MARKERS):
+            raise ValueError(
+                "API_KEY_HASH_SECRET is a placeholder from .env.example; "
+                "generate one with 'make generate-secrets'"
+            )
+        if len(set(value)) < API_KEY_HASH_SECRET_MIN_UNIQUE_CHARS:
+            raise ValueError(
+                "API_KEY_HASH_SECRET has too little entropy (too few distinct "
+                "characters); generate one with 'make generate-secrets'"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def _hash_secret_required_in_production(self) -> "Settings":
+        """Refuse to start in production without API_KEY_HASH_SECRET."""
+        if (
+            self.environment.strip().lower() == "production"
+            and self.api_key_hash_secret is None
+        ):
+            raise ValueError(
+                "API_KEY_HASH_SECRET is required when ENVIRONMENT=production. "
+                "On an existing deployment run "
+                "'./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET "
+                "--init' so that existing API keys keep working (see "
+                "UPGRADING.md); on a fresh install run 'make generate-secrets'."
+            )
+        return self
+
     class Config:
         env_file = ".env"
         case_sensitive = False
+        # A validation error otherwise prints input_value: the settings
+        # being validated, secrets included, into the start-up traceback
+        # and so into the container log.
+        hide_input_in_errors = True
 
 
 # Global settings instance

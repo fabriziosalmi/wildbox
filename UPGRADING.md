@@ -18,6 +18,7 @@ running 0.10.0 code. This release changes, among others, the dashboard image
 locks of every service.
 
 ```bash
+make init-api-key-hash    # first: see section 38, or existing API keys stop working
 docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 make start-prod
 ```
@@ -1004,7 +1005,52 @@ relabelling it (#653).
 - To have an alert reach people, read it from the run, or forward it from
   whatever polls the run.
 
-### 38. identity's admin metrics need a superuser's token
+### 38. Seed `API_KEY_HASH_SECRET` from `JWT_SECRET_KEY` before upgrading (required)
+
+identity keys stored API-key digests with `API_KEY_HASH_SECRET`. Compose
+did not pass that variable to identity before this release, so on every
+existing deployment the digests are keyed by `JWT_SECRET_KEY`, whatever
+`.env` holds for `API_KEY_HASH_SECRET` (#648). This release passes it,
+and the value `make generate-secrets` wrote there is a different random
+one: started as is, identity would reject every API key issued so far.
+
+Before you start the new images, while `.env` still has the
+`JWT_SECRET_KEY` the running identity uses, copy that value into
+`API_KEY_HASH_SECRET`. The command edits `.env` in place, backs it up
+first and prints neither value:
+
+```bash
+make init-api-key-hash
+# same as: ./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
+```
+
+Then rebuild and start as usual (section 1). Existing API keys keep
+working, and `JWT_SECRET_KEY` can from now on be rotated on its own.
+
+- **Run it once.** It does nothing when the two values already match. Do
+  not run it after a later JWT rotation: by then the digests are keyed by
+  the old JWT key, which `API_KEY_HASH_SECRET` keeps.
+- **If identity already runs this release unseeded**, existing API keys
+  answer 401. Run the command, then `docker compose up -d identity` (with
+  your `-f` files): the old keys work again, but keys created in between
+  must be created again. Do not rotate `JWT_SECRET_KEY` before this, or
+  the old keys cannot be recovered.
+- **Production refuses to start without it.** With
+  `ENVIRONMENT=production`, identity exits at start-up naming
+  `API_KEY_HASH_SECRET` when it is unset, empty, shorter than 32
+  characters, a placeholder from `.env.example` or has too few distinct
+  characters. `docker compose config` fails without it in any
+  environment, and `make validate-secrets` now requires it.
+- **The JWT rotation guard checks identity, not `.env`.**
+  `./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY` refuses unless
+  `docker compose config` passes `API_KEY_HASH_SECRET` to identity and a
+  running identity container has it. If you start the stack with an
+  overlay, set `COMPOSE_FILE`, for example
+  `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
+- **A fresh install needs nothing:** `make generate-secrets` draws the
+  two values independently.
+
+### 39. identity's admin metrics need a superuser's token
 
 `GET /api/v1/identity/admin/metrics` (identity's
 `GET /api/v1/admin/metrics`) answered anyone, because it trusted the
@@ -1022,7 +1068,7 @@ Rebuild identity and the gateway (section 1 does).
   every request. Authenticate that location, as the other service routes
   do.
 
-### 39. The self-service API-key routes list and revoke the caller's own keys
+### 40. The self-service API-key routes list and revoke the caller's own keys
 
 `GET` and `DELETE /api/v1/identity/api-keys[/{key_prefix}]` acted on every
 key of the caller's team, so a member could revoke the owner's key (#664).
