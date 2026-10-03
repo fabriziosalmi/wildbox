@@ -38,7 +38,7 @@ The Wildbox Security Dashboard is the central command center for the Wildbox sec
 
 ### 🔧 **Security Toolbox**
 
-- The tools the tools service ships, listed with search and category filter
+- Every tool the tools service ships, listed with search and category filter
 - A form per tool, generated from the input schema the service publishes
 - Synchronous runs, or background tasks that are followed and can be cancelled
 - The output as tables and lists, with the raw JSON to copy or download
