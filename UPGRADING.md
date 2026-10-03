@@ -859,6 +859,51 @@ Rebuild the gateway (section 1 does).
 - **`/api/v1/agents/stats` answers** with the service's statistics,
   authenticated, where it answered 404.
 
+### 34. Sensors send telemetry through the gateway, with an identity API key
+
+No sensor telemetry was ever stored: the sensor posted to the data
+service's `/api/v1/ingest` with a bearer key the data service never
+accepted (#628). The sensor now sends to the gateway,
+`https://<gateway>/api/v1/data/ingest`, authenticated with an identity
+personal API key, and the data service stores the events under that key's
+team. Rebuild the sensor, the data service, identity, the gateway and the
+dashboard (section 1 does); the data service applies alembic revision
+`0005_telemetry_team` at start.
+
+- **Give each sensor a key.** As a team owner or admin, add a member for
+  the sensor (Settings > Team > Add member), sign in as it once to change
+  its password, and create a personal API key with the new
+  **Telemetry Ingest** (`data:ingest`) scope only (Settings > API keys).
+  Set it as `SENSOR_DATA_LAKE_API_KEY`. Its telemetry belongs to that
+  member's team; revoking the key or removing the member stops the
+  sensor at its next batch.
+- **The sensor in `docker-compose.yml`** is already pointed at
+  `https://open-security-gateway` and trusts the certificate the gateway
+  publishes into the new `gateway_cert` volume. Add
+  `SENSOR_DATA_LAKE_API_KEY=wsk_...` to `.env` and
+  `docker compose up -d sensor`. Without a key it starts and logs
+  `Telemetry forwarding is disabled`.
+- **Sensors elsewhere** need three settings: `data_lake.endpoint` (or
+  `SENSOR_DATA_LAKE_ENDPOINT`) set to the gateway's HTTPS URL,
+  `data_lake.api_key` (or `SENSOR_DATA_LAKE_API_KEY`) set to the key, and,
+  when no public CA signed the gateway's certificate,
+  `data_lake.ca_bundle` (or `SENSOR_DATA_LAKE_CA_BUNDLE`) set to a PEM
+  file holding it. A sensor still configured with an `http://` endpoint
+  or the data service's `/api/v1/ingest` URL, or with a key that does not
+  begin with `wsk_`, now stops at start-up with a message naming the
+  setting. Check one with `python main.py --test-connection`.
+- **Production overlay:** the sensor moves from the `backend` network to
+  `frontend`. It reaches the gateway, and no longer the data service or
+  any other backend service directly.
+- **Telemetry is per team.** `GET /api/v1/data/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's telemetry only. Rows written before the upgrade, which only a
+  hand-made insert can have produced, have no team and are shown to no
+  team.
+- **API key scopes:** `data:ingest` is new. A key with `write` or
+  `data:write` can still post to `/api/v1/data/ingest`; a `data:ingest`
+  key gets 403 `insufficient_scope` everywhere else.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

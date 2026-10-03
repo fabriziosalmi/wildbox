@@ -1,16 +1,30 @@
 # Wildbox Sensor Configuration for Web Attack Detection
 # This configuration enables log forwarding from nginx access logs to the Wildbox Data Lake
 
-# Data Lake Connection
+# Where telemetry goes: the Wildbox gateway, which authenticates the sensor's
+# API key and stores the events under the key's team. The sensor never talks
+# to the data service directly. See open-security-sensor/README.md,
+# "Sending telemetry to Wildbox".
 data_lake:
-  # Update this to match your Wildbox Data Lake endpoint
-  endpoint: "http://localhost:8001/api/v1/ingest"
+  # Your gateway's HTTPS address. Overridden by SENSOR_DATA_LAKE_ENDPOINT.
+  endpoint: "https://localhost"
 
-  # API key for authentication (set via environment variable in production)
-  api_key: "${WILDBOX_API_KEY:-your-api-key-here}"
+  # An identity personal API key (wsk_...) with the data:ingest scope, of the
+  # team member created for this sensor. Set it with SENSOR_DATA_LAKE_API_KEY
+  # rather than here. Empty, the sensor runs and forwards nothing.
+  api_key: ""
 
-  # TLS certificate verification
+  # Verify the gateway's certificate. Leave it on.
   tls_verify: true
+
+  # The gateway's certificate, when no public CA signed it. For the
+  # development certificate of a local stack, the file the gateway writes:
+  # <wildbox>/open-security-gateway/ssl/wildbox.crt.
+  # Overridden by SENSOR_DATA_LAKE_CA_BUNDLE.
+  ca_bundle: ""
+
+  # This sensor's name in Wildbox (default: the hostname).
+  sensor_id: "web-server-sensor"
 
   # Batch size for sending events
   batch_size: 100
@@ -83,11 +97,8 @@ logging:
   format: json
   output: /var/log/security-sensor/sensor.log
 
-# Sensor Identity
+# Sensor Identity (the ID the data service shows is data_lake.sensor_id)
 sensor:
-  # Sensor ID (auto-generated if not specified)
-  id: ""
-
   # Sensor name/description
   name: "web-server-sensor"
 

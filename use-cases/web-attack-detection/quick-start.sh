@@ -76,12 +76,14 @@ else
     echo -e "${GREEN}✓${NC} Wildbox services are running"
 fi
 
-# Verify Data Lake is accessible
-if curl -s http://localhost:8001/health > /dev/null; then
-    echo -e "${GREEN}✓${NC} Data Lake is healthy"
+# The sensor sends telemetry to the gateway over HTTPS (#628), trusting the
+# certificate the gateway generated.
+WILDBOX_CA="$(pwd)/open-security-gateway/ssl/wildbox.crt"
+if [[ -f "${WILDBOX_CA}" ]] && curl -sf --cacert "${WILDBOX_CA}" https://localhost/health > /dev/null; then
+    echo -e "${GREEN}✓${NC} Gateway is healthy at https://localhost"
 else
-    echo -e "${RED}Error: Data Lake is not responding at http://localhost:8001${NC}"
-    echo "Try: docker-compose ps"
+    echo -e "${RED}Error: the gateway is not responding at https://localhost${NC}"
+    echo "Try: docker-compose ps gateway"
     exit 1
 fi
 
@@ -95,10 +97,14 @@ cd use-cases/web-attack-detection
 # Create sensor config for testing
 cat > /tmp/wildbox-test-config.yaml <<EOF
 # Test Configuration for Web Attack Detection
+# The API key comes from SENSOR_DATA_LAKE_API_KEY: an identity API key with
+# the data:ingest scope (see README.md, Step 1b).
 data_lake:
-  endpoint: "http://localhost:8001/api/v1/ingest"
-  api_key: "your-test-api-key-here"
+  endpoint: "https://localhost"
+  api_key: ""
   tls_verify: true
+  ca_bundle: "${WILDBOX_CA}"
+  sensor_id: "test-web-server-sensor"
   batch_size: 50
   flush_interval: 10
 
@@ -176,30 +182,31 @@ echo "=============================================="
 echo ""
 echo "📋 Next Steps:"
 echo ""
-echo "1. Start the sensor (choose one option):"
+echo "1. Create the sensor's team member and its API key with the"
+echo "   data:ingest scope (README.md, Step 1b), then:"
+echo "   $ export SENSOR_DATA_LAKE_API_KEY=wsk_..."
 echo ""
-echo "   Option A - Using Docker (recommended):"
-echo "   $ cd ../../open-security-sensor"
-echo "   $ cp /tmp/wildbox-test-config.yaml ./config.yaml"
-echo "   $ docker-compose up -d"
-echo ""
-echo "   Option B - Running locally:"
+echo "2. Start the sensor. Note: it does not read log_sources yet and reads"
+echo "   /var/log/nginx/access.log instead (#638); copy the sample logs there"
+echo "   on a test host to have them forwarded."
 echo "   $ cd ../../open-security-sensor"
 echo "   $ pip install -r requirements.txt"
+echo "   $ python main.py --config /tmp/wildbox-test-config.yaml --test-connection"
 echo "   $ python main.py --config /tmp/wildbox-test-config.yaml"
 echo ""
-echo "2. Monitor log ingestion:"
-echo "   $ watch -n 2 'curl -s http://localhost:8001/api/v1/telemetry/stats | jq'"
+echo "3. Monitor log ingestion, with a key of yours that has the read scope:"
+echo "   $ export H='X-API-Key: wsk_your_read_key'"
+echo "   $ watch -n 2 \"curl -s --cacert ${WILDBOX_CA} -H '\$H' https://localhost/api/v1/data/telemetry/stats | jq\""
 echo ""
-echo "3. View ingested events:"
-echo "   $ curl http://localhost:8001/api/v1/telemetry/events | jq"
+echo "4. View ingested events:"
+echo "   $ curl --cacert ${WILDBOX_CA} -H \"\$H\" https://localhost/api/v1/data/telemetry/events | jq"
 echo ""
-echo "4. Generate real-time logs (in another terminal):"
+echo "5. Generate real-time logs (in another terminal):"
 echo "   $ python3 sample-logs/generate_logs.py \\"
 echo "       --output ${TEST_DIR}/logs/access.log \\"
 echo "       --realtime --duration 60"
 echo ""
-echo "5. Access the dashboard:"
+echo "6. Access the dashboard:"
 echo "   $ open http://localhost:3000"
 echo ""
 echo "📖 Full documentation: use-cases/web-attack-detection/README.md"

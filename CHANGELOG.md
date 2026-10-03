@@ -104,6 +104,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result backend is a 503. The tools service now logs the class and
   traceback of a request that fails, and the integration workflow
   uploads every service's full log when it fails.
+
+- **Sensor telemetry reaches the data service, under the sensor's team**
+  (#628). The sensor's forwarder posted to the data service's
+  `/api/v1/ingest` directly with `Authorization: Bearer <key>`, but the
+  data service accepts only requests the gateway has authenticated, so
+  every batch was refused and no telemetry was ever stored. The sensor
+  now posts to the gateway, `https://<gateway>/api/v1/data/ingest`, with
+  an identity personal API key in `X-API-Key`: the key of a team member
+  created for the sensor. The gateway resolves the key, refuses it once
+  it is revoked, expired or its member removed (#593, #608), and forwards
+  the key's team; the data service stores the events and the sensor's
+  record under that team. A new API key scope, `data:ingest` (identity's
+  vocabulary, the dashboard's API keys page, the gateway's scope map),
+  allows `POST /api/v1/data/ingest` and nothing else; `write` and
+  `data:write` keep allowing it. The sensor verifies the gateway's
+  certificate by default, against `data_lake.ca_bundle` when set
+  (`SENSOR_DATA_LAKE_CA_BUNDLE`), sends the key in no other header, does
+  not follow redirects with it and never logs it; a 401 or 403 is no
+  longer retried. At start-up it refuses, with a message naming the
+  setting, an endpoint that is not an `https://` gateway URL (the old
+  direct URL included), a key that is not an identity key and a CA
+  bundle that does not exist; with no key it runs and logs that
+  forwarding is disabled. `--test-connection` posts an empty batch and
+  reports the answer: it used to print success without connecting.
+  Batches are now in the shape the data service validates (sensor ID,
+  one of its event types, the collected event kept whole in
+  `event_data`, the collector's type as a tag); the forwarder sent the
+  processor's own shape, which the data service would have refused too.
+  `docker-compose.yml` points the sensor at `https://open-security-gateway`
+  and gives it the gateway's certificate (never its key), which the
+  gateway now publishes into a `gateway_cert` volume when it starts; in
+  the production overlay the sensor moves from `backend` to `frontend`,
+  reaching the gateway and no backend service
+  (`scripts/check_network_segmentation.py` asserts both). In the data
+  service, telemetry events and sensor records have a `team_id` (alembic
+  revision `0005_telemetry_team`); `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's only, where they showed every team's; a sensor ID is unique per
+  team, where one team's sensor could update another's record. Three
+  defects on the same path that the refused credential had hidden are
+  fixed with it: a batch of more than one event from a new sensor
+  inserted its record twice and failed with 500, the events and sensors
+  listings answered 500 as soon as they had a row (their `id` was
+  declared a string), and a batch whose commit fails now answers 503,
+  so that the sensor sends it again, instead of 200 with nothing stored.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,
