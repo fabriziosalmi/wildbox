@@ -153,6 +153,10 @@ is at the top of the file.
   created in the identity service; a direct request without the gateway's
   headers is answered with 401. Keep `API_KEY` in `.env`: the service still
   requires it at start-up.
+- identity's `POST /api/v1/admin/teams/{team_id}/invite` is removed (#570)
+  and answers 404. It returned "Invitation sent successfully" without
+  storing or sending anything, so a script that called it never invited
+  anyone; drop the call.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 

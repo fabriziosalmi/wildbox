@@ -132,7 +132,6 @@ Team keys, which require the `admin` or `owner` role in the team:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/v1/admin/teams/{team_id}/members` | List members |
-| POST | `/api/v1/admin/teams/{team_id}/invite` | Invite a member |
 | PUT | `/api/v1/admin/teams/{team_id}` | Update a team |
 | DELETE | `/api/v1/admin/teams/{team_id}/members/{user_id}` | Remove a member |
 

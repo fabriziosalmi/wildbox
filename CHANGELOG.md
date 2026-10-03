@@ -801,6 +801,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **identity's `POST /api/v1/admin/teams/{team_id}/invite`** (#570). It
+  answered "Invitation sent successfully" to a team owner or admin and
+  did nothing: no invitation was stored or sent, and the request body was
+  not read. Nothing in the stack called it since the dashboard dropped
+  its invite form (#559). The path now answers 404. identity still has
+  no way to add a user to an existing team: registering creates a team
+  of its own.
 - **Direct `X-API-Key` authentication on the tools service** (#565). A
   request that sent the service's static `API_KEY` straight to port 8000 as
   `X-API-Key` was answered with a `GatewayUser` built on the nil UUID,
