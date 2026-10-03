@@ -836,6 +836,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **identity: the admin metrics need a platform superuser; the gateway
+  vouches only for requests it authenticated** (#664).
+  `GET /api/v1/admin/metrics` accepted the `X-Gateway-Secret` header
+  alone, and the gateway's `proxy_params.conf` set that header on every
+  proxied request, including the `/api/v1/identity/` passthrough, which
+  authenticates nobody: an anonymous
+  `GET /api/v1/identity/admin/metrics` read the number of users, teams
+  and active API keys. The route now takes a superuser's bearer token,
+  checked by identity, and refuses an account that must change its
+  password; the header counts for nothing there. The gateway sends its
+  secret only on a request `auth_handler.authenticate()` let through, and
+  drops a client's own on every other location (identity's routes, the
+  dashboard). An audit of identity's routes found `/internal/authorize`
+  the only other one that reads the secret; the gateway calls it itself,
+  and no location routes a client to `/internal`. The counts were also
+  always zero: the handler imported a model name that does not exist,
+  and its catch-all turned the error into "unavailable". Unit tests use
+  real tokens (anonymous and forged header 401, team owner 403,
+  superuser 200, flagged superuser 403) and check that no route outside
+  `/internal` reads the secret; the gateway harness checks the header on
+  the passthrough (absent, even when the client sends one) and on an
+  authenticated route (the gateway's own). Reverting either side fails
+  them. Integration tests do the same through the gateway.
+
 - **Sensor telemetry is scoped to the team that ingested it** (#641).
   `telemetry_events` and `sensor_metadata` had no team column, and the
   data service's telemetry routes queried the whole tables: any

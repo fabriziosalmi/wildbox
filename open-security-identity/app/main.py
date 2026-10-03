@@ -16,7 +16,12 @@ from .internal import router as internal_router
 from . import logout
 
 # Import fastapi-users components
-from .user_manager import auth_backend, fastapi_users, require_password_changed
+from .user_manager import (
+    auth_backend,
+    current_superuser,
+    fastapi_users,
+    require_password_changed,
+)
 from .schemas import UserRead, UserCreate, UserUpdate
 
 # Interactive API documentation and the OpenAPI schema are served in
@@ -261,9 +266,12 @@ async def _redis_check() -> dict:
     }
 
 
-@app.get("/api/v1/admin/metrics")
-async def get_metrics(request: Request):
-    """Business counts (users, teams, active API keys). Requires gateway secret.
+@app.get(
+    "/api/v1/admin/metrics",
+    dependencies=[Depends(current_superuser), *PASSWORD_CHANGED],
+)
+async def get_metrics():
+    """Business counts (users, teams, active API keys), for platform superusers.
 
     Not /metrics: install_observability() registers the Prometheus text
     exposition there, and it registers first, so this handler was shadowed and
@@ -271,23 +279,27 @@ async def get_metrics(request: Request):
     wanted -- Prometheus scrapes /metrics (monitoring/prometheus.yml), and these
     counts are a privileged view for operators -- so they live at separate
     paths rather than one silently replacing the other.
+
+    Identity authenticates the caller itself, from the bearer token, and
+    requires is_superuser (#664). This used to accept the X-Gateway-Secret
+    header alone, and the gateway stamped that header on every request it
+    passed through to identity, authenticated or not, so anyone could read
+    these counts at /api/v1/identity/admin/metrics. The gateway secret proves
+    that a request comes from the gateway, not who is making it: only the
+    routes the gateway calls on its own behalf (/internal) may rely on it.
     """
     import time
-    from fastapi import HTTPException, status as http_status
 
-    # Require gateway secret for metrics access
-    gateway_secret = request.headers.get("X-Gateway-Secret", "")
-    if not settings.gateway_internal_secret or not gateway_secret:
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    import hmac
-    if not hmac.compare_digest(gateway_secret, settings.gateway_internal_secret):
-        raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    
+    from sqlalchemy import func, select
+    from sqlalchemy.exc import SQLAlchemyError
+
+    from .database import get_db
+    from .models import ApiKey, Team, User
+
+    # The imports are outside the try: this one used to import APIKey, a
+    # name the models never had, and the handler below turned the ImportError
+    # into "unavailable" with every count at zero, on every call.
     try:
-        from .database import get_db
-        from sqlalchemy import text, select, func
-        from .models import User, Team, APIKey
-        
         metrics = {
             "service": settings.app_name,
             "version": settings.app_version,
@@ -309,15 +321,14 @@ async def get_metrics(request: Request):
         
         # Get active API keys
         api_key_count = await db.execute(
-            select(func.count()).select_from(APIKey).where(APIKey.is_active == True)
+            select(func.count()).select_from(ApiKey).where(ApiKey.is_active == True)
         )
         metrics["metrics"]["api_keys_active"] = api_key_count.scalar()
-        
+
         await db.close()
-        
-    except Exception as e:
-        # Catch all exceptions including SQLAlchemy errors and settings issues
-        # Return default values when database is unavailable
+
+    except (SQLAlchemyError, OSError):
+        # The database is unavailable: report it, with zero counts.
         metrics = {
             "service": "identity",
             "timestamp": time.time(),

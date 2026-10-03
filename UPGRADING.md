@@ -926,6 +926,24 @@ unless `RUN_MIGRATIONS_ON_STARTUP=false`.
   `sensor_id`, and fails while two teams share a sensor ID. Delete or
   rename one of the records first.
 
+### 35. identity's admin metrics need a superuser's token
+
+`GET /api/v1/identity/admin/metrics` (identity's
+`GET /api/v1/admin/metrics`) answered anyone, because it trusted the
+gateway secret and the gateway sent that secret on every request (#664).
+Rebuild identity and the gateway (section 1 does).
+
+- **A script that read the counts** must send a platform superuser's
+  bearer token. Without a token it gets 401; with a non-superuser's token,
+  403. The `X-Gateway-Secret` header no longer opens the route, through
+  the gateway or on identity's port. The counts are now real: they were
+  always zero, with `"error": "unavailable"`.
+- **The gateway sends `X-Gateway-Secret` only on routes it authenticates.**
+  A custom service behind a location that does not run
+  `auth_handler.authenticate()` but checks the header will now refuse
+  every request. Authenticate that location, as the other service routes
+  do.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

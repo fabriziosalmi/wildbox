@@ -224,6 +224,57 @@ request "agents: stats with a JWT" 200 \
 assert_json "agents: stats mapped to the service's /stats" '.path' '/stats'
 assert_json "agents: stats caller forwarded" '.headers["x-wildbox-user-id"]' 'user-1111'
 
+# --- Proof of origin on authenticated requests only (#664) -----------------
+# proxy_params.conf stamped X-Gateway-Secret on every proxied request, so an
+# anonymous request through identity's passthrough reached identity carrying
+# the secret, and the admin metrics there trusted it. The gateway now sends
+# it only on a request authenticate() let through.
+echo "== X-Gateway-Secret =="
+
+# secret_forwarded: whether the echoed request carried the gateway's secret
+# (match), another value (mismatch) or none (absent). The value itself is
+# never printed.
+secret_forwarded() {
+    echo "$BODY" | jq -r --arg s "${CI_GATEWAY_SECRET:-}" \
+        '.headers["x-gateway-secret"] | if . == null then "absent" elif . == $s then "match" else "mismatch" end'
+}
+
+assert_secret() {
+    local name="$1" expected="$2" actual
+    actual=$(secret_forwarded)
+    if [ "$actual" = "$expected" ]; then
+        pass "$name (X-Gateway-Secret $expected)"
+    else
+        fail "$name: expected X-Gateway-Secret $expected, got $actual"
+    fi
+}
+
+if [ -z "${CI_GATEWAY_SECRET:-}" ]; then
+    fail "CI_GATEWAY_SECRET is not set: the proof-of-origin checks cannot compare"
+fi
+
+request "authenticated route" 200 -X POST \
+    -H "Authorization: Bearer valid-bearer-token" "$AGENTS/analyze"
+assert_secret "authenticated request carries the proof of origin" match
+
+request "identity passthrough, anonymous" 200 "$GATEWAY_URL/api/v1/identity/admin/metrics"
+assert_json "passthrough path mapped" '.path' '/api/v1/admin/metrics'
+assert_secret "anonymous passthrough request" absent
+
+request "identity passthrough, forged secret" 200 \
+    -H "X-Gateway-Secret: forged-by-the-client" "$GATEWAY_URL/api/v1/identity/admin/metrics"
+assert_secret "client-supplied secret dropped on the passthrough" absent
+
+request "identity passthrough, with a session" 200 \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/identity/admin/metrics"
+assert_secret "a session on the passthrough is not vouched for" absent
+assert_json "identity still reads the bearer token itself" '.headers.authorization' 'Bearer valid-bearer-token'
+
+request "authenticated route, forged secret" 200 -X POST \
+    -H "Authorization: Bearer valid-bearer-token" \
+    -H "X-Gateway-Secret: forged-by-the-client" "$AGENTS/analyze"
+assert_secret "client-supplied secret replaced on an authenticated route" match
+
 # A connection identity closed is retried once; an unreachable identity is
 # a JSON 503 with Retry-After (#609).
 DROP_ONCE_AGENTS="drop-once-agents-$(date +%s)-$$"
