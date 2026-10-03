@@ -8,7 +8,7 @@ import time
 import re
 import json
 import logging
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 from datetime import datetime
 from urllib.parse import urlparse
 import ipaddress
@@ -30,7 +30,7 @@ class SystemConnector(BaseConnector):
             "sleep": "Wait for a specified number of seconds",
             "validate": "Validate input data (IP, URL, etc.)",
             "extract": "Extract data from input (domain from URL, etc.)",
-            "evaluate": "Evaluate conditions and expressions",
+            "evaluate": "Combine named boolean conditions (all, or at least min_true)",
             "create_report": "Generate a structured report",
             "notification": "Send notifications (placeholder)",
             "timestamp": "Get current timestamp",
@@ -173,43 +173,87 @@ class SystemConnector(BaseConnector):
                 "error": str(e)
             }
     
-    def evaluate(self, **conditions) -> Dict[str, Any]:
+    def evaluate(
+        self,
+        conditions: Optional[Dict[str, Any]] = None,
+        min_true: Optional[int] = None,
+        **named: Any,
+    ) -> Dict[str, Any]:
         """
-        Evaluate conditions and expressions
-        
+        Combine named boolean conditions into one result
+
+        The conditions are given as a mapping under ``conditions`` (or, as
+        before, as top-level names). Each value is normally a template such as
+        ``"{{ steps.scan.output.open_ports | length > 5 }}"``, so it reaches
+        this action as the string "True" or "False"; a real boolean is
+        accepted too.
+
+        Anything else is an error, not a guess. This action used to take
+        ``bool()`` of whatever it was given, so a nested mapping was always
+        true and a string such as "malicious" was always false: a step guarded
+        on the result ran, or never ran, whatever the data said (#605).
+
         Args:
-            **conditions: Named conditions to evaluate
-            
+            conditions: Named conditions to evaluate
+            min_true: How many conditions must hold for ``overall_result``
+                to be true. Omitted, all of them must hold.
+            **named: Further named conditions, merged with ``conditions``
+
         Returns:
-            Evaluation results
+            ``overall_result`` (bool), ``conditions`` (name -> bool),
+            ``matched`` (the names that hold, in order), ``matched_count``,
+            ``total``, ``min_true`` (the threshold applied) and ``timestamp``
+
+        Raises:
+            ValueError: If a condition is not a boolean, if there are no
+                conditions, or if min_true is out of range
         """
-        results = {}
-        overall_result = True
-        
-        for name, condition in conditions.items():
-            try:
-                if isinstance(condition, bool):
-                    result = condition
-                elif isinstance(condition, str):
-                    # Simple string evaluation (could be enhanced)
-                    result = condition.lower() in ["true", "yes", "1"]
-                else:
-                    result = bool(condition)
-                
-                results[name] = result
-                if not result:
-                    overall_result = False
-                    
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                results[name] = False
-                results[f"{name}_error"] = str(e)
-                overall_result = False
-        
+        if conditions is not None and not isinstance(conditions, dict):
+            raise ValueError(
+                "conditions must be a mapping of names to booleans, "
+                f"not {type(conditions).__name__}"
+            )
+        merged = {**(conditions or {}), **named}
+        duplicated = set(conditions or {}) & set(named)
+        if duplicated:
+            raise ValueError(
+                f"conditions named both inside and outside 'conditions': {sorted(duplicated)}"
+            )
+        if not merged:
+            raise ValueError("evaluate needs at least one condition")
+
+        results = {name: self._as_bool(name, value) for name, value in merged.items()}
+        matched = [name for name, result in results.items() if result]
+
+        threshold = len(results) if min_true is None else min_true
+        if isinstance(threshold, bool) or not isinstance(threshold, int):
+            raise ValueError(f"min_true must be an integer, not {min_true!r}")
+        if not 1 <= threshold <= len(results):
+            raise ValueError(
+                f"min_true must be between 1 and {len(results)}, not {threshold}"
+            )
+
         return {
-            "overall_result": overall_result,
+            "overall_result": len(matched) >= threshold,
             "conditions": results,
+            "matched": matched,
+            "matched_count": len(matched),
+            "total": len(results),
+            "min_true": threshold,
             "timestamp": datetime.utcnow().isoformat()
         }
+
+    @staticmethod
+    def _as_bool(name: str, value: Any) -> bool:
+        """A rendered condition as a boolean; anything ambiguous is an error."""
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            return value.strip().lower() == "true"
+        raise ValueError(
+            f"condition '{name}' is not a boolean (got {type(value).__name__}); "
+            "write it as a comparison, for example \"{{ x > 5 }}\""
+        )
     
     def create_report(self, template: str, data: Dict[str, Any]) -> Dict[str, Any]:
         """

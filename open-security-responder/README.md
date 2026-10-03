@@ -94,25 +94,86 @@ steps:
   - name: "scan_ports"
     action: "api.run_tool"
     input:
-      tool_name: "nmap"
+      tool_name: "port_scanner"
       params:
         target: "{{ trigger.ip }}"
-        
-  - name: "check_reputation"
+
+  - name: "whois_lookup"
     action: "api.run_tool"
     input:
-      tool_name: "whois"
+      tool_name: "ip_geolocation"
       params:
-        ip: "{{ trigger.ip }}"
-    condition: "steps.scan_ports.output.open_ports|length > 0"
+        ip_address: "{{ trigger.ip }}"
+        include_whois: true
+    condition: "steps.scan_ports.output.open_ports | length > 0"
 ```
+
+A tool's name and parameters are those of the tools service
+(`open-security-tools/app/tools/<name>/schemas.py`), and so are the fields
+of its result that later steps read.
+
+### Step context
+
+A step's `input` templates and its `condition` see the same context:
+
+| Name | What it holds |
+| ---- | ------------- |
+| `trigger` | The JSON body the run was started with, as sent. |
+| `run.id` | The run's ID. |
+| `run.playbook_id` | The ID of the playbook being run. |
+| `run.started_at` | When the run was queued, ISO 8601 in UTC, for example `2026-10-03T09:42:03.123456+00:00`. |
+| `steps.<key>.output` | What the step's action returned. |
+| `steps.<key>.status` | `completed`, or `failed` for a step that failed under `on_failure: continue`. |
+| `steps.<key>.error` | Why the step failed; present only when it did. |
+| `steps.<key>.duration` | How long the step took, in seconds. |
+
+- **The key** is the step's `id` when it has one, otherwise its `name`.
+- **A step's result is `output`.** There is no `result` key, and no
+  `system` object: write `steps.scan.output.open_ports`, and
+  `run.started_at` for a timestamp.
+- **A skipped step is absent from `steps`.** Test for it with
+  `steps.<key> is defined` before reading its output.
+- **A step that failed under `on_failure: continue`** is present, with
+  `status: failed`, its `error` and `output: none`. Test
+  `steps.<key>.output is not none` before reading a field of it.
+- **Input templates render as data.** They are not HTML-escaped: a URL
+  with `&` in it reaches the action unchanged. To pass a whole object or
+  list, render it with `| tojson`; a rendered value that is a JSON object or
+  array is parsed back into one.
+
+### system.evaluate
+
+`system.evaluate` combines named boolean conditions into one result. It
+returns no verdict or severity of its own; a playbook names its signals and
+guards later steps on `overall_result`.
+
+```yaml
+  - name: "threat_verdict"
+    action: "system.evaluate"
+    input:
+      conditions:
+        url_flagged: "{{ steps.url_analysis.output.security_analysis.is_suspicious }}"
+        bad_reputation: "{{ steps.reputation.output.overall_threat_score >= 70 }}"
+      min_true: 1        # omitted: every condition must hold
+
+  - name: "add_to_blacklist"
+    action: "data.add_to_blacklist"
+    condition: "steps.threat_verdict is defined and steps.threat_verdict.output.overall_result"
+    # ...
+```
+
+It returns `overall_result`, `conditions` (each name and whether it held),
+`matched` (the names that held, in order), `matched_count`, `total`,
+`min_true` and `timestamp`. Each condition must render to `True` or
+`False`, or be a boolean; any other value, such as a nested mapping or a
+word like `malicious`, fails the step instead of being guessed at.
 
 ### Step conditions
 
 A step's `condition` is a Jinja2 expression, the body of an
 `{% if %}`, written without `{{ }}`: the step runs when it is true and is
-skipped when it is false. It sees the same context as the step's input:
-`trigger` and `steps.<id or name>`.
+skipped when it is false. It sees the same context as the step's input
+(see [Step context](#step-context)).
 
 - **Undefined names.** A condition that references a name that is not
   defined, such as a trigger field that was not sent or an output field an
