@@ -145,18 +145,23 @@ returned once, when the key is created.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | POST | `/api/v1/api-keys` | Create a key for the caller |
-| GET | `/api/v1/api-keys` | List the caller's keys |
-| GET | `/api/v1/api-keys/{key_prefix}` | Show one key |
-| DELETE | `/api/v1/api-keys/{key_prefix}` | Revoke a key |
+| GET | `/api/v1/api-keys` | List the caller's own keys |
+| GET | `/api/v1/api-keys/{key_prefix}` | Show one of the caller's keys |
+| DELETE | `/api/v1/api-keys/{key_prefix}` | Revoke one of the caller's keys |
 
-Team keys, which require the `admin` or `owner` role in the team:
+These act in the caller's primary team and on the keys the caller created:
+another member's key answers 404, as a key that does not exist does. They
+used to match any key of the team, so a member could revoke a teammate's or
+the owner's key (#664).
 
-| Method | Path |
-| --- | --- |
-| POST | `/api/v1/teams/{team_id}/api-keys` |
-| GET | `/api/v1/teams/{team_id}/api-keys` |
-| GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
-| DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` |
+All the keys of a team, whoever created them:
+
+| Method | Path | Role in the team |
+| --- | --- | --- |
+| POST | `/api/v1/teams/{team_id}/api-keys` | `admin` or `owner` |
+| GET | `/api/v1/teams/{team_id}/api-keys` | any member |
+| GET | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` | any member |
+| DELETE | `/api/v1/teams/{team_id}/api-keys/{key_prefix}` | `admin` or `owner` |
 
 ### Revocation Takes Effect at Once
 

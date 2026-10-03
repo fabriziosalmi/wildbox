@@ -137,7 +137,8 @@ only once their cached decisions expire.
 ### Revoking an API Key
 
 `DELETE /api/v1/identity/api-keys/{key_prefix}` revokes one of the caller's
-keys; a team owner or admin revokes a team's key with
+own keys, and answers 404 for another member's; a team owner or admin
+revokes any key of the team with
 `DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}`. The key is
 refused on the next request, although the gateway caches the decision
 for a key:

@@ -944,6 +944,22 @@ Rebuild identity and the gateway (section 1 does).
   every request. Authenticate that location, as the other service routes
   do.
 
+### 36. The self-service API-key routes list and revoke the caller's own keys
+
+`GET` and `DELETE /api/v1/identity/api-keys[/{key_prefix}]` acted on every
+key of the caller's team, so a member could revoke the owner's key (#664).
+They now act on the keys the caller created. Rebuild identity (section 1
+does).
+
+- **The dashboard's API keys page** lists your own keys only. A team owner
+  or admin who managed other members' keys there uses the team routes:
+  `GET /api/v1/identity/teams/{team_id}/api-keys` to list them and
+  `DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}` to
+  revoke one.
+- **A script that revoked another member's key** through
+  `/api/v1/identity/api-keys/{key_prefix}` now gets 404, and the key keeps
+  working. Use the team route above with an owner's or admin's token.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

@@ -860,6 +860,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   authenticated route (the gateway's own). Reverting either side fails
   them. Integration tests do the same through the gateway.
 
+- **identity: the self-service API-key routes act on the caller's own
+  keys** (#664). `DELETE /api/v1/api-keys/{key_prefix}` selected the key
+  by team and prefix only, so any member could revoke a teammate's or
+  the owner's key, and since #608 the gateway refused it at once. The
+  revoke, `GET /api/v1/api-keys/{key_prefix}` and the list now match the
+  caller's user ID as well; another member's key answers 404 and keeps
+  working. A team owner or admin revokes any key of the team through
+  `DELETE /api/v1/teams/{team_id}/api-keys/{key_prefix}`, whose role
+  check is unchanged, and the gateway is still told before the key is
+  marked inactive. Unit tests read the criteria of each query and check
+  the team route's roles; dropping the user predicate from any of the
+  three routes, or letting a member through the team route, fails them.
+  Integration tests through the gateway: a member's revoke of the
+  owner's key answers 404 and the key keeps working, the owner revokes
+  the member's key through the team route and it is refused on the next
+  request.
+
 - **Sensor telemetry is scoped to the team that ingested it** (#641).
   `telemetry_events` and `sensor_metadata` had no team column, and the
   data service's telemetry routes queried the whole tables: any
