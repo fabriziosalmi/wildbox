@@ -59,6 +59,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The gateway declares `RATE_LIMIT_PER_HOUR` and refuses a bad value**
+  (#627). `auth_handler.lua` reads the per-team budget with `os.getenv`,
+  but `nginx.conf` did not list it with `env`, and nginx hands its
+  processes only the variables listed there. The setting took effect
+  only because `init_by_lua` loads the module in the master process,
+  whose environment is still complete on a cold start; a module loaded
+  anywhere else, or a master started by a binary upgrade, saw nothing
+  and used 10000. It is now declared. A value that is not a whole number
+  from 1 to 1000000000 (`0`, `10k`, `1.5`, an empty string) used to
+  become 10000 without a word; the gateway now logs
+  `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start
+  (`nginx -t` does not run `init_by_lua` and does not catch it).
+  `scripts/check_gateway_config.py`, run by the Gateway Lint workflow,
+  fails when the gateway's Lua or nginx configuration reads a variable
+  `nginx.conf` does not declare; the six other variables the gateway
+  reads were already declared. The
+  gateway harness starts a gateway with `RATE_LIMIT_PER_HOUR=120` and
+  checks that the third request in a minute gets 429, and starts one per
+  invalid value and checks that each exits. The deployment guide
+  documents the variable.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,

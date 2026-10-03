@@ -4,19 +4,23 @@ name: Gateway Lint
 # had no CI coverage — auth bugs shipped undetected because nothing exercised
 # its Lua. This job lints the gateway Lua with luacheck, gating on syntax and
 # undefined-global errors (see open-security-gateway/.luacheckrc). Tracks #108.
+# It also checks that every variable the Lua reads with os.getenv is declared
+# with `env` in nginx.conf, without which nginx's workers never see it (#627).
 
 on:
   pull_request:
     paths:
-      - 'open-security-gateway/nginx/lua/**'
+      - 'open-security-gateway/nginx/**'
       - 'open-security-gateway/.luacheckrc'
+      - 'scripts/check_gateway_config.py'
       - '.github/workflows/gateway-lint.yml'
   push:
     branches:
       - main
     paths:
-      - 'open-security-gateway/nginx/lua/**'
+      - 'open-security-gateway/nginx/**'
       - 'open-security-gateway/.luacheckrc'
+      - 'scripts/check_gateway_config.py'
       - '.github/workflows/gateway-lint.yml'
   workflow_dispatch:
 
@@ -52,3 +56,7 @@ jobs:
       - name: Run luacheck over gateway Lua
         working-directory: open-security-gateway
         run: luacheck nginx/lua
+
+      # Lua blocks live in the .conf files too, hence nginx/** in the paths.
+      - name: Check the env declarations in nginx.conf
+        run: python3 scripts/check_gateway_config.py

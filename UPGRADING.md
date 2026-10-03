@@ -791,6 +791,15 @@ gateway-authenticated requests only, as every other service does.
   `open-security-guardian/.env.example`. Nothing read them; remove them
   from your `.env` if you copied them.
 
+### 31. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
+
+The gateway reads the per-team budget from `RATE_LIMIT_PER_HOUR` (#627). A
+value that was not a number used to become the default, 10000, without a
+word; the gateway now refuses to start with it and logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...`. Before you upgrade, check
+the line in `.env`: it must be a whole number from 1 to 1000000000, or be
+left out for the default. The compose file passes 10000 when it is empty.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

@@ -12,11 +12,15 @@
 #   * the removed standalone tools UI (/tools/ answers 404, #581)
 #   * a dropped identity connection is retried once; 503s are JSON with
 #     Retry-After (#609)
+#   * the per-team budget is RATE_LIMIT_PER_HOUR, against a second gateway
+#     started with a low value (#627)
 
 set -u
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 GATEWAY_WRONG_URL="${GATEWAY_WRONG_URL:-http://localhost:8081}"
+# A gateway started with RATE_LIMIT_PER_HOUR=120 (#627).
+GATEWAY_LIMIT_URL="${GATEWAY_LIMIT_URL:-http://localhost:8083}"
 MOCK_URL="${MOCK_URL:-http://localhost:8001}"
 
 PASS=0
@@ -218,6 +222,51 @@ request "wrong gateway secret -> forbidden" 403 \
 BIGTOKEN=$(printf 'a%.0s' $(seq 1 5000))
 request "oversized token rejected" 400 \
     -H "Authorization: Bearer $BIGTOKEN" "$GATEWAY_URL/api/v1/auth/me"
+
+# --- Per-team rate limit (#627) --------------------------------------------
+echo "== RATE_LIMIT_PER_HOUR =="
+
+# header <name>: the value of a response header in /tmp/headers.txt.
+header() { tr -d '\r' < /tmp/headers.txt | awk -F': ' -v h="$1" 'tolower($1)==h{print $2}'; }
+
+# 16. Unset, the budget is the default: 10000 an hour, 166 a minute.
+curl -s -o /tmp/body.json -D /tmp/headers.txt \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/tools/echo"
+if [ "$(header x-ratelimit-policy)" = "10000;w=3600" ] && [ "$(header x-ratelimit-limit)" = 166 ]; then
+    pass "unset RATE_LIMIT_PER_HOUR means 10000 an hour (166 a minute)"
+else
+    fail "default limit: policy '$(header x-ratelimit-policy)', limit '$(header x-ratelimit-limit)'"
+fi
+
+# 17. The gateway started with RATE_LIMIT_PER_HOUR=120 applies 120 an hour:
+#     2 requests a minute, so a third one in the same minute is refused. The
+#     window is a fixed minute; one that turns between two requests restarts
+#     the count once, so five requests always reach the refusal.
+curl -s -o /tmp/body.json -D /tmp/headers.txt \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_LIMIT_URL/api/v1/tools/echo"
+if [ "$(header x-ratelimit-policy)" = "120;w=3600" ] && [ "$(header x-ratelimit-limit)" = 2 ]; then
+    pass "RATE_LIMIT_PER_HOUR=120 is the budget the gateway reports (2 a minute)"
+else
+    fail "low limit: policy '$(header x-ratelimit-policy)', limit '$(header x-ratelimit-limit)'"
+fi
+refused=""
+for attempt in 2 3 4 5; do
+    STATUS=$(curl -s -o /tmp/body.json -D /tmp/headers.txt -w "%{http_code}" \
+        -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_LIMIT_URL/api/v1/tools/echo")
+    if [ "$STATUS" = 429 ]; then
+        refused=$attempt
+        break
+    fi
+done
+BODY=$(cat /tmp/body.json)
+if [ -n "$refused" ]; then
+    pass "RATE_LIMIT_PER_HOUR=120: request $refused in the minute refused with 429"
+    assert_json "rate limit error code" '.error' 'rate_limit_exceeded'
+    assert_json "rate limit names the hourly budget" '.limit_per_hour' '120'
+    assert_strict_json "rate limit error body"
+else
+    fail "RATE_LIMIT_PER_HOUR=120: five requests in a row were all served (last HTTP $STATUS)"
+fi
 
 # --- CORS (dashboard on a separate origin) ---------------------------------
 echo "== CORS =="

@@ -151,6 +151,18 @@ by. Images built before this setting existed fell back to
 `http://localhost:80`: in a browser on any other machine every API call,
 the login first, went to that machine and failed.
 
+### The gateway's per-team rate limit
+
+`RATE_LIMIT_PER_HOUR` in `.env` is the number of API requests a team may make
+in an hour, through the gateway, on every authenticated route. The default is
+10000. The gateway enforces it per minute, as one sixtieth of the hourly
+figure (at least one request a minute), and reports it on every response in
+`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` and
+`X-RateLimit-Policy`. The value must be a whole number between 1 and
+1000000000: with any other value the gateway logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
+the gateway after changing it (`docker compose up -d gateway`).
+
 ### Redis memory
 
 Redis is not a cache here. It holds the token blacklist, failed-login lockout
