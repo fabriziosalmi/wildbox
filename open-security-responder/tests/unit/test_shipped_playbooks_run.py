@@ -19,6 +19,12 @@ The stubbed responses are checked against the services' own schemas, read
 from their source in this repository, and so are the parameters the
 playbooks send to each tool: a stub cannot drift into a shape the real
 service never returns without failing.
+
+The stubbed services also refuse what the real ones refuse (#616): a route
+the service does not declare answers 404, and a request without the run's
+gateway identity, or with the wrong X-Gateway-Secret, answers 403. Every run
+is started as a user, as the execute endpoint starts it, and the tests check
+that each request carried that user.
 """
 
 import ast
@@ -42,6 +48,8 @@ os.environ.setdefault("SECRET_KEY", "x" * 40)
 os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "y" * 40)
 
 import app.workflow_engine as engine_module  # noqa: E402
+import service_contracts as contracts  # noqa: E402
+from app.caller import CallerIdentityUnavailable  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.connectors import connector_registry  # noqa: E402
 from app.connectors import system_connector as system_module  # noqa: E402
@@ -62,6 +70,15 @@ TOOL_SCHEMAS = {
     ),
     "url_analyzer": ("URLShortenerInput", "URLShortenerOutput"),
     "ip_geolocation": ("IPGeolocationInput", "IPGeolocationOutput"),
+    "hash_generator": ("HashGeneratorInput", "HashGeneratorOutput"),
+}
+
+# The user a run is started by, as the execute endpoint records them from the
+# gateway headers.
+CALLER = {
+    "user_id": "6f1c2a7e-1d0b-4c39-9a51-2f6c0f4e8b01",
+    "team_id": "0b8e5d1a-7c2f-4e6a-8d3b-5a9f1c2e4d60",
+    "role": "admin",
 }
 
 UNDEFINED_WARNING = "references an undefined name"
@@ -204,6 +221,21 @@ def geolocation_result(ip):
     }
 
 
+def queued_tool_task(tool, task_id="2d6b8f0e-3c1a-4e7b-9f52-8a1d0c6e4b37"):
+    """What POST /api/tools/{tool}/async answers (202)."""
+    return {
+        "task_id": task_id,
+        "status": "accepted",
+        "tool_name": tool,
+        "status_url": f"/api/v1/tasks/{task_id}",
+        "message": "Task submitted successfully. Use task_id to check status.",
+    }
+
+
+def guardian_asset(ip, asset_id="7a3e9c1b-5d2f-4b8a-9e6c-1f0d2b4a6c83"):
+    return {"id": asset_id, "name": f"host-{ip}", "ip_address": ip}
+
+
 def analysis_task(task_id="task-1"):
     """What POST /v1/analyze answers: a task, not a verdict (202)."""
     return {
@@ -222,15 +254,18 @@ class Services:
     """The Wildbox services, as seen through the connectors' HTTP clients.
 
     ``tools`` maps a tool name to a function of the parameters the playbook
-    sent; an entry that is an int is answered with that HTTP status. Every
-    request is recorded in ``calls``.
+    sent; an entry that is an int is answered with that HTTP status.
+    ``assets`` are the assets Guardian knows. Every request is recorded in
+    ``calls``, and refused as the real service would refuse it (see
+    service_contracts.refusal); Guardian also refuses a vulnerability from a
+    caller who is neither owner nor admin, as IsGatewayAdminOrReadOnly does.
     """
 
-    def __init__(self, tools=None, agents=202, guardian=201, data=201):
+    def __init__(self, tools=None, agents=202, guardian=201, assets=()):
         self.tools = tools or {}
         self.agents = agents
         self.guardian = guardian
-        self.data = data
+        self.assets = list(assets)
         self.calls = []
 
     def _service(self, request):
@@ -249,25 +284,74 @@ class Services:
     def handle(self, request):
         service = self._service(request)
         body = json.loads(request.content) if request.content else None
-        self.calls.append((service, request.url.path, body))
+        self.calls.append(
+            (service, request.method, request.url.path, body, dict(request.headers))
+        )
+        refused = contracts.refusal(service, request, settings.gateway_internal_secret)
+        if refused:
+            status, reason = refused
+            return httpx.Response(status, json={"detail": reason})
+        path = request.url.path
         if service == "tools":
-            tool = request.url.path.split("/tools/", 1)[1].split("/")[0]
+            tool = path.split("/tools/", 1)[1].split("/")[0]
             answer = self.tools[tool]
             if isinstance(answer, int):
                 return httpx.Response(answer, json={"detail": "unavailable"})
-            return httpx.Response(200, json=answer(body["params"]))
+            if path.endswith("/async"):
+                return httpx.Response(202, json=queued_tool_task(tool))
+            return httpx.Response(200, json=answer(body))
         if service == "agents":
             if self.agents != 202:
                 return httpx.Response(self.agents, json={"detail": "unavailable"})
             return httpx.Response(202, json=analysis_task())
-        status = getattr(self, service)
-        return httpx.Response(status, json={"id": f"{service}-1"})
+        if service == "guardian" and request.method == "GET":
+            search = request.url.params.get("search", "")
+            found = [
+                a
+                for a in self.assets
+                if search in a["name"] or search in a["ip_address"]
+            ]
+            return httpx.Response(
+                200,
+                json={
+                    "count": len(found),
+                    "next": None,
+                    "previous": None,
+                    "results": found,
+                },
+            )
+        if service == "guardian":
+            if request.headers.get("X-Wildbox-Role") not in ("owner", "admin"):
+                return httpx.Response(
+                    403,
+                    json={
+                        "detail": "You do not have permission to perform this action."
+                    },
+                )
+            return httpx.Response(self.guardian, json={"id": "guardian-1"})
+        raise AssertionError(f"no stub for {request.method} {request.url}")
 
-    def called(self, service, tool=None):
+    def called(self, service, tool=None, method="POST"):
+        """The bodies of the requests sent to ``service`` (and ``tool``)."""
         return [
             body
-            for name, path, body in self.calls
-            if name == service and (tool is None or f"/tools/{tool}" in path)
+            for name, verb, path, body, _ in self.calls
+            if name == service
+            and verb == method
+            and (tool is None or f"/tools/{tool}" in path)
+        ]
+
+    def identities(self):
+        """The identity each request carried, and whether its secret was right."""
+        secret = settings.gateway_internal_secret
+        return [
+            (
+                headers.get("x-wildbox-user-id"),
+                headers.get("x-wildbox-team-id"),
+                headers.get("x-wildbox-role"),
+                headers.get("x-gateway-secret") == secret,
+            )
+            for *_, headers in self.calls
         ]
 
 
@@ -331,13 +415,17 @@ def run(monkeypatch, playbooks):
     # simple_notification waits two seconds; the wait is not under test.
     monkeypatch.setattr(system_module.time, "sleep", lambda seconds: None)
 
-    def _run(playbook_id, trigger, services):
+    def _run(playbook_id, trigger, services, caller=CALLER):
         transport = httpx.MockTransport(services.handle)
         for name in ("api", "wildbox", "data"):
             connector = connector_registry.get_connector(name)
             monkeypatch.setattr(connector, "client", httpx.Client(transport=transport))
-        run_id = engine_module.start_execution(playbook_id, trigger, team_id="team-1")
-        return engine.get_execution_state(run_id)
+        run_id = engine_module.start_execution(playbook_id, trigger, caller=caller)
+        record = engine.get_execution_state(run_id)
+        # Every request was made as the user who started the run.
+        expected = (caller["user_id"], caller["team_id"], caller["role"], True)
+        assert set(services.identities()) <= {expected}
+        return record
 
     return _run
 
@@ -469,6 +557,15 @@ def test_triage_ip_stops_at_an_invalid_address(run, playbooks):
 # --- triage_url -------------------------------------------------------------
 
 URL = "http://login.evil.example/verify?user=a&next=%2Fhome"
+URL_STEPS = [
+    "validate_url",
+    "url_analysis",
+    "reputation_check",
+    "extract_domain",
+    "domain_reputation",
+    "threat_verdict",
+    "notify_security_team",
+]
 
 
 def url_services(suspicious, url_score, domain_score, risk_level="low"):
@@ -488,41 +585,32 @@ def url_services(suspicious, url_score, domain_score, risk_level="low"):
     )
 
 
-def test_triage_url_blacklists_a_malicious_url(run, playbooks):
+def url_outcomes(*states):
+    return dict(zip(URL_STEPS, states))
+
+
+def test_triage_url_alerts_on_a_malicious_url(run, playbooks):
     services = url_services(True, url_score=90, domain_score=80, risk_level="high")
     record = run("triage_url", {"url": URL}, services)
-    assert_completed(
-        record,
-        playbooks,
-        {
-            "validate_url": "ran",
-            "url_analysis": "ran",
-            "reputation_check": "ran",
-            "extract_domain": "ran",
-            "domain_reputation": "ran",
-            "threat_verdict": "ran",
-            "add_to_blacklist": "ran",
-            "notify_security_team": "ran",
-        },
-    )
-    [entry] = services.called("data")
-    # The URL as submitted: input templates are not HTML-escaped.
-    assert entry["value"] == URL
-    assert entry["type"] == "url"
-    assert entry["confidence"] == "high"
-    assert "url_flagged" in entry["reason"]
+    assert_completed(record, playbooks, url_outcomes(*["ran"] * 7))
+    # No blacklist: the data service has none, and nothing pretends to (#616).
+    assert [c for c in services.calls if c[0] == "data"] == []
     domain_query = services.called("tools", "threat_intelligence_aggregator")[1]
-    assert domain_query["params"] == {
+    assert domain_query == {
         "indicator": "login.evil.example",
         "indicator_type": "domain",
     }
     message = output(record, "notify_security_team")["message"]
+    # The URL as submitted: input templates are not HTML-escaped.
     assert f"URL: {URL}" in message
+    assert "Confidence: high" in message
     assert "threats: phishing" in message
+    assert "Action: none taken automatically" in message
+    assert "blacklist" not in message
     assert record.run_id in message
 
 
-def test_triage_url_blacklists_on_two_of_three_signals(run, playbooks):
+def test_triage_url_alerts_on_two_of_three_signals(run, playbooks):
     services = url_services(True, url_score=90, domain_score=10)
     record = run("triage_url", {"url": URL}, services)
     assert record.status == ExecutionStatus.COMPLETED, record.error
@@ -530,8 +618,8 @@ def test_triage_url_blacklists_on_two_of_three_signals(run, playbooks):
         "url_flagged",
         "url_reputation_bad",
     ]
-    assert outcomes(record)["add_to_blacklist"] == "ran"
-    assert services.called("data")[0]["confidence"] == "medium"
+    assert outcomes(record)["notify_security_team"] == "ran"
+    assert "Confidence: medium" in output(record, "notify_security_team")["message"]
 
 
 @pytest.mark.parametrize(
@@ -544,41 +632,14 @@ def test_triage_url_leaves_a_url_below_the_threshold_alone(
 ):
     services = url_services(suspicious, url_score, domain_score)
     record = run("triage_url", {"url": URL}, services)
-    assert_completed(
-        record,
-        playbooks,
-        {
-            "validate_url": "ran",
-            "url_analysis": "ran",
-            "reputation_check": "ran",
-            "extract_domain": "ran",
-            "domain_reputation": "ran",
-            "threat_verdict": "ran",
-            "add_to_blacklist": "skipped",
-            "notify_security_team": "skipped",
-        },
-    )
+    assert_completed(record, playbooks, url_outcomes(*["ran"] * 6, "skipped"))
     assert output(record, "threat_verdict")["overall_result"] is False
-    assert services.called("data") == []
 
 
 def test_triage_url_stops_at_an_invalid_url(run, playbooks):
     services = url_services(False, 0, 0)
     record = run("triage_url", {"url": "not a url"}, services)
-    assert_completed(
-        record,
-        playbooks,
-        {
-            "validate_url": "ran",
-            "url_analysis": "skipped",
-            "reputation_check": "skipped",
-            "extract_domain": "skipped",
-            "domain_reputation": "skipped",
-            "threat_verdict": "skipped",
-            "add_to_blacklist": "skipped",
-            "notify_security_team": "skipped",
-        },
-    )
+    assert_completed(record, playbooks, url_outcomes("ran", *["skipped"] * 6))
     assert services.calls == []
 
 
@@ -593,9 +654,10 @@ ALL_STAR_STEPS = [
     "🚨 Create Security Vulnerability",
     "📊 Generate Test Report",
 ]
+FINDING = "🚨 Create Security Vulnerability"
 
 
-def all_star_services(open_ports, score, agents=202, tools_status=None):
+def all_star_services(open_ports, score, agents=202, tools_status=None, assets=()):
     tools = {
         "port_scanner": lambda p: port_scan_result(p["target"], open_ports),
         "threat_intelligence_aggregator": lambda p: threat_intel_result(
@@ -604,7 +666,7 @@ def all_star_services(open_ports, score, agents=202, tools_status=None):
     }
     if tools_status:
         tools = {name: tools_status for name in tools}
-    return Services(tools=tools, agents=agents)
+    return Services(tools=tools, agents=agents, assets=assets)
 
 
 def all_star(*states):
@@ -612,18 +674,25 @@ def all_star(*states):
 
 
 def test_all_star_records_a_known_threat(run, playbooks):
-    services = all_star_services([(22, "ssh")], score=85)
+    asset = guardian_asset("203.0.113.7")
+    services = all_star_services([(22, "ssh")], score=85, assets=[asset])
     record = run("all_star_e2e", {"ip": "203.0.113.7"}, services)
     assert_completed(record, playbooks, all_star(*["ran"] * 7))
 
+    # The agents service's own request shape (AnalysisTaskRequest).
     [analysis] = services.called("agents")
-    assert analysis["ioc_value"] == "203.0.113.7"
-    assert analysis["context"]["run_id"] == record.run_id
-    assert analysis["context"]["requested_at"] == record.context["run"]["started_at"]
+    assert analysis == {
+        "ioc": {"type": "ipv4", "value": "203.0.113.7"},
+        "priority": "normal",
+    }
 
+    # Guardian is asked for the asset, then given its id.
+    [lookup] = [c for c in services.calls if c[:2] == ("guardian", "GET")]
+    assert lookup[2] == "/api/v1/assets/assets/"
     [finding] = services.called("guardian")
+    assert finding["asset"] == asset["id"]
     assert finding["severity"] == "high"
-    assert finding["asset_name"] == "203.0.113.7"
+    assert finding["priority"] == "p1"
     assert "cve_id" not in finding
     assert "Signals:** known_threat" in finding["description"]
     assert "Task ID: task-1" in finding["description"]
@@ -637,12 +706,14 @@ def test_all_star_records_a_known_threat(run, playbooks):
 
 def test_all_star_records_exposed_services_as_medium(run, playbooks):
     ports = [(21, "ftp"), (22, "ssh"), (80, "http")]
-    record = run("all_star_e2e", {"ip": "203.0.113.8"}, all_star_services(ports, 10))
+    services = all_star_services(ports, 10, assets=[guardian_asset("203.0.113.8")])
+    record = run("all_star_e2e", {"ip": "203.0.113.8"}, services)
     assert record.status == ExecutionStatus.COMPLETED, record.error
     assert output(record, "⚖️ Aggregate Threat Assessment")["matched"] == [
         "exposed_services"
     ]
-    assert outcomes(record)["🚨 Create Security Vulnerability"] == "ran"
+    assert outcomes(record)[FINDING] == "ran"
+    assert services.called("guardian")[0]["severity"] == "medium"
 
 
 def test_all_star_creates_nothing_for_a_benign_address(run, playbooks):
@@ -653,9 +724,36 @@ def test_all_star_creates_nothing_for_a_benign_address(run, playbooks):
         playbooks,
         all_star("ran", "ran", "ran", "ran", "ran", "skipped", "ran"),
     )
-    assert services.called("guardian") == []
+    assert [c for c in services.calls if c[0] == "guardian"] == []
     report = output(record, "📊 Generate Test Report")["data"]
     assert report["create_finding"] == {"skipped": True}
+
+
+def test_all_star_creates_nothing_for_an_address_guardian_does_not_know(run, playbooks):
+    """A Guardian vulnerability belongs to an asset; there is none to use."""
+    services = all_star_services([(22, "ssh")], score=85)
+    record = run("all_star_e2e", {"ip": "203.0.113.11"}, services)
+    assert_completed(
+        record,
+        playbooks,
+        all_star("ran", "ran", "ran", "ran", "ran", "failed", "ran"),
+    )
+    assert services.called("guardian") == []
+    error = next(s.error for s in record.step_results if s.step_name == FINDING)
+    assert "no asset named or addressed '203.0.113.11'" in error
+
+
+def test_all_star_finding_is_refused_to_a_member(run, playbooks):
+    """Guardian lets owners and admins create vulnerabilities, as the caller."""
+    member = {**CALLER, "role": "member"}
+    services = all_star_services(
+        [(22, "ssh")], score=85, assets=[guardian_asset("203.0.113.7")]
+    )
+    record = run("all_star_e2e", {"ip": "203.0.113.7"}, services, caller=member)
+    assert record.status == ExecutionStatus.COMPLETED, record.error
+    assert outcomes(record)[FINDING] == "failed"
+    error = next(s.error for s in record.step_results if s.step_name == FINDING)
+    assert "answered 403" in error
 
 
 def test_all_star_carries_on_when_the_services_fail(run, playbooks):
@@ -671,13 +769,18 @@ def test_all_star_carries_on_when_the_services_fail(run, playbooks):
     report = output(record, "📊 Generate Test Report")["data"]
     assert report["port_scan"]["status"] == "failed"
     assert report["port_scan"]["output"] is None
+    # Each failing call was sent once: the connectors do not retry.
+    assert len(services.called("agents")) == 1
+    assert len(services.called("tools", "port_scanner")) == 1
 
 
 def test_all_star_reports_a_threat_when_the_ai_service_is_down(run, playbooks):
-    services = all_star_services([(22, "ssh")], score=90, agents=503)
+    services = all_star_services(
+        [(22, "ssh")], score=90, agents=503, assets=[guardian_asset("203.0.113.10")]
+    )
     record = run("all_star_e2e", {"ip": "203.0.113.10"}, services)
     assert outcomes(record)["🤖 AI-Powered Threat Analysis"] == "failed"
-    assert outcomes(record)["🚨 Create Security Vulnerability"] == "ran"
+    assert outcomes(record)[FINDING] == "ran"
     [finding] = services.called("guardian")
     assert "Task ID: not started" in finding["description"]
 
@@ -687,6 +790,91 @@ def test_all_star_stops_at_an_invalid_address(run, playbooks):
     record = run("all_star_e2e", {"ip": "not-an-ip"}, services)
     assert_completed(record, playbooks, all_star("ran", *["skipped"] * 6))
     assert services.calls == []
+
+
+# --- hash_evidence ----------------------------------------------------------
+
+
+def test_hash_evidence_queues_the_hashing_as_the_caller(run, playbooks):
+    services = Services(tools={"hash_generator": lambda p: {}})
+    record = run("hash_evidence", {"text": "powershell -enc AAAA"}, services)
+    assert_completed(record, playbooks, {"queue_hashing": "ran", "report": "ran"})
+    [(service, method, path, body, headers)] = services.calls
+    assert (service, method, path) == (
+        "tools",
+        "POST",
+        "/api/tools/hash_generator/async",
+    )
+    # The tool's input itself, not wrapped: the tools service validates the
+    # body as the tool's input schema.
+    assert body == {
+        "input_text": "powershell -enc AAAA",
+        "hash_types": ["sha256", "sha512"],
+    }
+    assert headers["x-wildbox-user-id"] == CALLER["user_id"]
+    report = output(record, "report")["data"]
+    assert report["task_id"] == queued_tool_task("hash_generator")["task_id"]
+    assert report["status_url"] == f"/api/v1/tasks/{report['task_id']}"
+
+
+def test_hash_evidence_without_text_fails_before_any_call(run, playbooks):
+    services = Services(tools={"hash_generator": lambda p: {}})
+    record = run("hash_evidence", {}, services)
+    assert record.status == ExecutionStatus.FAILED
+    assert services.calls == []
+
+
+# --- The run's caller -------------------------------------------------------
+
+
+def test_every_request_of_a_run_carries_its_caller(run, playbooks):
+    services = ip_services([(21, "ftp"), (22, "ssh")], score=85)
+    record = run("triage_ip", {"ip": "203.0.113.7"}, services)
+    assert record.status == ExecutionStatus.COMPLETED, record.error
+    assert len(services.calls) == 3
+    assert set(services.identities()) == {
+        (CALLER["user_id"], CALLER["team_id"], CALLER["role"], True)
+    }
+
+
+@pytest.mark.parametrize(
+    "caller",
+    [None, {}, {"user_id": CALLER["user_id"]}, {"team_id": CALLER["team_id"]}],
+    ids=["none", "empty", "no-team", "no-user"],
+)
+def test_a_run_is_not_started_without_a_complete_caller(run, caller):
+    with pytest.raises(CallerIdentityUnavailable):
+        run("triage_ip", {"ip": "203.0.113.7"}, ip_services([], 0), caller=caller)
+    store = engine_module.workflow_engine.redis_client
+    assert store.hashes == {} and store.strings == {}
+
+
+def test_a_run_without_a_caller_fails_before_any_call(monkeypatch, playbooks):
+    """A message without a caller -- queued by an older version, say."""
+    engine = engine_module.workflow_engine
+    monkeypatch.setattr(engine, "redis_client", FakeRedis())
+    monkeypatch.setattr(engine_module.playbook_parser, "playbooks", playbooks)
+    services = ip_services([(22, "ssh")], 85)
+    transport = httpx.MockTransport(services.handle)
+    for name in ("api", "wildbox", "data"):
+        connector = connector_registry.get_connector(name)
+        monkeypatch.setattr(connector, "client", httpx.Client(transport=transport))
+
+    result = engine_module.execute_playbook_actor.fn(
+        "run-1", "triage_ip", {"ip": "203.0.113.7"}
+    )
+
+    assert result["status"] == ExecutionStatus.FAILED
+    assert "no caller identity" in result["error"]
+    assert result["step_results"] == []
+    assert services.calls == []
+
+
+def test_the_caller_does_not_outlive_its_run(run, playbooks):
+    from app.caller import current_caller
+
+    run("simple_notification", {}, Services())
+    assert current_caller() is None
 
 
 # --- The run context --------------------------------------------------------
@@ -756,7 +944,28 @@ def test_the_stubbed_analysis_task_matches_the_agents_schema():
 
 
 @requires_schemas
-@pytest.mark.parametrize("playbook_id", ["triage_ip", "triage_url", "all_star_e2e"])
+def test_the_analysis_request_matches_the_agents_schema():
+    """What analyze_ioc sends is an AnalysisTaskRequest (#616)."""
+    services = all_star_services([], 0)
+    connector = connector_registry.get_connector("wildbox")
+    original = connector.client
+    connector.client = httpx.Client(transport=httpx.MockTransport(services.handle))
+    try:
+        from app.caller import run_as
+
+        with run_as(CALLER):
+            connector.analyze_ioc("ipv4", "203.0.113.7")
+    finally:
+        connector.client = original
+    [request] = services.called("agents")
+    assert not conforms(request, AGENTS_SCHEMAS, "AnalysisTaskRequest")
+    assert not conforms(request["ioc"], AGENTS_SCHEMAS, "IOCInput")
+
+
+@requires_schemas
+@pytest.mark.parametrize(
+    "playbook_id", ["triage_ip", "triage_url", "all_star_e2e", "hash_evidence"]
+)
 def test_the_playbooks_send_each_tool_the_parameters_it_takes(playbooks, playbook_id):
     """A misspelled or invented parameter is refused by the tool with a 422."""
     problems = []

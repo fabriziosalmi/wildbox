@@ -1,15 +1,15 @@
 playbook_id: "triage_url"
 name: "URL Analysis and Response"
-description: "Analyze suspicious URLs and automatically blacklist malicious ones"
-version: "1.1"
+description: "Analyze a suspicious URL and alert the security team when it is malicious"
+version: "1.2"
 author: "Wildbox Security"
-tags: ["triage", "url", "malware", "blacklist"]
+tags: ["triage", "url", "malware"]
 
 trigger:
   type: "api"
 
 # Every step after validate_url is guarded on it, so a value that is not a
-# URL ends the run there, completed, with nothing analyzed or blacklisted.
+# URL ends the run there, completed, with nothing analyzed.
 #
 # Tool names and the fields read from their results are those of the tools
 # service (open-security-tools/app/tools/<name>/schemas.py): url_analyzer
@@ -63,8 +63,8 @@ steps:
       and steps.extract_domain.output.domain
 
   # The URL is malicious when at least two of the three signals agree.
-  # system.evaluate returns no verdict of its own: the guarded steps below
-  # read its `overall_result`, and its `matched` names the signals that held.
+  # system.evaluate returns no verdict of its own: the guarded step below
+  # reads its `overall_result`, and its `matched` names the signals that held.
   - name: "threat_verdict"
     action: "system.evaluate"
     input:
@@ -79,33 +79,22 @@ steps:
       min_true: 2
     condition: "steps.validate_url.output.valid"
 
-  - name: "add_to_blacklist"
-    action: "data.add_to_blacklist"
-    input:
-      type: "url"
-      value: "{{ trigger.url }}"
-      reason: >-
-        Automated analysis detected malicious content
-        ({{ steps.threat_verdict.output.matched | join(', ') }})
-      source: "url_triage_playbook"
-      confidence: >-
-        {{ 'high' if steps.threat_verdict.output.matched_count == steps.threat_verdict.output.total
-           else 'medium' }}
-    condition: >-
-      steps.threat_verdict is defined
-      and steps.threat_verdict.output.overall_result
-
+  # There is no blacklist step. The data service serves no blacklist, and a
+  # step that called one failed on every run (#616). The notification says
+  # what was found; blocking the URL is left to whoever receives it.
   - name: "notify_security_team"
     action: "system.notification"
     input:
       channel: "security-alerts"
       message: |
-        🚨 Malicious URL detected and blacklisted:
+        🚨 Malicious URL detected:
         URL: {{ trigger.url }}
         Signals: {{ steps.threat_verdict.output.matched | join(', ') }}
+        Confidence: {{ 'high' if steps.threat_verdict.output.matched_count == steps.threat_verdict.output.total else 'medium' }}
         URL analysis: risk {{ steps.url_analysis.output.security_analysis.risk_level }}, threats: {{ steps.url_analysis.output.security_analysis.threats_detected | join(', ') or 'none reported' }}
-        Action: added to blacklist
+        Action: none taken automatically; review and block it where it is used
         Run: {{ run.id }} (started {{ run.started_at }})
       priority: "high"
-    # Only once the URL is on the blacklist, as the message says.
-    condition: "steps.add_to_blacklist is defined"
+    condition: >-
+      steps.threat_verdict is defined
+      and steps.threat_verdict.output.overall_result
