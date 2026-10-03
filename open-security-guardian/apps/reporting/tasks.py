@@ -12,6 +12,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 
 from apps.core.locks import single_instance
+from apps.core.tenancy import normalize_team_id, scope_to_team
 from apps.reporting.models import SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYPES
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,8 @@ def generate_report(report_id):
         if report.format not in SUPPORTED_REPORT_FORMATS:
             raise ValueError(f"{report.format} reports are not generated yet")
 
-        # Get data based on template type
+        # Get data based on template type, from the report's team's rows
+        # only (#642)
         data = get_report_data(report.template, report.parameters, report.filters)
         
         # Render report content
@@ -92,38 +94,41 @@ def generate_report(report_id):
 def get_report_data(template, parameters, filters):
     """
     Get data for report based on template type
+
+    A report holds its template's team's data and nothing else (#642).
     """
     from apps.assets.models import Asset
     from apps.vulnerabilities.models import Vulnerability
     from apps.compliance.models import ComplianceAssessment, ComplianceResult
-    
+
+    team_id = template.team_id
     data = {}
     
     # list(): a QuerySet is lazy, and json.dumps(default=str) wrote its
     # truncated repr instead of the rows.
     if template.report_type == 'vulnerability_summary':
-        data['vulnerabilities'] = list(Vulnerability.objects.filter(
+        data['vulnerabilities'] = list(scope_to_team(Vulnerability.objects.filter(
             **apply_filters(filters, 'vulnerability')
-        ).values())
-        data['vulnerability_stats'] = get_vulnerability_stats(filters)
+        ), team_id).values())
+        data['vulnerability_stats'] = get_vulnerability_stats(filters, team_id)
         
     elif template.report_type == 'asset_inventory':
-        data['assets'] = list(Asset.objects.filter(
+        data['assets'] = list(scope_to_team(Asset.objects.filter(
             **apply_filters(filters, 'asset')
-        ).values())
-        data['asset_stats'] = get_asset_stats(filters)
+        ), team_id).values())
+        data['asset_stats'] = get_asset_stats(filters, team_id)
         
     elif template.report_type == 'compliance_status':
-        data['assessments'] = list(ComplianceAssessment.objects.filter(
+        data['assessments'] = list(scope_to_team(ComplianceAssessment.objects.filter(
             **apply_filters(filters, 'compliance')
-        ).values())
-        data['compliance_stats'] = get_compliance_stats(filters)
+        ), team_id).values())
+        data['compliance_stats'] = get_compliance_stats(filters, team_id)
         
     elif template.report_type == 'risk_assessment':
         data['risk_data'] = get_risk_assessment_data(filters)
         
     elif template.report_type == 'executive_dashboard':
-        data['executive_summary'] = get_executive_summary(filters)
+        data['executive_summary'] = get_executive_summary(filters, team_id)
         
     return data
 
@@ -155,13 +160,15 @@ def apply_filters(filters, data_type):
     return query_filters
 
 
-def get_vulnerability_stats(filters):
+def get_vulnerability_stats(filters, team_id):
     """
-    Get vulnerability statistics
+    Get a team's vulnerability statistics
     """
     from apps.vulnerabilities.models import Vulnerability
-    
-    vulns = Vulnerability.objects.filter(**apply_filters(filters, 'vulnerability'))
+
+    vulns = scope_to_team(
+        Vulnerability.objects.filter(**apply_filters(filters, 'vulnerability')), team_id
+    )
     
     return {
         'total_count': vulns.count(),
@@ -172,13 +179,13 @@ def get_vulnerability_stats(filters):
     }
 
 
-def get_asset_stats(filters):
+def get_asset_stats(filters, team_id):
     """
-    Get asset statistics
+    Get a team's asset statistics
     """
     from apps.assets.models import Asset
-    
-    assets = Asset.objects.filter(**apply_filters(filters, 'asset'))
+
+    assets = scope_to_team(Asset.objects.filter(**apply_filters(filters, 'asset')), team_id)
     
     return {
         'total_count': assets.count(),
@@ -189,13 +196,15 @@ def get_asset_stats(filters):
     }
 
 
-def get_compliance_stats(filters):
+def get_compliance_stats(filters, team_id):
     """
-    Get compliance statistics
+    Get a team's compliance statistics
     """
     from apps.compliance.models import ComplianceAssessment, ComplianceResult
-    
-    assessments = ComplianceAssessment.objects.filter(**apply_filters(filters, 'compliance'))
+
+    assessments = scope_to_team(
+        ComplianceAssessment.objects.filter(**apply_filters(filters, 'compliance')), team_id
+    )
     results = ComplianceResult.objects.filter(assessment__in=assessments)
     
     return {
@@ -218,15 +227,15 @@ def get_risk_assessment_data(filters):
     }
 
 
-def get_executive_summary(filters):
+def get_executive_summary(filters, team_id):
     """
-    Get executive summary data
+    Get a team's executive summary data
     """
     return {
         'key_metrics': {
-            'total_assets': get_asset_stats(filters)['total_count'],
-            'total_vulnerabilities': get_vulnerability_stats(filters)['total_count'],
-            'critical_vulnerabilities': get_vulnerability_stats(filters)['critical_count'],
+            'total_assets': get_asset_stats(filters, team_id)['total_count'],
+            'total_vulnerabilities': get_vulnerability_stats(filters, team_id)['total_count'],
+            'critical_vulnerabilities': get_vulnerability_stats(filters, team_id)['critical_count'],
         },
         'trends': {},
         'recommendations': [],
@@ -286,12 +295,41 @@ def report_sections(data):
     return sections
 
 
+def reports_root():
+    """The directory every generated report is written under."""
+    return os.path.join(settings.MEDIA_ROOT, 'reports')
+
+
+def team_reports_dir(team_id):
+    """A team's own report directory (#642).
+
+    Reports of different teams never share a directory. Rows without a
+    team (written before guardian kept one) go under "unassigned".
+    """
+    team_id = normalize_team_id(team_id)
+    return os.path.join(reports_root(), str(team_id) if team_id else 'unassigned')
+
+
+def report_file_is_served(file_path, team_id):
+    """True if ``file_path`` is a report file ``team_id`` may download.
+
+    A file in the team's own report directory, or one written before
+    reports were kept per team (directly in the reports directory). Never
+    a file of another team's directory, nor one outside the reports
+    directory, whatever a row says (#642).
+    """
+    root = os.path.realpath(reports_root())
+    path = os.path.realpath(file_path)
+    allowed = {root, os.path.realpath(team_reports_dir(team_id))}
+    return os.path.dirname(path) in allowed and os.path.isfile(path)
+
+
 def save_report_file(report, content):
     """
-    Save report content to file
+    Save report content to file, in the report's team's directory
     """
-    # Create reports directory if it doesn't exist
-    reports_dir = os.path.join(settings.MEDIA_ROOT, 'reports')
+    # Create the team's reports directory if it doesn't exist
+    reports_dir = team_reports_dir(report.template.team_id)
     os.makedirs(reports_dir, exist_ok=True)
     
     # Generate filename — sanitize format to prevent path traversal
@@ -414,9 +452,11 @@ def update_report_metrics(template_id):
         return None
 
 
-def process_widget_data(widget_config, filters=None):
+def process_widget_data(widget_config, filters=None, team_id=None):
     """
     Process widget data based on configuration
+
+    Over ``team_id``'s rows only (#642): the dashboard's or widget's team.
     """
     if isinstance(widget_config, dict):
         # Widget config from dashboard
@@ -431,22 +471,22 @@ def process_widget_data(widget_config, filters=None):
     
     # Get data based on data source
     if data_source == 'vulnerabilities':
-        return get_vulnerability_widget_data(widget_type, query_config, filters)
+        return get_vulnerability_widget_data(widget_type, query_config, filters, team_id)
     elif data_source == 'assets':
-        return get_asset_widget_data(widget_type, query_config, filters)
+        return get_asset_widget_data(widget_type, query_config, filters, team_id)
     elif data_source == 'compliance':
-        return get_compliance_widget_data(widget_type, query_config, filters)
+        return get_compliance_widget_data(widget_type, query_config, filters, team_id)
     
     return {'error': 'Unknown data source'}
 
 
-def get_vulnerability_widget_data(widget_type, query_config, filters):
+def get_vulnerability_widget_data(widget_type, query_config, filters, team_id=None):
     """
-    Get vulnerability data for widgets
+    Get a team's vulnerability data for widgets
     """
     from apps.vulnerabilities.models import Vulnerability
-    
-    queryset = Vulnerability.objects.all()
+
+    queryset = scope_to_team(Vulnerability.objects.all(), team_id)
     
     if widget_type == 'metric':
         return {
@@ -467,13 +507,13 @@ def get_vulnerability_widget_data(widget_type, query_config, filters):
     return {'data': list(queryset.values()[:10])}
 
 
-def get_asset_widget_data(widget_type, query_config, filters):
+def get_asset_widget_data(widget_type, query_config, filters, team_id=None):
     """
-    Get asset data for widgets
+    Get a team's asset data for widgets
     """
     from apps.assets.models import Asset
-    
-    queryset = Asset.objects.all()
+
+    queryset = scope_to_team(Asset.objects.all(), team_id)
     
     if widget_type == 'metric':
         return {
@@ -484,13 +524,13 @@ def get_asset_widget_data(widget_type, query_config, filters):
     return {'data': list(queryset.values()[:10])}
 
 
-def get_compliance_widget_data(widget_type, query_config, filters):
+def get_compliance_widget_data(widget_type, query_config, filters, team_id=None):
     """
-    Get compliance data for widgets
+    Get a team's compliance data for widgets
     """
     from apps.compliance.models import ComplianceResult
-    
-    queryset = ComplianceResult.objects.all()
+
+    queryset = scope_to_team(ComplianceResult.objects.all(), team_id)
     
     if widget_type == 'gauge':
         compliant = queryset.filter(status='compliant').count()
@@ -704,13 +744,18 @@ def deliver_alert_notification(notification):
 
 @shared_task
 @single_instance
-def check_all_alert_rules():
+def check_all_alert_rules(team_id=None):
     """
-    Check all active alert rules
+    Check active alert rules: every team's (the beat sweep), or one team's
+    (POST .../alerts/check_all/ checks the caller's team's rules only, #642)
+
+    Each rule is evaluated over its own team's data (alert_metrics).
     """
     from .models import AlertRule
-    
+
     active_rules = AlertRule.objects.filter(is_active=True)
+    if team_id is not None:
+        active_rules = scope_to_team(active_rules, team_id)
     
     results = []
     for rule in active_rules:

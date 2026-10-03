@@ -44,6 +44,13 @@ def _mirror_db_user(user_id, role):
     return user
 
 
+def _record_membership(user, team_id):
+    """Record that ``user`` acts as a member of ``team_id`` (#642)."""
+    from apps.core.models import TeamMembership
+
+    TeamMembership.objects.get_or_create(team_id=team_id, user=user)
+
+
 class GatewayUser:
     """
     User object constructed from gateway headers.
@@ -167,6 +174,9 @@ class GatewayAuthMiddleware(MiddlewareMixin):
                 # assigned_to FKs (integer PK) can be persisted; the rich
                 # gateway attributes remain on request.gateway_user.
                 request.user = _mirror_db_user(str(user_id), role)
+                # The team this user acts in: what a team may reference
+                # when it names a user (#642).
+                _record_membership(request.user, team_id)
 
                 logger.info(
                     f"[GATEWAY-AUTH] Authenticated user {user_id} from gateway headers "

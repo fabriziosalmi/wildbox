@@ -6,6 +6,8 @@ exposed by default.
 
 from rest_framework import serializers
 
+from apps.core.tenancy import TeamScopedModelSerializer
+
 from .models import (
     RemediationComment,
     RemediationStep,
@@ -15,7 +17,7 @@ from .models import (
 )
 
 
-class RemediationTicketSerializer(serializers.ModelSerializer):
+class RemediationTicketSerializer(TeamScopedModelSerializer):
     is_overdue = serializers.ReadOnlyField()
     days_until_due = serializers.ReadOnlyField()
 
@@ -46,7 +48,7 @@ class RemediationTicketSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at", "last_sync", "created_by")
 
 
-class RemediationWorkflowSerializer(serializers.ModelSerializer):
+class RemediationWorkflowSerializer(TeamScopedModelSerializer):
     is_overdue = serializers.ReadOnlyField()
     duration_days = serializers.ReadOnlyField()
 
@@ -94,7 +96,7 @@ class RemediationWorkflowSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at", "created_by")
 
 
-class RemediationStepSerializer(serializers.ModelSerializer):
+class RemediationStepSerializer(TeamScopedModelSerializer):
     class Meta:
         model = RemediationStep
         fields = (
@@ -121,7 +123,7 @@ class RemediationStepSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
 
-class RemediationCommentSerializer(serializers.ModelSerializer):
+class RemediationCommentSerializer(TeamScopedModelSerializer):
     class Meta:
         model = RemediationComment
         fields = (
@@ -139,7 +141,7 @@ class RemediationCommentSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "author", "created_at", "updated_at")
 
 
-class RemediationTemplateSerializer(serializers.ModelSerializer):
+class RemediationTemplateSerializer(TeamScopedModelSerializer):
     class Meta:
         model = RemediationTemplate
         fields = (

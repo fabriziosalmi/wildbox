@@ -141,3 +141,55 @@ class AuditLog(TimestampedModel):
     def __str__(self):
         actor = self.user.username if self.user else 'unknown'
         return f"{actor} - {self.action} - {self.resource_type}"
+
+
+def team_id_field():
+    """The team a tenant-owned row belongs to (#642).
+
+    Nullable: rows written before guardian kept a team have none, and no
+    team reaches them until an operator assigns them
+    (``manage.py assign_guardian_team``). Not editable: the API sets it from
+    the gateway's X-Wildbox-Team-ID, never from a request body.
+    """
+    return models.UUIDField(null=True, blank=True, editable=False, db_index=True)
+
+
+class TeamMembership(models.Model):
+    """A gateway user seen acting as a member of a team (#642).
+
+    auth.User rows mirror the identity service's users and carry no team:
+    a user may belong to several. GatewayAuthMiddleware records each
+    (team, user) pair it authenticates, and a team can reference -- assign
+    a vulnerability to, share a dashboard with -- only the users recorded
+    for it. Without this, any integer user id was accepted, and the
+    response named that user to a team they are not in.
+    """
+
+    team_id = models.UUIDField(db_index=True)
+    user = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name='guardian_team_memberships'
+    )
+    first_seen = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [('team_id', 'user')]
+
+    def __str__(self):
+        return f"{self.user.username} in {self.team_id}"
+
+
+class TeamTask(models.Model):
+    """The team that dispatched a Celery task, for its status route (#642).
+
+    /api/v1/tasks/<task_id>/ reads the state of a task from the result
+    backend, which knows nothing of teams. An endpoint that answers with a
+    task_id records it here, and the status route answers 404 to any other
+    team, as it does for an id nobody dispatched.
+    """
+
+    task_id = models.CharField(max_length=255, unique=True)
+    team_id = models.UUIDField(null=True, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.task_id} ({self.team_id})"

@@ -11,6 +11,8 @@ from django.utils import timezone
 import uuid
 import json
 
+from apps.core.models import team_id_field
+
 
 class ScannerType(models.TextChoices):
     """Types of vulnerability scanners"""
@@ -31,7 +33,9 @@ class ScannerStatus(models.TextChoices):
 
 class Scanner(models.Model):
     """Scanner configuration and management"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Basic Information
     name = models.CharField(max_length=200)
@@ -106,6 +110,8 @@ class Scanner(models.Model):
 
 class ScanProfile(models.Model):
     """Scan configuration profiles"""
+    # A profile configures its scanner, which holds the team's credentials.
+    TEAM_LOOKUP = 'scanner__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     name = models.CharField(max_length=200)
@@ -166,6 +172,7 @@ class ScanStatus(models.TextChoices):
 
 class Scan(models.Model):
     """Individual scan instances"""
+    TEAM_LOOKUP = 'scanner__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Basic Information
@@ -270,6 +277,7 @@ class Scan(models.Model):
 
 class ScanResult(models.Model):
     """Individual scan result/finding"""
+    TEAM_LOOKUP = 'scan__scanner__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     scan = models.ForeignKey(Scan, on_delete=models.CASCADE, related_name='results')
@@ -350,6 +358,7 @@ class ScanResult(models.Model):
 
 class ScanSchedule(models.Model):
     """Recurring scan schedules"""
+    TEAM_LOOKUP = 'scanner__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     name = models.CharField(max_length=200)

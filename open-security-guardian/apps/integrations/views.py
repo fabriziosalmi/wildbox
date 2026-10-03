@@ -6,6 +6,7 @@ Django REST Framework views for managing integrations with external systems.
 
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -22,7 +23,7 @@ from .serializers import (
 )
 
 
-class ExternalSystemViewSet(viewsets.ModelViewSet):
+class ExternalSystemViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing external system integrations"""
     queryset = ExternalSystem.objects.all()
     serializer_class = ExternalSystemSerializer
@@ -59,7 +60,7 @@ class ExternalSystemViewSet(viewsets.ModelViewSet):
         return Response({'status': 'active', 'last_sync': system.last_sync})
 
 
-class IntegrationMappingViewSet(viewsets.ModelViewSet):
+class IntegrationMappingViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing field mappings between Guardian and external systems"""
     queryset = IntegrationMapping.objects.all()
     serializer_class = IntegrationMappingSerializer
@@ -84,7 +85,7 @@ class IntegrationMappingViewSet(viewsets.ModelViewSet):
         return Response({'status': 'success', 'message': 'Sync initiated'})
 
 
-class SyncRecordViewSet(viewsets.ModelViewSet):
+class SyncRecordViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing synchronization records"""
     queryset = SyncRecord.objects.all()
     serializer_class = SyncRecordSerializer
@@ -113,7 +114,7 @@ class SyncRecordViewSet(viewsets.ModelViewSet):
         return Response({'status': 'success', 'message': 'Sync retry initiated'})
 
 
-class WebhookEndpointViewSet(viewsets.ModelViewSet):
+class WebhookEndpointViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing webhook endpoints"""
     queryset = WebhookEndpoint.objects.all()
     serializer_class = WebhookEndpointSerializer
@@ -142,7 +143,7 @@ class WebhookEndpointViewSet(viewsets.ModelViewSet):
         return Response({'status': 'success', 'message': 'Webhook triggered'})
 
 
-class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
+class IntegrationLogViewSet(TeamScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     """ViewSet for viewing integration logs"""
     queryset = IntegrationLog.objects.all()
     serializer_class = IntegrationLogSerializer
@@ -171,7 +172,7 @@ class IntegrationLogViewSet(viewsets.ReadOnlyModelViewSet):
         return Response({'status': 'success', 'message': f'Logs older than {days} days cleaned up'})
 
 
-class NotificationChannelViewSet(viewsets.ModelViewSet):
+class NotificationChannelViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing notification channels"""
     queryset = NotificationChannel.objects.all()
     serializer_class = NotificationChannelSerializer

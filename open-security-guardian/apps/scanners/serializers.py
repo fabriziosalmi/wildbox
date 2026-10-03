@@ -5,6 +5,12 @@ DRF serializers for scanner-related API endpoints.
 """
 
 from rest_framework import serializers
+
+from apps.core.tenancy import (
+    TeamScopedModelSerializer,
+    context_team_id,
+    scope_to_team,
+)
 from django.contrib.auth.models import User
 from .models import (
     Scanner, ScanProfile, Scan, ScanResult, ScanSchedule,
@@ -12,7 +18,7 @@ from .models import (
 )
 
 
-class ScannerListSerializer(serializers.ModelSerializer):
+class ScannerListSerializer(TeamScopedModelSerializer):
     """Lightweight serializer for scanner lists"""
     is_healthy = serializers.ReadOnlyField()
     
@@ -25,7 +31,7 @@ class ScannerListSerializer(serializers.ModelSerializer):
         ]
 
 
-class ScannerDetailSerializer(serializers.ModelSerializer):
+class ScannerDetailSerializer(TeamScopedModelSerializer):
     """Detailed serializer for scanner CRUD operations"""
     is_healthy = serializers.ReadOnlyField()
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
@@ -62,7 +68,7 @@ class ScannerConnectionTestSerializer(serializers.Serializer):
     error_details = serializers.CharField(required=False)
 
 
-class ScanProfileSerializer(serializers.ModelSerializer):
+class ScanProfileSerializer(TeamScopedModelSerializer):
     """Serializer for scan profiles"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
@@ -73,7 +79,7 @@ class ScanProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ['times_used', 'avg_scan_time_minutes', 'created_at', 'updated_at']
 
 
-class ScanListSerializer(serializers.ModelSerializer):
+class ScanListSerializer(TeamScopedModelSerializer):
     """Lightweight serializer for scan lists"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
     profile_name = serializers.CharField(source='profile.name', read_only=True)
@@ -95,7 +101,7 @@ class ScanListSerializer(serializers.ModelSerializer):
         return obj.target_assets.count() + len(obj.target_ranges)
 
 
-class ScanDetailSerializer(serializers.ModelSerializer):
+class ScanDetailSerializer(TeamScopedModelSerializer):
     """Detailed serializer for scan CRUD operations"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
     profile_name = serializers.CharField(source='profile.name', read_only=True)
@@ -120,7 +126,7 @@ class ScanDetailSerializer(serializers.ModelSerializer):
         return obj.calculate_risk_score()
 
 
-class ScanCreateSerializer(serializers.ModelSerializer):
+class ScanCreateSerializer(TeamScopedModelSerializer):
     """Serializer for creating new scans"""
     
     class Meta:
@@ -148,7 +154,7 @@ class ScanCreateSerializer(serializers.ModelSerializer):
         return value
 
 
-class ScanResultSerializer(serializers.ModelSerializer):
+class ScanResultSerializer(TeamScopedModelSerializer):
     """Serializer for individual scan results"""
     asset_name = serializers.CharField(source='asset.name', read_only=True)
     risk_score = serializers.ReadOnlyField()
@@ -177,7 +183,7 @@ class ScanResultSummarySerializer(serializers.Serializer):
     common_vulnerabilities = serializers.ListField(child=serializers.DictField())
 
 
-class ScanScheduleSerializer(serializers.ModelSerializer):
+class ScanScheduleSerializer(TeamScopedModelSerializer):
     """Serializer for recurring scan schedules"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
     profile_name = serializers.CharField(source='profile.name', read_only=True)
@@ -274,8 +280,10 @@ class BulkScanActionSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=500, required=False)
     
     def validate_scan_ids(self, value):
-        """Validate that all scan IDs exist"""
-        existing_scans = Scan.objects.filter(id__in=value).count()
+        """Validate that all scan IDs exist in the caller's team (#642)."""
+        existing_scans = scope_to_team(
+            Scan.objects.filter(id__in=value), context_team_id(self.context)
+        ).count()
         if existing_scans != len(value):
             raise serializers.ValidationError(
                 f"Some scan IDs are invalid. Found {existing_scans} out of {len(value)} scans."

@@ -14,6 +14,8 @@ import socket
 import ipaddress
 from datetime import timedelta
 
+from apps.core.tenancy import normalize_team_id, scope_to_team
+
 from .models import (
     IMPLEMENTED_DISCOVERY_TYPES,
     Asset,
@@ -26,13 +28,17 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=3)
-def discover_assets(self, network_range, scan_type='basic'):
+def discover_assets(self, network_range, scan_type='basic', team_id=None):
     """
     Discover assets in a network range
-    
+
     Args:
         network_range: Network range in CIDR notation (e.g., '192.168.1.0/24')
         scan_type: Type of scan ('basic', 'comprehensive')
+        team_id: The team the discovered assets belong to (#642): a host
+            already known to that team is updated, a new one is created
+            for it. Other teams' assets at the same address are left
+            alone. None is the rows without a team (a legacy rule's).
     """
     try:
         logger.info(f"Starting asset discovery for {network_range}, scan type: {scan_type}")
@@ -47,7 +53,7 @@ def discover_assets(self, network_range, scan_type='basic'):
             
             # Check if host is reachable
             if _host_is_up(ip_str):
-                asset, created = _discover_host(ip_str, scan_type)
+                asset, created = _discover_host(ip_str, scan_type, team_id)
                 if created:
                     discovered_count += 1
                     logger.info(f"Discovered new asset: {asset.name} ({ip_str})")
@@ -260,10 +266,10 @@ def _host_is_up(ip_address, timeout=1):
     return False
 
 
-def _discover_host(ip_address, scan_type):
-    """Discover and create/update asset for a host"""
-    # Check if asset already exists
-    asset = Asset.objects.filter(ip_address=ip_address).first()
+def _discover_host(ip_address, scan_type, team_id=None):
+    """Discover and create/update the team's asset for a host"""
+    # Check if the team already has an asset at this address (#642)
+    asset = scope_to_team(Asset.objects.filter(ip_address=ip_address), team_id).first()
     created = False
     
     if not asset:
@@ -272,9 +278,12 @@ def _discover_host(ip_address, scan_type):
         
         # Create new asset
         asset = Asset.objects.create(
+            team_id=normalize_team_id(team_id),
             name=hostname or f"host-{ip_address.replace('.', '-')}",
             ip_address=ip_address,
-            hostname=hostname,
+            # hostname is NOT NULL: a host without a reverse DNS name made
+            # the whole discovery fail and retry.
+            hostname=hostname or '',
             asset_type='server',  # Default type
             status='active',
             discovered_by='guardian_network_discovery'
@@ -363,7 +372,11 @@ def _execute_network_scan(rule):
     
     for network_range in networks:
         try:
-            result = discover_assets.delay(network_range, scan_type)
+            result = discover_assets.delay(
+                network_range,
+                scan_type,
+                team_id=str(rule.team_id) if rule.team_id else None,
+            )
             # In a real implementation, you might wait for the result or track it
             discovered_count += 1  # Placeholder
         except Exception as e:

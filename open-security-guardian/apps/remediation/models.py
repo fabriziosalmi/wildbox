@@ -11,6 +11,8 @@ from django.core.validators import URLValidator
 import uuid
 import json
 
+from apps.core.models import team_id_field
+
 
 class RemediationStatus(models.TextChoices):
     """Remediation workflow status"""
@@ -45,7 +47,9 @@ class TicketingSystem(models.TextChoices):
 
 class RemediationTicket(models.Model):
     """External ticket integration for remediation tracking"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Basic Information
     title = models.CharField(max_length=500)
@@ -86,7 +90,8 @@ class RemediationTicket(models.Model):
             models.Index(fields=['priority']),
             models.Index(fields=['due_date']),
         ]
-        unique_together = ['system', 'external_ticket_id']
+        # Per team: two teams may track the same external ticket id (#642).
+        unique_together = [('team_id', 'system', 'external_ticket_id')]
 
     def __str__(self):
         return f"{self.system.upper()}-{self.external_ticket_id}: {self.title}"
@@ -111,6 +116,8 @@ class RemediationTicket(models.Model):
 
 class RemediationWorkflow(models.Model):
     """Main remediation workflow management"""
+    # The team of the vulnerability it remediates (#642).
+    TEAM_LOOKUP = 'vulnerability__asset__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Associated Vulnerability
@@ -267,6 +274,7 @@ class RemediationWorkflow(models.Model):
 
 class RemediationStep(models.Model):
     """Individual steps in a remediation workflow"""
+    TEAM_LOOKUP = 'workflow__vulnerability__asset__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     workflow = models.ForeignKey(RemediationWorkflow, on_delete=models.CASCADE, related_name='steps')
@@ -341,6 +349,7 @@ class RemediationStep(models.Model):
 
 class RemediationComment(models.Model):
     """Comments and updates on remediation workflows"""
+    TEAM_LOOKUP = 'workflow__vulnerability__asset__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     workflow = models.ForeignKey(RemediationWorkflow, on_delete=models.CASCADE, related_name='comments')
@@ -372,7 +381,9 @@ class RemediationComment(models.Model):
 
 class RemediationTemplate(models.Model):
     """Templates for common remediation workflows"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Template Information
     name = models.CharField(max_length=200)

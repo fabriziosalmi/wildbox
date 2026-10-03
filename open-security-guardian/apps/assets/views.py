@@ -24,9 +24,10 @@ from .serializers import (
 from .tasks import discover_assets, scan_asset_ports, update_asset_inventory
 from .filters import AssetFilter
 from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin, record_team_task
 
 
-class AssetViewSet(viewsets.ModelViewSet):
+class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Asset management viewset"""
     queryset = Asset.objects.select_related(
         'environment', 'business_function', 'owner', 'technical_contact'
@@ -67,7 +68,7 @@ class AssetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        task = scan_asset_ports.delay(str(asset.id))
+        task = record_team_task(scan_asset_ports.delay(str(asset.id)), asset.team_id)
 
         return Response({
             'message': f'Port scan initiated for {asset.name}',
@@ -78,7 +79,9 @@ class AssetViewSet(viewsets.ModelViewSet):
     def add_software(self, request, pk=None):
         """Add software to an asset"""
         asset = self.get_object()
-        serializer = AssetSoftwareSerializer(data=request.data)
+        serializer = AssetSoftwareSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
         
         if serializer.is_valid():
             serializer.save(asset=asset)
@@ -89,7 +92,9 @@ class AssetViewSet(viewsets.ModelViewSet):
     def add_port(self, request, pk=None):
         """Add port information to an asset"""
         asset = self.get_object()
-        serializer = AssetPortSerializer(data=request.data)
+        serializer = AssetPortSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
         
         if serializer.is_valid():
             serializer.save(asset=asset)
@@ -130,8 +135,13 @@ class AssetViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Network range is required'}, 
                           status=status.HTTP_400_BAD_REQUEST)
         
-        # Trigger asset discovery task
-        task = discover_assets.delay(network_range, scan_type)
+        # Trigger asset discovery task; the hosts it finds are the
+        # caller's team's assets (#642).
+        team_id = self.get_team_id()
+        task = record_team_task(
+            discover_assets.delay(network_range, scan_type, team_id=str(team_id)),
+            team_id,
+        )
         
         return Response({
             'message': f'Asset discovery initiated for {network_range}',
@@ -141,21 +151,23 @@ class AssetViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get asset statistics"""
+        # The caller's team's assets only (#642).
+        assets = self.team_queryset(Asset)
         stats = {
-            'total_assets': Asset.objects.count(),
-            'by_type': dict(Asset.objects.values('asset_type').annotate(count=Count('id')).values_list('asset_type', 'count')),
-            'by_criticality': dict(Asset.objects.values('criticality').annotate(count=Count('id')).values_list('criticality', 'count')),
-            'by_status': dict(Asset.objects.values('status').annotate(count=Count('id')).values_list('status', 'count')),
-            'recently_discovered': Asset.objects.filter(
+            'total_assets': assets.count(),
+            'by_type': dict(assets.values('asset_type').annotate(count=Count('id')).values_list('asset_type', 'count')),
+            'by_criticality': dict(assets.values('criticality').annotate(count=Count('id')).values_list('criticality', 'count')),
+            'by_status': dict(assets.values('status').annotate(count=Count('id')).values_list('status', 'count')),
+            'recently_discovered': assets.filter(
                 first_discovered__gte=timezone.now() - timezone.timedelta(days=7)
             ).count(),
-            'with_vulnerabilities': Asset.objects.filter(vulnerabilities__isnull=False).distinct().count()
+            'with_vulnerabilities': assets.filter(vulnerabilities__isnull=False).distinct().count()
         }
         
         return Response(stats)
 
 
-class EnvironmentViewSet(viewsets.ModelViewSet):
+class EnvironmentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Environment management viewset"""
     queryset = Environment.objects.all()
     serializer_class = EnvironmentSerializer
@@ -165,7 +177,7 @@ class EnvironmentViewSet(viewsets.ModelViewSet):
     ordering = ['name']
 
 
-class BusinessFunctionViewSet(viewsets.ModelViewSet):
+class BusinessFunctionViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Business function management viewset"""
     queryset = BusinessFunction.objects.all()
     serializer_class = BusinessFunctionSerializer
@@ -175,7 +187,7 @@ class BusinessFunctionViewSet(viewsets.ModelViewSet):
     ordering = ['name']
 
 
-class AssetGroupViewSet(viewsets.ModelViewSet):
+class AssetGroupViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Asset group management viewset"""
     queryset = AssetGroup.objects.prefetch_related('assets')
     serializer_class = AssetGroupSerializer
@@ -209,7 +221,9 @@ class AssetGroupViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Asset IDs are required'}, 
                           status=status.HTTP_400_BAD_REQUEST)
         
-        assets = Asset.objects.filter(id__in=asset_ids)
+        # Only the team's own assets: an id of another team's asset is
+        # skipped like an unknown one (#642).
+        assets = self.team_queryset(Asset).filter(id__in=asset_ids)
         group.assets.add(*assets)
         
         return Response({
@@ -227,7 +241,7 @@ class AssetGroupViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Asset IDs are required'}, 
                           status=status.HTTP_400_BAD_REQUEST)
         
-        assets = Asset.objects.filter(id__in=asset_ids)
+        assets = self.team_queryset(Asset).filter(id__in=asset_ids)
         group.assets.remove(*assets)
         
         return Response({
@@ -236,7 +250,7 @@ class AssetGroupViewSet(viewsets.ModelViewSet):
         })
 
 
-class AssetDiscoveryRuleViewSet(viewsets.ModelViewSet):
+class AssetDiscoveryRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Asset discovery rule management viewset"""
     queryset = AssetDiscoveryRule.objects.all()
     serializer_class = AssetDiscoveryRuleSerializer
@@ -260,7 +274,7 @@ class AssetDiscoveryRuleViewSet(viewsets.ModelViewSet):
         
         # Trigger discovery task
         from apps.assets.tasks import execute_discovery_rule
-        task = execute_discovery_rule.delay(rule.id)
+        task = record_team_task(execute_discovery_rule.delay(rule.id), rule.team_id)
         
         return Response({
             'message': f'Discovery rule "{rule.name}" executed',
@@ -286,7 +300,7 @@ class AssetDiscoveryRuleViewSet(viewsets.ModelViewSet):
         return Response({'message': f'Discovery rule "{rule.name}" disabled'})
 
 
-class AssetSoftwareViewSet(viewsets.ModelViewSet):
+class AssetSoftwareViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Asset software management viewset"""
     queryset = AssetSoftware.objects.select_related('asset')
     serializer_class = AssetSoftwareSerializer
@@ -299,7 +313,7 @@ class AssetSoftwareViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def inventory(self, request):
         """Get software inventory across all assets"""
-        software_summary = AssetSoftware.objects.values(
+        software_summary = self.get_queryset().values(
             'name', 'vendor'
         ).annotate(
             asset_count=Count('asset', distinct=True),
@@ -309,7 +323,7 @@ class AssetSoftwareViewSet(viewsets.ModelViewSet):
         return Response(software_summary)
 
 
-class AssetPortViewSet(viewsets.ModelViewSet):
+class AssetPortViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """Asset port management viewset"""
     queryset = AssetPort.objects.select_related('asset')
     serializer_class = AssetPortSerializer
@@ -322,7 +336,7 @@ class AssetPortViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def summary(self, request):
         """Get port summary across all assets"""
-        port_summary = AssetPort.objects.filter(
+        port_summary = self.get_queryset().filter(
             state='open'
         ).values(
             'port_number', 'protocol', 'service'

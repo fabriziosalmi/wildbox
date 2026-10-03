@@ -1,6 +1,7 @@
 import logging
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin, record_team_task
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -21,13 +22,13 @@ from .filters import (
     ReportTemplateFilter, ReportScheduleFilter, ReportFilter,
     DashboardFilter, WidgetFilter, AlertRuleFilter
 )
-from .tasks import generate_report, process_widget_data
+from .tasks import generate_report, process_widget_data, report_file_is_served
 import os
 
 logger = logging.getLogger(__name__)
 
 
-class ReportTemplateViewSet(viewsets.ModelViewSet):
+class ReportTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ReportTemplate.objects.all()
     serializer_class = ReportTemplateSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -81,7 +82,7 @@ class ReportTemplateViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ReportScheduleViewSet(viewsets.ModelViewSet):
+class ReportScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ReportSchedule.objects.select_related('template', 'created_by').all()
     serializer_class = ReportScheduleSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -127,7 +128,7 @@ class ReportScheduleViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ReportViewSet(viewsets.ModelViewSet):
+class ReportViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Report.objects.select_related('template', 'schedule', 'generated_by').all()
     serializer_class = ReportSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -149,6 +150,16 @@ class ReportViewSet(viewsets.ModelViewSet):
             )
         
         if not report.file_path or not os.path.exists(report.file_path):
+            return Response(
+                {'detail': 'Report file not found'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # The row is the caller's team's (get_object); serve its file only
+        # from where generate_report writes reports, never a path a row
+        # could have been pointed at elsewhere (#642).
+        if not report_file_is_served(report.file_path, report.template.team_id):
+            logger.warning("Report %s points outside the reports directory", report.pk)
             return Response(
                 {'detail': 'Report file not found'},
                 status=status.HTTP_404_NOT_FOUND
@@ -175,7 +186,7 @@ class ReportViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class DashboardViewSet(viewsets.ModelViewSet):
+class DashboardViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Dashboard.objects.prefetch_related('shared_with').all()
     serializer_class = DashboardSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -189,9 +200,13 @@ class DashboardViewSet(viewsets.ModelViewSet):
         serializer.save(created_by=self.request.user)
 
     def get_queryset(self):
-        """Filter dashboards based on user permissions"""
+        """The team's dashboards that are public in it, or the caller's own.
+
+        ``super()`` narrows them to the caller's team first: "public" means
+        public to the team (#642).
+        """
         user = self.request.user
-        return self.queryset.filter(
+        return super().get_queryset().filter(
             Q(is_public=True) |
             Q(created_by=user) |
             Q(shared_with=user)
@@ -205,7 +220,9 @@ class DashboardViewSet(viewsets.ModelViewSet):
         # Process each widget
         widgets_data = []
         for widget_config in dashboard.widgets_config:
-            widget_data = process_widget_data(widget_config, dashboard.filters_config)
+            widget_data = process_widget_data(
+                widget_config, dashboard.filters_config, team_id=dashboard.team_id
+            )
             widgets_data.append(widget_data)
         
         return Response({
@@ -220,15 +237,15 @@ class DashboardViewSet(viewsets.ModelViewSet):
         dashboard = self.get_object()
         user_ids = request.data.get('user_ids', [])
         
-        # Add users to shared_with
+        # Add users to shared_with: members of the caller's team only (#642)
         from django.contrib.auth.models import User
-        users = User.objects.filter(id__in=user_ids)
+        users = self.team_queryset(User).filter(id__in=user_ids)
         dashboard.shared_with.add(*users)
         
         return Response({'detail': f'Dashboard shared with {len(users)} users'})
 
 
-class WidgetViewSet(viewsets.ModelViewSet):
+class WidgetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = Widget.objects.all()
     serializer_class = WidgetSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -247,7 +264,7 @@ class WidgetViewSet(viewsets.ModelViewSet):
         widget = self.get_object()
         filters = request.query_params.dict()
         
-        data = process_widget_data(widget, filters)
+        data = process_widget_data(widget, filters, team_id=widget.team_id)
         return Response(data)
 
     @action(detail=True, methods=['post'])
@@ -257,7 +274,7 @@ class WidgetViewSet(viewsets.ModelViewSet):
         test_filters = request.data.get('filters', {})
         
         try:
-            data = process_widget_data(widget, test_filters)
+            data = process_widget_data(widget, test_filters, team_id=widget.team_id)
             return Response({
                 'status': 'success',
                 'data': data
@@ -272,7 +289,7 @@ class WidgetViewSet(viewsets.ModelViewSet):
             }, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ReportMetricsViewSet(viewsets.ReadOnlyModelViewSet):
+class ReportMetricsViewSet(TeamScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ReportMetrics.objects.select_related('template').all()
     serializer_class = ReportMetricsSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -307,7 +324,7 @@ class ReportMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(summary)
 
 
-class AlertRuleViewSet(viewsets.ModelViewSet):
+class AlertRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = AlertRule.objects.all()
     serializer_class = AlertRuleSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -349,7 +366,11 @@ class AlertRuleViewSet(viewsets.ModelViewSet):
         """Check all active alert rules"""
         from .tasks import check_all_alert_rules
         
-        task = check_all_alert_rules.delay()
+        # The caller's team's rules only (#642).
+        team_id = self.get_team_id()
+        task = record_team_task(
+            check_all_alert_rules.delay(team_id=str(team_id)), team_id
+        )
         return Response({
             'task_id': task.id,
             'message': 'Alert rule check initiated'

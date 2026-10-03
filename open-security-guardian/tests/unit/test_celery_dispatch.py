@@ -16,6 +16,9 @@ import pytest
 from django.test import Client
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 
 
 @pytest.fixture
@@ -31,7 +34,7 @@ def client(settings, monkeypatch):
 def _headers(role="admin"):
     return {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": role,
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -41,6 +44,7 @@ def _asset(**fields):
     """An asset, without the port scan its creation queues (signals.py)."""
     from apps.assets.models import Asset
 
+    fields.setdefault("team_id", TEAM_ID)
     with mock.patch("apps.assets.signals.scan_asset_ports"):
         return Asset.objects.create(**fields)
 
@@ -104,7 +108,11 @@ def test_scan_needs_an_admin(client):
     ],
 )
 def test_task_status_reports_the_backend_state(client, state, ready, successful, queue):
+    from apps.core.models import TeamTask
+
     task_id = str(uuid.uuid4())
+    # The caller's team dispatched it (#642).
+    TeamTask.objects.create(task_id=task_id, team_id=TEAM_ID)
     with mock.patch(
         "guardian.celery.app.AsyncResult",
         return_value=SimpleNamespace(
