@@ -21,6 +21,21 @@ const isAsyncRun = (request: Request) =>
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
 const sha512 = (text: string) => createHash('sha512').update(text).digest('hex')
+// Python's hashlib.blake2b is BLAKE2b-512.
+const blake2b = (text: string) => createHash('blake2b512').update(text).digest('hex')
+
+/** The algorithms hash_generator implements: its schema's enum, in order (#611). */
+const HASH_ALGORITHMS = ['sha224', 'sha256', 'sha384', 'sha512', 'blake2b', 'blake2s']
+
+/** One algorithm's checkbox in the hash_types group the schema's enum yields. */
+const hashType = (page: Page, algorithm: string) =>
+  page.getByTestId('field-hash_types').getByLabel(algorithm, { exact: true })
+
+/** Leaves exactly `wanted` checked; the form sends them in the order checked. */
+async function chooseHashTypes(page: Page, wanted: string[]) {
+  for (const algorithm of HASH_ALGORITHMS) await hashType(page, algorithm).uncheck()
+  for (const algorithm of wanted) await hashType(page, algorithm).check()
+}
 
 interface HashResult {
   algorithm: string
@@ -74,12 +89,20 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
 
     // The form came from the schema: its defaults are already in place.
     await expect(page.getByTestId('field-iterations')).toHaveValue('1')
-    await expect(page.getByTestId('field-hash_types')).toHaveValue('md5\nsha1\nsha256\nsha512')
+    // hash_types is an enum: one checkbox per implemented algorithm, the
+    // default ones checked, and nothing the tool would refuse (#611).
+    const group = page.getByTestId('field-hash_types')
+    await expect(group.getByRole('checkbox')).toHaveCount(HASH_ALGORITHMS.length)
+    for (const algorithm of HASH_ALGORITHMS) {
+      const box = hashType(page, algorithm)
+      if (['sha256', 'sha512'].includes(algorithm)) await expect(box).toBeChecked()
+      else await expect(box).not.toBeChecked()
+    }
+    await expect(group.getByLabel('md5', { exact: true })).toHaveCount(0)
+    await expect(group.getByLabel('sha1', { exact: true })).toHaveCount(0)
 
     await page.getByTestId('field-input_text').fill(text)
-    // hash_generator supports neither md5 nor sha1, its schema default
-    // notwithstanding.
-    await page.getByTestId('field-hash_types').fill('sha256\nsha512')
+    await hashType(page, 'blake2b').check()
 
     const sent = page.waitForRequest(isRun)
     await page.getByTestId('run-tool').click()
@@ -90,7 +113,7 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     const body = request.postDataJSON()
     expect(body).toMatchObject({
       input_text: text,
-      hash_types: ['sha256', 'sha512'],
+      hash_types: ['sha256', 'sha512', 'blake2b'],
       iterations: 1,
       include_salted: false,
       timeout: 30,
@@ -110,6 +133,7 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     expect(hashesOf(shown)).toEqual([
       { algorithm: 'sha256', hash_value: sha256(text) },
       { algorithm: 'sha512', hash_value: sha512(text) },
+      { algorithm: 'blake2b', hash_value: blake2b(text) },
     ])
     // Rendered as a table too, not only as JSON.
     await expect(page.getByTestId('run-output').locator('td').getByText(sha256(text))).toBeVisible()
@@ -120,7 +144,7 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     await openTool(page, 'hash_generator')
 
     await page.getByTestId('field-input_text').fill(text)
-    await page.getByTestId('field-hash_types').fill('sha256')
+    await chooseHashTypes(page, ['sha256'])
     await page.getByTestId('mode-async').check()
 
     const submitted = page.waitForResponse(response => isAsyncRun(response.request()))
@@ -141,13 +165,25 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
   test('a running task can be cancelled', async ({ page }) => {
     await openTool(page, 'hash_generator')
 
-    // Twenty PBKDF2-SHA512 hashes of a million iterations: seconds of CPU in
-    // the worker, so the task has not finished when it is cancelled.
+    // PBKDF2 hashes of a million iterations: seconds of CPU in the worker,
+    // so the task has not finished when it is cancelled. The form offers each
+    // algorithm once, and the six take about a second, too close to the
+    // cancellation; the body the form builds is sent with its algorithms
+    // repeated four times, which the service accepts.
     await page.getByTestId('field-input_text').fill('wildbox')
-    await page.getByTestId('field-hash_types').fill(Array(20).fill('sha512').join('\n'))
+    await chooseHashTypes(page, HASH_ALGORITHMS)
     await page.getByTestId('field-include_salted').check()
     await page.getByTestId('field-iterations').fill('1000000')
     await page.getByTestId('mode-async').check()
+
+    let built: Record<string, unknown> | undefined
+    await page.route(`**${TOOL_PATH}/async`, async route => {
+      built = route.request().postDataJSON()
+      const hashTypes = built?.hash_types as string[]
+      await route.continue({
+        postData: JSON.stringify({ ...built, hash_types: [...Array(4)].flatMap(() => hashTypes) }),
+      })
+    })
     await page.getByTestId('run-tool').click()
 
     const cancel = page.getByTestId('cancel-task')
@@ -161,6 +197,11 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
 
     await expect(page.getByTestId('result-status')).toHaveText('cancelled', { timeout: 60_000 })
     await expect(cancel).toHaveCount(0)
+    expect(built).toMatchObject({
+      hash_types: HASH_ALGORITHMS,
+      include_salted: true,
+      iterations: 1000000,
+    })
   })
 
   test('the schema constraints are checked before anything is sent', async ({ page }) => {
