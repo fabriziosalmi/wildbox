@@ -72,6 +72,6 @@ worker: ## Start Dramatiq worker locally
 	@echo "$(YELLOW)Starting Dramatiq worker...$(NC)"
 	python -m dramatiq app.workflow_engine -p 4 -t 4
 
-test-playbook: ## Test example playbook
-	@echo "$(YELLOW)Testing example playbook...$(NC)"
-	python scripts/test_responder.py
+test-playbook: ## Run playbooks through the gateway (needs the whole stack)
+	@echo "$(YELLOW)Testing playbook execution...$(NC)"
+	cd .. && python -m pytest tests/integration/test_responder_tenancy.py tests/integration/test_responder_metrics.py -v -o addopts=""
