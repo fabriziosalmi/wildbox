@@ -123,11 +123,12 @@ skipped when it is false. It sees the same context as the step's input:
   No value from the context is logged; a key computed at run time is
   described as such. To test for an optional field explicitly, write
   `trigger.tag is defined and trigger.tag == 'urgent'`.
-- **Other errors still fail the step.** A condition that is not a valid
-  expression (including one wrapped in `{{ }}`) or that the sandbox blocks
-  raises, and the step fails according to its `on_failure` policy; neither
-  is treated as a false condition. A condition containing a blocked
-  pattern such as `__class__` is refused and the step is skipped.
+- **Other errors fail the step.** A condition that is not a valid
+  expression (including one wrapped in `{{ }}`), that contains a blocked
+  pattern such as `__class__`, or that the sandbox blocks raises, and the
+  step fails according to its `on_failure` policy. None of these is
+  treated as a false condition: an attempt to reach Python internals is
+  not hidden behind a skipped step.
 - **Inputs stay strict.** An undefined name in a step's `input` template
   is an error that fails the step, as before.
 - **No load-time check of paths.** A playbook's trigger declares no schema

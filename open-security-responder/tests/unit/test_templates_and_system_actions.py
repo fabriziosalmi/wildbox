@@ -116,8 +116,10 @@ def test_no_condition_means_the_step_runs(engine):
     assert engine.evaluate_condition("", CONTEXT) is True
 
 
-def test_a_condition_reaching_for_python_internals_is_false(engine):
-    assert engine.evaluate_condition("trigger.__class__", CONTEXT) is False
+def test_a_condition_reaching_for_python_internals_is_refused(engine):
+    """Raised like a sandbox violation, so the step fails instead of skipping."""
+    with pytest.raises(TemplateRenderError, match="blocked pattern"):
+        engine.evaluate_condition("trigger.__class__", CONTEXT)
 
 
 # --- System connector ------------------------------------------------------

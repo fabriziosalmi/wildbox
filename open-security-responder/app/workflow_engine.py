@@ -402,8 +402,9 @@ class WorkflowEngine:
         condition; no value from the context is logged (#595).
 
         Every other template error still raises TemplateRenderError: a syntax
-        error and a sandbox violation are faults in the playbook, not facts
-        about the data, and must not pass for a condition that does not hold.
+        error, a sandbox violation and a blocked pattern are faults in the
+        playbook, not facts about the data, and must not pass for a condition
+        that does not hold.
 
         Args:
             condition: Jinja2 condition expression
@@ -414,8 +415,8 @@ class WorkflowEngine:
             Boolean result of condition evaluation
 
         Raises:
-            TemplateRenderError: If the condition is not a valid expression
-                or is blocked by the sandbox
+            TemplateRenderError: If the condition is not a valid expression,
+                contains a blocked pattern or is blocked by the sandbox
         """
         if not condition:
             return True
@@ -424,10 +425,15 @@ class WorkflowEngine:
         condition_lower = condition.lower()
         for pattern in self._DANGEROUS_PATTERNS:
             if pattern.lower() in condition_lower:
+                # Raise, as the sandbox does: an attempt to reach Python
+                # internals must fail the step, not pass for a condition
+                # that does not hold.
                 logger.warning(
                     f"Blocked dangerous pattern '{pattern}' in playbook condition: {condition[:100]}"
                 )
-                return False
+                raise TemplateRenderError(
+                    f"Condition contains blocked pattern: '{pattern}'"
+                )
 
         # Wrap condition in an if statement to get boolean result
         template_str = f"{{% if {condition} %}}true{{% else %}}false{{% endif %}}"

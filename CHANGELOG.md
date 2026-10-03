@@ -46,6 +46,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a valid expression or that the sandbox blocks still fails the step, and
   an undefined name in a step's input is still an error. The semantics
   are in the playbook reference (`open-security-responder/README.md`).
+- **A responder condition that reaches for Python internals fails the
+  step** (#595). A condition containing a blocked pattern such as
+  `__class__` evaluated to false, so the attempt was hidden behind a
+  skipped step. It now raises like a sandbox violation, and the step
+  fails according to its `on_failure` policy.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
