@@ -1,6 +1,12 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.validators import validate_email
 from rest_framework import serializers
+
+from apps.core.tenancy import (
+    TeamScopedModelSerializer,
+    context_team_id,
+    scope_to_team,
+)
 from .alert_metrics import UnsupportedAlertRule, parse_rule
 from .models import (
     ReportTemplate, ReportSchedule, Report, Dashboard, Widget,
@@ -21,7 +27,7 @@ def validate_email_list(value, not_a_list_message):
     return value
 
 
-class ReportTemplateSerializer(serializers.ModelSerializer):
+class ReportTemplateSerializer(TeamScopedModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     reports_count = serializers.SerializerMethodField()
     
@@ -34,7 +40,7 @@ class ReportTemplateSerializer(serializers.ModelSerializer):
         return obj.reports.count()
 
 
-class ReportScheduleSerializer(serializers.ModelSerializer):
+class ReportScheduleSerializer(TeamScopedModelSerializer):
     template_name = serializers.CharField(source='template.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     
@@ -70,7 +76,7 @@ class ReportScheduleSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class ReportSerializer(serializers.ModelSerializer):
+class ReportSerializer(TeamScopedModelSerializer):
     template_name = serializers.CharField(source='template.name', read_only=True)
     schedule_name = serializers.CharField(source='schedule.name', read_only=True)
     generated_by_name = serializers.CharField(source='generated_by.get_full_name', read_only=True)
@@ -80,7 +86,13 @@ class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = '__all__'
-        read_only_fields = ('id', 'generated_at')
+        # Where the file is, and what generating it recorded, is guardian's
+        # to write: a file_path from a request would let the download serve
+        # any file the process can read (#642).
+        read_only_fields = (
+            'id', 'generated_at', 'generated_by', 'file_path', 'file_size',
+            'file_hash', 'generation_time', 'error_message', 'expires_at',
+        )
     
     def get_file_size_mb(self, obj):
         if obj.file_size:
@@ -88,7 +100,7 @@ class ReportSerializer(serializers.ModelSerializer):
         return None
 
 
-class DashboardSerializer(serializers.ModelSerializer):
+class DashboardSerializer(TeamScopedModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     shared_with_count = serializers.SerializerMethodField()
     
@@ -101,7 +113,7 @@ class DashboardSerializer(serializers.ModelSerializer):
         return obj.shared_with.count()
 
 
-class WidgetSerializer(serializers.ModelSerializer):
+class WidgetSerializer(TeamScopedModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
     
     class Meta:
@@ -110,7 +122,7 @@ class WidgetSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
-class ReportMetricsSerializer(serializers.ModelSerializer):
+class ReportMetricsSerializer(TeamScopedModelSerializer):
     template_name = serializers.CharField(source='template.name', read_only=True)
     avg_generation_time_seconds = serializers.SerializerMethodField()
     
@@ -125,7 +137,7 @@ class ReportMetricsSerializer(serializers.ModelSerializer):
         return None
 
 
-class AlertRuleSerializer(serializers.ModelSerializer):
+class AlertRuleSerializer(TeamScopedModelSerializer):
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
 
     class Meta:
@@ -163,7 +175,7 @@ class AlertRuleSerializer(serializers.ModelSerializer):
             return getattr(self.instance, name, default)
 
         try:
-            parse_rule(
+            _, filters = parse_rule(
                 current('data_source'),
                 current('condition_type'),
                 current('operator'),
@@ -172,10 +184,23 @@ class AlertRuleSerializer(serializers.ModelSerializer):
             )
         except UnsupportedAlertRule as exc:
             raise serializers.ValidationError(exc.args[0])
+        if 'asset' in filters:
+            # The rule's metric is its team's (#642); an asset of another
+            # team is refused like one that does not exist.
+            from apps.assets.models import Asset
+
+            assets = scope_to_team(
+                Asset.objects.filter(pk=filters['asset']),
+                context_team_id(self.context),
+            )
+            if not assets.exists():
+                raise serializers.ValidationError(
+                    {'condition_config': f"asset {filters['asset']} does not exist"}
+                )
         return attrs
 
 
-class AlertNotificationSerializer(serializers.ModelSerializer):
+class AlertNotificationSerializer(TeamScopedModelSerializer):
     class Meta:
         model = AlertNotification
         fields = (

@@ -1027,6 +1027,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record, another user's task and the owner's own task on both methods,
   and the TTLs written on submission.
 
+- **guardian keeps each team to its own data** (#642). The tenancy work of
+  0.8.0 (#177-#183) scoped data, responder and CSPM, not guardian:
+  guardian stored no team on any row, and every API view served every row.
+  Any owner or admin of a team -- which is anyone who registers, since
+  registration creates a team -- read, changed and deleted every other
+  team's assets, vulnerabilities, scanners and their credentials,
+  integrations, remediation, compliance evidence and reports, and could
+  reference them from its own rows. Every tenant-owned model now stores
+  its team, or takes it from the row it belongs to; one mixin narrows
+  every API view to the caller's team, so another team's ids answer 404;
+  serializers stamp the caller's team and refuse foreign keys and user
+  ids from other teams as ids that do not exist; list filters, statistics,
+  Celery tasks (discovery, alert rules, scheduled reports, widgets,
+  compliance metrics), report files and the task status route
+  (`/api/v1/tasks/<id>/`) are per team. Compliance frameworks, their
+  controls and vulnerability templates without a team are shared
+  reference data, read-only to teams. Rows written before this change
+  have no team and are reachable by no team until an operator assigns
+  them with `manage.py assign_guardian_team` (see UPGRADING.md).
+  Names that were unique across guardian (environments, groups,
+  discovery rules, frameworks, vulnerability templates, ticket ids) are
+  now unique per team. Media files are no longer served as static files
+  in development. Tests list the API views from the URL configuration
+  and check every list, detail route, detail action, list action and
+  foreign key against a second team; a mutation that removes the team
+  filter fails 124 of them. An integration test registers two accounts
+  and checks the same through the gateway.
+
 - **API-key digests no longer depend on `JWT_SECRET_KEY`** (#648).
   `API_KEY_HASH_SECRET` was generated into `.env` and documented, but
   compose never passed it to identity, which then keyed every stored

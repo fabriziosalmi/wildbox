@@ -11,6 +11,8 @@ from django.utils import timezone
 import uuid
 import json
 
+from apps.core.models import team_id_field
+
 
 class AssetType(models.TextChoices):
     """Asset type choices"""
@@ -46,7 +48,9 @@ class AssetStatus(models.TextChoices):
 
 class Environment(models.Model):
     """Environment classification for assets"""
-    name = models.CharField(max_length=50, unique=True)
+    TEAM_LOOKUP = 'team_id'
+    team_id = team_id_field()
+    name = models.CharField(max_length=50)
     description = models.TextField(blank=True)
     risk_weight = models.FloatField(default=1.0, help_text="Risk multiplier for this environment")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -54,6 +58,9 @@ class Environment(models.Model):
 
     class Meta:
         ordering = ['name']
+        # Unique per team: one team's "production" must not stop another
+        # from naming its own, nor tell it that the name is taken (#642).
+        unique_together = [('team_id', 'name')]
 
     def __str__(self):
         return self.name
@@ -61,7 +68,9 @@ class Environment(models.Model):
 
 class BusinessFunction(models.Model):
     """Business function classification for assets"""
-    name = models.CharField(max_length=100, unique=True)
+    TEAM_LOOKUP = 'team_id'
+    team_id = team_id_field()
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     criticality_weight = models.FloatField(default=1.0, help_text="Criticality multiplier")
     compliance_required = models.BooleanField(default=False)
@@ -70,6 +79,7 @@ class BusinessFunction(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = [('team_id', 'name')]
 
     def __str__(self):
         return self.name
@@ -77,7 +87,9 @@ class BusinessFunction(models.Model):
 
 class Asset(models.Model):
     """Core asset model"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Basic Information
     name = models.CharField(max_length=255)
@@ -165,6 +177,7 @@ class Asset(models.Model):
 
 class AssetSoftware(models.Model):
     """Software installed on assets"""
+    TEAM_LOOKUP = 'asset__team_id'
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='software')
     name = models.CharField(max_length=255)
     version = models.CharField(max_length=100, blank=True)
@@ -191,6 +204,7 @@ class AssetSoftware(models.Model):
 
 class AssetPort(models.Model):
     """Network ports detected on assets"""
+    TEAM_LOOKUP = 'asset__team_id'
     asset = models.ForeignKey(Asset, on_delete=models.CASCADE, related_name='ports')
     port_number = models.PositiveIntegerField()
     protocol = models.CharField(max_length=10, choices=[('tcp', 'TCP'), ('udp', 'UDP')])
@@ -221,7 +235,9 @@ class AssetPort(models.Model):
 
 class AssetGroup(models.Model):
     """Groups for organizing assets"""
-    name = models.CharField(max_length=100, unique=True)
+    TEAM_LOOKUP = 'team_id'
+    team_id = team_id_field()
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     assets = models.ManyToManyField(Asset, related_name='groups', blank=True)
     
@@ -236,6 +252,7 @@ class AssetGroup(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = [('team_id', 'name')]
 
     def __str__(self):
         return self.name
@@ -252,8 +269,11 @@ class AssetGroup(models.Model):
         #     "tags_contain": ["web", "database"]
         # }
         
-        queryset = Asset.objects.all()
-        
+        # The group's own team's assets: a rule matched every team's (#642).
+        from apps.core.tenancy import scope_to_team
+
+        queryset = scope_to_team(Asset.objects.all(), self.team_id)
+
         for field, value in self.auto_assignment_rules.items():
             if field == 'asset_type':
                 queryset = queryset.filter(asset_type=value)
@@ -277,7 +297,9 @@ IMPLEMENTED_DISCOVERY_TYPES = ('network_scan',)
 
 class AssetDiscoveryRule(models.Model):
     """Rules for automatic asset discovery"""
-    name = models.CharField(max_length=100, unique=True)
+    TEAM_LOOKUP = 'team_id'
+    team_id = team_id_field()
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     
     # Discovery configuration
@@ -308,6 +330,7 @@ class AssetDiscoveryRule(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = [('team_id', 'name')]
 
     def __str__(self):
         return self.name

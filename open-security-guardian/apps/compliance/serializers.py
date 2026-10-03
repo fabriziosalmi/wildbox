@@ -1,11 +1,13 @@
 from rest_framework import serializers
+
+from apps.core.tenancy import TeamScopedModelSerializer
 from .models import (
     ComplianceFramework, ComplianceControl, ComplianceAssessment,
     ComplianceEvidence, ComplianceResult, ComplianceException, ComplianceMetrics
 )
 
 
-class ComplianceFrameworkSerializer(serializers.ModelSerializer):
+class ComplianceFrameworkSerializer(TeamScopedModelSerializer):
     controls_count = serializers.SerializerMethodField()
     
     class Meta:
@@ -17,7 +19,7 @@ class ComplianceFrameworkSerializer(serializers.ModelSerializer):
         return obj.controls.count()
 
 
-class ComplianceControlSerializer(serializers.ModelSerializer):
+class ComplianceControlSerializer(TeamScopedModelSerializer):
     framework_name = serializers.CharField(source='framework.name', read_only=True)
     
     class Meta:
@@ -26,7 +28,7 @@ class ComplianceControlSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
-class ComplianceAssessmentSerializer(serializers.ModelSerializer):
+class ComplianceAssessmentSerializer(TeamScopedModelSerializer):
     framework_name = serializers.CharField(source='framework.name', read_only=True)
     assessor_name = serializers.CharField(source='assessor.get_full_name', read_only=True)
     assets_count = serializers.SerializerMethodField()
@@ -41,7 +43,7 @@ class ComplianceAssessmentSerializer(serializers.ModelSerializer):
         return obj.assets.count()
 
 
-class ComplianceEvidenceSerializer(serializers.ModelSerializer):
+class ComplianceEvidenceSerializer(TeamScopedModelSerializer):
     assessment_name = serializers.CharField(source='assessment.name', read_only=True)
     control_id = serializers.CharField(source='control.control_id', read_only=True)
     collected_by_name = serializers.CharField(source='collected_by.get_full_name', read_only=True)
@@ -52,7 +54,7 @@ class ComplianceEvidenceSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'collected_at')
 
 
-class ComplianceResultSerializer(serializers.ModelSerializer):
+class ComplianceResultSerializer(TeamScopedModelSerializer):
     assessment_name = serializers.CharField(source='assessment.name', read_only=True)
     control_id = serializers.CharField(source='control.control_id', read_only=True)
     control_title = serializers.CharField(source='control.title', read_only=True)
@@ -65,7 +67,7 @@ class ComplianceResultSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
-class ComplianceExceptionSerializer(serializers.ModelSerializer):
+class ComplianceExceptionSerializer(TeamScopedModelSerializer):
     control_id = serializers.CharField(source='control.control_id', read_only=True)
     control_title = serializers.CharField(source='control.title', read_only=True)
     requested_by_name = serializers.CharField(source='requested_by.get_full_name', read_only=True)
@@ -79,7 +81,7 @@ class ComplianceExceptionSerializer(serializers.ModelSerializer):
         read_only_fields = ('id', 'created_at', 'updated_at')
 
 
-class ComplianceMetricsSerializer(serializers.ModelSerializer):
+class ComplianceMetricsSerializer(TeamScopedModelSerializer):
     framework_name = serializers.CharField(source='framework.name', read_only=True)
     assessment_name = serializers.CharField(source='assessment.name', read_only=True)
     

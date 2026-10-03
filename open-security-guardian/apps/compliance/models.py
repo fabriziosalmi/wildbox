@@ -6,13 +6,22 @@ from apps.assets.models import Asset
 from apps.vulnerabilities.models import Vulnerability
 import uuid
 
+from apps.core.models import team_id_field
+
 
 class ComplianceFramework(models.Model):
     """
     Compliance frameworks like NIST, PCI-DSS, GDPR, etc.
+
+    Shared reference data (#642): a framework without a team is read by
+    every team and changed by none through the API; a team can define its
+    own.
     """
+    TEAM_LOOKUP = 'team_id'
+    TEAM_GLOBAL_ROWS = True
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    name = models.CharField(max_length=100, unique=True)
+    team_id = team_id_field()
+    name = models.CharField(max_length=100)
     description = models.TextField(blank=True)
     version = models.CharField(max_length=50, blank=True)
     authority = models.CharField(max_length=100, blank=True)
@@ -23,6 +32,7 @@ class ComplianceFramework(models.Model):
 
     class Meta:
         ordering = ['name']
+        unique_together = [('team_id', 'name')]
         indexes = [
             models.Index(fields=['name']),
             models.Index(fields=['is_active']),
@@ -36,6 +46,10 @@ class ComplianceControl(models.Model):
     """
     Individual controls within a compliance framework
     """
+    # A control is its framework's: shared with a shared framework, a
+    # team's with a team's framework (#642).
+    TEAM_LOOKUP = 'framework__team_id'
+    TEAM_GLOBAL_ROWS = True
     CONTROL_TYPES = [
         ('preventive', 'Preventive'),
         ('detective', 'Detective'),
@@ -82,6 +96,7 @@ class ComplianceAssessment(models.Model):
     """
     Compliance assessments and audits
     """
+    TEAM_LOOKUP = 'team_id'
     ASSESSMENT_TYPES = [
         ('self_assessment', 'Self Assessment'),
         ('internal_audit', 'Internal Audit'),
@@ -98,6 +113,7 @@ class ComplianceAssessment(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     framework = models.ForeignKey(ComplianceFramework, on_delete=models.CASCADE, related_name='assessments')
@@ -133,6 +149,7 @@ class ComplianceEvidence(models.Model):
     """
     Evidence collected for compliance controls
     """
+    TEAM_LOOKUP = 'assessment__team_id'
     EVIDENCE_TYPES = [
         ('document', 'Document'),
         ('screenshot', 'Screenshot'),
@@ -172,6 +189,7 @@ class ComplianceResult(models.Model):
     """
     Results of compliance control assessments
     """
+    TEAM_LOOKUP = 'assessment__team_id'
     RESULT_STATUS = [
         ('compliant', 'Compliant'),
         ('non_compliant', 'Non-Compliant'),
@@ -221,6 +239,7 @@ class ComplianceException(models.Model):
     """
     Approved exceptions to compliance requirements
     """
+    TEAM_LOOKUP = 'team_id'
     STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('approved', 'Approved'),
@@ -229,6 +248,7 @@ class ComplianceException(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     control = models.ForeignKey(ComplianceControl, on_delete=models.CASCADE, related_name='exceptions')
     title = models.CharField(max_length=200)
     justification = models.TextField()
@@ -268,8 +288,12 @@ class ComplianceException(models.Model):
 class ComplianceMetrics(models.Model):
     """
     Compliance metrics and KPIs
+
+    A team's figures for a framework, shared or its own (#642).
     """
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     framework = models.ForeignKey(ComplianceFramework, on_delete=models.CASCADE, related_name='metrics')
     assessment = models.ForeignKey(ComplianceAssessment, on_delete=models.CASCADE, null=True, blank=True, related_name='metrics')
     metric_date = models.DateTimeField()

@@ -9,6 +9,7 @@ from apps.vulnerabilities.models import Vulnerability
 from apps.assets.models import Asset
 import json
 import csv
+import uuid
 import requests
 import logging
 
@@ -51,6 +52,15 @@ class Command(BaseCommand):
             action='store_true',
             help='Force import and overwrite existing data'
         )
+        parser.add_argument(
+            '--team-id',
+            type=uuid.UUID,
+            required=True,
+            help=(
+                'The team (identity team UUID) the imported assets and '
+                'vulnerabilities belong to (#642)'
+            ),
+        )
 
     def handle(self, *args, **options):
         self.stdout.write(
@@ -58,6 +68,7 @@ class Command(BaseCommand):
         )
 
         source = options['source']
+        self.team_id = options['team_id']
         dry_run = options['dry_run']
         force = options['force']
 
@@ -101,6 +112,7 @@ class Command(BaseCommand):
                     
                     # Check if vulnerability exists
                     existing = Vulnerability.objects.filter(
+                        asset__team_id=self.team_id,
                         cve_id=vuln_data.get('cve_id'),
                         asset__hostname=vuln_data.get('hostname')
                     ).first()
@@ -216,6 +228,7 @@ class Command(BaseCommand):
             hostname = 'unknown-host'
         
         asset, created = Asset.objects.get_or_create(
+            team_id=self.team_id,
             hostname=hostname,
             defaults={
                 'asset_type': 'server',

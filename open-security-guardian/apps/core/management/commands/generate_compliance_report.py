@@ -8,7 +8,9 @@ from apps.compliance.models import ComplianceFramework, ComplianceAssessment
 from apps.reporting.models import ReportTemplate
 from apps.reporting.tasks import generate_report
 from apps.reporting.models import Report
+from apps.core.tenancy import scope_to_team
 import json
+import uuid
 
 class Command(BaseCommand):
     help = 'Generate compliance reports'
@@ -46,12 +48,22 @@ class Command(BaseCommand):
             action='store_true',
             help='Generate reports for all active frameworks'
         )
+        parser.add_argument(
+            '--team-id',
+            type=uuid.UUID,
+            required=True,
+            help=(
+                'The team (identity team UUID) the report is for: it holds '
+                "that team's data only, and belongs to it (#642)"
+            ),
+        )
 
     def handle(self, *args, **options):
         self.stdout.write(
             self.style.SUCCESS('Starting compliance report generation...')
         )
 
+        self.team_id = options['team_id']
         try:
             if options['all_frameworks']:
                 self.generate_all_framework_reports(options)
@@ -67,9 +79,13 @@ class Command(BaseCommand):
         except Exception as e:
             raise CommandError(f'Report generation failed: {str(e)}')
 
+    def frameworks(self):
+        """The frameworks the team sees: its own and the shared ones."""
+        return scope_to_team(ComplianceFramework.objects.all(), self.team_id)
+
     def generate_all_framework_reports(self, options):
         """Generate reports for all active frameworks"""
-        frameworks = ComplianceFramework.objects.filter(is_active=True)
+        frameworks = self.frameworks().filter(is_active=True)
         
         self.stdout.write(f'Generating reports for {frameworks.count()} frameworks')
         
@@ -88,9 +104,9 @@ class Command(BaseCommand):
         try:
             # Try to get by ID first, then by name
             try:
-                framework = ComplianceFramework.objects.get(id=framework_identifier)
+                framework = self.frameworks().get(id=framework_identifier)
             except (ComplianceFramework.DoesNotExist, ValueError):
-                framework = ComplianceFramework.objects.get(name__icontains=framework_identifier)
+                framework = self.frameworks().get(name__icontains=framework_identifier)
             
             self.generate_single_framework_report(framework, options)
             
@@ -103,6 +119,7 @@ class Command(BaseCommand):
         
         # Get or create report template
         template, created = ReportTemplate.objects.get_or_create(
+            team_id=self.team_id,
             name=f"{framework.name} Compliance Report",
             defaults={
                 'report_type': 'compliance_status',
@@ -148,9 +165,12 @@ class Command(BaseCommand):
         assessment_id = options['assessment']
         
         try:
-            assessment = ComplianceAssessment.objects.get(id=assessment_id)
-            
+            assessment = scope_to_team(
+                ComplianceAssessment.objects.all(), self.team_id
+            ).get(id=assessment_id)
+
             template, created = ReportTemplate.objects.get_or_create(
+                team_id=self.team_id,
                 name=f"{assessment.name} Assessment Report",
                 defaults={
                     'report_type': 'compliance_status',
