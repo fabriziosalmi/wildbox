@@ -567,6 +567,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through `asyncio.gather`, and a sync tool would run in LangChain's
   thread pool under `copy_context()`; both inherit the task's context, and
   the tests check the identity reaches the wire through each.
+- **A revoked API key is refused on the next request** (#593). The
+  gateway caches the decision for a key for `AUTH_CACHE_TTL` (300 s), and
+  revoking a key only marked it inactive in identity's database, so a key
+  revoked because it leaked kept working for up to five minutes on every
+  route the gateway authenticates. Deleting or deactivating the account
+  behind a key, or removing the member from the team, did the same; only
+  the admin status route flushed the gateway's cache, after the commit and
+  best effort. identity now reports the key's id with every authorization
+  it grants for a key (`api_key_id`), and every change that disables keys
+  -- revoking a key (own or team), deactivating an account
+  (`/admin/users/{id}/status` or `PATCH /users/{id}`), deleting one
+  (`/admin/users/{id}`, `DELETE /users/{id}`, `/admin/me/account`) and
+  removing a member from a team -- first sends the gateway
+  `{"api_keys": [<ids>], "ttl": ...}` on its internal listener and
+  commits only once the gateway confirms the count; otherwise nothing
+  changes and the request answers 503, as logout does since #571. The
+  gateway keeps a marker per key, shared by its workers, and refuses a
+  decision for that key on a cache hit and after a fresh authorization,
+  so a request in flight across the revocation is refused too.
+  Deactivating or deleting an account also ends its sessions there, with
+  the per-user cutoff a password change uses (#569), and stores it in
+  `users.tokens_valid_after`. A password change still does not revoke API
+  keys.
+- **An API key with an expiry works until it expires, and not after**
+  (#593). `/internal/authorize` compared the key's `expires_at`, read back
+  timezone-aware, with a naive `utcnow()`: the comparison raised, so every
+  key created with an expiry answered 500 and the gateway 503. Once that
+  was fixed, the gateway would have kept serving a cached decision for up
+  to its TTL past the expiry. identity now reports `credential_expires_at`
+  (the key's expiry, or a session token's `exp`), and the gateway caches a
+  decision no longer than that and does not serve it afterwards.
 - **One password policy for every path that sets a password** (#583).
   Registration and the reset-password flow accepted a one-character
   password: fastapi-users' `BaseUserCreate` does not check it and its

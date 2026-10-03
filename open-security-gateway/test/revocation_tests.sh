@@ -248,6 +248,159 @@ else
     fail "a users purge with an invalid entry answered $code"
 fi
 
+# ---------------------------------------------------------------------------
+# API keys (#593). Identity names a key by the id it reports on every
+# authorization it grants for it, sends {"api_keys": [<id>]} before it commits
+# the revocation, and needs the count back.
+
+# apikey <id> <delay_ms> <expires_at> -- a key the mock accepts until revoked
+# or expired; see dynamic_api_key() in mock_identity.py.
+apikey() { printf 'wsk_dyn~%s~%s~%s' "$1" "$2" "$3"; }
+
+key_status_of() {
+    curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $1" "$GATEWAY_URL$ROUTE"
+}
+
+# How many /internal/authorize calls the mock has had for <token>.
+authorize_count() {
+    curl -s "$MOCK_URL/__mock/counts" | python3 -c '
+import json, sys
+print(json.load(sys.stdin).get(sys.argv[1], 0))' "$1"
+}
+
+# probe_key <key> -- as probe, with the key in X-API-Key.
+probe_key() {
+    local leaked=0 i code
+    for i in $(seq 1 "$PROBES"); do
+        code=$(key_status_of "$1")
+        case "$code" in
+            401) ;;
+            200) leaked=$((leaked + 1)) ;;
+            *) echo "unexpected HTTP $code from $ROUTE" >&2; exit 2 ;;
+        esac
+    done
+    echo "$leaked"
+}
+
+revoke_key_at_identity() {
+    curl -s -o /dev/null -X POST -H 'Content-Type: application/json' \
+        -d "{\"api_key_id\":\"$1\"}" "$MOCK_URL/__mock/revoke"
+}
+
+# 13. A revoked key is refused on the very next request, although its
+#     decision is cached; the answer is strict JSON counting the keys.
+kid="key-plain-$RUN_ID"
+key=$(apikey "$kid" 0 0)
+if [ "$(key_status_of "$key")" = 200 ] && [ "$(key_status_of "$key")" = 200 ]; then
+    answer=$(curl -s -X POST -H 'Content-Type: application/json' -H "X-Gateway-Secret: $SECRET" \
+        -d "{\"api_keys\":[\"$kid\"],\"ttl\":3600}" \
+        "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")
+    revoke_key_at_identity "$kid"
+    next=$(key_status_of "$key")
+    leaked=$(probe_key "$key")
+    if [ "$next" = 401 ] && [ "$leaked" = 0 ]; then
+        pass "a revoked API key is refused on the next request and every one after"
+    else
+        fail "revoked API key: next request $next, then $leaked/$PROBES accepted"
+    fi
+    if printf '%s' "$answer" | python3 -c '
+import json, sys
+body = json.loads(sys.stdin.read())
+sys.exit(not (body["revoked"] == 1 and body["scope"] == "api_keys"))' 2>/dev/null; then
+        pass "the api_keys purge answers strict JSON counting the keys"
+    else
+        fail "api_keys purge answer is not what identity parses: $answer"
+    fi
+else
+    fail "API key: a live key was not accepted"
+fi
+
+# 14. The marker refuses a cached decision by itself: identity still vouches
+#     for the key (the revocation is not committed yet), the gateway has the
+#     decision cached, and the request is refused without asking identity.
+kid="key-cached-$RUN_ID"
+key=$(apikey "$kid" 0 0)
+key_status_of "$key" >/dev/null
+key_status_of "$key" >/dev/null
+before=$(authorize_count "$key")
+code=$(purge "{\"api_keys\":[\"$kid\"],\"ttl\":3600}")
+next=$(key_status_of "$key")
+after=$(authorize_count "$key")
+if [ "$code" = 200 ] && [ "$before" = 1 ] && [ "$after" = 1 ] && [ "$next" = 401 ]; then
+    pass "a cached decision for a revoked key is refused (identity not asked)"
+else
+    fail "cached decision: purge $code, next request $next, identity asked $before then $after times"
+fi
+# ... and after a fresh authorization, which identity still grants.
+if [ "$(probe_key "$key")" = 0 ] && [ "$(authorize_count "$key")" -gt 1 ]; then
+    pass "a fresh decision for a revoked key is refused although identity grants it"
+else
+    fail "a fresh decision for a revoked key was served"
+fi
+
+# 15. Revoking one key leaves another alone.
+other=$(apikey "key-bystander-$RUN_ID" 0 0)
+if [ "$(probe_key "$other")" = "$PROBES" ]; then
+    pass "an unrelated API key is unaffected"
+else
+    fail "an unrelated API key was refused"
+fi
+
+# 16. The race: an authorization in flight across the revocation is not
+#     served afterwards, on any worker.
+failed=0
+for i in $(seq 1 10); do
+    kid="key-race-$RUN_ID-$i"
+    key=$(apikey "$kid" 400 0)
+    key_status_of "$key" >/dev/null &
+    inflight=$!
+    sleep 0.15
+    code=$(purge "{\"api_keys\":[\"$kid\"],\"ttl\":3600}")
+    revoke_key_at_identity "$kid"
+    wait "$inflight"
+    if [ "$code" != 200 ] || [ "$(probe_key "$key")" != 0 ]; then
+        failed=$((failed + 1))
+    fi
+done
+if [ "$failed" = 0 ]; then
+    pass "API key: an in-flight authorization is not served after the revocation (10/10)"
+else
+    fail "API key: a revoked key was still accepted after $failed/10 revocations"
+fi
+
+# 17. A cached decision does not outlive the key's expiry: the key expires
+#     in 3 s, well inside the cache TTL.
+expires=$(python3 -c 'import time; print(round(time.time() + 3, 3))')
+key=$(apikey "key-expiring-$RUN_ID" 0 "$expires")
+first=$(key_status_of "$key")
+second=$(key_status_of "$key")
+cached=$(authorize_count "$key")
+python3 -c "import time; time.sleep(max(0, $expires - time.time()) + 0.5)"
+expired=$(key_status_of "$key")
+if [ "$first" = 200 ] && [ "$second" = 200 ] && [ "$cached" = 1 ] && [ "$expired" = 401 ]; then
+    pass "an expired API key is refused although its decision was cached"
+else
+    fail "expiry: $first/$second while valid (identity asked $cached times), $expired after"
+fi
+
+# 18. A decision that does not name its key cannot be checked against a
+#     revocation, and is not served.
+code=$(key_status_of "wsk_unnamed_ci_fixture")
+if [ "$code" = 401 ]; then
+    pass "an API-key decision without the key id is refused"
+else
+    fail "an API-key decision without the key id answered $code"
+fi
+
+# 19. Malformed key lists are refused, not half-applied.
+code_a=$(purge '{"api_keys":[]}')
+code_b=$(purge '{"api_keys":["ok", 7]}')
+if [ "$code_a" = 400 ] && [ "$code_b" = 400 ]; then
+    pass "an api_keys purge with an empty list or an invalid id is refused"
+else
+    fail "malformed api_keys purges answered $code_a and $code_b"
+fi
+
 # 7. The purge refuses a caller without the secret.
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
     -d '{"jtis":["x"]}' "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")

@@ -205,7 +205,7 @@ local function get_cached_auth_data(cache_key)
     if cached_data then
         local auth_data, err = utils.json_decode(cached_data)
         if not err then
-            local now = ngx.time()
+            local now = ngx.now()
             if auth_data.expires_at and auth_data.expires_at > now then
                 auth_data.cache_hit = true
                 utils.log("debug", "Using cached auth data", {
@@ -419,6 +419,75 @@ function _M.revoke_user_sessions(users, ttl)
     return stored
 end
 
+-- API keys (#593).
+--
+-- Revoking a key only set it inactive in identity's database, and the
+-- decision cached here for it went on being served for up to the cache TTL:
+-- a key revoked because it leaked kept working for five minutes. Identity
+-- does not keep the raw key, so it cannot name the cache key derived from
+-- it; it names the key by its id instead, which it also reports on every
+-- authorization it grants for the key (auth_data.api_key_id). The gateway
+-- keeps a marker "apikey:<id>" in auth_revoked and refuses a decision for
+-- that key on a cache hit and after a fresh authorization alike, like the
+-- jti markers above. Identity sends the marker before it commits the
+-- revocation, and every other change that disables keys (a user
+-- deactivated or deleted, a member removed from the team) does the same.
+local function api_key_marker(api_key_id)
+    return "apikey:" .. api_key_id
+end
+
+local function names_api_key(auth_data)
+    local id = auth_data and auth_data.api_key_id
+    return type(id) == "string" and id ~= ""
+end
+
+-- Whether a decision for an API key may not be served. A decision that does
+-- not name its key cannot be checked against a revocation, so it is not
+-- served either: identity names the key on every authorization it grants.
+local function api_key_revoked(token_type, auth_data)
+    if token_type ~= "api_key" then
+        return false
+    end
+    if not names_api_key(auth_data) then
+        return true
+    end
+    return is_revoked(api_key_marker(auth_data.api_key_id))
+end
+
+-- Record API-key revocation markers. Returns how many were stored. As for
+-- password-change cutoffs, a marker that cannot be kept is reported as not
+-- stored -- flushing the cache would not cover the time until identity
+-- commits the revocation -- so identity answers 503 and revokes nothing.
+function _M.revoke_api_keys(api_key_ids, ttl)
+    bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if not state then
+        return 0
+    end
+    ttl = math.min(
+        math.max(tonumber(ttl) or MAX_REVOCATION_TTL, configured_cache_ttl()),
+        MAX_REVOCATION_TTL
+    )
+    local stored = 0
+    for _, api_key_id in ipairs(api_key_ids) do
+        local ok, err = state:safe_set(api_key_marker(api_key_id), true, ttl)
+        if ok then
+            stored = stored + 1
+        else
+            utils.log("warn", "API-key revocation marker not stored", {error = err})
+        end
+    end
+    return stored
+end
+
+-- Whether the credential behind a decision has expired: identity reports
+-- when an API key (or a session token) stops being valid, and a decision is
+-- not served past that, whatever is left of its cache TTL (#593).
+local function credential_expired(auth_data)
+    local expires = auth_data and auth_data.credential_expires_at
+    return type(expires) == "number" and expires <= ngx.now()
+end
+
 local function refuse_revoked()
     utils.log("info", "Refused a revoked token")
     ngx.status = ngx.HTTP_UNAUTHORIZED
@@ -449,13 +518,31 @@ end
 -- Exported for the regex locations that authenticate inline.
 _M.refuse_pending_password_change = refuse_pending_password_change
 
+-- For the same locations, which authenticate API keys only (#593).
+function _M.refuse_revoked_api_key(auth_data)
+    if api_key_revoked("api_key", auth_data) then
+        refuse_revoked()
+    end
+end
+
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
     local ttl = config.cache_ttl or CACHE_TTL
 
+    -- Never past the credential's own expiry (#593): an API key that
+    -- expires in ten seconds was cached, and served, for the full TTL.
+    local credential_expires = auth_data.credential_expires_at
+    if type(credential_expires) == "number" then
+        local remaining = credential_expires - ngx.now()
+        if remaining <= 0 then
+            return
+        end
+        ttl = math.min(ttl, remaining)
+    end
+
     -- Set expiration time
-    auth_data.expires_at = ngx.time() + ttl
+    auth_data.expires_at = ngx.now() + ttl
     auth_data.cache_hit = false
 
     local cached_data = utils.json_encode(auth_data)
@@ -700,6 +787,15 @@ function _M.authenticate()
     -- Try to get auth data from cache first
     local auth_data, cache_err = get_cached_auth_data(cache_key)
 
+    -- A decision cached before the gateway knew about API-key revocation
+    -- (#593) does not name its key, or one cached for a credential that has
+    -- since expired: ask identity again rather than serve it.
+    if auth_data and ((token_type == "api_key" and not names_api_key(auth_data))
+                      or credential_expired(auth_data)) then
+        ngx.shared.auth_cache:delete(cache_key)
+        auth_data, cache_err = nil, "cache_miss"
+    end
+
     -- A cache hit is only as good as the revocation markers allow (#571).
     -- Entries cached before the marker existed carry no revocation_id.
     if auth_data and is_revoked(auth_data.revocation_id
@@ -709,6 +805,11 @@ function _M.authenticate()
     end
     -- Nor may it outlive a password change of its user (#569).
     if auth_data and predates_password_change(token, token_type, auth_data) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_revoked()
+    end
+    -- Nor the revocation of its API key (#593).
+    if auth_data and api_key_revoked(token_type, auth_data) then
         ngx.shared.auth_cache:delete(cache_key)
         refuse_revoked()
     end
@@ -754,6 +855,11 @@ function _M.authenticate()
             refuse_revoked()
         end
         if predates_password_change(token, token_type, auth_data) then
+            refuse_revoked()
+        end
+        -- Or before the revocation of its API key, which identity sends
+        -- here before it commits it (#593).
+        if api_key_revoked(token_type, auth_data) then
             refuse_revoked()
         end
 

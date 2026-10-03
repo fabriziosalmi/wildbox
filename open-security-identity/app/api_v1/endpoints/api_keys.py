@@ -13,6 +13,7 @@ from ...database import get_db
 from ...models import User, Team, TeamMembership, ApiKey, TeamRole
 from ...schemas import ApiKeyCreate, ApiKeyResponse, ApiKeyWithSecret
 from ...auth import generate_api_key
+from ...access_revocation import revoke_api_keys_or_503
 from ...user_manager import current_active_user
 
 router = APIRouter()
@@ -176,6 +177,12 @@ async def revoke_api_key(
             detail="API key not found"
         )
     
+    # The gateway first (#593): it caches the decision for a key, and would
+    # go on accepting a key that is only marked inactive here until that
+    # decision expired. If it cannot confirm, the key stays active and the
+    # revocation answers 503, to be repeated.
+    await revoke_api_keys_or_503([api_key.id], "The API key revocation")
+
     # Deactivate the key
     api_key.is_active = False
     await db.commit()

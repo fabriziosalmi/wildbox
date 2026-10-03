@@ -596,6 +596,32 @@ you run one (section 1 does).
   minutes after each batch, but may remain in the append-only file until
   Redis next rewrites it.
 
+### 25. Disabling an API key or an account needs the gateway to confirm
+
+Revoking an API key, deactivating or deleting an account and removing a
+member from a team now take effect at the gateway on the next request
+(#593): identity has the gateway refuse the keys (and, for an account, its
+sessions) before it commits the change. No migration.
+
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). The gateway refuses an API-key decision that does not name its key
+  (`api_key_id`, which only the new identity reports), so a new gateway with
+  an old identity refuses every API key. An old gateway does not know the
+  `api_keys` purge body: with it, or with a gateway identity cannot reach
+  on port 8081 (section 3), every key revocation, account deactivation or
+  deletion and member removal answers 503 and changes nothing. Decisions
+  cached before the upgrade are not served; the gateway asks identity again.
+- **Scripts that revoke keys or deactivate accounts** must handle 503: the
+  change was not made, and repeating it is safe.
+- **Deactivating or deleting an account ends its sessions** as well as its
+  keys. A deactivated account that is reactivated must log in again.
+- **API keys with an expiry work.** They answered 500 at
+  `/internal/authorize` (503 at the gateway) on every request; now they work
+  until `expires_at` and are refused from then on, cached decision or not.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers; the others refuse a revoked key once their cached decision
+  expires (`AUTH_CACHE_TTL`), as for logout.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a
