@@ -18,6 +18,8 @@ TIMEOUT = 15
 MAX_ATTEMPTS = 5
 
 CHANGE_PASSWORD = f"{GATEWAY_URL}/api/v1/identity/admin/me/change-password"
+PATCH_ME = f"{GATEWAY_URL}/auth/users/me"
+PROFILE = f"{GATEWAY_URL}/api/v1/identity/admin/me/profile"
 
 
 def new_account():
@@ -57,6 +59,48 @@ def change_password(token, current, new):
         headers=bearer(token),
         timeout=TIMEOUT,
     )
+
+
+def email_of(token):
+    me = requests.get(PATCH_ME, headers=bearer(token), timeout=TIMEOUT)
+    assert me.status_code == 200, me.text[:200]
+    return me.json()["email"]
+
+
+def test_an_email_change_without_the_current_password_is_refused():
+    email, password = new_account()
+    token = token_for(email, password)
+    new_email = f"taken-over-{secrets.token_hex(6)}@example.com"
+
+    # Two wrong passwords in all, below the lockout threshold.
+    for url in (PATCH_ME, PROFILE):
+        for body in (
+            {"email": new_email},
+            {"email": new_email, "current_password": "not-the-password"},
+        ):
+            response = requests.patch(
+                url, json=body, headers=bearer(token), timeout=TIMEOUT
+            )
+            assert response.status_code == 400, (url, response.text[:200])
+
+    assert email_of(token) == email
+    assert login(new_email, password).status_code == 400
+
+
+def test_an_email_change_with_the_current_password_is_saved():
+    email, password = new_account()
+    token = token_for(email, password)
+    new_email = f"moved-{secrets.token_hex(6)}@example.com"
+
+    response = requests.patch(
+        PROFILE,
+        json={"email": new_email, "current_password": password},
+        headers=bearer(token),
+        timeout=TIMEOUT,
+    )
+    assert response.status_code == 200, response.text[:200]
+    assert email_of(token) == new_email
+    assert login(new_email, password).status_code == 200
 
 
 def test_repeated_wrong_current_passwords_lock_the_account():

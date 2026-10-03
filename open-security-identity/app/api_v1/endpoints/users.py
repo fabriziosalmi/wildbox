@@ -21,7 +21,7 @@ from ...schemas import (
 )
 from ...user_manager import (
     current_superuser, current_active_user, get_user_manager, UserManager,
-    verify_current_password,
+    require_current_password, verify_current_password,
 )
 from ...auth import get_password_hash
 from ...gateway_cache import purge_gateway_auth_cache
@@ -519,6 +519,14 @@ async def update_my_profile(
     
     # Update email if provided
     if profile_update.email and profile_update.email != current_user.email:
+        # A session alone used to be enough to move the account to another
+        # address, after which forgot-password sends the reset link there
+        # (#569). Checked first, so the answer below does not tell a caller
+        # without the password which addresses are registered.
+        await require_current_password(
+            current_user, profile_update.current_password, "the email address"
+        )
+
         # Check if email is already taken
         result = await db.execute(
             select(User).where(User.email == profile_update.email, User.id != current_user.id)
@@ -530,6 +538,9 @@ async def update_my_profile(
             )
         
         current_user.email = profile_update.email
+        # As fastapi-users does on an email change: the new address is not
+        # verified yet.
+        current_user.is_verified = False
         updates_made = True
     
     # Update password if provided

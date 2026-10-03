@@ -41,8 +41,13 @@ class UserCreate(schemas.BaseUserCreate):
 
 
 class UserUpdate(schemas.BaseUserUpdate):
-    """Schema for updating existing users."""
-    pass  # BaseUserUpdate include tutti i campi opzionali
+    """Schema for updating existing users.
+
+    ``current_password`` is not a field of the user: it re-authenticates a
+    change of the caller's own email address (#569), and UserManager.update()
+    removes it before anything is written.
+    """
+    current_password: Optional[str] = None
 
 
 # Legacy schemas (per compatibilità durante la transizione)

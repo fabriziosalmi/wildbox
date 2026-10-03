@@ -13,6 +13,8 @@ import { useToast } from '@/hooks/use-toast'
 
 interface UpdateProfileRequest {
   email?: string
+  // Required by identity to change the email (#569).
+  current_password?: string
 }
 
 interface ChangePasswordRequest {
@@ -32,7 +34,8 @@ const MIN_PASSWORD_LENGTH = 12
 // Where the profile is saved, through the gateway. The page used to send
 // PUT /api/v1/users/me and PUT /api/v1/users/me/password, which the gateway
 // does not route, so nothing was ever saved (#559).
-//  - The email goes to fastapi-users' PATCH /auth/users/me.
+//  - The email goes to fastapi-users' PATCH /auth/users/me, with the
+//    current password: identity refuses an email change without it (#569).
 //  - The password goes to identity's change-password route, which verifies
 //    the current password; PATCH /auth/users/me refuses a password.
 const profilePath = () => getAuthPath('/api/v1/users/me')
@@ -59,6 +62,9 @@ export default function ProfilePage() {
 
   // Profile form state
   const [email, setEmail] = useState(user?.email || '')
+  const [emailPassword, setEmailPassword] = useState('')
+  const [showEmailPassword, setShowEmailPassword] = useState(false)
+  const emailChanged = !!user && email !== user.email
 
   // Password form state
   const [passwordForm, setPasswordForm] = useState({
@@ -102,10 +108,12 @@ export default function ProfilePage() {
 
       if (email !== user.email) {
         updateData.email = email
+        updateData.current_password = emailPassword
       }
 
       if (Object.keys(updateData).length > 0) {
         await identityClient.patch(profilePath(), updateData)
+        setEmailPassword('')
         await refetchUser()
         toast({
           title: 'Success',
@@ -280,6 +288,43 @@ export default function ProfilePage() {
                   />
                 </div>
               </div>
+
+              {emailChanged && (
+                <div>
+                  <label
+                    htmlFor="email_current_password"
+                    className="mb-2 block text-sm font-medium text-foreground"
+                  >
+                    Confirm with your password
+                  </label>
+                  <div className="relative">
+                    <Input
+                      id="email_current_password"
+                      type={showEmailPassword ? 'text' : 'password'}
+                      autoComplete="current-password"
+                      value={emailPassword}
+                      onChange={e => setEmailPassword(e.target.value)}
+                      placeholder="Enter your current password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
+                      onClick={() => setShowEmailPassword(prev => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 transform"
+                    >
+                      {showEmailPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Changing the email address requires your current password.
+                  </p>
+                </div>
+              )}
 
               <Button type="submit" disabled={isLoading} className="flex items-center gap-2">
                 <Save className="h-4 w-4" />

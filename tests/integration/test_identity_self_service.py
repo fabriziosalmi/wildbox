@@ -81,9 +81,10 @@ def test_patch_me_changes_the_email():
     token = token_for(email, password)
     new_email = f"renamed-{secrets.token_hex(6)}@example.com"
 
+    # With the current password, which an email change requires (#569).
     response = requests.patch(
         f"{GATEWAY_URL}/auth/users/me",
-        json={"email": new_email},
+        json={"email": new_email, "current_password": password},
         headers=bearer(token),
         timeout=TIMEOUT,
     )

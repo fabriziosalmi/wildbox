@@ -61,8 +61,17 @@ def test_self_service_update_refuses_a_password_sent_with_an_email(parent_calls)
     assert parent_calls == []
 
 
-def test_self_service_update_still_changes_the_email(parent_calls):
-    assert _update(UserUpdate(email="bob@example.com"), safe=True) is USER
+def test_self_service_update_still_changes_the_email(parent_calls, monkeypatch):
+    # With the current password since #569; test_email_change_reauth.py covers
+    # the refusals.
+    async def password_ok(user, password, what):
+        assert password == "the-current-password"
+
+    monkeypatch.setattr(user_manager, "require_current_password", password_ok)
+    update = UserUpdate(
+        email="bob@example.com", current_password="the-current-password"
+    )
+    assert _update(update, safe=True) is USER
     assert len(parent_calls) == 1
     assert parent_calls[0]["safe"] is True
     assert parent_calls[0]["update"].email == "bob@example.com"

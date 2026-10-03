@@ -73,6 +73,20 @@ async def verify_current_password(
     await clear_failed_logins(key)
 
 
+async def require_current_password(user, password: Optional[str], what: str) -> None:
+    """Re-authenticate a change to the caller's own account (#569).
+
+    A request without the password is refused without counting towards the
+    lockout: it is a client that did not ask, not a guess.
+    """
+    if not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Your current password is required to change {what}",
+        )
+    await verify_current_password(user, password)
+
+
 # 1. Database Adapter
 async def get_user_db(session: AsyncSession = Depends(get_db)):
     yield SQLAlchemyUserDatabase(session, User)
@@ -176,25 +190,88 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
     CHANGE_PASSWORD_ROUTE = "POST /api/v1/admin/me/change-password"
 
     async def update(self, user_update, user, safe: bool = False, request=None):
-        """Refuse a password in the self-service update (#559).
+        """Re-authenticate the changes a stolen session could take an account with.
 
         fastapi-users' PATCH /api/v1/users/me (the gateway's /auth/users/me)
-        calls this with safe=True and applies a `password` field as it is,
-        without asking for the current one -- so a stolen session token was
-        enough to change the password and lock the owner out. A user changes
-        their password through the change-password route instead, which
-        verifies the current password first. The superuser update
-        (PATCH /api/v1/users/{id}, safe=False) is an administrator's reset and
-        is left as it is.
+        calls this with safe=True and applied what it was given without
+        asking for the current password, so a session token alone was enough
+        to take the account over:
+
+        * a `password` was set as it was (#559). It is refused here; a user
+          changes their password through the change-password route, which
+          verifies the current one first;
+        * an `email` was changed as well (#569), after which forgot-password
+          sends the reset link to the new address. It now needs
+          `current_password`, checked against the login lockout.
+
+        The superuser update (PATCH /api/v1/users/{id}, safe=False) is an
+        administrator's change to another account and is left as it is.
+        `current_password` is never written to the user.
         """
-        if safe and getattr(user_update, "password", None) is not None:
-            raise exceptions.InvalidPasswordException(
-                reason=(
-                    "The password cannot be changed here. Use "
-                    f"{self.CHANGE_PASSWORD_ROUTE} with your current password."
+        current_password = getattr(user_update, "current_password", None)
+        if "current_password" in user_update.model_fields_set:
+            user_update = type(user_update)(
+                **user_update.model_dump(
+                    exclude_unset=True, exclude={"current_password"}
                 )
             )
+
+        if safe:
+            if getattr(user_update, "password", None) is not None:
+                raise exceptions.InvalidPasswordException(
+                    reason=(
+                        "The password cannot be changed here. Use "
+                        f"{self.CHANGE_PASSWORD_ROUTE} with your current password."
+                    )
+                )
+            new_email = getattr(user_update, "email", None)
+            if new_email is not None and new_email != user.email:
+                await require_current_password(user, current_password, "the email address")
         return await super().update(user_update, user, safe=safe, request=request)
+
+    async def forgot_password(self, user, request=None) -> None:
+        """Issue a reset token bound to the account's current email (#569).
+
+        fastapi-users' token carries the user id and a fingerprint of the
+        password hash, so a password change invalidates it but an email change
+        does not: a link already sent to the old address kept working after the
+        owner moved the account to a new one. The token here also carries the
+        email, and reset_password() refuses it once the email has changed.
+        """
+        if not user.is_active:
+            raise exceptions.UserInactive()
+        token = generate_jwt(
+            {
+                "sub": str(user.id),
+                "email": user.email,
+                "password_fgpt": self.password_helper.hash(user.hashed_password),
+                "aud": self.reset_password_token_audience,
+            },
+            self.reset_password_token_secret,
+            self.reset_password_token_lifetime_seconds,
+        )
+        await self.on_after_forgot_password(user, token, request)
+
+    async def reset_password(self, token: str, password: str, request=None):
+        """Refuse a reset token issued for an email the account no longer has."""
+        try:
+            data = decode_jwt(
+                token,
+                self.reset_password_token_secret,
+                [self.reset_password_token_audience],
+            )
+            user = await self.get(self.parse_id(data["sub"]))
+        except (
+            pyjwt.PyJWTError,
+            KeyError,
+            ValueError,
+            exceptions.InvalidID,
+            exceptions.UserNotExists,
+        ):
+            raise exceptions.InvalidResetPasswordToken()
+        if data.get("email") != user.email:
+            raise exceptions.InvalidResetPasswordToken()
+        return await super().reset_password(token, password, request)
 
     def parse_id(self, value):
         """Parse the user ID from string to UUID."""

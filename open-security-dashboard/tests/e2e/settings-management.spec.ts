@@ -186,12 +186,15 @@ test.describe('Settings', { tag: '@backend' }, () => {
       await page.locator('form').getByRole('button', { name: 'Change Password' }).click()
     }
 
-    test('saves a new email address', async ({ page, context }) => {
+    test('saves a new email address with the current password', async ({ page, context }) => {
       const account = await openProfile(page, context, 'profile-email')
       const newEmail = uniqueEmail('profile-renamed')
       created.push(newEmail)
 
+      // The password field appears once the address differs (#569).
+      await expect(page.getByLabel('Confirm with your password')).toHaveCount(0)
       await page.getByLabel('Email Address').fill(newEmail)
+      await page.getByLabel('Confirm with your password').fill(account.password)
       await page.getByRole('button', { name: 'Save Changes' }).click()
 
       await expect(page.getByText('Profile updated successfully', { exact: true })).toBeVisible()
@@ -202,6 +205,20 @@ test.describe('Settings', { tag: '@backend' }, () => {
 
       await page.reload()
       await expect(page.getByLabel('Email Address')).toHaveValue(newEmail, { timeout: 20_000 })
+    })
+
+    test('refuses an email change with a wrong password', async ({ page, context }) => {
+      const account = await openProfile(page, context, 'profile-email-wrong')
+      const newEmail = uniqueEmail('profile-not-renamed')
+
+      await page.getByLabel('Email Address').fill(newEmail)
+      await page.getByLabel('Confirm with your password').fill(`not-${account.password}`)
+      await page.getByRole('button', { name: 'Save Changes' }).click()
+
+      await expect(page.getByText('Incorrect current password', { exact: true })).toBeVisible()
+      const me = await api.get('/auth/users/me', { headers: bearer(account.token) })
+      expect(me.status(), await me.text()).toBe(200)
+      expect((await me.json()).email).toBe(account.email)
     })
 
     test('changes the password with the current one', async ({ page, context }) => {
