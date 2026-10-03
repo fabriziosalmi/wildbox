@@ -86,8 +86,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which a DNS failure, an aiohttp or requests error, a dnspython error
   or the bare `Exception` some of them re-raised is not. They now catch
   `app.tool_errors.RUN_ERRORS` and answer `success: false` with the
-  reason; a malformed threat indicator and a trivy binary that cannot
-  be started are reported the same way.
+  reason; a malformed threat indicator, input base64_tool cannot decode
+  and a trivy binary that cannot be started are reported the same way.
 - **A workflow step gets its tool's input model** (#611). The
   orchestrator took the first schema class whose name ends in "Input",
   which was the imported `BaseToolInput` for every tool.

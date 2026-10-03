@@ -583,6 +583,38 @@ def test_port_scanner_reports_the_open_ports(no_network, monkeypatch):
     assert result.closed_ports == 1
 
 
+def test_base64_garbage_is_a_failed_result():
+    # The decoder re-raised a bare Exception that nothing caught.
+    module, input_cls = _input_model("base64_tool")
+
+    result = _run(module, input_cls(operation="decode", data="@@not base64@@"))
+
+    assert result.success is False
+    assert "Decoding failed" in result.error
+
+
+@pytest.mark.parametrize(
+    "tool", ["ca_analyzer", "pki_certificate_manager", "whois_lookup"]
+)
+def test_a_name_that_does_not_resolve_is_a_failed_result(tool, no_network, monkeypatch):
+    # socket.gaierror is an OSError, not the ConnectionError these caught.
+    def no_name(*args, **kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "name lookup in a unit test")
+
+    for name in (
+        "getaddrinfo",
+        "gethostbyname",
+        "gethostbyname_ex",
+        "create_connection",
+    ):
+        monkeypatch.setattr(socket, name, no_name)
+    module, input_cls = _input_model(tool)
+
+    result = _run_with_deadline(module, input_cls(**MINIMAL_INPUTS[tool]))
+
+    assert result.success is False
+
+
 def test_a_malformed_indicator_is_a_failed_result(no_network):
     module, input_cls = _input_model("threat_intelligence_aggregator")
 
