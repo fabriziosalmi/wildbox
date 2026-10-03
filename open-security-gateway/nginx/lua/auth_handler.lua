@@ -643,16 +643,6 @@ local function refuse_pending_password_change(auth_data)
     ngx.exit(ngx.HTTP_FORBIDDEN)
 end
 
--- Exported for the regex locations that authenticate inline.
-_M.refuse_pending_password_change = refuse_pending_password_change
-
--- For the same locations, which authenticate API keys only (#593).
-function _M.refuse_revoked_api_key(auth_data)
-    if api_key_revoked("api_key", auth_data) then
-        refuse_revoked()
-    end
-end
-
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
@@ -846,10 +836,6 @@ local function enforce_scopes(auth_data)
     }))
     ngx.exit(ngx.HTTP_FORBIDDEN)
 end
-
--- Exported so regex locations that authenticate inline (e.g. /api/v1/agents/)
--- can reuse the same scope enforcement.
-_M.enforce_scopes = enforce_scopes
 
 -- Set authentication headers for backend services
 local function set_auth_headers(auth_data)

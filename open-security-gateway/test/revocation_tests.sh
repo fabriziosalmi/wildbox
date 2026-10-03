@@ -12,6 +12,9 @@
 # the stale "allowed" decision. Every later request was served from that entry
 # until AUTH_CACHE_TTL ran out. The mock holds the authorization open with
 # delay_ms, so the interleaving is forced rather than hoped for.
+#
+# The last sections check that the agents routes honour the same markers
+# (#630).
 
 set -u
 
@@ -562,6 +565,69 @@ if [ "$code_a" = 400 ] && [ "$code_b" = 400 ]; then
     pass "a memberships purge with an empty list or an invalid entry is refused"
 else
     fail "malformed memberships purges answered $code_a and $code_b"
+fi
+
+# ---------------------------------------------------------------------------
+# The agents routes (#630). They authenticated with inline Lua that cached
+# nothing and checked no marker but an API key's; they now go through
+# authenticate(), so every revocation above holds there too. Identity still
+# vouches for each credential below: only the gateway's marker refuses it.
+AGENTS_ROUTE="/api/v1/agents/analyze/1f0c4ea6-agents-task"
+
+agents_status_of() {
+    curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $1" "$GATEWAY_URL$AGENTS_ROUTE"
+}
+agents_key_status_of() {
+    curl -s -o /dev/null -w '%{http_code}' -H "X-API-Key: $1" "$GATEWAY_URL$AGENTS_ROUTE"
+}
+
+# 26. A revoked API key.
+kid="key-agents-$RUN_ID"
+key=$(apikey "$kid" 0 0)
+before=$(agents_key_status_of "$key")
+code=$(purge "{\"api_keys\":[\"$kid\"],\"ttl\":3600}")
+after=$(agents_key_status_of "$key")
+if [ "$before" = 200 ] && [ "$code" = 200 ] && [ "$after" = 401 ]; then
+    pass "agents: a revoked API key is refused"
+else
+    fail "agents: API key $before, purge $code, then $after"
+fi
+
+# 27. A session ended by logout (its jti).
+jti="agents-$RUN_ID"
+tok=$(token "$jti" 0)
+before=$(agents_status_of "$tok")
+code=$(purge "{\"jtis\":[\"$jti\"],\"ttl\":1800}")
+after=$(agents_status_of "$tok")
+if [ "$before" = 200 ] && [ "$code" = 200 ] && [ "$after" = 401 ]; then
+    pass "agents: a session ended by logout is refused"
+else
+    fail "agents: logout $before, purge $code, then $after"
+fi
+
+# 28. A session issued before its user's password change.
+user="agents-pw-$RUN_ID"
+tok=$(session "agents-pw-$RUN_ID" "$user" 1800000000 0)
+before=$(agents_status_of "$tok")
+code=$(purge "{\"users\":[{\"user_id\":\"$user\",\"not_before\":1800000001}],\"ttl\":1800}")
+after=$(agents_status_of "$tok")
+if [ "$before" = 200 ] && [ "$code" = 200 ] && [ "$after" = 401 ]; then
+    pass "agents: a session older than its user's password change is refused"
+else
+    fail "agents: password change $before, purge $code, then $after"
+fi
+
+# 29. A session of a member removed from the team.
+user="agents-member-$RUN_ID"
+team="team-agents-$RUN_ID"
+tok=$(member_session "agents-member-$RUN_ID" "$user" 1800000000 0 "$team")
+before=$(agents_status_of "$tok")
+code=$(purge "{\"memberships\":[{\"user_id\":\"$user\",\"team_id\":\"$team\",\"not_before\":1800000001}],\"ttl\":1800}")
+after=$(agents_status_of "$tok")
+if [ "$before" = 200 ] && [ "$code" = 200 ] && [ "$after" = 403 ]; then
+    pass "agents: a member removed from the team is refused in it"
+else
+    fail "agents: team removal $before, purge $code, then $after"
 fi
 
 # 7. The purge refuses a caller without the secret.

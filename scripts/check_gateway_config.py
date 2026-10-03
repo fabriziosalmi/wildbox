@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check the gateway's environment variables against nginx.conf (#627).
+"""Check the gateway's env declarations and where it authenticates (#627, #630).
 
 nginx gives its worker processes only the environment variables nginx.conf
 declares with ``env NAME;``, so ``os.getenv("NAME")`` in the gateway's Lua
@@ -15,6 +15,13 @@ test configuration) and fails when
 * a variable is read that nginx.conf does not declare, or
 * the name is not a string literal, so it cannot be checked.
 
+It also fails when an nginx configuration file asks identity's
+``/internal/authorize`` itself. Authentication goes through
+``auth_handler.authenticate()``, which carries the cache, the revocation
+markers, the must-change-password refusal, the rate limit and the retry of
+a closed connection; the agents route had its own copy that carried none of
+them (#630).
+
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
 """
@@ -29,6 +36,7 @@ DEFAULT_GATEWAY_DIR = ROOT / "open-security-gateway" / "nginx"
 
 _ENV_DIRECTIVE = re.compile(r"^\s*env\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?;")
 _GETENV = re.compile(r"os\.getenv\s*\(\s*(?:([\"'])([^\"']*)\1\s*\))?")
+_AUTHORIZE = "/internal/authorize"
 
 
 def strip_comment(line: str, suffix: str) -> str:
@@ -85,6 +93,20 @@ def check(gateway_dir: Path) -> list:
                     f"add `env {name};` to {nginx_conf.relative_to(gateway_dir.parent)} "
                     "or the worker processes never see it"
                 )
+        if path.suffix == ".conf":
+            failures.extend(inline_authorizations(path, gateway_dir))
+    return failures
+
+
+def inline_authorizations(path: Path, gateway_dir: Path) -> list:
+    """An nginx configuration that calls identity's authorization itself."""
+    failures = []
+    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if _AUTHORIZE in strip_comment(line, path.suffix):
+            failures.append(
+                f"{path.relative_to(gateway_dir.parent)}:{number}: calls {_AUTHORIZE} "
+                "itself; authenticate with auth_handler.authenticate() instead"
+            )
     return failures
 
 
@@ -98,7 +120,10 @@ def main(argv=None) -> int:
         for failure in failures:
             print(f"  - {failure}")
         return 1
-    print("Every variable the gateway reads is declared in nginx.conf.")
+    print(
+        "Every variable the gateway reads is declared in nginx.conf, and every "
+        "authorization goes through auth_handler."
+    )
     return 0
 
 

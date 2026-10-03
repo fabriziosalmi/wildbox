@@ -59,6 +59,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agents routes accept a session token, and `/stats` is reachable**
+  (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
+  with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
+  analysis, although the API documentation says a JWT or an API key works
+  on every route. Both work now (see Security). `/api/v1/agents/stats`
+  mapped to the service's `/v1/stats`, which does not exist; it now
+  reaches `/stats`, authenticated.
 - **The gateway declares `RATE_LIMIT_PER_HOUR` and refuses a bad value**
   (#627). `auth_handler.lua` reads the per-team budget with `os.getenv`,
   but `nginx.conf` did not list it with `env`, and nginx hands its
@@ -820,7 +827,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host name is still resolved again by most tools when they connect, so
   a name whose answer changes in between (DNS rebinding) is a remaining
   window, documented in the module. See UPGRADING section 29.
-
+- **The agents routes authenticate through `auth_handler` like every
+  other route** (#630). `location ~ ^/api/v1/agents/(.*)$` carried its
+  own copy of the authentication in inline Lua, "for regex location
+  compatibility", which it never needed: the tools route is a regex
+  location and calls `authenticate()`. The copy called identity's
+  `/internal/authorize` at a fixed address rather than
+  `IDENTITY_SERVICE_URL`, cached nothing, did not retry a connection
+  identity had just closed (#609), applied no per-team rate limit, and
+  checked the API-key revocation marker (#593) and the
+  must-change-password refusal (#573) only because both were added to
+  it by hand; every later fix to `auth_handler` had to be repeated
+  there. Nor did it set `$wildbox_user_id`, `$wildbox_team_id` and
+  `$wildbox_role`, from which `proxy_params.conf` sets the `X-Wildbox-*`
+  headers, so the service received no caller identity at all (nginx
+  drops a header whose value is empty), even for an accepted key. The
+  location now calls `auth_handler.authenticate()`, so the agents
+  routes get the cache, every revocation marker (logout,
+  password change, API key, team removal), `PASSWORD_CHANGE_REQUIRED`,
+  the API-key scopes, the rate limit, the retry and the JSON 503, and
+  the same client-header stripping and `X-Wildbox-*` identity headers.
+  The three functions `auth_handler` exported only for that copy are
+  gone, and `scripts/check_gateway_config.py` now fails when an nginx
+  configuration file calls `/internal/authorize` itself. The gateway
+  harness covers the agents routes (session and API key accepted, no
+  credential 401, scopes, must-change-password, cache, revoked API key,
+  logout, password change, team removal, retry, 503, rate limit), and
+  an integration test submits an analysis with a session token through
+  the gateway and gets 202.
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
   `/internal/authorize` resolves the oldest membership on every request,

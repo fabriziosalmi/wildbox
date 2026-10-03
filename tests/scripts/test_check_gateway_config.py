@@ -117,3 +117,67 @@ def test_main_exit_status(tmp_path, capsys):
     (good / "lua" / "m.lua").write_text('os.getenv("MISSING")\n')
     assert cgc.main(["--gateway-dir", str(good)]) == 1
     assert "MISSING" in capsys.readouterr().out
+
+
+# The agents route authenticated with its own inline Lua, which called
+# identity's /internal/authorize directly and so skipped everything
+# auth_handler does (#630).
+def test_a_location_calling_identity_authorization_itself_fails(tmp_path):
+    gateway = write_gateway(
+        tmp_path,
+        "env A;\n",
+        {
+            "conf.d/site.conf": (
+                "location ~ ^/api/v1/agents/(.*)$ {\n"
+                "    access_by_lua_block {\n"
+                '        httpc:request_uri("http://identity:8001/internal/authorize", {})\n'
+                "    }\n"
+                "}\n"
+            )
+        },
+    )
+
+    failures = cgc.check(gateway)
+
+    assert len(failures) == 1
+    assert "site.conf:3" in failures[0]
+    assert "auth_handler.authenticate()" in failures[0]
+
+
+def test_a_comment_naming_identity_authorization_is_not_a_call(tmp_path):
+    gateway = write_gateway(
+        tmp_path,
+        "env A;\n",
+        {"conf.d/site.conf": "# auth_handler calls /internal/authorize\n"},
+    )
+
+    assert cgc.check(gateway) == []
+
+
+def test_the_lua_module_may_call_identity_authorization(tmp_path):
+    gateway = write_gateway(
+        tmp_path,
+        "env A;\n",
+        {"lua/auth_handler.lua": 'local url = base .. "/internal/authorize"\n'},
+    )
+
+    assert cgc.check(gateway) == []
+
+
+def test_the_agents_routes_authenticate_through_auth_handler():
+    conf = (GATEWAY_DIR / "conf.d" / "wildbox_gateway.conf").read_text()
+    for opening, upstream in (
+        (
+            "location ~ ^/api/v1/agents/(.*)$ {",
+            "proxy_pass http://agents_service/v1/$1$is_args$args;",
+        ),
+        (
+            "location = /api/v1/agents/stats {",
+            "proxy_pass http://agents_service/stats;",
+        ),
+    ):
+        start = conf.index(opening)
+        block = conf[start : conf.index("\n    }\n", start)]
+
+        assert "auth_handler.authenticate()" in block, opening
+        assert upstream in block, opening
