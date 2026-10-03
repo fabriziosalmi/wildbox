@@ -835,6 +835,30 @@ of them failed.
   `backend`, as before; `scripts/check_network_segmentation.py runtime`
   checks it.
 
+### 32. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
+
+The gateway reads the per-team budget from `RATE_LIMIT_PER_HOUR` (#627). A
+value that was not a number used to become the default, 10000, without a
+word; the gateway now refuses to start with it and logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...`. Before you upgrade, check
+the line in `.env`: it must be a whole number from 1 to 1000000000, or be
+left out for the default. The compose file passes 10000 when it is empty.
+
+### 33. The agents routes accept a session token and count against the team's rate limit
+
+`/api/v1/agents/*` now authenticates like every other gateway route (#630).
+Rebuild the gateway (section 1 does).
+
+- **A session token works.** The routes accepted only `X-API-Key` and
+  answered a JWT with 401 `NO_API_KEY`; both credentials work now. A
+  client that relied on the `NO_API_KEY` or `INVALID_API_KEY` codes gets
+  the gateway's usual 401 `authentication_required` or `invalid_token`.
+- **The per-team rate limit applies** to the agents routes too, as do
+  the revocation of sessions and API keys and the must-change-password
+  refusal.
+- **`/api/v1/agents/stats` answers** with the service's statistics,
+  authenticated, where it answered 404.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

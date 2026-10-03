@@ -125,34 +125,14 @@ class TestAgentsAI:
                 timeout=20
             )
             
-            # Check response
-            if response.status_code in [200, 201, 202]:
-                result = response.json()
-                
-                # Check for task_id or immediate result
-                if 'task_id' in result:
-                    details = f"AI analysis started with task_id: {result['task_id']}"
-                    passed = True
-                elif 'analysis' in result or 'result' in result:
-                    details = "AI analysis completed immediately"
-                    passed = True
-                else:
-                    details = f"AI analysis response: {str(result)[:100]}"
-                    passed = True
-                    
-            elif response.status_code in [401, 403]:
-                details = "AI analysis requires authentication (expected)"
-                passed = True
-            elif response.status_code == 503:
-                details = "OpenAI service unavailable (acceptable)"
-                passed = True
-            elif response.status_code == 400:
-                details = "AI analysis validation working (HTTP 400)"
-                passed = True
-            else:
-                passed = response.status_code != 404
-                details = f"AI analysis endpoint responds (HTTP {response.status_code})"
-                
+            # The service accepts the analysis with 202 and a task id. It
+            # needs its model key to run the task, not to accept it. 401 and
+            # 403 used to count as a pass, which hid that the gateway's
+            # inline authentication forwarded no caller identity, so the
+            # service could only refuse (#630).
+            passed = response.status_code == 202 and "task_id" in response.json()
+            details = f"HTTP {response.status_code}: {response.text[:200]}"
+
             self.log_test_result("AI Analysis with Task ID", passed, details)
             assert passed, details
             

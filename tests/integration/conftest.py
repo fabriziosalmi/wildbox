@@ -390,6 +390,7 @@ _SERVICE_URLS = {
 # only the gateway.
 _MODULE_SERVICE = {
     "test_agents_ai": "agents",
+    "test_agents_gateway_auth": "agents",
     "test_automations_workflow": "automations",
     "test_cspm_compliance": "cspm",
     "test_cspm_tenancy": "cspm",
