@@ -129,8 +129,30 @@ Guardian applies the team role it receives from the gateway
 - On the vulnerability list and detail routes, a `member` sees only vulnerabilities
   assigned to them or created by them; `owner` and `admin` see all of them.
 
-Guardian records are not partitioned by team: every team in the deployment reads
-the same assets, vulnerabilities and other records.
+### Teams
+
+Every request acts on the caller's team's data only, the team the gateway
+reports in `X-Wildbox-Team-ID` (`apps/core/tenancy.py`):
+
+- Lists return the team's rows. Another team's id answers `404` on every
+  detail route and action, as an id that does not exist would.
+- A new row belongs to the caller's team; a `team_id` in the body is ignored.
+  A reference to another team's row (an asset, a scanner, a user) is refused
+  as one that does not exist.
+- Rows that hang off another row take its team: a vulnerability its asset's,
+  a scan its scanner's.
+- Compliance frameworks, their controls and vulnerability templates without a
+  team are shared reference data: every team reads them and none changes them.
+- Names are unique within a team (environments, asset groups, discovery
+  rules, frameworks, vulnerability templates), and a user can be assigned
+  or named only once they have made a request as a member of the team.
+- `/api/v1/guardian/tasks/<uuid>/` answers only for tasks the team
+  dispatched; any other id answers `404`.
+
+Rows created before 0.11.0 have no team and no team sees them until an
+operator assigns them, for example with
+`docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>`
+([UPGRADING.md, section 39](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md#39-guardian-keeps-each-team-to-its-own-data-assign-the-existing-rows-required)).
 
 ---
 
@@ -525,7 +547,8 @@ curl -s --cacert "$CA" "$BASE/tasks/<task-id>/" \
 }
 ```
 
-`state` is `PENDING` (also for an unknown ID), `STARTED`, `SUCCESS`, `FAILURE` or
+An ID that the caller's team did not dispatch, whether another team's or
+unknown, answers `404`. Otherwise `state` is `PENDING`, `STARTED`, `SUCCESS`, `FAILURE` or
 `RETRY`; `successful` is `null` until `ready` is `true`; `queue` is `null` until a
 worker has taken the task. The task's result and traceback are never returned.
 
