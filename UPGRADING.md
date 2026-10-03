@@ -835,7 +835,143 @@ of them failed.
   `backend`, as before; `scripts/check_network_segmentation.py runtime`
   checks it.
 
-### 32. Cancelling a responder run stops it
+### 32. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
+
+The gateway reads the per-team budget from `RATE_LIMIT_PER_HOUR` (#627). A
+value that was not a number used to become the default, 10000, without a
+word; the gateway now refuses to start with it and logs
+`RATE_LIMIT_PER_HOUR must be a whole number ...`. Before you upgrade, check
+the line in `.env`: it must be a whole number from 1 to 1000000000, or be
+left out for the default. The compose file passes 10000 when it is empty.
+
+### 33. The agents routes accept a session token and count against the team's rate limit
+
+`/api/v1/agents/*` now authenticates like every other gateway route (#630).
+Rebuild the gateway (section 1 does).
+
+- **A session token works.** The routes accepted only `X-API-Key` and
+  answered a JWT with 401 `NO_API_KEY`; both credentials work now. A
+  client that relied on the `NO_API_KEY` or `INVALID_API_KEY` codes gets
+  the gateway's usual 401 `authentication_required` or `invalid_token`.
+- **The per-team rate limit applies** to the agents routes too, as do
+  the revocation of sessions and API keys and the must-change-password
+  refusal.
+- **`/api/v1/agents/stats` answers** with the service's statistics,
+  authenticated, where it answered 404.
+
+### 34. Sensor telemetry belongs to a team (data schema change)
+
+The data service stored telemetry events and sensor records without a
+team, and served every team's to any caller (#641). The data service
+adds `team_id` to `telemetry_events` and `sensor_metadata` (alembic
+revision `0005_telemetry_team`). The data API applies it at start,
+unless `RUN_MIGRATIONS_ON_STARTUP=false`.
+
+- **A schema you migrate yourself** needs `alembic upgrade head` from
+  `open-security-data` before the new data API starts, with
+  `DATABASE_URL` set to the data database. The revision adds a nullable
+  `team_id` column and an index to both tables. It replaces the unique
+  index on `sensor_metadata.sensor_id` with a plain index and a unique
+  constraint `uq_sensor_metadata_team_sensor` on `(team_id, sensor_id)`,
+  so two teams can use the same sensor ID. It rewrites no rows.
+- **Telemetry is always private to a team.** `POST /api/v1/ingest`
+  stores events and the sensor record under the caller's team, the one
+  the gateway forwards, and ignores any team the batch names. The
+  events, sensors, sensor-by-ID and statistics routes return the
+  caller's team's rows only: another team's sensor ID answers 404.
+  Unlike indicators, telemetry has no global rows.
+- **Existing rows are hidden from every team.** Rows written before the
+  upgrade keep `team_id` NULL, and no API call returns or updates them.
+  A sensor that reports again after the upgrade gets a new record in
+  its team. To count the legacy rows, in the data database (`data` in
+  the default stack):
+
+  ```bash
+  docker compose exec postgres psql -U postgres -d data -c \
+    "SELECT 'events', count(*) FROM telemetry_events WHERE team_id IS NULL
+     UNION ALL
+     SELECT 'sensors', count(*) FROM sensor_metadata WHERE team_id IS NULL"
+  ```
+
+- **To give the legacy rows to a team**, take the team's ID from
+  identity (`SELECT id, name FROM teams` in the `identity` database)
+  and run the following. It is one transaction, and it merges a legacy
+  sensor record into the team's record of the same sensor ID, if the
+  sensor has already reported since the upgrade. Add
+  `AND sensor_id = '...'` to every statement to move one sensor only.
+
+  ```bash
+  docker compose exec -T postgres psql -U postgres -d data \
+    -v ON_ERROR_STOP=1 -v team='<team-uuid>' <<'SQL'
+  BEGIN;
+  UPDATE telemetry_events SET team_id = :'team' WHERE team_id IS NULL;
+  UPDATE sensor_metadata AS t
+     SET total_events = t.total_events + l.total_events,
+         first_seen = LEAST(t.first_seen, l.first_seen)
+    FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL AND t.team_id = :'team'
+     AND t.sensor_id = l.sensor_id;
+  DELETE FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL
+     AND EXISTS (SELECT 1 FROM sensor_metadata AS t
+                  WHERE t.team_id = :'team' AND t.sensor_id = l.sensor_id);
+  UPDATE sensor_metadata SET team_id = :'team' WHERE team_id IS NULL;
+  COMMIT;
+  SQL
+  ```
+
+  To drop them instead: `DELETE FROM telemetry_events WHERE team_id IS
+  NULL;` and `DELETE FROM sensor_metadata WHERE team_id IS NULL;`.
+- **Downgrading** to `0004_trgm` restores the global unique index on
+  `sensor_id`, and fails while two teams share a sensor ID. Delete or
+  rename one of the records first.
+
+### 35. Sensors send telemetry through the gateway, with an identity API key
+
+No sensor telemetry was ever stored: the sensor posted to the data
+service's `/api/v1/ingest` with a bearer key the data service never
+accepted (#628). The sensor now sends to the gateway,
+`https://<gateway>/api/v1/data/ingest`, authenticated with an identity
+personal API key, and the data service stores the events under that key's
+team. Rebuild the sensor, the data service, identity, the gateway and the
+dashboard (section 1 does); the data service applies alembic revision
+`0005_telemetry_team` at start.
+
+- **Give each sensor a key.** As a team owner or admin, add a member for
+  the sensor (Settings > Team > Add member), sign in as it once to change
+  its password, and create a personal API key with the new
+  **Telemetry Ingest** (`data:ingest`) scope only (Settings > API keys).
+  Set it as `SENSOR_DATA_LAKE_API_KEY`. Its telemetry belongs to that
+  member's team; revoking the key or removing the member stops the
+  sensor at its next batch.
+- **The sensor in `docker-compose.yml`** is already pointed at
+  `https://open-security-gateway` and trusts the certificate the gateway
+  publishes into the new `gateway_cert` volume. Add
+  `SENSOR_DATA_LAKE_API_KEY=wsk_...` to `.env` and
+  `docker compose up -d sensor`. Without a key it starts and logs
+  `Telemetry forwarding is disabled`.
+- **Sensors elsewhere** need three settings: `data_lake.endpoint` (or
+  `SENSOR_DATA_LAKE_ENDPOINT`) set to the gateway's HTTPS URL,
+  `data_lake.api_key` (or `SENSOR_DATA_LAKE_API_KEY`) set to the key, and,
+  when no public CA signed the gateway's certificate,
+  `data_lake.ca_bundle` (or `SENSOR_DATA_LAKE_CA_BUNDLE`) set to a PEM
+  file holding it. A sensor still configured with an `http://` endpoint
+  or the data service's `/api/v1/ingest` URL, or with a key that does not
+  begin with `wsk_`, now stops at start-up with a message naming the
+  setting. Check one with `python main.py --test-connection`.
+- **Production overlay:** the sensor moves from the `backend` network to
+  `frontend`. It reaches the gateway, and no longer the data service or
+  any other backend service directly.
+- **Telemetry is per team.** `GET /api/v1/data/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's telemetry only. Rows written before the upgrade, which only a
+  hand-made insert can have produced, have no team and are shown to no
+  team.
+- **API key scopes:** `data:ingest` is new. A key with `write` or
+  `data:write` can still post to `/api/v1/data/ingest`; a `data:ingest`
+  key gets 403 `insufficient_scope` everywhere else.
+
+### 36. Cancelling a responder run stops it
 
 `DELETE /api/v1/responder/runs/{run_id}` now stops the run instead of only
 relabelling it (#653).
@@ -854,7 +990,7 @@ relabelling it (#653).
   do not run. A run whose last step had already started when the cancel
   arrived reads `cancelled` with every step in `step_results`.
 
-### 33. The responder's notification action says it only logs
+### 37. The responder's notification action says it only logs
 
 `system.notification` never delivered anything; it now says so (#639).
 

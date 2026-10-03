@@ -36,18 +36,31 @@ This example shows the **log ingestion and parsing** capabilities of Wildbox by 
         │  • Event Enrichment      │
         └──────────────────────────┘
                       │
-                      │ HTTPS/TLS
+                      │ HTTPS, X-API-Key (data:ingest)
+                      │ POST /api/v1/data/ingest
+                      ▼
+        ┌──────────────────────────┐
+        │  Wildbox Gateway         │
+        │  (open-security-gateway) │
+        │                          │
+        │  • Checks the API key    │
+        │  • Forwards its team     │
+        └──────────────────────────┘
                       │
                       ▼
         ┌──────────────────────────┐
         │  Wildbox Data Lake       │
         │  (open-security-data)    │
         │                          │
-        │  • Ingestion API         │
-        │  • Event Storage         │
+        │  • Stores the events     │
+        │    under the key's team  │
         │  • Search & Query        │
         └──────────────────────────┘
 ```
+
+The sensor never talks to the data service directly: it authenticates at the
+gateway with a personal API key of a team member created for it, and the
+events belong to that member's team.
 
 ## 📋 Prerequisites
 
@@ -75,9 +88,29 @@ docker-compose up -d
 # Wait for services to be healthy
 docker-compose ps
 
-# Verify Data Lake is running
-curl http://localhost:8001/health
+# The gateway answers on HTTPS with a certificate it generated; trust it
+export WILDBOX_CA=$PWD/open-security-gateway/ssl/wildbox.crt
+curl --cacert "$WILDBOX_CA" https://localhost/health
 ```
+
+### Step 1b: Create the Sensor's Account and API Key
+
+In the dashboard, as a team owner or admin:
+
+1. **Settings > Team > Add member**: create a member for the sensor, for
+   example `web-sensor@example.com`, with an initial password.
+2. Sign in as that member and change the password when asked.
+3. **Settings > API keys**: create a key with the **Telemetry Ingest**
+   (`data:ingest`) scope only, and copy it; it is shown once.
+
+```bash
+export SENSOR_DATA_LAKE_API_KEY=wsk_...   # the key from step 3
+```
+
+The key can send telemetry and nothing else. Revoking it, or removing the
+member from the team, stops the sensor at its next batch. The API calls for
+the same steps are in the
+[sensor README](../../open-security-sensor/README.md#sending-telemetry-to-wildbox).
 
 ### Step 2: Configure the Sensor
 
@@ -97,8 +130,10 @@ nano /etc/security-sensor/config.yaml
 
 ```yaml
 data_lake:
-  endpoint: "http://localhost:8001/api/v1/ingest"  # Your Data Lake endpoint
-  api_key: "your-api-key-here"                     # Your API key
+  endpoint: "https://localhost"            # Your gateway (HTTPS only)
+  api_key: ""                              # Leave empty: set SENSOR_DATA_LAKE_API_KEY
+  ca_bundle: "/path/to/wildbox/open-security-gateway/ssl/wildbox.crt"
+  sensor_id: "web-server-sensor"
 
 log_sources:
   - name: nginx_access
@@ -107,6 +142,11 @@ log_sources:
     format: nginx
     enabled: true
 ```
+
+> **Known limitation (#638):** the sensor does not read `log_sources` yet.
+> Its log forwarder reads fixed paths, `/var/log/nginx/access.log` among
+> them, whatever this section says. Until that is fixed, put the logs to
+> forward at that path.
 
 ### Step 3: Test with Sample Logs
 
@@ -157,68 +197,100 @@ python main.py --config /etc/security-sensor/config.yaml
 
 ### Step 5: Verify Log Ingestion
 
-Check that logs are being ingested into the Data Lake:
+First check that the gateway accepts the sensor's key:
 
 ```bash
+cd ../../open-security-sensor
+python main.py --config /etc/security-sensor/config.yaml --test-connection
+```
+
+Then read the telemetry back through the gateway, as a member of the same
+team. The sensor's own key cannot do this (it can only ingest): use a key
+with the `read` scope, here in `WILDBOX_READ_KEY`.
+
+```bash
+H="X-API-Key: $WILDBOX_READ_KEY"
+
 # Check telemetry stats
-curl http://localhost:8001/api/v1/telemetry/stats
+curl --cacert "$WILDBOX_CA" -H "$H" https://localhost/api/v1/data/telemetry/stats
 
 # View recent events
-curl http://localhost:8001/api/v1/telemetry/events?limit=10 | jq
+curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=10" | jq
 
 # Check sensor status
-curl http://localhost:8001/api/v1/sensors | jq
+curl --cacert "$WILDBOX_CA" -H "$H" https://localhost/api/v1/data/sensors | jq
 ```
+
+Members of other teams see none of it.
 
 ## 📊 Analyzing the Data
 
 ### View Ingested Events
 
-Query the Data Lake API to see ingested log events:
+Query the data service through the gateway to see ingested log events
+(`$H` and `$WILDBOX_CA` as in Step 5):
 
 ```bash
-# Get all telemetry events from the last hour
-curl "http://localhost:8001/api/v1/telemetry/events?limit=100" | jq
+API=https://localhost/api/v1/data
 
-# Filter by event type
-curl "http://localhost:8001/api/v1/telemetry/events?event_type=log.nginx_access" | jq
+# The most recent telemetry events
+curl --cacert "$WILDBOX_CA" -H "$H" "$API/telemetry/events?limit=100" | jq
 
-# Get events from specific sensor
-curl "http://localhost:8001/api/v1/telemetry/events?sensor_id=YOUR_SENSOR_ID" | jq
+# Log events: their type is security_event, and the log source is a tag
+curl --cacert "$WILDBOX_CA" -H "$H" "$API/telemetry/events?event_type=security_event&limit=100" \
+  | jq '[.[] | select(.tags | index("log.nginx_access"))]'
+
+# Events from a specific sensor
+curl --cacert "$WILDBOX_CA" -H "$H" "$API/telemetry/events?sensor_id=web-server-sensor" | jq
 ```
 
 ### Query Statistics
 
 ```bash
-# Get statistics for the last 24 hours
-curl "http://localhost:8001/api/v1/telemetry/stats?hours=24" | jq
+# Statistics for the last 24 hours
+curl --cacert "$WILDBOX_CA" -H "$H" "$API/telemetry/stats?hours=24" | jq
 
-# Get stats for specific sensor
-curl "http://localhost:8001/api/v1/telemetry/stats?sensor_id=YOUR_SENSOR_ID&hours=24" | jq
+# Statistics for a specific sensor
+curl --cacert "$WILDBOX_CA" -H "$H" "$API/telemetry/stats?sensor_id=web-server-sensor&hours=24" | jq
 ```
 
 ### Example Response
 
-When viewing events, you'll see structured data like:
+When viewing events, you'll see the event the sensor collected, kept whole
+in `event_data`, like:
 
 ```json
 {
-  "id": "uuid-here",
+  "id": "6f1c2a0e-8f3b-4c55-9a51-1d2e3f405162",
   "sensor_id": "web-server-sensor",
-  "event_type": "log.nginx_access",
-  "timestamp": "2025-11-09T10:05:01Z",
+  "event_type": "security_event",
+  "timestamp": "2025-11-09T10:05:01+00:00",
   "source_host": "web-server-01",
   "event_data": {
-    "client_ip": "10.0.0.100",
-    "request": "GET /products?id=1' OR '1'='1 HTTP/1.1",
-    "status_code": 200,
-    "user_agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36",
-    "attack_type": "sql_injection"
+    "source": "log_forwarder",
+    "type": "log.nginx_access",
+    "data": {
+      "client_ip": "10.0.0.100",
+      "timestamp": "09/Nov/2025:10:05:01 +0000",
+      "request": "GET /products?id=1' OR '1'='1 HTTP/1.1",
+      "status_code": 200,
+      "response_size": 1234,
+      "user_agent": "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36",
+      "raw_message": "10.0.0.100 - - [09/Nov/2025:10:05:01 +0000] \"GET /products?id=1' OR '1'='1 HTTP/1.1\" 200 1234 \"-\" \"Mozilla/5.0 ...\""
+    },
+    "metadata": {"log_source": "nginx_access", "log_file": "/var/log/nginx/access.log", "format": "nginx"},
+    "host": {"hostname": "web-server-01", "platform": "Linux"}
   },
-  "severity": "high",
-  "tags": ["web-attack", "sql-injection"]
+  "severity": 1,
+  "tags": ["log.nginx_access"],
+  "ingested_at": "2025-11-09T10:05:31+00:00",
+  "processed": false,
+  "processed_at": null
 }
 ```
+
+Detection is not done at ingestion: the events carry the raw request, and
+the attack patterns below are what to look for in it.
 
 ## 🔍 Attack Patterns in Sample Logs
 
@@ -362,9 +434,13 @@ docker-compose logs sensor
 # Verify configuration
 docker-compose exec sensor cat /etc/security-sensor/config.yaml
 
-# Test connection to Data Lake
-docker-compose exec sensor curl http://data:8001/health
+# Test the connection to the gateway with the configured key
+docker-compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
 ```
+
+The sensor stops at start-up with a message naming the setting when the
+endpoint is not an `https://` gateway URL, the key is not an identity key
+(`wsk_...`) or the CA bundle does not exist.
 
 ### No Events Being Ingested
 
@@ -375,9 +451,17 @@ ls -la /var/log/nginx/access.log
 # Check sensor has permission to read logs
 docker-compose exec sensor cat /host/var/log/nginx/access.log
 
-# Verify Data Lake is receiving data
-curl http://localhost:8001/api/v1/telemetry/stats
+# Is forwarding enabled, and what did the last batch get?
+docker-compose logs sensor | grep -i -E "forwarding|gateway|batch"
+
+# Verify the data service is receiving data for your team
+curl --cacert "$WILDBOX_CA" -H "$H" https://localhost/api/v1/data/telemetry/stats
 ```
+
+In the sensor's log, `HTTP 401` means the key is invalid, expired or revoked,
+`HTTP 403` with `insufficient_scope` that it lacks `data:ingest`, and a
+certificate error that `data_lake.ca_bundle` does not hold the gateway's
+certificate.
 
 ### High Memory Usage
 
@@ -393,7 +477,7 @@ performance:
 
 - [Wildbox Documentation](https://www.wildbox.io)
 - [Sensor Configuration Guide](../../open-security-sensor/README.md)
-- [Data Lake API Documentation](http://localhost:8001/docs)
+- [Data Lake API Documentation](../../docs/api/data/endpoints.md)
 - [Log Forwarder Source Code](../../open-security-sensor/sensor/collectors/log_forwarder.py)
 
 ## 🤝 Contributing

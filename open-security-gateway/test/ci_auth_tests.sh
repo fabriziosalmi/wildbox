@@ -12,11 +12,17 @@
 #   * the removed standalone tools UI (/tools/ answers 404, #581)
 #   * a dropped identity connection is retried once; 503s are JSON with
 #     Retry-After (#609)
+#   * the agents routes authenticate like every other route: JWT and API
+#     key, scopes, must-change-password, cache, retry, rate limit (#630)
+#   * the per-team budget is RATE_LIMIT_PER_HOUR, against a second gateway
+#     started with a low value (#627)
 
 set -u
 
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
 GATEWAY_WRONG_URL="${GATEWAY_WRONG_URL:-http://localhost:8081}"
+# A gateway started with RATE_LIMIT_PER_HOUR=120 (#627).
+GATEWAY_LIMIT_URL="${GATEWAY_LIMIT_URL:-http://localhost:8083}"
 MOCK_URL="${MOCK_URL:-http://localhost:8001}"
 
 PASS=0
@@ -118,6 +124,27 @@ request "tools:execute key POST allowed" 200 \
 request "tools:execute key GET allowed" 200 \
     -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/tools/echo"
 
+# 9-ingest. A sensor's data:ingest key (#628) sends telemetry and does nothing
+#           else; a key without it cannot send telemetry.
+request "data:ingest key posts a batch" 200 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/ingest"
+assert_json "batch reaches the data ingest route" '.path' '/api/v1/data/ingest'
+assert_json "batch carries the key's team" '.headers["x-wildbox-team-id"]' 'team-8888'
+assert_json "key stripped before the data service" '.headers["x-api-key"] // "absent"' 'absent'
+request "data:ingest key cannot read telemetry" 403 \
+    -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/telemetry/events"
+assert_json "reading needs read" '.required_scope' 'read'
+request "data:ingest key cannot write other data" 403 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/sources"
+assert_json "other writes need write" '.required_scope' 'write'
+request "data:ingest key cannot run tools" 403 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/tools/echo"
+request "read-only key cannot post a batch" 403 \
+    -X POST -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/data/ingest"
+assert_json "ingest needs data:ingest" '.required_scope' 'data:ingest'
+request "unrestricted session posts a batch" 200 \
+    -X POST -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/data/ingest"
+
 # 9a-9e. Asynchronous tool tasks (#567): routed to the service's /api/tasks,
 #        authenticated, read with tools:read and cancelled with tools:execute.
 request "task read without credentials rejected" 401 \
@@ -153,6 +180,108 @@ done
 assert_strict_json "pending password change error body"
 request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
 assert_json "pending decision cached" '."pending-password-change-token"' '1'
+
+# --- Agents routes (#630) ---------------------------------------------------
+# /api/v1/agents/* authenticated with its own inline Lua, which read
+# X-API-Key only: a JWT got 401 NO_API_KEY. It now goes through
+# authenticate(), with everything that carries.
+echo "== agents routes =="
+AGENTS="$GATEWAY_URL/api/v1/agents"
+TASK="$AGENTS/analyze/1f0c4ea6-agents-task"
+
+request "agents: no credential refused" 401 -X POST "$AGENTS/analyze"
+assert_json "agents: no-credential error code" '.error' 'authentication_required'
+assert_strict_json "agents: no-credential error body"
+
+# The service reads the caller from X-Wildbox-*: the mock echoes the
+# headers it received, so these assert the identity the service gets, set
+# by proxy_params.conf from the variables authenticate() fills in, over
+# any value the client sent.
+request "agents: JWT accepted" 200 -X POST \
+    -H "Authorization: Bearer valid-bearer-token" \
+    -H "X-Wildbox-User-ID: attacker" -H "X-Wildbox-Team-ID: attacker-team" \
+    -H "X-Wildbox-Role: superadmin" "$AGENTS/analyze"
+assert_json "agents: path mapped to the service's /v1" '.path' '/v1/analyze'
+assert_json "agents: method kept" '.method' 'POST'
+assert_json "agents: JWT user forwarded" '.headers["x-wildbox-user-id"]' 'user-1111'
+assert_json "agents: JWT team forwarded" '.headers["x-wildbox-team-id"]' 'team-2222'
+assert_json "agents: JWT role forwarded" '.headers["x-wildbox-role"]' 'admin'
+assert_json "agents: Authorization stripped upstream" '.headers.authorization // "absent"' 'absent'
+
+request "agents: API key accepted" 200 -X POST \
+    -H "X-API-Key: wsk_toolsexec_ci_fixture" "$AGENTS/analyze"
+assert_json "agents: API-key user forwarded" '.headers["x-wildbox-user-id"]' 'user-5555'
+assert_json "agents: API-key team forwarded" '.headers["x-wildbox-team-id"]' 'team-6666'
+assert_json "agents: API-key role forwarded" '.headers["x-wildbox-role"]' 'user'
+assert_json "agents: X-API-Key stripped upstream" '.headers["x-api-key"] // "absent"' 'absent'
+
+request "agents: read-only key cannot submit" 403 -X POST \
+    -H "X-API-Key: wsk_readonly_ci_fixture" "$AGENTS/analyze"
+assert_json "agents: submitting needs tools:execute" '.required_scope' 'tools:execute'
+request "agents: read-only key reads a task" 200 \
+    -H "X-API-Key: wsk_readonly_ci_fixture" "$TASK?verbose=1"
+assert_json "agents: task path and query mapped" '.path' '/v1/analyze/1f0c4ea6-agents-task?verbose=1'
+
+request "agents: invalid JWT refused" 401 \
+    -H "Authorization: Bearer not-a-real-token" "$TASK"
+assert_json "agents: invalid-token error code" '.error' 'invalid_token'
+
+request "agents: pending password change refused" 403 \
+    -H "Authorization: Bearer pending-password-change-token" "$TASK"
+assert_json "agents: pending password change code" '.error' 'PASSWORD_CHANGE_REQUIRED'
+assert_json "agents: backend not reached" '.headers // "absent"' 'absent'
+
+# The decisions above came from the same auth cache as every other route:
+# identity was asked once for each token, whichever route it was used on.
+request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
+assert_json "agents: JWT decision served from the cache" '."valid-bearer-token"' '1'
+assert_json "agents: password-change decision served from the cache" \
+    '."pending-password-change-token"' '1'
+
+# The service's /stats is outside its /v1 tree; it was unreachable.
+request "agents: stats without credential refused" 401 "$AGENTS/stats"
+request "agents: stats with a JWT" 200 \
+    -H "Authorization: Bearer valid-bearer-token" "$AGENTS/stats"
+assert_json "agents: stats mapped to the service's /stats" '.path' '/stats'
+assert_json "agents: stats caller forwarded" '.headers["x-wildbox-user-id"]' 'user-1111'
+
+# A connection identity closed is retried once; an unreachable identity is
+# a JSON 503 with Retry-After (#609).
+DROP_ONCE_AGENTS="drop-once-agents-$(date +%s)-$$"
+request "agents: authorization survives a dropped connection" 200 \
+    -H "Authorization: Bearer $DROP_ONCE_AGENTS" "$TASK"
+DROP_ALWAYS_AGENTS="drop-always-agents-$(date +%s)-$$"
+STATUS=$(curl -s -o /tmp/body.json -D /tmp/headers.txt -w "%{http_code}" \
+    -H "Authorization: Bearer $DROP_ALWAYS_AGENTS" "$TASK")
+BODY=$(cat /tmp/body.json)
+RETRY_AFTER=$(tr -d '\r' < /tmp/headers.txt | awk -F': ' 'tolower($1)=="retry-after"{print $2}')
+if [ "$STATUS" = 503 ] && echo "$RETRY_AFTER" | grep -Eq '^[1-9][0-9]*$'; then
+    pass "agents: identity unreachable answers 503 with Retry-After ($RETRY_AFTER)"
+else
+    fail "agents: identity unreachable: HTTP $STATUS, Retry-After '$RETRY_AFTER'"
+fi
+assert_json "agents: unreachable error code" '.error' 'service_unavailable'
+assert_strict_json "agents: unreachable error body"
+
+# The per-team rate limit applies: the gateway started with
+# RATE_LIMIT_PER_HOUR=120 refuses the third request in a minute (see the
+# RATE_LIMIT_PER_HOUR section below; this team is not used there).
+refused=""
+for attempt in 1 2 3 4 5; do
+    STATUS=$(curl -s -o /tmp/body.json -w "%{http_code}" -X POST \
+        -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_LIMIT_URL/api/v1/agents/analyze")
+    if [ "$STATUS" = 429 ]; then
+        refused=$attempt
+        break
+    fi
+done
+BODY=$(cat /tmp/body.json)
+if [ -n "$refused" ]; then
+    pass "agents: the per-team rate limit applies (request $refused refused with 429)"
+    assert_json "agents: rate limit error code" '.error' 'rate_limit_exceeded'
+else
+    fail "agents: five requests in a row were all served under a 2-a-minute budget (last HTTP $STATUS)"
+fi
 
 # 10c-10f. The standalone tools UI is removed (#581): /tools/ is an
 #          explicit 404 from the gateway, with or without credentials, the
@@ -218,6 +347,51 @@ request "wrong gateway secret -> forbidden" 403 \
 BIGTOKEN=$(printf 'a%.0s' $(seq 1 5000))
 request "oversized token rejected" 400 \
     -H "Authorization: Bearer $BIGTOKEN" "$GATEWAY_URL/api/v1/auth/me"
+
+# --- Per-team rate limit (#627) --------------------------------------------
+echo "== RATE_LIMIT_PER_HOUR =="
+
+# header <name>: the value of a response header in /tmp/headers.txt.
+header() { tr -d '\r' < /tmp/headers.txt | awk -F': ' -v h="$1" 'tolower($1)==h{print $2}'; }
+
+# 16. Unset, the budget is the default: 10000 an hour, 166 a minute.
+curl -s -o /tmp/body.json -D /tmp/headers.txt \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/tools/echo"
+if [ "$(header x-ratelimit-policy)" = "10000;w=3600" ] && [ "$(header x-ratelimit-limit)" = 166 ]; then
+    pass "unset RATE_LIMIT_PER_HOUR means 10000 an hour (166 a minute)"
+else
+    fail "default limit: policy '$(header x-ratelimit-policy)', limit '$(header x-ratelimit-limit)'"
+fi
+
+# 17. The gateway started with RATE_LIMIT_PER_HOUR=120 applies 120 an hour:
+#     2 requests a minute, so a third one in the same minute is refused. The
+#     window is a fixed minute; one that turns between two requests restarts
+#     the count once, so five requests always reach the refusal.
+curl -s -o /tmp/body.json -D /tmp/headers.txt \
+    -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_LIMIT_URL/api/v1/tools/echo"
+if [ "$(header x-ratelimit-policy)" = "120;w=3600" ] && [ "$(header x-ratelimit-limit)" = 2 ]; then
+    pass "RATE_LIMIT_PER_HOUR=120 is the budget the gateway reports (2 a minute)"
+else
+    fail "low limit: policy '$(header x-ratelimit-policy)', limit '$(header x-ratelimit-limit)'"
+fi
+refused=""
+for attempt in 2 3 4 5; do
+    STATUS=$(curl -s -o /tmp/body.json -D /tmp/headers.txt -w "%{http_code}" \
+        -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_LIMIT_URL/api/v1/tools/echo")
+    if [ "$STATUS" = 429 ]; then
+        refused=$attempt
+        break
+    fi
+done
+BODY=$(cat /tmp/body.json)
+if [ -n "$refused" ]; then
+    pass "RATE_LIMIT_PER_HOUR=120: request $refused in the minute refused with 429"
+    assert_json "rate limit error code" '.error' 'rate_limit_exceeded'
+    assert_json "rate limit names the hourly budget" '.limit_per_hour' '120'
+    assert_strict_json "rate limit error body"
+else
+    fail "RATE_LIMIT_PER_HOUR=120: five requests in a row were all served (last HTTP $STATUS)"
+fi
 
 # --- CORS (dashboard on a separate origin) ---------------------------------
 echo "== CORS =="

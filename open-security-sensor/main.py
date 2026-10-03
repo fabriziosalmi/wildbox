@@ -34,9 +34,15 @@ class SensorDaemon:
     async def start(self):
         """Start the sensor daemon"""
         try:
-            # Load configuration
-            self.config = load_config(self.config_path)
-            
+            # Load configuration. A configuration error is the operator's to
+            # fix, so say what it is and stop, without a traceback; logging
+            # is not set up yet at this point.
+            try:
+                self.config = load_config(self.config_path)
+            except (FileNotFoundError, ValueError) as e:
+                print(f"Security Sensor not started: {e}", file=sys.stderr)
+                return 2
+
             # Setup logging
             setup_logging(self.config.logging)
             
@@ -83,6 +89,18 @@ class SensorDaemon:
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+
+async def _test_connection(config: SensorConfig) -> dict:
+    """One empty batch through the forwarder's own session."""
+    from sensor.pipeline.data_forwarder import DataForwarder
+
+    forwarder = DataForwarder(config, asyncio.Queue())
+    try:
+        return await forwarder.test_connection()
+    finally:
+        if forwarder.session:
+            await forwarder.session.close()
+
 
 def main():
     """Main entry point"""
@@ -139,13 +157,23 @@ def main():
             return 1
     
     if args.test_connection:
+        # Posts an empty batch to the gateway's ingest route with the
+        # configured key: it proves the URL, the TLS trust, the key and its
+        # data:ingest scope. This used to print success without connecting.
         try:
-            # Test connection logic would go here
-            print("✓ Connection test successful")
-            return 0
+            config = load_config(args.config)
+            result = asyncio.run(_test_connection(config))
         except Exception as e:
             print(f"✗ Connection test failed: {e}")
             return 1
+        if result["success"]:
+            print(
+                f"✓ {result['endpoint']} accepted the sensor's key "
+                f"(HTTP {result['status_code']}, {result['response_time_ms']} ms)"
+            )
+            return 0
+        print(f"✗ Connection test failed for {result['endpoint']}: {result['error']}")
+        return 1
     
     if args.status:
         try:

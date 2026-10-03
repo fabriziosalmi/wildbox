@@ -91,6 +91,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   run's `logs` also keep every line again: saving the worker's copy of
   the record replaced the lines written since the run started.
 
+- **The agents routes accept a session token, and `/stats` is reachable**
+  (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
+  with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
+  analysis, although the API documentation says a JWT or an API key works
+  on every route. Both work now (see Security). `/api/v1/agents/stats`
+  mapped to the service's `/v1/stats`, which does not exist; it now
+  reaches `/stats`, authenticated.
+- **The gateway declares `RATE_LIMIT_PER_HOUR` and refuses a bad value**
+  (#627). `auth_handler.lua` reads the per-team budget with `os.getenv`,
+  but `nginx.conf` did not list it with `env`, and nginx hands its
+  processes only the variables listed there. The setting took effect
+  only because `init_by_lua` loads the module in the master process,
+  whose environment is still complete on a cold start; a module loaded
+  anywhere else, or a master started by a binary upgrade, saw nothing
+  and used 10000. It is now declared. A value that is not a whole number
+  from 1 to 1000000000 (`0`, `10k`, `1.5`, an empty string) used to
+  become 10000 without a word; the gateway now logs
+  `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start
+  (`nginx -t` does not run `init_by_lua` and does not catch it).
+  `scripts/check_gateway_config.py`, run by the Gateway Lint workflow,
+  fails when the gateway's Lua or nginx configuration reads a variable
+  `nginx.conf` does not declare; the six other variables the gateway
+  reads were already declared. The
+  gateway harness starts a gateway with `RATE_LIMIT_PER_HOUR=120` and
+  checks that the third request in a minute gets 429, and starts one per
+  invalid value and checks that each exits. The deployment guide
+  documents the variable.
+
 - **Reading a just-cancelled async task no longer answers 500** (#619).
   `GET /api/v1/tasks/{id}` read `AsyncResult.state` and then
   `AsyncResult.info`: two reads of the result backend while the task
@@ -109,6 +137,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   traceback of a request that fails, and the integration workflow
   uploads every service's full log when it fails.
 
+
+- **Sensor telemetry reaches the data service, under the sensor's team**
+  (#628). The sensor's forwarder posted to the data service's
+  `/api/v1/ingest` directly with `Authorization: Bearer <key>`, but the
+  data service accepts only requests the gateway has authenticated, so
+  every batch was refused and no telemetry was ever stored. The sensor
+  now posts to the gateway, `https://<gateway>/api/v1/data/ingest`, with
+  an identity personal API key in `X-API-Key`: the key of a team member
+  created for the sensor. The gateway resolves the key, refuses it once
+  it is revoked, expired or its member removed (#593, #608), and forwards
+  the key's team; the data service stores the events and the sensor's
+  record under that team. A new API key scope, `data:ingest` (identity's
+  vocabulary, the dashboard's API keys page, the gateway's scope map),
+  allows `POST /api/v1/data/ingest` and nothing else; `write` and
+  `data:write` keep allowing it. The sensor verifies the gateway's
+  certificate by default, against `data_lake.ca_bundle` when set
+  (`SENSOR_DATA_LAKE_CA_BUNDLE`), sends the key in no other header, does
+  not follow redirects with it and never logs it; a 401 or 403 is no
+  longer retried. At start-up it refuses, with a message naming the
+  setting, an endpoint that is not an `https://` gateway URL (the old
+  direct URL included), a key that is not an identity key and a CA
+  bundle that does not exist; with no key it runs and logs that
+  forwarding is disabled. `--test-connection` posts an empty batch and
+  reports the answer: it used to print success without connecting.
+  Batches are now in the shape the data service validates (sensor ID,
+  one of its event types, the collected event kept whole in
+  `event_data`, the collector's type as a tag); the forwarder sent the
+  processor's own shape, which the data service would have refused too.
+  `docker-compose.yml` points the sensor at `https://open-security-gateway`
+  and gives it the gateway's certificate (never its key), which the
+  gateway now publishes into a `gateway_cert` volume when it starts; in
+  the production overlay the sensor moves from `backend` to `frontend`,
+  reaching the gateway and no backend service
+  (`scripts/check_network_segmentation.py` asserts both). In the data
+  service, telemetry events and sensor records have a `team_id` (alembic
+  revision `0005_telemetry_team`); `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
+  team's only, where they showed every team's; a sensor ID is unique per
+  team, where one team's sensor could update another's record. Three
+  defects on the same path that the refused credential had hidden are
+  fixed with it: a batch of more than one event from a new sensor
+  inserted its record twice and failed with 500, the events and sensors
+  listings answered 500 as soon as they had a row (their `id` was
+  declared a string), and a batch whose commit fails now answers 503,
+  so that the sensor sends it again, instead of 200 with nothing stored.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,
@@ -841,6 +914,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Sensor telemetry is scoped to the team that ingested it** (#641).
+  `telemetry_events` and `sensor_metadata` had no team column, and the
+  data service's telemetry routes queried the whole tables: any
+  authenticated member of any team listed every team's events
+  (including `raw_data` and host names), sensors and statistics. A
+  sensor ID was unique across all teams, so a batch posted under
+  another team's sensor ID updated that team's sensor record. Both
+  tables now carry `team_id` (alembic revision `0005_telemetry_team`),
+  and a sensor ID is unique per team. `POST /api/v1/ingest` stores the
+  caller's team from the gateway, never one named in the batch, and
+  looks the sensor up by team and ID. `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{sensor_id}` return the
+  caller's team's rows only, and another team's sensor answers 404.
+  Rows written before the upgrade have no team and are shown to no
+  team; UPGRADING section 32 gives the SQL to assign them. Unit tests
+  run the scenario of the issue (team B lists nothing of team A's,
+  gets 404 for A's sensor, and a batch of B's under A's sensor ID
+  leaves A's record unchanged); removing the team predicate from any
+  of the reads, or from the ingest's sensor lookup, fails them. An
+  integration test does the same through the gateway with two
+  accounts.
+
+- **agents: the analysis rate limit is counted per user** (#651). The
+  limiter on `POST /v1/analyze` was keyed by the client address. Every
+  request reaches the service through the gateway, so that address was
+  the gateway's for every caller: the whole platform shared one budget
+  of five analysis requests a minute, and one user of one team could exhaust it
+  for all the others. The limit is now keyed by the user ID of the
+  gateway-authenticated caller, taken from the verified identity after
+  the gateway secret has been checked; no header is read for the key, so
+  `X-Forwarded-For` cannot move a request to another bucket, and a
+  request without a verified identity is refused before it is counted.
+  Per user rather than per team, so that one member cannot use up the
+  budget of their teammates. The value is configurable with
+  `ANALYZE_RATE_LIMIT` (default `5/minute`), and
+  `ANALYZE_TEAM_RATE_LIMIT` adds an optional ceiling for a whole team;
+  the service refuses to start on a value it cannot parse, where slowapi
+  would have dropped the limit silently. The 429 body says whether the
+  user or the team limit was hit. Unit tests check that two users each
+  get their own budget, that the same user is limited, that a spoofed
+  `X-Forwarded-For` leaves the bucket unchanged, the team ceiling, and
+  the validation of both settings.
+
+- **agents: reading or cancelling a task fails closed on its owner
+  record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
+  when the owner record existed, so with the record missing any
+  authenticated caller, of any team, could revoke someone else's
+  analysis. The record could be missing while the task was still
+  addressable: the celery id was written after it with the same TTL and
+  outlived it, and eviction can drop one key and keep the other. `GET`
+  and `DELETE` now share one check: no celery id, no owner record, or
+  another user's task all answer 404 `Task not found`, before anything is
+  read or revoked. Another user's task used to answer 403 on `GET`, which
+  confirmed that the task id was live. The owner record is now written
+  with five minutes more time to live than the task's other keys, and is
+  rewritten in the same transaction as the celery id, so it outlives
+  every key that can address the task. Unit tests cover a missing owner
+  record, another user's task and the owner's own task on both methods,
+  and the TTLs written on submission.
+
 - **guardian accepts gateway-authenticated requests only** (#629). Its
   middleware accepted rows of guardian's own `APIKey` table from an
   `X-API-Key` header on a direct request, authenticated the caller as role
@@ -890,7 +1023,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   host name is still resolved again by most tools when they connect, so
   a name whose answer changes in between (DNS rebinding) is a remaining
   window, documented in the module. See UPGRADING section 29.
-
+- **The agents routes authenticate through `auth_handler` like every
+  other route** (#630). `location ~ ^/api/v1/agents/(.*)$` carried its
+  own copy of the authentication in inline Lua, "for regex location
+  compatibility", which it never needed: the tools route is a regex
+  location and calls `authenticate()`. The copy called identity's
+  `/internal/authorize` at a fixed address rather than
+  `IDENTITY_SERVICE_URL`, cached nothing, did not retry a connection
+  identity had just closed (#609), applied no per-team rate limit, and
+  checked the API-key revocation marker (#593) and the
+  must-change-password refusal (#573) only because both were added to
+  it by hand; every later fix to `auth_handler` had to be repeated
+  there. Nor did it set `$wildbox_user_id`, `$wildbox_team_id` and
+  `$wildbox_role`, from which `proxy_params.conf` sets the `X-Wildbox-*`
+  headers, so the service received no caller identity at all (nginx
+  drops a header whose value is empty), even for an accepted key. The
+  location now calls `auth_handler.authenticate()`, so the agents
+  routes get the cache, every revocation marker (logout,
+  password change, API key, team removal), `PASSWORD_CHANGE_REQUIRED`,
+  the API-key scopes, the rate limit, the retry and the JSON 503, and
+  the same client-header stripping and `X-Wildbox-*` identity headers.
+  The three functions `auth_handler` exported only for that copy are
+  gone, and `scripts/check_gateway_config.py` now fails when an nginx
+  configuration file calls `/internal/authorize` itself. The gateway
+  harness covers the agents routes (session and API key accepted, no
+  credential 401, scopes, must-change-password, cache, revoked API key,
+  logout, password change, team removal, retry, 503, rate limit), and
+  an integration test submits an analysis with a session token through
+  the gateway and gets 202.
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
   `/internal/authorize` resolves the oldest membership on every request,

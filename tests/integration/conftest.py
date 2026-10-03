@@ -390,6 +390,7 @@ _SERVICE_URLS = {
 # only the gateway.
 _MODULE_SERVICE = {
     "test_agents_ai": "agents",
+    "test_agents_gateway_auth": "agents",
     "test_automations_workflow": "automations",
     "test_cspm_compliance": "cspm",
     "test_cspm_tenancy": "cspm",
@@ -398,6 +399,7 @@ _MODULE_SERVICE = {
     "test_data_cross_tenant": "data",
     "test_data_integration": "data",
     "test_data_tenancy": "data",
+    "test_telemetry_tenancy": "data",
     "test_gateway_hardening": "gateway",
     "test_gateway_security": "gateway",
     "test_guardian_monitoring": "guardian",
@@ -407,6 +409,7 @@ _MODULE_SERVICE = {
     "test_responder_playbook_identity": "responder",
     "test_responder_tenancy": "responder",
     "test_sensor_telemetry": "sensor",
+    "test_sensor_ingest": "sensor",
     "test_tools_execution": "tools",
     "test_tools_async_tasks": "tools",
     "test_admin_auth": "identity",
