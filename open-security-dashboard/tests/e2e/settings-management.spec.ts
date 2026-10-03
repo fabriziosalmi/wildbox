@@ -13,6 +13,7 @@ import {
   startSession,
   strongPassword,
   throwawayAccount,
+  toast,
   uniqueEmail,
 } from './support/backend'
 
@@ -198,7 +199,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
       await page.getByLabel('Confirm with your password').fill(account.password)
       await page.getByRole('button', { name: 'Save Changes' }).click()
 
-      await expect(page.getByText('Profile updated successfully', { exact: true })).toBeVisible()
+      await expect(toast(page, 'Profile updated successfully')).toBeVisible()
       await expect(page.getByRole('heading', { name: newEmail, level: 2 })).toBeVisible()
       const me = await api.get('/auth/users/me', { headers: bearer(account.token) })
       expect(me.status(), await me.text()).toBe(200)
@@ -216,7 +217,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
       await page.getByLabel('Confirm with your password').fill(`not-${account.password}`)
       await page.getByRole('button', { name: 'Save Changes' }).click()
 
-      await expect(page.getByText('Incorrect current password', { exact: true })).toBeVisible()
+      await expect(toast(page, 'Incorrect current password')).toBeVisible()
       const me = await api.get('/auth/users/me', { headers: bearer(account.token) })
       expect(me.status(), await me.text()).toBe(200)
       expect((await me.json()).email).toBe(account.email)
@@ -232,7 +233,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
 
       await fillPasswordForm(page, account.password, newPassword)
 
-      await expect(page.getByText('Password changed successfully', { exact: true })).toBeVisible()
+      await expect(toast(page, 'Password changed successfully')).toBeVisible()
       expect(await loginStatus(api, { email: account.email, password: newPassword })).toBe(200)
       expect(await loginStatus(api, account)).toBe(400)
 
@@ -259,7 +260,7 @@ test.describe('Settings', { tag: '@backend' }, () => {
 
       await fillPasswordForm(page, `not-${account.password}`, newPassword)
 
-      await expect(page.getByText('Incorrect current password', { exact: true })).toBeVisible()
+      await expect(toast(page, 'Incorrect current password')).toBeVisible()
       expect(await loginStatus(api, { email: account.email, password: newPassword })).toBe(400)
       expect(await loginStatus(api, account)).toBe(200)
     })
