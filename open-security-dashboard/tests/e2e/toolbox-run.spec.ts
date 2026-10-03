@@ -20,7 +20,7 @@ const isAsyncRun = (request: Request) =>
   request.method() === 'POST' && request.url().endsWith(`${TOOL_PATH}/async`)
 
 const sha256 = (text: string) => createHash('sha256').update(text).digest('hex')
-const md5 = (text: string) => createHash('md5').update(text).digest('hex')
+const sha512 = (text: string) => createHash('sha512').update(text).digest('hex')
 
 interface HashResult {
   algorithm: string
@@ -77,7 +77,9 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     await expect(page.getByTestId('field-hash_types')).toHaveValue('md5\nsha1\nsha256\nsha512')
 
     await page.getByTestId('field-input_text').fill(text)
-    await page.getByTestId('field-hash_types').fill('sha256\nmd5')
+    // hash_generator supports neither md5 nor sha1, its schema default
+    // notwithstanding.
+    await page.getByTestId('field-hash_types').fill('sha256\nsha512')
 
     const sent = page.waitForRequest(isRun)
     await page.getByTestId('run-tool').click()
@@ -88,7 +90,7 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     const body = request.postDataJSON()
     expect(body).toMatchObject({
       input_text: text,
-      hash_types: ['sha256', 'md5'],
+      hash_types: ['sha256', 'sha512'],
       iterations: 1,
       include_salted: false,
       timeout: 30,
@@ -103,10 +105,11 @@ test.describe('Toolbox: run a tool', { tag: '@backend' }, () => {
     const shown = await shownJson(page)
     const api = await apiRun('hash_generator', body)
     expect(api.status, JSON.stringify(api.body)).toBe(200)
+    expect(shown.success, JSON.stringify(shown)).toBe(true)
     expect(hashesOf(shown)).toEqual(hashesOf(api.body))
     expect(hashesOf(shown)).toEqual([
       { algorithm: 'sha256', hash_value: sha256(text) },
-      { algorithm: 'md5', hash_value: md5(text) },
+      { algorithm: 'sha512', hash_value: sha512(text) },
     ])
     // Rendered as a table too, not only as JSON.
     await expect(page.getByTestId('run-output').locator('td').getByText(sha256(text))).toBeVisible()
