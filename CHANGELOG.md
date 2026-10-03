@@ -550,6 +550,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A member removed from a team loses the team at the gateway on the
+  next request** (#613). A session is not bound to a team:
+  `/internal/authorize` resolves the oldest membership on every request,
+  and the gateway caches the answer for `AUTH_CACHE_TTL` (300 s). Since
+  #593 the removal revoked the member's API keys for the team, but their
+  sessions kept the cached "allowed in this team" decision, and the
+  removed member went on acting in the team for up to five minutes.
+  Removing a member (`DELETE /api/v1/admin/teams/{team_id}/members/{user_id}`,
+  by the team's owner or an admin, or by a superuser) now also sends the
+  gateway `{"memberships": [{"user_id", "team_id", "not_before"}], "ttl": <seconds>}`
+  before it commits, and commits only once the gateway confirms the
+  count; otherwise nothing changes and the request answers 503. The
+  gateway keeps a marker per user and team and refuses, with 403
+  `team_membership_ended`, a session decision of that user in that team
+  whose token was issued up to the removal, on a cache hit and after a
+  fresh authorization, so a request in flight across the removal is
+  refused too. The refused decision is dropped from the cache: the next
+  request with the same session is authorized afresh, and works in the
+  team the user still belongs to, if any. The user's sessions in their
+  other teams are not ended, which the per-user cutoff a password change
+  uses (#569) would have done. Deleting an account already ended all its
+  sessions (#593), including in the teams deleted with it, whose only
+  member it is.
 - **An agents task never sends another task's caller identity** (#594).
   The analysis task set the caller identity, a `ContextVar` the Wildbox
   client forwards on every tool call, only when its caller had both a user

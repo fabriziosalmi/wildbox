@@ -62,7 +62,11 @@ def gateway(monkeypatch, log):
     def handler(request):
         body = json.loads(request.content)
         state["bodies"].append(body)
-        scope = next(name for name in ("api_keys", "users", "jtis") if name in body)
+        scope = next(
+            name
+            for name in ("api_keys", "users", "memberships", "jtis")
+            if name in body
+        )
         log.append(f"gateway:{scope}")
         if state["script"]:
             outcome = state["script"].pop(0)
@@ -164,7 +168,7 @@ def key_ids(monkeypatch):
             return list(found.get("team_ids_result", []))
         return list(found["ids"])
 
-    for module in (users, user_manager):
+    for module in (users, user_manager, access_revocation):
         monkeypatch.setattr(module, "active_api_key_ids", active_api_key_ids)
     return found
 
@@ -503,7 +507,13 @@ def remove_member(log):
 
 def test_removing_a_member_revokes_their_keys_in_that_team_first(gateway, log, key_ids):
     member = remove_member(log)
-    assert log == ["gateway:api_keys", "delete:SimpleNamespace", "commit"]
+    # And their sessions in that team (#613): see test_team_removal_sessions.
+    assert log == [
+        "gateway:api_keys",
+        "gateway:memberships",
+        "delete:SimpleNamespace",
+        "commit",
+    ]
     assert key_ids["calls"] == [
         {"user_id": member.user_id, "team_ids": [member.team_id]}
     ]
@@ -517,12 +527,12 @@ def test_removing_a_member_fails_closed(gateway, log, key_ids):
     assert log == ["gateway:api_keys"] * 3
 
 
-def test_a_member_without_keys_is_removed_without_asking_the_gateway(
+def test_a_member_without_keys_still_has_their_team_sessions_ended(
     gateway, log, key_ids
 ):
     key_ids["ids"] = []
     remove_member(log)
-    assert log == ["delete:SimpleNamespace", "commit"]
+    assert log == ["gateway:memberships", "delete:SimpleNamespace", "commit"]
 
 
 # -- the key query --------------------------------------------------------------
