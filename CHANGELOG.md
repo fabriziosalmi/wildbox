@@ -877,6 +877,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the member's key through the team route and it is refused on the next
   request.
 
+- **identity: no development reloader in production** (#664).
+  `scripts/init.sh`, the image's command, started uvicorn with `--reload`
+  whatever the environment, so every deployment ran a file-watching
+  supervisor that restarts the server from a second process. It now
+  passes `--reload` only when `ENVIRONMENT` is `development`; otherwise
+  the server starts as one process, as before, without the watcher. The
+  image holds no mounted source, so nothing is lost: the reloader had
+  nothing to reload. The script also embedded a command substitution
+  (backticks) in a comment inside the superuser step, which ran
+  `docker logs` in the container at every start. A test runs the script
+  with stubbed commands and checks uvicorn's arguments for development,
+  production, staging, empty and unset; reverting the condition fails it.
+
 - **Sensor telemetry is scoped to the team that ingested it** (#641).
   `telemetry_events` and `sensor_metadata` had no team column, and the
   data service's telemetry routes queried the whole tables: any
