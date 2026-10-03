@@ -338,6 +338,19 @@ async def startup_event():
     import time
     app.state.start_time = time.time()
 
+    import logging
+
+    from .auth import api_key_hash_secret_is_fallback
+
+    if api_key_hash_secret_is_fallback():
+        # Names the variables, never their values. Production refuses to
+        # start in this state (Settings); elsewhere it is allowed, loudly.
+        logging.getLogger(__name__).warning(
+            "API_KEY_HASH_SECRET is not set: API-key digests are keyed by "
+            "JWT_SECRET_KEY, so rotating JWT_SECRET_KEY invalidates every API "
+            "key. Set API_KEY_HASH_SECRET (required when ENVIRONMENT=production)."
+        )
+
 
 
 @app.exception_handler(404)
