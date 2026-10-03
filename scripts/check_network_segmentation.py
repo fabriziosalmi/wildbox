@@ -97,6 +97,11 @@ MUST_CONNECT = [
     ("guardian-beat", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
     ("responder", "wildbox-postgres", 5432, "DATABASE_URL"),
     ("responder", "wildbox-redis", 6379, "REDIS_URL"),
+    # The playbook connectors call these as the run's caller (#616).
+    ("responder", "open-security-tools", 8000, "WILDBOX_API_URL"),
+    ("responder", "open-security-data", 8002, "WILDBOX_DATA_URL"),
+    ("responder", "open-security-guardian", 8013, "WILDBOX_GUARDIAN_URL"),
+    ("responder", "open-security-agents", 8006, "WILDBOX_AGENTS_URL"),
     ("cspm", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("cspm-worker", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
