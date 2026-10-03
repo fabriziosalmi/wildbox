@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Asynchronous tool tasks can be read, cancelled and listed** (#567).
+  `POST /api/v1/tools/{name}/async` queued a task through the gateway,
+  but the gateway routed none of the task endpoints, so its result could
+  never be read: `/api/v1/tasks` answered 404, and since #566 the tools
+  service refuses direct calls. The gateway now serves
+  `GET /api/v1/tasks/{id}`, `DELETE /api/v1/tasks/{id}` and
+  `GET /api/v1/tasks`, authenticated like the tools routes (API keys need
+  `tools:read` to read and list, `tools:execute` to cancel). They have
+  their own prefix because under `/api/v1/tools/` the next segment is a
+  tool name. The submit response's `status_url` is that gateway path, and
+  the list, a placeholder that pointed at Flower, returns the caller's
+  tasks of the last day with their state.
+- **A task id no longer opens someone else's task** (#567). The task
+  endpoints answered for any id: Celery's result backend does not record
+  who submitted a task, so whoever held an id could read its result or
+  cancel it, and an id that never existed was reported as pending. The
+  tools service now records the owner in Redis before queuing the task
+  and answers only them; another user's task, a task without an owner
+  record (submitted before the upgrade) and an unknown id all answer 404,
+  so the answer does not confirm that a task exists. There is no admin
+  override.
+- **The standalone tools UI calls the routed API** (#567). Its pages,
+  served by the gateway under `/tools/`, fetched `/api/tools`, which only
+  the deprecated gateway alias served (and the bare tool list not even
+  that). They now call `/api/v1/tools`.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
@@ -867,6 +892,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **The gateway's `/api/tools/` alias** (#567). It served the tools API
+  beside the canonical `/api/v1/tools/`, with `Deprecation` and `Sunset`
+  headers announcing its removal on 1 July 2026. Nothing in the
+  repository calls it any more; it now answers 404.
+- **The agents client's `X-API-Key` fallback** (#567). Without a caller
+  identity or `GATEWAY_INTERNAL_SECRET`, the client sent the static
+  `INTERNAL_API_KEY` as `X-API-Key`, which the tools service has refused
+  since #566 (401). It now always forwards the caller's gateway identity
+  with the secret, and without either it raises
+  `CallerIdentityUnavailable`, naming what is missing, before sending
+  anything. `INTERNAL_API_KEY` is no longer passed to the agents
+  container. The unused `api_client` test fixtures, which sent
+  `X-API-Key` straight to the tools service, are removed too.
 - **Estimated request counts in identity's admin analytics** (#570).
   `GET /api/v1/analytics/admin/usage-summary` returned
   `summary.api_requests_today` as the number of API keys used in the
@@ -895,8 +933,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the gateway (`X-Wildbox-*` headers verified with `X-Gateway-Secret`);
   anything else gets 401, and the message no longer mentions `X-API-Key`.
   Personal API keys sent to the gateway are unaffected. `API_KEY` stays a
-  required setting: the service still validates it at start-up and the
-  agents service still receives it as `INTERNAL_API_KEY`.
+  required setting: the service still validates it at start-up. (The
+  agents service received it as `INTERNAL_API_KEY` until #567.)
 
 - **The blue/green deployment experiment** (#552).
   `docker-compose.blue-green.yml`, `haproxy/`, the `blue_green_*.sh`

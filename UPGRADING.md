@@ -172,6 +172,19 @@ is at the top of the file.
   times a constant, not counts. A script that reads them must stop; the
   number of keys used in the last day is still there
   (`summary.api_keys_active`, `api_usage.keys_used_today`).
+- The gateway's `/api/tools/` alias is removed (#567) and answers 404. It
+  served the tools API beside `/api/v1/tools/` with `Deprecation` and
+  `Sunset: Wed, 01 Jul 2026` headers. A script that still calls
+  `https://<host>/api/tools/...` must call `https://<host>/api/v1/tools/...`;
+  nothing else changes in the request or the answer.
+- The agents service no longer reads `INTERNAL_API_KEY` (#567), and
+  `docker-compose.yml` no longer passes it. It was a fallback the agents
+  client sent as `X-API-Key` when it had no caller identity, which the tools
+  service has refused since #566. Remove it from overrides if you like; a
+  `.env` file that still sets it loads. The agents service needs
+  `GATEWAY_INTERNAL_SECRET` (`docker-compose.yml` passes it): without it,
+  every tool call of an analysis fails with `CallerIdentityUnavailable`
+  instead of a 401 from the tools service.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -309,7 +322,7 @@ See the [deployment guide](https://www.wildbox.io/guides/deployment/#the-dashboa
 
 It changed the password without asking for the current one. It now answers
 400 (`UPDATE_USER_INVALID_PASSWORD`) to a request with a `password` field and
-changes nothing; an email change needs the current password (section 19). A
+changes nothing; an email change needs the current password (section 18). A
 script that changes a
 user's own password must call
 `POST /api/v1/identity/admin/me/change-password` with `current_password` and
@@ -364,6 +377,32 @@ API changes that clients and scripts have to follow:
 - **Login tokens carry a fractional `iat`** (seconds since the epoch, as a
   JSON number with a fraction). A client that parses the claim as an integer
   has to accept a number.
+
+### 19. Asynchronous tool tasks are read at `/api/v1/tasks`, by their owner only
+
+`POST /api/v1/tools/{name}/async` queued a task, but nothing could read it:
+the gateway did not route the task endpoints (#567). They are now
+`GET /api/v1/tasks/{task_id}` (status and result),
+`DELETE /api/v1/tasks/{task_id}` (cancel) and `GET /api/v1/tasks` (the
+caller's tasks of the last day, newest first, `?limit=1..100`), and the
+submit response's `status_url` points at the first. Rebuild the tools
+service, its worker and the gateway together (section 1 does).
+
+- **A task belongs to the user who submitted it.** Anyone else, a teammate
+  or an administrator included, gets 404 for it, the same answer as for an
+  id that does not exist; it does not appear in their list. Operators who
+  need every task have Flower.
+- **Tasks submitted before the upgrade cannot be read**: they have no owner
+  record. Their results expire an hour after they finish anyway; submit
+  again.
+- **An unknown task id answers 404**, not `"status": "pending"` as before.
+  A client that polls an id it mistyped now stops at once.
+- **API keys with scopes** need `tools:read` to read and list tasks and
+  `tools:execute` to cancel one, as for the tools themselves.
+- The owner records live in the tools service's Redis database (the one
+  `REDIS_URL` names, `2` in `docker-compose.yml`) under
+  `wildbox:tools:task-owner:*` and `wildbox:tools:user-tasks:*`, and expire
+  after a day. Without Redis the task endpoints answer 503.
 
 ## Upgrading to 0.10.0
 

@@ -594,20 +594,35 @@ curl -X POST "http://localhost/api/v1/tools/whois_lookup/async" \
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
   "status": "accepted",
-  "message": "Task queued for execution"
+  "tool_name": "whois_lookup",
+  "status_url": "/api/v1/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098",
+  "message": "Task submitted successfully. Use task_id to check status."
 }
 ```
 
-### Step 2: Check Task Status
+### Who can see a task
 
-> The task endpoints (`/api/tasks/...`) are not routed by the gateway yet,
-> and the service refuses direct calls that do not come through it. The
-> examples below show the request shape.
+A task belongs to the user who submitted it. The service records the owner
+(user, team, tool and submission time) in Redis before it queues the task,
+and answers reads, cancellations and lists from that record. For anyone else,
+a teammate or an administrator included, the task does not exist: reading or
+cancelling it answers 404, the same as an unknown id, and it is not in their
+list. A task without an owner record (one submitted before the record
+existed) is not readable. Owner records expire after a day; Celery keeps a
+result for an hour after the task finishes. Operators who need every task use
+Flower (below).
+
+The gateway serves the task endpoints as `/api/v1/tasks`, the service's
+`/api/tasks`. They are not under `/api/v1/tools/`, where the segment after the
+prefix is a tool name. API keys with scopes need `tools:read` to read and list
+tasks and `tools:execute` to cancel one.
+
+### Step 2: Check Task Status
 
 Query the task status and result using the task ID:
 
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
+curl -X GET "http://localhost/api/v1/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
   -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
@@ -617,6 +632,8 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42409
 {
   "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
   "state": "PENDING",
+  "tool_name": "whois_lookup",
+  "submitted_at": 1790000000.0,
   "status": "pending",
   "message": "Task is waiting to be executed"
 }
@@ -659,7 +676,7 @@ curl -X GET "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42409
 Cancel a task that is still pending or running:
 
 ```bash
-curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
+curl -X DELETE "http://localhost/api/v1/tasks/ad2b039b-cf50-46c1-9124-ffca7a424098" \
   -H "X-API-Key: $WILDBOX_API_KEY"
 ```
 
@@ -667,12 +684,24 @@ curl -X DELETE "http://127.0.0.1:8000/api/tasks/ad2b039b-cf50-46c1-9124-ffca7a42
 
 ```json
 {
+  "task_id": "ad2b039b-cf50-46c1-9124-ffca7a424098",
   "status": "cancelled",
   "message": "Task cancellation requested"
 }
 ```
 
-**Note:** Tasks already completed cannot be cancelled.
+**Note:** A task that has finished cannot be cancelled (400).
+
+### Step 4: List Your Tasks (Optional)
+
+```bash
+curl -X GET "http://localhost/api/v1/tasks?limit=20" \
+  -H "X-API-Key: $WILDBOX_API_KEY"
+```
+
+Returns `{"tasks": [...], "count": n}`: your tasks of the last day, newest
+first, each with `task_id`, `tool_name`, `submitted_at`, `state`, `status` and
+`status_url`. `limit` is 1 to 100 (default 50).
 
 ### Complete Workflow Example
 
@@ -689,7 +718,7 @@ echo "Task submitted: $TASK_ID"
 sleep 2
 
 # 3. Retrieve result
-curl -X GET "http://127.0.0.1:8000/api/tasks/$TASK_ID" \
+curl -X GET "http://localhost/api/v1/tasks/$TASK_ID" \
   -H "X-API-Key: $WILDBOX_API_KEY" | jq
 ```
 
@@ -1136,6 +1165,15 @@ For support and questions:
 | GET | `/api/tools` | List available tools |
 | GET | `/api/tools/{tool_name}/info` | Get tool information |
 | POST | `/api/tools/{tool_name}` | Execute specific tool |
+| POST | `/api/tools/{tool_name}/async` | Queue a tool execution; returns a task ID |
+| GET | `/api/tasks/{task_id}` | Status and result of one of your tasks |
+| DELETE | `/api/tasks/{task_id}` | Cancel one of your pending or running tasks |
+| GET | `/api/tasks` | Your tasks of the last day |
+
+These are the service's paths. Clients reach them through the gateway, which
+serves `/api/tools/...` as `/api/v1/tools/...` and `/api/tasks...` as
+`/api/v1/tasks...`; the service answers 401 to requests that do not come
+through it.
 | GET | `/docs` | Swagger UI documentation |
 | GET | `/redoc` | ReDoc documentation |
 
