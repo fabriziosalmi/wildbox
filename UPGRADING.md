@@ -724,6 +724,11 @@ of them failed.
   the environment of the process that runs the playbook worker
   (`python -m dramatiq app.workflow_engine`); without the secret every
   connector step fails.
+- **The URL defaults changed.** They named `localhost`, and Guardian's
+  port 8003, where Guardian does not listen; they are now the container
+  addresses of `docker-compose.yml`. A responder run outside the stack
+  must set the URLs. Each must be an absolute `http(s)` URL, or the
+  responder does not start.
 - **A run acts for its caller, with their role.** The services authorize
   each call for that user and team: Guardian lets only owners and admins
   create a vulnerability, so `all_star_e2e`'s `create_finding` fails, and

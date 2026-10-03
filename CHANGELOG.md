@@ -277,7 +277,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docker-compose.yml` gives the responder the services' addresses
     (`WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL`,
     `WILDBOX_AGENTS_URL`); every connector used to target `localhost`
-    inside the container.
+    inside the container. The responder's own defaults are now those
+    addresses too, and checked at startup: Guardian's default named port
+    8003, where Guardian does not listen.
 
   A new playbook, `hash_evidence.yml`, queues the hashing of a piece of
   evidence as the caller. Unit tests call every connector action and check

@@ -32,11 +32,25 @@ The Responder is the orchestration heart of Wildbox, designed to automate securi
 
 ## 🚀 Quick Start
 
-### Docker Deployment (Recommended)
+### With the whole stack (recommended)
+
+The responder runs as the `responder` service of the main
+`docker-compose.yml`, from the repository root, with the services its
+playbooks call and the gateway in front of it:
 
 ```bash
-# Clone and navigate
-cd /Users/fab/GitHub/wildbox/open-security-responder
+docker compose up -d
+docker compose logs -f responder
+```
+
+### Standalone
+
+`open-security-responder/docker-compose.yml` runs the responder, its worker
+and a Redis of their own, and reaches the other services where the main
+stack publishes them on the host:
+
+```bash
+cd open-security-responder
 
 # Start the services
 make dev
@@ -61,29 +75,51 @@ make run-local
 make worker
 ```
 
+Both need `GATEWAY_INTERNAL_SECRET`, and the worker the `WILDBOX_*_URL`
+variables of the services it calls (see [Configuration](#-configuration)).
+
 ## 📚 Usage
 
-### Access Points
+### API
 
-- **API Server**: http://localhost:8018
-- **API Documentation**: http://localhost:8018/docs
-- **Health Check**: http://localhost:8018/health
+The gateway publishes the API at `https://<host>/api/v1/responder/<path>`
+and forwards it to the responder's `/v1/<path>`. Every route but `/health`,
+`/metrics` and `/` requires the gateway's identity headers, so a client
+calls the gateway, not port 8018.
+
+| Method and path (responder) | What it does | Who may |
+| --- | --- | --- |
+| `GET /v1/playbooks` | List the loaded playbooks | any member |
+| `POST /v1/playbooks/{playbook_id}/execute` | Start a run; body `{"trigger_data": {...}}`; answers 202 with `run_id` | any member |
+| `GET /v1/runs/{run_id}` | A run's status, step results and log | the run's team |
+| `DELETE /v1/runs/{run_id}` | Mark a run cancelled | the run's team |
+| `POST /v1/playbooks/reload` | Reload the playbooks from disk | owner, admin |
+| `GET /v1/connectors` | List the connectors and their actions | any member |
+| `GET /health` | Health check, no authentication | anyone |
+| `GET /metrics` | Prometheus metrics | anyone on the network |
+
+A run of another team answers 404, as a run that does not exist does.
+`/docs` serves the OpenAPI page outside production.
 
 ### Example Playbook Execution
 
 Through the gateway, as a user with a token or an API key. The responder
 accepts only requests the gateway forwards, and a run acts for the user who
-starts it (see [Who a run acts for](#who-a-run-acts-for)).
+starts it (see [Who a run acts for](#who-a-run-acts-for)). The development
+gateway's certificate is self-signed: `--cacert` trusts it, from the
+repository root.
 
 ```bash
-# Execute a playbook
-curl -X POST "https://localhost/api/v1/responder/playbooks/triage_ip/execute" \
+# Execute a playbook: the trigger's fields go under trigger_data
+curl --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST "https://localhost/api/v1/responder/playbooks/triage_ip/execute" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"trigger_data": {"ip": "203.0.113.7"}}'
 
 # Check execution status
-curl -H "Authorization: Bearer $TOKEN" \
+curl --cacert open-security-gateway/ssl/wildbox.crt \
+  -H "Authorization: Bearer $TOKEN" \
   "https://localhost/api/v1/responder/runs/{run_id}"
 ```
 
@@ -278,11 +314,16 @@ Environment variables:
 | ---------- | ------------- | --------- |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6381/0` |
 | `GATEWAY_INTERNAL_SECRET` | Checked on the requests the responder receives, and sent with the run's caller on the requests its connectors make. Required. | none |
-| `WILDBOX_API_URL` | Tools service URL | `http://localhost:8000` |
-| `WILDBOX_DATA_URL` | Data service URL | `http://localhost:8002` |
-| `WILDBOX_GUARDIAN_URL` | Guardian URL | `http://localhost:8013` |
-| `WILDBOX_AGENTS_URL` | Agents service URL | `http://localhost:8006` |
+| `WILDBOX_API_URL` | Tools service URL | `http://open-security-tools:8000` |
+| `WILDBOX_DATA_URL` | Data service URL | `http://open-security-data:8002` |
+| `WILDBOX_GUARDIAN_URL` | Guardian URL | `http://open-security-guardian:8013` |
+| `WILDBOX_AGENTS_URL` | Agents service URL | `http://open-security-agents:8006` |
+| `WILDBOX_SENSOR_URL` | Accepted and unused: no connector calls the sensor | `http://open-security-sensor:8004` |
 | `DEBUG` | Enable debug mode | `false` |
+
+The URL defaults are the services' addresses in the main
+`docker-compose.yml`, which also sets them. Each must be an absolute
+`http(s)` URL, or the service does not start.
 
 The playbook worker (`python -m dramatiq app.workflow_engine`) makes the
 connector calls, so it needs `GATEWAY_INTERNAL_SECRET` and the
@@ -309,6 +350,7 @@ open-security-responder/
 ├── app/
 │   ├── __init__.py
 │   ├── main.py                 # FastAPI application
+│   ├── auth.py                 # Gateway authentication of requests
 │   ├── models.py               # Pydantic models
 │   ├── config.py               # Configuration management
 │   ├── caller.py               # The identity a run acts for
@@ -340,9 +382,9 @@ open-security-responder/
 
 ## 📊 Monitoring
 
-- **Health Endpoint**: `/health` - Service health status
-- **Metrics Endpoint**: `/metrics` - Prometheus metrics
-- **Run Status**: `/v1/runs/{run_id}` - Execution details and logs
+- **Health Endpoint**: `/health`: service health
+- **Metrics Endpoint**: `/metrics`: Prometheus metrics
+- **Run Status**: `/v1/runs/{run_id}`: a run's step results and log
 
 ## 🤝 Integration
 
