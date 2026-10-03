@@ -29,6 +29,7 @@ from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
 from .logout import RevocationError, revoke_sessions_issued_before, revoke_token
+from .password_policy import password_problem
 from .token_blacklist import (
     clear_failed_logins,
     is_account_locked,
@@ -197,6 +198,24 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         await clear_failed_logins(email)
         return user
 
+    async def validate_password(self, password: str, user) -> None:
+        """The password policy, for every path that sets a password (#583).
+
+        fastapi-users' default accepts anything, and it is the only check
+        create() (registration) and reset_password() run, so both took a
+        one-character password. The rule is in password_policy.py: 12 to 128
+        characters, not containing the account's email or its local part, not
+        one of the most common passwords. `user` is the account, or the
+        UserCreate of an account being created; both carry the email.
+        """
+        self._raise_if_refused(password, [getattr(user, "email", None)])
+
+    @staticmethod
+    def _raise_if_refused(password: str, emails) -> None:
+        reason = password_problem(password, emails)
+        if reason is not None:
+            raise exceptions.InvalidPasswordException(reason=reason)
+
     # Where a signed-in user changes their own password. It verifies the
     # current one; the self-service update below refuses to.
     CHANGE_PASSWORD_ROUTE = "POST /api/v1/admin/me/change-password"
@@ -223,6 +242,11 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         if password is not None:
             # Before the sessions are ended: an invalid password changes nothing.
             await self.validate_password(password, user)
+            # An administrator's PATCH can change the email in the same
+            # request: the password must not contain the new one either.
+            new_email = update_dict.get("email")
+            if new_email:
+                self._raise_if_refused(password, [new_email])
             not_before = datetime.now(timezone.utc)
             try:
                 await revoke_sessions_issued_before(user.id, not_before)

@@ -613,8 +613,14 @@ async def change_my_password(
     # Verify current password; a wrong one counts towards the lockout (#569).
     await verify_current_password(current_user, password_change.current_password)
 
-    # Through UserManager, which ends the other sessions with the change.
-    user = await user_manager.set_password(current_user, password_change.new_password)
+    # Through UserManager, which applies the password policy (#583) and ends
+    # the other sessions with the change.
+    try:
+        user = await user_manager.set_password(current_user, password_change.new_password)
+    except user_exceptions.InvalidPasswordException as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc.reason)
+        )
     access_token = await get_jwt_strategy().write_token(user)
 
     return {

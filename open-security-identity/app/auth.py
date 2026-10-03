@@ -79,7 +79,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password for storage (Argon2id)."""
+    """Hash a password (Argon2id).
+
+    It applies no password policy: an account's password is set only through
+    UserManager, whose validate_password() does (#583). Nothing in the app
+    calls this.
+    """
     return password_helper.hash(password)
 
 

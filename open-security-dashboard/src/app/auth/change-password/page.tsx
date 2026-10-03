@@ -10,9 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { storeSessionToken, useAuth } from '@/components/auth-provider'
 import { identityClient, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
-
-// identity's minimum for a new password (PasswordChangeRequest).
-const MIN_PASSWORD_LENGTH = 12
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULE_HINT,
+  passwordPolicyProblem,
+} from '@/lib/password-policy'
 
 // A password change ends every session issued before it, this one included,
 // and answers with a new token for this session (#569).
@@ -74,8 +77,10 @@ export default function ChangeInitialPasswordPage() {
       setError('The new passwords do not match')
       return
     }
-    if (next.length < MIN_PASSWORD_LENGTH) {
-      setError(`The new password must be at least ${MIN_PASSWORD_LENGTH} characters long`)
+    // identity's password rule (#583); its reason is shown if it refuses one.
+    const problem = passwordPolicyProblem(next, user?.email)
+    if (problem) {
+      setError(problem)
       return
     }
     setSaving(true)
@@ -147,9 +152,14 @@ export default function ChangeInitialPasswordPage() {
                   value={next}
                   onChange={e => setNext(e.target.value)}
                   minLength={MIN_PASSWORD_LENGTH}
+                  maxLength={MAX_PASSWORD_LENGTH}
                   required
                   disabled={saving}
+                  aria-describedby="new-password-rule"
                 />
+                <p id="new-password-rule" className="text-xs text-muted-foreground">
+                  {PASSWORD_RULE_HINT}
+                </p>
               </div>
               <div className="space-y-2">
                 <label htmlFor="confirm-password" className="text-sm font-medium">
@@ -162,6 +172,7 @@ export default function ChangeInitialPasswordPage() {
                   value={confirm}
                   onChange={e => setConfirm(e.target.value)}
                   minLength={MIN_PASSWORD_LENGTH}
+                  maxLength={MAX_PASSWORD_LENGTH}
                   required
                   disabled={saving}
                 />

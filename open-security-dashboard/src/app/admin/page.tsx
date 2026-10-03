@@ -5,6 +5,12 @@ import { useAuth } from '@/components/auth-provider'
 import { MainLayout } from '@/components/main-layout'
 import { identityClient, getIdentityPath, gatewayBaseUrl } from '@/lib/api-client'
 import Cookies from 'js-cookie'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULE_HINT,
+  passwordPolicyProblem,
+} from '@/lib/password-policy'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -556,11 +562,12 @@ export default function AdminPage() {
       return
     }
 
-    // Password length validation
-    if (createUserForm.password.length < 8) {
+    // identity's password rule (#583); its reason is shown if it refuses one.
+    const passwordProblem = passwordPolicyProblem(createUserForm.password, createUserForm.email)
+    if (passwordProblem) {
       toast({
         title: 'Error',
-        description: 'Password must be at least 8 characters long',
+        description: passwordProblem,
         variant: 'destructive',
       })
       return
@@ -584,8 +591,9 @@ export default function AdminPage() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.detail || `HTTP ${response.status}`)
+        const errorData = await response.json().catch(() => ({}))
+        // identity's canonical error body carries the reason in error.message.
+        throw new Error(errorData?.error?.message || errorData?.detail || `HTTP ${response.status}`)
       }
 
       const newUser = await response.json()
@@ -1013,13 +1021,12 @@ export default function AdminPage() {
                       setCreateUserForm(prev => ({ ...prev, password: e.target.value }))
                     }
                     className="pl-10"
-                    minLength={8}
+                    minLength={MIN_PASSWORD_LENGTH}
+                    maxLength={MAX_PASSWORD_LENGTH}
                     required
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Password must be at least 8 characters long
-                </p>
+                <p className="text-xs text-muted-foreground">{PASSWORD_RULE_HINT}</p>
               </div>
 
               <div className="space-y-3">
