@@ -177,6 +177,16 @@ is at the top of the file.
   `Sunset: Wed, 01 Jul 2026` headers. A script that still calls
   `https://<host>/api/tools/...` must call `https://<host>/api/v1/tools/...`;
   nothing else changes in the request or the answer.
+- The tools service's standalone web UI is removed (#581). The gateway
+  answers `https://<host>/tools/...` with 404, and the service no longer
+  serves `/`, `/settings`, `/guide`, `/docs`, `/redoc` or `/static/` on
+  port 8000; `/openapi.json` and `/health` stay. Browse the tools on the
+  dashboard's `/toolbox` page and run them with
+  `POST https://<host>/api/v1/tools/<name>`. Update bookmarks. The gateway
+  also stops accepting the `auth_token` cookie in place of an
+  `Authorization` header: a client that sent only the cookie to
+  `/api/v1/...` must send `Authorization: Bearer <token>`, as the dashboard
+  does.
 - The agents service no longer reads `INTERNAL_API_KEY` (#567), and
   `docker-compose.yml` no longer passes it. It was a fallback the agents
   client sent as `X-API-Key` when it had no caller identity, which the tools
