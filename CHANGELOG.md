@@ -541,6 +541,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   two tools with `HttpUrl` fields, are now covered by the generic guard
   as well as by their own checks.
 
+  The guard on inputs could not see what a tool fetched afterwards, so the
+  same change closes the paths around it:
+
+  - *Redirects and DNS rebinding.* No tool checked redirect targets, and
+    aiohttp and requests follow redirects by default: a public URL that
+    answered `302 Location: http://169.254.169.254/` took the tool to the
+    metadata service. Every tool that fetches a caller-supplied URL now
+    opens its connections through `app/safe_http.py`. The aiohttp session
+    it builds checks scheme, host and port on every connection, redirect
+    hops included, and resolves names through a resolver that refuses the
+    name when any answer is not public; aiohttp then connects to those
+    checked addresses, so the resolution is pinned and a rebinding answer
+    cannot slip in between the check and the connection. Automatic
+    redirects stop after 5 hops, which also ends redirect loops. The
+    requests-based tools (`sql_injection_scanner`, `xss_scanner`,
+    `file_upload_scanner`, `email_harvester`) validate every hop the same
+    way but are not pinned: urllib3 resolves the name again when it
+    connects, which leaves a short window to a nameserver that answers
+    differently on the second lookup.
+  - *URLs built from other input.* `http_security_scanner` adds `https://`
+    to a bare host and `email_harvester` fetches pages of a bare domain;
+    neither value looked like a URL to the input guard. The URL actually
+    fetched is now validated, as is `api_security_tester`'s specification
+    URL, which was detected with a case-sensitive `startswith('http')`.
+  - *Tools' own weaker checks.* `header_analyzer` and
+    `url_security_scanner` looked at the first DNS answer only, let a name
+    that did not resolve through, and ignored multicast, unspecified and
+    shared addresses; `sql_injection_scanner` did no DNS resolution at all.
+    All three now use the shared guard and fail closed.
+    `web_application_firewall_bypass` allowed `localhost`, `127.0.0.1`,
+    `*.local` and `*.test` on its own allowlist and matched hosts with user
+    info still attached (`example.com@evil.example`); the shared guard now
+    decides first and the allowlist only narrows it.
+  - *WHOIS referrals.* `whois_lookup` followed the `Whois Server:` line of
+    a response to any host. The referral must now be a bare public host
+    name, and the tool connects to the address it checked.
+  - *Workflow steps.* `security_automation_orchestrator` called other
+    tools' `execute_tool` directly, skipping the SSRF guard and the
+    caller authorization of #563. Each step's parameters are now validated
+    by the tool's own input model (it used to pick `BaseToolInput` for
+    most tools), checked by the SSRF guard, and a tool that acts on behalf
+    of a caller is refused as a step.
+
+  Host, IP and CIDR targets of the network scanners are out of scope and
+  tracked in #614.
+
 - **An agents task never sends another task's caller identity** (#594).
   The analysis task set the caller identity, a `ContextVar` the Wildbox
   client forwards on every tool call, only when its caller had both a user
