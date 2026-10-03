@@ -848,7 +848,7 @@ local function enforce_scopes(auth_data)
 end
 
 -- Set authentication headers for backend services
-local function set_auth_headers(auth_data)
+local function set_auth_headers(auth_data, config)
     -- SECURITY: Strip ALL client-supplied auth headers BEFORE setting validated ones.
     -- This prevents identity spoofing via forged X-Wildbox-* headers.
     utils.clean_request_headers()
@@ -856,6 +856,10 @@ local function set_auth_headers(auth_data)
     ngx.var.wildbox_user_id = auth_data.user_id or ""
     ngx.var.wildbox_team_id = auth_data.team_id or ""
     ngx.var.wildbox_role = auth_data.role or "user"
+    -- The proof of origin, for this request only: proxy_params.conf sends
+    -- it from this variable, which stays empty on the locations that do not
+    -- authenticate, so the gateway vouches only for callers it knows (#664).
+    ngx.var.wildbox_gateway_secret = config.gateway_secret or ""
 
     -- Set headers for backend services (from validated auth_data only)
     ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
@@ -1032,7 +1036,7 @@ function _M.authenticate()
     apply_rate_limiting(auth_data)
 
     -- Set authentication headers for backend services
-    set_auth_headers(auth_data)
+    set_auth_headers(auth_data, config)
 
     local request_time = (ngx.now() - request_start) * 1000
     utils.log("debug", "Authorization completed", {
