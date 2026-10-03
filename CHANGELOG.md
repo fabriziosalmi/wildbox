@@ -97,6 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   client as `ErrorCode.REGISTER_USER_ALREADY_EXISTS`: the shared error
   handler sends the code itself, `REGISTER_USER_ALREADY_EXISTS` (also
   `LOGIN_BAD_CREDENTIALS` on the login page).
+- **Logging out always lands on the login page** (#590). After the token
+  was revoked, the page's own requests answered 401 and the API client
+  answered each one with a hard redirect to `/`, which raced the logout's
+  client-side redirect to `/auth/login` and sometimes won. The logout is
+  now the only owner of that navigation: it suspends the API client's
+  redirect, revokes the token, removes the cookie and then replaces the
+  page with `/auth/login` (a full navigation, which also drops the old
+  session's client state). The `/auth/logout` page no longer issues a
+  second redirect of its own, and the unused `useLogout` hook, a third
+  one, is removed.
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could

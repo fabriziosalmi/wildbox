@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Cookies from 'js-cookie'
 import { LoginResponse, RegisterRequest, User } from '@/types'
-import { identityClient, getAuthPath } from '@/lib/api-client'
+import { beginSignOut, identityClient, getAuthPath } from '@/lib/api-client'
 
 interface AuthContextType {
   user: User | null
@@ -12,7 +12,7 @@ interface AuthContextType {
   isAuthenticated: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, name: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
   refetchUser: () => Promise<void>
 }
 
@@ -60,7 +60,7 @@ export function useAuth() {
       isAuthenticated: false,
       login: async () => {},
       register: async () => {},
-      logout: () => {},
+      logout: async () => {},
       refetchUser: async () => {},
     }
   }
@@ -133,29 +133,34 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   }
 
-  const logout = () => {
+  const logout = async () => {
     // Skip during SSR
     if (typeof window === 'undefined') return
 
-    const finish = () => {
-      // Clear auth cookie
-      Cookies.remove('auth_token')
-
-      setUser(null)
-
-      // Use replace to prevent going back to authenticated state
-      router.replace('/auth/login')
-    }
+    // This function is the only owner of the navigation after a logout
+    // (#590). The page's own requests keep going while it runs and answer
+    // 401 once the token is revoked or the cookie removed; the API client
+    // used to answer each with a hard redirect to '/', which raced the
+    // redirect to the login page and sometimes won.
+    beginSignOut()
 
     // Revoke the token server-side before forgetting it. Deleting the cookie
     // alone left the session valid at the gateway for the rest of the token's
     // lifetime, for anyone who had copied it. The request carries the token
     // from the cookie, so it has to go out first; a failure must not keep the
-    // user logged in locally, hence finish() either way.
-    identityClient
-      .post(getAuthPath('/api/v1/auth/jwt/logout'))
-      .catch(() => undefined)
-      .finally(finish)
+    // user logged in locally, hence no early return.
+    try {
+      await identityClient.post(getAuthPath('/api/v1/auth/jwt/logout'))
+    } catch {
+      // Signed out locally all the same.
+    }
+
+    Cookies.remove('auth_token')
+
+    // A full navigation, issued once the cookie is gone: it also drops every
+    // piece of client state of the old session (this context, the query
+    // cache), and replace() keeps it out of the history.
+    window.location.replace(LOGIN_PAGE)
   }
 
   const refetchUser = async () => {
