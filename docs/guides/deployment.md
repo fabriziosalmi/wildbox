@@ -353,6 +353,61 @@ reports `"celery": "healthy"` once a worker answers.
 - **Providers.** Only AWS scans run; GCP and Azure scans fail when the
   worker takes them.
 
+### The responder's playbooks
+
+A playbook run calls the tools, data, guardian and agents services as the
+user who started it: each request carries that user's gateway identity and
+`GATEWAY_INTERNAL_SECRET`, and the service authorizes it for that user and
+team. The playbook worker runs inside the `responder` container, so the
+container's environment is what it uses.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RESPONDER_WILDBOX_API_URL` | `http://open-security-tools:8000` | Tools service, passed as `WILDBOX_API_URL` |
+| `RESPONDER_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL` |
+| `RESPONDER_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL` |
+| `RESPONDER_WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service, passed as `WILDBOX_AGENTS_URL` |
+
+The defaults are the services' addresses in both compose files. In the
+production overlay the responder reaches them on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
+- **Permissions follow the user.** A step the user may not take fails:
+  Guardian lets only owners and admins create a vulnerability, so
+  `all_star_e2e` records none when a member runs it.
+- **Results belong to the user.** A tool task or an AI analysis a run
+  queues is listed and readable by the user who ran it, and by nobody else.
+
+### Internal targets of the network tools
+
+The network tools (port and vulnerability scanners, the TLS and
+certificate analyzers, `network_scanner`, `iot_security_scanner`,
+`database_security_analyzer`, `dns_enumerator`, and the image registry of
+`container_security_scanner`) refuse internal targets: private, loopback,
+link-local, multicast, reserved and shared addresses, ranges that contain
+one, names that resolve to one, and the stack's own service names. A
+range holds at most 1024 addresses. Refusals answer 400.
+
+To scan an internal lab, list its ranges and hosts in `.env`, then
+recreate `api` and `tools-worker`:
+
+```bash
+TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01
+```
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d api tools-worker
+```
+
+- **Entries.** CIDR ranges with their host bits zero, IP addresses and
+  host names, comma-separated. A name is matched exactly. A bad entry
+  stops both containers at start-up; `docker compose logs api` names it.
+- **Keep the stack out.** Every caller of every network tool can scan
+  what is listed. Do not list the stack's Docker networks (by default in
+  `172.16.0.0/12`); its service names stay refused unless listed by name.
+
+The tools README, "Network targets", lists the fields checked per tool.
+
 ---
 
 ## 5. Verify

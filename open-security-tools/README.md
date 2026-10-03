@@ -277,6 +277,7 @@ make urls         # Show useful URLs
 | `LOG_LEVEL` | Logging level | `INFO` | ❌ |
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379` | ❌ |
 | `RATE_LIMIT_ENABLED` | Enable rate limiting | `true` | ❌ |
+| `TOOLS_ALLOWED_INTERNAL_TARGETS` | Internal CIDR ranges, IP addresses and host names the network tools may scan (see [Network targets](#network-targets)) | empty | ❌ |
 
 ### Production Considerations
 
@@ -362,6 +363,76 @@ See `config/*.json.example`. To grant access, mount the files into both the
 Destructive tests are limited to one per caller per hour; the counter is kept
 in each process's memory, so the API process and the Celery worker count
 separately and a restart resets them.
+
+### Network targets
+
+The tools that scan a host, an address or a range refuse internal targets
+before they run (#614), on `POST /api/v1/tools/<name>`, in the
+asynchronous task and in each step of `security_automation_orchestrator`.
+The check is `enforce_target_policy` in `app/target_policy.py`, which also
+runs the URL guard for tools that fetch a URL.
+
+Refused, unless allowed below:
+
+- private, loopback, link-local, unspecified, multicast, reserved and
+  shared (`100.64.0.0/10`) addresses, and IPv4 addresses embedded in IPv6
+  ones (IPv4-mapped, 6to4, NAT64);
+- a CIDR or address range with any such address in it, and any range of
+  more than 1024 addresses (an IPv4 `/22`, an IPv6 `/118`);
+- a host name that resolves to such an address (every answer is checked)
+  or does not resolve;
+- the deployment's own names: every name without a dot (`wildbox-redis`,
+  `postgres`, `gateway`), `localhost`, names under `.localhost`, `.local`,
+  `.internal`, `.localdomain` and `.home.arpa`, and the cloud metadata
+  names;
+- spellings that are not canonical (`127.1`, `0x7f000001`), non-ASCII host
+  names (write them in their `xn--` form) and values with whitespace.
+
+The inputs checked, declared per tool in `NETWORK_TARGET_FIELDS`:
+
+| Tool | Field | Holds |
+| ------ | ------- | ------- |
+| `ssl_analyzer`, `ca_analyzer`, `port_scanner`, `network_port_scanner`, `network_vulnerability_scanner` | `target` | a host name or IP address |
+| `pki_certificate_manager` | `domain` | a host, `host:port` or a URL |
+| `iot_security_scanner` | `target_ip`, `ip_range` | a host; an address or CIDR range |
+| `network_scanner` | `network` | an address, a CIDR range or `a.b.c.d-e` |
+| `database_security_analyzer` | `host` | a host name or IP address |
+| `dns_enumerator` | `dns_servers` | IP addresses only |
+| `container_security_scanner` | `image_name` | an image reference; its registry host is checked |
+
+dns_enumerator also checks the name servers it attempts a zone transfer
+from, which come from the domain's NS records, and connects to the
+address it checked. `tests/unit/test_target_policy.py` fails when a tool
+has a host-like input field that is neither declared nor listed in
+`REVIEWED_NON_TARGET_FIELDS` with the reason it is not a target.
+
+**Allowing a lab.** `TOOLS_ALLOWED_INTERNAL_TARGETS` takes comma-separated
+CIDR ranges, IP addresses and host names, and is empty by default:
+
+```bash
+TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01
+```
+
+An address inside a listed range is accepted, a range only if all its
+internal addresses are inside listed ranges, and a host name if it is
+listed (exactly, not its subdomains) or if all its internal addresses are
+inside listed ranges. The range limit still applies. A range must have its
+host bits zero (`10.20.0.0/16`); a bad entry stops the service and the
+worker at start-up. Give the same value to the `api` and `tools-worker`
+containers (the root `docker-compose.yml` does). Do not list the stack's
+own Docker networks: a listed range is open to every caller of every
+network tool.
+
+This list is separate from `AUTHORIZED_TARGETS_FILE` (above). That one
+names the targets a caller may attack through a tool that acts for the
+caller, among public ones, and never lifts the SSRF guard; this one opens
+internal targets to every caller.
+
+**What remains.** The check resolves a host name, and most tools resolve
+it again when they connect, so a name whose DNS answer changes in between
+(DNS rebinding) can still reach an internal address in that window.
+`container_security_scanner` hands the image to trivy, which follows the
+registry's redirects and token endpoints by itself.
 
 ### Tool Configuration
 

@@ -8,75 +8,15 @@ import json
 import time
 import logging
 from django.utils.deprecation import MiddlewareMixin
-from django.http import JsonResponse
-from django.conf import settings
-from apps.core.models import APIKey, AuditLog
+from apps.core.models import AuditLog
 
 
 logger = logging.getLogger(__name__)
 
 
-class APIKeyMiddleware(MiddlewareMixin):
-    """Middleware to handle API key authentication for specific endpoints."""
-    
-    def process_request(self, request):
-        """Process incoming request."""
-        # Skip for non-API endpoints
-        if not request.path.startswith('/api/'):
-            return None
-        
-        # Skip for documentation endpoints
-        if request.path in ['/api/schema/', '/docs/', '/redoc/']:
-            return None
-        
-        # Skip for health check
-        if request.path == '/health/':
-            return None
-        
-        # Check for API key
-        api_key = self.get_api_key(request)
-        if not api_key:
-            return JsonResponse({
-                'error': 'API key required',
-                'message': 'Please provide API key in X-API-Key header or Authorization header'
-            }, status=401)
-        
-        # Validate API key
-        try:
-            key_obj = APIKey.objects.select_related('user').get(
-                key=api_key,
-                is_active=True
-            )
-            
-            if key_obj.is_expired():
-                return JsonResponse({
-                    'error': 'API key expired',
-                    'message': 'The provided API key has expired'
-                }, status=401)
-            
-            # Store API key in request for later use
-            request.api_key = key_obj
-            
-        except APIKey.DoesNotExist:
-            return JsonResponse({
-                'error': 'Invalid API key',
-                'message': 'The provided API key is not valid'
-            }, status=401)
-        
-        return None
-    
-    def get_api_key(self, request):
-        """Extract API key from request headers."""
-        # Try X-API-Key header first
-        api_key = request.META.get('HTTP_X_API_KEY')
-        
-        if not api_key:
-            # Try Authorization header with Bearer token
-            auth_header = request.META.get('HTTP_AUTHORIZATION')
-            if auth_header and auth_header.startswith('Bearer '):
-                api_key = auth_header[7:]  # Remove 'Bearer ' prefix
-        
-        return api_key
+# An APIKeyMiddleware lived here, validating guardian's own APIKey rows. It was
+# not installed, and the model is gone (#629): GatewayAuthMiddleware is the
+# only authentication.
 
 
 class RequestLoggingMiddleware(MiddlewareMixin):
@@ -166,7 +106,6 @@ class AuditMiddleware(MiddlewareMixin):
             # Create audit log entry
             AuditLog.objects.create(
                 user=getattr(request, 'user', None),
-                api_key=getattr(request, 'api_key', None),
                 action=action_map.get(request.method, 'UNKNOWN'),
                 resource_type=resource_type,
                 resource_id=resource_id,

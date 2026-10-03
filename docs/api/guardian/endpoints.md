@@ -10,8 +10,8 @@
 > fictitious placeholders.
 
 **Gateway path**: `https://<host>/api/v1/guardian/...` (proxied to the service's `/api/v1/...`)  
-**Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: API Key (X-API-Key header) or Bearer Token (JWT, JSON Web Token)
+**Local port**: listed in [Service ports](../../guides/ports.md); the service accepts only requests forwarded by the gateway, so the examples below call the gateway  
+**Authentication**: through the gateway only (JWT, or a personal API key sent to the gateway as `X-API-Key`)
 
 ---
 
@@ -34,67 +34,26 @@ The Guardian Service is the core orchestration platform for security asset manag
 
 ## Authentication
 
-Guardian Service supports multiple authentication methods:
-
-### API Key Authentication
-
-Use the `X-API-Key` header for API requests:
+Guardian accepts requests forwarded by the gateway only. Send them to
+`https://<host>/api/v1/guardian/...` with a JWT or a personal API key:
 
 ```bash
-curl -X GET http://localhost:8013/api/v1/assets/ \
+curl -X GET https://localhost/api/v1/guardian/assets/ \
   -H "X-API-Key: your-api-key-here"
-```
 
-### Bearer Token (JWT) Authentication
-
-Use the `Authorization: Bearer` header:
-
-```bash
-curl -X GET http://localhost:8013/api/v1/assets/ \
+curl -X GET https://localhost/api/v1/guardian/assets/ \
   -H "Authorization: Bearer your-jwt-token-here"
 ```
 
+A request made directly to the service's port answers 403
+`GATEWAY_AUTH_REQUIRED`, whatever key it carries.
+
 ### Getting an API Key
 
-**Method**: `POST`
-**Endpoint**: `/api/v1/auth/api-keys/`
-**Authentication**: Required (Bearer Token)
-
-**Request Body**:
-
-```json
-{
-  "name": "Production API Key",
-  "description": "For production integrations",
-  "expires_in_days": 365
-}
-```
-
-**Request**:
-
-```bash
-curl -X POST http://localhost:8013/api/v1/auth/api-keys/ \
-  -H "Authorization: Bearer {token}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Production API Key",
-    "description": "For production integrations",
-    "expires_in_days": 365
-  }'
-```
-
-**Response (201 Created)**:
-
-```json
-{
-  "id": "key-123",
-  "name": "Production API Key",
-  "key": "gsk_a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
-  "created_at": "2024-11-07T10:30:00Z",
-  "expires_at": "2025-11-07T10:30:00Z",
-  "status": "active"
-}
-```
+Personal API keys are created in identity (`POST /api/v1/identity/api-keys`
+through the gateway, or Settings > API keys in the dashboard); see the
+[identity API](../identity/endpoints.md#api-keys). guardian has no API keys
+of its own: the ones it had were removed (#629).
 
 ---
 
@@ -123,7 +82,7 @@ List all security assets with filtering and pagination.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/v1/assets/?limit=20&status=active&severity=critical" \
+curl -X GET "https://localhost/api/v1/guardian/assets/?limit=20&status=active&severity=critical" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -132,7 +91,7 @@ curl -X GET "http://localhost:8013/api/v1/assets/?limit=20&status=active&severit
 ```json
 {
   "count": 150,
-  "next": "http://localhost:8013/api/v1/assets/?offset=20",
+  "next": "https://localhost/api/v1/guardian/assets/?offset=20",
   "previous": null,
   "results": [
     {
@@ -185,7 +144,7 @@ Create a new asset in the system.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/assets/ \
+curl -X POST https://localhost/api/v1/guardian/assets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -233,7 +192,7 @@ Retrieve detailed information about a specific asset.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8013/api/v1/assets/asset-001/ \
+curl -X GET https://localhost/api/v1/guardian/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -298,7 +257,7 @@ Update an asset's information.
 **Request**:
 
 ```bash
-curl -X PUT http://localhost:8013/api/v1/assets/asset-001/ \
+curl -X PUT https://localhost/api/v1/guardian/assets/asset-001/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -330,7 +289,7 @@ Delete an asset from the system.
 **Request**:
 
 ```bash
-curl -X DELETE http://localhost:8013/api/v1/assets/asset-001/ \
+curl -X DELETE https://localhost/api/v1/guardian/assets/asset-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -359,7 +318,7 @@ Initiate a security scan on an asset.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/assets/asset-001/scan/ \
+curl -X POST https://localhost/api/v1/guardian/assets/asset-001/scan/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -411,7 +370,7 @@ List all vulnerabilities with advanced filtering.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/v1/vulnerabilities/?severity=critical&status=open" \
+curl -X GET "https://localhost/api/v1/guardian/vulnerabilities/?severity=critical&status=open" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -462,7 +421,7 @@ Retrieve detailed information about a specific vulnerability.
 **Request**:
 
 ```bash
-curl -X GET http://localhost:8013/api/v1/vulnerabilities/vuln-001/ \
+curl -X GET https://localhost/api/v1/guardian/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -526,7 +485,7 @@ Update a vulnerability's status or assignment.
 **Request**:
 
 ```bash
-curl -X PATCH http://localhost:8013/api/v1/vulnerabilities/vuln-001/ \
+curl -X PATCH https://localhost/api/v1/guardian/vulnerabilities/vuln-001/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -569,7 +528,7 @@ Assign a vulnerability to a team or user.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/vulnerabilities/vuln-001/assign/ \
+curl -X POST https://localhost/api/v1/guardian/vulnerabilities/vuln-001/assign/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -616,7 +575,7 @@ List all configured security scanners.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/v1/scanners/?status=active" \
+curl -X GET "https://localhost/api/v1/guardian/scanners/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -674,7 +633,7 @@ Register a new security scanner.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/scanners/ \
+curl -X POST https://localhost/api/v1/guardian/scanners/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -710,7 +669,7 @@ Test connectivity and authentication with a scanner.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/scanners/scanner-nessus-01/test/ \
+curl -X POST https://localhost/api/v1/guardian/scanners/scanner-nessus-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -751,7 +710,7 @@ List all configured integrations with external systems.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/v1/integrations/?status=active" \
+curl -X GET "https://localhost/api/v1/guardian/integrations/?status=active" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -806,7 +765,7 @@ Create a new integration with an external system.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/integrations/ \
+curl -X POST https://localhost/api/v1/guardian/integrations/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -844,7 +803,7 @@ Test connectivity and authentication with an integration.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/integrations/int-jira-01/test/ \
+curl -X POST https://localhost/api/v1/guardian/integrations/int-jira-01/test/ \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -887,7 +846,7 @@ List all remediation tickets and workflows.
 **Request**:
 
 ```bash
-curl -X GET "http://localhost:8013/api/v1/remediation-tickets/?status=in_progress" \
+curl -X GET "https://localhost/api/v1/guardian/remediation-tickets/?status=in_progress" \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -937,7 +896,7 @@ Create a new remediation ticket.
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8013/api/v1/remediation-tickets/ \
+curl -X POST https://localhost/api/v1/guardian/remediation-tickets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1029,15 +988,15 @@ When rate limit is exceeded (429 error):
 
 ```bash
 # 1. Get all critical vulnerabilities
-CRITICAL_VULNS=$(curl -s -X GET "http://localhost:8013/api/v1/vulnerabilities/?severity=critical&status=open" \
+CRITICAL_VULNS=$(curl -s -X GET "https://localhost/api/v1/guardian/vulnerabilities/?severity=critical&status=open" \
   -H "X-API-Key: your-api-key" | jq -r '.results[0].id')
 
 # 2. Get vulnerability details
-curl -s -X GET http://localhost:8013/api/v1/vulnerabilities/$CRITICAL_VULNS/ \
+curl -s -X GET https://localhost/api/v1/guardian/vulnerabilities/$CRITICAL_VULNS/ \
   -H "X-API-Key: your-api-key" | jq '.title, .cvss_score, .affected_assets'
 
 # 3. Assign to team
-curl -X POST http://localhost:8013/api/v1/vulnerabilities/$CRITICAL_VULNS/assign/ \
+curl -X POST https://localhost/api/v1/guardian/vulnerabilities/$CRITICAL_VULNS/assign/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1047,7 +1006,7 @@ curl -X POST http://localhost:8013/api/v1/vulnerabilities/$CRITICAL_VULNS/assign
   }'
 
 # 4. Create remediation ticket
-curl -X POST http://localhost:8013/api/v1/remediation-tickets/ \
+curl -X POST https://localhost/api/v1/guardian/remediation-tickets/ \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{
@@ -1060,7 +1019,7 @@ curl -X POST http://localhost:8013/api/v1/remediation-tickets/ \
   }'
 
 # 5. Monitor ticket progress
-curl -s -X GET "http://localhost:8013/api/v1/remediation-tickets/?assigned_to=security-team" \
+curl -s -X GET "https://localhost/api/v1/guardian/remediation-tickets/?assigned_to=security-team" \
   -H "X-API-Key: your-api-key" | jq '.results[] | {id, status, progress}'
 ```
 
@@ -1068,17 +1027,17 @@ curl -s -X GET "http://localhost:8013/api/v1/remediation-tickets/?assigned_to=se
 
 ```bash
 # 1. Get all active assets
-ASSETS=$(curl -s -X GET "http://localhost:8013/api/v1/assets/?status=active&limit=50" \
+ASSETS=$(curl -s -X GET "https://localhost/api/v1/guardian/assets/?status=active&limit=50" \
   -H "X-API-Key: your-api-key" | jq -r '.results[].id')
 
 # 2. Get active Nessus scanner
-SCANNER=$(curl -s -X GET "http://localhost:8013/api/v1/scanners/?status=active&scanner_type=vulnerability" \
+SCANNER=$(curl -s -X GET "https://localhost/api/v1/guardian/scanners/?status=active&scanner_type=vulnerability" \
   -H "X-API-Key: your-api-key" | jq -r '.results[0].id')
 
 # 3. Start scanning each asset
 for asset in $ASSETS; do
   echo "Starting scan for $asset"
-  curl -X POST http://localhost:8013/api/v1/assets/$asset/scan/ \
+  curl -X POST https://localhost/api/v1/guardian/assets/$asset/scan/ \
     -H "X-API-Key: your-api-key" \
     -H "Content-Type: application/json" \
     -d "{

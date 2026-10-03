@@ -136,6 +136,11 @@ jobs:
           # so the report-schedule and discovery-rule tests finish sooner
           # (#548).
           GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
+          # An internal range the network tools may scan, so that
+          # test_tools_target_policy can show an allow-listed target is
+          # scanned (#614). The benchmarking range: refused by default and
+          # routed nowhere, so the scan reaches nothing.
+          TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
 
       - name: Show what came up
         if: always()
@@ -191,6 +196,8 @@ jobs:
           # scheduled-run tests size their deadlines on them.
           GUARDIAN_SCHEDULE_ALERT_RULES: "15"
           GUARDIAN_SCHEDULE_USER_SCHEDULES: "15"
+          # The allowlist the stack was started with (step above).
+          TOOLS_ALLOWED_INTERNAL_TARGETS: "198.18.0.0/15"
         timeout-minutes: 20
 
       - name: Service logs on failure

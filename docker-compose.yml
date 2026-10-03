@@ -125,6 +125,9 @@ services:
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      # Internal ranges and hosts the network tools may scan; empty refuses
+      # every internal target (#614). The worker must get the same value.
+      - TOOLS_ALLOWED_INTERNAL_TARGETS=${TOOLS_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       wildbox-redis:
         condition: service_healthy
@@ -176,6 +179,9 @@ services:
       - LOG_LEVEL=DEBUG
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
+      # The same allowlist as the api service: asynchronous runs are checked
+      # here, in the worker (#614).
+      - TOOLS_ALLOWED_INTERNAL_TARGETS=${TOOLS_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       wildbox-redis:
         condition: service_healthy
@@ -784,7 +790,19 @@ services:
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}
+      # Checked on the requests the responder receives, and sent, with the
+      # identity of the user who started the run, on the requests its
+      # playbooks make to the services below (#616). The playbook worker
+      # runs in this container (scripts/entrypoint.sh), so it shares this
+      # environment.
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      # The services the connectors call, directly on the internal network
+      # as the agents service does. Without these every connector targeted
+      # localhost inside this container (#616).
+      - WILDBOX_API_URL=${RESPONDER_WILDBOX_API_URL:-http://open-security-tools:8000}
+      - WILDBOX_DATA_URL=${RESPONDER_WILDBOX_DATA_URL:-http://open-security-data:8002}
+      - WILDBOX_GUARDIAN_URL=${RESPONDER_WILDBOX_GUARDIAN_URL:-http://open-security-guardian:8013}
+      - WILDBOX_AGENTS_URL=${RESPONDER_WILDBOX_AGENTS_URL:-http://open-security-agents:8006}
       - REDIS_URL=${RESPONDER_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
