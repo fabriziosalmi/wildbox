@@ -121,13 +121,16 @@ Tags: Dashboard
 Response: Object
 ```
 
-Dashboard-optimized threat intelligence metrics with trends.
+Dashboard-optimized threat intelligence metrics with trends. Every figure
+covers the caller's team and the global feeds, the same scope as
+`/api/v1/indicators/search`.
 
 **Response Fields:**
 
 - `total_feeds` (int): Total configured feeds
 - `active_feeds` (int): Active feeds
-- `last_updated` (datetime): Last collection timestamp
+- `last_updated` (datetime or null): End of the last completed collection
+  run of a visible feed; null when none has completed
 - `new_indicators` (int): New indicators in last 24 hours
 - `trends_change` (float): Percentage change vs previous 24 hours
 

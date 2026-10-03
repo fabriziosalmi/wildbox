@@ -322,6 +322,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The threat-intel dashboard metrics counted every team's data**
+  (#570). `GET /api/v1/data/dashboard/threat-intel` counted the sources
+  and indicators of all teams, so any signed-in user learned how many
+  feeds and new indicators other teams had, and when their feeds last
+  ran. Every figure now covers the caller's team and the global feeds,
+  the same scope as `/api/v1/indicators/search`. `last_updated` is the
+  end of the last completed collection run of a visible feed, and null
+  when there is none; it used to fall back to "one hour ago".
 - **The tools service validates target URLs by parsing them** (#561).
   `SecurityValidator.validate_url` ran the free-text injection patterns
   over the whole URL, so it refused `http://` targets, any query string,
