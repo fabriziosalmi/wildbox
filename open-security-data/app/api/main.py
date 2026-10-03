@@ -17,6 +17,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, func
+from sqlalchemy.exc import SQLAlchemyError
 import uvicorn
 import json
 
@@ -38,7 +39,7 @@ from app.schemas.api import *
 from app.models import SensorMetadata as SensorMetadataRow  # noqa: E402
 from app.models import TelemetryEvent as TelemetryEventRow  # noqa: E402
 from app.auth import get_current_user, GatewayUser
-from open_security_shared.tenancy import team_or_global_filter
+from open_security_shared.tenancy import team_filter, team_or_global_filter
 
 logger = logging.getLogger(__name__)
 config = get_config()
@@ -742,8 +743,15 @@ async def ingest_telemetry_batch(
     db: Session = Depends(get_db)
 ):
     """
-    Ingest a batch of telemetry events from security sensors
+    Ingest a batch of telemetry events from security sensors.
+
+    A sensor reaches this through the gateway, POST /api/v1/data/ingest, with
+    an identity API key; the gateway checks the key (and its data:ingest
+    scope) and forwards the key's team. Every event and the sensor's record
+    are stored under that team and nothing else: the batch carries no team,
+    and one it claims is ignored (#628).
     """
+    team_id = current_user.team_id
     # Bound the batch. The neighbouring bulk-lookup endpoint enforces this same
     # limit; this one iterated an unbounded list, doing a query and a write per
     # element, capped only by nginx's 10MB body limit (WILDBO-INPT-03).
@@ -761,16 +769,28 @@ async def ingest_telemetry_batch(
     events_ingested = 0
     errors = []
     
+    # The batch's sensor records, by sensor ID. The session does not
+    # autoflush, so a record added for the first event of a new sensor is
+    # invisible to the query for the second: without this, every batch of
+    # more than one event from a new sensor inserted the record twice and
+    # failed on the uniqueness of the sensor ID (#628).
+    sensors = {}
+
     # Process each event in the batch
     for i, event_data in enumerate(batch.events):
         try:
-            # Update or create sensor metadata
-            sensor = db.query(SensorMetadataRow).filter(
-                SensorMetadataRow.sensor_id == event_data.sensor_id
-            ).first()
-            
+            # Update or create the sensor's record -- this team's. Another
+            # team may name a sensor the same way.
+            sensor = sensors.get(event_data.sensor_id)
+            if sensor is None:
+                sensor = db.query(SensorMetadataRow).filter(
+                    SensorMetadataRow.team_id == team_id,
+                    SensorMetadataRow.sensor_id == event_data.sensor_id,
+                ).first()
+
             if not sensor:
                 sensor = SensorMetadataRow(
+                    team_id=team_id,
                     sensor_id=event_data.sensor_id,
                     hostname=event_data.source_host,
                     first_seen=ingested_at,
@@ -785,9 +805,11 @@ async def ingest_telemetry_batch(
                 sensor.total_events += 1
                 sensor.last_event_at = event_data.timestamp
                 sensor.active = True
-            
+            sensors[event_data.sensor_id] = sensor
+
             # Create telemetry event
             telemetry_event = TelemetryEventRow(
+                team_id=team_id,
                 sensor_id=event_data.sensor_id,
                 event_type=event_data.event_type.value,
                 timestamp=event_data.timestamp,
@@ -814,7 +836,19 @@ async def ingest_telemetry_batch(
         errors.append(f"Batch commit failed")
         logger.error(f"Failed to commit batch {batch_id}: {e}")
         events_ingested = 0
-    
+    except SQLAlchemyError as e:
+        # Nothing was stored. A 200 here would tell the sensor the batch is
+        # in, and it would drop it; a 503 has it send the batch again, which
+        # is the right answer to, for instance, two batches racing to create
+        # the same new sensor's record.
+        db.rollback()
+        logger.error(f"Failed to commit batch {batch_id}: {type(e).__name__}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The batch was not stored; send it again.",
+            headers={"Retry-After": "5"},
+        )
+
     return TelemetryBatchResponse(
         batch_id=batch_id,
         events_received=len(batch.events),
@@ -835,9 +869,11 @@ async def get_telemetry_events(
     db: Session = Depends(get_db)
 ):
     """
-    Retrieve telemetry events with optional filtering
+    Retrieve telemetry events with optional filtering.
+
+    The caller's team's events only (#628).
     """
-    query = db.query(TelemetryEventRow)
+    query = db.query(TelemetryEventRow).filter(team_filter(TelemetryEventRow, current_user))
     
     # Apply filters
     if sensor_id:
@@ -861,9 +897,9 @@ async def get_sensors(
     db: Session = Depends(get_db)
 ):
     """
-    Get information about registered sensors
+    Get information about registered sensors: the caller's team's (#628).
     """
-    query = db.query(SensorMetadataRow)
+    query = db.query(SensorMetadataRow).filter(team_filter(SensorMetadataRow, current_user))
     
     if active_only:
         query = query.filter(SensorMetadataRow.active == True)
@@ -881,7 +917,8 @@ async def get_sensor(
     Get information about a specific sensor
     """
     sensor = db.query(SensorMetadataRow).filter(
-        SensorMetadataRow.sensor_id == sensor_id
+        team_filter(SensorMetadataRow, current_user),
+        SensorMetadataRow.sensor_id == sensor_id,
     ).first()
     
     if not sensor:
@@ -900,12 +937,15 @@ async def get_telemetry_stats(
     db: Session = Depends(get_db)
 ):
     """
-    Get telemetry statistics
+    Get telemetry statistics, over the caller's team's telemetry (#628).
     """
     start_time = datetime.now(timezone.utc) - timedelta(hours=hours)
     
     # Base query
-    query = db.query(TelemetryEventRow).filter(TelemetryEventRow.timestamp >= start_time)
+    query = db.query(TelemetryEventRow).filter(
+        team_filter(TelemetryEventRow, current_user),
+        TelemetryEventRow.timestamp >= start_time,
+    )
     if sensor_id:
         query = query.filter(TelemetryEventRow.sensor_id == sensor_id)
     
@@ -916,7 +956,10 @@ async def get_telemetry_stats(
     event_type_counts = db.query(
         TelemetryEventRow.event_type,
         func.count(TelemetryEventRow.id).label('count')
-    ).filter(TelemetryEventRow.timestamp >= start_time)
+    ).filter(
+        team_filter(TelemetryEventRow, current_user),
+        TelemetryEventRow.timestamp >= start_time,
+    )
     
     if sensor_id:
         event_type_counts = event_type_counts.filter(TelemetryEventRow.sensor_id == sensor_id)
@@ -925,6 +968,7 @@ async def get_telemetry_stats(
     
     # Active sensors
     active_sensors = db.query(func.count(func.distinct(SensorMetadataRow.sensor_id))).filter(
+        team_filter(SensorMetadataRow, current_user),
         SensorMetadataRow.active == True,
         SensorMetadataRow.last_seen >= start_time
     ).scalar()
