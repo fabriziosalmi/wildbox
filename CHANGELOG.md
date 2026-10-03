@@ -70,7 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because it accepts any status but 404 from that endpoint.
 
 
-
 - **cspm keeps scan reports for 90 days, and batch scans count** (#591).
   The compliance summary and findings, the dashboard summary and the
   cloud security overview read scan reports from the Celery result
