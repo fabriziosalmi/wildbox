@@ -1,0 +1,9 @@
+# Test files that no CI workflow collects, on purpose.
+#
+# scripts/check_test_collection.py fails the Code Quality job for any
+# test_*.py or *_test.py outside the paths the workflows' pytest commands
+# collect. List a file here only when it is meant to stay out of CI, as
+# "path  # reason". An entry without a reason, for a missing file, or for a
+# file CI already collects fails the check too.
+
+open-security-guardian/guardian/settings_test.py  # Django settings module for tests, not a test file

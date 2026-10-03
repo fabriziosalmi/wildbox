@@ -118,7 +118,8 @@ jobs:
         timeout-minutes: 5
         run: |
           pip install ./open-security-shared
-          pip install pytest pytest-asyncio httpx
+          # pyyaml: tests/scripts reads the workflows (check_test_collection).
+          pip install pytest pytest-asyncio httpx pyyaml
 
       - name: Run shared package tests
         # open_security_shared holds gateway_auth and tenancy -- the trust and
@@ -326,7 +327,15 @@ jobs:
 
       - name: Install linting tools
         run: |
-          pip install black flake8 isort
+          pip install black flake8 isort pyyaml
+
+      # A test file that no workflow collects never runs: it cannot catch a
+      # regression and drifts from the code unnoticed. tests/test_basic.py in
+      # the agents service did both (#582). The check derives what CI collects
+      # from the workflows' own pytest commands; deliberate exceptions go in
+      # scripts/test_collection_allowlist.txt with a reason.
+      - name: Every test file is collected by a workflow
+        run: python scripts/check_test_collection.py
 
       # WILDBO-QUAL-03: every step in this job used to carry
       # continue-on-error: true, so "Code Quality" reported success no matter

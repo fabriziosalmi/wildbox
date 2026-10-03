@@ -247,8 +247,11 @@ async def get_stats(user: GatewayUser = Depends(get_current_user)):
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
 @limiter.limit("5/minute")
 async def analyze_ioc(
-    http_request: Request,
-    request: AnalysisTaskRequest,
+    # slowapi finds the request by the parameter's name: it must be `request`
+    # and a starlette Request. It was the body model, under that name, so the
+    # limiter raised on every call and the endpoint answered 500 (#582).
+    request: Request,
+    analysis: AnalysisTaskRequest,
     user: GatewayUser = Depends(get_current_user)
 ):
     """
@@ -260,7 +263,7 @@ async def analyze_ioc(
     The analysis is performed by an AI agent that uses various security tools
     to investigate the IOC and generate a comprehensive threat intelligence report.
     """
-    logger.info(f"[AUTH] Authenticated user {user.user_id} (team: {user.team_id}) analyzing IOC type: {request.ioc.type}")
+    logger.info(f"[AUTH] Authenticated user {user.user_id} (team: {user.team_id}) analyzing IOC type: {analysis.ioc.type}")
     
     try:
         # Generate unique task ID
@@ -269,8 +272,8 @@ async def analyze_ioc(
         # Create task metadata
         task_metadata = {
             "task_id": task_id,
-            "ioc": request.ioc.dict(),
-            "priority": request.priority,
+            "ioc": analysis.ioc.dict(),
+            "priority": analysis.priority,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "status": TaskStatus.PENDING
         }
@@ -303,7 +306,7 @@ async def analyze_ioc(
         try:
             celery_task = run_threat_enrichment_task.delay(
                 task_id=task_id,
-                ioc=request.ioc.dict(),
+                ioc=analysis.ioc.dict(),
                 caller={
                     "user_id": str(user.user_id),
                     "team_id": str(user.team_id),
