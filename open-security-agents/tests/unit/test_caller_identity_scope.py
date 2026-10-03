@@ -21,15 +21,12 @@ import threading
 import types
 
 import pytest
+from fastapi.testclient import TestClient
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.tools import StructuredTool
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-
-from fastapi.testclient import TestClient  # noqa: E402
-from langchain_core.language_models.fake_chat_models import (  # noqa: E402
-    FakeMessagesListChatModel,
-)
-from langchain_core.messages import AIMessage  # noqa: E402
-from langchain_core.tools import StructuredTool  # noqa: E402
 
 from app import main, worker  # noqa: E402
 from app.agents.threat_enrichment_agent import ThreatEnrichmentAgent  # noqa: E402
