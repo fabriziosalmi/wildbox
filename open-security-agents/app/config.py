@@ -38,10 +38,13 @@ class Settings(BaseSettings):
     wildbox_responder_url: str = "http://localhost:8018"
     
     # Security
-    internal_api_key: str = Field(default="", env="INTERNAL_API_KEY")  # REQUIRED: set via env var
-    # Proof-of-origin secret used to forward the caller's gateway identity to
-    # downstream services (#175). When set, internal tool calls carry the user's
-    # X-Wildbox-* headers + this secret instead of the static service key.
+    # No longer read (#567): the client sent it as X-API-Key when it had no
+    # caller identity, and the tools service stopped accepting that in #566.
+    # Kept only so that a .env file which still sets INTERNAL_API_KEY loads.
+    internal_api_key: str = Field(default="", env="INTERNAL_API_KEY")
+    # REQUIRED. Proof-of-origin secret sent with the caller's gateway identity
+    # (X-Wildbox-* headers) on every internal call (#175); without it internal
+    # tool calls fail.
     gateway_internal_secret: str = Field(default="", env="GATEWAY_INTERNAL_SECRET")
     
     # Analysis Settings
