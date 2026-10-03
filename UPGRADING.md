@@ -321,7 +321,7 @@ See the [deployment guide](https://www.wildbox.io/guides/deployment/#the-dashboa
 
 It changed the password without asking for the current one. It now answers
 400 (`UPDATE_USER_INVALID_PASSWORD`) to a request with a `password` field and
-changes nothing; an email change needs the current password (section 19). A
+changes nothing; an email change needs the current password (section 18). A
 script that changes a
 user's own password must call
 `POST /api/v1/identity/admin/me/change-password` with `current_password` and
@@ -376,6 +376,13 @@ API changes that clients and scripts have to follow:
 - **Login tokens carry a fractional `iat`** (seconds since the epoch, as a
   JSON number with a fraction). A client that parses the claim as an integer
   has to accept a number.
+
+### 19. `trends_change` can be null
+
+`GET /api/v1/dashboard/threat-intel` (data) answers `trends_change: null`
+when the previous 24 hours had no indicators; it used to report 100.0 (or
+0.0 when both periods were empty). A client that reads the field must
+accept null. Every other value is unchanged.
 
 ## Upgrading to 0.10.0
 

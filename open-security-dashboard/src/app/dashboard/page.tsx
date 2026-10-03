@@ -43,7 +43,8 @@ interface ThreatIntelSummary {
   total_feeds: number
   active_feeds: number
   new_indicators: number
-  trends_change: number
+  /** Percentage change vs the previous 24 hours; null when that period had none. */
+  trends_change: number | null
 }
 
 interface CloudSummary {
@@ -202,8 +203,11 @@ function MetricCard({
   value: string | number
   description: string
   icon: LucideIcon
-  /** A signed percentage from the service; omitted when it has none. */
-  trendValue?: number
+  /**
+   * A signed percentage from the service; null when there is no prior
+   * period to compare with, omitted when the card has no trend.
+   */
+  trendValue?: number | null
   testId?: string
 }) {
   const unavailable = value === UNAVAILABLE
@@ -222,7 +226,10 @@ function MetricCard({
         </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{description}</span>
-          {!unavailable && trendValue !== undefined && trendValue !== 0 && (
+          {!unavailable && trendValue === null && (
+            <span data-testid={testId ? `${testId}-trend` : undefined}>· no prior data</span>
+          )}
+          {!unavailable && typeof trendValue === 'number' && trendValue !== 0 && (
             <div
               className={`flex items-center gap-1 ${
                 trendValue > 0 ? 'text-green-600' : 'text-red-600'

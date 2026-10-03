@@ -44,6 +44,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read as a toolbox with 0 tools and the page's error state was
   unreachable. The error now shows the service's message, and its retry
   asks the service again instead of reloading the page.
+- **The threat-intel trend no longer invents +100%** (#573).
+  `GET /api/v1/dashboard/threat-intel` reported `trends_change: 100.0`
+  whenever the previous 24 hours had no indicators and the last 24 had
+  any, and 0.0 when both were empty. A change from zero has no
+  percentage, so the field is now null in both cases. The dashboard
+  home page and the threat-intel feeds page show "no prior data"
+  instead of a trend; the home page used to render a null as a red
+  "0%".
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
