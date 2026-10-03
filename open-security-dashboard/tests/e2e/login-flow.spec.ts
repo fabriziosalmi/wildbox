@@ -124,16 +124,18 @@ test.describe('Login flow', { tag: '@backend' }, () => {
       const account = { email: uniqueEmail('revoke-race'), password: strongPassword() }
       await registerUser(api, account)
       const protectedRoute = '/api/v1/data/health'
-      const iterations = 25
+      const iterations = 40
       const leaks: string[] = []
 
       for (let i = 0; i < iterations; i++) {
         const token = await apiLogin(api, account)
-        const inFlight = Array.from({ length: 3 }, () =>
+        const inFlight = Array.from({ length: 8 }, () =>
           api.get(protectedRoute, { headers: bearer(token) })
         )
+        // Their answers do not matter (some may be 429: the per-team budget);
+        // what matters is that each one makes the gateway ask identity.
         // Vary where the logout lands relative to the burst.
-        await new Promise(resolve => setTimeout(resolve, i % 5))
+        await new Promise(resolve => setTimeout(resolve, i % 8))
         expect(await apiLogout(api, token)).toBe(204)
         await Promise.all(inFlight)
 
