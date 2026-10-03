@@ -35,6 +35,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from app.tools.ct_log_scanner import main as _tool_main  # noqa: E402
 from app.tools.ct_log_scanner import schemas as _tool_schemas  # noqa: E402
 from app import standardized_schemas as _std_schemas  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 
 _std = _std_schemas
 _schemas = _tool_schemas
@@ -145,8 +146,17 @@ class TestAnalysis:
 
 
 class TestExecuteTool:
-    def test_rejects_a_malformed_domain_without_calling_the_network(self):
-        out = asyncio.run(ct_main.execute_tool(CTLogScannerInput(domain="not a domain")))
+    @pytest.mark.parametrize("domain", ["not a domain", "https://example.com"])
+    def test_rejects_a_malformed_domain_without_calling_the_network(self, domain):
+        # By the input model, so the endpoint answers 422 (#611).
+        with pytest.raises(ValidationError):
+            CTLogScannerInput(domain=domain)
+
+    def test_still_rejects_a_malformed_domain_at_run_time(self):
+        params = CTLogScannerInput.model_construct(
+            **{**CTLogScannerInput(domain="example.com").model_dump(), "domain": "not a domain"}
+        )
+        out = asyncio.run(ct_main.execute_tool(params))
         assert out.success is False
         assert "valid domain" in out.message
 

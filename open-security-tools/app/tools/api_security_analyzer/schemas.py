@@ -1,18 +1,24 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
+
+# Compared regardless of case by main.py (#611).
+ApiType = CaseInsensitiveChoice("REST", "GraphQL", "SOAP")
+
 
 class APISecurityAnalyzerInput(BaseToolInput):
     """Input schema for API Security Analyzer tool"""
     target_url: str = Field(..., description="Target API URL to analyze")
-    api_type: str = Field(default="REST", description="API type (REST, GraphQL, SOAP)")
+    # The types main.py has tests for; another value skipped them silently
+    # (#611).
+    api_type: ApiType = Field(default="REST", description="API type (REST, GraphQL, SOAP)")
     check_authentication: bool = Field(default=True, description="Check authentication mechanisms")
     check_authorization: bool = Field(default=True, description="Check authorization controls")
     check_rate_limiting: bool = Field(default=True, description="Check rate limiting")
     check_input_validation: bool = Field(default=True, description="Check input validation")
     check_encryption: bool = Field(default=True, description="Check encryption in transit")
     custom_headers: Optional[Dict[str, str]] = Field(default=None, description="Custom headers to include")
-    timeout: int = Field(default=30, description="Request timeout in seconds")
+    timeout: int = Field(default=30, ge=1, le=300, description="Request timeout in seconds")
 
 class SecurityIssue(BaseModel):
     severity: str  # Critical, High, Medium, Low, Info

@@ -1,16 +1,28 @@
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict, Any, Union
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
+from typing import List, Literal, Optional, Dict, Any, Union
+
+# Compared regardless of case by main.py (#611).
+CloudProvider = CaseInsensitiveChoice("aws", "azure", "gcp")
+
 
 class CloudSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Cloud Security Analyzer tool"""
-    cloud_provider: str = Field(..., description="Cloud provider (aws, azure, gcp, multi)")
+    # The providers main.py accepts; "multi" was listed but refused (#611).
+    cloud_provider: CloudProvider = Field(..., description="Cloud provider (aws, azure, gcp)")
     assessment_type: str = Field(default="comprehensive", description="Assessment type (quick, standard, comprehensive)")
     access_key: Optional[str] = Field(None, description="Cloud access key/credential")
     secret_key: Optional[str] = Field(None, description="Cloud secret key")
     region: str = Field(default="us-east-1", description="Cloud region to analyze")
-    services_to_check: List[str] = Field(default=["all"], description="Specific services to check (s3, ec2, iam, etc.)")
-    compliance_frameworks: List[str] = Field(default=["cis", "nist"], description="Compliance frameworks to check against")
+    # The services and frameworks main.py has checks for. Another service
+    # produced nothing, and a framework without checks (nist, in the
+    # default) was reported 100% compliant (#611).
+    services_to_check: List[Literal["all", "s3", "ec2", "iam"]] = Field(
+        default=["all"], min_length=1, description="Services to check (all, s3, ec2, iam)"
+    )
+    compliance_frameworks: List[Literal["cis"]] = Field(
+        default=["cis"], description="Compliance frameworks to check against (cis)"
+    )
     include_cost_analysis: bool = Field(default=True, description="Include cost optimization analysis")
     check_permissions: bool = Field(default=True, description="Check IAM permissions and policies")
     check_encryption: bool = Field(default=True, description="Check encryption configurations")

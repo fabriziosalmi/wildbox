@@ -1,13 +1,19 @@
 """Pydantic schemas for the network scanner (fixed) tool."""
 
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
 from typing import List, Optional, Dict
 from datetime import datetime
 
+# Compared regardless of case by main.py (#611).
+ScanType = CaseInsensitiveChoice("ping", "tcp")
+
+
 class NetworkScannerInput(BaseToolInput):
     network: str = Field(..., description="Network range to scan (CIDR notation)", example="192.168.1.0/24")
-    scan_type: str = Field(default="ping", description="Scan type: ping, tcp, comprehensive", example="ping")
+    # main.py implements ping and tcp; "comprehensive" and any other value
+    # ran a ping scan (#611).
+    scan_type: ScanType = Field(default="ping", description="Scan type: ping or tcp", example="ping")
     timeout: int = Field(default=3, description="Timeout in seconds for each host", ge=1, le=30)
     max_threads: int = Field(default=50, description="Maximum concurrent threads", ge=1, le=100)
 

@@ -2,13 +2,21 @@
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict
+from typing import Annotated, List, Literal, Optional, Dict
 from datetime import datetime
 
 class DirectoryBruteforcerInput(BaseToolInput):
-    target_url: str = Field(..., description="Target URL to brute force", example="https://example.com")
-    wordlist_size: str = Field(default="medium", description="Wordlist size: small, medium, large", example="medium")
-    extensions: Optional[List[str]] = Field(default=["php", "html", "txt", "js"], description="File extensions to test")
+    # An http(s) URL: without a scheme every request failed and the run
+    # reported nothing found (#611).
+    target_url: str = Field(..., pattern=r"^https?://", description="Target URL to brute force", example="https://example.com")
+    # The wordlists main.py has; another value used "medium" silently (#611).
+    wordlist_size: Literal["small", "medium", "large"] = Field(
+        default="medium", description="Wordlist size: small, medium, large", example="medium"
+    )
+    # Bare extensions: main.py appends ".<ext>" to each path (#611).
+    extensions: Optional[List[Annotated[str, Field(pattern=r"^[A-Za-z0-9]{1,10}$")]]] = Field(
+        default=["php", "html", "txt", "js"], description="File extensions to test, without the dot"
+    )
     threads: int = Field(default=10, description="Number of concurrent threads", ge=1, le=50)
     timeout: int = Field(default=5, description="Request timeout in seconds", ge=1, le=30)
 

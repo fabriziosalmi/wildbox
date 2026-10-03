@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -14,6 +14,14 @@ class PKICertificateManagerInput(BaseToolInput):
     check_extensions: bool = Field(default=True, description="Analyze certificate extensions")
     check_ct_logs: bool = Field(default=True, description="Check Certificate Transparency logs")
     validation_mode: str = Field(default="strict", description="Validation mode (strict, normal, permissive)")
+
+    @model_validator(mode="after")
+    def _a_certificate_source_given(self):
+        # main.py fails the run without either; the defaults alone could
+        # not run (#611).
+        if not self.domain and not self.certificate_pem:
+            raise ValueError("Either domain or certificate_pem must be provided")
+        return self
 
 class CertificateInfo(BaseModel):
     subject: Dict[str, str]

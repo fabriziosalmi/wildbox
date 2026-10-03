@@ -8,6 +8,7 @@ from app.auth import verify_api_key
 from app.execution_manager import ToolExecutionManager
 from app.input_validation import InputSanitizer
 from app.logging_config import get_logger
+from app.tool_loader import find_schema_classes
 
 logger = get_logger(__name__)
 
@@ -66,21 +67,27 @@ async def get_tool_info(tool_name: str, request: Request, api_key: str = Depends
         )
     
     tool_module = DISCOVERED_TOOLS[tool_name]
-    tool_info = getattr(tool_module, 'TOOL_INFO', {})
-    
+    # Metadata only: some tools also list their classes here ("tool_class",
+    # "input_schema"), which cannot be serialised, so their /info was a 500
+    # and the dashboard could not build their form (#611).
+    tool_info = {
+        key: value
+        for key, value in getattr(tool_module, 'TOOL_INFO', {}).items()
+        if not isinstance(value, type) and not callable(value)
+    }
+
     # Get schema information if available
     schemas_module = getattr(tool_module, 'schemas', None)
     input_schema = None
     output_schema = None
     
     if schemas_module:
-        # Try to get input and output schemas
-        for attr_name in dir(schemas_module):
-            attr = getattr(schemas_module, attr_name)
-            if hasattr(attr, '__name__') and 'Input' in attr.__name__:
-                input_schema = attr.model_json_schema() if hasattr(attr, 'model_json_schema') else None
-            elif hasattr(attr, '__name__') and 'Output' in attr.__name__:
-                output_schema = attr.model_json_schema() if hasattr(attr, 'model_json_schema') else None
+        # The same models the tool endpoint validates and answers with (#611).
+        input_cls, output_cls = find_schema_classes(schemas_module)
+        if input_cls is not None:
+            input_schema = input_cls.model_json_schema()
+        if output_cls is not None:
+            output_schema = output_cls.model_json_schema()
     
     return {
         **tool_info,
@@ -108,33 +115,8 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
         return
     
     # Find input and output schema classes
-    input_schema_class = None
-    output_schema_class = None
-    
-    # Import BaseModel for isinstance check
-    from pydantic import BaseModel
-    
-    for attr_name in dir(schemas_module):
-        try:
-            attr = getattr(schemas_module, attr_name)
-            # Check if it's a Pydantic BaseModel subclass (not the base class itself)
-            if (isinstance(attr, type) and 
-                issubclass(attr, BaseModel) and 
-                attr is not BaseModel):
-                attr_name_lower = attr.__name__.lower()
-                # Prioritize tool-specific schemas
-                if 'input' in attr_name_lower or 'request' in attr_name_lower:
-                    # Skip base classes
-                    if attr.__name__ not in ('BaseToolInput',):
-                        input_schema_class = attr
-                elif 'output' in attr_name_lower or 'response' in attr_name_lower:
-                    # Skip base classes
-                    if attr.__name__ not in ('BaseToolOutput',):
-                        output_schema_class = attr
-        except (TypeError, AttributeError):
-            # Skip non-class attributes
-            continue
-    
+    input_schema_class, output_schema_class = find_schema_classes(schemas_module)
+
     logger.info(f"Tool {tool_name}: Found Input={input_schema_class.__name__ if input_schema_class else None}, Output={output_schema_class.__name__ if output_schema_class else None}")
     
     if not input_schema_class or not output_schema_class:

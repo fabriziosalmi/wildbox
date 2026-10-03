@@ -5,6 +5,8 @@ import sys
 import os
 from datetime import datetime
 
+from ...tool_loader import find_schema_classes
+
 from .schemas import (
     AutomationWorkflowInput,
     SecurityAutomationOutput,
@@ -308,12 +310,10 @@ class SecurityAutomationOrchestrator:
         try:
             schema_module = importlib.import_module(f"app.tools.{tool_name}.schemas")
             
-            # Get the input schema class (usually ends with Input)
-            input_class = None
-            for attr_name in dir(schema_module):
-                if attr_name.endswith("Input"):
-                    input_class = getattr(schema_module, attr_name)
-                    break
+            # The model the tool's own endpoint validates with. The first
+            # name ending in "Input" was the imported BaseToolInput for every
+            # tool, so each step received a model without its fields (#611).
+            input_class, _ = find_schema_classes(schema_module)
             
             if input_class:
                 return input_class(**parameters)

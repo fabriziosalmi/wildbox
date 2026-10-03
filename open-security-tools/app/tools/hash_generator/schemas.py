@@ -4,8 +4,17 @@ Schemas for Hash Generator Tool
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from datetime import datetime
+
+
+# The algorithms the generator implements, each a hashlib constructor name.
+# The input model's enum is built from this tuple and main.py builds its
+# table from it, so the schema cannot offer an algorithm the tool refuses
+# (#611: md5 and sha1 were removed from the tool but stayed in the default).
+SUPPORTED_HASH_ALGORITHMS = ("sha224", "sha256", "sha384", "sha512", "blake2b", "blake2s")
+
+HashAlgorithm = Literal[SUPPORTED_HASH_ALGORITHMS]
 
 
 class HashGeneratorInput(BaseToolInput):
@@ -13,9 +22,10 @@ class HashGeneratorInput(BaseToolInput):
     input_text: str = Field(
         description="Text to generate hashes for"
     )
-    hash_types: List[str] = Field(
-        default=["md5", "sha1", "sha256", "sha512"],
-        description="List of hash types to generate (md5, sha1, sha224, sha256, sha384, sha512, blake2b, blake2s)"
+    hash_types: List[HashAlgorithm] = Field(
+        default=["sha256", "sha512"],
+        min_length=1,
+        description="Hash algorithms to generate (" + ", ".join(SUPPORTED_HASH_ALGORITHMS) + ")"
     )
     include_salted: bool = Field(
         default=False,
@@ -31,9 +41,9 @@ class HashGeneratorInput(BaseToolInput):
         le=1000000,
         description="Number of iterations for PBKDF2 (for salted hashes)"
     )
-    output_format: str = Field(
+    output_format: Literal["hex", "base64", "raw"] = Field(
         default="hex",
-        description="Output format (hex, base64, raw)"
+        description="Output format: hex, base64, or raw (the raw digest bytes, hex-encoded)"
     )
 
 

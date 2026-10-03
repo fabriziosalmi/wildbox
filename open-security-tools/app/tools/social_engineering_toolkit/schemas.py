@@ -1,12 +1,14 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Literal, Optional, Dict, Any
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 
 
 class SocialEngineeringToolkitInput(BaseToolInput):
     """Input schema for Social Engineering Toolkit tool"""
     target: str = Field(..., description="Target email, phone, or domain to analyze")
-    analysis_type: str = Field(
+    # The analyses main.py runs; another value ran none of them and still
+    # reported success (#611).
+    analysis_type: Literal["email", "phone", "domain", "comprehensive"] = Field(
         default="comprehensive",
         description="Type of analysis: email, phone, domain, or comprehensive"
     )

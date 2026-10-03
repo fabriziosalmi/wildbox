@@ -25,7 +25,7 @@ from __future__ import annotations
 import importlib
 import pkgutil
 from types import ModuleType
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from app.logging_config import get_logger
 
@@ -101,6 +101,44 @@ def load_tool_module(tool_name: str) -> Optional[ModuleType]:
         }
 
     return main_module
+
+
+_BASE_SCHEMA_NAMES = {"BaseToolInput", "BaseToolOutput"}
+
+
+def find_schema_classes(schemas_module: Any) -> Tuple[Optional[type], Optional[type]]:
+    """
+    The (input, output) Pydantic models of a tool's schemas module.
+
+    The input model is a BaseModel subclass whose name contains "input" or
+    "request", the output model one whose name contains "output" or
+    "response", the shared base classes excluded. When several match, the last
+    in ``dir()`` order wins, as the endpoint always chose.
+
+    This is the one place that answers the question. The endpoint validated a
+    request with one model while ``/info`` published another (it matched any
+    name containing "Input", so for a tool whose model sorts before
+    "BaseToolInput" it published the base class), and the worker picked the
+    first match instead of the last (#611).
+    """
+    from pydantic import BaseModel
+
+    input_cls: Optional[type] = None
+    output_cls: Optional[type] = None
+    if schemas_module is None:
+        return None, None
+    for attr_name in dir(schemas_module):
+        attr = getattr(schemas_module, attr_name, None)
+        if not (isinstance(attr, type) and issubclass(attr, BaseModel)):
+            continue
+        if attr is BaseModel or attr.__name__ in _BASE_SCHEMA_NAMES:
+            continue
+        name = attr.__name__.lower()
+        if "input" in name or "request" in name:
+            input_cls = attr
+        elif "output" in name or "response" in name:
+            output_cls = attr
+    return input_cls, output_cls
 
 
 def discover_tools() -> Dict[str, Any]:

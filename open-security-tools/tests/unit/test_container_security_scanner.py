@@ -35,6 +35,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from app.tools.container_security_scanner import main as _tool_main  # noqa: E402
 from app.tools.container_security_scanner import schemas as _tool_schemas  # noqa: E402
 from app import standardized_schemas as _std_schemas  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 
 _std = _std_schemas
 _schemas = _tool_schemas
@@ -198,9 +199,22 @@ class TestHonestDegradation:
         assert "image not found" in out.summary
 
     def test_no_target_is_rejected(self):
-        out = asyncio.run(csc.execute_tool(_schemas.ContainerSecurityScannerInput()))
+        # By the input model, so the endpoint answers 422 (#611).
+        with pytest.raises(ValidationError, match="image_name or dockerfile_content"):
+            _schemas.ContainerSecurityScannerInput()
+
+    def test_no_target_is_still_rejected_at_run_time(self):
+        params = _schemas.ContainerSecurityScannerInput.model_construct(
+            image_name=None, dockerfile_content=None
+        )
+        out = asyncio.run(csc.execute_tool(params))
         assert out.success is False
         assert "image_name or dockerfile_content" in out.summary
+
+    @pytest.mark.parametrize("image", ["--output=/tmp/x", "-q", " alpine"])
+    def test_an_image_that_reads_as_an_option_is_refused(self, image):
+        with pytest.raises(ValidationError):
+            _schemas.ContainerSecurityScannerInput(image_name=image)
 
 
 class TestScoring:

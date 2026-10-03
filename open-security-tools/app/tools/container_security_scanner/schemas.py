@@ -1,11 +1,17 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class ContainerSecurityScannerInput(BaseToolInput):
     """Input schema for Container Security Scanner tool"""
-    image_name: Optional[str] = Field(None, description="Docker image name to scan")
+    # An image reference only: the value is a trivy argument, and one
+    # starting with "-" was read as an option (#611).
+    image_name: Optional[str] = Field(
+        None,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._/:@-]*$",
+        description="Docker image reference to scan (e.g. alpine:3.19)",
+    )
     dockerfile_content: Optional[str] = Field(None, description="Dockerfile content to analyze")
     container_id: Optional[str] = Field(None, description="Running container ID to scan")
     scan_type: str = Field(default="comprehensive", description="Scan type (quick, standard, comprehensive)")
@@ -15,6 +21,13 @@ class ContainerSecurityScannerInput(BaseToolInput):
     check_compliance: bool = Field(default=True, description="Check compliance with security standards")
     check_dependencies: bool = Field(default=True, description="Analyze dependencies for vulnerabilities")
     registry_url: Optional[str] = Field(None, description="Container registry URL")
+
+    @model_validator(mode="after")
+    def _something_to_scan(self):
+        # main.py refuses the run without either (#611).
+        if not self.image_name and not self.dockerfile_content:
+            raise ValueError("Provide an image_name or dockerfile_content")
+        return self
 
 class Vulnerability(BaseModel):
     cve_id: str

@@ -1,13 +1,15 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Literal, Optional, Dict, Any, Union
 
 class MobileSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Mobile Security Analyzer tool"""
     app_file: Optional[str] = Field(None, description="Base64 encoded APK/IPA file content")
     app_url: Optional[str] = Field(None, description="URL to download mobile app file")
     app_package: Optional[str] = Field(None, description="Package name for store analysis")
-    platform: str = Field(default="android", description="Mobile platform (android, ios)")
+    # main.py analyses android and ios only; another value skipped every
+    # analyser and still reported a result (#611).
+    platform: Literal["android", "ios"] = Field(default="android", description="Mobile platform (android, ios)")
     analysis_depth: str = Field(default="standard", description="Analysis depth (quick, standard, deep)")
     check_permissions: bool = Field(default=True, description="Analyze app permissions")
     check_network_security: bool = Field(default=True, description="Check network security configurations")
@@ -16,6 +18,13 @@ class MobileSecurityAnalyzerInput(BaseToolInput):
     check_malware: bool = Field(default=True, description="Scan for malware signatures")
     extract_urls: bool = Field(default=True, description="Extract hardcoded URLs and endpoints")
     decompile_code: bool = Field(default=False, description="Perform code decompilation analysis")
+
+    @model_validator(mode="after")
+    def _an_app_given(self):
+        # Without one of them nothing is analysed (#611).
+        if not (self.app_file or self.app_url or self.app_package):
+            raise ValueError("Provide one of app_file, app_url or app_package")
+        return self
 
 class SecurityVulnerability(BaseModel):
     severity: str  # Critical, High, Medium, Low, Info

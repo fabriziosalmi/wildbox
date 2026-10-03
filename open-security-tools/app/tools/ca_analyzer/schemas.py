@@ -11,7 +11,7 @@ from datetime import datetime
 class CAAnalyzerInput(BaseToolInput):
     """Input schema for CA and certificate analysis"""
     target: str = Field(
-        description="Domain name or certificate to analyze"
+        description="Host name whose TLS certificate chain to analyze"
     )
     port: int = Field(
         default=443,

@@ -36,6 +36,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from app.tools.database_security_analyzer import main as _tool_main  # noqa: E402
 from app.tools.database_security_analyzer import schemas as _tool_schemas  # noqa: E402
 from app import standardized_schemas as _std_schemas  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 
 _std = _std_schemas
 _schemas = _tool_schemas
@@ -172,9 +173,28 @@ class TestMySQL:
 
 class TestHonestDegradation:
     def test_unsupported_engine_is_refused(self):
-        out = run(database_type="oracle", port=1521)
+        # By the input model, so the endpoint answers 422 (#611).
+        with pytest.raises(ValidationError):
+            _schemas.DatabaseSecurityAnalyzerInput(
+                database_type="oracle", host="db.example", port=1521, username="reader"
+            )
+
+    def test_unsupported_engine_is_still_refused_at_run_time(self):
+        params = _schemas.DatabaseSecurityAnalyzerInput(
+            database_type="postgresql", host="db.example", port=1521, username="reader"
+        ).model_dump()
+        params["database_type"] = "oracle"
+        out = asyncio.run(
+            dsa.execute_tool(_schemas.DatabaseSecurityAnalyzerInput.model_construct(**params))
+        )
         assert out.success is False
         assert "not supported" in out.summary
+
+    def test_the_engine_is_matched_regardless_of_case(self):
+        params = _schemas.DatabaseSecurityAnalyzerInput(
+            database_type=" PostgreSQL ", host="db.example", port=5432, username="reader"
+        )
+        assert params.database_type == "postgresql"
 
     def test_connection_failure_is_not_a_passing_scan(self, monkeypatch):
         def boom(inp):
@@ -187,9 +207,14 @@ class TestHonestDegradation:
         assert out.database_users == []
 
     def test_missing_credentials_are_rejected(self):
-        out = asyncio.run(
-            dsa.execute_tool(_schemas.DatabaseSecurityAnalyzerInput(
-                database_type="mysql", host="", port=3306))
+        # By the input model, so the endpoint answers 422 (#611).
+        with pytest.raises(ValidationError):
+            _schemas.DatabaseSecurityAnalyzerInput(database_type="mysql", host="", port=3306)
+
+    def test_missing_credentials_are_still_rejected_at_run_time(self):
+        params = _schemas.DatabaseSecurityAnalyzerInput.model_construct(
+            database_type="mysql", host="", port=3306, username=None
         )
+        out = asyncio.run(dsa.execute_tool(params))
         assert out.success is False
         assert "host and username" in out.summary
