@@ -23,6 +23,7 @@ os.environ.setdefault("SECRET_KEY", "x" * 40)
 os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "y" * 40)
 
 from app.connectors import connector_registry  # noqa: E402
+from app.connectors.base import ConnectorError  # noqa: E402
 from app.workflow_engine import TemplateRenderError, WorkflowEngine  # noqa: E402
 
 CONTEXT = {
@@ -194,3 +195,79 @@ def test_a_step_output_feeds_the_next_steps_condition(engine):
     )
     context["steps"]["validate_ip"] = {"output": run("validate", **step_input)}
     assert engine.evaluate_condition("steps.validate_ip.output.valid", context) is False
+
+
+# --- system.evaluate (#605) ------------------------------------------------
+
+
+def test_evaluate_holds_when_every_condition_holds():
+    result = run("evaluate", conditions={"a": "True", "b": True})
+    assert result["overall_result"] is True
+    assert result["conditions"] == {"a": True, "b": True}
+    assert result["matched"] == ["a", "b"]
+    assert (result["matched_count"], result["total"], result["min_true"]) == (2, 2, 2)
+
+
+def test_evaluate_fails_when_one_condition_does_not():
+    result = run("evaluate", conditions={"a": "True", "b": "False"})
+    assert result["overall_result"] is False
+    assert result["matched"] == ["a"]
+
+
+@pytest.mark.parametrize(
+    "matched, expected", [(0, False), (1, False), (2, True), (3, True)]
+)
+def test_evaluate_with_min_true_needs_that_many(matched, expected):
+    conditions = {name: str(i < matched) for i, name in enumerate("abc")}
+    result = run("evaluate", conditions=conditions, min_true=2)
+    assert result["overall_result"] is expected
+    assert result["matched_count"] == matched
+
+
+def test_evaluate_still_takes_top_level_names():
+    assert run("evaluate", a="true", b="false", min_true=1)["matched"] == ["a"]
+
+
+def test_a_rendered_template_feeds_evaluate(engine):
+    rendered = engine.render_step_input(
+        {"conditions": {"valid": "{{ steps.validate_ip.output.valid }}"}}, CONTEXT
+    )
+    assert run("evaluate", **rendered)["overall_result"] is True
+
+
+@pytest.mark.parametrize(
+    "value",
+    # The shapes the shipped playbooks used to pass: a nested mapping, which
+    # bool() called true, and a verdict word, which it called false.
+    [{"high_risk": "True"}, "malicious", "", 1, None, ["True"]],
+)
+def test_evaluate_refuses_a_value_that_is_not_a_boolean(value):
+    with pytest.raises(ConnectorError, match="not a boolean"):
+        run("evaluate", conditions={"x": value})
+
+
+@pytest.mark.parametrize(
+    "params, message",
+    [
+        ({}, "at least one condition"),
+        ({"conditions": "True"}, "must be a mapping"),
+        ({"conditions": {"a": "True"}, "a": "True"}, "both inside and outside"),
+        ({"conditions": {"a": "True"}, "min_true": 2}, "between 1 and 1"),
+        ({"conditions": {"a": "True"}, "min_true": 0}, "between 1 and 1"),
+        ({"conditions": {"a": "True"}, "min_true": "1"}, "must be an integer"),
+        ({"conditions": {"a": "True"}, "min_true": True}, "must be an integer"),
+    ],
+)
+def test_evaluate_refuses_a_malformed_request(params, message):
+    with pytest.raises(ConnectorError, match=message):
+        run("evaluate", **params)
+
+
+# --- Input rendering (#605) ------------------------------------------------
+
+
+def test_an_input_is_rendered_as_data_not_html(engine):
+    """triage_url blacklists the URL it was given, not an HTML-escaped one."""
+    url = 'http://example.com/a?x=1&y="2"<3>\''
+    context = {"trigger": {"url": url}}
+    assert engine.render_template("{{ trigger.url }}", context) == url

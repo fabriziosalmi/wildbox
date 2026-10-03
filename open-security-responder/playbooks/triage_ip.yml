@@ -1,67 +1,87 @@
 playbook_id: "triage_ip"
 name: "IP Address Triage"
 description: "Comprehensive IP address analysis including port scanning and reputation checks"
-version: "1.0"
+version: "1.1"
 author: "Wildbox Security"
 tags: ["triage", "ip", "network", "security"]
 
 trigger:
   type: "api"
 
+# Every step after validate_ip is guarded on it, so an address that is not
+# valid ends the run there, completed, with nothing sent to the tools service.
+#
+# Tool names and the fields read from their results are those of the tools
+# service (open-security-tools/app/tools/<name>/schemas.py): there is no
+# "nmap", "reputation_check" or "whois" tool there, and port_scanner reports
+# open ports as objects with a `service`, not a separate list of services.
 steps:
   - name: "validate_ip"
     action: "system.validate"
     input:
       type: "ip_address"
       value: "{{ trigger.ip }}"
-      
+
   - name: "scan_ports"
     action: "api.run_tool"
     input:
-      tool_name: "nmap"
+      tool_name: "port_scanner"
       params:
         target: "{{ trigger.ip }}"
-        scan_type: "quick"
-        ports: "1-1000"
-    condition: "steps.validate_ip.output.valid == true"
-    
+        ports: [21, 22, 23, 25, 80, 443, 445, 3389, 8080]
+        scan_type: "tcp"
+    condition: "steps.validate_ip.output.valid"
+
   - name: "check_reputation"
     action: "api.run_tool"
     input:
-      tool_name: "reputation_check"
+      tool_name: "threat_intelligence_aggregator"
       params:
-        ip: "{{ trigger.ip }}"
-        sources: ["virustotal", "abuseipdb", "shodan"]
-    condition: "steps.validate_ip.output.valid == true"
-    
+        indicator: "{{ trigger.ip }}"
+        indicator_type: "ip"
+    condition: "steps.validate_ip.output.valid"
+
+  # Who owns an address that exposes services. whois_lookup takes a domain
+  # only; ip_geolocation carries the WHOIS and ISP data of an IP.
   - name: "whois_lookup"
     action: "api.run_tool"
     input:
-      tool_name: "whois"
+      tool_name: "ip_geolocation"
       params:
-        target: "{{ trigger.ip }}"
-    # scan_ports is skipped for an invalid IP, and open_ports is whatever the
-    # tool returns, so both are guarded.
+        ip_address: "{{ trigger.ip }}"
+        include_whois: true
+        include_isp_info: true
     condition: >-
       steps.scan_ports is defined
-      and steps.scan_ports.output.open_ports is defined
       and steps.scan_ports.output.open_ports | length > 0
-    
+
+  # Flags the address when any one of these holds.
   - name: "threat_assessment"
     action: "system.evaluate"
     input:
       conditions:
-        high_risk: "{{ steps.check_reputation.output.reputation_score < 3 }}"
-        open_ports: "{{ steps.scan_ports.output.open_ports|length > 5 }}"
-        suspicious_services: "{{ 'ftp' in steps.scan_ports.output.services or 'telnet' in steps.scan_ports.output.services }}"
-        
+        high_risk: "{{ steps.check_reputation.output.overall_threat_score >= 70 }}"
+        many_open_ports: "{{ steps.scan_ports.output.open_ports | length > 5 }}"
+        suspicious_services: >-
+          {{ steps.scan_ports.output.open_ports
+             | selectattr('service', 'in', ['ftp', 'telnet']) | list | length > 0 }}
+      min_true: 1
+    condition: "steps.validate_ip.output.valid"
+
   - name: "generate_report"
     action: "system.create_report"
     input:
       template: "ip_triage_report"
       data:
         ip: "{{ trigger.ip }}"
-        scan_results: "{{ steps.scan_ports.output }}"
-        reputation: "{{ steps.check_reputation.output }}"
-        whois: "{{ steps.whois_lookup.output }}"
-        risk_assessment: "{{ steps.threat_assessment.output }}"
+        run_id: "{{ run.id }}"
+        started_at: "{{ run.started_at }}"
+        flagged: "{{ steps.threat_assessment.output.overall_result }}"
+        reasons: "{{ steps.threat_assessment.output.matched | tojson }}"
+        scan_results: "{{ steps.scan_ports.output | tojson }}"
+        reputation: "{{ steps.check_reputation.output | tojson }}"
+        # Skipped when no port is open, and then absent from `steps`.
+        whois: >-
+          {{ (steps.whois_lookup.output if steps.whois_lookup is defined else {})
+             | tojson }}
+    condition: "steps.validate_ip.output.valid"

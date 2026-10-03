@@ -1,81 +1,100 @@
 playbook_id: "triage_url"
 name: "URL Analysis and Response"
 description: "Analyze suspicious URLs and automatically blacklist malicious ones"
-version: "1.0"
+version: "1.1"
 author: "Wildbox Security"
 tags: ["triage", "url", "malware", "blacklist"]
 
 trigger:
   type: "api"
 
+# Every step after validate_url is guarded on it, so a value that is not a
+# URL ends the run there, completed, with nothing analyzed or blacklisted.
+#
+# Tool names and the fields read from their results are those of the tools
+# service (open-security-tools/app/tools/<name>/schemas.py): url_analyzer
+# follows the URL's redirects and reports `security_analysis`;
+# threat_intelligence_aggregator scores an indicator 0-100 in
+# `overall_threat_score`. There is no "reputation_check" or
+# "domain_reputation" tool.
 steps:
   - name: "validate_url"
     action: "system.validate"
     input:
       type: "url"
       value: "{{ trigger.url }}"
-      
+
   - name: "url_analysis"
     action: "api.run_tool"
     input:
       tool_name: "url_analyzer"
       params:
-        url: "{{ trigger.url }}"
-        deep_scan: true
-        screenshot: true
-    condition: "steps.validate_url.output.valid == true"
-    
+        shortened_url: "{{ trigger.url }}"
+        follow_redirects: true
+        check_reputation: true
+    condition: "steps.validate_url.output.valid"
+
   - name: "reputation_check"
     action: "api.run_tool"
     input:
-      tool_name: "reputation_check"
+      tool_name: "threat_intelligence_aggregator"
       params:
-        url: "{{ trigger.url }}"
-        sources: ["virustotal", "urlvoid", "phishtank"]
-    condition: "steps.validate_url.output.valid == true"
-    
+        indicator: "{{ trigger.url }}"
+        indicator_type: "url"
+    condition: "steps.validate_url.output.valid"
+
   - name: "extract_domain"
     action: "system.extract"
     input:
       type: "domain"
       from_url: "{{ trigger.url }}"
-      
+    condition: "steps.validate_url.output.valid"
+
   - name: "domain_reputation"
     action: "api.run_tool"
     input:
-      tool_name: "domain_reputation"
+      tool_name: "threat_intelligence_aggregator"
       params:
-        domain: "{{ steps.extract_domain.output.domain }}"
-    condition: "steps.extract_domain.output.domain is defined"
-    
+        indicator: "{{ steps.extract_domain.output.domain }}"
+        indicator_type: "domain"
+    condition: >-
+      steps.extract_domain is defined
+      and steps.extract_domain.output.success
+      and steps.extract_domain.output.domain
+
+  # The URL is malicious when at least two of the three signals agree.
+  # system.evaluate returns no verdict of its own: the guarded steps below
+  # read its `overall_result`, and its `matched` names the signals that held.
   - name: "threat_verdict"
     action: "system.evaluate"
     input:
-      verdict_logic: |
-        {% set malicious_count = 0 %}
-        {% if steps.url_analysis.output.verdict == 'malicious' %}
-          {% set malicious_count = malicious_count + 1 %}
-        {% endif %}
-        {% if steps.reputation_check.output.malicious_sources|length > 2 %}
-          {% set malicious_count = malicious_count + 1 %}
-        {% endif %}
-        {% if steps.domain_reputation.output.reputation_score < 3 %}
-          {% set malicious_count = malicious_count + 1 %}
-        {% endif %}
-        {{ 'malicious' if malicious_count >= 2 else 'clean' }}
-        
+      conditions:
+        url_flagged: >-
+          {{ steps.url_analysis.output.security_analysis.is_suspicious
+             or steps.url_analysis.output.security_analysis.risk_level in ['high', 'critical'] }}
+        url_reputation_bad: "{{ steps.reputation_check.output.overall_threat_score >= 70 }}"
+        domain_reputation_bad: >-
+          {{ steps.domain_reputation is defined
+             and steps.domain_reputation.output.overall_threat_score >= 70 }}
+      min_true: 2
+    condition: "steps.validate_url.output.valid"
+
   - name: "add_to_blacklist"
     action: "data.add_to_blacklist"
     input:
       type: "url"
       value: "{{ trigger.url }}"
-      reason: "Automated analysis detected malicious content"
+      reason: >-
+        Automated analysis detected malicious content
+        ({{ steps.threat_verdict.output.matched | join(', ') }})
       source: "url_triage_playbook"
-      confidence: "{{ steps.threat_verdict.output.confidence }}"
+      confidence: >-
+        {{ 'high' if steps.threat_verdict.output.matched_count == steps.threat_verdict.output.total
+           else 'medium' }}
     condition: >-
-      steps.threat_verdict.output.verdict is defined
-      and steps.threat_verdict.output.verdict == 'malicious'
-    
+      steps.threat_verdict is defined
+      and steps.threat_verdict.output.overall_result
+
   - name: "notify_security_team"
     action: "system.notification"
     input:
@@ -83,10 +102,10 @@ steps:
       message: |
         🚨 Malicious URL detected and blacklisted:
         URL: {{ trigger.url }}
-        Verdict: {{ steps.threat_verdict.output.verdict }}
-        Analysis: {{ steps.url_analysis.output.summary }}
-        Action: Added to blacklist
+        Signals: {{ steps.threat_verdict.output.matched | join(', ') }}
+        URL analysis: risk {{ steps.url_analysis.output.security_analysis.risk_level }}, threats: {{ steps.url_analysis.output.security_analysis.threats_detected | join(', ') or 'none reported' }}
+        Action: added to blacklist
+        Run: {{ run.id }} (started {{ run.started_at }})
       priority: "high"
-    condition: >-
-      steps.threat_verdict.output.verdict is defined
-      and steps.threat_verdict.output.verdict == 'malicious'
+    # Only once the URL is on the blacklist, as the message says.
+    condition: "steps.add_to_blacklist is defined"

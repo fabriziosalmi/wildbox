@@ -2,23 +2,25 @@
 playbook_id: "all_star_e2e"
 name: "🌟 All-Star Cross-Service Integration Test"
 description: |
-  Comprehensive end-to-end test validating gateway trust propagation across
-  all Wildbox microservices: Gateway → Responder → Agents → Tools → Guardian.
-  
-  This playbook demonstrates:
-  - AI-powered IOC analysis (Agents service)
-  - Security tool execution (Tools service)  
-  - Intelligent vulnerability creation (Guardian service)
-  - Cross-service authentication via gateway headers
-  
-  Success criteria: 
-  - AI analysis completes with verdict
-  - Tools scan executes successfully
-  - Guardian vulnerability created only for malicious IPs
+  End-to-end playbook that reaches every Wildbox service the responder has a
+  connector for: Agents, Tools and Guardian.
 
-version: "1.0"
+  For a valid IP address it:
+  - submits the address to the Agents service for AI analysis;
+  - scans its common ports and queries threat intelligence (Tools service);
+  - records a vulnerability in Guardian when the address is a known threat or
+    exposes more than two services;
+  - compiles a report of every step.
+
+  The AI analysis runs asynchronously: the Agents service answers with a task
+  (`task_id`, `result_url`), not a verdict, so the assessment does not wait
+  for it. The finding cites the task, where the verdict can be read.
+
+  An address that is not valid ends the run after validation, completed.
+
+version: "1.1"
 author: "Wildbox Security Team"
-tags: ["integration", "e2e", "gateway-auth", "all-star"]
+tags: ["integration", "e2e", "all-star"]
 
 trigger:
   type: "api"
@@ -36,128 +38,129 @@ steps:
       type: "ip_address"
       value: "{{ trigger.ip }}"
     timeout: 5
-    
+
   # Step 2: AI-Powered IOC Analysis (Agents Service)
   - id: "ai_analysis"
     name: "🤖 AI-Powered Threat Analysis"
     action: "wildbox.analyze_ioc"
-    description: "Use AI to analyze IP reputation and threat level"
+    description: "Submit the IP to the Agents service for AI analysis"
     input:
       ioc_type: "ipv4"
       ioc_value: "{{ trigger.ip }}"
       context:
         source: "all_star_e2e_test"
         requester: "responder_playbook"
-        timestamp: "{{ system.timestamp }}"
+        # `run` is part of every step's context; there is no `system`.
+        run_id: "{{ run.id }}"
+        requested_at: "{{ run.started_at }}"
+    condition: "steps.validate_ip.output.valid"
     timeout: 60
     on_failure: "continue"
-    
+
   # Step 3: Port Scan (Tools Service)
-  - id: "nmap_scan"
+  - id: "port_scan"
     name: "🔍 Network Port Scan"
     action: "wildbox.run_tool"
     description: "Scan common ports to identify exposed services"
     input:
-      tool_name: "nmap"
+      tool_name: "port_scanner"
       params:
         target: "{{ trigger.ip }}"
-        ports: "80,443,22,21,3389,8080"
-        scan_type: "tcp_connect"
+        ports: [21, 22, 80, 443, 3389, 8080]
+        scan_type: "tcp"
+    condition: "steps.validate_ip.output.valid"
     timeout: 120
     on_failure: "continue"
-    
-  # Step 4: WHOIS Lookup (Tools Service)
-  - id: "whois_lookup"
-    name: "📋 WHOIS Information"
+
+  # Step 4: Threat Intelligence (Tools Service)
+  - id: "threat_intel"
+    name: "📋 Threat Intelligence"
     action: "wildbox.run_tool"
-    description: "Gather domain registration and ownership details"
+    description: "Score the address against threat intelligence sources"
     input:
-      tool_name: "whois"
+      tool_name: "threat_intelligence_aggregator"
       params:
-        target: "{{ trigger.ip }}"
+        indicator: "{{ trigger.ip }}"
+        indicator_type: "ip"
+    condition: "steps.validate_ip.output.valid"
     timeout: 30
     on_failure: "continue"
-    
+
   # Step 5: Threat Assessment
+  #
+  # A step that failed under on_failure: continue is in the context with
+  # `output: none`, so each signal checks for an output before reading it.
   - id: "threat_assessment"
     name: "⚖️ Aggregate Threat Assessment"
     action: "system.evaluate"
-    description: "Calculate overall threat score based on all findings"
+    description: "Flag the address when any signal holds"
     input:
-      condition:
-        ai_verdict: "{{ steps.ai_analysis.result.verdict }}"
-        ai_confidence: "{{ steps.ai_analysis.result.confidence }}"
-        open_ports_count: "{{ steps.nmap_scan.result.open_ports | length }}"
-      scoring:
-        critical_if:
-          - "ai_verdict == 'Malicious' and ai_confidence > 0.8"
-          - "open_ports_count > 10"
-        high_if:
-          - "ai_verdict == 'Suspicious' and ai_confidence > 0.6"
-          - "open_ports_count > 5"
-        medium_if:
-          - "ai_verdict == 'Suspicious'"
-          - "open_ports_count > 2"
-        low_if:
-          - "ai_verdict == 'Benign'"
+      conditions:
+        known_threat: >-
+          {{ steps.threat_intel.output is not none
+             and steps.threat_intel.output.overall_threat_score >= 70 }}
+        exposed_services: >-
+          {{ steps.port_scan.output is not none
+             and steps.port_scan.output.open_ports | length > 2 }}
+      min_true: 1
+    condition: "steps.validate_ip.output.valid"
     timeout: 10
-    
+
   # Step 6: Conditional Vulnerability Creation (Guardian Service)
   - id: "create_finding"
     name: "🚨 Create Security Vulnerability"
     action: "wildbox.create_vulnerability"
     description: "Create vulnerability in Guardian if threat detected"
-    # A step's result is stored under `output`; `result` never existed, so
-    # this reference could not resolve. Guarded because the severity is
-    # optional: without one, no vulnerability is created.
     condition: >-
-      steps.threat_assessment.output.severity is defined
-      and steps.threat_assessment.output.severity != 'low'
+      steps.threat_assessment is defined
+      and steps.threat_assessment.output.overall_result
     input:
       title: "All-Star Test: Potential Threat from {{ trigger.ip }}"
       description: |
         Cross-service integration test detected potential security threat.
-        
+
+        **Signals:** {{ steps.threat_assessment.output.matched | join(', ') }}
+
         **AI Analysis:**
-        - Verdict: {{ steps.ai_analysis.result.verdict }}
-        - Confidence: {{ steps.ai_analysis.result.confidence }}
-        - Task ID: {{ steps.ai_analysis.result.task_id }}
-        
+        - Task ID: {{ steps.ai_analysis.output.task_id if steps.ai_analysis.output else 'not started' }}
+        - Results: {{ steps.ai_analysis.output.result_url if steps.ai_analysis.output else 'none' }}
+
         **Network Scan:**
-        - Open Ports: {{ steps.nmap_scan.result.open_ports | join(', ') }}
-        - Services: {{ steps.nmap_scan.result.services | join(', ') }}
-        
-        **WHOIS Info:**
-        - Organization: {{ steps.whois_lookup.result.organization }}
-        - Country: {{ steps.whois_lookup.result.country }}
-        
-        **Overall Assessment:**
-        - Severity: {{ steps.threat_assessment.result.severity }}
-        - Risk Score: {{ steps.threat_assessment.result.score }}/100
-      severity: "{{ steps.threat_assessment.result.severity }}"
+        - Open Ports: {{ steps.port_scan.output.open_ports | map(attribute='port') | join(', ') if steps.port_scan.output else 'scan failed' }}
+
+        **Threat Intelligence:**
+        - Score: {{ steps.threat_intel.output.overall_threat_score if steps.threat_intel.output else 'unavailable' }}/100
+        - Classification: {{ steps.threat_intel.output.threat_classification if steps.threat_intel.output else 'unavailable' }}
+
+        Responder run {{ run.id }}, started {{ run.started_at }}.
+      severity: "{{ 'high' if steps.threat_assessment.output.conditions.known_threat else 'medium' }}"
       asset_name: "{{ trigger.ip }}"
-      cve_id: "TEST-E2E-{{ system.timestamp }}"
     timeout: 30
     on_failure: "continue"
-    
+
   # Step 7: Final Report
+  #
+  # Each entry is the step's whole context entry -- output, status and, for
+  # a step that failed, its error -- as JSON. create_finding is absent from
+  # `steps` when its condition did not hold.
   - id: "generate_report"
     name: "📊 Generate Test Report"
     action: "system.create_report"
     description: "Compile comprehensive test results"
-    # system.create_report takes (template, data). It used to be given
-    # include_steps and format, which it has no parameters for -- once inputs
-    # actually reached the connector this step raised TypeError. The steps it
-    # wanted to include are named here instead, by id.
     input:
       template: "all_star_summary"
       data:
-        validate_ip: "{{ steps.validate_ip.output }}"
-        ai_analysis: "{{ steps.ai_analysis.output }}"
-        nmap_scan: "{{ steps.nmap_scan.output }}"
-        whois_lookup: "{{ steps.whois_lookup.output }}"
-        threat_assessment: "{{ steps.threat_assessment.output }}"
-        create_finding: "{{ steps.create_finding.output }}"
+        run_id: "{{ run.id }}"
+        started_at: "{{ run.started_at }}"
+        validate_ip: "{{ steps.validate_ip | tojson }}"
+        ai_analysis: "{{ steps.ai_analysis | tojson }}"
+        port_scan: "{{ steps.port_scan | tojson }}"
+        threat_intel: "{{ steps.threat_intel | tojson }}"
+        threat_assessment: "{{ steps.threat_assessment | tojson }}"
+        create_finding: >-
+          {{ (steps.create_finding if steps.create_finding is defined
+              else {'skipped': true}) | tojson }}
+    condition: "steps.validate_ip.output.valid"
     timeout: 10
 
 # No `output:` block here.

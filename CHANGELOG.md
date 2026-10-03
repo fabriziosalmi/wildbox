@@ -127,6 +127,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of `result`, which never existed. A unit test compiles every
   condition and every input template of every shipped playbook, so a
   broken one fails CI.
+- **The shipped responder playbooks run to completion** (#605). They
+  compiled, but read names the run context does not have and branched on
+  results no step produces:
+  - `all_star_e2e.yml` read `steps.<id>.result` and a `system.timestamp`
+    that nothing provided, so it stopped at `threat_assessment`.
+  - `system.evaluate` returned neither of the `verdict` and `severity`
+    that `add_to_blacklist` and `notify_security_team` in
+    `triage_url.yml` and `create_finding` in `all_star_e2e.yml` were
+    guarded on, so those steps never ran. It also took `bool()` of what
+    it was given, so the nested mapping `triage_ip.yml` passed always
+    held. It now takes a `conditions` mapping and an optional `min_true`,
+    returns `overall_result` with the names that held, and fails the step
+    on a value that is not a boolean. The guarded steps read
+    `overall_result`.
+  - The playbooks named tools the tools service does not have (`nmap`,
+    `whois`, `reputation_check`, `domain_reputation`) and fields their
+    results lack. They now call `port_scanner`,
+    `threat_intelligence_aggregator`, `url_analyzer` and `ip_geolocation`
+    with those tools' parameters, and read the fields the tools return.
+  - A step after an invalid IP address or URL is skipped, so such a run
+    completes after validation instead of failing on a skipped step's
+    output.
+  - Every step's context now has `run.id`, `run.playbook_id` and
+    `run.started_at`, documented with `steps.<id>.output` in the playbook
+    reference (`open-security-responder/README.md`).
+  - Step inputs are no longer HTML-escaped. `{{ trigger.url }}` turned
+    `&` into `&amp;`, so `triage_url.yml` would have blacklisted a URL
+    nobody submitted.
+
+  A unit test runs each shipped playbook through `start_execution` and
+  the worker actor, with the other services stubbed at the connectors'
+  HTTP clients, and asserts which steps run, are skipped or fail for
+  malicious, benign and invalid inputs. The stubbed responses and the
+  parameters sent to each tool are checked against the services' own
+  schemas.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
