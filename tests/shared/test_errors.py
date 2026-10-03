@@ -7,6 +7,8 @@ explanations never reached a user (WILDBO-API-01/API-02). These tests pin the
 one shape every service now installs.
 """
 
+from enum import Enum
+
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -16,6 +18,12 @@ from pydantic import BaseModel
 
 class Body(BaseModel):
     value: int
+
+
+class ErrorCode(str, Enum):
+    """How fastapi-users raises its codes (fastapi_users.router.common)."""
+
+    REGISTER_USER_ALREADY_EXISTS = "REGISTER_USER_ALREADY_EXISTS"
 
 
 @pytest.fixture
@@ -37,6 +45,12 @@ def client():
         raise HTTPException(
             status_code=400,
             detail={"code": "REGISTER_INVALID_PASSWORD", "reason": "Too short."},
+        )
+
+    @app.post("/register-again")
+    def register_again():
+        raise HTTPException(
+            status_code=400, detail=ErrorCode.REGISTER_USER_ALREADY_EXISTS
         )
 
     @app.post("/validated")
@@ -79,6 +93,13 @@ def test_a_fastapi_users_reason_is_the_message(client):
         "code": "REGISTER_INVALID_PASSWORD",
         "reason": "Too short.",
     }
+
+
+def test_a_fastapi_users_error_code_is_the_code_itself(client):
+    """str() of the enum member read "ErrorCode.REGISTER_USER_ALREADY_EXISTS" (#589)."""
+    r = client.post("/register-again")
+    assert r.status_code == 400
+    assert r.json()["error"]["message"] == "REGISTER_USER_ALREADY_EXISTS"
 
 
 def test_validation_error_is_the_same_shape(client):

@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Cookies from 'js-cookie'
-import { LoginResponse, User } from '@/types'
+import { LoginResponse, RegisterRequest, User } from '@/types'
 import { identityClient, getAuthPath } from '@/lib/api-client'
 
 interface AuthContextType {
@@ -18,6 +18,11 @@ interface AuthContextType {
 
 /** Where an account with an initial password changes it (#573). */
 export const CHANGE_PASSWORD_PAGE = '/auth/change-password'
+
+export const LOGIN_PAGE = '/auth/login'
+
+/** Query flag telling the login page that a sign-up just created the account (#589). */
+export const ACCOUNT_CREATED_PARAM = 'registered'
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
@@ -106,30 +111,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }
 
   const register = async (email: string, password: string, name: string) => {
+    // identity's register route (fastapi-users) answers 201 with the created
+    // user, not a token (#589). A refusal (password policy, address already
+    // registered) is thrown as it came, for the form to show.
+    const request: RegisterRequest = { email, password, name }
+    await identityClient.post<User>(getAuthPath('/api/v1/auth/register'), request)
+
+    // Then sign in with the same credentials through the one login flow: it
+    // stores the token, loads the user and redirects, to the change-password
+    // screen first for an account that must change its password (#573).
+    // identity's login does not require a verified address, so this normally
+    // succeeds. If it does not, the account exists all the same: send the
+    // user to sign in instead of reporting an error that a retry would turn
+    // into "already exists".
     try {
-      const response = await identityClient.post<LoginResponse>(
-        getAuthPath('/api/v1/auth/register'),
-        {
-          email,
-          password,
-          name,
-        }
-      )
-      const { access_token } = response
-
-      // Store token in cookie only (no localStorage to reduce XSS attack surface)
-      if (typeof window !== 'undefined') {
-        Cookies.set('auth_token', access_token, authCookieOptions())
-      }
-
-      // Fetch user data separately using the correct FastAPI Users endpoint
-      const userData = await identityClient.get<User>(getAuthPath('/api/v1/users/me'))
-      setUser(userData)
-
-      // Redirect immediately after successful registration
-      router.replace('/dashboard')
-    } catch (error) {
-      throw error
+      await login(email, password)
+    } catch {
+      Cookies.remove('auth_token')
+      setUser(null)
+      router.replace(`${LOGIN_PAGE}?${ACCOUNT_CREATED_PARAM}=1`)
     }
   }
 

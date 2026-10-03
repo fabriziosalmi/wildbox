@@ -6,6 +6,7 @@ import { defineConfig, devices } from '@playwright/test'
 const BACKEND_FILES = [
   /backend\.setup\.ts/,
   /login-flow\.spec\.ts/,
+  /signup-flow\.spec\.ts/,
   /admin-comprehensive\.spec\.ts/,
   /settings-management\.spec\.ts/,
   /threat-intel-lookup\.spec\.ts/,
