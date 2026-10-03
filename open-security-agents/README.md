@@ -1,177 +1,197 @@
-# 🧠 Open Security Agents
+# Open Security Agents
 
-AI-powered threat intelligence enrichment service for the Wildbox security platform.
-
-## Overview
-
-Open Security Agents provides "Threat Enrichment as a Service" through an AI-driven analysis engine. The service uses Large Language Models (LLMs) to automatically investigate Indicators of Compromise (IOCs) and generate comprehensive threat intelligence reports.
-
-**Now includes containerized local LLM support!** Run AI analysis without external API dependencies using vLLM and Qwen2.5-0.5B-Instruct.
+AI threat-enrichment service for the Wildbox platform. It takes one
+indicator of compromise (IOC), lets a Claude model investigate it with
+Wildbox security tools, and returns a verdict with evidence and a Markdown
+report. Analyses run asynchronously in a Celery worker.
 
 ## Architecture
 
 ```text
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   FastAPI       │    │   Celery        │    │   LangChain     │
-│   REST API      │───▶│   Task Queue    │───▶│   AI Agents     │
-│                 │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         ▼                       ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Models    │    │   Redis         │    │   vLLM API      │
-│   (Pydantic)    │    │   Result Store  │    │   Qwen2.5-0.5B  │
-│                 │    │                 │    │   (Local LLM)   │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                                       │
-                                              ┌─────────────────┐
-                                              │   Wildbox       │
-                                              │   Tool Belt     │
-                                              │   (55+ tools)   │
-                                              └─────────────────┘
+client --> gateway (/api/v1/agents/...) --> FastAPI (port 8006)
+                                               |
+                                               | Celery task (Redis)
+                                               v
+                                         Celery worker
+                                               |
+                       +-----------------------+----------------------+
+                       |                                              |
+                 Claude (Anthropic API)                Wildbox services, called with
+                 via langchain-anthropic               the caller's gateway identity
 ```
 
-## Features
+- `app/main.py`: the HTTP API. It validates the request, records the task
+  in Redis and queues it.
+- `app/worker.py`: the Celery task `run_threat_enrichment_task`, which runs
+  the agent.
+- `app/agents/threat_enrichment_agent.py`: a LangChain tool-calling agent on
+  `ChatAnthropic` (at most 15 iterations), followed by a structured report
+  step that grounds the evidence in the tool outputs.
+- `app/tools/`: the LangChain tools and the client that calls the other
+  Wildbox services.
 
-- **AI-Powered Analysis**: Uses LLM reasoning to perform intelligent threat analysis
-- **Local LLM Support**: Run without external API costs using containerized vLLM + Qwen2.5
-- **Asynchronous Processing**: Long-running analysis tasks handled via Celery
-- **Multi-IOC Support**: Analyzes IPs, domains, URLs, hashes, and more
-- **Tool Integration**: Leverages the entire Wildbox security toolkit (55+ tools)
-- **Markdown Reports**: Generates human-readable intelligence reports
-- **Flexible Deployment**: Use local LLM (free) or OpenAI API (higher quality)
+In the Wildbox stack the `agents` service in the root `docker-compose.yml`
+runs both the API and the worker in one container
+(`scripts/entrypoint.sh`), on Redis database 4.
 
-## Quick Start
+## Authentication
 
-### Docker with Local LLM (Recommended)
+The service accepts only requests that come through the gateway. The gateway
+routes `/api/v1/agents/*` authenticate like every other service route
+(`auth_handler.authenticate()`): a session JWT in `Authorization: Bearer` or
+an API key in `X-API-Key`, with the gateway's revocation, password-change,
+scope and per-team rate-limit checks (#636). The request is forwarded to
+`/v1/*` with `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role` and
+the shared `GATEWAY_INTERNAL_SECRET`, which the service checks with the shared
+`open_security_shared.gateway_auth` dependency (`app/auth.py`).
+
+## Caller identity
+
+Every analysis runs as the user who submitted it:
+
+- `POST /v1/analyze` refuses with 403 a caller without a complete user and
+  team identity, before it writes anything or queues work.
+- The task records its owner (`task:{task_id}:user_id`) and receives the
+  caller's user, team and role. The worker sets that identity for the
+  duration of the task only, and refuses a task without one, so a task never
+  reuses the identity of the previous task on the same worker (#596).
+- Every tool call sends that identity as `X-Wildbox-*` headers together with
+  `GATEWAY_INTERNAL_SECRET`, so downstream services apply the caller's team
+  scope. Without `GATEWAY_INTERNAL_SECRET` every tool call fails.
+- Only the owner can read or cancel a task. A task that belongs to another
+  user, or whose owner record is missing, answers `404`, so task ids cannot be
+  probed (#659).
+
+## API
+
+Paths are given as the gateway exposes them (prefix
+`https://localhost/api/v1/agents`) and as the service serves them.
+
+| Method | Gateway path | Service path | Description |
+| --- | --- | --- | --- |
+| POST | `/api/v1/agents/analyze` | `/v1/analyze` | Queue an analysis; answers 202 with the task id. Rate-limited per user, see below |
+| GET | `/api/v1/agents/analyze/{task_id}` | `/v1/analyze/{task_id}` | Task status, or the full result once it completed |
+| DELETE | `/api/v1/agents/analyze/{task_id}` | `/v1/analyze/{task_id}` | Revoke a pending or running task |
+| GET | `/api/v1/agents/stats` | `/stats` | Task counters |
+| GET | none | `/health` | Redis, Celery and Anthropic key status |
+
+`task_id` must be a UUID. `/health` is not routed by the gateway; it is
+reachable on `127.0.0.1:8006` on the host. The
+interactive API documentation (`/docs`) is served on port 8006 unless
+`ENVIRONMENT=production`.
+
+### Submit an analysis
 
 ```bash
-# Start all services including local LLM
-docker-compose up -d
-
-# Wait for LLM model download (first run only, ~1GB)
-docker-compose logs -f llm
-
-# Check service health
-curl http://localhost:8006/health
-
-# Test LLM endpoint
-curl http://localhost:8080/health
+curl -s --cacert open-security-gateway/ssl/wildbox.crt \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"ioc": {"type": "domain", "value": "example.com"}, "priority": "normal"}' \
+  https://localhost/api/v1/agents/analyze
 ```
 
-**Note:** GPU recommended for best performance. See [LLM_SETUP.md](LLM_SETUP.md) for CPU-only configuration.
-
-### Docker with OpenAI API
-
-```bash
-# Set OpenAI API key
-export OPENAI_API_KEY="sk-your-key-here"
-export OPENAI_BASE_URL=""  # Empty = use OpenAI
-export OPENAI_MODEL="gpt-4o"
-
-# Start services (LLM container not needed)
-docker-compose up -d agents redis
+```json
+{
+  "task_id": "0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6",
+  "status": "pending",
+  "created_at": "2026-10-03T10:00:00Z",
+  "result_url": "/v1/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
+}
 ```
+
+`ioc.type` is one of `ipv4`, `ipv6`, `domain`, `url`, `md5`, `sha1`,
+`sha256` or `email`; the value is checked against a pattern for its type.
+`priority` (`low`, `normal`, `high`) is stored with the task.
+
+### Read the result
+
+While the task runs, `GET` returns its status (`pending`, `running`,
+`failed`). Once it completed it returns the result:
+
+| Field | Content |
+| --- | --- |
+| `verdict` | `Malicious`, `Suspicious`, `Benign` or `Informational` |
+| `confidence` | 0 to 1 |
+| `executive_summary` | Short summary |
+| `evidence` | Items with `source` (tool), `finding`, `severity`, `data` |
+| `recommended_actions` | List of actions |
+| `full_report` | Markdown report |
+| `tools_used`, `analysis_duration` | Tools the agent called; duration in seconds |
+
+Task records and results expire after one hour (`task_result_expires`).
+
+## Tools
+
+The agent has nine LangChain tools (`app/tools/langchain_tools.py`):
+
+| Tool | Calls |
+| --- | --- |
+| `port_scan_tool` | tools service, `network_port_scanner` |
+| `whois_lookup_tool` | tools service, `whois_lookup` |
+| `reputation_check_tool` | tools service, `threat_intelligence_aggregator` |
+| `dns_lookup_tool` | tools service, `dns_enumerator` |
+| `url_analysis_tool` | tools service, `url_analyzer` |
+| `hash_lookup_tool` | tools service, `malware_hash_checker` |
+| `geolocation_lookup_tool` | tools service, `ip_geolocation` |
+| `threat_intel_query_tool` | data service, `/api/v1/threat-intel/query` |
+| `vulnerability_search_tool` | guardian, `/api/v1/vulnerabilities/search` |
+
+Tools-service calls go to `{WILDBOX_API_URL}/api/tools/{tool}` and only to
+the tools in the fixed `TOOL_ENDPOINT_MAP` of `app/tools/wildbox_client.py`.
+The data and guardian endpoints the last two tools call do not exist on
+those services at present, so those tools return an error to the agent.
 
 ## Configuration
 
-See [LLM_SETUP.md](LLM_SETUP.md) for detailed configuration guide.
+Settings are read from the environment (`app/config.py`):
 
-### LLM Options
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | none | Claude API key. Without it the service starts, `/health` reports `not_configured` and analyses fail |
+| `ANTHROPIC_MODEL` | `claude-opus-4-8` | Model id |
+| `ANTHROPIC_TEMPERATURE` | `0.1` | Sampling temperature |
+| `ANTHROPIC_MAX_TOKENS` | `4096` | Maximum output tokens |
+| `GATEWAY_INTERNAL_SECRET` | none | Required. Verifies incoming gateway requests and authenticates tool calls |
+| `REDIS_URL` | `redis://localhost:6379/0` | Task state |
+| `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` | Celery |
+| `WILDBOX_API_URL` | `http://localhost:8000` | Tools service |
+| `WILDBOX_DATA_URL` | `http://localhost:8001` | Data service (the data service listens on 8002; set this explicitly) |
+| `WILDBOX_GUARDIAN_URL` | `http://localhost:8013` | Guardian |
+| `LOG_LEVEL` | `INFO` | Log level |
+| `DEBUG` | `false` | Debug flag |
+| `ENVIRONMENT` | `development` | `production` disables `/docs`, `/redoc` and `/openapi.json` |
+| `CORS_ORIGINS` | empty | Comma-separated allowed origins |
+| `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
+| `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together |
 
-| Option | Model | Speed | Quality | Cost | Use Case |
-| -------- | ------- | ------- | --------- | ------ | ---------- |
-| **Local vLLM (GPU)** | Qwen2.5-0.5B-Instruct | ⭐⭐⭐ | ⭐⭐⭐ | Free | Development, low-volume |
-| **Local vLLM (CPU)** | Qwen2.5-0.5B-Instruct | ⭐ | ⭐⭐⭐ | Free | Testing only |
-| **OpenAI GPT-4o** | gpt-4o | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | $0.01-0.05 | Production, high-priority |
+The analysis limits are counted per user as identified by the gateway, not
+per client address (#659). The service refuses to start when either value
+cannot be parsed; a request over a limit answers `429`.
 
-> **Note on Model Names**: The local LLM uses `Qwen/Qwen2.5-0.5B-Instruct` from HuggingFace, but is served via API as `qwen3-0.6b` for compatibility.
-
-### Environment Variables
-
-- `OPENAI_API_KEY`: API key (use "wildbox-local-llm" for local vLLM)
-- `OPENAI_BASE_URL`: LLM endpoint (default: `http://llm:8000/v1` for local)
-- `OPENAI_MODEL`: Model name for API calls
-  - Local vLLM: `qwen3-0.6b` (served name for Qwen2.5-0.5B-Instruct)
-  - OpenAI: `gpt-4o` or `gpt-4-turbo`
-- `REDIS_URL`: Redis connection URL
-- `WILDBOX_API_URL`: Open Security API base URL
-- `DEBUG`: Enable debug mode
-- `ANALYZE_RATE_LIMIT`: analysis requests each authenticated user may
-  submit, in the `limits` notation (default `5/minute`; several limits are separated by
-  `;`, for example `5/minute;50/day`). The limit is counted per user, as
-  identified by the gateway, not per client address.
-- `ANALYZE_TEAM_RATE_LIMIT`: optional ceiling for all users of one team
-  together, in the same notation (default: no ceiling).
-
-The service refuses to start when either value cannot be parsed. A request
-over a limit answers 429, and the body names the limit that was hit, per
-user or per team.
-
-## Supported IOC Types
-
-- **IPv4/IPv6**: IP address analysis
-- **Domain**: Domain reputation and WHOIS
-- **URL**: URL analysis and categorization
-- **Hash**: File hash reputation (MD5, SHA1, SHA256)
-- **Email**: Email address investigation
-
-## Architecture Components
-
-### ThreatEnrichmentAgent
-
-The core AI agent that orchestrates the analysis process:
-
-1. **IOC Classification**: Determines IOC type and appropriate tools
-2. **Tool Execution**: Runs security tools in logical sequence
-3. **Evidence Collection**: Gathers and correlates findings
-4. **Report Generation**: Creates final intelligence report
-
-### Tool Belt
-
-Security tools available to the AI agent:
-
-- Port scanning and service detection
-- WHOIS lookups and domain analysis
-- Reputation checks across multiple sources
-- Threat intelligence database queries
-- URL analysis and screenshot capture
-- Hash analysis and sandbox integration
+The root `docker-compose.yml` sets `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
+(default `claude-opus-4-8`), `GATEWAY_INTERNAL_SECRET`, `WILDBOX_API_URL`
+(`http://api:8000`) and the Redis URLs.
 
 ## Development
 
-### Adding New Tools
-
-1. Implement tool in `app/tools/langchain_tools.py`
-2. Add API integration in `app/tools/wildbox_client.py`
-3. Update agent prompt with tool description
-
-### Testing
+The `docker-compose.yml` in this directory runs the service on its own with
+a local Redis: `agents-api` (port 8006), `celery-worker` and `celery-flower`
+(port 5555 on localhost). It needs `GATEWAY_INTERNAL_SECRET` and
+`FLOWER_PASSWORD`, and `ANTHROPIC_API_KEY` for analyses. Requests to it
+still need the gateway identity headers, so use the full stack for
+end-to-end work.
 
 ```bash
 # Unit tests (no services needed)
-pytest tests/unit/
+make test
 
 # Analysis through the gateway (needs the whole stack running)
 make test-e2e
 ```
 
-## Deployment
-
-Production deployment uses Docker with:
-
-- Redis for task queue and result storage
-- Multiple Celery workers for parallel processing
-- Nginx for load balancing and SSL termination
-- Monitoring with health checks and metrics
-
-## Security
-
-- All API communications use internal authentication
-- LLM prompts are sanitized to prevent injection
-- IOC data is validated before processing
-- Results are temporarily stored and auto-expire
+To add a tool, define it in `app/tools/langchain_tools.py`, add it to
+`ALL_TOOLS`, and add the call in `app/tools/wildbox_client.py` (for a
+tools-service tool, an entry in `TOOL_ENDPOINT_MAP`).
 
 ## License
 
-Part of the Wildbox Open Security Platform
+Part of the Wildbox platform; see the repository [LICENSE](../LICENSE).

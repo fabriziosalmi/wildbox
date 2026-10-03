@@ -1,322 +1,86 @@
 # Docker Deployment Guide
 
-This guide provides comprehensive instructions for deploying the Open Security Sensor using Docker and Docker Compose.
+How to run the Open Security Sensor with Docker Compose.
 
-## Quick Start
+## As part of the Wildbox stack
 
-### Prerequisites
+The root `docker-compose.yml` defines the `sensor` service. Set
+`SENSOR_API_KEY` in the root `.env` (compose refuses to start without it), then:
 
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- 512MB+ available memory
-- Network access to security data platform
+```bash
+docker compose up -d sensor
+curl http://127.0.0.1:8004/health
+```
 
-### Basic Deployment
+The root compose file already points the sensor at the gateway and mounts the
+gateway's certificate from the `gateway_cert` volume; set
+`SENSOR_DATA_LAKE_API_KEY` to start sending telemetry (see
+[Connect to Wildbox](#connect-to-wildbox)).
 
-1. **Clone and configure:**
+## Standalone
+
+`docker-compose.yml` in this directory runs the sensor on its own.
+
+1. Create the external network the compose file attaches to:
 
    ```bash
-   git clone https://github.com/wildbox/open-security-sensor.git
-   cd open-security-sensor
-   cp config.docker.yaml config.yaml
+   docker network create security-suite
    ```
 
-2. **Edit configuration:**
+2. Start the sensor with a key for its local API:
 
    ```bash
-   nano config.yaml
-   # Set data_lake.endpoint to your gateway (https://...) and, if no public
-   # CA signed its certificate, data_lake.ca_bundle. Give the API key
-   # through SENSOR_DATA_LAKE_API_KEY; see README.md, "Sending telemetry to
-   # Wildbox".
+   SENSOR_API_KEY=<key> docker compose up -d
    ```
 
-3. **Deploy:**
+3. Verify:
 
    ```bash
-   docker-compose up -d
+   curl http://127.0.0.1:8004/health
+   curl -H "X-API-Key: <key>" http://127.0.0.1:8004/status
    ```
 
-4. **Verify:**
+The image build reads `../open-security-shared` as an additional build context,
+so run it from a full repository checkout.
 
-   ```bash
-   curl http://localhost:8899/health
-   ```
+### Ports and configuration
 
-## Deployment Options
+Both compose files mount `config.yaml.example` as
+`/etc/security-sensor/config.yaml`. It binds the local API to `0.0.0.0:8004`
+inside the container, and compose publishes that port on `127.0.0.1:8004` only.
+To change the configuration, edit `config.yaml.example` or use the
+`SENSOR_*` environment variables listed in [README.md](README.md#environment-variables).
 
-### Development Environment
+### Monitoring profile
 
-For development with hot reload and debugging:
-
-```bash
-# Start development stack
-docker-compose -f docker-compose.dev.yml up -d
-
-# Attach debugger to port 5678
-# View logs
-docker-compose -f docker-compose.dev.yml logs -f sensor-dev
-```
-
-### Production with Monitoring
-
-Deploy with Prometheus and Grafana:
+The `monitoring` profile adds Prometheus (port `9090`) and Grafana (port
+`3000`), both published on all host interfaces. Grafana's admin password comes
+from `GRAFANA_ADMIN_PASSWORD`:
 
 ```bash
-# Start production stack with monitoring
-docker-compose --profile monitoring up -d
-
-# Access monitoring
-# Grafana: http://localhost:3000 (admin/admin123)
-# Prometheus: http://localhost:9090
+GRAFANA_ADMIN_PASSWORD=<password> SENSOR_API_KEY=<key> \
+  docker compose --profile monitoring up -d
 ```
 
-### High Availability / Scaling
-
-Deploy multiple sensor instances with load balancing:
-
-```bash
-# Scale sensor instances
-docker-compose -f docker-compose.yml -f docker-compose.scale.yml up -d
-
-# View scaled deployment
-docker-compose ps
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-| ---------- | ------------- | --------- |
-| `SENSOR_LOGGING_LEVEL` | Log level | `INFO` |
-| `PYTHONPATH` | Python module path | `/app` |
-| `DEVELOPMENT` | Development mode | `false` |
-
-### Volume Mapping
-
-Required volumes for system monitoring:
-
-- `/proc:/host/proc:ro` - Process information
-- `/sys:/host/sys:ro` - System information  
-- `/etc:/host/etc:ro` - Configuration files
-- `/var/run/docker.sock:/var/run/docker.sock:ro` - Docker socket
-
-### Network Configuration
-
-Networks used:
-
-- `sensor-network` - Internal communication
-- `security-suite` - External security components
-
-## Management
-
-### Service Control
-
-```bash
-# Start services
-docker-compose up -d
-
-# Stop services  
-docker-compose down
-
-# Restart specific service
-docker-compose restart sensor
-
-# View logs
-docker-compose logs -f sensor
-
-# Execute commands in container
-docker-compose exec sensor /bin/bash
-```
-
-### Updates
-
-```bash
-# Pull latest images
-docker-compose pull
-
-# Recreate containers with new images
-docker-compose up -d --force-recreate
-
-# Clean up old images
-docker image prune -f
-```
-
-### Backup & Restore
-
-```bash
-# Backup sensor data
-docker run --rm \
-  -v sensor_data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/sensor-backup.tar.gz -C /data .
-
-# Restore sensor data
-docker run --rm \
-  -v sensor_data:/data \
-  -v $(pwd):/backup \
-  alpine tar xzf /backup/sensor-backup.tar.gz -C /data
-```
-
-## Monitoring
-
-### Health Checks
-
-```bash
-# Check container health
-docker-compose ps
-
-# Check sensor API health
-curl http://localhost:8899/health
-
-# Check sensor status
-curl http://localhost:8899/status
-```
-
-### Resource Monitoring
-
-```bash
-# View resource usage
-docker stats
-
-# View container processes
-docker-compose top
-
-# Check disk usage
-docker system df
-```
-
-### Logs
-
-```bash
-# View all logs
-docker-compose logs
-
-# Follow specific service logs
-docker-compose logs -f sensor
-
-# View last N lines
-docker-compose logs --tail=100 sensor
-
-# Filter by timestamp
-docker-compose logs --since="2024-01-01T00:00:00Z" sensor
-```
-
-## Troubleshooting
-
-### Common Issues
-
-#### Container Won't Start
-
-```bash
-# Check container status
-docker-compose ps
-
-# View startup logs
-docker-compose logs sensor
-
-# Check configuration
-docker-compose config
-```
-
-#### Permission Errors
-
-```bash
-# Check file permissions
-ls -la config.yaml
-
-# Fix ownership
-sudo chown $USER:$USER config.yaml
-
-# Check container user
-docker-compose exec sensor id
-```
-
-#### Host Monitoring Issues
-
-```bash
-# Verify host mounts
-docker-compose exec sensor ls -la /host/proc
-
-# Check process access
-docker-compose exec sensor ps aux
-
-# Test capabilities
-docker-compose exec sensor capsh --print
-```
-
-#### Network Connectivity
-
-```bash
-# Test external connectivity
-docker-compose exec sensor curl -I https://your-data-lake.com
-
-# Check DNS resolution
-docker-compose exec sensor nslookup your-data-lake.com
-
-# Test internal connectivity
-docker-compose exec sensor curl http://redis:6379
-```
-
-### Performance Tuning
-
-#### Resource Limits
-
-Add to docker-compose.yml:
-
-```yaml
-services:
-  sensor:
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-```
-
-#### Configuration Optimization
-
-For high-volume environments:
-
-```yaml
-# config.yaml
-performance:
-  max_queue_size: 5000
-  batch_size: 200
-  flush_interval: 15
-  worker_threads: 6
-  max_memory_mb: 384
-```
-
-## Security Considerations
-
-### Container Security
-
-- Runs as non-root user (`sensor`)
-- No-new-privileges security option
-- Minimal required capabilities
-- Read-only host mounts
-
-### Network Security
-
-- Internal network isolation
-- TLS encrypted data transmission
-- API key authentication
-- Optional nginx SSL termination
-
-### Host Integration
-
-- PID namespace sharing for process monitoring
-- Minimal host filesystem access
-- Docker socket access (read-only)
-
-## Integration with Security Suite
-
-### Connect to Wildbox
+The sensor does not expose a `/metrics` endpoint, so the Prometheus scrape job
+for it in `monitoring/prometheus.yml` has no target to read.
+
+## Environment variables
+
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `SENSOR_API_KEY` | None; required | Key for every local API route except `/health` |
+| `SENSOR_DATA_LAKE_ENDPOINT` | `data_lake.endpoint` from the file | The Wildbox gateway, `https://...` |
+| `SENSOR_DATA_LAKE_API_KEY` | None | Identity API key with the `data:ingest` scope; without it forwarding is disabled |
+| `SENSOR_DATA_LAKE_CA_BUNDLE` | None (system trust store) | PEM file for a gateway certificate no public CA signed |
+| `SENSOR_LOGGING_LEVEL` | `INFO` | Log level |
+| `PYTHONPATH` | `/app` | Python module path |
+| `GRAFANA_ADMIN_PASSWORD` | None; needed by the `monitoring` profile | Grafana admin password |
+
+The standalone compose files pass the `SENSOR_DATA_LAKE_*` variables through
+only when they are set in the shell.
+
+## Connect to Wildbox
 
 The sensor sends telemetry to the Wildbox gateway over HTTPS, with an identity
 API key scoped to `data:ingest`; the gateway stores it under the key's team.
@@ -340,46 +104,40 @@ How to create the sensor's member and key, and how to check the connection,
 is in [README.md](README.md#sending-telemetry-to-wildbox). Inside the Wildbox
 stack itself the root `docker-compose.yml` already wires all of this.
 
-## Advanced Configuration
+## Volumes
 
-### Custom osquery Packs
+| Mount | Purpose |
+| :--- | :--- |
+| `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
+| `sensor_logs:/var/log/security-sensor` | Sensor log file |
+| `sensor_data:/var/lib/security-sensor` | Sensor state |
+| `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
-Mount custom query packs:
+The compose files do not mount the host's `/proc`, `/etc` or the Docker socket.
 
-```yaml
-volumes:
-  - ./custom-packs:/etc/security-sensor/packs:ro
-```
-
-### Log Forwarding
-
-Configure log shipping:
-
-```yaml
-# config.yaml
-collection:
-  log_forwarding: true
-
-log_sources:
-  - name: "application_logs"
-    type: "file"
-    path: "/var/log/app/*.log"
-```
-
-### High Availability
-
-Deploy across multiple hosts:
+## Management
 
 ```bash
-# docker-compose.ha.yml
-version: '3.8'
-services:
-  sensor:
-    deploy:
-      replicas: 3
-      placement:
-        constraints:
-          - node.role == worker
+docker compose logs -f sensor
+docker compose restart sensor
+docker compose exec sensor id
+docker compose down
 ```
 
-For questions or issues, see the main README.md or open an issue on GitHub.
+## Container security
+
+- Runs as the non-root `sensor` user.
+- `no-new-privileges:true` and `cap_drop: ALL`; no capabilities are added and
+  the container does not share the host PID namespace.
+- Host mounts are read-only and limited to the files listed above.
+- The local API is published on `127.0.0.1` only.
+
+## Troubleshooting
+
+- `required variable SENSOR_API_KEY is missing a value`: export
+  `SENSOR_API_KEY` or add it to `.env`.
+- `503 API authentication is not configured on this sensor`: the container
+  started without `SENSOR_API_KEY` and no `network.api_key` in the
+  configuration.
+- `network security-suite declared as external, but could not be found`: run
+  `docker network create security-suite`.

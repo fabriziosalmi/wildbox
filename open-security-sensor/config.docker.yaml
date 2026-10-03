@@ -62,7 +62,7 @@ network:
   # 0.0.0.0 is required inside a container, but the compose file must
   # publish the port on 127.0.0.1 only (never 0.0.0.0:8004).
   bind_address: "0.0.0.0"
-  bind_port: 8899
+  bind_port: 8004
   enable_api: true
   api_key: null  # Set to require API key authentication
 

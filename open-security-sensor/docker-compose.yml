@@ -23,11 +23,23 @@ services:
     # Environment variables
     environment:
       - SENSOR_LOGGING_LEVEL=INFO
+      # Key for the local API, as in the root docker-compose.yml. Unset, every
+      # route but /health answers 503.
+      - SENSOR_API_KEY=${SENSOR_API_KEY:?SENSOR_API_KEY is required}
+      # Telemetry goes to a Wildbox gateway (README.md, "Sending telemetry to
+      # Wildbox"). Passed through only when set in the shell, so that an unset
+      # variable does not blank the value in config.yaml.example.
+      - SENSOR_DATA_LAKE_ENDPOINT
+      - SENSOR_DATA_LAKE_API_KEY
+      - SENSOR_DATA_LAKE_CA_BUNDLE
       - PYTHONPATH=/app
     
-    # Configuration volume
+    # Configuration volume. Same file as the root docker-compose.yml: it binds
+    # the local API to 0.0.0.0:8004 inside the container, which is what the
+    # port mapping below publishes. ./config.yaml binds 127.0.0.1, which is
+    # unreachable through a published port.
     volumes:
-      - ./config.yaml:/etc/security-sensor/config.yaml:ro
+      - ./config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor
       - sensor_data:/var/lib/security-sensor
       # Host monitoring: only the specific read-only files the collectors
@@ -68,7 +80,7 @@ services:
     
     # Health check
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8899/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
       timeout: 10s
       retries: 3

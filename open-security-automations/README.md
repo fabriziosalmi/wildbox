@@ -10,10 +10,10 @@ no UI or API of its own beyond n8n's.
 | -------- | ---- | ------- | ------------ |
 | Executive Security Dashboard Automation | `workflows/reporting/executive_security_dashboard.json` | Mondays 08:00 (n8n's timezone, UTC by default) | Reads the CSPM figures of the last 30 days and sends them by e-mail and to Slack |
 
-That is the whole inventory. Nine other workflows were removed in #592: every
-one called endpoints that do not exist (or services directly, which they do
-not accept), so none of them could run. UPGRADING.md, section 11, lists them
-with the reason for each.
+That is the whole inventory. Nine other workflows were removed by pull
+request #603 (issue #592): every one called endpoints that do not exist (or
+services directly, which they do not accept), so none of them could run.
+UPGRADING.md, section 11, lists them with the reason for each.
 
 ### Executive Security Dashboard Automation
 

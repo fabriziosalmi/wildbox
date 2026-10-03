@@ -1,101 +1,79 @@
-# Open Security Guardian - Vulnerability Management
+# Open Security Guardian
 
-**Version:** 1.0  
-**Framework:** Django 5.2 LTS + Django REST Framework  
-**Port:** 8013  
-**Database:** PostgreSQL (guardian schema)
+Guardian is the Wildbox vulnerability management service: an inventory of
+assets and the vulnerabilities found on them, with remediation, compliance and
+reporting records around them. It is a Django and Django REST Framework
+application served by gunicorn on port 8013, with a Celery worker and a Celery
+beat scheduler.
 
----
+## Containers
 
-## Overview
+The root `docker-compose.yml` runs three containers from this directory's
+image:
 
-Guardian is the centralized vulnerability management and asset tracking service for the Wildbox security platform. It provides comprehensive lifecycle management for security vulnerabilities, from discovery through remediation.
+| Service | Command | Role |
+| --- | --- | --- |
+| `guardian` | `gunicorn ... guardian.wsgi:application` on 8013 | The API; published on `127.0.0.1:8013` only |
+| `guardian-worker` | `celery -A guardian worker -Q default,reporting,scanning,analytics` | Runs queued tasks |
+| `guardian-beat` | `celery -A guardian beat --scheduler guardian.beat:HeartbeatDatabaseScheduler` | Sends periodic tasks; exactly one instance |
 
-### Key Features
+The image's entrypoint (`scripts/docker-entrypoint.sh`) runs
+`python manage.py migrate --no-input` before the command, so `guardian`
+applies the migrations shipped in `apps/*/migrations/` when it starts.
+There is no `makemigrations` step. `guardian-worker` and `guardian-beat` wait
+for `guardian` to be healthy, so their own `migrate` has nothing to do.
 
-- **Asset Management**: Track servers, databases, cloud resources, and endpoints
-- **Vulnerability Tracking**: CVE-based vulnerability lifecycle management
-- **Risk Scoring**: Automatic risk calculation based on severity and asset criticality
-- **Integration Ready**: RESTful API with Swagger documentation
-- **Business Logic**: Database constraints prevent duplicate vulnerabilities
+`guardian-worker` writes generated reports to the `guardian_media` volume,
+which `guardian` also mounts to serve the downloads.
 
----
+### Celery queues
 
-## First-Time Setup
+Every task is routed by name in `guardian/celery.py` (`TASK_QUEUES`), and
+`guardian-worker` consumes exactly those queues:
 
-### Prerequisites
+| Queue | Tasks |
+| --- | --- |
+| `scanning` | Asset discovery, discovery rules, asset port scans, remediation re-scans |
+| `reporting` | Report generation and metrics, alert-rule checks, expired-report cleanup, compliance reports |
+| `analytics` | Vulnerability risk-score recomputation, compliance metrics |
+| `default` | Notifications, SLA checks, threat-intel enrichment, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
 
-- Docker and Docker Compose installed
-- PostgreSQL 15 running (via main docker-compose.yml)
-- Python 3.11+ (for local development)
+The threat-intel enrichment task reads `THREAT_INTEL_URLS`, which
+`guardian/settings.py` does not define, so it currently changes nothing.
+Guardian does not query the data service.
 
-### Quick Start (Docker)
+`tests/unit/test_celery_routing.py` fails when a registered task has no queue
+or when the worker's `-Q` list differs from `TASK_QUEUES`.
 
-```bash
-# 1. Start the service (from main wildbox directory)
-docker-compose up -d guardian
+The periodic schedule is in `guardian/schedule.py`. Each interval can be
+overridden with a `GUARDIAN_SCHEDULE_*` variable on `guardian-beat` (see the
+root `docker-compose.yml`); restart `guardian-beat` after changing one.
 
-# 2. Wait for container to be ready
-sleep 10
+## Authentication
 
-# 3. Create database migrations (REQUIRED on first run)
-docker-compose exec guardian python manage.py makemigrations
+Guardian accepts only requests that come through the gateway. Clients
+authenticate to the gateway on HTTPS port 443 with
+`Authorization: Bearer <JWT>` or `X-API-Key: <key>`. The gateway checks the
+credential with the identity service, strips client-supplied `X-Wildbox-*`
+headers and forwards trusted ones (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
+`X-Wildbox-Role`) with the shared `GATEWAY_INTERNAL_SECRET`.
+`apps/core/gateway_middleware.py` rejects identity headers that arrive without
+the matching secret (403) and answers 503 when `GATEWAY_INTERNAL_SECRET` is
+unset. A request without gateway identity headers, whatever other header it
+carries, answers 403 `GATEWAY_AUTH_REQUIRED`, as the other services do.
+Guardian has no API keys of its own: the `APIKey` model was removed (#629,
+migration `core.0002`), and DRF authenticates only with
+`GatewayHeaderAuthentication`.
 
-# 4. Apply migrations to create database schema
-docker-compose exec guardian python manage.py migrate
+Reads are open to any authenticated caller; create, update, delete and the
+other write actions need the `owner` or `admin` role
+(`apps/core/permissions.py`, `IsGatewayAdminOrReadOnly`).
 
-# 5. Create Django superuser for admin access
-docker-compose exec guardian python manage.py createsuperuser
-# Follow prompts to set username, email, password
-
-# 6. guardian has no API keys of its own: call it through the gateway with
-#    a personal API key from identity (see Authentication below)
-
-# 7. Verify service health
-curl http://localhost:8013/health
-```
-
-### Expected Output
-
-After successful setup, you should see:
-
-```json
-{
-  "status": "healthy",
-  "service": "guardian",
-  "version": "1.0.0",
-  "database": "connected"
-}
-```
-
----
-
-## API Documentation
-
-### Swagger UI
-
-Interactive API documentation available at:
-
-```text
-http://localhost:8013/docs
-```
-
-### Authentication
-
-Guardian accepts requests through the gateway only. The gateway
-authenticates the caller, with a JWT or a personal API key created in
-identity (`POST /api/v1/identity/api-keys`, or Settings > API keys in the
-dashboard), and forwards the caller's identity, team and role to guardian:
-
-```bash
-curl -H "X-API-Key: $WILDBOX_API_KEY" \
-  https://localhost/api/v1/guardian/assets/assets/
-```
-
-A request made directly to guardian's port answers 403
-`GATEWAY_AUTH_REQUIRED`, whatever key it carries. guardian's own API keys
-(`apps.core.models.APIKey`) were removed (#629): they authenticated beside
-the gateway, as an administrator.
+The gateway maps `/api/v1/guardian/<path>` to Guardian's `/api/v1/<path>` and
+presents `open-security-guardian` as the Host, so Django's `ALLOWED_HOSTS`
+check passes. The dashboard calls Guardian through `guardianClient` in
+`open-security-dashboard/src/lib/api-client.ts`, whose base URL is the gateway
+plus `/api/v1/guardian`.
 
 ### Team isolation
 
@@ -146,422 +124,178 @@ writes.
   the shared frameworks and vulnerability templates to that team. See
   [UPGRADING.md](../UPGRADING.md).
 
----
+## Quick start
 
-## Common Tasks
-
-### Create an Asset
+From the repository root, after generating secrets as described in the root
+[README](../README.md):
 
 ```bash
-curl -X POST https://localhost/api/v1/guardian/assets/assets/ \
-  -H "X-API-Key: $WILDBOX_API_KEY" \
-  -H "Content-Type: application/json" \
+docker compose up -d guardian guardian-worker guardian-beat gateway
+docker compose ps guardian guardian-worker guardian-beat
+```
+
+Health, from the host (the port is bound to loopback):
+
+```bash
+curl -fsS http://127.0.0.1:8013/health/
+```
+
+`/health/` checks the database and the cache and answers 200 with
+`"status": "healthy"`, or 503 with `"status": "unhealthy"` and the failing
+check under `checks`.
+
+## API
+
+Get a token as shown in the root [README](../README.md). Django routes end
+with a slash; keep it.
+
+```bash
+CA=open-security-gateway/ssl/wildbox.crt
+AUTH="Authorization: Bearer $TOKEN"
+G=https://localhost/api/v1/guardian
+
+# List assets
+curl --cacert "$CA" -H "$AUTH" "$G/assets/assets/"
+
+# Create an asset (owner or admin role)
+curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
+  -X POST "$G/assets/assets/" \
   -d '{
-    "name": "production-web-server",
-    "type": "server",
+    "name": "web-01",
+    "asset_type": "server",
     "ip_address": "10.0.1.100",
     "criticality": "high",
-    "owner": "DevOps Team",
     "tags": ["production", "web"]
   }'
-```
 
-### Track a Vulnerability
-
-```bash
-curl -X POST https://localhost/api/v1/guardian/vulnerabilities/ \
-  -H "X-API-Key: $WILDBOX_API_KEY" \
-  -H "Content-Type: application/json" \
+# Record a vulnerability on it (asset is the asset's UUID)
+curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
+  -X POST "$G/vulnerabilities/" \
   -d '{
-    "asset": 1,
-    "cve_id": "CVE-2024-1234",
-    "severity": "high",
-    "status": "open",
+    "asset": "<asset-uuid>",
+    "title": "Outdated TLS configuration",
+    "description": "TLS 1.0 is enabled.",
+    "severity": "medium",
     "port": 443,
-    "service": "nginx",
-    "description": "Nginx buffer overflow vulnerability"
+    "service": "nginx"
   }'
+
+# Change its status, close it, reopen it
+curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
+  -X PATCH "$G/vulnerabilities/<vulnerability-uuid>/" -d '{"status": "in_progress"}'
+curl --cacert "$CA" -H "$AUTH" -H "Content-Type: application/json" \
+  -X POST "$G/vulnerabilities/<vulnerability-uuid>/close/" -d '{"reason": "patched"}'
+curl --cacert "$CA" -H "$AUTH" -X POST "$G/vulnerabilities/<vulnerability-uuid>/reopen/"
 ```
 
-### Update Vulnerability Status
+Responses to create and update use the write serializers
+(`VulnerabilityCreateSerializer`, `VulnerabilityUpdateSerializer`), which do
+not include `id`; read the record back to get it.
 
-```bash
-# Mark as in progress
-curl -X PATCH https://localhost/api/v1/guardian/vulnerabilities/1/ \
-  -H "X-API-Key: $WILDBOX_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "in_progress"}'
+The route prefixes (`guardian/urls.py`), each relative to `/api/v1/guardian/`
+through the gateway:
 
-# Mark as resolved
-curl -X PATCH https://localhost/api/v1/guardian/vulnerabilities/1/ \
-  -H "X-API-Key: $WILDBOX_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "resolved"}'
-```
+| Prefix | Contents |
+| --- | --- |
+| `assets/` | `assets`, `environments`, `business-functions`, `groups`, `discovery-rules`, `software`, `ports` |
+| `vulnerabilities/` | Vulnerabilities, plus `templates/` and `assessments/` |
+| `scanners/` | `scanners`, `scan-profiles`, `scans`, `scan-results`, `scan-schedules` (records only, see [apps/README.md](apps/README.md)) |
+| `remediation/` | `tickets`, `workflows`, `steps`, `comments`, `templates` |
+| `compliance/` | `frameworks`, `controls`, `assessments`, `evidence`, `results`, `exceptions`, `metrics` |
+| `integrations/` | `systems`, `mappings`, `sync-records`, `webhooks`, `logs`, `notifications` (records only) |
+| `reports/` | `templates`, `schedules`, `reports`, `dashboards`, `widgets`, `metrics`, `alerts` |
+| `tasks/<task_id>/` | State of a dispatched Celery task |
 
-### Get Asset with Risk Score
+The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
+when `DEBUG` is true, and only on the service port, not through the gateway.
 
-```bash
-curl https://localhost/api/v1/guardian/assets/assets/1/ \
-  -H "X-API-Key: $WILDBOX_API_KEY" | jq '{
-    name,
-    criticality,
-    vulnerability_count,
-    risk_score
-  }'
-```
-
----
-
-## Data Models
+## Data model
 
 ### Asset
 
-Represents a trackable security asset (server, database, endpoint, etc.)
+`apps/assets/models.py`:
 
-**Key Fields:**
+- `asset_type`: `server`, `workstation`, `network_device`, `mobile_device`,
+  `iot_device`, `cloud_instance`, `container`, `application`, `database`,
+  `other` (default).
+- `criticality`: `critical`, `high`, `medium`, `low`, `unknown` (default).
+- `status`: `active`, `inactive`, `decommissioned`, `maintenance`, `unknown`.
+- `risk_score` (computed): a criticality weight multiplied by the asset's
+  environment and business-function weights.
+- `vulnerability_count` (computed): the number of open vulnerabilities.
 
-- `name`: Asset identifier
-- `type`: server, database, endpoint, cloud_resource, network_device
-- `criticality`: low, medium, high, critical
-- `vulnerability_count`: Auto-calculated property
-- `risk_score`: Weighted average of vulnerability severities
+Creating an asset with an IP address and no known ports queues a TCP connect
+port scan (`scan_asset_ports`, queue `scanning`). `POST .../assets/<id>/scan/`
+queues the same scan on demand.
 
 ### Vulnerability
 
-Represents a security vulnerability associated with an asset
+`apps/vulnerabilities/models.py`:
 
-**Key Fields:**
+- `severity`: `critical`, `high`, `medium` (default), `low`, `info`.
+- `status`: `open` (default), `in_progress`, `resolved`, `accepted`,
+  `false_positive`, `duplicate`.
+- `priority`: `p1` to `p4` (default `p3`).
+- `resolved_at`: set by the `close` action and cleared by `reopen`; a plain
+  `PATCH` of `status` does not set it.
+- Unique together: `(asset, cve_id, port)`.
 
-- `asset`: Foreign key to Asset
-- `cve_id`: CVE identifier
-- `severity`: info, low, medium, high, critical
-- `status`: open, in_progress, resolved, false_positive
-- `port`: Network port (optional)
-- `resolved_at`: Auto-set timestamp when status changes to resolved
-
-**Unique Constraint:** `(asset, cve_id, port)` - prevents duplicate tracking
-
----
-
-## Database Schema
-
-### Migrations
-
-Guardian uses Django migrations for database schema management:
-
-```bash
-# Create new migration after model changes
-docker-compose exec guardian python manage.py makemigrations
-
-# Apply migrations
-docker-compose exec guardian python manage.py migrate
-
-# View migration status
-docker-compose exec guardian python manage.py showmigrations
-
-# Rollback last migration
-docker-compose exec guardian python manage.py migrate apps.core <previous_migration_name>
-```
-
-### Database Access
-
-```bash
-# Django shell (Python ORM)
-docker-compose exec guardian python manage.py shell
-
-# Direct PostgreSQL access
-docker exec -it wildbox-postgres psql -U postgres -d guardian
-```
-
----
-
-## Development
-
-### Local Setup (without Docker)
-
-```bash
-cd open-security-guardian
-
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-pip install -r requirements-dev.txt  # For testing/linting
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Run migrations
-python manage.py migrate
-
-# Create superuser
-python manage.py createsuperuser
-
-# Run development server
-python manage.py runserver 0.0.0.0:8013
-```
-
-### Running Tests
-
-```bash
-# Run all tests
-docker-compose exec guardian python manage.py test
-
-# Run specific test file
-docker-compose exec guardian python manage.py test apps.core.tests.test_models
-
-# Run with coverage
-docker-compose exec guardian coverage run --source='.' manage.py test
-docker-compose exec guardian coverage report
-```
-
-### Code Quality
-
-```bash
-# Lint code
-docker-compose exec guardian flake8 apps/
-
-# Format code
-docker-compose exec guardian black apps/
-
-# Type checking
-docker-compose exec guardian mypy apps/
-```
-
----
-
-## Troubleshooting
-
-### Issue: Migrations Not Applied
-
-**Symptom:** API returns errors about missing tables
-
-**Solution:**
-
-```bash
-docker-compose exec guardian python manage.py migrate
-```
-
-### Issue: API Requests Are Refused
-
-**Symptom:** 403 `GATEWAY_AUTH_REQUIRED` on every request
-
-**Solution:** the request did not go through the gateway. Send it to
-`https://<host>/api/v1/guardian/...` with a JWT or a personal API key from
-identity; guardian has no API keys of its own. A 401 from the gateway means
-the key is unknown, revoked or expired: create a new one in identity.
-
-### Issue: Database Connection Refused
-
-**Symptom:** `OperationalError: could not connect to server`
-
-**Solution:**
-
-```bash
-# Ensure PostgreSQL is running
-docker-compose ps postgres
-
-# Check environment variables
-docker-compose exec guardian env | grep DATABASE
-
-# Restart guardian service
-docker-compose restart guardian
-```
-
-### Issue: PATCH Returns Incomplete Object
-
-**Known Issue:** PATCH endpoints may return `{"id": null}` after successful update
-
-**Workaround:** Perform a GET request after PATCH to retrieve updated object
-
-**Tracked In:** GitHub Issues
-
----
+Within the team, users who lack the `view_all_vulnerabilities` permission see only the
+vulnerabilities assigned to them or created by them.
 
 ## Configuration
 
-### Environment Variables
+Settings are in `guardian/settings.py`. The root compose file passes:
 
-Key configuration options (see `.env.example`):
+- `SECRET_KEY` from `GUARDIAN_SECRET_KEY` (required).
+- `DATABASE_URL` from `GUARDIAN_DATABASE_URL`, falling back to `DATABASE_URL`
+  (required; settings refuse to load without it).
+- `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND`: Redis database 1
+  on `wildbox-redis` unless overridden by the `GUARDIAN_*` equivalents.
+- `GATEWAY_INTERNAL_SECRET`, shared with the gateway.
+- `DEBUG` (default `false`), `LOG_LEVEL`, `ALLOWED_HOSTS`.
+- On `guardian-worker`: `GUARDIAN_BASE_URL` (prefix of links in e-mails) and
+  `GUARDIAN_ALERT_RENOTIFY_INTERVAL`.
 
-```bash
-# Database
-DATABASE_URL=postgresql://postgres:password@localhost:5432/guardian
+`API_RATE_LIMIT` sets the DRF throttle rate. `PROMETHEUS_ENABLED` (default
+`true`) controls `/metrics/`.
 
-# Django
-SECRET_KEY=your-secret-key-here
-DEBUG=false
-ALLOWED_HOSTS=localhost,127.0.0.1,guardian
+## Monitoring
 
-# Cache
-REDIS_URL=redis://localhost:6379/2
+- `GET /health/`: database and cache check, no authentication. The compose
+  health check calls it.
+- `GET /metrics/`: Prometheus text format from `prometheus_client`'s default
+  registry; 404 when `PROMETHEUS_ENABLED` is false.
 
-# API
-API_RATE_LIMIT=100/hour
-API_PAGE_SIZE=50
-```
-
-### Django Settings
-
-Main settings file: `guardian/settings.py`
-
-Key customizations:
-
-- REST Framework configuration
-- CORS settings (for frontend integration)
-- Cache backends
-- Logging configuration
-
----
-
-## Integration with Other Services
-
-### Gateway Routing
-
-Production traffic flows through the gateway:
-
-```text
-Client Request → Gateway (port 80)
-  → Authentication Check (Identity Service)
-  → Route: /api/v1/guardian/* → Guardian (port 8013)
-  → Inject Headers: X-Wildbox-User-ID, X-Wildbox-Team-ID
-  → Response
-```
-
-### Data Service Integration
-
-Guardian can consume threat intelligence from the data service:
+Neither route is under `/api/v1/`, so the gateway does not expose them; reach
+them on `127.0.0.1:8013` or from inside the Docker network.
 
 ```bash
-# Example: Check if vulnerability CVE is in threat database
-curl http://data:8002/api/v1/indicators/search?q=CVE-2024-1234
+docker compose logs -f guardian guardian-worker guardian-beat
 ```
 
-### Dashboard Integration
+## Development
 
-Frontend accesses Guardian via gateway-aware client:
-
-```typescript
-// src/lib/api-client.ts
-const guardianClient = new ApiClient(
-  useGateway 
-    ? `${getGatewayUrl()}/api/v1/guardian`
-    : 'http://localhost:8013'
-)
-```
-
----
-
-## Performance Considerations
-
-### Query Optimization
-
-- Assets and vulnerabilities use database indexes on foreign keys
-- `vulnerability_count` and `risk_score` are calculated properties (not cached)
-- For large datasets, consider adding Redis caching
-
-### Scaling
-
-For production deployments:
-
-- Use connection pooling (configured in `settings.py`)
-- Enable Redis caching for frequent queries
-- Consider read replicas for reporting queries
-- Use Celery for background vulnerability scanning
-
----
-
-## Security Notes
-
-### Authentication
-
-- API keys stored hashed in database (not plain text)
-- Gateway validates all external requests before forwarding
-- Internal service-to-service calls trusted (no re-validation)
-
-### Authorization
-
-- Current version uses API key-based auth (no user-level permissions)
-- Future: Integrate with Identity service for team-scoped access control
-
-### Input Validation
-
-- Django model validation prevents invalid data
-- Database constraints enforce uniqueness
-- DRF serializers validate API request payloads
-
----
-
-## Monitoring & Logging
-
-### Health Check
+Run the unit tests from this directory; `pytest.ini` selects
+`guardian.settings_test`:
 
 ```bash
-# Basic health check
-curl http://localhost:8013/health
-
-# Detailed health check (includes database connectivity)
-curl https://localhost/api/v1/guardian/health/detailed
+pytest
 ```
 
-### Logs
+Django management commands run in the container:
 
 ```bash
-# View container logs
-docker-compose logs -f guardian
-
-# Filter for errors
-docker-compose logs guardian | grep ERROR
-
-# Export logs
-docker-compose logs --no-color guardian > guardian-logs.txt
+docker compose exec guardian python manage.py showmigrations
+docker compose exec guardian python manage.py shell
 ```
 
-### Metrics
+After changing a model, create the migration in your checkout
+(`python manage.py makemigrations`) and commit it with the change; the
+containers only apply migrations.
 
-Prometheus metrics available at:
-
-```text
-http://localhost:8013/metrics
-```
-
-Key metrics:
-
-- `guardian_requests_total`: Total API requests
-- `guardian_assets_total`: Total assets tracked
-- `guardian_vulnerabilities_open`: Open vulnerabilities count
-
----
-
-## Additional Resources
-
-- **Full Documentation**: [Guardian API reference](https://www.wildbox.io/api/guardian/endpoints/) (the older guides are kept for history in [docs/archive/guardian/](../docs/archive/guardian/))
-- **API Reference**: `http://localhost:8013/docs` (Swagger)
-- **Issue Tracker**: GitHub Issues
-
----
+The Django applications are described in [apps/README.md](apps/README.md).
 
 ## License
 
-Part of the Wildbox Security Platform  
-See main repository LICENSE file
-
----
-
-## Support
-
-For questions or issues:
-
-1. Check this README and troubleshooting section
-2. Check the [Guardian API reference](https://www.wildbox.io/api/guardian/endpoints/)
-3. Open an issue on GitHub
-
----
-
-**Last Updated:** 15 November 2025  
-**Maintainer:** Wildbox Platform Team  
-**Status:** Production Ready
+See [LICENSE](../LICENSE) in the repository root.
