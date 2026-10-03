@@ -18,6 +18,7 @@ import mimetypes
 import re
 from urllib.parse import urlparse
 
+from ...safe_http import guarded_session
 from .schemas import (MetadataExtractorInput, MetadataExtractorOutput, FileInfo,
                      EXIFData, DocumentProperties, HiddenData, SecurityAnalysis)
 class MetadataExtractor:
@@ -101,7 +102,9 @@ class MetadataExtractor:
         """Download file from URL"""
         custom_timeout = aiohttp.ClientTimeout(total=timeout)
         
-        async with aiohttp.ClientSession(timeout=custom_timeout) as session:
+        # Guarded: the URL, and each redirect hop, is refused unless its
+        # target is a public host (#610).
+        async with guarded_session(timeout=custom_timeout) as session:
             async with session.get(url) as response:
                 if response.status != 200:
                     raise Exception(f"Failed to download file: HTTP {response.status}")

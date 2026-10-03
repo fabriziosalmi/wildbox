@@ -14,6 +14,7 @@ import time
 import re
 
 from ...input_validation import InputSanitizer  # SSRF guard
+from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 
 from .schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
@@ -83,15 +84,16 @@ class URLShortenerAnalyzer:
         
         # Certificates are verified unless the caller set verify_ssl=False
         # for this analysis.
-        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
         custom_timeout = aiohttp.ClientTimeout(total=timeout)
         
         try:
             # SSRF protection: reject private/internal/cloud-metadata targets.
+            # The guarded session checks every hop again when it connects,
+            # so a redirect to an internal address is refused, not followed.
             InputSanitizer.validate_url(current_url)
-            async with aiohttp.ClientSession(
+            async with guarded_session(
+                ssl=client_ssl(verify_ssl),
                 timeout=custom_timeout,
-                connector=connector
             ) as session:
                 
                 step = 0

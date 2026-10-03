@@ -35,6 +35,12 @@ _PYDANTIC_URL_TYPES = _pydantic_url_types()
 
 class InputSanitizer:
     """Utility class for input sanitization and validation."""
+
+    # Names of cloud metadata services, refused before any lookup.
+    BLOCKED_HOSTNAMES = frozenset({
+        'metadata.google.internal',
+        'metadata.internal', 'instance-data',
+    })
     
     # Dangerous patterns that should be blocked
     DANGEROUS_PATTERNS = [
@@ -164,12 +170,7 @@ class InputSanitizer:
         url = url.strip()
         target = parse_target_url(url)
 
-        # Block known dangerous hostnames
-        blocked_hostnames = {
-            'metadata.google.internal',
-            'metadata.internal', 'instance-data',
-        }
-        if is_local_hostname(target.host) or target.host in blocked_hostnames:
+        if is_local_hostname(target.host) or target.host in cls.BLOCKED_HOSTNAMES:
             raise ValueError(f"URL hostname '{target.host}' is blocked (SSRF protection)")
 
         # Resolve hostname to IP and validate
