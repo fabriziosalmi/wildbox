@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The response pages reach the responder** (#570). They called
+  `responderClient` with `/v1/...`, and the gateway already maps
+  `/api/v1/responder/<x>` to the responder's `/v1/<x>`, so every request
+  went to `/v1/v1/...` and got a 404: no playbook list, no execution, no
+  run status. They now build their paths with `getResponderPath`, as the
+  home page does. The responder has no run list, so `/response/runs`
+  stops asking for one and stops claiming to show "demo data": it shows
+  the runs started from this browser with the status the responder
+  reports for each, and says that run history is not available. The
+  run cards' Cancel and View Details buttons, and the playbook cards'
+  details button, only logged to the console and are gone.
 - **A session token alone could change the account's password** (#559).
   fastapi-users' `PATCH /auth/users/me` applied a `password` field
   without the current password. identity now refuses a password there

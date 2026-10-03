@@ -10,6 +10,7 @@ const BACKEND_FILES = [
   /settings-management\.spec\.ts/,
   /threat-intel-lookup\.spec\.ts/,
   /dashboard-home\.spec\.ts/,
+  /response\.spec\.ts/,
 ]
 
 /**

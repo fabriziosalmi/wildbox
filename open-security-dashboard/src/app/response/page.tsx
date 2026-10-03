@@ -18,7 +18,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { responderClient } from '@/lib/api-client'
+import { getResponderPath, responderClient } from '@/lib/api-client'
 
 interface DashboardStats {
   totalPlaybooks: number
@@ -65,7 +65,7 @@ async function fetchDashboardStats(): Promise<DashboardStats> {
   try {
     // Try to fetch real data from multiple endpoints
     const [playbooksResponse] = await Promise.allSettled([
-      responderClient.get<{ total?: number }>('/v1/playbooks'),
+      responderClient.get<{ total?: number }>(getResponderPath('/api/v1/playbooks')),
     ])
 
     let totalPlaybooks = 0
