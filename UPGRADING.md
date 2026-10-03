@@ -622,6 +622,30 @@ sessions) before it commits the change. No migration.
   the markers; the others refuse a revoked key once their cached decision
   expires (`AUTH_CACHE_TTL`), as for logout.
 
+### 26. Removing a member from a team ends their sessions in that team
+
+Removing a member from a team now also ends, at the gateway and in that
+team only, the member's sessions issued up to the removal (#613): identity
+sends the gateway a `memberships` marker before it commits the removal,
+alongside the API keys of section 25. No migration.
+
+- **Rebuild and restart identity and the gateway together**, as section 25
+  says. An old gateway does not know the `memberships` purge body: with it,
+  every member removal answers 503 and removes nobody.
+- **Scripts that remove members** must handle 503: the member was not
+  removed, and repeating the removal is safe.
+- **A removed member's next request in that team answers 403**
+  (`team_membership_ended`), not 401: the session is still valid. The
+  request after it is authorized afresh and works in the oldest team the
+  user still belongs to; a user with no team left gets 401. A client
+  should not end the session on that 403.
+- **A session issued before the removal does not work in that team again**,
+  even if the user is added back, until it expires (the access-token
+  lifetime); a new login does. Sessions in the user's other teams are not
+  affected.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers, as in section 25.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

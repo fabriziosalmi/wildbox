@@ -480,6 +480,92 @@ function _M.revoke_api_keys(api_key_ids, ttl)
     return stored
 end
 
+-- Team memberships (#613).
+--
+-- Removing a member from a team revokes their API keys for the team (#593),
+-- but a session is not bound to a team: identity resolves the team on every
+-- authorization (the oldest membership), and the gateway caches the answer.
+-- The removed member's sessions went on being served "allowed for team T"
+-- for up to the cache TTL. Identity now sends, before it commits the
+-- removal, a marker "member:<user id>:<team id>" = the instant of the
+-- removal, and the gateway refuses a session decision for that user in that
+-- team when the token was issued up to that instant, on a cache hit and
+-- after a fresh authorization alike -- the same comparison as the
+-- password-change cutoff, but for one team only. The user's sessions keep
+-- working in their other teams: the refused decision is dropped from the
+-- cache, and the next request is authorized afresh, by which time identity
+-- no longer resolves the team they left. Tokens issued after the removal
+-- (a new login, should the user be added back) carry a later iat and pass.
+local function membership_marker(user_id, team_id)
+    return "member:" .. tostring(user_id) .. ":" .. tostring(team_id)
+end
+
+local function removed_from_team(token, token_type, auth_data)
+    if token_type ~= "bearer" or not auth_data
+            or not auth_data.user_id or not auth_data.team_id then
+        return false
+    end
+    local state = ngx.shared.auth_revoked
+    local cutoff = state and state:get(membership_marker(auth_data.user_id, auth_data.team_id))
+    if type(cutoff) ~= "number" then
+        return false
+    end
+    -- A token without an iat cannot show that it is newer than the removal.
+    local iat = utils.jwt_iat(token)
+    return iat == nil or iat <= cutoff
+end
+
+-- Record membership markers: `memberships` is a list of {user_id, team_id,
+-- not_before}. Returns how many were stored. As for the other markers
+-- identity sends before it commits, one that cannot be kept is reported as
+-- not stored, and identity answers 503 and removes nobody.
+function _M.revoke_team_sessions(memberships, ttl)
+    bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if not state then
+        return 0
+    end
+    ttl = math.min(
+        math.max(tonumber(ttl) or MAX_REVOCATION_TTL, configured_cache_ttl()),
+        MAX_REVOCATION_TTL
+    )
+    local stored = 0
+    for _, entry in ipairs(memberships) do
+        local key = membership_marker(entry.user_id, entry.team_id)
+        local cutoff = entry.not_before
+        -- Two removals close together: keep the later cutoff.
+        local current = state:get(key)
+        if type(current) == "number" and current > cutoff then
+            cutoff = current
+        end
+        local ok, err = state:safe_set(key, cutoff, ttl)
+        if ok then
+            stored = stored + 1
+        else
+            utils.log("warn", "Team-membership marker not stored", {error = err})
+        end
+    end
+    return stored
+end
+
+-- A session that has left the team is refused with 403, not 401: the
+-- token is still valid, and the dashboard must not end the session over
+-- it. The next request is authorized afresh and lands in the team the user
+-- still belongs to, if any.
+local function refuse_left_team(auth_data)
+    utils.log("info", "Refused a session in a team its user was removed from", {
+        user_id = auth_data.user_id,
+        team_id = auth_data.team_id
+    })
+    ngx.status = ngx.HTTP_FORBIDDEN
+    ngx.header.content_type = "application/json"
+    ngx.say(utils.json_encode({
+        error = "team_membership_ended",
+        message = "The account no longer belongs to this team"
+    }))
+    ngx.exit(ngx.HTTP_FORBIDDEN)
+end
+
 -- Whether the credential behind a decision has expired: identity reports
 -- when an API key (or a session token) stops being valid, and a decision is
 -- not served past that, whatever is left of its cache TTL (#593).
@@ -813,6 +899,11 @@ function _M.authenticate()
         ngx.shared.auth_cache:delete(cache_key)
         refuse_revoked()
     end
+    -- Nor the removal of its user from its team (#613).
+    if auth_data and removed_from_team(token, token_type, auth_data) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_left_team(auth_data)
+    end
 
     -- If not in cache, validate with identity service
     if cache_err == "cache_miss" then
@@ -861,6 +952,11 @@ function _M.authenticate()
         -- here before it commits it (#593).
         if api_key_revoked(token_type, auth_data) then
             refuse_revoked()
+        end
+        -- Or before the removal of its user from the team it resolved,
+        -- which identity likewise sends here before it commits (#613).
+        if removed_from_team(token, token_type, auth_data) then
+            refuse_left_team(auth_data)
         end
 
         -- Cache the validation result, then drop it again if a purge ran

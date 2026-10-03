@@ -27,7 +27,7 @@ from ...user_manager import (
     UserManager, require_current_password, verify_current_password,
 )
 from ...access_revocation import (
-    active_api_key_ids, end_account_access_or_503, revoke_api_keys_or_503,
+    active_api_key_ids, end_account_access_or_503, end_team_access_or_503,
 )
 from ...config import settings
 
@@ -355,7 +355,10 @@ async def delete_user(
     # authenticated with (#593): its API keys, the keys of the teams deleted
     # with it, and its sessions. It caches its decisions, and would go on
     # accepting them for up to its cache TTL after the rows are gone. If it
-    # cannot confirm, nothing is deleted (503).
+    # cannot confirm, nothing is deleted (503). A team is deleted only when
+    # the account is its sole member, so the account's session cutoff
+    # already ends every session that worked in it; a team that has other
+    # members is handed over, and they keep it (#613).
     teams_deleted_with_user = [
         team.id
         for team in user.owned_teams
@@ -1053,12 +1056,12 @@ async def remove_team_member(
             )
     
     # The member's API keys for this team stop working with the membership
-    # (identity authorizes a key through it). The gateway is told first and
-    # must confirm, or the member is not removed (503) (#593).
-    await revoke_api_keys_or_503(
-        await active_api_key_ids(db, user_id=target.user_id, team_ids=[target.team_id]),
-        "The removal",
-    )
+    # (identity authorizes a key through it) (#593), and so do the member's
+    # sessions in this team: the gateway caches "allowed in this team" for
+    # them (#613). The gateway is told first and must confirm, or the member
+    # is not removed (503). Their sessions go on working in the teams they
+    # still belong to.
+    await end_team_access_or_503(db, target.user_id, target.team_id, "The removal")
 
     await db.delete(target)
     await db.commit()

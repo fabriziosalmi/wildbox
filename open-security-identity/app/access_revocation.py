@@ -15,7 +15,8 @@ gateway cannot confirm, the change is not made and the caller answers 503:
 a client can repeat it, while a change committed without the gateway would
 leave the credentials usable at the gateway with no way to tell for how long.
 That is the contract logout has had since #571 and a password change since
-#569.
+#569. Removing a member from a team also ends, in that team only, the
+member's sessions (#613).
 
 A password change does not revoke API keys, as #569 decided: keys are not
 sessions, and a leaked key is revoked on its own, on the API keys page.
@@ -29,7 +30,12 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .logout import RevocationError, revoke_api_keys, revoke_sessions_issued_before
+from .logout import (
+    RevocationError,
+    revoke_api_keys,
+    revoke_sessions_issued_before,
+    revoke_team_sessions,
+)
 from .models import ApiKey
 
 logger = logging.getLogger(__name__)
@@ -98,3 +104,25 @@ async def end_account_access_or_503(
         logger.error("%s refused: the gateway did not confirm: %s", action, exc)
         raise revocation_unavailable(action) from exc
     return not_before
+
+
+async def end_team_access_or_503(db: AsyncSession, user_id, team_id, action: str) -> None:
+    """End, at the gateway, what a member could use a team with (#613).
+
+    For a member removed from a team: their API keys for that team (#593)
+    and, in that team only, every session issued up to now. A session is
+    not bound to a team -- identity resolves one on every authorization --
+    so the gateway held a decision "allowed in this team" for the removed
+    member's sessions for up to its cache TTL. Their sessions go on working
+    in the teams they still belong to. Raises the 503 for ``action`` if the
+    gateway does not confirm both; the caller deletes the membership only
+    after this returns.
+    """
+    api_key_ids = await active_api_key_ids(db, user_id=user_id, team_ids=[team_id])
+    not_before = datetime.now(timezone.utc)
+    try:
+        await revoke_api_keys(api_key_ids)
+        await revoke_team_sessions([(user_id, team_id)], not_before)
+    except RevocationError as exc:
+        logger.error("%s refused: the gateway did not confirm: %s", action, exc)
+        raise revocation_unavailable(action) from exc

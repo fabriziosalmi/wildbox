@@ -29,6 +29,14 @@ API keys (#593). Fixture keys report the id identity revokes them by
 expiry, reported as ``credential_expires_at``, and are refused after
 POST /__mock/revoke {"api_key_id": ...}, the way identity refuses a key it
 has marked inactive.
+
+Team memberships (#613). A session whose payload lists ``teams`` (oldest
+membership first) is authorized in the first of them its user has not been
+removed from, the way identity resolves a session's team; POST
+/__mock/remove_member {"user_id": ..., "team_id": ...} commits a removal.
+The team is resolved before the ``delay_ms`` pause, so an authorization held
+in flight across a removal still answers with the team that was left, as
+identity's would when its query ran before the commit.
 """
 
 import base64
@@ -88,6 +96,7 @@ TOKENS = {
 authorize_calls = Counter()
 revoked_jtis = set()
 revoked_api_keys = set()
+removed_members = set()  # (user_id, team_id)
 
 
 def dynamic_api_key(token):
@@ -186,14 +195,25 @@ class Handler(BaseHTTPRequestHandler):
             if claims["jti"] in revoked_jtis:
                 self._reply(401, {"detail": "Token has been revoked"})
                 return
-            # Past the blacklist check: the real endpoint now queries the
-            # database, and a logout landing meanwhile goes unnoticed.
+            user_id = claims.get("sub", "user-jwt")
+            # A team per session unless the session lists its user's teams:
+            # the gateway's per-team rate limit must not turn a test's
+            # repeated probes into 429s.
+            team_id = "team-" + claims["jti"]
+            teams = claims.get("teams")
+            if isinstance(teams, list):
+                remaining = [t for t in teams if (user_id, t) not in removed_members]
+                if not remaining:
+                    self._reply(401, {"detail": "User not found or inactive"})
+                    return
+                team_id = remaining[0]
+            # Past the blacklist check and the membership query: the real
+            # endpoint goes on with its work, and a logout or a removal
+            # landing meanwhile goes unnoticed.
             time.sleep(int(claims.get("delay_ms") or 0) / 1000)
             auth = {
-                "user_id": claims.get("sub", "user-jwt"),
-                # A team per session: the gateway's per-team rate limit must
-                # not turn a test's repeated probes into 429s.
-                "team_id": "team-" + claims["jti"],
+                "user_id": user_id,
+                "team_id": team_id,
                 "role": "user",
                 "scopes": None,
             }
@@ -219,6 +239,10 @@ class Handler(BaseHTTPRequestHandler):
     def _revoke(self):
         length = int(self.headers.get("Content-Length") or 0)
         request = json.loads(self.rfile.read(length) or b"{}")
+        if self.path == "/__mock/remove_member":
+            removed_members.add((request["user_id"], request["team_id"]))
+            self._reply(200, {"removed": [request["user_id"], request["team_id"]]})
+            return
         if "api_key_id" in request:
             revoked_api_keys.add(request["api_key_id"])
             self._reply(200, {"revoked": request["api_key_id"]})
@@ -229,7 +253,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/internal/authorize":
             self._authorize()
-        elif self.path == "/__mock/revoke":
+        elif self.path in ("/__mock/revoke", "/__mock/remove_member"):
             self._revoke()
         else:
             self._echo()

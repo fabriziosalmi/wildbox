@@ -26,6 +26,7 @@ from .gateway_cache import (
     GatewayRevocationError,
     revoke_api_keys_at_gateway,
     revoke_jtis_at_gateway,
+    revoke_team_sessions_at_gateway,
     revoke_user_sessions_at_gateway,
 )
 from .token_blacklist import blacklist_token
@@ -130,6 +131,39 @@ async def revoke_api_keys(api_key_ids) -> None:
         return
     try:
         await revoke_api_keys_at_gateway(ids, ttl_seconds=API_KEY_MARKER_TTL_SECONDS)
+    except GatewayRevocationError as exc:
+        raise RevocationError(str(exc)) from exc
+
+
+async def revoke_team_sessions(memberships, not_before: datetime) -> None:
+    """End, at the gateway, in one team each, the sessions issued up to
+    ``not_before`` (#613), or raise RevocationError.
+
+    The first half of removing members from a team: ``memberships`` lists
+    the ``(user_id, team_id)`` pairs, and the caller deletes the memberships
+    only after this returns. Once the gateway confirms, no request of one of
+    those sessions is served in that team -- not one whose decision is
+    cached, nor one whose authorization was in flight -- while the user's
+    sessions go on working in their other teams. If it does not confirm,
+    nothing has changed yet and the caller can retry.
+
+    Identity needs no cutoff of its own: once the membership is gone, it no
+    longer resolves the team for the user. The marker lasts as long as a
+    token issued just before the removal could (the access-token lifetime),
+    so a session issued before the removal never acts in the team again,
+    even if its user is added back; a new login does.
+    """
+    pairs = [(str(user_id), str(team_id)) for user_id, team_id in memberships]
+    if not pairs:
+        return
+    if not_before.tzinfo is None:
+        not_before = not_before.replace(tzinfo=timezone.utc)
+    try:
+        await revoke_team_sessions_at_gateway(
+            pairs,
+            not_before.timestamp(),
+            ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+        )
     except GatewayRevocationError as exc:
         raise RevocationError(str(exc)) from exc
 
