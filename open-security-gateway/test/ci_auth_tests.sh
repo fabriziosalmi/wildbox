@@ -40,6 +40,18 @@ request() {
 
 json_field() { echo "$BODY" | jq -r "$1"; }
 
+# The whole body must be one JSON document. jq alone reads the first value
+# and only complains on stderr about trailing text, which is how error bodies
+# ending in "nil" went unnoticed (#571).
+assert_strict_json() {
+    local name="$1"
+    if python3 -c 'import json, sys; json.loads(sys.stdin.read())' < /tmp/body.json 2>/dev/null; then
+        pass "$name is strict JSON"
+    else
+        fail "$name is not strict JSON: $(head -c 300 /tmp/body.json)"
+    fi
+}
+
 assert_json() {
     local name="$1" filter="$2" expected="$3"
     local actual
@@ -59,11 +71,13 @@ request "health endpoint" 200 "$GATEWAY_URL/health"
 # 2. No credentials -> 401 authentication_required
 request "no token rejected" 401 "$GATEWAY_URL/api/v1/auth/me"
 assert_json "no-token error code" '.error' 'authentication_required'
+assert_strict_json "no-token error body"
 
 # 3. Invalid bearer token -> 401 invalid_token (mock returns 401)
 request "invalid bearer rejected" 401 \
     -H "Authorization: Bearer not-a-real-token" "$GATEWAY_URL/api/v1/auth/me"
 assert_json "invalid-token error code" '.error' 'invalid_token'
+assert_strict_json "invalid-token error body"
 
 # 4. Valid bearer -> proxied; backend sees validated X-Wildbox-* and no
 #    client credential headers

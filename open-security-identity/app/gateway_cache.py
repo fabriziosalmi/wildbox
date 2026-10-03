@@ -90,6 +90,27 @@ class GatewayRevocationError(RuntimeError):
 _RETRY_DELAYS = (0.1, 0.5)
 
 
+def _unconfirmed(response: httpx.Response, expected: int) -> Optional[str]:
+    """Why ``response`` does not confirm ``expected`` revocations, or None.
+
+    The reason carries the status and the start of the body: the gateway's
+    answer once ended in a stray "nil", and a bare "JSONDecodeError" in the
+    log did not say so (#571). The body never contains the secret.
+    """
+    excerpt = response.text[:200]
+    if response.status_code != 200:
+        return f"HTTP {response.status_code}: {excerpt!r}"
+    try:
+        body = response.json()
+    except ValueError:
+        return f"HTTP 200 with a body that is not JSON: {excerpt!r}"
+    if not isinstance(body, dict) or body.get("revoked") != expected:
+        # An older gateway flushes its cache and answers 200 without
+        # counting: it cannot refuse a decision already in flight.
+        return f"HTTP 200 without {expected} revoked: {excerpt!r}"
+    return None
+
+
 async def revoke_jtis_at_gateway(
     jtis: Collection[str],
     ttl_seconds: int,
@@ -124,14 +145,9 @@ async def revoke_jtis_at_gateway(
                 response = await client.post(
                     _DEFAULT_URL, json=payload, headers={"X-Gateway-Secret": secret}
                 )
-            if response.status_code != 200:
-                problem = f"HTTP {response.status_code}"
-            elif response.json().get("revoked") == len(jtis):
+            problem = _unconfirmed(response, len(jtis))
+            if problem is None:
                 return
-            else:
-                # An older gateway flushes its cache and answers 200 without
-                # counting: it cannot refuse a decision already in flight.
-                problem = "the gateway did not report the jtis revoked"
         except Exception as exc:  # noqa: BLE001 - retried, then raised
             problem = type(exc).__name__
         logger.warning(

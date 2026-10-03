@@ -49,9 +49,13 @@ function _M.json_decode(str)
 end
 
 -- Safe JSON encode with error handling
+-- Returns the JSON text alone on success, so ngx.say(utils.json_encode(x))
+-- writes exactly that text. It used to return (text, nil), and ngx.say prints
+-- every argument: each JSON error body the gateway wrote ended in "nil" and
+-- was not valid JSON (#571). On failure: nil and the error.
 function _M.json_encode(obj)
     if not obj then
-        return "{}", nil
+        return "{}"
     end
 
     local ok, result = pcall(cjson.encode, obj)
@@ -59,7 +63,7 @@ function _M.json_encode(obj)
         return nil, "encode error: " .. tostring(result)
     end
 
-    return result, nil
+    return result
 end
 
 -- Extract authentication token from request headers

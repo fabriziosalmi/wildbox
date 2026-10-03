@@ -178,3 +178,17 @@ def test_blacklist_token_no_longer_swallows_a_redis_error(monkeypatch):
                 "a", datetime.utcnow() + timedelta(minutes=1)
             )
         )
+
+
+def test_an_unparsable_answer_is_logged_with_its_status_and_start(
+    gateway, blacklist, caplog
+):
+    """The gateway once answered '{...}nil'; the log said only JSONDecodeError."""
+    body = b'{"purged":true,"revoked":1,"scope":"jtis"}nil\n'
+    gateway["script"] = [httpx.Response(200, content=body)] * 3
+    with caplog.at_level("WARNING", logger="app.gateway_cache"):
+        with pytest.raises(logout.RevocationError):
+            run(logout.revoke_jtis(sessions("a")))
+    assert "HTTP 200 with a body that is not JSON" in caplog.text
+    assert '"revoked":1,"scope":"jtis"}nil' in caplog.text
+    assert SECRET not in caplog.text
