@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,10 +24,26 @@ import {
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { getErrorMessage } from '@/lib/utils'
-import { Info, Plus, Construction } from 'lucide-react'
+import { AlertTriangle, Info, Plus, Construction, RefreshCw } from 'lucide-react'
+
+/**
+ * GET /api/v1/cspm/providers: the providers the CSPM service can scan, from
+ * its own registry (a session factory and implemented checks). The form
+ * offers these and nothing else; it used to list GCP and Azure, whose scans
+ * the service accepted and then always failed (#612).
+ */
+interface ScanProvider {
+  provider: string
+  name: string
+  checks: number
+}
+
+interface ProvidersResponse {
+  providers: ScanProvider[]
+}
 
 interface NewScanRequest {
-  provider: 'aws' | 'gcp' | 'azure'
+  provider: string
   account_id: string
   account_name?: string
   regions?: string[]
@@ -54,13 +70,43 @@ export default function CloudSecurityScansPage() {
   const [showNewScanDialog, setShowNewScanDialog] = useState(false)
   const { toast } = useToast()
 
-  // New scan form state
+  // The providers the service can scan; null until it answers.
+  const [providers, setProviders] = useState<ScanProvider[] | null>(null)
+  const [providersError, setProvidersError] = useState<string | null>(null)
+  const [providersLoading, setProvidersLoading] = useState(true)
+
+  // New scan form state. No provider is chosen until the service lists them.
   const [newScan, setNewScan] = useState<Partial<NewScanRequest>>({
-    provider: 'aws',
     credentials: {
       auth_method: 'access_key',
     },
   })
+
+  const fetchProviders = useCallback(async () => {
+    setProvidersLoading(true)
+    setProvidersError(null)
+    try {
+      const response = await cspmClient.get<ProvidersResponse>(getCSPMPath('/api/v1/providers'))
+      setProviders(response.providers)
+      setNewScan(current =>
+        response.providers.some(entry => entry.provider === current.provider)
+          ? current
+          : { ...current, provider: response.providers[0]?.provider }
+      )
+    } catch (error) {
+      // No list stands in for the missing answer: the form offers nothing.
+      setProviders(null)
+      setProvidersError(getErrorMessage(error, 'The CSPM service did not answer.'))
+    } finally {
+      setProvidersLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchProviders()
+  }, [fetchProviders])
+
+  const canCreate = !!providers && providers.length > 0 && !isCreating
 
   const createScan = async () => {
     try {
@@ -89,7 +135,7 @@ export default function CloudSecurityScansPage() {
       setLastScanId(response.scan_id)
       setShowNewScanDialog(false)
       setNewScan({
-        provider: 'aws',
+        provider: providers?.[0]?.provider,
         credentials: { auth_method: 'access_key' },
       })
     } catch (error) {
@@ -150,21 +196,41 @@ export default function CloudSecurityScansPage() {
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label htmlFor="provider">Cloud Provider</Label>
-                    <Select
-                      value={newScan.provider}
-                      onValueChange={(value: 'aws' | 'gcp' | 'azure') =>
-                        setNewScan({ ...newScan, provider: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select provider" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="aws">Amazon Web Services</SelectItem>
-                        <SelectItem value="gcp">Google Cloud Platform</SelectItem>
-                        <SelectItem value="azure">Microsoft Azure</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {providers && providers.length > 0 ? (
+                      <Select
+                        value={newScan.provider}
+                        onValueChange={(value: string) =>
+                          setNewScan({ ...newScan, provider: value })
+                        }
+                      >
+                        <SelectTrigger id="provider" data-testid="scan-provider-select">
+                          <SelectValue placeholder="Select provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {providers.map(entry => (
+                            <SelectItem
+                              key={entry.provider}
+                              value={entry.provider}
+                              data-testid={`scan-provider-option-${entry.provider}`}
+                            >
+                              {entry.name} ({entry.checks} {entry.checks === 1 ? 'check' : 'checks'}
+                              )
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <p
+                        className="pt-2 text-sm text-muted-foreground"
+                        data-testid="scan-provider-unavailable"
+                      >
+                        {providersLoading
+                          ? 'Loading providers…'
+                          : providersError
+                            ? 'Not available'
+                            : 'None available'}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -177,6 +243,37 @@ export default function CloudSecurityScansPage() {
                     />
                   </div>
                 </div>
+
+                {providersError && (
+                  <div
+                    className="flex items-start gap-3 rounded-md border border-red-300 p-4 text-sm"
+                    data-testid="scan-providers-error"
+                    role="alert"
+                  >
+                    <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+                    <div className="space-y-2">
+                      <p className="font-medium text-red-600">
+                        The providers the CSPM service can scan could not be loaded
+                      </p>
+                      <p className="text-muted-foreground">{providersError}</p>
+                      <Button
+                        onClick={fetchProviders}
+                        variant="outline"
+                        size="sm"
+                        disabled={providersLoading}
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Try again
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {providers && providers.length === 0 && (
+                  <p className="text-sm text-muted-foreground" data-testid="scan-providers-empty">
+                    The CSPM service reports no provider it can scan.
+                  </p>
+                )}
 
                 <div>
                   <Label htmlFor="account_name">Account Name (Optional)</Label>
@@ -236,7 +333,7 @@ export default function CloudSecurityScansPage() {
                 <Button variant="outline" onClick={() => setShowNewScanDialog(false)}>
                   Cancel
                 </Button>
-                <Button onClick={createScan} disabled={isCreating}>
+                <Button onClick={createScan} disabled={!canCreate}>
                   {isCreating ? 'Creating...' : 'Create Scan'}
                 </Button>
               </DialogFooter>

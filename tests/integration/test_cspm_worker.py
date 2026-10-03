@@ -4,11 +4,13 @@ The worker was commented out of docker-compose.yml, so every scan stayed
 "queued" forever and the compliance pages never had data. This test submits
 a scan the way the dashboard does and waits for it to leave "queued".
 
-No cloud credentials in CI: the scan is of a GCP project with a service
-account key that is not one, so the worker takes it, cannot open a session
-and the scan ends "failed". That needs no network and ends the same way on
-every run, and only a worker can produce it: without one the scan stays
-"queued" until the deadline and the test fails.
+No cloud credentials in CI: the scan is of an AWS account with an access
+key id AWS could never issue, so the worker takes it, its session factory
+refuses the key before creating any boto3 session (app.providers, #612)
+and the scan ends "failed". That makes no request to AWS and ends the same
+way on every run, and only a worker can produce it: without one the scan
+stays "queued" until the deadline and the test fails. This used a GCP
+scan, which the API now refuses with a 400 (checked below).
 
 The account is registered directly at identity, as in
 test_tools_async_tasks.py, so its team has no other scans; every other
@@ -31,16 +33,27 @@ FINISH_WITHIN = 180
 UNFINISHED = {"queued", "running"}
 
 SCAN = {
+    "provider": "aws",
+    "account_id": "wildbox-ci-account",
+    "account_name": "CI (no credentials)",
+    "regions": ["eu-west-1"],
+    "credentials": {
+        "auth_method": "access_key",
+        # Malformed on purpose (an AWS key id is 16 or more letters and
+        # digits): refused before any call to AWS.
+        "access_key_id": "not-an-aws-key",
+        "secret_access_key": "not-a-secret",
+    },
+    "metadata": {"purpose": "integration test of cspm-worker"},
+}
+GCP_SCAN = {
     "provider": "gcp",
     "account_id": "wildbox-ci-project",
-    "account_name": "CI (no credentials)",
-    "regions": ["europe-west1"],
     "credentials": {
         "auth_method": "service_account",
         "project_id": "wildbox-ci-project",
         "service_account_key": {"type": "service_account", "note": "not a key"},
     },
-    "metadata": {"purpose": "integration test of cspm-worker"},
 }
 
 
@@ -87,8 +100,29 @@ def wait_until_finished(token, scan_id):
         time.sleep(1)
 
 
+def test_the_providers_cspm_scans_are_listed_through_the_gateway():
+    """GET /api/v1/providers needs a token, like every cspm route."""
+    assert requests.get(f"{CSPM}/providers", timeout=TIMEOUT).status_code == 401
+    response = requests.get(
+        f"{CSPM}/providers", headers=bearer(new_token()), timeout=TIMEOUT
+    )
+    assert response.status_code == 200, response.text[:300]
+    listed = {p["provider"]: p for p in response.json()["providers"]}
+    assert set(listed) == {"aws"}, listed
+    assert listed["aws"]["checks"] > 0
+
+
 def test_a_submitted_scan_is_taken_by_the_worker():
     token = new_token()
+
+    # A provider cspm cannot scan is refused at submit time (#612), with
+    # the supported ones named, and leaves no scan behind: the summary
+    # below counts exactly one.
+    refused = requests.post(
+        f"{CSPM}/scans", json=GCP_SCAN, headers=bearer(token), timeout=TIMEOUT
+    )
+    assert refused.status_code == 400, refused.text[:300]
+    assert "aws" in refused.text, refused.text[:300]
 
     submitted = requests.post(
         f"{CSPM}/scans", json=SCAN, headers=bearer(token), timeout=TIMEOUT
@@ -96,7 +130,7 @@ def test_a_submitted_scan_is_taken_by_the_worker():
     assert submitted.status_code == 202, submitted.text[:300]
     body = submitted.json()
     assert body["status"] == "started"
-    assert (body["provider"], body["account_id"]) == ("gcp", SCAN["account_id"])
+    assert (body["provider"], body["account_id"]) == ("aws", SCAN["account_id"])
     scan_id = body["scan_id"]
 
     final, seen = wait_until_finished(token, scan_id)
@@ -113,7 +147,7 @@ def test_a_submitted_scan_is_taken_by_the_worker():
     # The record is the scan that was submitted, and a failed scan has
     # no completion time and no report.
     assert final["scan_id"] == scan_id
-    assert (final["provider"], final["account_id"]) == ("gcp", SCAN["account_id"])
+    assert (final["provider"], final["account_id"]) == ("aws", SCAN["account_id"])
     assert final["started_at"]
     assert final.get("completed_at") is None
     report = requests.get(

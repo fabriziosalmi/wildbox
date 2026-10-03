@@ -11,7 +11,11 @@ from .checks.framework import CloudProvider, CheckSeverity, CheckStatus
 
 
 class ScanProvider(str, Enum):
-    """Supported cloud providers for scanning."""
+    """Providers a scan request can name.
+
+    Naming one is not enough: the scan endpoints refuse, with a 400, every
+    provider app.providers does not list as supported (#612).
+    """
     AWS = "aws"
     GCP = "gcp"
     AZURE = "azure"
@@ -240,10 +244,29 @@ class ChecksListResponse(BaseModel):
     class Config:
         json_schema_extra = {
             "example": {
-                "total_checks": 45,
-                "providers": ["aws", "gcp", "azure"],
+                "total_checks": 22,
+                "providers": ["aws"],
                 "categories": ["Identity and Access Management", "Storage", "Networking"]
             }
+        }
+
+
+class ProviderSchema(BaseModel):
+    """A provider cspm can scan."""
+
+    provider: str = Field(..., description="Provider id, the value a scan request names")
+    name: str = Field(..., description="Display name")
+    checks: int = Field(..., description="Enabled checks a scan of this provider runs")
+
+
+class ProvidersResponse(BaseModel):
+    """The providers a scan can be submitted for (app.providers)."""
+
+    providers: List[ProviderSchema] = Field(..., description="Supported providers")
+
+    class Config:
+        json_schema_extra = {
+            "example": {"providers": [{"provider": "aws", "name": "Amazon Web Services", "checks": 22}]}
         }
 
 

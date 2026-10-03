@@ -1,3 +1,0 @@
-"""
-Azure Storage module initialization
-"""

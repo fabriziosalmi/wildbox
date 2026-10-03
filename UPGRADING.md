@@ -671,14 +671,43 @@ and in the production overlay it sits on `data` and `egress`.
   (`celery -A app.worker:celery_app worker -Q celery`). Remove it if you
   now run `cspm-worker`, or the two share the scans.
 - **Expect outbound traffic.** A scan now calls the provider's API from
-  `cspm-worker`. Only AWS scans run; GCP and Azure scans fail when the
-  worker takes them, because cspm cannot open a session with those
-  providers yet.
+  `cspm-worker`. Only AWS scans run; GCP and Azure scans are refused
+  when they are submitted (section 28).
 - `GET /api/v1/scans/{id}` reports a scan a worker has just taken as
   `running`. With a worker of your own it read `unknown` until the scan's
   first progress update.
 - cspm's `/health` reports `"status": "healthy"` once the worker answers.
   It reported `degraded` while no worker ran.
+
+### 28. cspm refuses GCP and Azure scans with 400
+
+cspm scans AWS only. It used to accept GCP and Azure scans and fail every
+one of them in the worker; it now refuses them when they are submitted
+(#612). Rebuild cspm, its worker and the dashboard (section 1 does).
+
+- **API clients get a 400.** `POST /api/v1/scans` with `provider` `gcp`
+  or `azure` answers 400 with the message `Unsupported provider: gcp.
+  Supported providers: aws.`, where it answered 202 with a scan id that
+  later read `failed`. `POST /api/v1/batch/scans` answers 400 when any
+  of its scans names such a provider, and starts none of the batch,
+  including its AWS scans. Nothing is stored for a refused request.
+  Scripts that submit GCP or Azure scans must stop doing so; scripts
+  that read `failed` for them get the 400 instead.
+- **Ask cspm what it can scan.** `GET /api/v1/cspm/providers` lists the
+  supported providers, today `aws`, with the number of checks a scan
+  runs. Read it rather than hard-coding a list.
+- **The GCP and Azure checks are gone.** `GET /api/v1/checks` no longer
+  lists the nine `GCP_*` and `AZURE_*` checks: they returned invented
+  resources and never ran, since no GCP or Azure scan ever got a
+  session. No stored report contains their results.
+- **Malformed AWS keys fail at once.** An AWS scan whose access key id
+  is not 16 to 128 letters, digits or underscores, whose secret is
+  empty, or that asks for `assume_role` without an IAM role ARN, is
+  still accepted, then fails as soon as the worker takes it, without a
+  request to AWS. Before, a malformed key reached AWS and the scan
+  completed with every check recording the rejected call.
+- **GCP or Azure scans queued before the upgrade** fail when the worker
+  takes them, as they did before.
 
 ## Upgrading to 0.10.0
 

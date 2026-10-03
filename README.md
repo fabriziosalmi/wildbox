@@ -31,7 +31,7 @@ Wildbox is pre-1.0. Interfaces can change between minor releases; read
 | Identity | Users, teams, roles, API keys with scopes, JWT sessions with server-side revocation | `open-security-identity` |
 | Security tools | 52 tools behind one API (DNS, TLS, email security, headers, ports, and more) | `open-security-tools` |
 | Threat intelligence | Indicator collection from 7 public feeds (abuse.ch, PhishTank, AbuseIPDB and others) and lookup | `open-security-data` |
-| Cloud posture | 31 checks: 22 for AWS against live accounts; Azure and GCP checks currently run on sample data | `open-security-cspm` |
+| Cloud posture | 22 checks against live AWS accounts; GCP and Azure are not supported, and scans of them are refused | `open-security-cspm` |
 | Vulnerabilities | Asset inventory, findings, risk-based prioritization, remediation tracking | `open-security-guardian` |
 | Response | YAML playbooks executed as background jobs | `open-security-responder` |
 | Endpoint telemetry | osquery-based telemetry from hosts running the sensor | `open-security-sensor` |
@@ -66,7 +66,7 @@ flowchart LR
     responder --> redis
     agents --> redis
     agents --> claude[Anthropic API]
-    cspm --> clouds[AWS / Azure / GCP APIs]
+    cspm --> clouds[AWS APIs]
     data --> feeds[Public threat feeds]
 ```
 

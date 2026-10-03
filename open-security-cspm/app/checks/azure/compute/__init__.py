@@ -1,3 +1,0 @@
-"""
-Azure Compute module initialization
-"""

@@ -25,6 +25,7 @@ from .checks.runner import check_runner
 from .checks.framework import CloudProvider
 from . import schemas
 from . import scan_store
+from . import providers
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
     _count_failed_by_severity,
@@ -86,6 +87,27 @@ redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 def _iter_team_scan_metadata(team_id: str):
     """Yield metadata dicts for the team's retained scans via its index."""
     return scan_store.team_scan_metadata(redis_client, team_id)
+
+
+def _refuse_unsupported_providers(scan_requests: List[schemas.ScanRequest]) -> None:
+    """Answer 400 when any request names a provider cspm cannot scan (#612).
+
+    Called before anything is stored or queued: a refused request leaves no
+    credentials, metadata or task behind, and a batch is refused whole. The
+    API used to accept GCP and Azure scans, which the worker then failed
+    every time. Supported providers come from app.providers, which derives
+    them from the session factories and the loaded checks.
+    """
+    supported = providers.supported_provider_ids()
+    refused = sorted({r.provider.value for r in scan_requests} - set(supported))
+    if refused:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Unsupported provider: {', '.join(refused)}. "
+                f"Supported providers: {', '.join(supported) or 'none'}."
+            ),
+        )
 
 
 def _submit_scan(
@@ -292,7 +314,9 @@ async def start_scan(
     
     This endpoint accepts scan configuration and starts an asynchronous scan job.
     The scan will be executed by Celery workers in the background.
+    A provider cspm cannot scan is refused with 400 (see GET /api/v1/providers).
     """
+    _refuse_unsupported_providers([scan_request])
     try:
         scan_id = _submit_scan(scan_request, current_user)
 
@@ -352,9 +376,15 @@ async def get_scan_status(
                 detail="Access denied"
             )
         
-        # Get task status and result
-        task_status = task_result.status
-        task_info = task_result.info or {}
+        # A final status in the metadata wins, and the result backend is
+        # not read for it: the Celery result of a finished scan expires
+        # after a few hours (result_expires), and the backend then reports
+        # it as PENDING, i.e. "queued" (#591).
+        if metadata.get("status") in scan_store.FINAL_STATUSES:
+            task_status, task_info = None, {}
+        else:
+            task_status = task_result.status
+            task_info = task_result.info or {}
         
         # Map Celery status to our status. STARTED is what a worker reports
         # as soon as it takes the task (task_track_started), before the scan
@@ -369,9 +399,6 @@ async def get_scan_status(
         }
         
         scan_status = status_mapping.get(task_status, "unknown")
-        # A final status in the metadata wins: the Celery result of a
-        # finished scan expires after a few hours (result_expires), and the
-        # backend then reports it as PENDING, i.e. "queued" (#591).
         if metadata.get("status") in scan_store.FINAL_STATUSES:
             scan_status = metadata["status"]
 
@@ -468,6 +495,16 @@ async def get_scan_report(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get scan report"
         )
+
+
+@app.get("/api/v1/providers", response_model=schemas.ProvidersResponse)
+async def list_providers(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """The providers a scan can be submitted for, with their check counts.
+
+    The same list the scan endpoints enforce (app.providers): a provider
+    is listed when cspm has a session factory and implemented checks for it.
+    """
+    return {"providers": providers.supported_providers()}
 
 
 @app.get("/api/v1/checks", response_model=schemas.ChecksListResponse)
@@ -680,8 +717,11 @@ async def start_batch_scans(
     """Start multiple CSPM scans across different accounts or providers.
 
     Each scan goes through the path of a single scan (_submit_scan), so it
-    has the same metadata, team index entry and stored report.
+    has the same metadata, team index entry and stored report. A batch that
+    names a provider cspm cannot scan is refused whole, with 400, before any
+    of its scans is stored or queued.
     """
+    _refuse_unsupported_providers(batch_request.scans)
     try:
         batch_id = str(uuid.uuid4())
         scan_jobs = []

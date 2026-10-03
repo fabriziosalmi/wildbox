@@ -135,8 +135,6 @@ check-missing-modules:
 	@echo ""
 	@echo "📁 Missing CSPM Check Modules:"
 	@echo "Expected AWS checks:" && find ../open-security-cspm/app/checks/aws -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ CSPM directory not found"
-	@echo "Expected GCP checks:" && find ../open-security-cspm/app/checks/gcp -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ GCP checks not found"
-	@echo "Expected Azure checks:" && find ../open-security-cspm/app/checks/azure -name "check_*.py" | sed 's/.*\//  ✅ /' || echo "  ❌ Azure checks not found"
 	@echo ""
 	@echo "📦 Missing Python Dependencies:"
 	@echo "API Service missing packages:" && docker-compose exec api pip list | grep -E "(whois|lxml)" || echo "  ❌ whois, lxml packages missing"
