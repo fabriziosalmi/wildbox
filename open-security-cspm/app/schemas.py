@@ -248,50 +248,49 @@ class ChecksListResponse(BaseModel):
 
 
 class ComplianceFrameworkSummary(BaseModel):
-    """Summary information for a compliance framework."""
-    name: str = Field(..., description="Framework name")
-    version: str = Field(..., description="Framework version")
-    description: str = Field(..., description="Framework description")
-    total_controls: int = Field(..., description="Total number of controls")
-    passed_controls: int = Field(..., description="Number of passed controls")
-    failed_controls: int = Field(..., description="Number of failed controls")
-    compliance_percentage: float = Field(..., description="Compliance percentage")
-    last_assessment: str = Field(..., description="Last assessment timestamp")
-
-
-class ComplianceTrend(BaseModel):
-    """Compliance trend information."""
-    direction: str = Field(..., description="Trend direction: up, down, stable")
-    percentage: float = Field(..., description="Percentage change")
+    """Check verdicts for one compliance framework, from the team's scans."""
+    name: str = Field(..., description="Framework name, as the checks tag it")
+    total_checks: int = Field(..., description="Check results with a verdict (passed or failed)")
+    passed_checks: int = Field(..., description="Check results that passed")
+    failed_checks: int = Field(..., description="Check results that failed")
+    compliance_percentage: float = Field(..., description="passed_checks / total_checks * 100")
+    last_assessment: Optional[str] = Field(None, description="Completion time of the newest scan that contributed")
 
 
 class ComplianceSummaryResponse(BaseModel):
-    """Aggregated compliance summary response."""
-    total_resources: int = Field(..., description="Total number of resources evaluated")
-    compliant_resources: int = Field(..., description="Number of compliant resources")
-    non_compliant_resources: int = Field(..., description="Number of non-compliant resources")
-    overall_score: float = Field(..., description="Overall compliance score")
+    """Compliance aggregated over the newest completed scan of each account.
+
+    Every figure comes from stored scan reports. With no completed scan in
+    the period the counts are 0, ``frameworks`` is empty and
+    ``overall_score`` and ``last_updated`` are null: nothing was assessed,
+    which is not the same as 0% compliant.
+    """
+    total_resources: int = Field(..., description="Distinct resources with at least one verdict")
+    compliant_resources: int = Field(..., description="Resources with no failed check")
+    non_compliant_resources: int = Field(..., description="Resources with at least one failed check")
+    overall_score: Optional[float] = Field(None, description="Passed share of all verdicts, or null when there are none")
     frameworks: List[ComplianceFrameworkSummary] = Field(..., description="Framework summaries")
-    trend: ComplianceTrend = Field(..., description="Compliance trend")
+    scans_considered: int = Field(..., description="Completed scan reports the figures come from")
     summary_period_days: int = Field(..., description="Summary period in days")
     provider_filter: Optional[str] = Field(None, description="Provider filter applied")
-    last_updated: str = Field(..., description="Last update timestamp")
+    last_updated: Optional[str] = Field(None, description="Completion time of the newest scan considered")
 
 
 class ComplianceFinding(BaseModel):
-    """Individual compliance finding."""
-    finding_id: str = Field(..., description="Unique finding identifier")
-    framework: str = Field(..., description="Compliance framework name")
-    control_id: str = Field(..., description="Control identifier")
-    control_title: str = Field(..., description="Control title")
+    """One check verdict on one resource, from a completed scan."""
+    finding_id: str = Field(..., description="<scan_id>:<index of the result in the report>")
+    scan_id: str = Field(..., description="Scan the verdict comes from")
+    check_id: str = Field(..., description="Check identifier")
+    title: str = Field(..., description="Check title, or the check id when the check is unknown")
+    frameworks: List[str] = Field(default_factory=list, description="Frameworks the check maps to")
     resource_id: str = Field(..., description="Resource identifier")
     resource_type: str = Field(..., description="Resource type")
-    region: str = Field(..., description="Resource region")
-    status: str = Field(..., description="Finding status: passed, failed, warning, not_applicable")
-    severity: str = Field(..., description="Finding severity: critical, high, medium, low, info")
-    description: str = Field(..., description="Finding description")
-    remediation: str = Field(..., description="Remediation guidance")
-    last_checked: str = Field(..., description="Last check timestamp")
+    region: Optional[str] = Field(None, description="Resource region")
+    status: str = Field(..., description="passed or failed")
+    severity: Optional[str] = Field(None, description="Check severity, when the check is known")
+    description: str = Field(..., description="Result message")
+    remediation: Optional[str] = Field(None, description="Remediation guidance")
+    last_checked: Optional[str] = Field(None, description="Check execution time")
 
 
 class ComplianceFindingsResponse(BaseModel):

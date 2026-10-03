@@ -172,6 +172,18 @@ is at the top of the file.
   times a constant, not counts. A script that reads them must stop; the
   number of keys used in the last day is still there
   (`summary.api_keys_active`, `api_usage.keys_used_today`).
+- cspm's `GET /api/v1/compliance/summary` and `GET /api/v1/compliance/findings`
+  now report the team's completed scans (#572); both returned the same
+  invented account to everyone. In the summary, `trend` is gone, each
+  framework's `version` and `description` are gone, and
+  `total_controls` / `passed_controls` / `failed_controls` are now
+  `total_checks` / `passed_checks` / `failed_checks` (they always counted
+  check results); `overall_score` and `last_updated` are null when no scan
+  completed in the period, and `scans_considered` is new. A finding now
+  carries `scan_id`, `check_id`, `title` and a `frameworks` list instead of
+  `framework`, `control_id` and `control_title`, and `severity` is null
+  when the check is unknown. A script that read the old fields must move
+  to the new ones.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 

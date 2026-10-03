@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,260 +14,132 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
-import { useToast } from '@/hooks/use-toast'
+import { getErrorMessage } from '@/lib/utils'
 import {
   Shield,
   CheckCircle2,
   XCircle,
   AlertTriangle,
   Search,
-  Download,
   RefreshCw,
-  TrendingUp,
-  TrendingDown,
   Info,
   Construction,
 } from 'lucide-react'
 
+/*
+ * Every figure on this page comes from the CSPM service, which aggregates the
+ * newest completed scan of each of the team's cloud accounts. When a request
+ * fails the page says so and offers a retry. It used to show an invented
+ * account instead (1547 resources, 86.7% compliant, CIS / NIST / PCI with
+ * made-up control counts and three made-up findings), which read exactly
+ * like a real posture (#572).
+ */
+
 interface ComplianceFramework {
   name: string
-  version: string
-  description: string
-  total_controls: number
-  passed_controls: number
-  failed_controls: number
+  total_checks: number
+  passed_checks: number
+  failed_checks: number
   compliance_percentage: number
-  last_assessment: string
-}
-
-interface ComplianceFinding {
-  finding_id: string
-  framework: string
-  control_id: string
-  control_title: string
-  resource_id: string
-  resource_type: string
-  region: string
-  status: 'passed' | 'failed' | 'warning' | 'not_applicable'
-  severity: 'critical' | 'high' | 'medium' | 'low' | 'info'
-  description: string
-  remediation: string
-  last_checked: string
+  last_assessment: string | null
 }
 
 interface ComplianceSummary {
   total_resources: number
   compliant_resources: number
   non_compliant_resources: number
-  overall_score: number
+  /** null when no check produced a verdict in the period. */
+  overall_score: number | null
   frameworks: ComplianceFramework[]
-  trend: {
-    direction: 'up' | 'down' | 'stable'
-    percentage: number
-  }
+  scans_considered: number
+  summary_period_days: number
+  last_updated: string | null
+}
+
+interface ComplianceFinding {
+  finding_id: string
+  scan_id: string
+  check_id: string
+  title: string
+  frameworks: string[]
+  resource_id: string
+  resource_type: string
+  region: string | null
+  status: 'passed' | 'failed'
+  severity: string | null
+  description: string
+  remediation: string | null
+  last_checked: string | null
+}
+
+interface ComplianceFindingsResponse {
+  findings: ComplianceFinding[]
+  total_count: number
+}
+
+interface ComplianceData {
+  summary: ComplianceSummary
+  findings: ComplianceFindingsResponse
+}
+
+const severityColors: Record<string, string> = {
+  critical: 'bg-red-100 text-red-800 border-red-200',
+  high: 'bg-orange-100 text-orange-800 border-orange-200',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  low: 'bg-blue-100 text-blue-800 border-blue-200',
+  info: 'bg-gray-100 text-gray-800 border-gray-200',
+}
+
+function formatDate(value: string | null) {
+  return value ? new Date(value).toLocaleString() : 'Unknown'
 }
 
 export default function CompliancePage() {
-  const [summary, setSummary] = useState<ComplianceSummary | null>(null)
-  const [findings, setFindings] = useState<ComplianceFinding[]>([])
+  const [data, setData] = useState<ComplianceData | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFramework, setSelectedFramework] = useState<string>('all')
   const [selectedSeverity, setSelectedSeverity] = useState<string>('all')
   const [searchTerm, setSearchTerm] = useState('')
-  const { toast } = useToast()
 
   const fetchComplianceData = useCallback(async () => {
+    setIsLoading(true)
+    setLoadError(null)
     try {
-      setIsLoading(true)
-
-      const [summaryResponse, findingsResponse] = await Promise.allSettled([
+      const [summary, findings] = await Promise.all([
         cspmClient.get<ComplianceSummary>(getCSPMPath('/api/v1/compliance/summary')),
-        cspmClient.get<ComplianceFinding[]>(getCSPMPath('/api/v1/compliance/findings')),
+        cspmClient.get<ComplianceFindingsResponse>(getCSPMPath('/api/v1/compliance/findings')),
       ])
-
-      if (summaryResponse.status === 'fulfilled') {
-        setSummary(summaryResponse.value)
-      } else {
-        console.warn('Failed to fetch compliance summary:', summaryResponse.reason)
-        // Set default data for demo
-        setSummary({
-          total_resources: 1547,
-          compliant_resources: 1342,
-          non_compliant_resources: 205,
-          overall_score: 86.7,
-          frameworks: [
-            {
-              name: 'CIS AWS Foundations',
-              version: '1.4.0',
-              description: 'Center for Internet Security AWS Foundations Benchmark',
-              total_controls: 51,
-              passed_controls: 43,
-              failed_controls: 8,
-              compliance_percentage: 84.3,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-            },
-            {
-              name: 'NIST Cybersecurity Framework',
-              version: '1.1',
-              description: 'NIST Cybersecurity Framework controls',
-              total_controls: 108,
-              passed_controls: 97,
-              failed_controls: 11,
-              compliance_percentage: 89.8,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-            },
-            {
-              name: 'PCI DSS',
-              version: '3.2.1',
-              description: 'Payment Card Industry Data Security Standard',
-              total_controls: 78,
-              passed_controls: 67,
-              failed_controls: 11,
-              compliance_percentage: 85.9,
-              last_assessment: new Date(Date.now() - 1000 * 60 * 60 * 1).toISOString(),
-            },
-          ],
-          trend: {
-            direction: 'up',
-            percentage: 2.4,
-          },
-        })
-      }
-
-      if (findingsResponse.status === 'fulfilled') {
-        setFindings(findingsResponse.value)
-      } else {
-        console.warn('Failed to fetch compliance findings:', findingsResponse.reason)
-        // Set demo data
-        setFindings([
-          {
-            finding_id: 'finding-001',
-            framework: 'CIS AWS Foundations',
-            control_id: 'CIS-2.1',
-            control_title: 'Ensure CloudTrail is enabled in all regions',
-            resource_id: 'arn:aws:cloudtrail:us-west-2:123456789012:trail/demo-trail',
-            resource_type: 'CloudTrail',
-            region: 'us-west-2',
-            status: 'failed',
-            severity: 'high',
-            description: 'CloudTrail is not enabled in all AWS regions',
-            remediation: 'Enable CloudTrail in all regions to ensure comprehensive logging',
-            last_checked: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-          },
-          {
-            finding_id: 'finding-002',
-            framework: 'NIST Cybersecurity Framework',
-            control_id: 'NIST-PR.AC-1',
-            control_title: 'Access Control Policy and Procedures',
-            resource_id: 'arn:aws:iam::123456789012:policy/demo-policy',
-            resource_type: 'IAM Policy',
-            region: 'global',
-            status: 'passed',
-            severity: 'medium',
-            description: 'Access control policy meets NIST requirements',
-            remediation: 'Continue monitoring access control policies',
-            last_checked: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-          },
-          {
-            finding_id: 'finding-003',
-            framework: 'PCI DSS',
-            control_id: 'PCI-3.4',
-            control_title: 'Render PANs unreadable',
-            resource_id: 'arn:aws:s3:::demo-bucket',
-            resource_type: 'S3 Bucket',
-            region: 'us-east-1',
-            status: 'failed',
-            severity: 'critical',
-            description: 'S3 bucket may contain unencrypted cardholder data',
-            remediation: 'Enable encryption at rest for all S3 buckets containing cardholder data',
-            last_checked: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-          },
-        ])
-      }
+      setData({ summary, findings })
     } catch (error) {
-      console.error('Error fetching compliance data:', error)
-      toast({
-        title: 'Error',
-        description: 'Failed to fetch compliance data. Please try again.',
-        variant: 'destructive',
-      })
+      // Nothing from a half-failed load is shown: the summary and the
+      // findings describe the same scans and must not disagree.
+      setData(null)
+      setLoadError(getErrorMessage(error, 'The CSPM service did not answer.'))
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
     fetchComplianceData()
   }, [fetchComplianceData])
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'passed':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />
-      case 'failed':
-        return <XCircle className="h-4 w-4 text-red-500" />
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />
-      default:
-        return <Info className="h-4 w-4 text-blue-500" />
-    }
-  }
-
-  const getSeverityBadge = (severity: string) => {
-    const severityColors = {
-      critical: 'bg-red-100 text-red-800 border-red-200',
-      high: 'bg-orange-100 text-orange-800 border-orange-200',
-      medium: 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      low: 'bg-blue-100 text-blue-800 border-blue-200',
-      info: 'bg-gray-100 text-gray-800 border-gray-200',
-    }
-
-    return (
-      <Badge
-        className={severityColors[severity as keyof typeof severityColors] || severityColors.info}
-      >
-        {severity.toUpperCase()}
-      </Badge>
-    )
-  }
+  const summary = data?.summary
+  const findings = data?.findings.findings ?? []
 
   const filteredFindings = findings.filter(finding => {
-    const matchesFramework = selectedFramework === 'all' || finding.framework === selectedFramework
+    const matchesFramework =
+      selectedFramework === 'all' || finding.frameworks.includes(selectedFramework)
     const matchesSeverity = selectedSeverity === 'all' || finding.severity === selectedSeverity
+    const term = searchTerm.toLowerCase()
     const matchesSearch =
-      searchTerm === '' ||
-      finding.control_title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      finding.resource_id.toLowerCase().includes(searchTerm.toLowerCase())
-
+      term === '' ||
+      finding.title.toLowerCase().includes(term) ||
+      finding.check_id.toLowerCase().includes(term) ||
+      finding.resource_id.toLowerCase().includes(term)
     return matchesFramework && matchesSeverity && matchesSearch
   })
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString()
-  }
-
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold">Compliance</h1>
-        </div>
-        <div className="grid gap-6">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardHeader>
-                <div className="mb-2 h-4 rounded bg-muted" />
-                <div className="h-3 w-3/4 rounded bg-muted" />
-              </CardHeader>
-              <CardContent>
-                <div className="h-8 rounded bg-muted" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-6">
@@ -293,226 +166,296 @@ export default function CompliancePage() {
         <div>
           <h1 className="text-3xl font-bold">Compliance</h1>
           <p className="text-muted-foreground">
-            Monitor compliance posture across security frameworks
+            Check results from the newest completed scan of each cloud account
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button onClick={fetchComplianceData} variant="outline" size="sm">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export Report
-          </Button>
-        </div>
+        <Button onClick={fetchComplianceData} variant="outline" size="sm" disabled={isLoading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
       </div>
 
-      {/* Summary Cards */}
-      {summary && (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Overall Score</CardTitle>
-              <Shield className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.overall_score}%</div>
-              <p className="flex items-center text-xs text-muted-foreground">
-                {summary.trend.direction === 'up' ? (
-                  <TrendingUp className="mr-1 h-3 w-3 text-green-500" />
-                ) : (
-                  <TrendingDown className="mr-1 h-3 w-3 text-red-500" />
-                )}
-                {summary.trend.percentage}% from last month
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Compliant Resources</CardTitle>
-              <CheckCircle2 className="h-4 w-4 text-green-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.compliant_resources}</div>
-              <p className="text-xs text-muted-foreground">
-                of {summary.total_resources} total resources
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Non-Compliant</CardTitle>
-              <XCircle className="h-4 w-4 text-red-500" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.non_compliant_resources}</div>
-              <p className="text-xs text-muted-foreground">require attention</p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Frameworks</CardTitle>
-              <Info className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{summary.frameworks.length}</div>
-              <p className="text-xs text-muted-foreground">active frameworks</p>
-            </CardContent>
-          </Card>
+      {isLoading && !data && !loadError && (
+        <div className="grid gap-6" data-testid="compliance-loading">
+          {[...Array(3)].map((_, i) => (
+            <Card key={i} className="animate-pulse">
+              <CardHeader>
+                <div className="mb-2 h-4 rounded bg-muted" />
+                <div className="h-3 w-3/4 rounded bg-muted" />
+              </CardHeader>
+              <CardContent>
+                <div className="h-8 rounded bg-muted" />
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
-      {/* Compliance Frameworks */}
-      {summary?.frameworks && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Compliance Frameworks</CardTitle>
-            <CardDescription>Current compliance status across security frameworks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {summary.frameworks.map((framework, index) => (
-                <div key={index} className="rounded-lg border p-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <div>
-                      <h3 className="font-semibold">{framework.name}</h3>
-                      <p className="text-sm text-muted-foreground">{framework.description}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold">{framework.compliance_percentage}%</div>
-                      <p className="text-xs text-muted-foreground">compliance</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span>
-                      {framework.passed_controls} passed, {framework.failed_controls} failed
-                    </span>
-                    <span className="text-muted-foreground">
-                      Last assessed: {formatDate(framework.last_assessment)}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
-                    <div
-                      className="h-2 rounded-full bg-blue-600"
-                      style={{ width: `${framework.compliance_percentage}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
+      {loadError && (
+        <Card data-testid="compliance-error" role="alert">
+          <CardContent className="py-8 text-center">
+            <AlertTriangle className="mx-auto mb-4 h-12 w-12 text-red-500" />
+            <p className="mb-2 font-medium text-red-600">Compliance data could not be loaded</p>
+            <p className="mb-4 text-sm text-muted-foreground">{loadError}</p>
+            <Button onClick={fetchComplianceData} variant="outline" disabled={isLoading}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Try again
+            </Button>
           </CardContent>
         </Card>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Compliance Findings</CardTitle>
-          <CardDescription>Detailed compliance findings and recommendations</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="mb-4 flex flex-wrap gap-4">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search controls, resources..."
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="w-64"
-              />
-            </div>
-            <Select value={selectedFramework} onValueChange={setSelectedFramework}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="All Frameworks" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Frameworks</SelectItem>
-                {summary?.frameworks.map(framework => (
-                  <SelectItem key={framework.name} value={framework.name}>
-                    {framework.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
-              <SelectTrigger className="w-32">
-                <SelectValue placeholder="All Severities" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Severities</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-                <SelectItem value="info">Info</SelectItem>
-              </SelectContent>
-            </Select>
+      {summary && (
+        <>
+          {/* Summary Cards */}
+          <div
+            className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
+            data-testid="compliance-summary"
+          >
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Overall Score</CardTitle>
+                <Shield className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold" data-testid="compliance-overall-score">
+                  {summary.overall_score === null ? 'Not assessed' : `${summary.overall_score}%`}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {summary.scans_considered === 1
+                    ? 'from 1 completed scan'
+                    : `from ${summary.scans_considered} completed scans`}{' '}
+                  in the last {summary.summary_period_days} days
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Compliant Resources</CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary.compliant_resources}</div>
+                <p className="text-xs text-muted-foreground">
+                  of {summary.total_resources} resources checked
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Non-Compliant</CardTitle>
+                <XCircle className="h-4 w-4 text-red-500" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary.non_compliant_resources}</div>
+                <p className="text-xs text-muted-foreground">with at least one failed check</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Frameworks</CardTitle>
+                <Info className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{summary.frameworks.length}</div>
+                <p className="text-xs text-muted-foreground">with check results</p>
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Findings Table */}
-          <div className="rounded-lg border">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b bg-muted/50">
-                    <th className="p-3 text-left font-medium">Status</th>
-                    <th className="p-3 text-left font-medium">Control</th>
-                    <th className="p-3 text-left font-medium">Resource</th>
-                    <th className="p-3 text-left font-medium">Severity</th>
-                    <th className="p-3 text-left font-medium">Framework</th>
-                    <th className="p-3 text-left font-medium">Last Checked</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredFindings.map(finding => (
-                    <tr key={finding.finding_id} className="border-b hover:bg-muted/50">
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(finding.status)}
-                          <span className="capitalize">{finding.status}</span>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div>
-                          <div className="font-medium">{finding.control_id}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {finding.control_title}
+          {summary.scans_considered === 0 && (
+            <Card data-testid="compliance-no-scans">
+              <CardContent className="flex items-start gap-3 p-6 text-sm">
+                <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    No completed scan in the last {summary.summary_period_days} days
+                  </p>
+                  <p className="text-muted-foreground">
+                    Compliance is computed from cloud scan results. Start a scan to see it here.
+                  </p>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href="/cloud-security/scans">Go to scans</Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Compliance Frameworks */}
+          {summary.frameworks.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Compliance Frameworks</CardTitle>
+                <CardDescription>
+                  Passed share of the check results mapped to each framework
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {summary.frameworks.map(framework => (
+                    <div key={framework.name} className="rounded-lg border p-4">
+                      <div className="mb-2 flex items-center justify-between">
+                        <h3 className="font-semibold">{framework.name}</h3>
+                        <div className="text-right">
+                          <div className="text-2xl font-bold">
+                            {framework.compliance_percentage}%
                           </div>
+                          <p className="text-xs text-muted-foreground">checks passed</p>
                         </div>
-                      </td>
-                      <td className="p-3">
-                        <div>
-                          <div className="font-mono text-sm">{finding.resource_type}</div>
-                          <div className="max-w-48 truncate text-xs text-muted-foreground">
-                            {finding.resource_id}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-3">{getSeverityBadge(finding.severity)}</td>
-                      <td className="p-3">
-                        <Badge variant="outline">{finding.framework}</Badge>
-                      </td>
-                      <td className="p-3 text-sm text-muted-foreground">
-                        {formatDate(finding.last_checked)}
-                      </td>
-                    </tr>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span>
+                          {framework.passed_checks} passed, {framework.failed_checks} failed
+                        </span>
+                        <span className="text-muted-foreground">
+                          Last assessed: {formatDate(framework.last_assessment)}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
+                        <div
+                          className="h-2 rounded-full bg-blue-600"
+                          style={{ width: `${framework.compliance_percentage}%` }}
+                        />
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-            {filteredFindings.length === 0 && (
-              <div className="py-8 text-center text-muted-foreground">
-                No compliance findings found matching the current filters.
+          {/* Findings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Compliance Findings</CardTitle>
+              <CardDescription>
+                {data.findings.total_count === 1
+                  ? '1 check result'
+                  : `${data.findings.total_count} check results`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 flex flex-wrap gap-4">
+                <div className="flex items-center gap-2">
+                  <Search className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search checks, resources..."
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className="w-64"
+                  />
+                </div>
+                <Select value={selectedFramework} onValueChange={setSelectedFramework}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="All Frameworks" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Frameworks</SelectItem>
+                    {summary.frameworks.map(framework => (
+                      <SelectItem key={framework.name} value={framework.name}>
+                        {framework.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={selectedSeverity} onValueChange={setSelectedSeverity}>
+                  <SelectTrigger className="w-32">
+                    <SelectValue placeholder="All Severities" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Severities</SelectItem>
+                    <SelectItem value="critical">Critical</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="info">Info</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+
+              <div className="rounded-lg border">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="p-3 text-left font-medium">Status</th>
+                        <th className="p-3 text-left font-medium">Check</th>
+                        <th className="p-3 text-left font-medium">Resource</th>
+                        <th className="p-3 text-left font-medium">Severity</th>
+                        <th className="p-3 text-left font-medium">Frameworks</th>
+                        <th className="p-3 text-left font-medium">Last Checked</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredFindings.map(finding => (
+                        <tr key={finding.finding_id} className="border-b hover:bg-muted/50">
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              {finding.status === 'passed' ? (
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              ) : (
+                                <XCircle className="h-4 w-4 text-red-500" />
+                              )}
+                              <span className="capitalize">{finding.status}</span>
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="font-medium">{finding.title}</div>
+                            <div className="text-sm text-muted-foreground">
+                              {finding.description}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <div className="font-mono text-sm">{finding.resource_type}</div>
+                            <div className="max-w-48 truncate text-xs text-muted-foreground">
+                              {finding.resource_id}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            {finding.severity ? (
+                              <Badge
+                                className={severityColors[finding.severity] ?? severityColors.info}
+                              >
+                                {finding.severity.toUpperCase()}
+                              </Badge>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">Unknown</span>
+                            )}
+                          </td>
+                          <td className="p-3">
+                            <div className="flex flex-wrap gap-1">
+                              {finding.frameworks.map(name => (
+                                <Badge key={name} variant="outline">
+                                  {name}
+                                </Badge>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-3 text-sm text-muted-foreground">
+                            {formatDate(finding.last_checked)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {filteredFindings.length === 0 && (
+                  <div className="py-8 text-center text-muted-foreground">
+                    {findings.length === 0
+                      ? 'No check results yet.'
+                      : 'No check results match the current filters.'}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   )
 }

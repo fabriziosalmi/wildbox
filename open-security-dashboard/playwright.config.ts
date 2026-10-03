@@ -12,6 +12,7 @@ const BACKEND_FILES = [
   /dashboard-home\.spec\.ts/,
   /response\.spec\.ts/,
   /cloud-security-scans\.spec\.ts/,
+  /cloud-security-compliance\.spec\.ts/,
 ]
 
 /**

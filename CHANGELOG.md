@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cloud compliance reports the team's scans, not an invented account**
+  (#572). cspm's `GET /api/v1/compliance/summary` and `/findings`
+  returned the same constants to every team (1547 resources, 86.7%
+  compliant, CIS / NIST / PCI figures, five findings on account
+  123456789012), and `/cloud-security/compliance` showed a copy of them
+  "for demo" whenever the request failed. Both endpoints now aggregate
+  the newest completed scan of each of the team's accounts; with none,
+  the counts are 0 and the score is null ("Not assessed"), not 0%. The
+  page shows only what the service returns, and an error with a retry
+  when it cannot. See UPGRADING.md for the field changes.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
