@@ -39,28 +39,28 @@ Backend specs (15): `admin-comprehensive`, `api-docs`,
 
 From `playwright.config.ts`:
 
-| Setting | Value |
-| ------- | ----- |
-| `testDir` | `./tests/e2e` |
-| `baseURL` | `PLAYWRIGHT_BASE_URL`, default `http://localhost:3000` |
-| `fullyParallel` | `true`; one worker when `CI` is set |
-| `retries` | 2 when `CI` is set, otherwise 0 |
-| `timeout` | 60 s with `CI`, 30 s otherwise (navigation: 30 s / 15 s) |
-| `reporter` | `html`; `list` and `html` when `CI` is set |
-| `trace` / `screenshot` / `video` | `on-first-retry` / `only-on-failure` / `retain-on-failure` |
-| `webServer` | `npm run dev` (`npm run start` with `CI`) on `http://localhost:3000`, reusing a running server outside CI; disabled when `PLAYWRIGHT_SKIP_WEBSERVER` is set |
+| Setting                          | Value                                                                                                                                                       |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `testDir`                        | `./tests/e2e`                                                                                                                                               |
+| `baseURL`                        | `PLAYWRIGHT_BASE_URL`, default `http://localhost:3000`                                                                                                      |
+| `fullyParallel`                  | `true`; one worker when `CI` is set                                                                                                                         |
+| `retries`                        | 2 when `CI` is set, otherwise 0                                                                                                                             |
+| `timeout`                        | 60 s with `CI`, 30 s otherwise (navigation: 30 s / 15 s)                                                                                                    |
+| `reporter`                       | `html`; `list` and `html` when `CI` is set                                                                                                                  |
+| `trace` / `screenshot` / `video` | `on-first-retry` / `only-on-failure` / `retain-on-failure`                                                                                                  |
+| `webServer`                      | `npm run dev` (`npm run start` with `CI`) on `http://localhost:3000`, reusing a running server outside CI; disabled when `PLAYWRIGHT_SKIP_WEBSERVER` is set |
 
 The backend projects set `ignoreHTTPSErrors` for the gateway's self-signed
 development certificate. `backend-chromium` depends on `backend-setup`.
 
 ## Environment variables
 
-| Variable | Used by | Meaning |
-| -------- | ------- | ------- |
-| `TEST_EMAIL`, `TEST_PASSWORD` | `support/backend.ts` | The stack admin, that is `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` from the repository's `.env`. Required by the backend specs; they never guess it, since a wrong guess counts towards the admin lockout. |
-| `PLAYWRIGHT_BASE_URL` | config, `support/backend.ts` | Where the browser opens the dashboard. Set it to `https://localhost` for the backend specs, so the dashboard is reached through the gateway. |
-| `PLAYWRIGHT_SKIP_WEBSERVER` | config | Drive the dashboard already running in the compose stack instead of starting a Next.js server. |
-| `CI` | config | CI settings (retries, workers, timeouts, reporters, `npm run start`). |
+| Variable                      | Used by                      | Meaning                                                                                                                                                                                                            |
+| ----------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `TEST_EMAIL`, `TEST_PASSWORD` | `support/backend.ts`         | The stack admin, that is `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` from the repository's `.env`. Required by the backend specs; they never guess it, since a wrong guess counts towards the admin lockout |
+| `PLAYWRIGHT_BASE_URL`         | config, `support/backend.ts` | Where the browser opens the dashboard. Set it to `https://localhost` for the backend specs, so the dashboard is reached through the gateway                                                                        |
+| `PLAYWRIGHT_SKIP_WEBSERVER`   | config                       | Drive the dashboard already running in the compose stack instead of starting a Next.js server                                                                                                                      |
+| `CI`                          | config                       | CI settings (retries, workers, timeouts, reporters, `npm run start`)                                                                                                                                               |
 
 ## Running the frontend smoke tests
 
@@ -110,12 +110,12 @@ these specs the same way, with `--retries=1`.
 
 ## npm scripts
 
-| Script | Command |
-| ------ | ------- |
-| `test:e2e` | `playwright test` (all projects; the backend ones need the variables above) |
-| `test:e2e:ui` / `test:e2e:headed` / `test:e2e:debug` | The same with `--ui`, `--headed`, `--debug` |
-| `test:admin` / `test:admin:headed` | `playwright test admin-comprehensive.spec.ts` (a backend spec) |
-| `test:frontend` / `test:frontend:headed` | `playwright test admin-ui-only.spec.ts` |
+| Script                                               | Command                                                                     |
+| ---------------------------------------------------- | --------------------------------------------------------------------------- |
+| `test:e2e`                                           | `playwright test` (all projects; the backend ones need the variables above) |
+| `test:e2e:ui` / `test:e2e:headed` / `test:e2e:debug` | The same with `--ui`, `--headed`, `--debug`                                 |
+| `test:admin` / `test:admin:headed`                   | `playwright test admin-comprehensive.spec.ts` (a backend spec)              |
+| `test:frontend` / `test:frontend:headed`             | `playwright test admin-ui-only.spec.ts`                                     |
 
 `run-admin-tests.sh` and `run-frontend-tests.sh` in the dashboard directory
 check that a dashboard answers on port 3000 (the admin script also probes the

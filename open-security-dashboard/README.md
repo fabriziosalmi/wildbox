@@ -8,22 +8,22 @@ responder, cspm) through the Wildbox gateway.
 
 The routes under `src/app/`:
 
-| Route | What it does |
-| ----- | ------------ |
-| `/` | Sign-in page (the `/auth/login` form) |
-| `/auth/login`, `/auth/signup`, `/auth/logout` | Sign in, register an account, sign out |
-| `/auth/change-password` | Where an account with an initial password is sent to replace it |
-| `/dashboard` | Summary figures from the data, cspm, guardian and responder services |
-| `/threat-intel/lookup` | Look up an IP address, domain or file hash in the data service |
-| `/threat-intel/feeds` | Threat-intel sources and feed statistics |
-| `/threat-intel/data` | Data service statistics, sources and an indicator search |
-| `/toolbox`, `/toolbox/<name>` | The tools service catalog, and a form to run one tool |
-| `/vulnerabilities` | Vulnerabilities held by guardian |
-| `/response`, `/response/playbooks`, `/response/runs` | Responder playbooks: list and start them, then follow a run's status |
+| Route                                                                    | What it does                                                                    |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `/`                                                                      | Sign-in page (the `/auth/login` form)                                           |
+| `/auth/login`, `/auth/signup`, `/auth/logout`                            | Sign in, register an account, sign out                                          |
+| `/auth/change-password`                                                  | Where an account with an initial password is sent to replace it                 |
+| `/dashboard`                                                             | Summary figures from the data, cspm, guardian and responder services            |
+| `/threat-intel/lookup`                                                   | Look up an IP address, domain or file hash in the data service                  |
+| `/threat-intel/feeds`                                                    | Threat-intel sources and feed statistics                                        |
+| `/threat-intel/data`                                                     | Data service statistics, sources and an indicator search                        |
+| `/toolbox`, `/toolbox/<name>`                                            | The tools service catalog, and a form to run one tool                           |
+| `/vulnerabilities`                                                       | Vulnerabilities held by guardian                                                |
+| `/response`, `/response/playbooks`, `/response/runs`                     | Responder playbooks: list and start them, then follow a run's status            |
 | `/cloud-security`, `/cloud-security/scans`, `/cloud-security/compliance` | CSPM summary, scan form and compliance findings (not in the sidebar, see below) |
-| `/settings/profile`, `/settings/api-keys`, `/settings/team` | Profile and password, API keys, team members |
-| `/api-docs` | Gateway routes, with links to the API references in `docs/api/` |
-| `/admin` | Superusers only: user management, system health and usage analytics |
+| `/settings/profile`, `/settings/api-keys`, `/settings/team`              | Profile and password, API keys, team members                                    |
+| `/api-docs`                                                              | Gateway routes, with links to the API references in `docs/api/`                 |
+| `/admin`                                                                 | Superusers only: user management, system health and usage analytics             |
 
 Notes:
 
@@ -92,14 +92,14 @@ The Docker images use Node.js 24 (`node:24-alpine`, pinned by digest).
 The dashboard calls only the gateway. `src/lib/api-client.ts` builds one
 Axios client per gateway prefix; it never calls a service port directly:
 
-| Client | Gateway path | Service |
-| ------ | ------------ | ------- |
-| `identityClient` | `/auth/...`, `/api/v1/identity/...` | identity |
-| `apiClient` | `/api/v1/tools/...`, `/api/v1/tasks/...` | tools |
-| `dataClient` | `/api/v1/data/...` | data |
-| `guardianClient` | `/api/v1/guardian/...` | guardian |
-| `responderClient` | `/api/v1/responder/...` | responder |
-| `cspmClient` | `/api/v1/cspm/...` | cspm |
+| Client            | Gateway path                             | Service   |
+| ----------------- | ---------------------------------------- | --------- |
+| `identityClient`  | `/auth/...`, `/api/v1/identity/...`      | identity  |
+| `apiClient`       | `/api/v1/tools/...`, `/api/v1/tasks/...` | tools     |
+| `dataClient`      | `/api/v1/data/...`                       | data      |
+| `guardianClient`  | `/api/v1/guardian/...`                   | guardian  |
+| `responderClient` | `/api/v1/responder/...`                  | responder |
+| `cspmClient`      | `/api/v1/cspm/...`                       | cspm      |
 
 In the root `docker-compose.yml` stack, the gateway serves both the dashboard
 and the API on one origin (`https://localhost`, self-signed certificate in
@@ -130,12 +130,12 @@ development), so every request is relative to the page's origin.
 Next.js compiles `NEXT_PUBLIC_*` values into the browser bundle at build time,
 so they are build arguments of the production image, not runtime settings.
 
-| Variable | Read by | Meaning |
-| -------- | ------- | ------- |
-| `NEXT_PUBLIC_GATEWAY_URL` | `src/lib/api-client.ts`, `next.config.js` | Origin of the gateway. Empty (the default): call the API on the page's own origin, which is right when the gateway serves the dashboard. Set it only when the dashboard runs on another origin, such as `next dev` on port 3000; that origin is then added to the CSP `connect-src`. |
-| `NEXT_PUBLIC_USE_GATEWAY` | `src/lib/api-client.ts` | Defaults to on. `false` only for development against a bare service. |
-| `NEXT_PUBLIC_APP_URL` | `src/app/layout.tsx` | Public URL of the dashboard, for absolute links in page metadata. Defaults to `http://localhost:3000`. |
-| `INTERNAL_GATEWAY_URL` | `src/lib/api-client.ts` | Server side only: the gateway URL for requests made during server rendering. The root compose file sets it to `http://open-security-gateway:8080`. |
+| Variable                  | Read by                                   | Meaning                                                                                                                                                                                                                                                                             |
+| ------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_GATEWAY_URL` | `src/lib/api-client.ts`, `next.config.js` | Origin of the gateway. Empty (the default): call the API on the page's own origin, which is right when the gateway serves the dashboard. Set it only when the dashboard runs on another origin, such as `next dev` on port 3000; that origin is then added to the CSP `connect-src` |
+| `NEXT_PUBLIC_USE_GATEWAY` | `src/lib/api-client.ts`                   | Defaults to on. `false` only for development against a bare service                                                                                                                                                                                                                 |
+| `NEXT_PUBLIC_APP_URL`     | `src/app/layout.tsx`                      | Public URL of the dashboard, for absolute links in page metadata. Defaults to `http://localhost:3000`                                                                                                                                                                               |
+| `INTERNAL_GATEWAY_URL`    | `src/lib/api-client.ts`                   | Server side only: the gateway URL for requests made during server rendering. The root compose file sets it to `http://open-security-gateway:8080`                                                                                                                                   |
 
 See [.env.example](.env.example) and, for production, the deployment guide,
 section [The dashboard's browser settings](../docs/guides/deployment.md#the-dashboards-browser-settings).
@@ -193,15 +193,15 @@ arguments from the root `.env`.
 
 ## Scripts
 
-| Script | Command |
-| ------ | ------- |
-| `npm run dev` | `next dev` |
-| `npm run build` | `next build` |
-| `npm run start` | `next start` |
-| `npm run lint` | `eslint . --max-warnings=0` |
-| `npm run type-check` | `tsc --noEmit` |
-| `npm run format` / `format:check` | Prettier write / check |
-| `npm run test:e2e` | `playwright test` (see [tests/README.md](tests/README.md)) |
+| Script                            | Command                                                    |
+| --------------------------------- | ---------------------------------------------------------- |
+| `npm run dev`                     | `next dev`                                                 |
+| `npm run build`                   | `next build`                                               |
+| `npm run start`                   | `next start`                                               |
+| `npm run lint`                    | `eslint . --max-warnings=0`                                |
+| `npm run type-check`              | `tsc --noEmit`                                             |
+| `npm run format` / `format:check` | Prettier write / check                                     |
+| `npm run test:e2e`                | `playwright test` (see [tests/README.md](tests/README.md)) |
 
 ## Project structure
 
