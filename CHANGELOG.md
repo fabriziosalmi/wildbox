@@ -44,6 +44,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoint takes is unchanged. The integration suite did not notice,
   because it accepts any status but 404 from that endpoint.
 
+- **cspm keeps scan reports for 90 days, and batch scans count** (#591).
+  The compliance summary and findings, the dashboard summary and the
+  cloud security overview read scan reports from the Celery result
+  backend, which drops results after a day, so every scan older than
+  that dropped out of them while its metadata lived on for 30 days. The
+  worker now stores each report in Redis under its scan, and the report,
+  the scan's metadata and its entry in the team's scan index share one
+  retention, `CSPM_REPORT_RETENTION_DAYS` (default 90, validated at
+  start); the index is a sorted set scored by expiry, pruned on every
+  read and write. Reports are read from there only. Celery results now
+  expire after two hours, and a finished scan's status comes from its
+  metadata. `POST /api/v1/batch/scans` stored each scan's credentials
+  unencrypted, which the worker cannot decrypt, and wrote no scan
+  metadata, so batch scans failed, answered 404 by id and never counted
+  in the summaries; each scan of a batch now goes through the
+  single-scan path, under the caller's team. See UPGRADING.md for the
+  memory to plan for and for scans completed before the upgrade.
 - **The cloud security overview shows what cspm reports, and says when
   it cannot** (#578). When cspm did not answer, `/cloud-security`
   dropped the failure and showed "0 scans", "0%" compliance, "0 critical

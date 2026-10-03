@@ -852,6 +852,9 @@ services:
       # not recoverable from the AOF on the wildbox_redis_data volume
       # (WILDBO-SEC-02). Required: the service refuses to start a scan without it.
       - CSPM_CREDENTIAL_KEY=${CSPM_CREDENTIAL_KEY:?CSPM_CREDENTIAL_KEY is required}
+      # Days a scan's metadata, team index entry and report are kept in Redis
+      # (#591). The worker needs the same value.
+      - CSPM_REPORT_RETENTION_DAYS=${CSPM_REPORT_RETENTION_DAYS:-90}
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -883,6 +886,7 @@ services:
   #     - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
   #     - CELERY_BROKER_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
   #     - CELERY_RESULT_BACKEND=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/3
+  #     - CSPM_REPORT_RETENTION_DAYS=${CSPM_REPORT_RETENTION_DAYS:-90}
   #     - LOG_LEVEL=INFO
   #   depends_on:
   #     - wildbox-redis

@@ -95,3 +95,63 @@ def test_cspm_scan_isolated_by_team(service_urls):
     )
     assert b_dash.status_code == 200, b_dash.text
     assert b_dash.json()["total_scans"] == 0
+
+
+def test_cspm_batch_scans_are_recorded_for_their_team(service_urls):
+    """Batch scans count for the team that started them, and only for it (#591).
+
+    The batch path wrote no scan metadata, so its scans were "not found" by
+    id and never counted on the dashboard. Each scan of a batch now goes
+    through the single-scan path. A team id in a scan's request metadata
+    does not move the scan to that team.
+    """
+    secret = _require_secret()
+    base = service_urls["cspm"]
+    team_a = str(uuid.uuid4())
+    team_b = str(uuid.uuid4())
+
+    scans = [
+        {
+            "provider": "aws",
+            "account_id": account_id,
+            "metadata": metadata,
+            "credentials": {
+                "auth_method": "access_key",
+                "access_key_id": "AKIAFAKEFAKEFAKEFAKE",
+                "secret_access_key": "fake-secret-for-ci-only",
+                "region": "us-east-1",
+            },
+        }
+        for account_id, metadata in (("111111111111", {}), ("222222222222", {"team_id": team_b}))
+    ]
+    resp = requests.post(
+        f"{base}/api/v1/batch/scans",
+        headers=_gateway_headers(team_a, secret),
+        json={"scans": scans},
+        timeout=15,
+    )
+    assert resp.status_code == 200, resp.text
+    scan_ids = [scan["scan_id"] for scan in resp.json()["scans"]]
+    assert len(scan_ids) == 2
+
+    for scan_id in scan_ids:
+        a_get = requests.get(
+            f"{base}/api/v1/scans/{scan_id}", headers=_gateway_headers(team_a, secret), timeout=10
+        )
+        assert a_get.status_code == 200, a_get.text
+        b_get = requests.get(
+            f"{base}/api/v1/scans/{scan_id}", headers=_gateway_headers(team_b, secret), timeout=10
+        )
+        assert b_get.status_code == 403, b_get.text
+
+    a_dash = requests.get(
+        f"{base}/api/v1/dashboard/summary", headers=_gateway_headers(team_a, secret), timeout=10
+    )
+    assert a_dash.status_code == 200, a_dash.text
+    assert a_dash.json()["total_scans"] == 2
+
+    b_dash = requests.get(
+        f"{base}/api/v1/dashboard/summary", headers=_gateway_headers(team_b, secret), timeout=10
+    )
+    assert b_dash.status_code == 200, b_dash.text
+    assert b_dash.json()["total_scans"] == 0

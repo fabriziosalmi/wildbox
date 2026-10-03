@@ -24,6 +24,7 @@ from .worker import celery_app, run_cspm_scan_task, get_available_checks_task, h
 from .checks.runner import check_runner
 from .checks.framework import CloudProvider
 from . import schemas
+from . import scan_store
 from .utils import (
     _estimate_scan_duration, _summarize_compliance, _compliance_findings,
     _count_failed_by_severity,
@@ -73,38 +74,93 @@ app.add_middleware(
 redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 
 
-# --- Per-team scan index (tenancy) -------------------------------------------
-# Scans are stored under flat keys (scan:{id}:metadata). To scope reads by team
-# WITHOUT scanning every team's keys, each team keeps a Redis SET of its scan
-# ids. Dashboards iterate the caller's set instead of `scan:*:metadata`.
-# Scan retention. NOTE: must be an int — redis SETEX rejects a float TTL with
-# "value is not an integer or out of range".
-_SCAN_TTL_SECONDS = int(timedelta(days=30).total_seconds())
-
-
-def _team_scans_key(team_id: str) -> str:
-    return f"cspm:team:{team_id}:scans"
-
-
-def _index_team_scan(team_id: str, scan_id: str) -> None:
-    """Record that ``scan_id`` belongs to ``team_id``."""
-    key = _team_scans_key(team_id)
-    redis_client.sadd(key, scan_id)
-    # Keep the index alive at least as long as scan metadata.
-    redis_client.expire(key, _SCAN_TTL_SECONDS)
+# --- Scan records (tenancy, retention) ----------------------------------------
+# Scans are stored under flat keys (scan:{id}:metadata, scan:{id}:report). To
+# scope reads by team WITHOUT scanning every team's keys, each team keeps an
+# index of its scan ids, and dashboards iterate the caller's index instead of
+# `scan:*:metadata`. app.scan_store owns the keys and their retention
+# (CSPM_REPORT_RETENTION_DAYS); the functions below pass it this module's
+# client.
 
 
 def _iter_team_scan_metadata(team_id: str):
-    """Yield metadata dicts for the team's scans via its index set, skipping
-    any whose metadata has expired or fails to parse."""
-    for scan_id in redis_client.smembers(_team_scans_key(team_id)):
-        raw = redis_client.get(f"scan:{scan_id}:metadata")
-        if not raw:
-            continue
-        try:
-            yield json.loads(raw)
-        except (ValueError, TypeError):
-            continue
+    """Yield metadata dicts for the team's retained scans via its index."""
+    return scan_store.team_scan_metadata(redis_client, team_id)
+
+
+def _submit_scan(
+    scan_request: schemas.ScanRequest,
+    current_user: Dict[str, Any],
+    extra_metadata: Optional[Dict[str, Any]] = None,
+) -> str:
+    """Queue one scan and record it: the path of single and batch scans.
+
+    Encrypts the credentials into Redis, queues the worker task, and writes
+    the scan's metadata and team index entry. Batch scans used to repeat
+    part of this inline and wrote neither, so they never counted in the
+    team's summaries; they also stored the credentials unencrypted, which
+    the worker cannot read (#591).
+
+    The team is the caller's: ``team_id`` and ``requested_by`` are written
+    after the request's own metadata, so the request cannot set them.
+    """
+    scan_id = str(uuid.uuid4())
+    task_metadata = {
+        **scan_request.metadata,
+        **(extra_metadata or {}),
+        "requested_by": current_user["user_id"],
+        "team_id": current_user["team_id"],
+    }
+
+    # Store credentials encrypted, with a short TTL.
+    #
+    # Keeping them out of the Celery task args was the right instinct, but
+    # the replacement wrote the same plaintext to the same Redis -- which
+    # runs with --appendonly yes, so an AWS secret access key, an Azure
+    # client secret or a GCP service-account JSON landed in the AOF on the
+    # wildbox_redis_data volume and stayed there until a rewrite, outliving
+    # the 5-minute TTL and the worker's explicit delete (WILDBO-SEC-02).
+    #
+    # The models mark these fields repr=False, which protects tracebacks and
+    # logs; model_dump() ignores repr, so serialisation needed its own
+    # protection. Encryption is envelope-style with a service-held key: an
+    # attacker with the Redis volume gets ciphertext.
+    cred_key = f"scan:{scan_id}:creds"
+    redis_client.setex(
+        cred_key,
+        300,  # 5 minute TTL
+        encrypt_credentials(scan_request.credentials.model_dump())
+    )
+
+    # Prepare scan configuration for worker (NO credentials in task args)
+    scan_config = {
+        "provider": scan_request.provider.value,
+        "credential_ref": cred_key,
+        "account_id": scan_request.account_id,
+        "account_name": scan_request.account_name,
+        "regions": scan_request.regions,
+        "check_ids": scan_request.check_ids,
+        "metadata": task_metadata,
+    }
+
+    # The metadata is written before the task is queued, so a worker that
+    # finishes quickly finds it when it stores the report.
+    scan_metadata = {
+        "scan_id": scan_id,
+        "provider": scan_request.provider.value,
+        "account_id": scan_request.account_id,
+        "account_name": scan_request.account_name,
+        "status": "started",
+        "started_at": datetime.utcnow().isoformat(),
+        "requested_by": current_user["user_id"],
+        "team_id": current_user["team_id"],
+    }
+    if extra_metadata and "batch_id" in extra_metadata:
+        scan_metadata["batch_id"] = extra_metadata["batch_id"]
+    scan_store.save_metadata(redis_client, scan_metadata)
+
+    run_cspm_scan_task.apply_async(args=[scan_config], task_id=scan_id)
+    return scan_id
 
 # Application state
 app_start_time = datetime.utcnow()
@@ -238,69 +294,7 @@ async def start_scan(
     The scan will be executed by Celery workers in the background.
     """
     try:
-        # Generate scan ID
-        scan_id = str(uuid.uuid4())
-        
-        # Store credentials encrypted, with a short TTL.
-        #
-        # Keeping them out of the Celery task args was the right instinct, but
-        # the replacement wrote the same plaintext to the same Redis -- which
-        # runs with --appendonly yes, so an AWS secret access key, an Azure
-        # client secret or a GCP service-account JSON landed in the AOF on the
-        # wildbox_redis_data volume and stayed there until a rewrite, outliving
-        # the 5-minute TTL and the worker's explicit delete (WILDBO-SEC-02).
-        #
-        # The models mark these fields repr=False, which protects tracebacks and
-        # logs; model_dump() ignores repr, so serialisation needed its own
-        # protection. Encryption is envelope-style with a service-held key: an
-        # attacker with the Redis volume gets ciphertext.
-        cred_key = f"scan:{scan_id}:creds"
-        redis_client.setex(
-            cred_key,
-            300,  # 5 minute TTL
-            encrypt_credentials(scan_request.credentials.model_dump())
-        )
-
-        # Prepare scan configuration for worker (NO credentials in task args)
-        scan_config = {
-            "provider": scan_request.provider.value,
-            "credential_ref": cred_key,
-            "account_id": scan_request.account_id,
-            "account_name": scan_request.account_name,
-            "regions": scan_request.regions,
-            "check_ids": scan_request.check_ids,
-            "metadata": {
-                **scan_request.metadata,
-                "requested_by": current_user["user_id"],
-                "team_id": current_user["team_id"]
-            }
-        }
-
-        # Start Celery task
-        task = run_cspm_scan_task.apply_async(
-            args=[scan_config],
-            task_id=scan_id
-        )
-        
-        # Cache scan metadata
-        scan_metadata = {
-            "scan_id": scan_id,
-            "provider": scan_request.provider.value,
-            "account_id": scan_request.account_id,
-            "account_name": scan_request.account_name,
-            "status": "started",
-            "started_at": datetime.utcnow().isoformat(),
-            "requested_by": current_user["user_id"],
-            "team_id": current_user["team_id"]
-        }
-        
-        redis_client.setex(
-            f"scan:{scan_id}:metadata",
-            _SCAN_TTL_SECONDS,
-            json.dumps(scan_metadata)
-        )
-        # Namespace the scan under its team so reads never scan other teams' keys.
-        _index_team_scan(current_user["team_id"], scan_id)
+        scan_id = _submit_scan(scan_request, current_user)
 
         logger.info(f"Started CSPM scan {scan_id} for {scan_request.provider} account {scan_request.account_id}")
         
@@ -372,7 +366,12 @@ async def get_scan_status(
         }
         
         scan_status = status_mapping.get(task_status, "unknown")
-        
+        # A final status in the metadata wins: the Celery result of a
+        # finished scan expires after a few hours (result_expires), and the
+        # backend then reports it as PENDING, i.e. "queued" (#591).
+        if metadata.get("status") in scan_store.FINAL_STATUSES:
+            scan_status = metadata["status"]
+
         response = schemas.ScanStatusResponse(
             scan_id=scan_id,
             status=scan_status,
@@ -380,10 +379,13 @@ async def get_scan_status(
             account_id=metadata["account_id"],
             started_at=datetime.fromisoformat(metadata["started_at"])
         )
-        
+
         # Add completion time if available
-        if scan_status == "completed" and isinstance(task_info, dict):
-            response.completed_at = datetime.fromisoformat(task_info.get("completed_at", metadata["started_at"]))
+        if scan_status == "completed":
+            completed_at = metadata.get("completed_at")
+            if not completed_at and isinstance(task_info, dict):
+                completed_at = task_info.get("completed_at")
+            response.completed_at = datetime.fromisoformat(completed_at or metadata["started_at"])
         
         # Add progress information if available
         if scan_status == "running" and isinstance(task_info, dict):
@@ -417,49 +419,44 @@ async def get_scan_report(
     scan_id: str = Path(..., pattern=_UUID_REGEX),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get the complete report for a completed scan."""
+    """Get the complete report for a completed scan.
+
+    The report is the one the worker stored under the scan when it
+    completed, kept for CSPM_REPORT_RETENTION_DAYS. It used to be read from
+    the Celery result backend, which dropped it after a day (#591).
+    """
     try:
-        # Get task result
-        task_result = celery_app.AsyncResult(scan_id)
-        
-        # Check if scan is completed
-        if task_result.status != "SUCCESS":
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Scan is not completed"
-            )
-        
         # Get cached metadata for authorization check
-        metadata_json = redis_client.get(f"scan:{scan_id}:metadata")
+        metadata_json = redis_client.get(scan_store.metadata_key(scan_id))
         if not metadata_json:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Scan not found"
             )
-        
+
         metadata = json.loads(metadata_json)
-        
+
         # Check authorization
         if metadata.get("team_id") != current_user["team_id"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Access denied"
             )
-        
-        # Get scan results
-        result = task_result.result
-        if not result or "report" not in result:
+
+        report_data = scan_store.load_report(redis_client, scan_id)
+        if report_data is None:
+            if metadata.get("status") == "completed":
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Scan report not available"
+                )
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Scan report not available"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Scan is not completed"
             )
-        
-        # Convert to response schema
-        report_data = result["report"]
-        report_schema = schemas.ScanReportSchema(**report_data)
-        
-        return report_schema
-        
+
+        return schemas.ScanReportSchema(**report_data)
+
     except HTTPException:
         raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
@@ -606,11 +603,7 @@ async def cancel_scan(
         # Update metadata
         metadata["status"] = "cancelled"
         metadata["cancelled_at"] = datetime.utcnow().isoformat()
-        redis_client.setex(
-            f"scan:{scan_id}:metadata",
-            _SCAN_TTL_SECONDS,
-            json.dumps(metadata)
-        )
+        scan_store.save_metadata(redis_client, metadata)
         
         logger.info(f"Cancelled scan {scan_id}")
         
@@ -640,8 +633,8 @@ async def get_dashboard_summary(
     the team's accounts in the period. Severity is the one the check declares
     in its metadata. This endpoint used to read ``scan:{id}:results``, which
     nothing writes, so every figure was 0 even after a real scan, and it
-    counted every scan as active because the stored scan status is never
-    updated after the scan starts.
+    counted every scan as active because the stored scan status was never
+    updated after the scan started (it is since #591).
     """
     team_id = current_user["team_id"]
     try:
@@ -681,53 +674,25 @@ async def start_batch_scans(
     batch_request: schemas.BatchScanRequest,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Start multiple CSPM scans across different accounts or providers."""
+    """Start multiple CSPM scans across different accounts or providers.
+
+    Each scan goes through the path of a single scan (_submit_scan), so it
+    has the same metadata, team index entry and stored report.
+    """
     try:
         batch_id = str(uuid.uuid4())
         scan_jobs = []
-        
+
         for scan_config in batch_request.scans:
-            # Generate individual scan ID
-            scan_id = str(uuid.uuid4())
-
-            # Store credentials securely with short TTL
-            cred_key = f"scan:{scan_id}:creds"
-            redis_client.setex(
-                cred_key,
-                300,
-                json.dumps(scan_config.credentials.model_dump())
+            scan_id = _submit_scan(
+                scan_config, current_user, extra_metadata={"batch_id": batch_id}
             )
-
-            # Prepare scan configuration for worker (NO credentials in task args)
-            scan_config_dict = {
-                "provider": scan_config.provider.value,
-                "credential_ref": cred_key,
-                "account_id": scan_config.account_id,
-                "account_name": scan_config.account_name,
-                "regions": scan_config.regions,
-                "check_ids": scan_config.check_ids,
-                "metadata": {
-                    **scan_config.metadata,
-                    "batch_id": batch_id,
-                    "requested_by": current_user["user_id"],
-                    "team_id": current_user["team_id"]
-                }
-            }
-            
-            # Start Celery task
-            task = run_cspm_scan_task.apply_async(
-                args=[scan_config_dict],
-                task_id=scan_id
-            )
-
-            # Namespace the scan under its team (consistent with single scans).
-            _index_team_scan(current_user["team_id"], scan_id)
-
             scan_jobs.append({
                 "scan_id": scan_id,
                 "provider": scan_config.provider.value,
                 "account_id": scan_config.account_id,
-                "task_id": task.id,
+                # The task id is the scan id.
+                "task_id": scan_id,
                 "status": "started"
             })
             
@@ -753,10 +718,13 @@ def _team_compliance_reports(
 ) -> List[Dict[str, Any]]:
     """The newest completed scan report of each of the team's accounts.
 
-    Reports live in the Celery result backend, as GET /api/v1/scans/{id}/report
-    reads them. Scans that started before the period, are not finished, or
-    whose result has expired are skipped; an older scan of an account that
-    was scanned again is superseded by the newer one.
+    Reports are the ones the worker stored under each scan, the same that
+    GET /api/v1/scans/{id}/report returns, kept for
+    CSPM_REPORT_RETENTION_DAYS. They used to be read from the Celery result
+    backend, which dropped them after a day (#591). Scans that started
+    before the period, are not finished, or are past the retention are
+    skipped; an older scan of an account that was scanned again is
+    superseded by the newer one.
     """
     cutoff = datetime.utcnow() - timedelta(days=days)
     newest: Dict[tuple, tuple] = {}
@@ -769,15 +737,12 @@ def _team_compliance_reports(
             continue
         if started < cutoff:
             continue
-        task_result = celery_app.AsyncResult(metadata["scan_id"])
-        if task_result.status != "SUCCESS":
-            continue
-        result = task_result.result
-        if not isinstance(result, dict) or not isinstance(result.get("report"), dict):
+        report = scan_store.load_report(redis_client, metadata["scan_id"])
+        if report is None:
             continue
         key = (metadata.get("provider"), metadata.get("account_id"))
         if key not in newest or started > newest[key][0]:
-            newest[key] = (started, result["report"])
+            newest[key] = (started, report)
     return [report for _, report in newest.values()]
 
 
