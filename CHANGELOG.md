@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now enums of the values the tool implements (fields the tool compares
   regardless of case still accept any case), defaults outside them are
   gone (threat_intelligence_aggregator listed the unimplemented
-  malwarebazaar, cloud_security_analyzer scored nist 100% compliant
+  MalwareBazaar source, cloud_security_analyzer scored nist 100% compliant
   without checking it), and inputs a tool cannot run without, such as
   one of `target_ip`/`ip_range` or `file_url`/`file_data`, are checked
   by the model. Such a request is now a 422 before the tool runs. The
