@@ -13,9 +13,15 @@ and service names are listed once, in [Service ports](ports.md).
 
 ## 1. Server Requirements
 
-- Linux with Docker Engine 20.10+ and the Compose plugin 2.24.4 or later
-  (`docker-compose.prod.yml` uses the `!override` tag, which older versions
-  reject)
+- Linux with Docker Engine 23.0 or later and the Compose plugin 2.24.4 or
+  later:
+  - Compose 2.24.4, because `docker-compose.prod.yml` uses the `!override`
+    tag, which older versions reject;
+  - Engine 23.0, because the images are built with named build contexts
+    (`additional_contexts` in `docker-compose.yml`, to copy
+    `open-security-shared` into each service). Named contexts need BuildKit
+    0.10 (Dockerfile frontend 1.4), and Engine 23.0 is the first release
+    that ships it and builds with BuildKit by default
 - 8 GB RAM minimum (16 GB recommended), 50 GB SSD
 - A DNS name for the server and a TLS certificate for it
 - Somewhere off the server to keep backups
@@ -51,11 +57,14 @@ Then edit `.env` and set the values that describe your deployment rather
 than secrets:
 
 - `INITIAL_ADMIN_EMAIL`: the first administrator's login
-- `CORS_ORIGINS`: the HTTPS origins that may call the API, for example
-  `https://wildbox.example.com` (here and below, replace `wildbox.example.com`,
-  a name reserved for documentation, with your host name). identity does not
-  read it: the browser reaches identity through the gateway, on the same
-  origin as the dashboard
+- `CORS_ORIGINS`: the other HTTPS origins whose pages may call the API from
+  a browser, comma-separated, for example `https://wildbox.example.com`
+  (here and below, replace `wildbox.example.com`, a name reserved for
+  documentation, with your host name). The production overlay passes it to
+  identity, tools, guardian, responder and agents, and `docker-compose.yml`
+  to data; identity also accepts a JSON list. It can be left empty when the dashboard and the API share the
+  gateway's origin, as they do in this stack: an empty value allows no
+  cross-origin requests, and same-origin requests need none
 - `ENVIRONMENT=production` (the template default)
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the
@@ -350,8 +359,11 @@ reports `"celery": "healthy"` once a worker answers.
 - **Credentials.** The API keeps a scan's encrypted credentials in Redis for
   five minutes; a scan that no worker takes within that time fails. The
   worker deletes them as soon as it has read them.
-- **Providers.** Only AWS scans run; GCP and Azure scans fail when the
-  worker takes them.
+- **Providers.** Only AWS can be scanned. A scan for GCP or Azure is
+  refused with 400 when it is submitted ("Unsupported provider: gcp.
+  Supported providers: aws."), before anything is stored or queued, and a
+  batch that names one is refused whole. `GET /api/v1/cspm/providers` lists
+  the providers that can be scanned, with their number of checks.
 
 ---
 

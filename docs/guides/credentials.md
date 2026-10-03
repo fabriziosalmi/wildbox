@@ -58,8 +58,13 @@ sed -n 's/^INITIAL_ADMIN_PASSWORD=//p' .env
 ```
 
 Change it from the dashboard, or through the gateway with
-`PATCH /api/v1/identity/users/me` and the body
-`{"password": "<new password>"}`. The
+`POST /api/v1/identity/admin/me/change-password` and the body
+`{"current_password": "<generated password>", "new_password": "<new password>"}`.
+The new password must meet the
+[password policy](authentication.md#password-policy). The change ends every
+session of the account and the answer carries a new `access_token` for the
+caller. `PATCH /auth/users/me` does not change a password: it answers 400
+and names this route. The
 [Authentication guide](authentication.md#passwords) lists the other password
 routes; all of them hash with Argon2id.
 

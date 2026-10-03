@@ -30,7 +30,7 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `data` | (Compose default) | `127.0.0.1:8002` | Threat intelligence and IOC (indicator of compromise) data | `http://localhost:8002/health` |
 | `sensor` | `open-security-sensor` | `127.0.0.1:8004` | Endpoint telemetry (not routed through the gateway) | `http://localhost:8004/health` |
 | `agents` | `open-security-agents` | `127.0.0.1:8006` | AI-assisted analysis | `http://localhost:8006/health` |
-| `guardian` | `open-security-guardian` | `127.0.0.1:8013` | Vulnerability and asset management | `http://localhost:8013/health` |
+| `guardian` | `open-security-guardian` | `127.0.0.1:8013` | Vulnerability and asset management | `http://localhost:8013/health/` (with the slash; without it Django answers 301) |
 | `responder` | `open-security-responder` | `127.0.0.1:8018` | Incident response playbooks | `http://localhost:8018/health` |
 | `cspm` | (Compose default) | `127.0.0.1:8019` | Cloud security posture | `http://localhost:8019/health` |
 | `dashboard` | `open-security-dashboard` | `127.0.0.1:3000` | Web dashboard | `http://localhost:3000/` |
@@ -39,7 +39,9 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | - |
 | `postgres` | `wildbox-postgres` | none | PostgreSQL 15 | `pg_isready` inside the container |
 | `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
-| `tools-worker`, `guardian-worker`, `cspm-worker`, `data-scheduler`, `backup` | - | none | Background workers; `backup` only with `--profile backup` | - |
+| `tools-worker`, `guardian-worker`, `cspm-worker` | (Compose default) | none | Celery workers for tools, guardian and cspm | `celery ... inspect ping` inside the container |
+| `data-scheduler` | `open-security-data-scheduler` | none | Collects the threat intelligence feeds on a schedule | scheduler process running |
+| `backup` | (Compose default) | none | Scheduled PostgreSQL backups; only with `--profile backup` | - |
 | `guardian-beat` | `open-security-guardian-beat` | none | Sends guardian's periodic tasks; exactly one instance | heartbeat file updated within 60 s |
 
 `docker compose` commands take the **service name** from the first column
@@ -54,9 +56,11 @@ The paths the gateway routes to each service are listed in the
 ```bash
 docker compose ps
 curl -s http://localhost/health
-for port in 8001 8000 8002 8004 8006 8013 8018 8019; do
-  printf '%s ' "$port"
-  curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:$port/health"
+# guardian (8013) is a Django service: its path ends with a slash
+for path in 8001/health 8000/health 8002/health 8004/health 8006/health \
+            8013/health/ 8018/health 8019/health; do
+  printf '%s ' "$path"
+  curl -s -o /dev/null -w '%{http_code}\n' "http://localhost:$path"
 done
 ```
 

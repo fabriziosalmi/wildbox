@@ -94,8 +94,9 @@ confirm (identity tries three times) or Redis cannot be written, it answers
 Limits to know:
 
 - Logout revokes **one token**, the one presented. There is no "log out
-  everywhere", and changing a password does not revoke tokens issued before
-  the change; they expire on their own within 30 minutes.
+  everywhere" route; changing the password is the way to end every session
+  of an account (see
+  [A password change ends the other sessions](#a-password-change-ends-the-other-sessions)).
 - Tokens issued before the upgrade that added the `jti` claim carry none.
   Logging out with one answers 400 ("Token carries no jti and cannot be
   revoked individually"); it expires within 30 minutes of being issued.
@@ -214,8 +215,9 @@ Password login is limited per account:
 - An email that belongs to no account is counted and locked the same way, so
   the response does not reveal which addresses are registered.
 
-The lockout applies to `POST /auth/jwt/login` only. API keys and tokens
-already issued keep working. The limits are `max_failed_login_attempts` (5)
+The failures counted are failed logins on `POST /auth/jwt/login` and the
+wrong current passwords described below. API keys and tokens already issued
+keep working while an account is locked. The limits are `max_failed_login_attempts` (5)
 and `account_lockout_minutes` (15) in identity's settings; like the token
 lifetime, Compose does not pass them to the container.
 
@@ -293,6 +295,35 @@ well, and so does deleting one's own account
 (`DELETE /api/v1/identity/admin/me/account`). A password-reset token stops
 working once the account's email changes. The full list of routes is in the
 [identity API reference](../api/identity/endpoints.md).
+
+### Accounts That Must Change Their Password
+
+A team owner or admin can create an account for a new member
+(`POST /api/v1/identity/admin/teams/{team_id}/members`) and chooses its
+initial password. Such an account is created with `must_change_password`
+set, and keeps it until its user sets a password of their own. The first
+administrator, created from `INITIAL_ADMIN_PASSWORD`, does not carry the
+flag.
+
+The account can log in, but until the password is changed its sessions can
+only:
+
+- read the account: `GET /auth/users/me` (it reports
+  `must_change_password`);
+- change the password: `POST /api/v1/identity/admin/me/change-password`, or
+  `PUT /api/v1/identity/admin/me/password`;
+- log out.
+
+Every other request is refused with 403. identity answers with the error
+message `PASSWORD_CHANGE_REQUIRED`; on the routes of the other services the
+gateway answers `{"error": "PASSWORD_CHANGE_REQUIRED", ...}`, because
+identity's authorization reports `password_change_required: true`. API keys
+of the account are refused the same way. The dashboard sends such a user to
+its change-password page after login.
+
+Changing the password clears the flag and, like any password change, ends
+the account's other sessions and answers with a new access token: use that
+token from then on.
 
 ---
 

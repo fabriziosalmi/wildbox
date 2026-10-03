@@ -14,8 +14,10 @@ which can take a while on a slow machine or connection.
 
 ## Prerequisites
 
-- **Docker** with the Compose plugin (`docker compose`):
-  [Install Docker](https://docs.docker.com/get-docker/)
+- **Docker** Engine 23.0 or later with the Compose plugin 2.24.4 or later
+  (`docker compose`): [Install Docker](https://docs.docker.com/get-docker/).
+  The [deployment guide](deployment.md#1-server-requirements) explains both
+  minimums
 - **Git**, **Python 3** (to generate secrets), **curl** and **jq**
 - **Resources**: 8 GB RAM minimum (16 GB recommended), 20 GB of free disk
 
@@ -45,13 +47,14 @@ that still contains a placeholder.
 
 ```bash
 make generate-secrets    # python3 scripts/generate_secrets.py
+# edit .env: set INITIAL_ADMIN_EMAIL
 make validate-secrets    # python3 scripts/validate_secrets.py
 ```
 
 `generate_secrets.py` asks before replacing an existing `.env` (it keeps a
-backup). Then open `.env` and set `INITIAL_ADMIN_EMAIL` to the address you
-want for the first administrator. `INITIAL_ADMIN_PASSWORD` has already been
-generated; leave it as it is. See the
+backup). Before validating, open `.env` and set `INITIAL_ADMIN_EMAIL` to the
+address you want for the first administrator. `INITIAL_ADMIN_PASSWORD` has
+already been generated; leave it as it is. See the
 [Credentials guide](credentials.md) for what each value is for.
 
 Optional: set `ANTHROPIC_API_KEY` in `.env` to enable AI analysis in the
@@ -70,16 +73,20 @@ docker compose ps
 the stack. `make start` adds the development overlay
 (`docker-compose.dev.yml`) and `make start-prod` the production one
 (`docker-compose.prod.yml`); neither waits for the health checks (they pause
-15 seconds), so follow them with `docker compose ps`. `make start` calls the
-standalone `docker-compose` command: where only the Compose plugin is
-installed, use the `docker compose` commands on this page. The production
+15 seconds), so follow them with `docker compose ps`. The production
 overlay needs Compose 2.24.4 or later.
 
-To start only the core services:
-
-```bash
-docker compose up -d --wait postgres wildbox-redis identity api gateway
-```
+There is no smaller stack behind the gateway. Compose starts a service's
+dependencies with it, and the gateway depends on every service it routes
+to: it refuses to start while one of their names does not resolve. So
+`docker compose up gateway` starts identity, tools, data, guardian,
+responder, agents, cspm and the dashboard as well. It leaves out only the
+workers (`tools-worker`, `guardian-worker`, `guardian-beat`, `cspm-worker`,
+`data-scheduler`), Flower and the sensor, and without the workers
+asynchronous tool runs, scheduled guardian tasks, cloud scans and feed
+collection do not run. To work on a single backend without the gateway,
+start it alone, for example `docker compose up -d --wait identity`, which
+also starts PostgreSQL and Redis.
 
 The service names are the ones in `docker-compose.yml`; the
 [Service ports](ports.md) page lists all of them with their ports.
