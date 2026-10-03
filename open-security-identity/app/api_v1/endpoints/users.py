@@ -19,8 +19,11 @@ from ...schemas import (
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
     UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
 )
-from ...user_manager import current_superuser, current_active_user, get_user_manager, UserManager
-from ...auth import verify_password, get_password_hash
+from ...user_manager import (
+    current_superuser, current_active_user, get_user_manager, UserManager,
+    verify_current_password,
+)
+from ...auth import get_password_hash
 from ...gateway_cache import purge_gateway_auth_cache
 from ...config import settings
 
@@ -537,13 +540,9 @@ async def update_my_profile(
                 detail="Current password required to set new password"
             )
         
-        # Verify current password
-        if not verify_password(profile_update.current_password, current_user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incorrect current password"
-            )
-        
+        # Verify current password; a wrong one counts towards the lockout.
+        await verify_current_password(current_user, profile_update.current_password)
+
         # Hash and set new password
         current_user.hashed_password = get_password_hash(profile_update.new_password)
         updates_made = True
@@ -588,13 +587,9 @@ async def change_my_password(
     """
     User endpoint: Change own password.
     """
-    # Verify current password
-    if not verify_password(password_change.current_password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect current password"
-        )
-    
+    # Verify current password; a wrong one counts towards the lockout (#569).
+    await verify_current_password(current_user, password_change.current_password)
+
     # Hash and set new password
     current_user.hashed_password = get_password_hash(password_change.new_password)
     await db.commit()
@@ -617,12 +612,12 @@ async def delete_my_account(
             detail="Account deletion must be confirmed"
         )
     
-    # Verify password
-    if not verify_password(deletion_request.password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect password"
-        )
+    # Verify password; a wrong one counts towards the lockout (#569).
+    await verify_current_password(
+        current_user,
+        deletion_request.password,
+        wrong_detail="Incorrect password",
+    )
     
     # Check if user is the only owner of any teams
     owned_teams = await db.execute(

@@ -22,6 +22,7 @@ from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .auth import verify_password
 from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
@@ -32,6 +33,44 @@ from .token_blacklist import (
     is_token_blacklisted,
     record_failed_login,
 )
+
+
+def _lockout_key(email: Optional[str]) -> str:
+    """The login lockout counter's key: the normalised email (#509)."""
+    return (email or "").strip().lower()
+
+
+def account_locked_error() -> HTTPException:
+    """What a locked account answers, at login and wherever its password is checked."""
+    return HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Too many failed login attempts. Try again later.",
+        headers={"Retry-After": str(settings.account_lockout_minutes * 60)},
+    )
+
+
+async def verify_current_password(
+    user,
+    password: Optional[str],
+    wrong_detail: str = "Incorrect current password",
+) -> None:
+    """Check a signed-in user's password against the login lockout (#569).
+
+    Changing the password, the email or deleting the account asks for the
+    current password. Those checks answered 400 on a wrong one and counted
+    nothing, so a session -- a stolen token is enough -- could guess the
+    password without limit, the login lockout (#509) notwithstanding. A wrong
+    password here counts towards the same per-account counter as a failed
+    login, a locked account is refused like a locked login (429, even with
+    the right password), and a right one clears the counter, as a login does.
+    """
+    key = _lockout_key(user.email)
+    if await is_account_locked(key):
+        raise account_locked_error()
+    if not password or not verify_password(password, user.hashed_password):
+        await record_failed_login(key)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=wrong_detail)
+    await clear_failed_logins(key)
 
 
 # 1. Database Adapter
@@ -122,13 +161,9 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         registered. A lock refuses even the correct password until it expires;
         a successful login clears the counter.
         """
-        email = (credentials.username or "").strip().lower()
+        email = _lockout_key(credentials.username)
         if await is_account_locked(email):
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many failed login attempts. Try again later.",
-                headers={"Retry-After": str(settings.account_lockout_minutes * 60)},
-            )
+            raise account_locked_error()
         user = await super().authenticate(credentials)
         if user is None:
             await record_failed_login(email)
