@@ -156,7 +156,8 @@ caller it verified, #664).
 | `/api/v1/cspm/*` | `open-security-cspm:8019` `/api/v1/*` | gateway |
 | `/api/v1/responder/*` | `open-security-responder:8018` `/v1/*` | gateway |
 | `/api/v1/guardian/*` | `open-security-guardian:8013` `/api/v1/*` | gateway |
-| `/api/v1/agents/*` | `open-security-agents:8006` `/v1/*` | `X-API-Key` only (inline Lua) |
+| `/api/v1/agents/stats` | `open-security-agents:8006` `/stats` | gateway |
+| `/api/v1/agents/*` | `open-security-agents:8006` `/v1/*` | gateway |
 | `/api/v1/tools` | `open-security-tools:8000` `/api/tools` | gateway |
 | `/api/v1/tools/*` | `open-security-tools:8000` `/api/tools/*` | gateway |
 | `/api/v1/tasks` | `open-security-tools:8000` `/api/tasks` | gateway |
@@ -168,10 +169,6 @@ Notes:
 - `/api/v1/guardian/*` presents `Host: open-security-guardian` to the Django
   service and forwards the caller's host as `X-Forwarded-Host`; redirects are
   rewritten back to `/api/v1/guardian/`.
-- `/api/v1/agents/*` authenticates inline, not through `authenticate()`. It
-  accepts only an API key in `X-API-Key`: a request with only a Bearer token
-  gets `401` with code `NO_API_KEY`. It checks the password-change flag, API-key
-  revocation and scopes, but has no decision cache and no per-team rate limit.
 - `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
   Compose profile; the upstream is resolved at request time, so the route
   answers `502` while n8n is not running. The gateway replaces the
@@ -255,9 +252,9 @@ them through the `env` directives in `nginx.conf`.
 | Variable | Default | Effect |
 | --- | --- | --- |
 | `GATEWAY_INTERNAL_SECRET` | none, required | Sent to identity's `/internal/authorize` as `X-Gateway-Secret`, and forwarded to a service only on requests the gateway authenticated. If it is empty, every authorization fails. |
-| `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` (the agents route uses a fixed URL) |
+| `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` |
 | `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
-| `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above |
+| `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
 | `N8N_BASIC_AUTH_USER`, `N8N_BASIC_AUTH_PASSWORD` | `admin`, empty | Basic auth injected on `/api/v1/automations/*` |
 
 The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
