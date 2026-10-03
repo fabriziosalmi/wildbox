@@ -488,19 +488,25 @@ def test_async_status_reports_a_refused_task_as_refused(
     # Only the task's owner can read it (#567).
     task_ownership.record("task-1", user_id=CALLER, team_id=str(uuid.uuid4()), tool_name=TOOL)
 
-    class FakeResult:
-        state = "SUCCESS"
-        date_done = None
-        result = {
-            "status": "refused",
-            "error": "not authorized",
-            "tool_name": TOOL,
-            "duration": 0,
-        }
+    class ResultBackend:
+        """The task's meta, as the router reads it from the result backend."""
 
-    monkeypatch.setattr(
-        async_router, "AsyncResult", lambda task_id, app=None: FakeResult()
-    )
+        def get_task_meta(self, task_id):
+            return {
+                "status": "SUCCESS",
+                "date_done": None,
+                "result": {
+                    "status": "refused",
+                    "error": "not authorized",
+                    "tool_name": TOOL,
+                    "duration": 0,
+                },
+            }
+
+    class CeleryApp:
+        backend = ResultBackend()
+
+    monkeypatch.setattr(async_router, "celery_app", CeleryApp())
 
     body = client.get("/api/tasks/task-1").json()
 

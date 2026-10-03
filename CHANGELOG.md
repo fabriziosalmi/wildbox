@@ -59,6 +59,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Reading a just-cancelled async task no longer answers 500** (#619).
+  `GET /api/v1/tasks/{id}` read `AsyncResult.state` and then
+  `AsyncResult.info`: two reads of the result backend while the task
+  has not finished. When the worker marked the task REVOKED in between,
+  `info` held a `TaskRevokedError` that the response could not
+  serialize (`PydanticSerializationError`), and the read failed. The
+  tools service now reads a task's state, result and completion time
+  once, and every state has a defined answer: REVOKED is `cancelled`,
+  FAILURE is `failed` with the exception class only (no message or
+  traceback, which can carry internal paths and hosts), and a result
+  Celery cannot decode, such as a FAILURE stored with a custom meta, is
+  read from the raw record instead of raising. A running task shows
+  its progress fields and no longer the worker's host name and process
+  ID. Cancelling and listing read the same way, and an unreachable
+  result backend is a 503. The tools service now logs the class and
+  traceback of a request that fails, and the integration workflow
+  uploads every service's full log when it fails.
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,
