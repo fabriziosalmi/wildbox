@@ -1,5 +1,7 @@
 # Guardian Service - API Quick Reference Guide
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/guardian/endpoints/>.
+
 ## Location
 
 `/Users/fab/GitHub/wildbox/open-security-guardian/`

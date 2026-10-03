@@ -1,17 +1,19 @@
 # Contributing API Documentation
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/contributing/>.
+
 Thank you for contributing to Wildbox API documentation. This guide explains how to document a service's endpoints for the Wildbox API Reference.
 
 ## 📋 Quick Checklist
 
-- [ ] Choose an undocumented service from [README.md](README.md)
+- [ ] Choose an undocumented service from [README.md](../../api/README.md)
 - [ ] Create service directory: `docs/api/[service-name]/`
-- [ ] Copy and customize [TEMPLATE.md](TEMPLATE.md)
+- [ ] Copy and customize [TEMPLATE.md](../../api/TEMPLATE.md)
 - [ ] Document all endpoints (GET, POST, PUT, DELETE, etc.)
 - [ ] Provide curl examples for each endpoint
 - [ ] Document error codes and responses
 - [ ] Test examples against running services
-- [ ] Update [README.md](README.md) status table
+- [ ] Update [README.md](../../api/README.md) status table
 - [ ] Submit pull request
 
 ## 🎯 Services Needing Documentation
@@ -170,7 +172,7 @@ curl http://localhost:8001/openapi.json | jq '.'
 
 ### Step 4: Update Index
 
-Edit [README.md](README.md):
+Edit [README.md](../../api/README.md):
 
 ```markdown
 | **Guardian Service** | ✅ Complete | [endpoints.md](guardian/endpoints.md) |
@@ -345,18 +347,18 @@ examples/
 
 ## ❓ Questions?
 
-- Check existing documentation in [docs/api/identity/](identity/)
-- Review the [TEMPLATE.md](TEMPLATE.md) for structure
+- Check existing documentation in [docs/api/identity/](../../api/identity/)
+- Review the [TEMPLATE.md](../../api/TEMPLATE.md) for structure
 - Open [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions) for help
 - Report issues on [GitHub Issues](https://github.com/fabriziosalmi/wildbox/issues)
 
 ## 📚 Resources
 
-- [API Documentation Roadmap](README.md)
-- [Documentation Template](TEMPLATE.md)
-- [Identity Service Example](identity/endpoints.md)
-- [Interactive API Portal](../api-reference.html)
-- [Main Documentation](../)
+- [API Documentation Roadmap](../../api/README.md)
+- [Documentation Template](../../api/TEMPLATE.md)
+- [Identity Service Example](../../api/identity/endpoints.md)
+- [Interactive API Portal](../../api-reference.html)
+- [Main Documentation](../../)
 
 ---
 

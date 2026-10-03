@@ -199,20 +199,25 @@ permalink: /docs.html
                             <tbody>
                                 <tr><td><code>/health</code></td><td>gateway</td><td>none</td></tr>
                                 <tr><td><code>/auth/jwt/login</code>, <code>/auth/jwt/&hellip;</code></td><td>identity <code>/api/v1/auth/jwt/&hellip;</code></td><td>none for the login, rate-limited per client address; <code>POST /auth/jwt/logout</code> takes the bearer token and revokes it</td></tr>
-                                <tr><td><code>/auth/register</code></td><td>identity</td><td>none</td></tr>
+                                <tr><td><code>/auth/register</code></td><td>identity <code>/api/v1/auth/register</code></td><td>none, rate-limited per client address</td></tr>
+                                <tr><td><code>/auth/forgot-password</code></td><td>identity <code>/api/v1/auth/forgot-password</code></td><td>none, rate-limited per client address</td></tr>
+                                <tr><td><code>/auth/reset-password</code></td><td>identity <code>/api/v1/auth/reset-password</code></td><td>none; takes the reset token</td></tr>
+                                <tr><td><code>/auth/users/&hellip;</code></td><td>identity <code>/api/v1/users/&hellip;</code> (for example <code>/auth/users/me</code>)</td><td>validated by identity</td></tr>
                                 <tr><td><code>POST /auth/logout</code></td><td>identity <code>/api/v1/auth/logout</code></td><td>bearer token, revoked on success (a <code>GET</code> serves the dashboard's logout page)</td></tr>
+                                <tr><td><code>/api/v1/identity/auth/&hellip;</code></td><td>identity <code>/api/v1/auth/&hellip;</code></td><td>validated by identity</td></tr>
                                 <tr><td><code>/api/v1/identity/&hellip;</code></td><td>identity <code>/api/v1/&hellip;</code></td><td>validated by identity</td></tr>
                                 <tr><td><code>/api/v1/tools</code>, <code>/api/v1/tools/&hellip;</code></td><td>tools API <code>/api/tools/&hellip;</code></td><td>required</td></tr>
-                                <tr><td><code>/api/v1/data/&hellip;</code></td><td>data <code>/api/v1/&hellip;</code></td><td>required</td></tr>
+                                <tr><td><code>/api/v1/tasks</code>, <code>/api/v1/tasks/&hellip;</code></td><td>tools API <code>/api/tasks/&hellip;</code> (asynchronous tool runs)</td><td>required</td></tr>
+                                <tr><td><code>/api/v1/data/&hellip;</code></td><td>data <code>/api/v1/&hellip;</code> (<code>/api/v1/data/health</code>: data <code>/health</code>)</td><td>required</td></tr>
                                 <tr><td><code>/api/v1/guardian/&hellip;</code></td><td>guardian <code>/api/v1/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/responder/&hellip;</code></td><td>responder <code>/v1/&hellip;</code></td><td>required</td></tr>
-                                <tr><td><code>/api/v1/agents/&hellip;</code></td><td>agents <code>/v1/&hellip;</code></td><td>required</td></tr>
+                                <tr><td><code>/api/v1/agents/&hellip;</code></td><td>agents <code>/v1/&hellip;</code> (<code>/api/v1/agents/stats</code>: agents <code>/stats</code>)</td><td>required</td></tr>
                                 <tr><td><code>/api/v1/cspm/&hellip;</code></td><td>cspm <code>/api/v1/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/automations/&hellip;</code></td><td>automations (only with the <code>automations</code> Compose profile; 502 otherwise)</td><td>required</td></tr>
                                 <tr><td><code>/</code></td><td>dashboard</td><td>handled by the dashboard</td></tr>
                             </tbody>
                         </table>
-                        <p>The sensor service is not routed through the gateway in this release. Any other path under <code>/api/</code> returns 404.{% assign ports_page = site.pages | where: "path", "guides/ports.md" | first %}{% if ports_page %} For the ports each service listens on locally, see the <a href="{{ ports_page.url }}">service ports reference</a>.{% endif %}</p>
+                        <p>The sensor service is not routed through the gateway in this release. Any other path under <code>/api/</code> returns 404, including <code>/api/tools/&hellip;</code>, the old alias of <code>/api/v1/tools/</code>, which was removed. <code>/tools/</code>, where the tools service's standalone web UI used to be, also returns 404: run tools from the dashboard's toolbox or through <code>/api/v1/tools/</code>.{% assign ports_page = site.pages | where: "path", "guides/ports.md" | first %}{% if ports_page %} For the ports each service listens on locally, see the <a href="{{ ports_page.url }}">service ports reference</a>.{% endif %}</p>
                     </div>
                 </div>
             </div>
@@ -242,7 +247,7 @@ permalink: /docs.html
                 'security-status': '/security/status/',
                 'security-policy': '/security/policy/',
                 'security-audit': '/security/status/',
-                'tools-service-audit': '/security/tools-service-audit/',
+                'tools-service-audit': '/security/status/',
                 'api-security': '/docs.html#gateway-routes',
                 'api-integration': '/docs.html#gateway-routes'
             };

@@ -1,5 +1,7 @@
 # Service Consolidation Analysis
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/guides/ports/>.
+
 **Date:** November 23, 2025  
 **Status:** 🔍 EVALUATION  
 **Priority:** MEDIUM  

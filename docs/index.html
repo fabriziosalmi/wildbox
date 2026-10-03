@@ -153,7 +153,7 @@
                     <p class="text-muted text-sm">Integrated services</p>
                 </div>
                 <div>
-                    <div class="text-3xl md:text-4xl font-bold mb-1">58</div>
+                    <div class="text-3xl md:text-4xl font-bold mb-1">52</div>
                     <p class="text-muted text-sm">Security tools</p>
                 </div>
                 <div>
@@ -168,7 +168,7 @@
     <section id="get-started" class="px-4 sm:px-6 lg:px-8 py-16 md:py-20 max-w-5xl mx-auto">
         <div class="text-center mb-10">
             <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-3">Up and running with Docker Compose</h2>
-            <p class="text-muted text-lg">Clone the repository, copy the environment file, and start the stack.</p>
+            <p class="text-muted text-lg">Clone the repository, generate the secrets, name the first administrator, and start the stack.</p>
         </div>
 
         <div class="surface p-5 md:p-6 mb-12">
@@ -183,9 +183,11 @@
             </div>
             <pre id="code-content" class="code-block p-4"><span class="text-faint">$</span> git clone https://github.com/fabriziosalmi/wildbox.git
 <span class="text-faint">$</span> cd wildbox
-<span class="text-faint">$</span> cp .env.example .env
-<span class="text-faint">$</span> docker compose up -d
-<span class="text-faint"># Dashboard available at http://localhost:3000</span></pre>
+<span class="text-faint">$</span> make generate-secrets
+<span class="text-faint"># edit .env: set INITIAL_ADMIN_EMAIL, the first administrator's login</span>
+<span class="text-faint">$</span> make validate-secrets
+<span class="text-faint">$</span> docker compose up -d --wait
+<span class="text-faint"># open https://localhost and sign in as INITIAL_ADMIN_EMAIL with the INITIAL_ADMIN_PASSWORD from .env</span></pre>
         </div>
 
         <div class="grid md:grid-cols-3 gap-5">
@@ -193,15 +195,15 @@
                 <span class="icon-badge mb-4">
                     <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.96 11.96 0 0 1 3.6 6 12 12 0 0 0 3 9.75c0 5.59 3.82 10.29 9 11.62 5.18-1.33 9-6.03 9-11.62 0-1.31-.21-2.57-.6-3.75h-.15a11.96 11.96 0 0 1-8.25-3.29Z"/></svg>
                 </span>
-                <h3 class="text-lg font-semibold mb-2">Sensible defaults</h3>
-                <p class="text-muted text-sm leading-relaxed">Generates keys and configuration on first run. Override anything through the <code class="inline-code">.env</code> file.</p>
+                <h3 class="text-lg font-semibold mb-2">No default credentials</h3>
+                <p class="text-muted text-sm leading-relaxed"><code class="inline-code">make generate-secrets</code> writes a random value for every secret, the first administrator's password included, into <code class="inline-code">.env</code>; <code class="inline-code">make validate-secrets</code> refuses any placeholder left.</p>
             </div>
             <div class="card p-6">
                 <span class="icon-badge mb-4">
                     <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M21 7.5 12 12m0 0L3 7.5M12 12v9.75M3.27 6.96 12 12l8.73-5.04M3 16.5l9 5.25 9-5.25M3 7.5l9-5.25 9 5.25v9L12 21.75 3 16.5v-9Z"/></svg>
                 </span>
                 <h3 class="text-lg font-semibold mb-2">Container-native</h3>
-                <p class="text-muted text-sm leading-relaxed">Independent microservices orchestrated with Docker Compose. Run the full stack or just the services you need.</p>
+                <p class="text-muted text-sm leading-relaxed">Independent microservices orchestrated with Docker Compose. Optional profiles add workflow automation, Prometheus and scheduled backups.</p>
             </div>
             <div class="card p-6">
                 <span class="icon-badge mb-4">
@@ -228,7 +230,7 @@
                         <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.2-5.2m0 0a7.5 7.5 0 1 0-10.61-10.6 7.5 7.5 0 0 0 10.61 10.6Z"/></svg>
                     </span>
                     <h3 class="text-lg font-semibold mb-2">Threat intelligence</h3>
-                    <p class="text-muted text-sm leading-relaxed">Aggregate threat data from 50+ sources for IOC lookups and enrichment in one place.</p>
+                    <p class="text-muted text-sm leading-relaxed">Collect indicators from 7 public feeds (abuse.ch, PhishTank, AbuseIPDB and others) on a schedule, and look them up in one place.</p>
                 </div>
 
                 <!-- CSPM -->
@@ -237,7 +239,7 @@
                         <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15a4.5 4.5 0 0 0 4.5 4.5H18a3.75 3.75 0 0 0 1.33-7.26 3 3 0 0 0-3.76-3.85 5.25 5.25 0 0 0-10.23 2.33A4.5 4.5 0 0 0 2.25 15Z"/></svg>
                     </span>
                     <h3 class="text-lg font-semibold mb-2">Cloud security (CSPM)</h3>
-                    <p class="text-muted text-sm leading-relaxed">Scan AWS, Azure, and GCP for misconfigurations and track your cloud security posture over time.</p>
+                    <p class="text-muted text-sm leading-relaxed">Run 22 configuration checks against live AWS accounts and keep each scan's report. AWS only: scans of other providers are refused.</p>
                 </div>
 
                 <!-- Vulnerability Management -->
@@ -246,7 +248,7 @@
                         <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.3 3.38c-.87 1.5.22 3.37 1.95 3.37h14.7c1.73 0 2.81-1.87 1.95-3.37L13.95 3.38c-.87-1.5-3.03-1.5-3.9 0L2.7 16.13ZM12 15.75h.01v.01H12v-.01Z"/></svg>
                     </span>
                     <h3 class="text-lg font-semibold mb-2">Vulnerability management</h3>
-                    <p class="text-muted text-sm leading-relaxed">Scan, prioritize, and track vulnerabilities (CVEs) across your assets through to remediation.</p>
+                    <p class="text-muted text-sm leading-relaxed">Record, prioritize, and track vulnerabilities (CVEs) across your assets through to remediation, with SLA checks and alert rules.</p>
                 </div>
 
                 <!-- SOAR -->
@@ -264,7 +266,7 @@
                         <svg fill="none" stroke="currentColor" stroke-width="1.6" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9.81 15.9 9 18.75l-.81-2.85a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.85-.81a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.81 2.85a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.85.81a4.5 4.5 0 0 0-3.09 3.09ZM18.26 8.72 18 9.75l-.26-1.03a3.38 3.38 0 0 0-2.46-2.46L14.25 6l1.03-.26a3.38 3.38 0 0 0 2.46-2.46L18 2.25l.26 1.03a3.38 3.38 0 0 0 2.46 2.46L21.75 6l-1.03.26a3.38 3.38 0 0 0-2.46 2.46Z"/></svg>
                     </span>
                     <h3 class="text-lg font-semibold mb-2">LLM analysis</h3>
-                    <p class="text-muted text-sm leading-relaxed">Use large language models for threat analysis and report generation. Bring your own provider.</p>
+                    <p class="text-muted text-sm leading-relaxed">Threat-enrichment reports for indicators, generated with Anthropic Claude once you set an Anthropic API key. The rest of the platform works without it.</p>
                 </div>
 
                 <!-- Identity & Access -->
@@ -295,21 +297,21 @@
                     <div class="flex-shrink-0"><span class="step-num">2</span></div>
                     <div>
                         <h3 class="text-lg font-semibold mb-1.5">Connect your infrastructure</h3>
-                        <p class="text-muted leading-relaxed">Add cloud accounts (AWS, Azure, GCP), endpoints, and applications. Telemetry flows into a shared data lake.</p>
+                        <p class="text-muted leading-relaxed">Add your assets to the inventory and your AWS accounts to the cloud scans. The sensor collects host telemetry with osquery and sends it through the gateway, with an API key of a team member, to the data service, which keeps it per team.</p>
                     </div>
                 </div>
                 <div class="flex gap-5">
                     <div class="flex-shrink-0"><span class="step-num">3</span></div>
                     <div>
                         <h3 class="text-lg font-semibold mb-1.5">Scan and monitor</h3>
-                        <p class="text-muted leading-relaxed">Run continuous scans for vulnerabilities and misconfigurations, and pull in threat intelligence feeds.</p>
+                        <p class="text-muted leading-relaxed">Run the security tools and the AWS posture checks, and let the data service collect threat intelligence feeds on a schedule.</p>
                     </div>
                 </div>
                 <div class="flex gap-5">
                     <div class="flex-shrink-0"><span class="step-num">4</span></div>
                     <div>
                         <h3 class="text-lg font-semibold mb-1.5">Respond and report</h3>
-                        <p class="text-muted leading-relaxed">Trigger YAML playbooks for automated response, and use LLM analysis to summarize findings.</p>
+                        <p class="text-muted leading-relaxed">Trigger YAML playbooks for automated response, and ask the agents service for an analysis of a suspicious indicator.</p>
                     </div>
                 </div>
                 <div class="flex gap-5">
@@ -406,7 +408,7 @@
                 </div>
             </div>
             <div class="border-t divider pt-8 text-sm text-faint flex flex-col sm:flex-row gap-2 justify-between">
-                <p>&copy; 2025 Wildbox &middot; MIT License</p>
+                <p>&copy; 2026 Wildbox &middot; MIT License</p>
                 <p>Created by <a href="https://github.com/fabriziosalmi" target="_blank" rel="noopener noreferrer" class="accent nav-link">Fabrizio Salmi</a></p>
             </div>
         </div>
@@ -438,15 +440,20 @@
         });
 
         // Copy install command
+        // Copies the commands of the block above, the .env reminder included.
         function copyCode(event) {
+            // Read the button now: event.currentTarget is null once the event
+            // has been dispatched, which is before the promise below resolves.
+            const btn = event.currentTarget;
             const code = [
                 'git clone https://github.com/fabriziosalmi/wildbox.git',
                 'cd wildbox',
-                'cp .env.example .env',
-                'docker compose up -d'
+                'make generate-secrets',
+                "# edit .env: set INITIAL_ADMIN_EMAIL, the first administrator's login",
+                'make validate-secrets',
+                'docker compose up -d --wait'
             ].join('\n');
             navigator.clipboard.writeText(code).then(() => {
-                const btn = event.currentTarget;
                 const label = btn.querySelector('span');
                 const original = label.textContent;
                 label.textContent = 'Copied';

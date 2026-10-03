@@ -182,16 +182,16 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
                     </thead>
                     <tbody>
                         <tr id="identity-api"><td>Identity: users, login, API keys, teams</td><td><code>/auth/jwt/&hellip;</code>, <code>/api/v1/identity/&hellip;</code></td><td><a href="/api/identity/endpoints/" class="accent">Identity endpoints</a></td></tr>
-                        <tr id="tools-api"><td>Tools: 52 security tools</td><td><code>/api/v1/tools/&hellip;</code></td><td><a href="/api/tools/endpoints/" class="accent">Tools endpoints</a></td></tr>
+                        <tr id="tools-api"><td>Tools: 52 security tools</td><td><code>/api/v1/tools/&hellip;</code>, <code>/api/v1/tasks/&hellip;</code> (asynchronous runs)</td><td><a href="/api/tools/endpoints/" class="accent">Tools endpoints</a></td></tr>
                         <tr id="data-api"><td>Data: threat intelligence and IOCs</td><td><code>/api/v1/data/&hellip;</code></td><td><a href="/api/data/endpoints/" class="accent">Data endpoints</a></td></tr>
                         <tr id="guardian-api"><td>Guardian: assets, vulnerabilities, remediation</td><td><code>/api/v1/guardian/&hellip;</code></td><td><a href="/api/guardian/endpoints/" class="accent">Guardian endpoints</a></td></tr>
                         <tr id="responder-api"><td>Responder: incident-response playbooks</td><td><code>/api/v1/responder/&hellip;</code></td><td><a href="/api/responder/endpoints/" class="accent">Responder endpoints</a>, <a href="/api/responder-api.html" class="accent">OpenAPI (Redoc)</a></td></tr>
                         <tr id="agents-api"><td>Agents: AI-assisted analysis</td><td><code>/api/v1/agents/&hellip;</code></td><td><a href="/api/agents/endpoints/" class="accent">Agents endpoints</a>, <a href="/api/agents-api.html" class="accent">OpenAPI (Redoc)</a></td></tr>
-                        <tr id="cspm-api"><td>CSPM: 31 cloud configuration checks</td><td><code>/api/v1/cspm/&hellip;</code></td><td>Not written yet</td></tr>
+                        <tr id="cspm-api"><td>CSPM: 22 configuration checks against live AWS accounts; other providers are refused with 400, and <code>GET /api/v1/cspm/providers</code> lists the ones that can be scanned</td><td><code>/api/v1/cspm/&hellip;</code></td><td>Not written yet</td></tr>
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-6">Backends also listen on <code>127.0.0.1</code> ports of the Docker host, for health checks and debugging; see <a href="/guides/ports/" class="accent">Service ports</a>. identity, agents and responder serve their own interactive documentation there only when <code>ENVIRONMENT</code> is not <code>production</code>.</p>
+            <p class="text-gray-400 mt-6">Backends also listen on <code>127.0.0.1</code> ports of the Docker host, for health checks and debugging; see <a href="/guides/ports/" class="accent">Service ports</a>. identity, agents and responder serve their own interactive documentation there only when <code>ENVIRONMENT</code> is not <code>production</code>, data only when it is <code>development</code>, and cspm only with <code>DEBUG</code> on; tools serves no documentation pages, only its <code>/openapi.json</code>.</p>
         </section>
 
         <!-- Errors -->

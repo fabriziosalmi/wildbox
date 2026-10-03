@@ -1,8 +1,27 @@
 # FAANG-Level Architectural Patterns Implementation
 
+> **Partly superseded.** The library modules this page describes exist in
+> `open-security-shared/`, but most are not used by any service. As of
+> October 2026:
+>
+> - `circuit_breaker.py` is used by the agents service
+>   (`open-security-agents/app/agents/threat_enrichment_agent.py`).
+> - `tracing.py` is loaded by `observability.py` only when its OpenTelemetry
+>   dependencies are installed; no Compose file runs Jaeger or another
+>   collector.
+> - `idempotency.py`, `event_sourcing.py`, `cqrs.py` and `feature_flags.py`
+>   are not imported by any service, so the endpoints, tables, metrics and
+>   admin API described for them do not exist in the running platform.
+> - The chaos suite is `tests/chaos/test_chaos_experiments.py`, run by
+>   `.github/workflows/chaos-and-load.yml` on a schedule or on demand;
+>   `test_chaos_identity.py` and `test_chaos_failures.py`, cited below, do
+>   not exist.
+>
+> For what the services expose today see <https://www.wildbox.io/docs.html#api-docs>.
+
 **Version:** 1.0  
 **Date:** January 2025  
-**Status:** ✅ Complete (7/7 patterns)  
+**Status:** Libraries written; adoption incomplete (see note above)  
 **Commit:** `e2f0e74`
 
 ---

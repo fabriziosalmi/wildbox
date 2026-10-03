@@ -20,7 +20,7 @@ do not open a public issue.
 
 | Issue | Where | Notes |
 | --- | --- | --- |
-| API schema served regardless of environment | tools | tools always serves `/openapi.json` (its own documentation pages use it). It is reachable only on its `127.0.0.1` port, not through the gateway. identity, agents, responder and cspm disable docs, redoc and the schema in production ([#496](https://github.com/fabriziosalmi/wildbox/issues/496)). |
+| API schema served regardless of environment | tools | tools serves `/openapi.json` in every environment, although it no longer has documentation pages that use it: its docs and redoc pages were removed with its standalone web UI ([#581](https://github.com/fabriziosalmi/wildbox/issues/581)). It is reachable only on its `127.0.0.1` port, not through the gateway. identity, agents, responder and cspm disable docs, redoc and the schema in production ([#496](https://github.com/fabriziosalmi/wildbox/issues/496)). |
 
 ---
 
@@ -58,9 +58,10 @@ the claim against the current code; it is not a pass.
 
 The November 2024 platform audit (its report, remediation checklist and
 improvements summary) is no longer published: it described code that has since
-changed, and its findings are superseded by this page. The
-[Tools service audit](tools-service-audit.md) (November 2025) is kept for
-reference, with the same caveat.
+changed, and its findings are superseded by this page. The tools service
+audit of November 2025 is not published either, for the same reason; it is
+kept in the repository as
+[docs/security/tools-service-audit.md](https://github.com/fabriziosalmi/wildbox/blob/main/docs/security/tools-service-audit.md).
 
 The audit rounds of February 2026 (v0.5.2 to v0.5.5) and every later security
 change are recorded release by release in

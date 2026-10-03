@@ -118,10 +118,6 @@ defaults:
       path: "security/policy.md"
     values:
       description: "The security requirements and practices Wildbox aims for; gaps are tracked on the security status page."
-  - scope:
-      path: "security/tools-service-audit.md"
-    values:
-      description: "Historical security audit of the Wildbox tools service; see the security status page for current findings."
 
 # Files kept in the repository but intentionally NOT published.
 exclude:
@@ -135,8 +131,6 @@ exclude:
   - ARCHITECTURE_DECISIONS.md
   - ARCHITECTURE_STACK_JUSTIFICATION.md
   - DATA_SERVICE_API_DOCUMENTATION.md
-  - DATA_SERVICE_EXPLORATION_INDEX.md
-  - DATA_SERVICE_QUICK_REFERENCE.md
   - DEPENDENCY_MANAGEMENT_GUIDE.md
   - DOCUMENTATION_QUALITY_AUDIT.md
   - DOCUMENTATION_STYLE_GUIDE.md
@@ -146,17 +140,11 @@ exclude:
   - GATEWAY_AUTHENTICATION_GUIDE.md
   - GIT_COMMIT_SQUASH_GUIDE.md
   - GIT_SECURITY_AUDIT.md
-  - GUARDIAN_API_ENDPOINTS.md
-  - GUARDIAN_ENDPOINTS_SUMMARY.txt
-  - GUARDIAN_EXPLORATION_INDEX.md
-  - GUARDIAN_QUICK_REFERENCE.md
   - OBSERVABILITY_ROADMAP.md
   - PRE_COMMIT_HOOKS.md
   - SECURITY_SECRETS_ROTATION.md
-  - SERVICE_CONSOLIDATION_ANALYSIS.md
   - SERVICE_LIFECYCLE.md
   - TESTING_STRATEGY.md
-  - guardian/
   - vendor/README.md
   - vendor/fonts/README.md
   - api/vendor/redoc/README.md
@@ -167,9 +155,13 @@ exclude:
   - security/audit-report.md
   - security/remediation-checklist.md
   - security/improvements-summary.md
-  # Contributor notes for writing API docs, not reference material.
-  - api/CONTRIBUTING.md
-  - api/GENERATION_GUIDE.md
+  # The tools service audit of November 2025, for the same reason: it
+  # reports a "Production Ready" status and figures that no longer hold.
+  - security/tools-service-audit.md
+  # Superseded engineering notes, each with a banner naming the page that
+  # replaces it. Kept in the repository for their history, not published.
+  - archive/
+  # A contributor template for writing API docs, not reference material.
   - api/TEMPLATE.md
 
 # sitemap.xml is generated at build time from _data/docs_nav.yml plus a fixed

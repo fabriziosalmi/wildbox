@@ -76,6 +76,8 @@ open-security-automations/n8n-data/crash.journal
 scripts/temp-data/
 scripts/debug/
 archive/
+# Superseded documentation is kept, unpublished, in docs/archive/.
+!docs/archive/
 
 # Generated test results
 integration_test_output.log

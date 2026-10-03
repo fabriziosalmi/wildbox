@@ -47,10 +47,11 @@ Never write secrets by hand: some services reject values that contain weak
 patterns (the tools API refuses an `API_KEY` containing, for example, `abc`
 or `123`, with "API key contains weak pattern"). The generator avoids them.
 
-### `make start` fails with "docker-compose: command not found"
+### `make start` returns before the services are healthy
 
-`make start` calls the standalone `docker-compose` command. Where only the
-Compose plugin is installed, run the equivalent directly:
+`make start` and `make start-prod` run `docker compose ... up -d` and then
+pause 15 seconds; they do not wait for the health checks. To wait for them,
+run the command with `--wait`:
 
 ```bash
 # what make start runs, plus --wait for the health checks
@@ -103,6 +104,7 @@ How login, tokens and logout work is described in
 | --- | --- | --- |
 | Login returns 400 | Wrong email or password | The first administrator is `INITIAL_ADMIN_EMAIL` / `INITIAL_ADMIN_PASSWORD` from the `.env` in use when identity **first** started; editing `.env` later does not change the account |
 | Login returns 429 with `Retry-After: 900` | 5 failed logins locked the email for 15 minutes, even for the right password | Wait, or delete the lock from Redis as shown in [Failed-login lockout](https://www.wildbox.io/guides/authentication/#failed-login-lockout) |
+| 403 `PASSWORD_CHANGE_REQUIRED` on every call after a successful login | A team owner or admin created the account with an initial password, which must be changed first | Change it in the dashboard, or with `POST /api/v1/identity/admin/me/change-password` (`current_password`, `new_password`), then use the token that call returns; see [Accounts that must change their password](https://www.wildbox.io/guides/authentication/#accounts-that-must-change-their-password) |
 | Login returns 429 without `Retry-After` | The gateway's rate limit on `/auth/jwt/` (5 requests per second per address) | Slow down the client |
 | 401 on every call after 30 minutes | The token expired; there is no refresh | Log in again |
 | 401 right after logging out | The token was revoked, as intended | Log in again |
@@ -144,9 +146,9 @@ docker compose exec \
 of CSPM scan state, responder run state and agents task ownership, as well as
 the token blacklist and the login lockout counters.
 
-`docker compose down -v` deletes every volume, databases included. Use it only
-to start from nothing. `make clean` also runs
-`docker system prune -f --volumes`.
+`docker compose down -v` deletes every volume of the stack, databases
+included. Use it only to start from nothing. `make clean` removes Python
+caches from the checkout and touches no container, image or volume.
 
 ---
 

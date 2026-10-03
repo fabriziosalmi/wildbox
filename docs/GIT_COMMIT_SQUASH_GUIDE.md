@@ -1,5 +1,13 @@
 # Git Commit Squash Strategy
 
+> **Partly historical.** The rebase and Conventional Commits advice is
+> general and still applies. The tooling this page proposes was never added:
+> there is no `scripts/squash-branch.sh`, no shared `commit-msg` hook, no
+> commitlint workflow and no `.commitlintrc.json`, so nothing checks commit
+> messages. Recent pull requests reach `main` as one squashed commit
+> whose subject ends with the pull request number, for example
+> `fix(cspm): refuse providers that cannot scan; list the ones that can (#624)`.
+
 **Purpose**: Clean up git history by consolidating related commits into logical units. This improves code review, bisectability, and project professionalism.
 
 ## Why Squash Commits?
@@ -197,6 +205,10 @@ Use structured commit messages for automated changelog generation:
 - `tools`: Security tools service
 - `data`: Threat intelligence service
 - `guardian`: Vulnerability management
+- `responder`: Incident response playbooks
+- `cspm`: Cloud security posture
+- `agents`: AI-assisted analysis
+- `sensor`: Host telemetry agent
 - `dashboard`: Frontend
 - `admin`: Admin panel
 - `deps`: Dependency updates
@@ -289,6 +301,8 @@ When merging PR, select "Squash and merge":
 - Clean main branch history
 
 ### Pre-Merge Squash Script
+
+A proposed helper; the repository does not contain it.
 
 ```bash
 #!/bin/bash
@@ -411,7 +425,7 @@ git push --force-with-lease origin feature
 
 ## CI Integration
 
-Add to `.github/workflows/pr-checks.yml`:
+Not in place. A proposal for a commitlint workflow:
 
 ```yaml
 name: Commit Message Validation

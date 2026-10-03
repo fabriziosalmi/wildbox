@@ -12,6 +12,6 @@ so it now only points to the maintained guides:
 - [Service ports](https://www.wildbox.io/guides/ports/): every service, port and
   health check
 - [Credentials](https://www.wildbox.io/guides/credentials/) and
-  [Authentication and sessions](docs/guides/authentication.md)
+  [Authentication and sessions](https://www.wildbox.io/guides/authentication/)
 - [Deployment guide](https://www.wildbox.io/guides/deployment/) for a server
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md)

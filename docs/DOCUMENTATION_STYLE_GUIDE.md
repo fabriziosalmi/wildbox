@@ -4,6 +4,12 @@
 **Last Updated**: 2025-11-24  
 **Purpose**: Enforce consistency and quality across all Wildbox documentation
 
+> **Note.** The checks CI enforces are the ones in
+> `.github/workflows/documentation-quality.yml`: markdownlint, cspell (en-US),
+> markdown-link-check and proselint fail the job; alex only reports. The other
+> rules on this page are guidance. Examples in user-facing pages go through the
+> gateway (`https://<host>/api/v1/<service>/...`), not to backend ports.
+
 ## Table of Contents
 
 - [General Principles](#general-principles)
@@ -130,12 +136,12 @@
 ````markdown
 ❌ Bad:
 ```
-docker-compose up
+docker compose up
 ```
 
 ✅ Good:
 ```bash
-docker-compose up
+docker compose up
 ```
 ````
 
@@ -154,8 +160,8 @@ docker-compose up
 
 **Descriptive Link Text**:
 
-- ❌ `For more info, [click here](https://docs.wildbox.io)`
-- ✅ `See the [complete API documentation](https://docs.wildbox.io)`
+- ❌ `For more info, [click here](https://www.wildbox.io/docs.html)`
+- ✅ `See the [complete API documentation](https://www.wildbox.io/docs.html)`
 
 **No Bare URLs**:
 
@@ -168,7 +174,7 @@ docker-compose up
 
 ```markdown
 ❌ ![ ](diagram.png)
-✅ ![Architecture diagram showing 11 microservices connected via API gateway](diagram.png)
+✅ ![Architecture diagram showing the backend services behind the API gateway](diagram.png)
 ```
 
 **Alt Text Guidelines**:
@@ -201,13 +207,12 @@ Before running this example:
 
 ````markdown
 ```bash
-curl http://localhost:8001/health
+curl --cacert open-security-gateway/ssl/wildbox.crt https://<host>/api/v1/data/health
 
 # Expected output:
 {
   "status": "healthy",
-  "service": "identity",
-  "timestamp": "2025-11-24T12:00:00Z"
+  "timestamp": "2025-11-24T12:00:00.000000+00:00"
 }
 ```
 ````
@@ -218,12 +223,12 @@ curl http://localhost:8001/health
 
 ````markdown
 ```bash
-docker-compose up -d
+docker compose up -d
 
 # If you see "port already allocated":
-docker-compose down
-lsof -ti:8001 | xargs kill -9
-docker-compose up -d
+docker compose down
+lsof -i :8001   # find the process that holds the port, then stop it
+docker compose up -d
 ```
 ````
 
@@ -470,9 +475,9 @@ markdown-link-check README.md --config .markdown-link-check.json
 
 # Prose quality (rules in .proselintrc.json; code is masked)
 pip install proselint==0.16.0
-python scripts/check_prose.py README.md
+python scripts/check_prose.py --config .proselintrc.json README.md
 
-# Inclusive language
+# Inclusive language (reported in CI, does not fail the job)
 alex "**/*.md"
 ```
 

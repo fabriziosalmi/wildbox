@@ -1,378 +1,249 @@
-# Gateway Authentication Pattern - Developer Guide
+# Gateway Authentication Pattern: Developer Guide
 
 > **Example values are fictitious.** Keys, tokens, IDs and host names below
-> (`your-api-key-here`, `example.com` addresses and similar) are placeholders
-> for illustration; `example.com` is reserved for documentation by RFC 2606.
+> are placeholders; `example.com` is reserved for documentation by RFC 2606.
 > Never paste a real credential into documentation.
 
 ## Overview
 
-All Wildbox backend services use a **trust-based authentication pattern** where the API Gateway validates user credentials (JWT or API keys) and injects trusted headers to backend services.
+The gateway (`open-security-gateway`, OpenResty) is the single entry point.
+It authenticates the caller with identity, then forwards the request to the
+backend service with the caller's identity in `X-Wildbox-*` headers and a
+proof of origin in `X-Gateway-Secret`. The backend checks the proof of origin
+and trusts the headers; it never sees the caller's credential.
 
 ```text
-┌────────┐     ┌─────────┐     ┌──────────┐     ┌─────────┐
-│ Client │────▶│ Gateway │────▶│ Identity │────▶│ Backend │
-└────────┘     └─────────┘     └──────────┘     └─────────┘
-   API Key         ↓                ↓                ↓
-   or JWT      Validates        Returns          Trusts
-               Auth            User Info        Headers
+Client --(JWT or API key)--> Gateway --(POST /internal/authorize)--> Identity
+                               |
+                               +--(X-Wildbox-* + X-Gateway-Secret)--> Backend
 ```
 
-### Tools Service Authentication
+## What the gateway does
 
-The Tools service accepts only requests that come through the gateway:
+On every authenticated `/api/v1/` route except identity's own, the gateway runs the
+shared handler (`authenticate()` in
+`open-security-gateway/nginx/lua/auth_handler.lua`):
 
-- Requests go through API Gateway (`http://localhost/api/v1/tools/...`)
-- Gateway validates credentials and injects `X-Wildbox-*` headers
-- Backend verifies the `X-Gateway-Secret` proof of origin and trusts the headers
+1. It reads the credential: `Authorization: Bearer <token>` first, otherwise
+   `X-API-Key: <key>`. A cookie alone is not a credential. Without either it
+   answers `401` with `{"error":"authentication_required",...}`.
+2. It asks identity (`POST /internal/authorize`, with `X-Gateway-Secret`) to
+   validate the credential, and caches the answer. A credential identity
+   refuses gets `401` (`invalid_token`); identity unreachable gets `503`.
+3. It checks revocation markers, password changes, API-key revocation and
+   team removal, and the API key's scopes, and applies the per-team limit of
+   `RATE_LIMIT_PER_HOUR` requests per hour (10000 by default), enforced in
+   60-second windows of one sixtieth of that figure (166 with the default).
+   The gateway validates `RATE_LIMIT_PER_HOUR` at startup and does not start
+   when it is not a whole number from 1 to 1,000,000,000.
+4. It removes `Authorization`, `X-API-Key` and any client-supplied
+   `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`
+   (`utils.clean_request_headers()`), then stores the validated identity in
+   the nginx variables `$wildbox_user_id`, `$wildbox_team_id` and
+   `$wildbox_role`.
 
-It used to also accept its static `API_KEY` sent directly as `X-API-Key` on
-port 8000. That path built an identity the shared `GatewayUser` model
-refuses, so it answered every call with a server error, and it was removed
-(#565). A direct request without gateway headers now gets 401. Personal API
-keys are unaffected: send them to the gateway, which resolves them through
-identity.
+The shared proxy settings, `open-security-gateway/nginx/includes/proxy_params.conf`,
+which every proxied route includes, then send:
 
-## Security Model
-
-### Principles
-
-1. **Gateway is the single entry point** - All external traffic MUST go through the gateway
-2. **Identity service validates credentials** - JWT tokens and API keys are validated once
-3. **Backend services trust gateway** - Headers injected by gateway are trusted implicitly
-4. **Network isolation** - Backend services should only be accessible from gateway (Docker network)
-
-### Injected Headers
-
-The gateway injects these headers after successful authentication:
-
-| Header | Type | Description | Example |
-| -------- | ------ | ------------- | --------- |
-| `X-Wildbox-User-ID` | UUID | Authenticated user's unique ID | `da8adf0a-072a-4f53-8b29-043212761bbd` |
-| `X-Wildbox-Team-ID` | UUID | User's team ID | `28169a02-5b81-4ec4-a668-a7a100f8d642` |
-| `X-Wildbox-Plan` | String | Subscription plan (`free`, `pro`, `business`, `enterprise`) | `pro` |
-| `X-Wildbox-Role` | String | User's role in team (`owner`, `admin`, `member`, `viewer`) | `admin` |
-
-**🔒 Security Note**: These headers are NEVER accepted from external clients. The gateway clears any X-Wildbox-* headers from incoming requests before authentication.
-
-## Implementation Guide
-
-### Step 1: Add Shared Module to Service
-
-All backend services should include the `open-security-shared` directory in their Python path:
-
-```python
-# In your service's auth.py or dependencies.py
-import sys
-import os
-
-# Add shared modules to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-security-shared'))
-
-from gateway_auth import get_user_from_gateway_headers, GatewayUser
+```nginx
+proxy_set_header X-Wildbox-User-ID $wildbox_user_id;
+proxy_set_header X-Wildbox-Team-ID $wildbox_team_id;
+proxy_set_header X-Wildbox-Role $wildbox_role;
+proxy_set_header X-Gateway-Secret $wildbox_gateway_secret;
+proxy_set_header X-Request-ID $request_id;
+proxy_set_header Authorization "";
 ```
 
-### Step 2: Use Gateway Authentication Dependency
+The server block initializes `$wildbox_gateway_secret` and the three
+`$wildbox_*` identity variables to empty strings, and nginx does not send a
+header whose value is empty. `authenticate()` fills them in, the secret from
+the gateway's `GATEWAY_INTERNAL_SECRET`, only for a request it let through
+(`auth_handler.lua`). So the gateway sends its proof of origin only on routes
+it has authenticated; every other location (identity's routes, the
+dashboard) forwards no `X-Gateway-Secret` and drops one a client sent.
 
-Replace existing authentication dependencies with the gateway auth:
+### Routes that differ
+
+- **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
+  authentication authority and validates the bearer token itself, so these
+  routes do not run the shared handler and pass `Authorization` through.
+- **Guardian** (`/api/v1/guardian/`): uses the shared handler, but guardian is
+  a Django service with its own middleware
+  (`open-security-guardian/apps/core/gateway_middleware.py`) rather than the
+  FastAPI dependency below. Like the FastAPI services, it accepts gateway
+  headers only and answers a direct request with `403`
+  `GATEWAY_AUTH_REQUIRED`; it has no API keys of its own (#633).
+
+## Identity headers
+
+| Header | Content |
+| --- | --- |
+| `X-Wildbox-User-ID` | The caller's user ID (UUID) |
+| `X-Wildbox-Team-ID` | The caller's team ID (UUID) |
+| `X-Wildbox-Role` | The caller's role in the team: `owner`, `admin`, `member` or `viewer` |
+| `X-Gateway-Secret` | The shared `GATEWAY_INTERNAL_SECRET`: the proof that the request came from the gateway |
+
+There is no plan or subscription header.
+
+## Using it in a FastAPI service
+
+### Install the shared package
+
+The shared code is the `open-security-shared` directory, installed as the
+Python package `open_security_shared`. Services build with it as an extra
+build context; in `docker-compose.yml`:
+
+```yaml
+build:
+  context: ./open-security-myservice
+  dockerfile: Dockerfile
+  additional_contexts:
+    shared: ./open-security-shared
+```
+
+and in the service's `Dockerfile`:
+
+```dockerfile
+COPY --from=shared . /tmp/open-security-shared
+RUN pip install --no-deps /tmp/open-security-shared
+```
+
+`--no-deps` because the service's own `requirements.txt` already provides the
+package's dependencies (FastAPI, Pydantic and the others listed in
+`open-security-shared/pyproject.toml`).
+
+### Authenticate a route
+
+`open_security_shared.gateway_auth` provides `GatewayUser`,
+`get_user_from_gateway_headers` and `require_role`. Most services re-export
+them from their own `app/auth.py`, as the data and agents services do:
 
 ```python
-from fastapi import APIRouter, Depends
-from gateway_auth import get_user_from_gateway_headers, GatewayUser
+# open-security-myservice/app/auth.py
+from open_security_shared.gateway_auth import (
+    GatewayUser,
+    get_user_from_gateway_headers,
+    require_role,
+)
 
-router = APIRouter()
+get_current_user = get_user_from_gateway_headers
 
-@router.post("/api/tools/scan")
-async def scan_target(
-    target: str,
-    user: GatewayUser = Depends(get_user_from_gateway_headers)
+__all__ = ["GatewayUser", "get_current_user", "require_role"]
+```
+
+```python
+# open-security-myservice/app/main.py
+from fastapi import Depends, FastAPI
+
+from app.auth import GatewayUser, get_current_user, require_role
+
+app = FastAPI()
+
+
+@app.get("/api/v1/items")
+async def list_items(user: GatewayUser = Depends(get_current_user)):
+    # user.user_id and user.team_id are UUIDs; user.role is a string.
+    return {"team_id": str(user.team_id)}
+
+
+@app.delete("/api/v1/items/{item_id}")
+async def delete_item(
+    item_id: str,
+    user: GatewayUser = Depends(get_current_user),
+    _: None = Depends(require_role("owner", "admin")),
 ):
-    """
-    This endpoint is automatically authenticated.
-    The 'user' parameter contains validated user information.
-    """
-    logger.info(f"Scan requested by user {user.user_id} in team {user.team_id}")
-    
-    # Access user properties
-    print(f"User ID: {user.user_id}")      # UUID
-    print(f"Team ID: {user.team_id}")      # UUID
-    print(f"Plan: {user.plan}")            # "free", "pro", "business"
-    print(f"Role: {user.role}")            # "owner", "admin", "member", "viewer"
-    
-    # Your business logic here
-    return {"status": "scanning", "target": target}
+    return {"deleted": item_id}
 ```
 
-### Step 3: Role-Based Access Control (Optional)
+Scope every query by `user.team_id`: the gateway authenticates the caller,
+the service decides what that caller may see.
 
-Use helper functions for role-based restrictions:
+### What the dependency checks
 
-```python
-from gateway_auth import get_user_from_gateway_headers, require_role, GatewayUser
+`get_user_from_gateway_headers` (`open-security-shared/gateway_auth.py`), in
+this order:
 
-@router.delete("/api/teams/{team_id}/members/{user_id}")
-async def remove_member(
-    team_id: str,
-    user_id: str,
-    user: GatewayUser = Depends(get_user_from_gateway_headers),
-    _: None = Depends(require_role("owner", "admin"))  # Only owners and admins
-):
-    """Only team owners and admins can remove members."""
-    # Remove member logic
-    return {"message": "Member removed"}
-```
+| Condition | Status | `code` |
+| --- | --- | --- |
+| The service has no `GATEWAY_INTERNAL_SECRET` | 503 | `GATEWAY_SECRET_NOT_CONFIGURED` |
+| `X-Wildbox-User-ID` or `X-Wildbox-Team-ID` missing | 403 | `GATEWAY_AUTH_REQUIRED` |
+| `X-Gateway-Secret` missing or different (constant-time comparison) | 403 | `GATEWAY_SECRET_REQUIRED` |
+| User or team ID not a UUID4 | 400 | `INVALID_GATEWAY_HEADERS` |
+| Role not one of `owner`, `admin`, `member`, `viewer` (missing means `member`) | 400 | `INVALID_GATEWAY_HEADERS` |
 
-### Step 4: Plan-Based Access Control (Optional)
+`require_role(...)` answers `403` with `code` `INSUFFICIENT_ROLE` when the
+caller's role is not in the list.
 
-Restrict features based on subscription plan:
+The tools service wraps the dependency (`open-security-tools/app/auth.py`):
+a request without the identity headers gets `401` there instead of `403`.
 
-```python
-from gateway_auth import get_user_from_gateway_headers, require_plan, GatewayUser
+Services that install the shared error handlers
+(`open_security_shared.errors.install_error_handlers`) return these errors in
+the canonical body, `{"error": {"code", "message", "type", "request_id"}}`.
 
-@router.post("/api/tools/advanced-scan")
-async def advanced_scan(
-    target: str,
-    user: GatewayUser = Depends(get_user_from_gateway_headers),
-    _: None = Depends(require_plan("pro", "business", "enterprise"))
-):
-    """Advanced scan is only available for pro+ users."""
-    # Advanced scan logic
-    return {"status": "advanced_scanning", "target": target}
-```
+### Calls between services
 
-## Error Handling
-
-The gateway authentication dependency raises standard FastAPI HTTPExceptions:
-
-### 403 Forbidden - Request Bypassed Gateway
-
-```json
-{
-  "error": "Gateway authentication required",
-  "message": "This service must be accessed through the API gateway. Direct access is not permitted.",
-  "code": "GATEWAY_AUTH_REQUIRED"
-}
-```
-
-**Cause**: Headers `X-Wildbox-User-ID` or `X-Wildbox-Team-ID` are missing  
-**Solution**: Ensure all requests go through the gateway (http://localhost/api/...)
-
-### 400 Bad Request - Malformed Headers
-
-```json
-{
-  "error": "Invalid authentication headers",
-  "message": "Gateway provided malformed user/team identifiers",
-  "code": "INVALID_GATEWAY_HEADERS"
-}
-```
-
-**Cause**: UUIDs in headers are invalid  
-**Solution**: Check gateway authentication logic
-
-### 402 Payment Required - Plan Upgrade Needed
-
-```json
-{
-  "error": "Plan upgrade required",
-  "message": "This feature requires one of these plans: pro, business, enterprise",
-  "code": "PLAN_UPGRADE_REQUIRED",
-  "current_plan": "free"
-}
-```
-
-**Cause**: User's plan doesn't have access to this feature  
-**Solution**: User needs to upgrade subscription
-
-### 403 Forbidden - Insufficient Role
-
-```json
-{
-  "error": "Insufficient permissions",
-  "message": "This action requires one of these roles: owner, admin",
-  "code": "INSUFFICIENT_ROLE"
-}
-```
-
-**Cause**: User's role doesn't have permission for this action  
-**Solution**: User needs appropriate team role
+A service that calls another one on behalf of a user forwards that user's
+identity: the same three `X-Wildbox-*` headers and `X-Gateway-Secret`. There
+is no service-wide key. The agents service does this for its tool calls
+(`open-security-agents/app/tools/wildbox_client.py`, `_request_headers()`),
+and refuses to make a call when it has no complete caller identity.
 
 ## Testing
 
-### E2E Test via Gateway
+Through the gateway, which serves HTTPS with the certificate in
+`open-security-gateway/ssl/`:
 
 ```bash
-# Authenticate and get API key
-curl -X POST 'http://localhost/api/v1/tools/whois_lookup' \
-  -H 'X-API-Key: wsk_<REDACTED-LEAKED-KEY>' \
-  -H 'Content-Type: application/json' \
-  -d '{"domain":"example.com"}'
+CA=open-security-gateway/ssl/wildbox.crt
 
-# Expected: 200 OK with WHOIS results
+# Valid API key: 200 with the tool's result
+curl --cacert "$CA" -X POST https://<host>/api/v1/tools/whois_lookup \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+
+# Invalid API key: 401 from the gateway
+curl --cacert "$CA" -X POST https://<host>/api/v1/tools/whois_lookup \
+  -H "X-API-Key: invalid-key" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
 ```
 
-### Direct Service Access (Should Fail)
+Directly on a backend port (bound to `127.0.0.1` on the host), without the
+gateway's headers, the request is refused:
 
 ```bash
-# Try to access service directly
-curl -X POST 'http://localhost:8000/api/tools/whois_lookup' \
-  -H 'Content-Type: application/json' \
-  -d '{"domain":"example.com"}'
-
-# Expected: 401 Unauthorized - "Authentication required"
+# 401 from the tools service
+curl -X POST http://127.0.0.1:8000/api/tools/whois_lookup \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
 ```
-
-### With Invalid API Key
-
-```bash
-# Use invalid API key
-curl -X POST 'http://localhost/api/v1/tools/whois_lookup' \
-  -H 'X-API-Key: invalid_key' \
-  -H 'Content-Type: application/json' \
-  -d '{"domain":"example.com"}'
-
-# Expected: 401 Unauthorized - "Invalid API key"
-```
-
-## Migration Guide
-
-### Old Pattern (Direct Auth in Service)
-
-```python
-from fastapi.security import HTTPBearer
-from app.auth import verify_jwt_token
-
-security = HTTPBearer()
-
-@router.get("/api/endpoint")
-async def endpoint(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    user = verify_jwt_token(credentials.credentials)  # Validates token in service
-    return {"user_id": user.id}
-```
-
-### New Pattern (Trust Gateway)
-
-```python
-from gateway_auth import get_user_from_gateway_headers, GatewayUser
-
-@router.get("/api/endpoint")
-async def endpoint(user: GatewayUser = Depends(get_user_from_gateway_headers)):
-    return {"user_id": str(user.user_id)}  # Gateway already validated
-```
-
-### Benefits
-
-✅ **Simpler code** - No JWT validation logic in each service  
-✅ **Better performance** - Token validated once at gateway  
-✅ **Centralized auth** - All auth logic in one place  
-✅ **Easier to update** - Change auth method without touching services  
-✅ **Better security** - Services never see raw credentials  
 
 ## Troubleshooting
 
-### Headers Not Received by Backend
+**The service logs "Missing gateway authentication headers".** The request
+reached the service without `X-Wildbox-User-ID` or `X-Wildbox-Team-ID`. Check
+that it went through the gateway, and that the gateway route calls
+`auth_handler.authenticate()` in an `access_by_lua_block`. Loading the module
+with `access_by_lua_file` does not call it, and that route then runs without
+authentication.
 
-**Problem**: Service logs "Missing gateway authentication headers"
+**The service answers `GATEWAY_SECRET_REQUIRED`.** The gateway and the
+service hold different `GATEWAY_INTERNAL_SECRET` values, typically after a
+rotation in which not every container was recreated. See
+[Secrets rotation](SECURITY_SECRETS_ROTATION.md).
 
-**Solutions**:
+**`ModuleNotFoundError: open_security_shared`.** The image was built without
+the `shared` build context or without the `pip install` step above.
 
-1. Check gateway Lua code is setting headers:
+## Best practices
 
-   ```lua
-   ngx.req.set_header("X-Wildbox-User-ID", auth_data.user_id)
-   ngx.req.set_header("X-Wildbox-Team-ID", auth_data.team_id)
-   ```
+1. Never publish a backend port beyond `127.0.0.1`; the gateway is the entry
+   point.
+2. Do not read credentials in a backend service; use the identity headers.
+3. Fail closed: a missing or invalid header is a refusal, never a default
+   user.
+4. Log `user.user_id` and `user.team_id` for audit trails.
 
-2. Check proxy_params.conf forwards headers:
-
-   ```nginx
-   proxy_set_header X-Wildbox-User-ID $http_x_wildbox_user_id;
-   proxy_set_header X-Wildbox-Team-ID $http_x_wildbox_team_id;
-   ```
-
-3. Verify request goes through gateway:
-
-   ```bash
-   # Correct: http://localhost/api/v1/tools/...
-   # Wrong: http://localhost:8000/api/tools/...
-   ```
-
-### Import Error - gateway_auth Not Found
-
-**Problem**: `ImportError: No module named 'gateway_auth'`
-
-**Solution**: Add shared directory to Python path:
-
-```python
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-security-shared'))
-```
-
-### Docker Network Issues
-
-**Problem**: Services can't reach each other
-
-**Solution**: Verify all services are in same Docker network:
-
-```bash
-docker-compose ps
-docker network inspect wildbox
-```
-
-## Best Practices
-
-1. **Always use gateway in production** - Never expose backend services directly
-2. **Log user actions** - Use `user.user_id` and `user.team_id` for audit trails
-3. **Check plans/roles at feature level** - Not at endpoint level when possible
-4. **Fail closed** - If headers missing, deny access (don't assume defaults)
-5. **Trust the gateway** - Don't re-validate credentials in backend services
-
-## Example: Complete Service Integration
-
-```python
-# File: open-security-myservice/app/auth.py
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'open-security-shared'))
-
-from gateway_auth import get_user_from_gateway_headers, GatewayUser, require_plan
-from fastapi import Depends
-
-# Export for use in routers
-__all__ = ["get_current_user", "require_pro_plan", "GatewayUser"]
-
-# Alias for your service
-get_current_user = get_user_from_gateway_headers
-
-# Service-specific helpers
-require_pro_plan = require_plan("pro", "business", "enterprise")
-```
-
-```python
-# File: open-security-myservice/app/api/router.py
-from fastapi import APIRouter, Depends
-from app.auth import get_current_user, require_pro_plan, GatewayUser
-
-router = APIRouter()
-
-@router.get("/api/myservice/basic")
-async def basic_feature(user: GatewayUser = Depends(get_current_user)):
-    """Available to all authenticated users."""
-    return {
-        "message": f"Hello {user.user_id}",
-        "plan": user.plan
-    }
-
-@router.get("/api/myservice/advanced")
-async def advanced_feature(
-    user: GatewayUser = Depends(get_current_user),
-    _: None = Depends(require_pro_plan)
-):
-    """Only for pro+ users."""
-    return {"message": "Advanced feature access granted"}
-```
-
----
-
-**Questions?** Check the reference implementation in `open-security-tools/app/auth.py`
+The reference implementation is `open-security-shared/gateway_auth.py`.

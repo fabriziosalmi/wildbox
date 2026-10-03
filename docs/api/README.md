@@ -18,7 +18,7 @@ service and the endpoint.
 | **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
 | **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
 | **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
-| **CSPM** | Not written yet. The service runs 31 checks (22 for AWS against live accounts; Azure and GCP on sample data); its routes are under `/api/v1/cspm/` | - |
+| **CSPM** | Not written yet. The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400`. `GET /api/v1/cspm/providers` lists the providers a scan can be submitted for and their check counts. Its routes are under `/api/v1/cspm/` | - |
 
 ## Reaching the APIs
 
@@ -32,8 +32,9 @@ backend ports are bound to `127.0.0.1` only.
 To authenticate, log in with a form-encoded `POST /auth/jwt/login` (fields
 `username` and `password`) and send the returned `access_token` as
 `Authorization: Bearer <token>`. The gateway also accepts an API key in the
-`X-API-Key` header. The [Quick Start](../guides/quickstart.md) shows the
-complete sequence.
+`X-API-Key` header. Create one with `POST /api/v1/identity/api-keys` (a user
+key) or `POST /api/v1/identity/teams/{team_id}/api-keys` (a team key). The
+[Quick Start](../guides/quickstart.md) shows the complete sequence.
 
 Login, tokens, logout and the failed-login lockout are described in the
 [Authentication and sessions guide](../guides/authentication.md). The
@@ -144,9 +145,16 @@ To contribute API documentation:
 ## FAQ
 
 **Q: What are the rate limits?**
-A: The gateway limits requests per team. The budget comes from
-`RATE_LIMIT_PER_HOUR` in `.env`, and every authenticated response carries
-`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset`.
+A: The gateway allows `RATE_LIMIT_PER_HOUR` requests per hour per team
+(10000 unless `.env` sets it), enforced in fixed 60-second windows of one
+sixtieth of that figure, 166 with the default. The gateway refuses to start
+when the value is not a whole number from 1 to 1,000,000,000. Responses on
+routes the gateway authenticates carry `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset` for the current minute, and
+`X-RateLimit-Policy` with the hourly figure (`10000;w=3600` by default). Some
+services add their own limits: the agents service, for example, accepts 5
+analysis requests per minute per user by default
+([agents reference](agents/endpoints.md#rate-limiting)).
 
 **Q: How do I refresh my JWT token?**
 A: There is no refresh endpoint. When a token expires, log in again. The

@@ -29,8 +29,9 @@ Start with
 
 ## Security
 
-- [Gateway authentication pattern](https://github.com/fabriziosalmi/wildbox/blob/main/docs/GATEWAY_AUTHENTICATION_GUIDE.md),
-  referenced by `SECURITY.md`
+- [Gateway authentication pattern](https://github.com/fabriziosalmi/wildbox/blob/main/docs/GATEWAY_AUTHENTICATION_GUIDE.md):
+  how a backend service trusts the gateway's identity headers through
+  `open_security_shared.gateway_auth`
 - [Secrets rotation](https://github.com/fabriziosalmi/wildbox/blob/main/docs/SECURITY_SECRETS_ROTATION.md)
 - [Git history security audit](https://github.com/fabriziosalmi/wildbox/blob/main/docs/GIT_SECURITY_AUDIT.md)
 
@@ -47,5 +48,11 @@ repository; a `website/` directory in a local checkout is a leftover and is
 ignored by git.
 
 To add a page, write it under `docs/guides/`, `docs/security/` or `docs/api/`
-and add an entry to `docs/_data/docs_nav.yml`. CI runs markdownlint, cspell and
-a link check on every Markdown file.
+and add an entry to `docs/_data/docs_nav.yml`. CI runs markdownlint, cspell,
+proselint (through `scripts/check_prose.py`) and a link check on every
+Markdown file.
+
+Notes that no longer describe the code are moved to
+`docs/archive/` in the repository,
+each with a banner naming the page that replaces it; that directory is not
+published.

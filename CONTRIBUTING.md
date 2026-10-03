@@ -36,7 +36,8 @@ cd wildbox
 git remote add upstream https://github.com/fabriziosalmi/wildbox.git
 
 # 4. Generate .env with random secrets (also for local development: the
-#    services reject short or weak values), then set INITIAL_ADMIN_EMAIL in it
+#    services reject short or weak values), set INITIAL_ADMIN_EMAIL in it,
+#    then check it
 make generate-secrets
 make validate-secrets
 
@@ -274,10 +275,12 @@ Conventions:
 - Django services (e.g. `open-security-guardian`) keep their framework layout but
   follow the same env/auth conventions.
 
-Known deviations to converge over later sprints (Sprint 1–2): several services
-still carry their own copy of the gateway-auth logic and import the shared code
-via `sys.path` shims rather than the packaged dependency — these are being
-consolidated onto `open_security_shared`.
+The FastAPI services (agents, cspm, data, responder, tools) import the gateway
+dependency from the packaged `open_security_shared.gateway_auth`; identity is
+the authority the gateway asks, and guardian applies the same headers through
+its own Django authentication. A few tools still add a `sys.path` entry in
+their `main.py` or `schemas.py` (for example `directory_bruteforcer` and
+`header_analyzer`), against rule 1 above: remove it when you work on one.
 
 ---
 
@@ -357,20 +360,23 @@ changes
 ### Running Tests Locally
 
 ```bash
-# Python unit tests
+# Python unit tests, from a service directory
 pytest tests/ -v --cov
 
-# JavaScript tests
-npm test
+# Dashboard: there are no JavaScript unit tests; lint and type-check it
+cd open-security-dashboard
+npm run lint
+npm run type-check
+cd ..
 
 # Integration tests (run in CI via .github/workflows/integration-tests.yml).
 # Locally: start the stack, then run pytest against it.
 docker compose up -d
 pytest tests/integration/
 
-# E2E tests
+# E2E tests (Playwright, against the running stack)
 cd open-security-dashboard
-npx playwright test
+npm run test:e2e
 ```
 
 ### Writing Tests
@@ -387,16 +393,9 @@ def test_enrich_ioc_with_valid_ip():
     assert result.data.asn is not None
 ```
 
-```typescript
-// TypeScript test example
-describe('Authentication', () => {
-  it('should login with valid credentials', async () => {
-    const response = await login('admin@example.com', 'password');
-    expect(response.token).toBeDefined();
-    expect(response.user.email).toBe('admin@example.com');
-  });
-});
-```
+Dashboard tests are Playwright specs in `open-security-dashboard/tests/e2e/`;
+follow an existing spec, such as `team-members.spec.ts`, for logging in and
+creating test data.
 
 ---
 
@@ -413,112 +412,8 @@ describe('Authentication', () => {
 
 Contributors are recognized in:
 
-- [AUTHORS.md](AUTHORS.md) file
 - Release notes for their contributions
 - GitHub contributor graphs
 - Community highlights in discussions
 
-**Thank you for contributing to Wildbox. 🙏**
-
-## High Priority Contributions (Evaluation Phase)
-
-As we are in an early evaluation phase, we are looking for feedback on the following:
-
-**Testing & Feedback** (No coding required)
-
-- [ ] Deploy Wildbox and share your experience.
-- [ ] Test different deployment scenarios (Docker, cloud, on-premise).
-- [ ] Try various security integrations and workflows.
-- [ ] Report bugs and edge cases you discover.
-- [ ] Suggest features based on your security needs.
-- [ ] Performance testing in different environments.
-
-**Issues & Bug Reports**
-
-- [ ] Compatibility issues (OS, Python, Node versions).
-- [ ] Documentation gaps or unclear sections.
-- [ ] Error messages that need improvement.
-- [ ] Configuration options that are confusing.
-- [ ] Performance bottlenecks you discover.
-
-**Real-World Feedback**
-
-- [ ] Share your deployment architecture.
-- [ ] Document security use cases you implement.
-- [ ] Suggest integrations with your tools.
-- [ ] Provide scaling feedback (10, 100, 1000+ events/sec).
-- [ ] Report operational issues and solutions.
-
-### Code Contribution Process
-
-1. **Fork** the repository on GitHub.
-2. **Create** a feature branch: `git checkout -b feature/my-feature`.
-3. **Make** your changes with clear, descriptive commits.
-4. **Test** your changes thoroughly.
-5. **Push** to your fork: `git push origin feature/my-feature`.
-6. **Create** a Pull Request with a detailed description of your changes.
-
-### Contribution Areas
-
-#### Easy Wins for New Contributors
-
-- [ ] Documentation improvements and clarifications.
-- [ ] README translations to other languages.
-- [ ] Additional example configurations.
-- [ ] Docker Compose variations for different scenarios.
-- [ ] Helpful scripts and automation.
-- [x] **API Documentation** - Document service endpoints ([Contributing Guide](docs/api/CONTRIBUTING.md)).
-  - [x] Guardian Service API endpoints and examples.
-  - [x] Agents Service AI analysis endpoints.
-  - [x] Data Service aggregation endpoints.
-  - [x] Tools Service execution endpoints.
-  - [x] Responder Service playbook endpoints.
-  - [ ] CSPM Service cloud security endpoints.
-
-#### Medium-Level Contributions
-
-- [ ] New SOAR playbook examples.
-- [ ] Additional threat intelligence sources.
-- [ ] Cloud provider integrations (starter).
-- [ ] Dashboard improvements and visualizations.
-- [ ] API client libraries in different languages.
-
-#### Advanced Contributions
-
-- [ ] Multi-tenancy support.
-- [ ] High-availability clustering.
-- [ ] Advanced analytics features.
-- [ ] Custom authentication backends.
-- [ ] Performance optimizations.
-
-### Security Contributions
-
-Found a security vulnerability?
-
-**Please report security issues privately:**
-
-- Email: fabrizio.salmi@gmail.com
-- **Do NOT create public GitHub issues for security vulnerabilities.**
-- Include: description, reproduction steps, and impact assessment.
-- Allow 48 hours for an initial response.
-
-### Code Style
-
-- **Python**: Follow PEP 8 and use Black for formatting.
-- **TypeScript**: Follow the ESLint configuration and use Prettier.
-- **Commits**: Use clear, descriptive messages following the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
-- **Documentation**: Update relevant documentation with your changes.
-
-### Testing Requirements
-
-- Write unit tests for all new code.
-- Add integration tests for API changes.
-- Create E2E tests for user-facing features.
-- Maintain >80% code coverage.
-
-### Getting Help
-
-- **Questions?** Ask in [GitHub Discussions](https://github.com/fabriziosalmi/wildbox/discussions).
-- **Feature Ideas?** Post in [Discussions > Ideas](https://github.com/fabriziosalmi/wildbox/discussions/categories/ideas).
-- **Found a Bug?** Create an [Issue](https://github.com/fabriziosalmi/wildbox/issues) with details.
-- **Want to Help?** Check [open issues](https://github.com/fabriziosalmi/wildbox/issues) marked as `help-wanted`.
+Thank you for contributing to Wildbox.

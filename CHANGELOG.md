@@ -1788,6 +1788,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **The published site and the API reference re-checked against the code
+  for 0.11.0.** The landing page claimed 58 tools (there are 52), 50+ threat
+  sources (7 feeds), AWS, Azure and GCP scanning (AWS only; others are
+  refused), any LLM provider (Anthropic only) and keys generated on first
+  run, and its quick start copied `.env.example` and opened
+  `http://localhost:3000`; it now shows `make generate-secrets`,
+  `INITIAL_ADMIN_EMAIL`, `make validate-secrets`, `docker compose up -d
+  --wait` and `https://localhost`, and its copy button works. The CSPM check
+  count (31, with sample-data Azure and GCP checks) is corrected to 22 AWS
+  checks everywhere. The gateway route tables gain `/api/v1/tasks/`,
+  `/auth/users/`, `/auth/forgot-password`, `/auth/reset-password` and
+  `/api/v1/identity/auth/` and `/api/v1/agents/stats`. The tools, data,
+  guardian, responder and agents endpoint pages are rewritten from the real
+  routes, with every example through the gateway, and include this release's
+  changes to them: the network-target policy, per-team telemetry, guardian
+  behind the gateway only, agents and responder acting as the caller. The guides document `PASSWORD_CHANGE_REQUIRED`, the
+  change-password route, Docker Engine 23.0 and Compose 2.24.4 as the
+  minimums, guardian's `/health/` and the refused CSPM providers;
+  `TROUBLESHOOTING.md` and the quick start drop statements about `make
+  start` and `make clean` that no longer hold. Superseded engineering notes
+  move to `docs/archive/`, and the tools service audit of November 2025 is
+  no longer published.
+
 - **Service READMEs describe the code on main.** The README of every
   service (tools, gateway, identity, agents, cspm, dashboard, data,
   guardian, sensor) and the use cases are rewritten from the code: real

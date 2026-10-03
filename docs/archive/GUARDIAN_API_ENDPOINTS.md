@@ -1,5 +1,7 @@
 # Open Security Guardian - Comprehensive API Endpoint Documentation
 
+> **Historical document, superseded.** It describes the code as it was when written; it is not maintained. For current information see <https://www.wildbox.io/api/guardian/endpoints/>.
+
 ## Overview
 
 The Open Security Guardian is a Django-based REST API for vulnerability management, compliance tracking, asset inventory, and security reporting. This document provides a complete inventory of all HTTP endpoints organized by category.

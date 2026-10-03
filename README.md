@@ -34,7 +34,7 @@ Wildbox is pre-1.0. Interfaces can change between minor releases; read
 | Cloud posture | 22 checks against live AWS accounts; GCP and Azure are not supported, and scans of them are refused | `open-security-cspm` |
 | Vulnerabilities | Asset inventory, findings, risk-based prioritization, remediation tracking | `open-security-guardian` |
 | Response | YAML playbooks executed as background jobs | `open-security-responder` |
-| Endpoint telemetry | osquery-based telemetry from hosts running the sensor | `open-security-sensor` |
+| Endpoint telemetry | osquery-based telemetry from hosts running the sensor, sent through the gateway with a team member's API key and stored per team by the data service | `open-security-sensor` |
 | Analysis | Threat-enrichment reports generated with Anthropic Claude | `open-security-agents` |
 | Interface | Web dashboard | `open-security-dashboard` |
 
@@ -59,14 +59,15 @@ flowchart LR
     identity --> pg[(PostgreSQL 15)]
     data --> pg
     guardian --> pg
-    responder --> pg
     identity --> redis[(Redis 7)]
     tools --> redis
     cspm --> redis
+    cspmWorker[CSPM worker] --> redis
+    guardian --> redis
     responder --> redis
     agents --> redis
     agents --> claude[Anthropic API]
-    cspm --> clouds[AWS APIs]
+    cspmWorker --> clouds[AWS APIs]
     data --> feeds[Public threat feeds]
 ```
 
@@ -74,7 +75,9 @@ flowchart LR
 
 ### Requirements
 
-- Docker Engine 24 or later with the Compose plugin (`docker compose`)
+- Docker Engine 23.0 or later with the Compose plugin 2.24.4 or later
+  (`docker compose`; see the [deployment guide](https://www.wildbox.io/guides/deployment/#1-server-requirements)
+  for why)
 - 8 GB of RAM (16 GB recommended), 20 GB of free disk
 - Linux, macOS, or Windows with WSL 2
 

@@ -1,7 +1,22 @@
 # Git History Security Audit
 
+> **Historical record, partly superseded.** This is a point-in-time audit
+> from November 2025 and is not maintained. What happened since:
+>
+> - History was not rewritten. The reason is recorded in
+>   `.github/workflows/secret-scan.yml`: the committed keys were dead, and a
+>   rewrite would break every fork without un-leaking anything.
+> - A server-side check exists instead: the **Gitleaks** job in
+>   `.github/workflows/secret-scan.yml` scans the tree on every pull request
+>   and push to `main`. The local hooks are described in `PRE_COMMIT_HOOKS.md`
+>   (detect-secrets) and `.githooks/pre-commit`; git-secrets was not adopted.
+> - Two commands below do not exist: `scripts/generate_secrets.py` has no
+>   `--rotate-all` option, and there is no `validate_env.sh`. Rotation is done
+>   one secret at a time with `scripts/rotate_secrets.sh --secret <NAME>`; see
+>   [SECURITY_SECRETS_ROTATION.md](SECURITY_SECRETS_ROTATION.md).
+
 **Date:** November 23, 2025  
-**Status:** 🟡 REQUIRES ACTION
+**Status:** Closed (see the note above)
 
 ## Executive Summary
 

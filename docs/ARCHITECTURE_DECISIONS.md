@@ -1,5 +1,10 @@
 # Wildbox Architecture Decision Records (ADR)
 
+> **Partly superseded.** These records were written in November 2025. ADR-002
+> (n8n) and ADR-003 (Ollama) no longer describe the code; each carries a note
+> saying what changed. For the services that run today see
+> <https://www.wildbox.io/guides/ports/>.
+
 **Version:** 1.0  
 **Last Updated:** November 23, 2025
 
@@ -24,7 +29,7 @@ Wildbox uses a **microservices architecture** with 11 distinct services orchestr
 2. **Technology fit:** Different services have different needs:
    - Django for Guardian (admin UI, ORM)
    - FastAPI for API/Tools (performance, async)
-   - Rust for Sensor (system-level access)
+   - Python with osquery for Sensor (host telemetry)
    - Node.js for n8n (workflow engine)
 3. **Independent scaling:** CSPM scans are CPU-heavy; Data service is I/O-heavy
 4. **Development velocity:** Teams can work on services independently (future consideration)
@@ -85,9 +90,17 @@ See `docker-compose.minimal.yml` (planned) for a single-container deployment.
 
 ## ADR-002: n8n Integration
 
-**Status:** ACCEPTED  
+**Status:** SUPERSEDED IN PART (n8n is optional)  
 **Date:** 2025-11-23  
 **Deciders:** Core Team  
+
+> **Current state.** n8n is not a core service. The `automations` service
+> (image `n8nio/n8n:1.74.0`) belongs to the `automations` Compose profile, so a
+> plain `docker compose up` does not start it; start it with
+> `docker compose --profile automations up -d automations`. Its port 5678 is
+> bound to `127.0.0.1` only. The "make it optional" step of the migration path
+> below is therefore done, through a profile rather than a separate Compose
+> file.
 
 ### Decision
 
@@ -126,9 +139,19 @@ If n8n proves too heavy, we can:
 
 ## ADR-003: Ollama for Local LLM
 
-**Status:** ACCEPTED (with performance caveats)  
+**Status:** SUPERSEDED  
 **Date:** 2025-11-23  
 **Deciders:** Core Team
+
+> **Current state.** This decision was reversed. No Compose file defines an
+> Ollama or vLLM container, and no service reads an Ollama or
+> OpenAI-compatible endpoint; `OPENAI_API_KEY` and `docker-compose.gpu.yml`
+> mentioned below do not exist. The agents service calls the Anthropic API
+> (Claude) and is optional: set `ANTHROPIC_API_KEY` to enable analysis, and
+> `ANTHROPIC_MODEL` (default `claude-opus-4-8`) to choose the model. Without a
+> key the stack starts and analysis tasks fail with an error. See
+> <https://www.wildbox.io/guides/ollama-llm/>. The rest of this record is kept
+> for history.
 
 ### Decision
 
@@ -207,12 +230,16 @@ Use **single Redis instance** with logical database separation rather than multi
 **Database Allocation:**
 
 ```text
-DB 0: Identity (sessions, auth cache)
-DB 1: Guardian (vulnerability cache)
-DB 2: Tools (rate limiting, task queue)
-DB 4: Agents (LLM conversation history)
-DB 5: Gateway (authorization cache)
+DB 0: Identity
+DB 1: Guardian (guardian, guardian-worker, guardian-beat)
+DB 2: Tools (api, tools-worker, tools-flower) and Responder
+DB 3: CSPM (cspm, cspm-worker)
+DB 4: Agents
 ```
+
+These are the defaults in `docker-compose.yml`. The gateway does not use
+Redis for authorization caching: it caches decisions in nginx shared memory
+(`lua_shared_dict auth_cache` in `open-security-gateway/nginx/nginx.conf`).
 
 **Alternatives Considered:**
 
@@ -389,8 +416,8 @@ The audit challenged our microservices approach as "over-engineering." We're eva
 | Decision | Status | Resource Impact | Reversibility |
 | ---------- | -------- | ---------------- | --------------- |
 | Microservices | ✅ ACCEPTED | HIGH (8-16GB) | MEDIUM (Q2 2026 review) |
-| n8n | ✅ ACCEPTED | MEDIUM (500MB) | HIGH (optional service) |
-| Ollama | ✅ ACCEPTED | MEDIUM (2GB) | HIGH (cloud API alternative) |
+| n8n | Optional (`automations` profile) | MEDIUM (500MB) | HIGH (optional service) |
+| Ollama | SUPERSEDED (Anthropic API, optional) | N/A | N/A |
 | Single Redis | ✅ ACCEPTED | LOW (100MB) | LOW |
 | Single Postgres | ✅ ACCEPTED | LOW (200MB) | LOW |
 | Docker Compose | ✅ ACCEPTED | N/A | HIGH (K8s planned) |

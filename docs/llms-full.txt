@@ -20,21 +20,28 @@ Client (browser, CLI)
    v
 gateway (OpenResty): TLS, JWT / API-key validation via identity, per-team rate limits
    |
-   +-- /auth/jwt/..., /auth/register, POST /auth/logout --> identity
+   +-- /auth/jwt/..., /auth/register,
+   |   /auth/forgot-password, /auth/reset-password --> identity /api/v1/auth/...
+   +-- /auth/users/...        --> identity   /api/v1/users/...
+   +-- POST /auth/logout      --> identity   /api/v1/auth/logout
+   +-- /api/v1/identity/auth/...--> identity /api/v1/auth/...
    +-- /api/v1/identity/...   --> identity   /api/v1/...
    +-- /api/v1/tools[/...]    --> tools API  /api/tools/...
+   +-- /api/v1/tasks[/...]    --> tools API  /api/tasks/...  (asynchronous tool runs)
    +-- /api/v1/data/...       --> data       /api/v1/...
    +-- /api/v1/guardian/...   --> guardian   /api/v1/...
    +-- /api/v1/responder/...  --> responder  /v1/...
-   +-- /api/v1/agents/...     --> agents     /v1/...
+   +-- /api/v1/agents/...     --> agents     /v1/...  (/api/v1/agents/stats --> /stats)
    +-- /api/v1/cspm/...       --> cspm       /api/v1/...
    +-- /api/v1/automations/...--> automations (n8n, optional profile)
    +-- /                      --> dashboard (Next.js)
 
-All services share PostgreSQL 15 and Redis 7, which publish no host port.
+identity, data and guardian keep their data in PostgreSQL 15; queues,
+token revocations, scan and run state live in Redis 7. Neither publishes
+a host port.
 ```
 
-Every `/api/v1/<service>/` route except identity requires authentication at the gateway; identity validates tokens itself. Any other path under `/api/` returns 404. The sensor is not routed through the gateway.
+Every `/api/v1/<service>/` route except identity requires authentication at the gateway; identity validates tokens itself. Any other path under `/api/` returns 404, the removed alias `/api/tools/` included; `/tools/`, where a standalone tools UI used to be, returns 404 too. The sensor's local API is not routed through the gateway; the sensor itself is a client of it.
 
 ## Services and Ports
 
@@ -45,12 +52,12 @@ The gateway is the only service published on all interfaces. Every other publish
 | gateway | 443, 80, 8080 (8081 internal, not published) | OpenResty ingress, TLS, authentication, rate limiting, routing; port 8081 takes identity's auth-cache purge on the Compose network |
 | identity | 127.0.0.1:8001 | Users, JWT login and revocation, API keys, teams (FastAPI, fastapi-users) |
 | api (tools) | 127.0.0.1:8000 | Runs 52 security tools through an API; Celery workers (`tools-worker`), Flower on 127.0.0.1:5555 |
-| data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected from public sources by `data-scheduler` |
-| sensor | 127.0.0.1:8004 | Endpoint telemetry with osquery, forwarded to the data service |
+| data | 127.0.0.1:8002 | Threat intelligence (IOCs, denylists) collected from 7 public feeds by `data-scheduler` |
+| sensor | 127.0.0.1:8004 | Endpoint telemetry with osquery, posted in batches through the gateway to the data service's ingest endpoint with a team member's API key (`SENSOR_DATA_LAKE_API_KEY`, scope `data:ingest`); data stores telemetry and sensors per team. Without a key the sensor runs and forwards nothing |
 | agents | 127.0.0.1:8006 | Optional AI-assisted IOC analysis with the Anthropic API (Claude) |
 | guardian | 127.0.0.1:8013 | Assets, vulnerabilities, remediation, compliance, reporting (Django REST) |
 | responder | 127.0.0.1:8018 | YAML incident-response playbooks executed through connectors |
-| cspm | 127.0.0.1:8019 | 31 cloud configuration checks: 22 for AWS against live accounts; the Azure and GCP checks run on sample data |
+| cspm | 127.0.0.1:8019 | 22 configuration checks against live AWS accounts, run by `cspm-worker`; GCP and Azure scans are refused with 400, and `GET /api/v1/cspm/providers` lists the providers that can be scanned |
 | dashboard | 127.0.0.1:3000 | Next.js web UI, normally reached through the gateway |
 | automations | 127.0.0.1:5678 | n8n, only with `--profile automations` |
 | prometheus | 127.0.0.1:9090 | Only with `--profile monitoring` |
@@ -64,8 +71,8 @@ Canonical page: https://www.wildbox.io/guides/ports/
 git clone https://github.com/fabriziosalmi/wildbox.git
 cd wildbox
 make generate-secrets      # scripts/generate_secrets.py writes .env with random secrets
-make validate-secrets      # refuses placeholders
 # edit .env: set INITIAL_ADMIN_EMAIL
+make validate-secrets      # refuses placeholders
 docker compose up -d --wait --wait-timeout 600
 ```
 
@@ -84,12 +91,18 @@ curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" https://localhost/api/v
 
 - Login is form-encoded (`username`, `password`) and returns `access_token`. Tokens are HS256 JWTs valid for 30 minutes (`jwt_access_token_expire_minutes`; Compose does not pass an override); there is no refresh endpoint.
 - `POST /auth/logout` or `POST /auth/jwt/logout` with the bearer token revokes it: its `jti` is blacklisted in Redis until it would have expired, identity refuses it, and identity purges it from the gateway's authorization cache through the gateway's internal listener on port 8081 (Compose network only, not published). Logout revokes only the token presented.
-- Failed-login lockout: after 5 failed password logins for an email (registered or not), login answers 429 with `Retry-After: 900` for 15 minutes, even with the correct password; a successful login before that clears the counter. The gateway also rate-limits `/auth/jwt/` per client address.
+- Failed-login lockout: after 5 failed password logins for an email (registered or not), login answers 429 with `Retry-After: 900` for 15 minutes, even with the correct password; a successful login before that clears the counter. A wrong current password on change-password, account deletion or an email change counts towards the same lock. The gateway also rate-limits `/auth/jwt/` per client address.
+- Changing a password (`POST /api/v1/identity/admin/me/change-password` with `current_password` and `new_password`) ends every session of the account and answers with a new access token; `PATCH /auth/users/me` refuses a password. New passwords must be 12 to 128 characters, must not contain the email address and must not be a common password.
+- An account a team owner or admin created must change its initial password first: until it does, identity and the gateway answer 403 `PASSWORD_CHANGE_REQUIRED` to everything but reading the account, changing the password and logging out.
 - Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`; older bcrypt hashes still verify.
 - The gateway calls identity with a 5-second timeout, caches authorization decisions for 300 seconds (`AUTH_CACHE_TTL`), and opens a circuit breaker for 60 seconds after 10 failed calls.
 - identity serves `/docs`, `/redoc` and `/openapi.json` only when `ENVIRONMENT` is not `production` (the generated `.env` sets `production`).
-- API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`.
-- Rate limits come from `RATE_LIMIT_PER_HOUR` and are reported in `X-RateLimit-*` headers.
+- API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`. Every authenticated route, the agents routes included, accepts a bearer token or an API key.
+- The gateway limits each team to `RATE_LIMIT_PER_HOUR` requests per hour (default 10,000), enforced per minute (1/60 of it in each 60-second window, 166 by default), and reports the limit in `X-RateLimit-*` headers. A value that is not a whole number from 1 to 1,000,000,000 stops the gateway at start-up.
+
+## Network Targets of the Security Tools
+
+The network tools (port and vulnerability scanners, TLS and certificate analyzers, `network_scanner` and others) refuse internal targets (a synchronous run answers 400, an asynchronous task ends `failed`): private, loopback, link-local, multicast, reserved and shared addresses, ranges that contain one, names that resolve to one or do not resolve, and the stack's own service names. A range holds at most 1,024 addresses. An operator allows an internal lab with `TOOLS_ALLOWED_INTERNAL_TARGETS` in `.env` (comma-separated CIDR ranges, IP addresses and exact host names; a bad entry stops `api` and `tools-worker` at start-up). Details: https://www.wildbox.io/guides/deployment/#internal-targets-of-the-network-tools
 
 ## AI Analysis
 
