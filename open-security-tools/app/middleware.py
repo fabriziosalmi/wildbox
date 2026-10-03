@@ -114,16 +114,13 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         
         # Add cache control headers based on path
-        if request.url.path.startswith("/static/"):
-            # Cache static files for 1 hour
-            response.headers["Cache-Control"] = "public, max-age=3600"
-        elif request.url.path.startswith("/api/"):
+        if request.url.path.startswith("/api/"):
             # Don't cache API responses
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
             response.headers["Pragma"] = "no-cache"
             response.headers["Expires"] = "0"
         else:
-            # Cache web pages for 5 minutes
+            # Everything else (health, the OpenAPI schema): 5 minutes
             response.headers["Cache-Control"] = "public, max-age=300"
         
         return response

@@ -180,6 +180,25 @@ class TestToolsExecution:
         assert alias.json()["error"] == "endpoint_not_found"
         assert "Sunset" not in alias.headers
 
+    def test_the_standalone_tools_ui_is_gone(self) -> None:
+        """The tools service's own web UI was removed (#581).
+
+        The gateway used to proxy /tools/ to it. It now answers 404 itself,
+        to an authenticated request too, rather than passing the path to
+        the dashboard; the tool stays reachable through the API.
+        """
+        canonical = requests.get(
+            f"{self.base_url}/api/v1/tools/hash_generator/info",
+            headers=self.headers,
+            timeout=10
+        )
+        assert canonical.status_code == 200, canonical.text[:200]
+
+        for path in ("/tools/", "/tools/hash_generator", "/tools/static/css/styles.css"):
+            page = requests.get(f"{self.base_url}{path}", headers=self.headers, timeout=10)
+            assert page.status_code == 404, f"{path}: HTTP {page.status_code} {page.text[:200]}"
+            assert page.json()["error"] == "endpoint_not_found", f"{path}: {page.text[:200]}"
+
     async def test_plan_based_protection(self) -> None:
         """Test plan-based execution protection"""
         try:
