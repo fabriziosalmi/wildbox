@@ -124,3 +124,97 @@ def trust_server_certificate(https_server, monkeypatch):
     """Make the test server's certificate the trust store for this test."""
     monkeypatch.setenv("SSL_CERT_FILE", str(https_server.cert_path))
     monkeypatch.delenv("SSL_CERT_DIR", raising=False)
+
+
+class FakeRedis:
+    """The few Redis commands app.task_ownership uses, in memory.
+
+    Strings in, strings out, as a client created with decode_responses=True.
+    ``ttl`` keeps the expiry each key was given, so tests can check it.
+    """
+
+    def __init__(self):
+        self.kv = {}
+        self.zsets = {}
+        self.ttl = {}
+
+    def pipeline(self):
+        return _FakePipeline(self)
+
+    def set(self, key, value, ex=None):
+        self.kv[key] = value
+        if ex is not None:
+            self.ttl[key] = ex
+        return True
+
+    def get(self, key):
+        return self.kv.get(key)
+
+    def mget(self, keys):
+        return [self.kv.get(key) for key in keys]
+
+    def delete(self, *keys):
+        removed = 0
+        for key in keys:
+            removed += int(self.kv.pop(key, None) is not None)
+            removed += int(self.zsets.pop(key, None) is not None)
+        return removed
+
+    def expire(self, key, seconds):
+        self.ttl[key] = seconds
+        return True
+
+    def zadd(self, key, mapping):
+        self.zsets.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    def zrem(self, key, *members):
+        zset = self.zsets.get(key, {})
+        return sum(int(zset.pop(member, None) is not None) for member in members)
+
+    def zremrangebyscore(self, key, low, high):
+        low = float(low)
+        high = float(high)
+        zset = self.zsets.get(key, {})
+        doomed = [m for m, score in zset.items() if low <= score <= high]
+        for member in doomed:
+            del zset[member]
+        return len(doomed)
+
+    def zrevrange(self, key, start, end):
+        ordered = sorted(
+            self.zsets.get(key, {}).items(), key=lambda item: item[1], reverse=True
+        )
+        members = [member for member, _ in ordered]
+        return members[start:] if end == -1 else members[start : end + 1]
+
+
+class _FakePipeline:
+    def __init__(self, redis):
+        self._redis = redis
+        self._calls = []
+
+    def __getattr__(self, name):
+        def queue(*args, **kwargs):
+            self._calls.append((name, args, kwargs))
+            return self
+
+        return queue
+
+    def execute(self):
+        return [getattr(self._redis, name)(*a, **kw) for name, a, kw in self._calls]
+
+
+@pytest.fixture
+def fake_redis():
+    return FakeRedis()
+
+
+@pytest.fixture
+def task_ownership(fake_redis, monkeypatch):
+    """The service's owner records, backed by a FakeRedis, for one test."""
+    from app import task_ownership as module
+
+    ownership = module.TaskOwnership(fake_redis)
+    monkeypatch.setattr(module, "_ownership", ownership)
+    return ownership
