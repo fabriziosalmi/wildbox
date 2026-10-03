@@ -764,6 +764,33 @@ the cloud metadata names). Rebuild the tools service and its worker
   not accept, so every attempt failed; a zone that allows transfers is
   now reported as such.
 
+### 30. guardian's own API keys no longer authenticate
+
+guardian accepted rows of its own `APIKey` table from an `X-API-Key` (or
+`Authorization: Bearer`) header on a direct request, as an administrator
+and a Django superuser, beside the gateway (#629). It now accepts
+gateway-authenticated requests only, as every other service does.
+
+- **Use a personal API key from identity, through the gateway.** Create
+  one in the dashboard (Settings > API keys) or with
+  `POST /api/v1/identity/api-keys`, and send it as `X-API-Key` to
+  `https://<host>/api/v1/guardian/...` (guardian's `/api/v1/...`). The
+  key acts with its owner's team and role: a member's key reads, an
+  owner's or admin's key also writes.
+- **A direct request to guardian answers 403** `GATEWAY_AUTH_REQUIRED`
+  (`"This service must be accessed through the API gateway"`), whatever
+  key it carries. Before, a direct request without a key answered 401
+  `NO_AUTH`.
+- **The table is dropped.** guardian's migration
+  `core.0002_remove_apikey`, applied at start, drops `core_apikey`, where
+  the keys were stored in plain text, and the audit log's `api_key_id`
+  column. The keys are not migrated to identity: create new ones. Back up
+  first if you want a record of them; reversing the migration recreates
+  an empty table.
+- **`GUARDIAN_API_KEY` and `API_KEY_HEADER`** are gone from
+  `open-security-guardian/.env.example`. Nothing read them; remove them
+  from your `.env` if you copied them.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

@@ -751,6 +751,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **guardian accepts gateway-authenticated requests only** (#629). Its
+  middleware accepted rows of guardian's own `APIKey` table from an
+  `X-API-Key` header on a direct request, authenticated the caller as role
+  `admin` and set `is_superuser` on the user, and DRF's
+  `APIKeyAuthentication` accepted the same keys, also from
+  `Authorization: Bearer`. That path skipped identity, the revocation
+  markers, team scoping and the gateway's rate limits: anything that
+  reached guardian's port with such a key was an administrator. Both are
+  removed; a direct request answers 403 `GATEWAY_AUTH_REQUIRED`, as on
+  the other services. The permission classes no longer read the user's
+  staff flags as a role when there is no gateway identity, which only
+  that path produced. Nothing in the repository called guardian with
+  these keys except three manual check scripts under `tests/`, which now
+  use a personal API key through the gateway. Unit tests send a direct
+  request with a key row present and expect the refusal; an integration
+  test reads and writes guardian through the gateway with a personal API
+  key from identity, and expects 403 for the same key sent directly.
+
 - **Network tools refuse internal targets unless the operator allows
   them** (#614). The URL guard covered tools that fetch a URL; the tools
   that take a host, an address, a range, a DNS server or an image
@@ -1549,6 +1567,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **guardian's `APIKey` model and its plain-text table** (#629), with
+  `APIKeyAuthentication`, the unused `APIKeyMiddleware` and
+  `generate_api_key()`. Migration `core.0002_remove_apikey` drops
+  `core_apikey` and the audit log's `api_key_id` column. guardian's
+  `.env.example` loses `GUARDIAN_API_KEY` and `API_KEY_HEADER`, which
+  nothing read. Use identity's personal API keys through the gateway;
+  UPGRADING.md says how.
 
 - **Nine n8n workflows that could not run** (#592): Security Compliance
   Automation, Daily OSINT Report, Honeypot Alert Classifier, Threat

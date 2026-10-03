@@ -227,7 +227,9 @@ REST_FRAMEWORK = {
         # SessionAuthentication was removed: it enforced CSRF and rejected
         # every gateway-authenticated write with "CSRF Failed".
         'apps.core.authentication.GatewayHeaderAuthentication',
-        'apps.core.authentication.APIKeyAuthentication',
+        # Nothing else. APIKeyAuthentication accepted guardian's own key
+        # rows beside the gateway (#629); identity's personal API keys,
+        # validated by the gateway, are the way in for scripts.
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',

@@ -6,7 +6,6 @@ The Guardian: Proactive Vulnerability Management
 
 from django.db import models
 from django.contrib.auth.models import User
-from django.utils import timezone
 import uuid
 
 
@@ -58,42 +57,10 @@ class BaseModel(UUIDModel, AuditableModel):
         abstract = True
 
 
-class APIKey(TimestampedModel):
-    """API Key model for authentication."""
-    
-    name = models.CharField(max_length=255, help_text="Descriptive name for the API key")
-    key = models.CharField(max_length=255, unique=True, help_text="The actual API key")
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='api_keys')
-    is_active = models.BooleanField(default=True)
-    last_used = models.DateTimeField(null=True, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    
-    # Permissions
-    can_read = models.BooleanField(default=True)
-    can_write = models.BooleanField(default=False)
-    can_delete = models.BooleanField(default=False)
-    
-    # Rate limiting
-    rate_limit = models.IntegerField(default=1000, help_text="Requests per hour")
-    
-    class Meta:
-        verbose_name = "API Key"
-        verbose_name_plural = "API Keys"
-        ordering = ['-created_at']
-    
-    def __str__(self):
-        return f"{self.name} - {self.key[:8]}..."
-    
-    def is_expired(self):
-        """Check if the API key is expired."""
-        if self.expires_at:
-            return timezone.now() > self.expires_at
-        return False
-    
-    def update_last_used(self):
-        """Update the last used timestamp."""
-        self.last_used = timezone.now()
-        self.save(update_fields=['last_used'])
+# guardian had its own APIKey model here, stored in plain text and accepted
+# beside the gateway as an admin and a superuser (#629). It was removed with
+# migration 0002_remove_apikey: callers authenticate through the gateway with
+# identity's personal API keys.
 
 
 class SystemConfiguration(TimestampedModel):
@@ -151,7 +118,6 @@ class AuditLog(TimestampedModel):
     ]
     
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
-    api_key = models.ForeignKey(APIKey, on_delete=models.SET_NULL, null=True, blank=True)
     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
     resource_type = models.CharField(max_length=50)
     resource_id = models.CharField(max_length=255, blank=True)
@@ -173,5 +139,5 @@ class AuditLog(TimestampedModel):
         ]
     
     def __str__(self):
-        actor = self.user.username if self.user else 'API Key'
+        actor = self.user.username if self.user else 'unknown'
         return f"{actor} - {self.action} - {self.resource_type}"

@@ -2,6 +2,10 @@
 # Task 2.3 - Verifica Sistematica Endpoint
 # Script per verificare tutti gli endpoint critici del sistema
 
+# guardian is called through the gateway with a personal API key from
+# identity: it has no API keys of its own (#629).
+WILDBOX_API_KEY="${WILDBOX_API_KEY:-}"
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -189,13 +193,13 @@ echo -e "${YELLOW}  SECTION 5: Vulnerability Management${NC}"
 echo -e "${YELLOW}═══════════════════════════════════════════════════════${NC}"
 
 test_json_endpoint "Vulnerabilities Stats" \
-    "http://localhost:8013/api/v1/vulnerabilities/vulnerabilities/stats/" \
-    "-H 'X-API-Key: wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263'" \
+    "http://localhost/api/v1/guardian/vulnerabilities/vulnerabilities/stats/" \
+    "-H 'X-API-Key: ${WILDBOX_API_KEY}'" \
     "Vulnerability statistics"
 
 test_json_endpoint "Vulnerabilities List" \
-    "http://localhost:8013/api/v1/vulnerabilities/vulnerabilities/" \
-    "-H 'X-API-Key: wbx-guardian-6fb6e69a0d7c62d6931e6bdfe7754263'" \
+    "http://localhost/api/v1/guardian/vulnerabilities/vulnerabilities/" \
+    "-H 'X-API-Key: ${WILDBOX_API_KEY}'" \
     "List of vulnerabilities"
 
 # ======================================================================
