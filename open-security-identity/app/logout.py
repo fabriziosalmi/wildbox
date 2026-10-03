@@ -24,6 +24,7 @@ from .auth import verify_access_token
 from .config import settings
 from .gateway_cache import (
     GatewayRevocationError,
+    revoke_api_keys_at_gateway,
     revoke_jtis_at_gateway,
     revoke_user_sessions_at_gateway,
 )
@@ -101,6 +102,34 @@ async def revoke_sessions_issued_before(user_id, not_before: datetime) -> None:
             {str(user_id): not_before.timestamp()},
             ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
         )
+    except GatewayRevocationError as exc:
+        raise RevocationError(str(exc)) from exc
+
+
+# How long the gateway keeps an API-key revocation marker. It only has to
+# outlive the decisions the gateway cached before it (the gateway raises it
+# to its auth-cache TTL) and the moment identity commits the revocation;
+# after that identity refuses the key by itself. An hour covers both with a
+# wide margin, and a marker costs the gateway a few bytes.
+API_KEY_MARKER_TTL_SECONDS = 3600
+
+
+async def revoke_api_keys(api_key_ids) -> None:
+    """Have the gateway refuse these API keys at once, or raise RevocationError.
+
+    The first half of disabling a key (#593): the caller marks the keys
+    inactive -- or deletes them, or the account or membership they work
+    through -- only after this returns. The gateway goes first for the reason
+    revoke_jtis() gives: once it confirms, no request with one of these keys
+    is let through, not even one whose authorization was in flight or whose
+    decision is cached; if it does not, nothing has changed yet and the
+    caller can retry. Revoking a key twice is harmless.
+    """
+    ids = [str(api_key_id) for api_key_id in api_key_ids]
+    if not ids:
+        return
+    try:
+        await revoke_api_keys_at_gateway(ids, ttl_seconds=API_KEY_MARKER_TTL_SECONDS)
     except GatewayRevocationError as exc:
         raise RevocationError(str(exc)) from exc
 

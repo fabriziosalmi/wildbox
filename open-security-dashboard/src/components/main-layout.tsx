@@ -152,7 +152,8 @@ export function MainLayout({ children }: MainLayoutProps) {
   }
 
   const handleLogout = () => {
-    logout()
+    // logout() navigates to the login page itself, once the session is gone.
+    void logout()
   }
 
   const getUserRole = () => {

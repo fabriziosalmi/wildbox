@@ -7,7 +7,7 @@ import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
+import { ACCOUNT_CREATED_PARAM, CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
 import { getErrorMessage } from '@/lib/utils'
 
 export default function LoginPage() {
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [accountCreated, setAccountCreated] = useState(false)
 
   const { login, isAuthenticated, isLoading: authLoading, user } = useAuth()
   const router = useRouter()
@@ -28,6 +29,13 @@ export default function LoginPage() {
       router.replace(mustChangePassword ? CHANGE_PASSWORD_PAGE : '/dashboard')
     }
   }, [isAuthenticated, authLoading, mustChangePassword, router])
+
+  // A sign-up that created the account but could not sign it in sends the
+  // user here (#589). Read once on mount: useSearchParams() would need a
+  // Suspense boundary around the whole page.
+  useEffect(() => {
+    setAccountCreated(new URLSearchParams(window.location.search).has(ACCOUNT_CREATED_PARAM))
+  }, [])
 
   // Show loading while checking auth state
   if (authLoading) {
@@ -83,6 +91,18 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
+              {accountCreated && !error && (
+                <div className="rounded-md border border-green-200 bg-green-50 p-3 dark:border-green-800 dark:bg-green-900/20">
+                  <p
+                    className="text-sm text-green-700 dark:text-green-400"
+                    role="status"
+                    data-testid="login-notice"
+                  >
+                    Your account has been created. Sign in to continue.
+                  </p>
+                </div>
+              )}
+
               {error && (
                 <div className="rounded-md border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20">
                   <p className="text-sm text-red-600 dark:text-red-400" data-testid="login-error">
