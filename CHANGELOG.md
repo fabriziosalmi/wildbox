@@ -89,6 +89,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fails the task with a detail-free exception, and a scan whose stored
   status is final no longer reads the result backend.
 
+- **network_scanner scans again** (#615). Every run failed before the
+  first probe: `ping_host` indexed the boolean that a stub target check
+  returned, and `asyncio.gather` swallowed the `TypeError`, so each scan
+  reported success with no hosts. The tool now pings each address with
+  an argument list and no shell, probes the common ports of live hosts
+  with a TCP connect when `scan_type` is `tcp`, and honors `timeout` and
+  `max_threads` from the request: it ignored both before. A range larger
+  than 1024 addresses is refused before any probe instead of being
+  listed in full and then truncated, which hung the service on a `/0` or
+  an IPv6 `/64`. The stubs went with the defect: a rate limiter that
+  slept while holding its lock, which held a `/24` for minutes, and a
+  port "restriction" that skipped 22, 135, 139, 445 and 3389. A failed
+  probe of a host now reports why in the host's new `error` field. The
+  tool stays separate from port_scanner and network_port_scanner, which
+  scan one host each; it is the only tool that sweeps a range.
 - **hash_generator runs with its defaults** (#611). `hash_types`
   defaulted to md5, sha1, sha256 and sha512 while the tool no longer
   implemented md5 or sha1, so a run with the defaults, and the form the
