@@ -60,6 +60,16 @@ class Settings(BaseSettings):
         "azure": ["eastus", "westus2", "westeurope"]
     }
     
+    # How many days a scan is kept in Redis: its metadata, its entry in the
+    # team's scan index and, once it completes, its report (#591). The
+    # compliance pages and the cloud security overview are built from these
+    # reports. They used to be read from the Celery result backend, which
+    # drops results after a day. Validated here, so the API and the worker
+    # refuse to start with a value that is not a whole number of days
+    # between 1 and 3650. The field name is the variable name:
+    # CSPM_REPORT_RETENTION_DAYS.
+    cspm_report_retention_days: int = Field(default=90, ge=1, le=3650)
+
     # Storage configuration
     reports_storage_path: str = Field(default="./reports", env="REPORTS_STORAGE_PATH")
     

@@ -227,6 +227,32 @@ is at the top of the file.
   `unknown_severity_findings` are new. A script that read the removed
   fields must stop, and one that reads `compliance_score` must accept
   null.
+- Nine n8n workflows are removed from `open-security-automations/workflows`
+  (#592). None of them could run: each called endpoints that do not exist,
+  or called a service directly, which the services refuse since #566.
+
+  | Workflow (file) | Why it could not run |
+  | --------------- | -------------------- |
+  | Security Compliance Automation (`compliance/daily_compliance_check.json`) | called cspm directly under a host name that does not exist; read `compliance_score`, which the summary does not have; posted to `/api/v1/alerts` on a gateway host and port that do not exist, and to cspm's `/api/v1/remediation/auto-fix`, which does not exist |
+  | Daily OSINT Report (`intelligence/daily_report.json`) | `/api/data/v1/feeds/rss` and `/api/data/v1/reports`: no such gateway prefix or data endpoint; `/api/agents/v1/analyze`: wrong prefix, and the agents service analyzes an IOC, not free text |
+  | Honeypot Alert Classifier (`intelligence/honeypot_classifier.json`) | the same agents call; data `logs/enrich`, `logs/archive` and `iocs`, responder `incidents` and guardian `block-ip` do not exist; it sent Redis commands over HTTP |
+  | Threat Intelligence Feed Aggregator (`intelligence/threat_feed_aggregator.json`) | tools `threat-intelligence/indicators/bulk`, guardian `alerts` (on identity's port) and data `threat-intelligence/feed-status` do not exist |
+  | Vulnerability Sync and Enrichment (`intelligence/vulnerability_sync.json`) | tools `vulnerabilities/bulk`, cspm `vulnerabilities/scan-trigger`, data `reports/vulnerability` and guardian `alerts` do not exist |
+  | CSPM Alert Processor (`monitoring/csmp_alert_processor.json`) | nothing sends to its webhook; guardian `threats`, tools `compliance/findings` and `tickets`, responder `automation/remediate` do not exist |
+  | Security Incident Response Orchestrator (`support/incident_response_orchestrator.json`) | tools `alerts`, guardian `incidents` and data `incidents` do not exist |
+  | Support Ticket Triage (`support/triage.json`) | the agents call above; data `tickets` and `search/documentation` do not exist |
+  | Threat Intelligence Enrichment (`threat-intelligence/ip_enrichment_workflow.json`) | its trigger was a webhook node pointed at the sensor, which has no gateway route; responder `incidents` and `response/isolate` do not exist |
+
+  If you imported one of them into n8n, delete it there: it fails on every
+  run. The Executive Security Dashboard workflow stays, rewritten to read
+  cspm's `dashboard/summary`, `compliance/summary` and `compliance/findings`
+  through the gateway; re-import it with
+  `open-security-automations/scripts/import_workflows.sh` and set the
+  variables its README lists (`AUTOMATIONS_WILDBOX_API_KEY`,
+  `SLACK_WEBHOOK_URL`, `EXECUTIVE_REPORT_EMAIL_FROM`,
+  `EXECUTIVE_REPORT_EMAIL_TO`). The import and export scripts now use the
+  n8n CLI in the container instead of the REST API with basic auth, which
+  n8n 1.x refuses.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -522,6 +548,103 @@ There are no composition rules. Rebuild identity (section 1 does).
   `error.message` for the code must read `error.details.code`. This
   applies to every service using `open_security_shared.errors`, for any
   HTTP error whose detail is an object with a `reason`.
+
+### 24. cspm keeps scan reports for 90 days (`CSPM_REPORT_RETENTION_DAYS`)
+
+The compliance summary and findings, the dashboard summary and the cloud
+security overview are built from the reports of the team's completed
+scans. cspm read them from the Celery result backend, which drops results
+after a day, so every scan older than that dropped out of those pages. The
+worker now stores each report in Redis under its scan, and keeps the
+report, the scan's metadata and its entry in the team's scan index for
+`CSPM_REPORT_RETENTION_DAYS` days (#591). Rebuild cspm, and its worker if
+you run one (section 1 does).
+
+- **New variable, optional.** `CSPM_REPORT_RETENTION_DAYS` defaults to
+  90; `docker-compose.yml` passes it to cspm. It must be a whole number
+  from 1 to 3650, or cspm stops at start with the reason. A worker you
+  run yourself needs the same value: the worker writes the reports.
+- **Size Redis for it.** Redis runs with `noeviction`: when it reaches
+  `REDIS_MAXMEMORY` (1 GB by default) it refuses writes for every service
+  instead of dropping keys. A stored report takes about 100 bytes per
+  check result, so 10 accounts scanned daily with 2,000 results each
+  need about 180 MB at 90 days. Check the memory in use with
+  `scripts/check_redis_config.py runtime`, then lower the retention or
+  raise `REDIS_MAXMEMORY` (and `REDIS_MEMORY_LIMIT`, at least twice as
+  much). The cspm README, "Scan retention and Redis memory", has the
+  details.
+- **Reports of scans completed before the upgrade are not shown.** The
+  stored report is the only source. A scan completed before the upgrade
+  has its report only in the Celery result backend, for at most a day
+  after it completed, and keeps counting in `total_scans` for up to 30
+  days, but its findings and score are not in the summaries and
+  `GET /api/v1/scans/{id}/report` answers 400. Run the scan again to see
+  its findings.
+- **Celery results expire after two hours** (twice
+  `SCAN_TIMEOUT_SECONDS`), no longer after a day. Finished scans take
+  their status from their metadata, which `GET /api/v1/scans/{id}` now
+  reads, so a completed scan stays `completed`. A script that read a
+  report from the task result must call `GET /api/v1/scans/{id}/report`:
+  the result holds a summary of the scan, not the report.
+- **Batch scans now work.** `POST /api/v1/batch/scans` stored each scan's
+  cloud credentials unencrypted, which the worker cannot read, so every
+  batch scan failed; it wrote no scan metadata either, so `GET
+  /api/v1/scans/{id}` answered 404 for its scans and they never counted
+  in the summaries. Each scan of a batch is now started like a single
+  scan. Batch scans started before the upgrade stay unreadable; start
+  them again. Unencrypted credentials they left in Redis expired five
+  minutes after each batch, but may remain in the append-only file until
+  Redis next rewrites it.
+
+### 25. Disabling an API key or an account needs the gateway to confirm
+
+Revoking an API key, deactivating or deleting an account and removing a
+member from a team now take effect at the gateway on the next request
+(#593): identity has the gateway refuse the keys (and, for an account, its
+sessions) before it commits the change. No migration.
+
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). The gateway refuses an API-key decision that does not name its key
+  (`api_key_id`, which only the new identity reports), so a new gateway with
+  an old identity refuses every API key. An old gateway does not know the
+  `api_keys` purge body: with it, or with a gateway identity cannot reach
+  on port 8081 (section 3), every key revocation, account deactivation or
+  deletion and member removal answers 503 and changes nothing. Decisions
+  cached before the upgrade are not served; the gateway asks identity again.
+- **Scripts that revoke keys or deactivate accounts** must handle 503: the
+  change was not made, and repeating it is safe.
+- **Deactivating or deleting an account ends its sessions** as well as its
+  keys. A deactivated account that is reactivated must log in again.
+- **API keys with an expiry work.** They answered 500 at
+  `/internal/authorize` (503 at the gateway) on every request; now they work
+  until `expires_at` and are refused from then on, cached decision or not.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers; the others refuse a revoked key once their cached decision
+  expires (`AUTH_CACHE_TTL`), as for logout.
+
+### 26. Removing a member from a team ends their sessions in that team
+
+Removing a member from a team now also ends, at the gateway and in that
+team only, the member's sessions issued up to the removal (#613): identity
+sends the gateway a `memberships` marker before it commits the removal,
+alongside the API keys of section 25. No migration.
+
+- **Rebuild and restart identity and the gateway together**, as section 25
+  says. An old gateway does not know the `memberships` purge body: with it,
+  every member removal answers 503 and removes nobody.
+- **Scripts that remove members** must handle 503: the member was not
+  removed, and repeating the removal is safe.
+- **A removed member's next request in that team answers 403**
+  (`team_membership_ended`), not 401: the session is still valid. The
+  request after it is authorized afresh and works in the oldest team the
+  user still belongs to; a user with no team left gets 401. A client
+  should not end the session on that 403.
+- **A session issued before the removal does not work in that team again**,
+  even if the user is added back, until it expires (the access-token
+  lifetime); a new login does. Sessions in the user's other teams are not
+  affected.
+- With more than one gateway replica, only the one identity reaches keeps
+  the markers, as in section 25.
 
 ## Upgrading to 0.10.0
 

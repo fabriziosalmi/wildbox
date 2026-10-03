@@ -61,6 +61,8 @@ def validate_auth_value(auth_value: str) -> str:
     
     return auth_value
 
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_session
 from .schemas import (
     APISecurityTesterInput,
     APISecurityTesterOutput,
@@ -89,9 +91,12 @@ def _session() -> aiohttp.ClientSession:
     """Return the execution-scoped HTTP session, creating it on first use."""
     global _SESSION
     if _SESSION is None or _SESSION.closed:
-        _SESSION = aiohttp.ClientSession(
+        # Guarded: every connection, redirect hops included, is refused
+        # unless its target is a public host (#610).
+        _SESSION = guarded_session(
             timeout=aiohttp.ClientTimeout(total=30, connect=10),
-            connector=aiohttp.TCPConnector(limit=20, limit_per_host=8, ttl_dns_cache=300),
+            limit=20,
+            limit_per_host=8,
         )
     return _SESSION
 
@@ -340,17 +345,24 @@ async def discover_api_endpoints(base_url: str, api_spec: Optional[str], headers
     logger.info(f"Discovered {len(endpoints)} endpoints from {len(paths_to_test)} probes")
     return endpoints
 
+def _is_spec_url(value: str) -> bool:
+    """True if ``value`` is a URL to fetch rather than the specification itself."""
+    return bool(re.match(r"^\s*https?://", value, re.IGNORECASE))
+
+
 async def parse_api_specification(spec_url_or_content: str, base_url: str) -> List[APIEndpoint]:
     """Parse OpenAPI/Swagger specification to extract endpoints"""
     endpoints = []
     
     try:
-        # Try to fetch specification if it's a URL
-        if spec_url_or_content.startswith('http'):
+        # Fetch the specification if it is a URL. The check is
+        # case-insensitive ("HTTP://" is a URL too) and the URL goes through
+        # the shared SSRF guard before the guarded session fetches it.
+        if _is_spec_url(spec_url_or_content):
+            spec_url = InputSanitizer.validate_url(spec_url_or_content)
             session = _session()
-            if True:
-                async with session.get(spec_url_or_content) as response:
-                    spec_content = await response.text()
+            async with session.get(spec_url) as response:
+                spec_content = await response.text()
         else:
             spec_content = spec_url_or_content
         
@@ -383,8 +395,8 @@ async def parse_api_specification(spec_url_or_content: str, base_url: str) -> Li
                             input_validation="Unknown"
                         ))
     
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("API specification not used: %s", exc)
     
     return endpoints
 

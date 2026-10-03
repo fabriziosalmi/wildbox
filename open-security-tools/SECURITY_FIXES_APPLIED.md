@@ -5,7 +5,7 @@
 ### Issues Identified & Fixed
 
 1. **Bare Exception Handlers**: Fixed overly broad exception catching in blockchain analyzer
-2. **Session Management**: Added TODO reminders for proper async session handling
+2. **Session Management**: Added code comments flagging the async session handling still to fix
 3. **SQL Injection Scanner**: Validated safe payload usage - removed destructive commands
 4. **Security Configuration**: Created comprehensive security config templates
 5. **Input Validation**: Enhanced validation patterns for XSS, SQL injection, command injection

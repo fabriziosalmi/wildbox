@@ -147,6 +147,46 @@ jobs:
         if: failure()
         run: docker compose logs --tail=150 gateway identity data dashboard
 
+      - name: Collect stack diagnostics on failure
+        # What a failed request needs to be traced (#609): the gateway's own
+        # access and error logs (files under the bind-mounted logs/, not in
+        # `docker compose logs`), every container's state and restart count,
+        # and the full, timestamped logs of the services on the request
+        # path. The access log carries $request_id, $upstream_status and
+        # $upstream_addr, so a 5xx shows whether the gateway answered it or
+        # an upstream did. docker inspect is asked for named fields only: its
+        # full output includes each container's environment.
+        if: failure()
+        run: |
+          out=e2e-diagnostics
+          mkdir -p "$out"
+          docker compose ps -a > "$out/compose-ps.txt" 2>&1 || true
+          for id in $(docker compose ps -aq); do
+            docker inspect --format \
+              '{{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{end}} restarts={{.RestartCount}} oom={{.State.OOMKilled}} exit={{.State.ExitCode}} started={{.State.StartedAt}} finished={{.State.FinishedAt}}' \
+              "$id"
+          done > "$out/container-state.txt" 2>&1 || true
+          for svc in gateway identity data; do
+            docker compose logs --timestamps --no-color "$svc" > "$out/$svc.log" 2>&1 || true
+          done
+          # Written by the container's nginx user; copy them out as root.
+          sudo cp -r open-security-gateway/logs "$out/gateway-nginx" || true
+          sudo chown -R "$(id -u):$(id -g)" "$out"
+          cat "$out/container-state.txt"
+          echo "--- gateway 5xx (access.log) ---"
+          grep -E '" 5[0-9]{2} ' "$out/gateway-nginx/access.log" | tail -50 || true
+          echo "--- gateway error.log (tail) ---"
+          tail -100 "$out/gateway-nginx/error.log" || true
+
+      - name: Upload stack diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-fullstack-diagnostics
+          path: e2e-diagnostics/
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Tear down
         if: always()
         run: docker compose down -v

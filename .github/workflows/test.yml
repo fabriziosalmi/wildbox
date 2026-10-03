@@ -360,6 +360,14 @@ jobs:
       # otherwise force an unrelated reformat into the diff. To widen tier 2,
       # reformat a service and add its path to that step.
 
+      # The n8n workflows are JSON that nothing else executes in CI, so a
+      # removed or renamed endpoint broke them silently: the executive
+      # dashboard workflow called two endpoints that did not exist (#592).
+      # This resolves every HTTP node's URL against the gateway's locations
+      # and the target service's routes. Standard library only.
+      - name: Automation workflows call existing API routes
+        run: python3 scripts/check_automation_workflows.py
+
       # Tier 1 -- real defects, whole tree, always blocking.
       - name: Flake8 (correctness, whole tree)
         run: |

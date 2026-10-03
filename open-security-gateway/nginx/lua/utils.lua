@@ -150,25 +150,54 @@ function _M.jwt_iat(token)
 end
 
 -- Clean sensitive headers before forwarding to backend
-function _M.http_request(method, url, options)
+-- Errors that mean the peer closed a kept-alive connection under us, not
+-- that the service is down: the request was written to (or read from) a
+-- pooled socket the server had just timed out (#609).
+local STALE_CONNECTION_ERRORS = {
+    ["closed"] = true,
+    ["broken pipe"] = true,
+    ["connection reset by peer"] = true,
+}
+
+function _M.is_stale_connection_error(err)
+    return err ~= nil and STALE_CONNECTION_ERRORS[err] == true
+end
+
+-- How long a connection to a service may sit idle in the gateway's pool.
+-- Below the 5 s keep-alive uvicorn closes idle connections after, so the
+-- gateway gives up a connection before the service does and never writes
+-- a request into one the service is closing (#609). lua-resty-http would
+-- otherwise use lua_socket_keepalive_timeout, 60 s by default.
+_M.UPSTREAM_KEEPALIVE_MS = 4000
+
+local function new_client(timeout_ms)
     local httpc = http:new()
-
-    -- Default options
-    local opts = options or {}
-
     -- Timeouts. request_uri() does not read a `timeout` field from its
     -- params, so the caller's opts.timeout used to be ignored and every call
     -- ran with these fixed 5/10/10 s values: auth_handler's TIMEOUT_SECONDS = 5
     -- was dead configuration, and with identity unresponsive each
     -- authentication hung for 10 s instead of 5 (found by tests/chaos, #428).
     -- Honour it as the send/read budget and cap the connect at it as well.
-    local timeout_ms = tonumber(opts.timeout)
     if timeout_ms then
         httpc:set_timeouts(math.min(5000, timeout_ms), timeout_ms, timeout_ms)
     else
         httpc:set_timeouts(5000, 10000, 10000) -- connect, send, read timeouts
     end
+    return httpc
+end
+
+-- opts.retry_stale: the request is idempotent and may be sent once more, on
+-- another connection, when the first one turns out to have been closed by
+-- the server (STALE_CONNECTION_ERRORS). Only the caller knows that.
+function _M.http_request(method, url, options)
+    -- Default options
+    local opts = options or {}
+
+    local timeout_ms = tonumber(opts.timeout)
+    local retry_stale = opts.retry_stale == true
     opts.timeout = nil
+    opts.retry_stale = nil
+    opts.keepalive_timeout = opts.keepalive_timeout or _M.UPSTREAM_KEEPALIVE_MS
     opts.method = method
     opts.headers = opts.headers or {}
 
@@ -181,14 +210,21 @@ function _M.http_request(method, url, options)
         opts.headers["Content-Type"] = "application/json"
     end
 
-    local res, err = httpc:request_uri(url, opts)
+    -- request_uri() hands the connection back to the pool itself (or closes
+    -- it); nothing is left to close here.
+    local res, err = new_client(timeout_ms):request_uri(url, opts)
+
+    if not res and retry_stale and _M.is_stale_connection_error(err) then
+        _M.log("warn", "Upstream closed a kept-alive connection; retrying once", {
+            error = err,
+            url = url
+        })
+        res, err = new_client(timeout_ms):request_uri(url, opts)
+    end
 
     if not res then
         return nil, "request failed: " .. (err or "unknown error")
     end
-
-    -- Close connection
-    httpc:close()
 
     return res, nil
 end

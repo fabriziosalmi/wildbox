@@ -23,7 +23,7 @@ pydantic==2.10.3
 pydantic-settings==2.10.1
 python-dotenv==1.2.2
 dnspython==2.7.0
-aiodns==3.2.0
+aiodns==4.0.4
 python-whois==0.9.4
 aiohttp==3.14.3
 beautifulsoup4==4.12.3

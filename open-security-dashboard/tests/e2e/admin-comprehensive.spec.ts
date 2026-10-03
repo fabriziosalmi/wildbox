@@ -12,6 +12,7 @@ import {
   readSeed,
   registerUser,
   strongPassword,
+  toast,
   uniqueEmail,
 } from './support/backend'
 
@@ -104,7 +105,7 @@ test.describe('Administration', { tag: '@backend' }, () => {
     await page.getByLabel('Password *').fill(strongPassword())
     await page.getByRole('button', { name: 'Create User', exact: true }).click()
 
-    await expect(page.getByText(`User ${email} created successfully`)).toBeVisible()
+    await expect(toast(page, `User ${email} created successfully`)).toBeVisible()
     const row = rowFor(page, email)
     await expect(row).toBeVisible()
     await expect(row.getByText('Active', { exact: true })).toBeVisible()

@@ -6,29 +6,28 @@ Provides authenticated access to the Wildbox security toolkit.
 
 import asyncio
 import logging
-from contextvars import ContextVar
-from typing import Dict, Any, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar, Token
+from typing import Any, Dict, Iterator, Mapping, Optional
 import httpx
 
 from ..config import settings
 
 logger = logging.getLogger(__name__)
 
-# Identity of the user on whose behalf internal tool calls are made (#175). Set
-# per analysis task (see worker.run_threat_enrichment_task) so downstream calls
-# carry the real team-scoped identity instead of a god-mode service key.
+# Identity of the user on whose behalf internal tool calls are made (#175).
+#
+# A ContextVar, so it follows the task's own context: asyncio tasks (the
+# agent's concurrent tool calls go through asyncio.gather) and LangChain's
+# run_in_executor (which runs a sync tool under copy_context()) both see the
+# value of the context they were started from. That same property is why it
+# must be scoped: a Celery worker runs one task after another in the same
+# thread, hence the same context, so a value set and never reset is still
+# there for the next task (#594). Set it through caller_identity(), which
+# validates the caller first and restores the previous value on exit.
 _caller_identity: ContextVar[Optional[Dict[str, str]]] = ContextVar(
     "wildbox_caller_identity", default=None
 )
-
-
-def set_caller_identity(user_id: str, team_id: str, role: str = "member") -> None:
-    """Record the gateway identity to forward on subsequent internal calls."""
-    _caller_identity.set({
-        "user_id": str(user_id),
-        "team_id": str(team_id),
-        "role": role or "member",
-    })
 
 
 class CallerIdentityUnavailable(RuntimeError):
@@ -40,7 +39,74 @@ class CallerIdentityUnavailable(RuntimeError):
     the static INTERNAL_API_KEY as X-API-Key, which the tools service has not
     accepted since #566 (it answers 401), so the fallback only turned a
     configuration error into an unexplained authentication failure (#567).
+
+    Also raised when a task is handed a caller that is missing, or lacks a
+    user or team id: such a task must not start, let alone call a tool (#594).
     """
+
+
+def require_caller_identity(caller: Optional[Mapping[str, Any]]) -> Dict[str, str]:
+    """Return the identity to forward for ``caller``, or refuse it.
+
+    A complete caller has a non-blank ``user_id`` and ``team_id``; ``role``
+    defaults to ``member``. Anything less cannot be forwarded, and is refused
+    rather than completed from somewhere else.
+
+    Raises:
+        CallerIdentityUnavailable: ``caller`` is missing or incomplete.
+    """
+    if not isinstance(caller, Mapping):
+        raise CallerIdentityUnavailable("the task has no caller identity")
+    user_id = str(caller.get("user_id") or "").strip()
+    team_id = str(caller.get("team_id") or "").strip()
+    missing = [
+        name
+        for name, value in (("user_id", user_id), ("team_id", team_id))
+        if not value
+    ]
+    if missing:
+        raise CallerIdentityUnavailable(
+            "the task's caller identity is incomplete: no " + " and no ".join(missing)
+        )
+    role = str(caller.get("role") or "").strip() or "member"
+    return {"user_id": user_id, "team_id": team_id, "role": role}
+
+
+def set_caller_identity(user_id: str, team_id: str, role: str = "member") -> Token:
+    """Make this identity the one internal calls forward, in this context.
+
+    Returns the ContextVar token, to pass to reset_caller_identity() in a
+    ``finally``. Prefer caller_identity(), which does both.
+
+    Raises:
+        CallerIdentityUnavailable: ``user_id`` or ``team_id`` is blank.
+    """
+    identity = require_caller_identity(
+        {"user_id": user_id, "team_id": team_id, "role": role}
+    )
+    return _caller_identity.set(identity)
+
+
+def reset_caller_identity(token: Token) -> None:
+    """Restore the identity that was current before set_caller_identity()."""
+    _caller_identity.reset(token)
+
+
+@contextmanager
+def caller_identity(caller: Optional[Mapping[str, Any]]) -> Iterator[Dict[str, str]]:
+    """Run a block with ``caller`` as the identity its internal calls send.
+
+    The caller is validated before anything is set, so a missing or partial
+    caller raises CallerIdentityUnavailable before the block runs. On exit,
+    normal or not, the previous identity is restored, so nothing set here is
+    visible to whatever runs next in the same context (#594).
+    """
+    identity = require_caller_identity(caller)
+    token = _caller_identity.set(identity)
+    try:
+        yield identity
+    finally:
+        _caller_identity.reset(token)
 
 
 class WildboxAPIClient:
@@ -89,7 +155,7 @@ class WildboxAPIClient:
         """
         caller = _caller_identity.get()
         missing = []
-        if not caller:
+        if not caller or not caller.get("user_id") or not caller.get("team_id"):
             missing.append("no caller identity was set for this task (set_caller_identity)")
         if not self.gateway_secret:
             missing.append("GATEWAY_INTERNAL_SECRET is not set")

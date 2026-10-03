@@ -154,7 +154,11 @@ jobs:
           # An `env` context expression is evaluated before any step runs, so
           # it cannot carry a value this job generated.
           DATA_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/data"
-          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN
+          # test_team_removal_sessions seeds a second team membership, which
+          # no API can create (#613).
+          IDENTITY_DB="$(env_value POSTGRES_DB)"
+          IDENTITY_DB_DSN="postgresql://postgres:$(env_value POSTGRES_PASSWORD)@localhost:5432/${IDENTITY_DB:-identity}"
+          export INITIAL_ADMIN_EMAIL INITIAL_ADMIN_PASSWORD GATEWAY_INTERNAL_SECRET SENSOR_API_KEY DATA_DB_DSN IDENTITY_DB_DSN
           python -m pytest tests/integration/ \
             -v -rs \
             --tb=short \

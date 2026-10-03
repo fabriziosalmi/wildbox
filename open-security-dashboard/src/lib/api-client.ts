@@ -23,6 +23,15 @@ interface ErrorBody {
   message?: string
 }
 
+/* Set by the logout for the rest of this page's life: the logout ends with a
+   full navigation to the login page, which starts a fresh module. */
+let signingOut = false
+
+/** Hands the post-logout navigation to the logout alone (#590). */
+export function beginSignOut() {
+  signingOut = true
+}
+
 class ApiClient {
   private client: AxiosInstance
   private baseURL: string
@@ -111,6 +120,11 @@ class ApiClient {
   }
 
   private handleAuthError() {
+    // A logout in progress owns the navigation (#590): the requests it
+    // overtakes answer 401 once the token is revoked or the cookie gone,
+    // and a redirect from here would race the one to the login page.
+    if (signingOut) return
+
     // Check if this is a gateway request that might need different handling
     const isGatewayRequest = this.baseURL.includes('localhost:80') || this.baseURL.includes(':80')
 

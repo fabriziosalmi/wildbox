@@ -23,7 +23,7 @@ steps:
         url: "{{ trigger.url }}"
         deep_scan: true
         screenshot: true
-    condition: "{{ steps.validate_url.output.valid == true }}"
+    condition: "steps.validate_url.output.valid == true"
     
   - name: "reputation_check"
     action: "api.run_tool"
@@ -32,7 +32,7 @@ steps:
       params:
         url: "{{ trigger.url }}"
         sources: ["virustotal", "urlvoid", "phishtank"]
-    condition: "{{ steps.validate_url.output.valid == true }}"
+    condition: "steps.validate_url.output.valid == true"
     
   - name: "extract_domain"
     action: "system.extract"
@@ -46,7 +46,7 @@ steps:
       tool_name: "domain_reputation"
       params:
         domain: "{{ steps.extract_domain.output.domain }}"
-    condition: "{{ steps.extract_domain.output.domain is defined }}"
+    condition: "steps.extract_domain.output.domain is defined"
     
   - name: "threat_verdict"
     action: "system.evaluate"
@@ -72,7 +72,9 @@ steps:
       reason: "Automated analysis detected malicious content"
       source: "url_triage_playbook"
       confidence: "{{ steps.threat_verdict.output.confidence }}"
-    condition: "{{ steps.threat_verdict.output.verdict == 'malicious' }}"
+    condition: >-
+      steps.threat_verdict.output.verdict is defined
+      and steps.threat_verdict.output.verdict == 'malicious'
     
   - name: "notify_security_team"
     action: "system.notification"
@@ -85,4 +87,6 @@ steps:
         Analysis: {{ steps.url_analysis.output.summary }}
         Action: Added to blacklist
       priority: "high"
-    condition: "{{ steps.threat_verdict.output.verdict == 'malicious' }}"
+    condition: >-
+      steps.threat_verdict.output.verdict is defined
+      and steps.threat_verdict.output.verdict == 'malicious'

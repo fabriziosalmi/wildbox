@@ -149,7 +149,7 @@ git commit -m "Quick fix"
 
 ## Bypassing Hooks (Emergency Only)
 
-**If absolutely necessary:**
+**Only when there is no alternative:**
 
 ```bash
 git commit --no-verify -m "Emergency hotfix"
@@ -272,7 +272,7 @@ Even if you bypass locally, CI will catch violations and fail the build.
 1. Clone repo
 2. `pip install pre-commit`
 3. `pre-commit install`
-4. Done!
+4. Done.
 
 **Include in onboarding docs:**
 
