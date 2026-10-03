@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { Route, expect, test } from '@playwright/test'
 import {
   adminAccount,
   apiLogin,
@@ -99,6 +99,14 @@ test.describe('Login flow', { tag: '@backend' }, () => {
       const revoke = page.waitForResponse(
         r => r.url().endsWith('/auth/jwt/logout') && r.request().method() === 'POST'
       )
+      // Every page the tab lands on from here. The logout alone navigates
+      // (#590): a redirect of the API client to '/' used to race it. Next's
+      // router replaces the history entry once hydrated, which reports the
+      // same page a second time, hence a set.
+      const landed: string[] = []
+      page.on('framenavigated', frame => {
+        if (frame === page.mainFrame()) landed.push(new URL(frame.url()).pathname)
+      })
       await page.getByRole('button', { name: 'Logout' }).click()
       expect((await revoke).ok()).toBe(true)
 
@@ -107,11 +115,60 @@ test.describe('Login flow', { tag: '@backend' }, () => {
 
       // The token the browser held is dead server-side, not merely forgotten.
       expect((await api.get(protectedRoute, { headers: bearer(token!) })).status()).toBe(401)
+      expect(new Set(landed)).toEqual(new Set(['/auth/login']))
 
       // And the dashboard sends an anonymous visitor back to sign in.
       await page.goto('/dashboard')
       await expect(page).toHaveURL(/\/\?redirect=%2Fdashboard$/)
       await api.dispose()
+    })
+
+    test('a request refused during the logout does not take the tab elsewhere', async ({
+      page,
+      context,
+    }) => {
+      // The race of #590, made deterministic: the dashboard's own API
+      // requests are held, then answered by the gateway (401: the token is
+      // revoked) while the logout request is still pending in the page.
+      // The API client used to redirect to '/' on such a 401.
+      const held: Route[] = []
+      await page.route('**/api/v1/**', route => {
+        if (route.request().method() === 'GET') held.push(route)
+        else return route.continue()
+      })
+      let revokeStatus = 0
+      const refused: (number | undefined)[] = []
+      await page.route('**/auth/jwt/logout', async route => {
+        const response = await route.fetch() // the token is revoked from here
+        revokeStatus = response.status()
+        for (const request of held.splice(0)) {
+          await request.continue()
+          refused.push((await request.request().response())?.status())
+        }
+        // The page may be gone already: that is what the test looks for.
+        await route.fulfill({ response }).catch(() => undefined)
+      })
+
+      const api = await gatewayApi()
+      const account = { email: uniqueEmail('logout-401'), password: strongPassword() }
+      await registerUser(api, account)
+      await api.dispose()
+      await uiLogin(page, account)
+      await expect.poll(() => held.length).toBeGreaterThan(0)
+
+      const landed: string[] = []
+      page.on('framenavigated', frame => {
+        if (frame === page.mainFrame()) landed.push(new URL(frame.url()).pathname)
+      })
+      await page.getByRole('button', { name: 'Logout' }).click()
+      await expect.poll(() => revokeStatus).toBe(204)
+
+      await expect(page).toHaveURL(/\/auth\/login$/)
+      await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible()
+      expect(await sessionToken(context)).toBeUndefined()
+      expect(new Set(landed)).toEqual(new Set(['/auth/login']))
+      expect(refused.length).toBeGreaterThan(0)
+      expect(refused.every(status => status === 401)).toBe(true)
     })
 
     test('a logout racing in-flight requests leaves no window', async () => {
