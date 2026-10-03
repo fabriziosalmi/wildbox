@@ -881,6 +881,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Sensor telemetry is scoped to the team that ingested it** (#641).
+  `telemetry_events` and `sensor_metadata` had no team column, and the
+  data service's telemetry routes queried the whole tables: any
+  authenticated member of any team listed every team's events
+  (including `raw_data` and host names), sensors and statistics. A
+  sensor ID was unique across all teams, so a batch posted under
+  another team's sensor ID updated that team's sensor record. Both
+  tables now carry `team_id` (alembic revision `0005_telemetry_team`),
+  and a sensor ID is unique per team. `POST /api/v1/ingest` stores the
+  caller's team from the gateway, never one named in the batch, and
+  looks the sensor up by team and ID. `GET /api/v1/telemetry/events`,
+  `/telemetry/stats`, `/sensors` and `/sensors/{sensor_id}` return the
+  caller's team's rows only, and another team's sensor answers 404.
+  Rows written before the upgrade have no team and are shown to no
+  team; UPGRADING section 32 gives the SQL to assign them. Unit tests
+  run the scenario of the issue (team B lists nothing of team A's,
+  gets 404 for A's sensor, and a batch of B's under A's sensor ID
+  leaves A's record unchanged); removing the team predicate from any
+  of the reads, or from the ingest's sensor lookup, fails them. An
+  integration test does the same through the gateway with two
+  accounts.
+
+- **agents: the analysis rate limit is counted per user** (#651). The
+  limiter on `POST /v1/analyze` was keyed by the client address. Every
+  request reaches the service through the gateway, so that address was
+  the gateway's for every caller: the whole platform shared one budget
+  of five analysis requests a minute, and one user of one team could exhaust it
+  for all the others. The limit is now keyed by the user ID of the
+  gateway-authenticated caller, taken from the verified identity after
+  the gateway secret has been checked; no header is read for the key, so
+  `X-Forwarded-For` cannot move a request to another bucket, and a
+  request without a verified identity is refused before it is counted.
+  Per user rather than per team, so that one member cannot use up the
+  budget of their teammates. The value is configurable with
+  `ANALYZE_RATE_LIMIT` (default `5/minute`), and
+  `ANALYZE_TEAM_RATE_LIMIT` adds an optional ceiling for a whole team;
+  the service refuses to start on a value it cannot parse, where slowapi
+  would have dropped the limit silently. The 429 body says whether the
+  user or the team limit was hit. Unit tests check that two users each
+  get their own budget, that the same user is limited, that a spoofed
+  `X-Forwarded-For` leaves the bucket unchanged, the team ceiling, and
+  the validation of both settings.
+
+- **agents: reading or cancelling a task fails closed on its owner
+  record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
+  when the owner record existed, so with the record missing any
+  authenticated caller, of any team, could revoke someone else's
+  analysis. The record could be missing while the task was still
+  addressable: the celery id was written after it with the same TTL and
+  outlived it, and eviction can drop one key and keep the other. `GET`
+  and `DELETE` now share one check: no celery id, no owner record, or
+  another user's task all answer 404 `Task not found`, before anything is
+  read or revoked. Another user's task used to answer 403 on `GET`, which
+  confirmed that the task id was live. The owner record is now written
+  with five minutes more time to live than the task's other keys, and is
+  rewritten in the same transaction as the celery id, so it outlives
+  every key that can address the task. Unit tests cover a missing owner
+  record, another user's task and the owner's own task on both methods,
+  and the TTLs written on submission.
+
 - **guardian accepts gateway-authenticated requests only** (#629). Its
   middleware accepted rows of guardian's own `APIKey` table from an
   `X-API-Key` header on a direct request, authenticated the caller as role

@@ -6,7 +6,8 @@ Uses Pydantic Settings for environment-based configuration.
 
 import os
 from typing import Optional
-from pydantic import Field
+from limits import parse_many
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -54,7 +55,32 @@ class Settings(BaseSettings):
     # Task Settings
     task_result_expires: int = 3600  # 1 hour
     task_timeout: int = 600  # 10 minutes
-    
+
+    # Rate limits on POST /v1/analyze (#651), in the `limits` notation
+    # ("5/minute", "5/minute;50/day"). ANALYZE_RATE_LIMIT applies to each
+    # authenticated user. ANALYZE_TEAM_RATE_LIMIT, when set, is a ceiling
+    # for all the users of one team together; empty means no ceiling.
+    analyze_rate_limit: str = "5/minute"
+    analyze_team_rate_limit: str = ""
+
+    @field_validator("analyze_rate_limit", "analyze_team_rate_limit")
+    @classmethod
+    def _valid_rate_limit(cls, value: str, info: ValidationInfo) -> str:
+        # slowapi logs a limit it cannot parse and then does not apply it,
+        # so a typo would silently remove the limit. Refuse to start instead.
+        value = (value or "").strip()
+        if not value:
+            if info.field_name == "analyze_rate_limit":
+                raise ValueError("ANALYZE_RATE_LIMIT must not be empty")
+            return value
+        try:
+            items = parse_many(value)
+        except ValueError as e:
+            raise ValueError(f"invalid rate limit {value!r}: {e}") from e
+        if not items or any(item.amount < 1 for item in items):
+            raise ValueError(f"invalid rate limit {value!r}: amounts must be 1 or more")
+        return value
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

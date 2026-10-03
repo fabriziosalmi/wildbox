@@ -859,7 +859,74 @@ Rebuild the gateway (section 1 does).
 - **`/api/v1/agents/stats` answers** with the service's statistics,
   authenticated, where it answered 404.
 
-### 34. Sensors send telemetry through the gateway, with an identity API key
+### 34. Sensor telemetry belongs to a team (data schema change)
+
+The data service stored telemetry events and sensor records without a
+team, and served every team's to any caller (#641). The data service
+adds `team_id` to `telemetry_events` and `sensor_metadata` (alembic
+revision `0005_telemetry_team`). The data API applies it at start,
+unless `RUN_MIGRATIONS_ON_STARTUP=false`.
+
+- **A schema you migrate yourself** needs `alembic upgrade head` from
+  `open-security-data` before the new data API starts, with
+  `DATABASE_URL` set to the data database. The revision adds a nullable
+  `team_id` column and an index to both tables. It replaces the unique
+  index on `sensor_metadata.sensor_id` with a plain index and a unique
+  constraint `uq_sensor_metadata_team_sensor` on `(team_id, sensor_id)`,
+  so two teams can use the same sensor ID. It rewrites no rows.
+- **Telemetry is always private to a team.** `POST /api/v1/ingest`
+  stores events and the sensor record under the caller's team, the one
+  the gateway forwards, and ignores any team the batch names. The
+  events, sensors, sensor-by-ID and statistics routes return the
+  caller's team's rows only: another team's sensor ID answers 404.
+  Unlike indicators, telemetry has no global rows.
+- **Existing rows are hidden from every team.** Rows written before the
+  upgrade keep `team_id` NULL, and no API call returns or updates them.
+  A sensor that reports again after the upgrade gets a new record in
+  its team. To count the legacy rows, in the data database (`data` in
+  the default stack):
+
+  ```bash
+  docker compose exec postgres psql -U postgres -d data -c \
+    "SELECT 'events', count(*) FROM telemetry_events WHERE team_id IS NULL
+     UNION ALL
+     SELECT 'sensors', count(*) FROM sensor_metadata WHERE team_id IS NULL"
+  ```
+
+- **To give the legacy rows to a team**, take the team's ID from
+  identity (`SELECT id, name FROM teams` in the `identity` database)
+  and run the following. It is one transaction, and it merges a legacy
+  sensor record into the team's record of the same sensor ID, if the
+  sensor has already reported since the upgrade. Add
+  `AND sensor_id = '...'` to every statement to move one sensor only.
+
+  ```bash
+  docker compose exec -T postgres psql -U postgres -d data \
+    -v ON_ERROR_STOP=1 -v team='<team-uuid>' <<'SQL'
+  BEGIN;
+  UPDATE telemetry_events SET team_id = :'team' WHERE team_id IS NULL;
+  UPDATE sensor_metadata AS t
+     SET total_events = t.total_events + l.total_events,
+         first_seen = LEAST(t.first_seen, l.first_seen)
+    FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL AND t.team_id = :'team'
+     AND t.sensor_id = l.sensor_id;
+  DELETE FROM sensor_metadata AS l
+   WHERE l.team_id IS NULL
+     AND EXISTS (SELECT 1 FROM sensor_metadata AS t
+                  WHERE t.team_id = :'team' AND t.sensor_id = l.sensor_id);
+  UPDATE sensor_metadata SET team_id = :'team' WHERE team_id IS NULL;
+  COMMIT;
+  SQL
+  ```
+
+  To drop them instead: `DELETE FROM telemetry_events WHERE team_id IS
+  NULL;` and `DELETE FROM sensor_metadata WHERE team_id IS NULL;`.
+- **Downgrading** to `0004_trgm` restores the global unique index on
+  `sensor_id`, and fails while two teams share a sensor ID. Delete or
+  rename one of the records first.
+
+### 35. Sensors send telemetry through the gateway, with an identity API key
 
 No sensor telemetry was ever stored: the sensor posted to the data
 service's `/api/v1/ingest` with a bearer key the data service never
