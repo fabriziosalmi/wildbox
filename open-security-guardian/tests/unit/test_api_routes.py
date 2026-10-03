@@ -26,6 +26,9 @@ from django.test import Client
 from django.urls import URLPattern, URLResolver, get_resolver
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 _PK = re.compile(r"\(\?P<pk>[^)]*\)")
 
 
@@ -83,7 +86,7 @@ def api(settings, monkeypatch):
     client = Client(raise_request_exception=False)
     headers = {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -127,6 +130,7 @@ def _seed():
 
     user = User.objects.create(username="seed")
     system = ExternalSystem.objects.create(
+        team_id=TEAM_ID,
         name="jira",
         system_type="ticketing",
         base_url="https://jira.example.com",
@@ -136,13 +140,14 @@ def _seed():
     mapping = IntegrationMapping.objects.create(
         system=system, guardian_entity="vulnerability", external_entity="issue"
     )
-    asset = Asset.objects.create(name="host")
+    asset = Asset.objects.create(name="host", team_id=TEAM_ID)
     # bulk_create skips post_save: the vulnerability history signal is out of
     # scope here (it writes old_value=None into a NOT NULL column).
     (vulnerability,) = Vulnerability.objects.bulk_create(
         [Vulnerability(title="v", description="d", asset=asset)]
     )
     ticket = RemediationTicket.objects.create(
+        team_id=TEAM_ID,
         title="t",
         description="d",
         system="jira",
@@ -166,6 +171,7 @@ def _seed():
             workflow=workflow, author=user, content="c"
         ),
         "remediation/templates": RemediationTemplate.objects.create(
+            team_id=TEAM_ID,
             name="n", description="d", category="c", remediation_type="patch"
         ),
         "integrations/systems": system,
@@ -190,6 +196,7 @@ def _seed():
             request_data={"headers": {"Authorization": "Bearer s3cr3t-request"}},
         ),
         "integrations/notifications": NotificationChannel.objects.create(
+            team_id=TEAM_ID,
             name="slack",
             channel_type="slack",
             config={"webhook_url": "https://hooks.slack.com/s3cr3t-channel"},
@@ -216,7 +223,9 @@ def test_scanner_stats_counts_stored_rows(api):
     from apps.scanners.models import Scan, Scanner
 
     scanner = Scanner.objects.create(
-        name="n", scanner_type="nessus", base_url="https://scanner.example.com"
+        team_id=TEAM_ID,
+        name="n",
+        scanner_type="nessus", base_url="https://scanner.example.com"
     )
     Scan.objects.create(
         name="s",

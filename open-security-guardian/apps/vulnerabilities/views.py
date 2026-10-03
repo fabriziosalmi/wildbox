@@ -10,6 +10,7 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from rest_framework import viewsets, status, filters
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -35,7 +36,7 @@ from .tasks import (
 )
 
 
-class VulnerabilityViewSet(viewsets.ModelViewSet):
+class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """
     ViewSet for vulnerability management
     
@@ -86,9 +87,10 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         
         if assigned_to_id:
             try:
-                assigned_to = User.objects.get(id=assigned_to_id)
+                # A member of the caller's team only (#642).
+                assigned_to = self.team_queryset(User).get(id=assigned_to_id)
                 vulnerability.assigned_to = assigned_to
-            except User.DoesNotExist:
+            except (User.DoesNotExist, ValueError, TypeError):
                 return Response(
                     {'error': 'User not found'}, 
                     status=status.HTTP_400_BAD_REQUEST
@@ -233,8 +235,9 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         vulnerability_ids = data['vulnerability_ids']
         action_type = data['action']
         
-        # Get vulnerabilities
-        vulnerabilities = Vulnerability.objects.filter(id__in=vulnerability_ids)
+        # Get vulnerabilities: the caller's team's only (#642), and among
+        # them those a member may see.
+        vulnerabilities = self.get_queryset().filter(id__in=vulnerability_ids)
         if not vulnerabilities.exists():
             return Response(
                 {'error': 'No vulnerabilities found'},
@@ -248,7 +251,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
             assigned_to = None
             if data.get('assigned_to'):
                 try:
-                    assigned_to = User.objects.get(id=data['assigned_to'])
+                    assigned_to = self.team_queryset(User).get(id=data['assigned_to'])
                 except User.DoesNotExist:
                     return Response(
                         {'error': 'User not found'},
@@ -364,7 +367,8 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         end_date = timezone.now().date()
         start_date = end_date - timedelta(days=days)
         
-        # Generate daily trend data
+        # Generate daily trend data, from the caller's team's findings (#642)
+        vulnerabilities = self.get_queryset()
         trends = []
         current_date = start_date
         
@@ -372,20 +376,20 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
             day_start = timezone.make_aware(datetime.combine(current_date, datetime.min.time()))
             day_end = timezone.make_aware(datetime.combine(current_date, datetime.max.time()))
             
-            discovered_count = Vulnerability.objects.filter(
+            discovered_count = vulnerabilities.filter(
                 first_discovered__range=(day_start, day_end)
             ).count()
             
-            resolved_count = Vulnerability.objects.filter(
+            resolved_count = vulnerabilities.filter(
                 resolved_at__range=(day_start, day_end)
             ).count()
             
-            total_open = Vulnerability.objects.filter(
+            total_open = vulnerabilities.filter(
                 first_discovered__lte=day_end,
                 status='open'
             ).count()
             
-            avg_risk = Vulnerability.objects.filter(
+            avg_risk = vulnerabilities.filter(
                 first_discovered__lte=day_end,
                 status='open'
             ).aggregate(avg_risk=Avg('risk_score'))['avg_risk'] or 0
@@ -404,7 +408,7 @@ class VulnerabilityViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class VulnerabilityTemplateViewSet(viewsets.ModelViewSet):
+class VulnerabilityTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for vulnerability templates"""
     queryset = VulnerabilityTemplate.objects.all()
     serializer_class = VulnerabilityTemplateSerializer
@@ -415,7 +419,7 @@ class VulnerabilityTemplateViewSet(viewsets.ModelViewSet):
     ordering = ['title']
 
 
-class VulnerabilityAssessmentViewSet(viewsets.ModelViewSet):
+class VulnerabilityAssessmentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for vulnerability risk assessments"""
     queryset = VulnerabilityAssessment.objects.select_related('vulnerability')
     serializer_class = VulnerabilityAssessmentSerializer

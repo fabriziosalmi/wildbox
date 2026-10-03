@@ -22,6 +22,9 @@ from django.contrib.auth.models import User
 from django.test import Client
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 
 
 @pytest.fixture
@@ -39,7 +42,7 @@ def api(settings, monkeypatch, gateway_user_id):
     client = Client()
     headers = {
         "HTTP_X_WILDBOX_USER_ID": gateway_user_id,
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -53,7 +56,7 @@ def api(settings, monkeypatch, gateway_user_id):
 
 
 def _vulnerability():
-    asset = Asset.objects.create(name="host")
+    asset = Asset.objects.create(name="host", team_id=TEAM_ID)
     # bulk_create skips the vulnerability post_save history signal, which is
     # fixed separately (#515) and not what these tests are about.
     (vulnerability,) = Vulnerability.objects.bulk_create(

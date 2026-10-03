@@ -32,6 +32,9 @@ from django.utils import timezone
 from guardian.celery import app as celery_app
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 _BASE = "/api/v1/compliance/"
 RECIPIENT = "compliance@example.com"
 
@@ -54,7 +57,7 @@ def api(settings, monkeypatch, eager):
     client = Client()
     headers = {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -70,6 +73,7 @@ def api(settings, monkeypatch, eager):
 def _assessment(status="planned"):
     framework = ComplianceFramework.objects.create(name=f"fw-{uuid.uuid4().hex[:8]}")
     return ComplianceAssessment.objects.create(
+        team_id=TEAM_ID,
         name="Q3 audit",
         framework=framework,
         assessment_type="internal_audit",

@@ -5,6 +5,8 @@ DRF serializers for vulnerability-related API endpoints.
 """
 
 from rest_framework import serializers
+
+from apps.core.tenancy import TeamScopedModelSerializer
 from django.contrib.auth.models import User
 from .models import (
     Vulnerability, VulnerabilityTemplate, VulnerabilityAssessment,
@@ -12,7 +14,7 @@ from .models import (
 )
 
 
-class VulnerabilityListSerializer(serializers.ModelSerializer):
+class VulnerabilityListSerializer(TeamScopedModelSerializer):
     """Lightweight serializer for vulnerability lists"""
     asset_name = serializers.CharField(source='asset.name', read_only=True)
     asset_type = serializers.CharField(source='asset.asset_type', read_only=True)
@@ -28,7 +30,7 @@ class VulnerabilityListSerializer(serializers.ModelSerializer):
         ]
 
 
-class VulnerabilityDetailSerializer(serializers.ModelSerializer):
+class VulnerabilityDetailSerializer(TeamScopedModelSerializer):
     """Detailed serializer for vulnerability CRUD operations"""
     asset_name = serializers.CharField(source='asset.name', read_only=True)
     asset_details = serializers.SerializerMethodField()
@@ -54,7 +56,7 @@ class VulnerabilityDetailSerializer(serializers.ModelSerializer):
         }
 
 
-class VulnerabilityCreateSerializer(serializers.ModelSerializer):
+class VulnerabilityCreateSerializer(TeamScopedModelSerializer):
     """Serializer for creating new vulnerabilities"""
     
     class Meta:
@@ -76,7 +78,7 @@ class VulnerabilityCreateSerializer(serializers.ModelSerializer):
         return value
 
 
-class VulnerabilityUpdateSerializer(serializers.ModelSerializer):
+class VulnerabilityUpdateSerializer(TeamScopedModelSerializer):
     """Serializer for updating vulnerabilities"""
     
     class Meta:
@@ -91,7 +93,7 @@ class VulnerabilityUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ['risk_score']
 
 
-class VulnerabilityTemplateSerializer(serializers.ModelSerializer):
+class VulnerabilityTemplateSerializer(TeamScopedModelSerializer):
     """Serializer for vulnerability templates"""
     
     class Meta:
@@ -99,7 +101,7 @@ class VulnerabilityTemplateSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class VulnerabilityAssessmentSerializer(serializers.ModelSerializer):
+class VulnerabilityAssessmentSerializer(TeamScopedModelSerializer):
     """Serializer for vulnerability risk assessments"""
     
     class Meta:
@@ -107,7 +109,7 @@ class VulnerabilityAssessmentSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class VulnerabilityHistorySerializer(serializers.ModelSerializer):
+class VulnerabilityHistorySerializer(TeamScopedModelSerializer):
     """Serializer for vulnerability history tracking"""
     changed_by_name = serializers.CharField(source='changed_by.get_full_name', read_only=True)
     
@@ -117,7 +119,7 @@ class VulnerabilityHistorySerializer(serializers.ModelSerializer):
         read_only_fields = ['timestamp', 'changed_by']
 
 
-class VulnerabilityAttachmentSerializer(serializers.ModelSerializer):
+class VulnerabilityAttachmentSerializer(TeamScopedModelSerializer):
     """Serializer for vulnerability attachments"""
     uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True)
     

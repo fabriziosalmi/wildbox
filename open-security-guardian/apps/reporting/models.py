@@ -4,11 +4,14 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 import uuid
 
+from apps.core.models import team_id_field
+
 
 class ReportTemplate(models.Model):
     """
     Templates for generating reports
     """
+    TEAM_LOOKUP = 'team_id'
     REPORT_TYPES = [
         ('vulnerability_summary', 'Vulnerability Summary'),
         ('asset_inventory', 'Asset Inventory'),
@@ -30,6 +33,7 @@ class ReportTemplate(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     report_type = models.CharField(max_length=30, choices=REPORT_TYPES)
@@ -75,6 +79,7 @@ class ReportSchedule(models.Model):
     """
     Scheduled report generation
     """
+    TEAM_LOOKUP = 'template__team_id'
     FREQUENCY_CHOICES = [
         ('once', 'Once'),
         ('daily', 'Daily'),
@@ -121,6 +126,7 @@ class Report(models.Model):
     """
     Generated reports
     """
+    TEAM_LOOKUP = 'template__team_id'
     STATUS_CHOICES = [
         ('generating', 'Generating'),
         ('completed', 'Completed'),
@@ -165,7 +171,11 @@ class Report(models.Model):
 class Dashboard(models.Model):
     """
     Custom dashboards
+
+    ``is_public`` shares a dashboard with the rest of its team, not with
+    other teams (#642).
     """
+    TEAM_LOOKUP = 'team_id'
     DASHBOARD_TYPES = [
         ('executive', 'Executive'),
         ('security', 'Security'),
@@ -175,6 +185,7 @@ class Dashboard(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     dashboard_type = models.CharField(max_length=20, choices=DASHBOARD_TYPES)
@@ -205,6 +216,7 @@ class Widget(models.Model):
     """
     Dashboard widgets
     """
+    TEAM_LOOKUP = 'team_id'
     WIDGET_TYPES = [
         ('chart', 'Chart'),
         ('table', 'Table'),
@@ -227,6 +239,7 @@ class Widget(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     widget_type = models.CharField(max_length=20, choices=WIDGET_TYPES)
@@ -256,6 +269,7 @@ class ReportMetrics(models.Model):
     """
     Metrics for report usage and performance
     """
+    TEAM_LOOKUP = 'template__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     template = models.ForeignKey(ReportTemplate, on_delete=models.CASCADE, related_name='metrics')
     metric_date = models.DateTimeField()
@@ -283,7 +297,11 @@ class ReportMetrics(models.Model):
 class AlertRule(models.Model):
     """
     Alert rules for automated notifications based on report data
+
+    A rule measures its own team's data and notifies its own recipients
+    (#642).
     """
+    TEAM_LOOKUP = 'team_id'
     CONDITION_TYPES = [
         ('threshold', 'Threshold'),
         ('change', 'Change'),
@@ -301,6 +319,7 @@ class AlertRule(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     data_source = models.CharField(max_length=100)  # API endpoint or data source
@@ -353,6 +372,7 @@ class AlertNotification(models.Model):
     is False when the e-mail could not be sent, for instance because no
     recipient is configured.
     """
+    TEAM_LOOKUP = 'rule__team_id'
     KIND_FIRING = 'firing'
     KIND_REPEAT = 'repeat'
     KIND_RESOLVED = 'resolved'

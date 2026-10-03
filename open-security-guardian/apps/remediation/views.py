@@ -6,6 +6,7 @@ Django REST Framework views for remediation ticket and workflow management.
 
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -22,7 +23,7 @@ from .serializers import (
 )
 
 
-class RemediationTicketViewSet(viewsets.ModelViewSet):
+class RemediationTicketViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing remediation tickets"""
     queryset = RemediationTicket.objects.all()
     serializer_class = RemediationTicketSerializer
@@ -66,7 +67,7 @@ class RemediationTicketViewSet(viewsets.ModelViewSet):
         return Response({'status': 'success', 'message': 'Sync completed'})
 
 
-class RemediationWorkflowViewSet(viewsets.ModelViewSet):
+class RemediationWorkflowViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing remediation workflows"""
     queryset = RemediationWorkflow.objects.all()
     serializer_class = RemediationWorkflowSerializer
@@ -121,7 +122,7 @@ class RemediationWorkflowViewSet(viewsets.ModelViewSet):
         })
 
 
-class RemediationStepViewSet(viewsets.ModelViewSet):
+class RemediationStepViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing remediation steps"""
     queryset = RemediationStep.objects.all()
     serializer_class = RemediationStepSerializer
@@ -160,7 +161,7 @@ class RemediationStepViewSet(viewsets.ModelViewSet):
         return Response({'status': 'success', 'message': 'Step skipped'})
 
 
-class RemediationCommentViewSet(viewsets.ModelViewSet):
+class RemediationCommentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing remediation comments"""
     queryset = RemediationComment.objects.all()
     serializer_class = RemediationCommentSerializer
@@ -178,7 +179,7 @@ class RemediationCommentViewSet(viewsets.ModelViewSet):
         serializer.save(author=self.request.user)
 
 
-class RemediationTemplateViewSet(viewsets.ModelViewSet):
+class RemediationTemplateViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing remediation templates"""
     queryset = RemediationTemplate.objects.all()
     serializer_class = RemediationTemplateSerializer
@@ -215,5 +216,8 @@ class RemediationTemplateViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def categories(self, request):
         """Get available template categories"""
-        categories = RemediationTemplate.objects.values_list('category', flat=True).distinct()
+        # The caller's team's templates only (#642).
+        categories = (
+            self.get_queryset().order_by().values_list('category', flat=True).distinct()
+        )
         return Response({'categories': list(categories)})

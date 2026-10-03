@@ -1050,6 +1050,69 @@ working, and `JWT_SECRET_KEY` can from now on be rotated on its own.
 - **A fresh install needs nothing:** `make generate-secrets` draws the
   two values independently.
 
+### 39. guardian keeps each team to its own data; assign the existing rows (required)
+
+guardian stored no team: every team read and wrote every other team's
+assets, vulnerabilities, scanners, integrations, remediation, compliance
+and reports (#642). Each request now acts on the caller's team's rows only.
+
+- **Migrations, applied at start.** `assets.0002_team_id`,
+  `compliance.0002_team_id`, `integrations.0002_team_id`,
+  `remediation.0002_team_id`, `reporting.0003_team_id`,
+  `scanners.0002_team_id`, `vulnerabilities.0002_team_id` add a nullable,
+  indexed `team_id` column to the models that store their team;
+  `core.0003_team_membership_and_tasks` adds two tables. The migrations
+  change no rows.
+- **Existing rows get no team, and no team sees them.** guardian cannot
+  tell which team wrote a row, and making the rows visible to every team
+  would keep the disclosure this change closes. After the upgrade the
+  assets, vulnerabilities, reports and the rest are missing from every
+  team's view until you assign them. Compliance frameworks, their
+  controls and vulnerability templates without a team are the exception:
+  they become shared reference data, read by every team and changed by
+  none.
+- **Assign them to the team that owns them.** Find the team's UUID in
+  identity's database (use your `POSTGRES_USER`), by the owner's e-mail
+  address:
+
+  ```bash
+  docker compose exec postgres psql -U postgres -d identity -c \
+    "SELECT t.id, t.name FROM teams t JOIN users u ON u.id = t.owner_id WHERE u.email = 'owner@example.com'"
+  ```
+
+  then:
+
+  ```bash
+  docker compose exec guardian python manage.py assign_guardian_team --list
+  docker compose exec guardian python manage.py assign_guardian_team --team <team UUID> --dry-run
+  docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>
+  ```
+
+  It gives every row without a team to that team in one transaction; the
+  rows that hang off another row (a vulnerability off its asset, a scan
+  off its scanner) follow it. Add `--include-shared` to give that team
+  the frameworks and vulnerability templates too, if they are its own
+  rather than reference data. A single-team deployment runs the command
+  once with its only team. A deployment with several teams has to split
+  the rows by hand (`team_id` on each table) before or instead of the
+  command, since they were shared until now.
+- **Until then, background work stays with the unassigned rows.** A
+  discovery rule, a report schedule or an alert rule without a team keeps
+  running against the other rows without a team, and never against a
+  team's.
+- **Names are unique per team.** Environments, business functions, asset
+  groups, discovery rules, frameworks and vulnerability templates were
+  unique by name (CVE id for a template) across guardian, and remediation
+  tickets by system and ticket id. They are now unique within a team.
+- **Users are named within the team.** Assigning a vulnerability, a
+  remediation or a step to a user, or sharing a dashboard, accepts users
+  who have made a request as a member of the team since the upgrade.
+- **Reports are written per team**, under `MEDIA_ROOT/reports/<team id>/`.
+  Reports generated before stay where they are and can still be
+  downloaded by the team their template is assigned to.
+- **Commands that create rows need a team.** `import_vulnerabilities` and
+  `generate_compliance_report` take a required `--team-id`.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

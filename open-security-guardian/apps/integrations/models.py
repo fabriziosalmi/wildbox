@@ -11,6 +11,8 @@ from django.utils import timezone
 import uuid
 import json
 
+from apps.core.models import team_id_field
+
 
 class IntegrationType(models.TextChoices):
     """Types of external integrations"""
@@ -36,7 +38,9 @@ class IntegrationStatus(models.TextChoices):
 
 class ExternalSystem(models.Model):
     """External system configuration and connection details"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Basic Information
     name = models.CharField(max_length=200)
@@ -150,6 +154,7 @@ class ExternalSystem(models.Model):
 
 class IntegrationMapping(models.Model):
     """Field and data mappings between Guardian and external systems"""
+    TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     system = models.ForeignKey(ExternalSystem, on_delete=models.CASCADE, related_name='mappings')
@@ -196,6 +201,7 @@ class IntegrationMapping(models.Model):
 
 class SyncRecord(models.Model):
     """Track synchronization between Guardian and external systems"""
+    TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Sync Configuration
@@ -273,6 +279,7 @@ class SyncRecord(models.Model):
 
 class WebhookEndpoint(models.Model):
     """Webhook endpoints for real-time integration"""
+    TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     system = models.ForeignKey(ExternalSystem, on_delete=models.CASCADE, related_name='webhooks')
@@ -308,6 +315,7 @@ class WebhookEndpoint(models.Model):
 
 class IntegrationLog(models.Model):
     """Logging for integration activities"""
+    TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     system = models.ForeignKey(ExternalSystem, on_delete=models.CASCADE, related_name='logs')
@@ -360,7 +368,9 @@ class IntegrationLog(models.Model):
 
 class NotificationChannel(models.Model):
     """Notification channels for alerts and updates"""
+    TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    team_id = team_id_field()
     
     # Channel Information
     name = models.CharField(max_length=200)
@@ -423,6 +433,7 @@ class NotificationChannel(models.Model):
 
 class ApiUsageMetrics(models.Model):
     """Track API usage metrics for external systems"""
+    TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     system = models.ForeignKey(ExternalSystem, on_delete=models.CASCADE, related_name='usage_metrics')

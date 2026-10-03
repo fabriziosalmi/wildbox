@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -21,7 +22,7 @@ from .filters import (
 )
 
 
-class ComplianceFrameworkViewSet(viewsets.ModelViewSet):
+class ComplianceFrameworkViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceFramework.objects.all()
     serializer_class = ComplianceFrameworkSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -43,7 +44,9 @@ class ComplianceFrameworkViewSet(viewsets.ModelViewSet):
     def assessments(self, request, pk=None):
         """Get all assessments for a framework"""
         framework = self.get_object()
-        assessments = framework.assessments.all()
+        # A shared framework is assessed by many teams: only the caller's
+        # assessments (#642).
+        assessments = self.team_queryset(framework.assessments.all())
         serializer = ComplianceAssessmentSerializer(assessments, many=True)
         return Response(serializer.data)
 
@@ -51,14 +54,14 @@ class ComplianceFrameworkViewSet(viewsets.ModelViewSet):
     def metrics(self, request, pk=None):
         """Get latest metrics for a framework"""
         framework = self.get_object()
-        metrics = framework.metrics.order_by('-metric_date').first()
+        metrics = self.team_queryset(framework.metrics.all()).order_by('-metric_date').first()
         if metrics:
             serializer = ComplianceMetricsSerializer(metrics)
             return Response(serializer.data)
         return Response({'detail': 'No metrics available'}, status=status.HTTP_404_NOT_FOUND)
 
 
-class ComplianceControlViewSet(viewsets.ModelViewSet):
+class ComplianceControlViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceControl.objects.select_related('framework').all()
     serializer_class = ComplianceControlSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -72,7 +75,8 @@ class ComplianceControlViewSet(viewsets.ModelViewSet):
     def results(self, request, pk=None):
         """Get all assessment results for a control"""
         control = self.get_object()
-        results = control.results.all()
+        # A shared control is tested by many teams (#642).
+        results = self.team_queryset(control.results.all())
         serializer = ComplianceResultSerializer(results, many=True)
         return Response(serializer.data)
 
@@ -80,12 +84,12 @@ class ComplianceControlViewSet(viewsets.ModelViewSet):
     def evidence(self, request, pk=None):
         """Get all evidence for a control"""
         control = self.get_object()
-        evidence = control.evidence.all()
+        evidence = self.team_queryset(control.evidence.all())
         serializer = ComplianceEvidenceSerializer(evidence, many=True)
         return Response(serializer.data)
 
 
-class ComplianceAssessmentViewSet(viewsets.ModelViewSet):
+class ComplianceAssessmentViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceAssessment.objects.select_related('framework', 'assessor').prefetch_related('assets').all()
     serializer_class = ComplianceAssessmentSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -149,7 +153,7 @@ class ComplianceAssessmentViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ComplianceEvidenceViewSet(viewsets.ModelViewSet):
+class ComplianceEvidenceViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceEvidence.objects.select_related('assessment', 'control', 'collected_by').all()
     serializer_class = ComplianceEvidenceSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -159,7 +163,7 @@ class ComplianceEvidenceViewSet(viewsets.ModelViewSet):
     ordering = ['-collected_at']
 
 
-class ComplianceResultViewSet(viewsets.ModelViewSet):
+class ComplianceResultViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceResult.objects.select_related('assessment', 'control', 'tested_by', 'reviewed_by').all()
     serializer_class = ComplianceResultSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -188,7 +192,7 @@ class ComplianceResultViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ComplianceExceptionViewSet(viewsets.ModelViewSet):
+class ComplianceExceptionViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     queryset = ComplianceException.objects.select_related('control', 'requested_by', 'approved_by').all()
     serializer_class = ComplianceExceptionSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -227,7 +231,7 @@ class ComplianceExceptionViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ComplianceMetricsViewSet(viewsets.ReadOnlyModelViewSet):
+class ComplianceMetricsViewSet(TeamScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
     queryset = ComplianceMetrics.objects.select_related('framework', 'assessment').all()
     serializer_class = ComplianceMetricsSerializer
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -238,12 +242,14 @@ class ComplianceMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'])
     def dashboard(self, request):
         """Get dashboard metrics"""
-        # Get latest metrics for each framework
-        frameworks = ComplianceFramework.objects.filter(is_active=True)
+        # Latest metrics for each framework the caller's team sees, from
+        # the team's own metrics (#642)
+        frameworks = self.team_queryset(ComplianceFramework).filter(is_active=True)
+        metrics = self.get_queryset()
         dashboard_data = []
         
         for framework in frameworks:
-            latest_metric = framework.metrics.order_by('-metric_date').first()
+            latest_metric = metrics.filter(framework=framework).order_by('-metric_date').first()
             if latest_metric:
                 dashboard_data.append({
                     'framework': framework.name,
