@@ -1,12 +1,16 @@
 from typing import Dict, Any, List
 import asyncio
 import importlib
+import inspect
 import sys
 import os
 from datetime import datetime
 
-from ...tool_loader import find_schema_classes
+from fastapi import HTTPException
 
+from ...execution_manager import tool_acts_for_caller
+from ...input_validation import InputSanitizer
+from ...tool_loader import find_schema_classes
 from .schemas import (
     AutomationWorkflowInput,
     SecurityAutomationOutput,
@@ -193,10 +197,15 @@ class SecurityAutomationOrchestrator:
                 step.status = "failed"
                 step.error_message = f"Tool {step.tool_name} not available"
                 
+        except HTTPException as e:
+            # A refused step (SSRF target, tool acting for a caller, invalid
+            # input) fails the step; it does not abort the whole workflow.
+            step.status = "failed"
+            step.error_message = str(e.detail)
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             step.status = "failed"
             step.error_message = str(e)
-        
+
         step.end_time = datetime.now()
 
     def _check_dependencies(self, step: WorkflowStep, all_steps: List[WorkflowStep]) -> bool:
@@ -213,11 +222,19 @@ class SecurityAutomationOrchestrator:
         return True
 
     async def _execute_real_tool(self, tool_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute real tool with proper validation and error handling"""
-        import importlib
-        import sys
-        import os
-        from fastapi import HTTPException
+        """Run one workflow step through the API's pre-execution checks.
+
+        A step calls another tool's execute_tool directly, so it must apply
+        what the API applies before a tool runs (#610):
+
+        * the input is validated by the tool's own input model;
+        * the SSRF guard (``InputSanitizer.validate_request_urls``) checks
+          every URL in that validated input;
+        * a tool that acts on behalf of a caller (its execute_tool declares
+          ``user_id``, #563/#564) is refused: the orchestrator has no
+          authenticated caller to authorize, so such a tool must be called
+          through the API, where ``authorize_tool_call`` runs.
+        """
         
         # Validate tool name against whitelist
         if tool_name not in self.available_tools:
@@ -249,10 +266,28 @@ class SecurityAutomationOrchestrator:
                     detail=f"Tool '{tool_name}' missing execute_tool function"
                 )
             
-            # Create proper input schema for the tool
+            execute_func = tool_module.execute_tool
+            if tool_acts_for_caller(execute_func):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Tool '{tool_name}' acts on behalf of a caller and cannot run "
+                        "as a workflow step; call it through the API"
+                    ),
+                )
+
+            # Validate the parameters with the tool's input model, then
+            # check every URL in the validated input with the SSRF guard.
             tool_input = self._create_tool_input(tool_name, parameters)
-            result = await tool_module.execute_tool(tool_input)
-            
+            try:
+                InputSanitizer.validate_request_urls(tool_input)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=f"Blocked SSRF target: {e}")
+
+            result = execute_func(tool_input)
+            if inspect.isawaitable(result):
+                result = await result
+
             return {
                 "success": True,
                 "result": result,
@@ -260,6 +295,8 @@ class SecurityAutomationOrchestrator:
                 "execution_time": datetime.now().isoformat()
             }
                 
+        except HTTPException:
+            raise
         except ImportError as e:
             raise HTTPException(
                 status_code=404,
@@ -305,24 +342,30 @@ class SecurityAutomationOrchestrator:
         return True
     
     def _create_tool_input(self, tool_name: str, parameters: Dict[str, Any]):
-        """Create appropriate input schema for the tool"""
-        # Import the tool's schema
+        """Validate ``parameters`` with the tool's input model.
+
+        The model is found the way the API finds it: a pydantic model in the
+        tool's schemas module whose name contains "input" or "request",
+        other than the shared ``BaseToolInput``. This used to take the first
+        name ending in "Input", which is ``BaseToolInput`` for every tool
+        that imports it, and fell back to the raw dict when nothing matched;
+        either way the tool's own field validation did not run.
+        """
         try:
             schema_module = importlib.import_module(f"app.tools.{tool_name}.schemas")
-            
-            # The model the tool's own endpoint validates with. The first
-            # name ending in "Input" was the imported BaseToolInput for every
-            # tool, so each step received a model without its fields (#611).
-            input_class, _ = find_schema_classes(schema_module)
-            
-            if input_class:
-                return input_class(**parameters)
-            else:
-                # Fallback to generic dict if no schema found
-                return parameters
-                
-        except ImportError:
-            return parameters
+        except ImportError as e:
+            raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' has no input schema: {e}")
+
+        # The model the tool's own endpoint validates with, found the same way
+        # (#611).
+        input_class, _ = find_schema_classes(schema_module)
+
+        if input_class is None:
+            raise HTTPException(status_code=422, detail=f"Tool '{tool_name}' has no input schema")
+        try:
+            return input_class(**parameters)
+        except (ValueError, TypeError) as e:
+            raise HTTPException(status_code=422, detail=f"Invalid parameters for '{tool_name}': {e}")
 
     def _remove_mock_output_method(self):
         """This method replaces the old mock output generation"""

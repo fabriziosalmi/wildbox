@@ -1,6 +1,6 @@
 # Contributing API Documentation
 
-Thank you for contributing to Wildbox API documentation! This guide explains how to document a service's endpoints for the Wildbox API Reference.
+Thank you for contributing to Wildbox API documentation. This guide explains how to document a service's endpoints for the Wildbox API Reference.
 
 ## 📋 Quick Checklist
 
@@ -360,4 +360,4 @@ examples/
 
 ---
 
-Thank you for contributing to making Wildbox better! 🛡️
+Thank you for contributing to making Wildbox better. 🛡️

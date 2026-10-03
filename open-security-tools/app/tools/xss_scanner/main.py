@@ -16,6 +16,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
 from ...tool_errors import RUN_ERRORS
+from ...safe_http import guarded_requests_session
 from .schemas import XSSScannerInput, XSSScannerOutput, XSSResult
 # XSS payloads for different types
 REFLECTED_XSS_PAYLOADS = [
@@ -134,14 +135,15 @@ def test_xss_payload(url: str, method: str, param_name: str, payload: str, xss_t
             new_query = urlencode(params, doseq=True)
             test_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}?{new_query}"
             
-            # Using synchronous requests for compatibility
-            import requests
-            response = requests.get(test_url, headers=headers, timeout=timeout)
+            # Synchronous requests through the guarded session: the target
+            # and each redirect hop pass the shared SSRF guard first.
+            with guarded_requests_session() as session:
+                response = session.get(test_url, headers=headers, timeout=timeout)
         else:
             # POST request
             data = {param_name: payload}
-            import requests
-            response = requests.post(url, data=data, headers=headers, timeout=timeout)
+            with guarded_requests_session() as session:
+                response = session.post(url, data=data, headers=headers, timeout=timeout)
         
         response_time = time.time() - start_time
         

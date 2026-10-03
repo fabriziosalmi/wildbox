@@ -5,6 +5,7 @@ import io
 from datetime import datetime
 from typing import List, Dict, Tuple
 from ...tool_errors import RUN_ERRORS
+from ...safe_http import guarded_requests_session
 from .schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
 # Test file configurations
 TEST_FILES = {
@@ -164,8 +165,10 @@ def test_file_upload(url: str, file_param: str, test_name: str, test_file: Dict,
         # Prepare additional form data
         data = additional_params or {}
         
-        # Make request
-        response = requests.post(url, files=files, data=data, timeout=timeout)
+        # Make request. The guarded session validates the target, and each
+        # redirect hop, with the shared SSRF guard before connecting.
+        with guarded_requests_session() as session:
+            response = session.post(url, files=files, data=data, timeout=timeout)
         
         # Analyze response
         vulnerability_detected, evidence, risk_level = analyze_response(response, test_file)

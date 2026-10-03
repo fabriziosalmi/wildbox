@@ -1,12 +1,17 @@
 """Email Harvester Tool - Discovers email addresses associated with a domain."""
 
+import logging
 import re
-import requests
 import time
 from datetime import datetime
 from typing import List, Set, Dict
-from urllib.parse import quote_plus, urljoin
+from urllib.parse import quote_plus, urlsplit
+
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_requests_session
 from .schemas import EmailHarvesterInput, EmailHarvesterOutput, EmailSource
+logger = logging.getLogger(__name__)
+
 # Email regex pattern
 EMAIL_PATTERN = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
 
@@ -15,7 +20,7 @@ class SearchEngine:
     
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
-        self.session = requests.Session()
+        self.session = guarded_requests_session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         })
@@ -131,14 +136,30 @@ class DirectDomainSearch:
     
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
-        self.session = requests.Session()
+        self.session = guarded_requests_session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         })
     
+    @staticmethod
+    def base_url(domain: str) -> str:
+        """Return ``https://<domain>`` once it passes the shared SSRF guard.
+
+        ``domain`` is a bare host name, so the generic guard on tool inputs
+        (which checks values that already start with http(s)://) never sees
+        it. The URL built from it is checked here instead: public host, every
+        resolved address public, no user info, no path. Raises ValueError.
+        """
+        url = InputSanitizer.validate_url(f"https://{domain.strip()}")
+        parts = urlsplit(url)
+        if parts.path not in ("", "/") or parts.query or parts.fragment:
+            raise ValueError("Domain must be a host name, not a URL")
+        return f"https://{parts.netloc}"
+
     def search(self, domain: str) -> List[EmailSource]:
         emails = []
-        
+        base = self.base_url(domain)
+
         # Common pages that might contain email addresses
         common_pages = [
             '',
@@ -156,10 +177,9 @@ class DirectDomainSearch:
         
         for page in common_pages:
             try:
-                if page:
-                    url = f"https://{domain}/{page}"
-                else:
-                    url = f"https://{domain}"
+                # Every request, and each redirect hop, goes through the
+                # guarded session, which validates it again.
+                url = f"{base}/{page}" if page else base
                 
                 response = self.session.get(url, timeout=self.timeout)
                 
@@ -202,14 +222,14 @@ def execute_tool(input_data: EmailHarvesterInput) -> EmailHarvesterOutput:
             except Exception:
                 continue
     
-    # Direct domain search
+    # Direct domain search. A domain the SSRF guard refuses is not fetched.
     try:
         direct_search = DirectDomainSearch(input_data.timeout)
         direct_emails = direct_search.search(input_data.domain)
         all_emails.extend(direct_emails)
         sources_searched.append("Direct Domain")
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Direct domain search skipped for %r: %s", input_data.domain, exc)
     
     # Remove duplicates while preserving source information
     unique_emails = {}

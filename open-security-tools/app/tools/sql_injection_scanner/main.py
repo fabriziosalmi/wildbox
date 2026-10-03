@@ -2,11 +2,12 @@
 
 import logging
 import time
-import requests
 from datetime import datetime
 from typing import List, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
 from ...tool_errors import RUN_ERRORS
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_requests_session
 from .schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 
 logger = logging.getLogger(__name__)
@@ -91,11 +92,15 @@ def test_sql_injection(url: str, method: str, param_name: str, param_value: str,
             new_query = urlencode(params, doseq=True)
             test_url = f"{parsed_url.scheme}://{parsed_url.netloc}{parsed_url.path}?{new_query}"
             
-            response = requests.get(test_url, headers=headers, timeout=timeout)
+            # The guarded session checks the target, and each redirect
+            # hop, with the shared SSRF guard before connecting.
+            with guarded_requests_session() as session:
+                response = session.get(test_url, headers=headers, timeout=timeout)
         else:
             # POST request
             data = {param_name: payload}
-            response = requests.post(url, data=data, headers=headers, timeout=timeout)
+            with guarded_requests_session() as session:
+                response = session.post(url, data=data, headers=headers, timeout=timeout)
         
         response_time = time.time() - start_time
         response_text = response.text.lower()
@@ -149,8 +154,11 @@ def execute_tool(input_data: SQLInjectionScannerInput, user_id: str = None) -> S
     if not user_id:
         raise PermissionError("User authentication required for SQL injection testing")
 
-    # Validate and sanitize inputs
+    # Validate and sanitize inputs. security_validator checks the structure
+    # only; the shared SSRF guard also resolves the host and refuses it when
+    # any address is not public, or when it does not resolve (fail closed).
     target_url = security_validator.validate_url(input_data.target_url)
+    InputSanitizer.validate_url(target_url)
     logger.info(f"SQL injection scan of {target_url} for user {user_id}")
     
     timestamp = datetime.now()

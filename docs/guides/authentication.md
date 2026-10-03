@@ -139,7 +139,7 @@ only once their cached decisions expire.
 `DELETE /api/v1/identity/api-keys/{key_prefix}` revokes one of the caller's
 keys; a team owner or admin revokes a team's key with
 `DELETE /api/v1/identity/teams/{team_id}/api-keys/{key_prefix}`. The key is
-refused on the very next request, although the gateway caches the decision
+refused on the next request, although the gateway caches the decision
 for a key:
 
 - before it marks the key inactive, identity tells the gateway to refuse

@@ -21,6 +21,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
 from ...tool_errors import RUN_ERRORS
+from ...input_validation import InputSanitizer
+from ...safe_http import guarded_session
 from .schemas import (
     URLSecurityInput, URLSecurityOutput, URLComponents, SecurityAnalysis,
     RedirectAnalysis, ReputationAnalysis
@@ -164,17 +166,6 @@ class URLSecurityScanner:
             encoding_issues=encoding_issues
         )
     
-    @staticmethod
-    def _is_private_ip(hostname: str) -> bool:
-        """Check if hostname resolves to a private/reserved IP address (SSRF protection)"""
-        import socket
-        try:
-            addr = socket.getaddrinfo(hostname, None)[0][4][0]
-            ip = ipaddress.ip_address(addr)
-            return ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local
-        except (socket.gaierror, ValueError):
-            return False
-
     async def analyze_redirects(self, url: str, max_redirects: int, timeout: int) -> RedirectAnalysis:
         """Analyze redirect chain"""
 
@@ -183,20 +174,26 @@ class URLSecurityScanner:
         redirect_count = 0
         security_issues = []
 
-        # SSRF protection: block requests to private/internal IPs
-        import urllib.parse as _urlparse
-        parsed = _urlparse.urlparse(url)
-        if self._is_private_ip(parsed.hostname or ""):
+        # SSRF protection through the shared guard: every address the host
+        # resolves to must be public, and a host that does not resolve is
+        # refused (fail closed). The tool's own check used to look at the
+        # first DNS answer only and let the URL through when resolution
+        # failed (#610).
+        try:
+            InputSanitizer.validate_url(url)
+        except ValueError as exc:
             return RedirectAnalysis(
                 redirect_count=0,
                 redirect_chain=[url],
                 final_url=url,
                 has_suspicious_redirects=True,
-                redirect_security_issues=["Blocked: target resolves to private/internal IP address"]
+                redirect_security_issues=[f"Blocked: {exc}"]
             )
 
         try:
-            async with aiohttp.ClientSession(
+            # The guarded session checks each hop again when it connects, so
+            # a redirect to an internal address is refused, not followed.
+            async with guarded_session(
                 timeout=aiohttp.ClientTimeout(total=timeout),
             ) as session:
                 

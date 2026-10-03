@@ -321,7 +321,7 @@ Results:
   Hit rate: 99.87%
 ```
 
-**Impact**: DB queries reduced from 10,000 → 13 (769x reduction). Response time: 8ms (cached) vs. 45ms (DB query).
+**Impact**: DB queries reduced to 13, down 769x on the previous 10,000. Response time: 8ms (cached) vs. 45ms (DB query).
 
 ---
 

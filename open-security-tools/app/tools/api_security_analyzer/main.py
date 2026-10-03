@@ -9,6 +9,7 @@ from urllib.parse import urljoin, urlparse
 import ssl
 import re
 
+from ...safe_http import guarded_session
 from .schemas import APISecurityAnalyzerInput, APISecurityAnalyzerOutput, SecurityIssue
 
 # Initialize logger
@@ -52,7 +53,9 @@ async def execute_tool(data: APISecurityAnalyzerInput) -> APISecurityAnalyzerOut
         
         timeout = aiohttp.ClientTimeout(total=data.timeout)
         
-        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
+        # Guarded: every connection, redirect hops included, is refused
+        # unless its target is a public host (#610).
+        async with guarded_session(timeout=timeout, headers=headers) as session:
             
             # 1. Basic connectivity and SSL analysis
             ssl_issues = await analyze_ssl_configuration(session, data.target_url)

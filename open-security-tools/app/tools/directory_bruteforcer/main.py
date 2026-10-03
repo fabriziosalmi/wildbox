@@ -13,6 +13,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
+from ...safe_http import guarded_session
 from .schemas import DirectoryBruteforcerInput, DirectoryBruteforcerOutput, DirectoryResult
 # Directory and file wordlists
 SMALL_WORDLIST = [
@@ -104,13 +105,15 @@ async def execute_tool(input_data: DirectoryBruteforcerInput) -> DirectoryBrutef
         for ext in extensions:
             paths_to_test.append(f"{word}.{ext}")
     
-    # Create HTTP session with connection limits
-    connector = aiohttp.TCPConnector(limit=input_data.threads, limit_per_host=input_data.threads)
     timeout = aiohttp.ClientTimeout(total=input_data.timeout)
     
     results = []
     
-    async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+    # HTTP session with connection limits. Guarded: non-public targets
+    # are refused on every connection, redirect hops included.
+    async with guarded_session(
+        limit=input_data.threads, limit_per_host=input_data.threads, timeout=timeout
+    ) as session:
         # Create semaphore to limit concurrent requests
         semaphore = asyncio.Semaphore(input_data.threads)
         

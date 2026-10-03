@@ -14,6 +14,7 @@ import logging
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
+from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from ...tool_config import ToolConfig
 from ...tool_errors import RUN_ERRORS
@@ -45,9 +46,9 @@ async def check_security_headers(url: str, rate_limiter: RateLimiter = None,
     
     try:
         timeout = aiohttp.ClientTimeout(total=10)
-        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
-        
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # Guarded: non-public targets are refused on every connection,
+        # redirect hops included.
+        async with guarded_session(ssl=client_ssl(verify_ssl), timeout=timeout) as session:
             # Apply rate limiting if rate_limiter is provided
             if rate_limiter:
                 await rate_limiter.acquire()
@@ -88,9 +89,9 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
     
     try:
         timeout = aiohttp.ClientTimeout(total=15)
-        connector = aiohttp.TCPConnector(ssl=client_ssl(verify_ssl))
-        
-        async with aiohttp.ClientSession(connector=connector, timeout=timeout) as session:
+        # Guarded: non-public targets are refused on every connection,
+        # redirect hops included.
+        async with guarded_session(ssl=client_ssl(verify_ssl), timeout=timeout) as session:
             # Test for basic XSS
             xss_payloads = ["<script>alert('xss')</script>"]
             
