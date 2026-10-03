@@ -383,7 +383,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the API key, the report recipients and the gateway's certificate
   (not its key), so a workflow can reach the API over verified HTTPS.
 
-
 - **cspm keeps scan reports for 90 days, and batch scans count** (#591).
   The compliance summary and findings, the dashboard summary and the
   cloud security overview read scan reports from the Celery result
@@ -835,6 +834,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
 
 ### Security
+
+- **agents: the analysis rate limit is counted per user** (#651). The
+  limiter on `POST /v1/analyze` was keyed by the client address. Every
+  request reaches the service through the gateway, so that address was
+  the gateway's for every caller: the whole platform shared one budget
+  of five analysis requests a minute, and one user of one team could exhaust it
+  for all the others. The limit is now keyed by the user ID of the
+  gateway-authenticated caller, taken from the verified identity after
+  the gateway secret has been checked; no header is read for the key, so
+  `X-Forwarded-For` cannot move a request to another bucket, and a
+  request without a verified identity is refused before it is counted.
+  Per user rather than per team, so that one member cannot use up the
+  budget of their teammates. The value is configurable with
+  `ANALYZE_RATE_LIMIT` (default `5/minute`), and
+  `ANALYZE_TEAM_RATE_LIMIT` adds an optional ceiling for a whole team;
+  the service refuses to start on a value it cannot parse, where slowapi
+  would have dropped the limit silently. The 429 body says whether the
+  user or the team limit was hit. Unit tests check that two users each
+  get their own budget, that the same user is limited, that a spoofed
+  `X-Forwarded-For` leaves the bucket unchanged, the team ceiling, and
+  the validation of both settings.
+
+- **agents: reading or cancelling a task fails closed on its owner
+  record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
+  when the owner record existed, so with the record missing any
+  authenticated caller, of any team, could revoke someone else's
+  analysis. The record could be missing while the task was still
+  addressable: the celery id was written after it with the same TTL and
+  outlived it, and eviction can drop one key and keep the other. `GET`
+  and `DELETE` now share one check: no celery id, no owner record, or
+  another user's task all answer 404 `Task not found`, before anything is
+  read or revoked. Another user's task used to answer 403 on `GET`, which
+  confirmed that the task id was live. The owner record is now written
+  with five minutes more time to live than the task's other keys, and is
+  rewritten in the same transaction as the celery id, so it outlives
+  every key that can address the task. Unit tests cover a missing owner
+  record, another user's task and the owner's own task on both methods,
+  and the TTLs written on submission.
 
 - **API-key digests no longer depend on `JWT_SECRET_KEY`** (#648).
   `API_KEY_HASH_SECRET` was generated into `.env` and documented, but
