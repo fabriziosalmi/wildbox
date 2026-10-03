@@ -101,10 +101,12 @@ def execute_tool_async(
         # Validate and convert input
         validated_input = input_schema_class(**input_data)
 
-        # SSRF guard (same policy as the synchronous API path): block tool
-        # targets that resolve to private/internal/cloud-metadata hosts.
-        from app.input_validation import InputSanitizer
-        InputSanitizer.validate_request_urls(validated_input)
+        # Target policy (the same check as the synchronous API path): refuse
+        # URLs and network targets that are private, internal or cloud
+        # metadata (#614). TargetRefused is a ValueError, so the task answers
+        # "failed" with the reason below and is not retried.
+        from app.target_policy import enforce_target_policy
+        enforce_target_policy(tool_name, validated_input)
 
         # Authorize the call exactly as the synchronous path does: a tool
         # that declares user_id needs a caller who may run it, and receives

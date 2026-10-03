@@ -78,6 +78,23 @@ class Settings(BaseSettings):
     agents_service_url: Optional[str] = Field(default=None, description="Agents service URL")
     cspm_service_url: Optional[str] = Field(default=None, description="CSPM service URL")
 
+    # Internal targets the network tools may scan (#614): comma-separated CIDR
+    # ranges, IP addresses and host names. Empty by default, so private,
+    # loopback, link-local and other internal targets are refused. Parsed
+    # here so that a bad entry stops the service and the worker at start-up
+    # rather than at the first scan. See app/target_policy.py.
+    tools_allowed_internal_targets: str = Field(
+        default="",
+        description="Internal CIDR ranges and host names the network tools may scan",
+    )
+
+    @validator('tools_allowed_internal_targets')
+    def validate_tools_allowed_internal_targets(cls, v):
+        from app.target_policy import parse_allowlist
+
+        parse_allowlist(v)
+        return v or ""
+
     @validator('log_level')
     def validate_log_level(cls, v):
         valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']

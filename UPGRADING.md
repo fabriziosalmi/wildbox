@@ -709,7 +709,62 @@ one of them in the worker; it now refuses them when they are submitted
 - **GCP or Azure scans queued before the upgrade** fail when the worker
   takes them, as they did before.
 
-### 29. guardian's own API keys no longer authenticate
+### 29. Network tools refuse internal targets (`TOOLS_ALLOWED_INTERNAL_TARGETS`)
+
+The tools that scan a host, an address or a range now refuse internal
+targets before they run (#614), as the tools that fetch a URL already
+did. Refused: private, loopback, link-local, unspecified, multicast,
+reserved and shared (`100.64.0.0/10`) addresses; a CIDR or address range
+with any such address in it; a host name that resolves to one, or does
+not resolve; and the deployment's own names (every name without a dot,
+such as `wildbox-redis`, plus `localhost`, `*.local`, `*.internal` and
+the cloud metadata names). Rebuild the tools service and its worker
+(section 1 does).
+
+- **If you scan an internal lab, set the allowlist.**
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` takes comma-separated CIDR ranges, IP
+  addresses and host names, for example
+  `TOOLS_ALLOWED_INTERNAL_TARGETS=10.20.0.0/16,192.168.50.0/24,lab-dc01`.
+  It is empty by default. `docker-compose.yml` passes it to `api` and
+  `tools-worker`; a deployment of its own must give it to both. A range
+  must have its host bits zero (`10.20.0.0/16`, not `10.20.0.1/16`), and
+  a name is matched exactly, without its subdomains. A bad entry stops
+  both at start-up with the reason.
+- **Do not allow the stack's own network.** A listed range lets every
+  caller of every network tool scan it. Keep the Docker networks of the
+  stack (by default in `172.16.0.0/12`) out of the list. A service name
+  stays refused even when its address is listed, unless the name is
+  listed too.
+- **Refusals answer 400** on `POST /api/v1/tools/{name}`, with a message
+  that names the network target policy. An asynchronous task ends as
+  `failed` with that message, and a workflow step of
+  security_automation_orchestrator fails with it.
+- **Other services are refused too.** The responder's `triage_ip` and
+  `all_star_e2e` playbooks and the agents' port scans call the same
+  endpoint: for a private address in an alert the scan step now fails
+  (the playbooks continue without it) unless its range is listed.
+- **One range holds at most 1024 addresses** (an IPv4 `/22`, an IPv6
+  `/118`), allow-listed or not. network_scanner used to accept a larger
+  range and sweep its first 1000 hosts, iot_security_scanner its first
+  256: split a larger range into several requests.
+- **Which inputs are checked**: `target` of ssl_analyzer, ca_analyzer,
+  port_scanner, network_port_scanner and network_vulnerability_scanner;
+  pki_certificate_manager's `domain`; iot_security_scanner's `target_ip`
+  and `ip_range`; network_scanner's `network`; database_security_analyzer's
+  `host`; dns_enumerator's `dns_servers` (which must be IP addresses) and
+  the name servers it attempts a zone transfer from; the registry of
+  container_security_scanner's `image_name` (`localhost:5000/app` is
+  refused, `alpine:3.19` is not).
+- **Host names must be ASCII.** Write an internationalized name in its
+  `xn--` form. port_scanner also refuses a target with characters other
+  than letters, digits, dots, hyphens and underscores instead of removing
+  them, so it takes no IPv6 literal.
+- dns_enumerator's zone transfers now connect to the name server's
+  checked address. They passed the server's name, which dnspython does
+  not accept, so every attempt failed; a zone that allows transfers is
+  now reported as such.
+
+### 30. guardian's own API keys no longer authenticate
 
 guardian accepted rows of its own `APIKey` table from an `X-API-Key` (or
 `Authorization: Bearer`) header on a direct request, as an administrator
