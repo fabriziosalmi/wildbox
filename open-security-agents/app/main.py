@@ -15,12 +15,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status, Header, Depends, Path
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-
-# Initialize Limiter
-limiter = Limiter(key_func=get_remote_address)
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
@@ -36,6 +32,7 @@ from .schemas import (
 from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
+from .rate_limit import limit_analysis, limiter, rate_limited_caller
 from .tools.wildbox_client import CallerIdentityUnavailable, require_caller_identity
 
 # Configure logging
@@ -246,14 +243,16 @@ async def get_stats(user: GatewayUser = Depends(get_current_user)):
 
 
 @app.post("/v1/analyze", response_model=AnalysisTaskStatus, status_code=status.HTTP_202_ACCEPTED)
-@limiter.limit("5/minute")
+@limit_analysis
 async def analyze_ioc(
     # slowapi finds the request by the parameter's name: it must be `request`
     # and a starlette Request. It was the body model, under that name, so the
     # limiter raised on every call and the endpoint answered 500 (#582).
     request: Request,
     analysis: AnalysisTaskRequest,
-    user: GatewayUser = Depends(get_current_user)
+    # Authenticates the caller and hands the verified identity to the
+    # limiter, which keys the limit by user, not by peer address (#651).
+    user: GatewayUser = Depends(rate_limited_caller)
 ):
     """
     Submit an IOC for AI-powered threat analysis.

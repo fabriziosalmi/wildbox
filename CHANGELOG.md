@@ -751,6 +751,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **agents: the analysis rate limit is counted per user** (#651). The
+  limiter on `POST /v1/analyze` was keyed by the client address. Every
+  request reaches the service through the gateway, so that address was
+  the gateway's for every caller: the whole platform shared one budget
+  of five analysis requests a minute, and one user of one team could exhaust it
+  for all the others. The limit is now keyed by the user ID of the
+  gateway-authenticated caller, taken from the verified identity after
+  the gateway secret has been checked; no header is read for the key, so
+  `X-Forwarded-For` cannot move a request to another bucket, and a
+  request without a verified identity is refused before it is counted.
+  Per user rather than per team, so that one member cannot use up the
+  budget of their teammates. The value is configurable with
+  `ANALYZE_RATE_LIMIT` (default `5/minute`), and
+  `ANALYZE_TEAM_RATE_LIMIT` adds an optional ceiling for a whole team;
+  the service refuses to start on a value it cannot parse, where slowapi
+  would have dropped the limit silently. The 429 body says whether the
+  user or the team limit was hit. Unit tests check that two users each
+  get their own budget, that the same user is limited, that a spoofed
+  `X-Forwarded-For` leaves the bucket unchanged, the team ceiling, and
+  the validation of both settings.
+
 - **agents: reading or cancelling a task fails closed on its owner
   record** (#650). `DELETE /v1/analyze/{task_id}` compared the owner only
   when the owner record existed, so with the record missing any
