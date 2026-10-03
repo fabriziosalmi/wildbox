@@ -36,6 +36,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools resolve host names again.** aiohttp resolves through aiodns when it
+  is installed, and the lock paired aiodns 3.2.0 with pycares 5.0.1: aiodns
+  called pycares' `getaddrinfo` with the pycares 4 signature, so every lookup
+  raised `TypeError` and every tool that fetched a host name through aiohttp
+  failed before connecting. aiodns is now 4.0.4, which requires pycares 5, and
+  a unit test resolves `localhost` through aiohttp's default resolver.
 - **A protected route no longer answers 503 when identity closes an idle
   connection** (#609). The gateway asks identity to authorize every
   uncached token over connections it keeps alive, and kept them idle for
