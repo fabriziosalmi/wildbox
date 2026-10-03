@@ -30,6 +30,7 @@ GUARDIAN_URL = os.getenv("GUARDIAN_SERVICE_URL", "http://localhost:8013").rstrip
 
 # /api/v1/guardian/<x> on the gateway is /api/v1/<x> on guardian.
 GUARDIAN_API = f"{GATEWAY_URL}/api/v1/guardian"
+IDENTITY_API = f"{GATEWAY_URL}/api/v1/identity"
 ASSETS = f"{GUARDIAN_API}/assets/assets/"
 VULNERABILITIES = f"{GUARDIAN_API}/vulnerabilities/"
 DASHBOARDS = f"{GUARDIAN_API}/reports/dashboards/"
@@ -64,6 +65,31 @@ def admin_headers() -> dict:
         login.status_code == 200
     ), f"admin login failed: {login.status_code} {login.text[:200]}"
     return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+@pytest.fixture(scope="module")
+def personal_api_key(admin_headers):
+    """A personal API key of the admin, from identity through the gateway.
+
+    Revoked afterwards, even if the test fails.
+    """
+    created = requests.post(
+        f"{IDENTITY_API}/api-keys",
+        json={"name": f"it-guardian-{uuid.uuid4().hex[:8]}"},
+        headers=admin_headers,
+        timeout=TIMEOUT,
+    )
+    assert created.status_code in (
+        200,
+        201,
+    ), f"API key creation failed: {created.status_code} {created.text[:200]}"
+    body = created.json()
+    yield body["key"]
+    requests.delete(
+        f"{IDENTITY_API}/api-keys/{body['prefix']}",
+        headers=admin_headers,
+        timeout=TIMEOUT,
+    )
 
 
 def _assert_page(response: requests.Response) -> dict:
@@ -329,6 +355,52 @@ class TestGuardianMonitoring:
             f"{ASSETS}{asset_id}/", headers=admin_headers, timeout=TIMEOUT
         )
         assert gone.status_code == 404, gone.status_code
+
+    def test_identity_api_key_works_through_the_gateway(
+        self, admin_headers, personal_api_key
+    ) -> None:
+        """A personal API key from identity reads and writes guardian (#629).
+
+        guardian has no API keys of its own any more; scripts use identity's
+        keys, which the gateway validates and turns into the caller's
+        identity, team and role.
+        """
+        key_headers = {"X-API-Key": personal_api_key}
+        _assert_page(requests.get(ASSETS, headers=key_headers, timeout=TIMEOUT))
+
+        created = requests.post(
+            ASSETS,
+            json={
+                "name": f"it-guardian-key-{uuid.uuid4().hex[:12]}",
+                "asset_type": "server",
+            },
+            headers=key_headers,
+            timeout=TIMEOUT,
+        )
+        # The admin owns their team, so the key carries the owner role.
+        assert created.status_code == 201, created.text[:300]
+        deleted = requests.delete(
+            f"{ASSETS}{created.json()['id']}/", headers=key_headers, timeout=TIMEOUT
+        )
+        assert deleted.status_code == 204, deleted.text[:300]
+
+    def test_direct_request_with_a_key_is_refused(self, personal_api_key) -> None:
+        """guardian refuses a direct request whatever key it carries (#629).
+
+        X-Forwarded-Proto keeps guardian's HTTPS redirect out of the way, so
+        the answer is its authentication's, not a 301.
+        """
+        response = requests.get(
+            f"{GUARDIAN_URL}/api/v1/assets/assets/",
+            headers={"X-API-Key": personal_api_key, "X-Forwarded-Proto": "https"},
+            timeout=TIMEOUT,
+            allow_redirects=False,
+        )
+        assert response.status_code == 403, (
+            f"{response.status_code} {response.headers.get('location', '')} "
+            f"{response.text[:300]}"
+        )
+        assert response.json()["code"] == "GATEWAY_AUTH_REQUIRED", response.text
 
     def test_celery_task_runs(self, admin_headers) -> None:
         """The alert-rule sweep is queued, and the guardian worker runs it.
@@ -807,4 +879,3 @@ class TestGuardianMonitoring:
                 headers=admin_headers,
                 timeout=TIMEOUT,
             )
-

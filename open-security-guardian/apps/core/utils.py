@@ -7,7 +7,6 @@ from django.core.mail import send_mail
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.utils import timezone
-import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -54,13 +53,6 @@ def send_notification(subject, template, context, notification_type='general', r
     except Exception as e:
         logger.error(f"Failed to send notification '{subject}': {str(e)}")
         return False
-
-
-def generate_api_key():
-    """
-    Generate a secure API key
-    """
-    return f"gsk_{uuid.uuid4().hex}"
 
 
 def validate_ip_address(ip):
