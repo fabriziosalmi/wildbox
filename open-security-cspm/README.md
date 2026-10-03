@@ -166,6 +166,9 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 **GET** `/api/v1/scans/{scan_id}/report`
 
+The report the worker stored when the scan completed, kept for
+`CSPM_REPORT_RETENTION_DAYS`. A scan that has not completed answers 400.
+
 ```json
 {
   "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
@@ -205,7 +208,9 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 **GET** `/api/v1/dashboard/summary?days=30`
 
 `total_scans` and `last_scan_at` count the scans the team started that are
-still kept (30 days). Every other figure comes from the newest completed scan
+still kept (`CSPM_REPORT_RETENTION_DAYS`, 90 days by default; see
+[Scan retention and Redis memory](#scan-retention-and-redis-memory)). Every
+other figure comes from the newest completed scan
 of each of the team's accounts in the period, the reports
 `/api/v1/compliance/summary` reads; a failed check's severity is the one its
 check declares. With no completed scan the counts are 0 and
@@ -252,6 +257,12 @@ check declares. With no completed scan the counts are 0 and
 }
 ```
 
+Each scan of a batch is started exactly as `POST /api/v1/scans` starts one:
+its credentials are encrypted, and its metadata and team index entry are
+written, so it counts in the team's summaries and is read by id like any
+other scan. The team is always the caller's; a `team_id` in a scan's
+`metadata` is ignored.
+
 ## 🔧 Configuration
 
 ### Environment Variables
@@ -284,6 +295,9 @@ CORS_ORIGINS="http://localhost:3000,https://dashboard.wildbox.security"
 # Scan Configuration
 MAX_CONCURRENT_SCANS="10"
 SCAN_TIMEOUT_SECONDS="3600"
+# Days a scan's metadata, team index entry and report are kept. Whole number
+# from 1 to 3650; the API and the worker refuse to start otherwise.
+CSPM_REPORT_RETENTION_DAYS="90"
 DEFAULT_SCAN_REGIONS_AWS="us-east-1,us-west-2"
 DEFAULT_SCAN_REGIONS_GCP="us-central1,europe-west1"
 DEFAULT_SCAN_REGIONS_AZURE="eastus,westus2"
@@ -292,6 +306,47 @@ DEFAULT_SCAN_REGIONS_AZURE="eastus,westus2"
 WILDBOX_IDENTITY_URL="http://open-security-identity:8000"
 WILDBOX_DASHBOARD_URL="http://open-security-dashboard:3000"
 ```
+
+### Scan retention and Redis memory
+
+When a scan completes, the worker stores its report in Redis under the scan
+(`scan:{id}:report`) and marks the scan's metadata (`scan:{id}:metadata`)
+completed. Both, and the scan's entry in its team's index
+(`cspm:team:{team}:scan_index`, a sorted set scored by expiry), are kept for
+`CSPM_REPORT_RETENTION_DAYS` days (90 by default) from the last time the scan
+was written: when it started, completed, failed or was cancelled. Expired
+index entries are pruned whenever the index is read or written.
+`GET /api/v1/scans/{id}/report`, `/api/v1/compliance/summary`,
+`/api/v1/compliance/findings` and `/api/v1/dashboard/summary` read reports
+from there and nowhere else.
+
+Before this, reports were read from the Celery result backend, whose default
+expiry is one day: the compliance pages lost every scan older than a day. The
+worker now sets `result_expires` explicitly to twice `SCAN_TIMEOUT_SECONDS`
+(two hours by default). The backend only reports the state of queued and
+running scans; a finished scan's status comes from its metadata.
+
+Reports are stored as zlib-compressed JSON (base64-encoded). As JSON a report
+takes about 720 bytes per check result; stored, synthetic reports of 500 to
+10,000 results took 40 to 70 bytes per result. Real reports vary with their
+resource names and details, so plan for 100 bytes per result:
+
+```text
+memory ≈ results per scan × 100 bytes × scans per day × retention days
+```
+
+For example, 10 accounts scanned daily with 2,000 results each is about
+2 MB a day, 180 MB at 90 days. The scan metadata and index add well under a
+kilobyte per scan.
+
+Redis is shared with every other service and runs with
+`--maxmemory-policy noeviction` and `--maxmemory ${REDIS_MAXMEMORY:-1gb}`: when
+it is full it refuses writes, for logins and task queues as well as for scans,
+rather than dropping keys. Check the memory in use with
+`scripts/check_redis_config.py runtime`. If reports would take a sizeable part
+of `REDIS_MAXMEMORY`, lower `CSPM_REPORT_RETENTION_DAYS` or raise
+`REDIS_MAXMEMORY`, keeping `REDIS_MEMORY_LIMIT` at least twice
+`REDIS_MAXMEMORY`.
 
 ### Custom Check Configuration
 
