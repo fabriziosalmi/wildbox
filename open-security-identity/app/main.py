@@ -4,7 +4,7 @@ FastAPI application for Open Security Identity service.
 
 import os
 
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -16,7 +16,7 @@ from .internal import router as internal_router
 from . import logout
 
 # Import fastapi-users components
-from .user_manager import auth_backend, fastapi_users
+from .user_manager import auth_backend, fastapi_users, require_password_changed
 from .schemas import UserRead, UserCreate, UserUpdate
 
 # Interactive API documentation and the OpenAPI schema are served in
@@ -91,6 +91,12 @@ async def db_session_middleware(request: Request, call_next):
     
     return response
 
+# An account a team admin created must change its initial password before
+# anything else (#573). Every router of authenticated routes carries this
+# gate; the auth routers (login, logout, register, password reset, verify)
+# and /internal do not, so a flagged account can still log in and out.
+PASSWORD_CHANGED = [Depends(require_password_changed)]
+
 # FastAPI Users routers (sostituiscono auth.router)
 app.include_router(
     fastapi_users.get_auth_router(auth_backend),
@@ -107,7 +113,8 @@ app.include_router(
 app.include_router(
     fastapi_users.get_users_router(UserRead, UserUpdate),
     prefix=f"{settings.api_v1_prefix}/users",
-    tags=["users"]
+    tags=["users"],
+    dependencies=PASSWORD_CHANGED,
 )
 
 # Logout / token revocation (WILDBO-AUTH-01). fastapi-users' JWT strategy has no
@@ -136,26 +143,30 @@ app.include_router(
 app.include_router(
     users.router,
     prefix=f"{settings.api_v1_prefix}/admin",
-    tags=["admin"]
+    tags=["admin"],
+    dependencies=PASSWORD_CHANGED,
 )
 
 app.include_router(
     api_keys.router,
     prefix=f"{settings.api_v1_prefix}/teams",
-    tags=["api-keys"]
+    tags=["api-keys"],
+    dependencies=PASSWORD_CHANGED,
 )
 
 # User-friendly API keys endpoints (without team_id in path)
 app.include_router(
     user_api_keys.router,
     prefix=settings.api_v1_prefix,
-    tags=["user-api-keys"]
+    tags=["user-api-keys"],
+    dependencies=PASSWORD_CHANGED,
 )
 
 app.include_router(
     analytics.router,
     prefix=f"{settings.api_v1_prefix}/analytics",
-    tags=["analytics"]
+    tags=["analytics"],
+    dependencies=PASSWORD_CHANGED,
 )
 
 app.include_router(

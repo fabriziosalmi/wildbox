@@ -57,6 +57,15 @@ TOKENS = {
         "role": "user",
         "scopes": ["tools:execute"],
     },
+    # An account a team admin created, before it changed the initial
+    # password (#573): identity reports password_change_required.
+    "pending-password-change-token": {
+        "user_id": "user-7777",
+        "team_id": "team-8888",
+        "role": "member",
+        "scopes": None,
+        "password_change_required": True,
+    },
 }
 
 authorize_calls = Counter()
@@ -151,6 +160,7 @@ class Handler(BaseHTTPRequestHandler):
                 "role": auth["role"],
                 "permissions": ["tool:basic", "tool:advanced", "feed", "cspm"],
                 "scopes": auth["scopes"],
+                "password_change_required": auth.get("password_change_required", False),
             },
         )
 

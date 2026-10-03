@@ -430,6 +430,25 @@ local function refuse_revoked()
     ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
+local function refuse_pending_password_change(auth_data)
+    if not auth_data or auth_data.password_change_required ~= true then
+        return
+    end
+    utils.log("info", "Refused a session that must change its password", {
+        user_id = auth_data.user_id
+    })
+    ngx.status = ngx.HTTP_FORBIDDEN
+    ngx.header.content_type = "application/json"
+    ngx.say(utils.json_encode({
+        error = "PASSWORD_CHANGE_REQUIRED",
+        message = "Change the initial password before using the account"
+    }))
+    ngx.exit(ngx.HTTP_FORBIDDEN)
+end
+
+-- Exported for the regex locations that authenticate inline.
+_M.refuse_pending_password_change = refuse_pending_password_change
+
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
@@ -745,6 +764,13 @@ function _M.authenticate()
             ngx.shared.auth_cache:delete(cache_key)
         end
     end
+
+    -- An account a team admin created must change its initial password
+    -- before it can use any service (#573). identity says so on every
+    -- authorization, and the decision is cached with it, so this holds on a
+    -- cache hit too. The routes that change the password, read the account
+    -- and log out are identity's own and do not come through here.
+    refuse_pending_password_change(auth_data)
 
     -- Enforce API-key least-privilege scopes (no-op for interactive/JWT auth)
     enforce_scopes(auth_data)

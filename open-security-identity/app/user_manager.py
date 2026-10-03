@@ -21,6 +21,7 @@ from fastapi_users.authentication import (
 )
 from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth import token_predates_cutoff, verify_access_token, verify_password
@@ -238,8 +239,61 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         return await super()._update(user, update_dict)
 
     async def set_password(self, user, password: str):
-        """Set the user's password, ending their other sessions (see _update)."""
-        return await self._update(user, {"password": password})
+        """Set the user's password, ending their other sessions (see _update).
+
+        This is the user's own change (change-password), so it also lifts
+        must_change_password: the initial password a team admin chose is
+        gone (#573).
+        """
+        return await self._update(
+            user, {"password": password, "must_change_password": False}
+        )
+
+    async def create_team_member(
+        self, email: str, password: str, team_id, role: str
+    ) -> User:
+        """Create an account directly in a team, with no team of its own (#573).
+
+        A team owner or admin adds someone to the team this way. The checks
+        a registration goes through apply: the email is validated by the
+        same schema (UserCreate) and must not be registered already, in any
+        letter case (fastapi-users' get_by_email); the password goes through
+        validate_password and is hashed by the same helper. Unlike a
+        registration, on_after_register does not run, so no personal team
+        is created: the account's only membership is `team_id`, and its
+        sessions therefore work in that team.
+
+        The administrator chose the password, so the account is flagged
+        must_change_password until its user changes it. The user and the
+        membership are written in one transaction.
+        """
+        from .schemas import UserCreate
+
+        user_create = UserCreate(email=email, password=password)
+        await self.validate_password(user_create.password, user_create)
+        if await self.user_db.get_by_email(user_create.email) is not None:
+            raise exceptions.UserAlreadyExists()
+
+        session: AsyncSession = self.user_db.session
+        user = User(
+            email=user_create.email,
+            hashed_password=self.password_helper.hash(user_create.password),
+            is_active=True,
+            is_superuser=False,
+            is_verified=False,
+            must_change_password=True,
+        )
+        session.add(user)
+        try:
+            await session.flush()
+            session.add(TeamMembership(user_id=user.id, team_id=team_id, role=role))
+            await session.commit()
+        except IntegrityError as exc:
+            # Registered concurrently: the unique email index refuses it.
+            await session.rollback()
+            raise exceptions.UserAlreadyExists() from exc
+        await session.refresh(user)
+        return user
 
     async def update(self, user_update, user, safe: bool = False, request=None):
         """Re-authenticate the changes a stolen session could take an account with.
@@ -406,3 +460,47 @@ fastapi_users = FastAPIUsers[User, uuid.UUID](
 current_active_user = fastapi_users.current_user(active=True)
 current_superuser = fastapi_users.current_user(active=True, superuser=True)
 current_verified_user = fastapi_users.current_user(active=True, verified=True)
+
+
+# 8. Accounts that must change their password first (#573)
+PASSWORD_CHANGE_REQUIRED = "PASSWORD_CHANGE_REQUIRED"
+
+# What a flagged account's session may still do, as (method, route path):
+# change the password and read the account. Logout lives on routers this
+# gate is not attached to (see main.py), so it is always allowed.
+PASSWORD_CHANGE_EXEMPT = frozenset(
+    {
+        ("POST", f"{settings.api_v1_prefix}/admin/me/change-password"),
+        ("PUT", f"{settings.api_v1_prefix}/admin/me/password"),
+        ("GET", f"{settings.api_v1_prefix}/users/me"),
+    }
+)
+
+_optional_active_user = fastapi_users.current_user(active=True, optional=True)
+
+
+def password_change_required_error() -> HTTPException:
+    # A bare code, as fastapi-users answers its own refusals: the shared
+    # error handler renders the detail as the message, which clients match.
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN, detail=PASSWORD_CHANGE_REQUIRED
+    )
+
+
+async def require_password_changed(
+    request: Request, user: Optional[User] = Depends(_optional_active_user)
+) -> None:
+    """Refuse a flagged account's requests, except the exempt ones (#573).
+
+    Attached to every router of authenticated routes in main.py, so it also
+    covers fastapi-users' own /users router, whose routes do not use this
+    module's current_active_user. A request without a valid session passes
+    here and is refused by the route's own authentication.
+    """
+    if user is None or not user.must_change_password:
+        return
+    # The request's own path: none of the exempt routes has a parameter,
+    # and the matched route does not carry the router's prefix here.
+    if (request.method, request.url.path) in PASSWORD_CHANGE_EXEMPT:
+        return
+    raise password_change_required_error()

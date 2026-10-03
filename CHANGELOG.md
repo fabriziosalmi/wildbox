@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A team owner or admin can create accounts in the team** (#573).
+  identity had no way to put a second person in a team since the
+  invitation endpoint, which sent nothing, was removed (#570):
+  registration always creates a team of its own. `POST
+  /api/v1/admin/teams/{team_id}/members` with `email`, `password` and
+  `role` now creates a new account whose only membership is that team,
+  so its sessions work in it. It is open to the team's owners and admins
+  and to superusers; the role must be below the caller's own (an owner
+  creates admins and members, an admin creates members, nobody creates
+  an owner), and an email that is already registered answers 409. An
+  existing account cannot be added and no email is sent: the
+  administrator gives the initial password to the new member. The
+  creation is logged without the password. The Team page has an "Add
+  member" form for owners and admins.
+- **An account created that way must change its password first** (#573).
+  The administrator chose its initial password, so the account carries
+  `must_change_password` (a new column, alembic revision
+  `b7c8d9e0f1a2`) until its user changes it. Meanwhile its sessions can
+  only read the account, change the password and log out: identity
+  answers 403 `PASSWORD_CHANGE_REQUIRED` to every other route, and the
+  gateway does the same for every other service, as
+  `/internal/authorize` now reports `password_change_required`. The
+  dashboard takes such a user from the login to a "Choose your
+  password" screen, and back to it from any other page.
+
 ### Fixed
 
 - **Cloud compliance reports the team's scans, not an invented account**
@@ -44,6 +71,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   read as a toolbox with 0 tools and the page's error state was
   unreachable. The error now shows the service's message, and its retry
   asks the service again instead of reloading the page.
+- **The Team and Profile pages show the team the session works in**
+  (#573). `GET /api/v1/admin/me/activity` listed the memberships in no
+  particular order and both pages took the first; it now lists them
+  oldest first, the order `/internal/authorize` picks a session's team
+  in. Superusers can now list, rename and remove the members of any
+  team, as they can create members in it; the three routes used to
+  answer them 403 unless they belonged to the team.
 - **The threat-intel trend no longer invents +100%** (#573).
   `GET /api/v1/dashboard/threat-intel` reported `trends_change: 100.0`
   whenever the previous 24 hours had no indicators and the last 24 had

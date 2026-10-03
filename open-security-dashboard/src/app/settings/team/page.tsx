@@ -8,7 +8,17 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Users, Trash2, AlertCircle, Crown, Shield, User, Settings, Edit } from 'lucide-react'
+import {
+  Users,
+  Trash2,
+  AlertCircle,
+  Crown,
+  Shield,
+  User,
+  Settings,
+  Edit,
+  UserPlus,
+} from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
 type TeamRole = 'owner' | 'admin' | 'member'
@@ -35,6 +45,16 @@ interface TeamMember {
   }
 }
 
+/** The roles a caller may give a new member: strictly below its own (#573). */
+const CREATABLE_ROLES: Record<TeamRole, TeamRole[]> = {
+  owner: ['member', 'admin'],
+  admin: ['member'],
+  member: [],
+}
+
+// identity's minimum for a password (TeamMemberCreate, PasswordChangeRequest).
+const MIN_PASSWORD_LENGTH = 12
+
 interface TeamData {
   membership: MyMembership
   members: TeamMember[]
@@ -57,8 +77,8 @@ const roleColors = {
 // /auth/me and /api/v1/teams/..., which the gateway does not route: the first
 // fell through to the dashboard, the second to the catch-all 404, so the page
 // never loaded (#559). Both routes below are open to any member of the team;
-// renaming it and removing members are limited to its owners and admins by
-// identity itself.
+// renaming it, adding and removing members are limited to its owners and
+// admins by identity itself.
 const myActivityPath = () => getIdentityPath('/api/v1/admin/me/activity')
 const teamPath = (teamId: string) =>
   getIdentityPath(`/api/v1/admin/teams/${encodeURIComponent(teamId)}`)
@@ -74,6 +94,15 @@ export default function TeamPage() {
   const [teamEditForm, setTeamEditForm] = useState({
     name: '',
   })
+
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addMemberForm, setAddMemberForm] = useState<{
+    email: string
+    password: string
+    role: TeamRole
+  }>({ email: '', password: '', role: 'member' })
+  const [addMemberError, setAddMemberError] = useState<string | null>(null)
+  const [addingMember, setAddingMember] = useState(false)
 
   const fetchTeamData = useCallback(async () => {
     try {
@@ -144,6 +173,43 @@ export default function TeamPage() {
         description: getErrorMessage(error, 'Failed to update team'),
         variant: 'destructive',
       })
+    }
+  }
+
+  // Creates the account directly in this team (#573); the list then shows
+  // what identity returns, not what was typed.
+  const handleAddMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!teamData) return
+    setAddMemberError(null)
+    if (addMemberForm.password.length < MIN_PASSWORD_LENGTH) {
+      setAddMemberError(
+        `The initial password must be at least ${MIN_PASSWORD_LENGTH} characters long`
+      )
+      return
+    }
+
+    setAddingMember(true)
+    try {
+      const created = await identityClient.post<TeamMember>(
+        `${teamPath(teamData.membership.team_id)}/members`,
+        {
+          email: addMemberForm.email.trim(),
+          password: addMemberForm.password,
+          role: addMemberForm.role,
+        }
+      )
+      setAddMemberForm({ email: '', password: '', role: 'member' })
+      setShowAddMember(false)
+      await fetchTeamData()
+      toast({
+        title: 'Member added',
+        description: `${created.user.email} was added as ${created.role}. Share the initial password with them privately; they must change it when they first sign in.`,
+      })
+    } catch (error) {
+      setAddMemberError(getErrorMessage(error, 'Failed to add the member'))
+    } finally {
+      setAddingMember(false)
     }
   }
 
@@ -229,6 +295,7 @@ export default function TeamPage() {
   }
 
   const { membership, members } = teamData
+  const creatableRoles = CREATABLE_ROLES[membership.role] ?? []
 
   return (
     <div className="max-w-4xl">
@@ -333,7 +400,116 @@ export default function TeamPage() {
 
       {/* Team Members */}
       <Card className="p-6">
-        <h3 className="mb-4 text-lg font-semibold text-foreground">Team Members</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-foreground">Team Members</h3>
+          {teamData.canManage && creatableRoles.length > 0 && !showAddMember && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setAddMemberError(null)
+                setShowAddMember(true)
+              }}
+              className="flex items-center gap-2"
+            >
+              <UserPlus className="h-4 w-4" />
+              Add member
+            </Button>
+          )}
+        </div>
+
+        {showAddMember && teamData.canManage && (
+          <form
+            onSubmit={handleAddMember}
+            className="mb-6 space-y-4 rounded-lg border border-border p-4"
+            aria-label="Add member"
+          >
+            <p className="text-sm text-muted-foreground">
+              Creates a new account in this team. Choose an initial password and share it with the
+              new member privately: they must replace it when they first sign in.
+            </p>
+            {addMemberError && (
+              <p
+                role="alert"
+                data-testid="add-member-error"
+                className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400"
+              >
+                {addMemberError}
+              </p>
+            )}
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div>
+                <label
+                  htmlFor="member-email"
+                  className="mb-2 block text-sm font-medium text-foreground"
+                >
+                  Email
+                </label>
+                <Input
+                  id="member-email"
+                  type="email"
+                  value={addMemberForm.email}
+                  onChange={e => setAddMemberForm(prev => ({ ...prev, email: e.target.value }))}
+                  required
+                  disabled={addingMember}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="member-password"
+                  className="mb-2 block text-sm font-medium text-foreground"
+                >
+                  Initial password
+                </label>
+                <Input
+                  id="member-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={addMemberForm.password}
+                  onChange={e => setAddMemberForm(prev => ({ ...prev, password: e.target.value }))}
+                  required
+                  disabled={addingMember}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="member-role"
+                  className="mb-2 block text-sm font-medium text-foreground"
+                >
+                  Role
+                </label>
+                <select
+                  id="member-role"
+                  value={addMemberForm.role}
+                  onChange={e =>
+                    setAddMemberForm(prev => ({ ...prev, role: e.target.value as TeamRole }))
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  disabled={addingMember}
+                >
+                  {creatableRoles.map(role => (
+                    <option key={role} value={role}>
+                      {getRoleDisplayName(role)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={addingMember}>
+                {addingMember ? 'Adding...' : 'Add member'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowAddMember(false)}
+                disabled={addingMember}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        )}
 
         <div className="space-y-4">
           {members.map(member => {
@@ -402,6 +578,7 @@ export default function TeamPage() {
               </div>
               <ul className="space-y-1 text-muted-foreground">
                 <li>• Rename the team</li>
+                <li>• Add admins and members</li>
                 <li>• Remove admins and members</li>
                 <li>• View all members</li>
               </ul>
@@ -414,6 +591,7 @@ export default function TeamPage() {
               </div>
               <ul className="space-y-1 text-muted-foreground">
                 <li>• Rename the team</li>
+                <li>• Add members</li>
                 <li>• Remove admins and members</li>
                 <li>• View all members</li>
               </ul>
