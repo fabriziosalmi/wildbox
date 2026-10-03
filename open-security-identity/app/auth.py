@@ -6,7 +6,7 @@ import uuid
 import secrets
 import hashlib
 import hmac
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 import jwt
@@ -140,6 +140,30 @@ def verify_access_token(token: str) -> Dict[str, Any]:
         )
 
 
+def token_predates_cutoff(payload: Dict[str, Any], user: Any) -> bool:
+    """Whether a session token was issued at or before its user's cutoff (#569).
+
+    A password change sets users.tokens_valid_after, so the account's other
+    sessions end with it. A token is refused when its iat is not later than
+    the cutoff, or when it carries no iat and so cannot show that it is.
+
+    Granularity: login tokens carry a fractional iat (RevocableJWTStrategy),
+    so a token issued in the same second as the change -- the new one handed
+    to the session that changed the password -- is still told apart from one
+    issued before it. A token with a whole-second iat issued in the second of
+    the change is refused, which errs on the side of ending it.
+    """
+    cutoff = getattr(user, "tokens_valid_after", None)
+    if cutoff is None:
+        return False
+    iat = payload.get("iat")
+    if isinstance(iat, bool) or not isinstance(iat, (int, float)):
+        return True
+    if cutoff.tzinfo is None:
+        cutoff = cutoff.replace(tzinfo=timezone.utc)
+    return iat <= cutoff.timestamp()
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: AsyncSession = Depends(get_db)
@@ -193,7 +217,14 @@ async def get_current_user(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Inactive user",
         )
-    
+
+    if token_predates_cutoff(payload, user):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has been revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     return user
 
 

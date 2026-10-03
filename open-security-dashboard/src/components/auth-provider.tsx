@@ -29,6 +29,17 @@ function authCookieOptions(): Cookies.CookieAttributes {
   return { expires: 7, secure, sameSite: 'strict' }
 }
 
+/**
+ * Replace the session's token, e.g. with the one change-password returns:
+ * a password change ends every session issued before it, the current one
+ * included (#569), and hands over a new token for this one.
+ */
+export function storeSessionToken(token: string) {
+  if (typeof window !== 'undefined') {
+    Cookies.set('auth_token', token, authCookieOptions())
+  }
+}
+
 export function useAuth() {
   const context = useContext(AuthContext)
 

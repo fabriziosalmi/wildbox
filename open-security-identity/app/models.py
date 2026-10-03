@@ -42,8 +42,12 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     # Timestamps (fastapi-users non li gestisce automaticamente)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    
-    
+
+    # Session tokens issued at or before this instant are refused (#569). Set
+    # whenever the password changes, so the change ends every other session;
+    # NULL (never changed since the column was added) refuses nothing.
+    tokens_valid_after = Column(DateTime(timezone=True), nullable=True)
+
     # Relationships (aggiornate con sintassi moderna)
     team_memberships: Mapped[list["TeamMembership"]] = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")
     owned_teams: Mapped[list["Team"]] = relationship("Team", back_populates="owner")

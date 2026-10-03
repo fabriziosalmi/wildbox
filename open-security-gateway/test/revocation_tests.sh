@@ -43,6 +43,15 @@ token() {
     printf '%s.%s.c2ln' "$header" "$payload"
 }
 
+# session <jti> <user> <iat> <delay_ms> -- a session of <user> issued at <iat>,
+# for the password-change cutoff (#569).
+session() {
+    local header payload
+    header=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+    payload=$(printf '{"sub":"%s","jti":"%s","iat":%s,"delay_ms":%s}' "$2" "$1" "$3" "$4" | b64url)
+    printf '%s.%s.c2ln' "$header" "$payload"
+}
+
 status_of() {
     curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $1" "$GATEWAY_URL$ROUTE"
 }
@@ -162,6 +171,81 @@ if printf '%s' "$answer" | python3 -c 'import json,sys; sys.exit(json.loads(sys.
     pass "purge answers strict JSON counting the revoked jtis"
 else
     fail "purge answer is not what identity parses: $answer"
+fi
+
+# 9. A password change ends the user's sessions issued up to its cutoff
+#    (#569): identity sends {"users": [{user_id, not_before}]} before it
+#    commits the change. Both older sessions are refused although their
+#    decisions are cached and the mock still vouches for them; a session
+#    issued after the cutoff, and another user's, are not affected.
+user="pw-user-$RUN_ID"
+cutoff="1800000000.5"
+older=$(session "pw-older-$RUN_ID" "$user" 1800000000.25 0)
+oldest=$(session "pw-oldest-$RUN_ID" "$user" 1799999000 0)
+newer=$(session "pw-newer-$RUN_ID" "$user" 1800000000.75 0)
+bystander=$(session "pw-bystander-$RUN_ID" "other-$user" 1700000000 0)
+warm=0
+for tok in "$older" "$oldest" "$bystander"; do
+    [ "$(status_of "$tok")" = 200 ] && warm=$((warm + 1))
+done
+answer=$(curl -s -X POST -H 'Content-Type: application/json' -H "X-Gateway-Secret: $SECRET" \
+    -d "{\"users\":[{\"user_id\":\"$user\",\"not_before\":$cutoff}],\"ttl\":1800}" \
+    "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")
+leaked=$(( $(probe "$older") + $(probe "$oldest") ))
+if [ "$warm" = 3 ] && [ "$leaked" = 0 ]; then
+    pass "a password change ends the user's earlier sessions, cached or not"
+else
+    fail "password change: $warm/3 sessions warm, $leaked requests of ended sessions accepted"
+fi
+if [ "$(probe "$newer")" = "$PROBES" ] && [ "$(probe "$bystander")" = "$PROBES" ]; then
+    pass "a session issued after the change, and another user's, still work"
+else
+    fail "a session issued after the change, or another user's, was refused"
+fi
+if printf '%s' "$answer" | python3 -c '
+import json, sys
+body = json.loads(sys.stdin.read())
+sys.exit(not (body["revoked"] == 1 and body["scope"] == "users"))' 2>/dev/null; then
+    pass "the users purge answers strict JSON counting the users"
+else
+    fail "users purge answer is not what identity parses: $answer"
+fi
+
+# 10. A cutoff never moves back: an earlier one sent later keeps the later.
+purge "{\"users\":[{\"user_id\":\"$user\",\"not_before\":1700000000}],\"ttl\":1800}" >/dev/null
+if [ "$(probe "$older")" = 0 ]; then
+    pass "a later password-change cutoff is kept"
+else
+    fail "an earlier cutoff reopened a session the later one had ended"
+fi
+
+# 11. The race, for a password change: an authorization in flight across the
+#     cutoff is not served afterwards, on any worker.
+failed=0
+for i in $(seq 1 10); do
+    race_user="pw-race-$RUN_ID-$i"
+    tok=$(session "pw-race-$RUN_ID-$i" "$race_user" 1800000000 400)
+    status_of "$tok" >/dev/null &
+    inflight=$!
+    sleep 0.15
+    code=$(purge "{\"users\":[{\"user_id\":\"$race_user\",\"not_before\":1800000001}],\"ttl\":1800}")
+    wait "$inflight"
+    if [ "$code" != 200 ] || [ "$(probe "$tok")" != 0 ]; then
+        failed=$((failed + 1))
+    fi
+done
+if [ "$failed" = 0 ]; then
+    pass "password change: an in-flight authorization is not served after it (10/10)"
+else
+    fail "password change: an ended session was still accepted after $failed/10 changes"
+fi
+
+# 12. Malformed user entries are refused, not half-applied.
+code=$(purge '{"users":[{"user_id":"x","not_before":"yesterday"}]}')
+if [ "$code" = 400 ]; then
+    pass "a users purge with an invalid entry is refused"
+else
+    fail "a users purge with an invalid entry answered $code"
 fi
 
 # 7. The purge refuses a caller without the secret.

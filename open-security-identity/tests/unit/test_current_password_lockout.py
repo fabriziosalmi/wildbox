@@ -141,11 +141,16 @@ def test_the_right_password_clears_the_counter(counter):
 # -- the routes that ask for it -----------------------------------------------
 
 
+class UntouchableManager:
+    async def set_password(self, user, password):
+        raise AssertionError("a refused change must not set the password")
+
+
 def change_password(user, current):
     return users.change_my_password(
         PasswordChangeRequest(current_password=current, new_password="n" * 16),
         current_user=user,
-        db=FakeSession(),
+        user_manager=UntouchableManager(),
     )
 
 

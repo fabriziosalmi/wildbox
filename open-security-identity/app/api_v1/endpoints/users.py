@@ -20,10 +20,9 @@ from ...schemas import (
     UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
 )
 from ...user_manager import (
-    current_superuser, current_active_user, get_user_manager, UserManager,
-    require_current_password, verify_current_password,
+    current_superuser, current_active_user, get_jwt_strategy, get_user_manager,
+    UserManager, require_current_password, verify_current_password,
 )
-from ...auth import get_password_hash
 from ...gateway_cache import purge_gateway_auth_cache
 from ...config import settings
 
@@ -582,31 +581,44 @@ async def update_my_profile_put(
 async def change_my_password_put(
     password_change: PasswordChangeRequest,
     current_user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_db)
+    user_manager: UserManager = Depends(get_user_manager),
 ):
     """
     User endpoint: Change own password (PUT version).
     """
-    return await change_my_password(password_change, current_user, db)
+    return await change_my_password(
+        password_change, current_user=current_user, user_manager=user_manager
+    )
 
 
 @router.post("/me/change-password")
 async def change_my_password(
     password_change: PasswordChangeRequest,
     current_user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_db)
+    user_manager: UserManager = Depends(get_user_manager),
 ):
     """
     User endpoint: Change own password.
+
+    The change ends every session of the account, the one making the request
+    included (#569): a password changed after a compromise must lock the
+    intruder out. So that the caller is not signed out by their own change,
+    the answer carries a new access token, issued after the change, which
+    replaces the one the request was made with. API keys are not sessions
+    and keep working; they are revoked on the API keys page.
     """
     # Verify current password; a wrong one counts towards the lockout (#569).
     await verify_current_password(current_user, password_change.current_password)
 
-    # Hash and set new password
-    current_user.hashed_password = get_password_hash(password_change.new_password)
-    await db.commit()
-    
-    return {"message": "Password changed successfully"}
+    # Through UserManager, which ends the other sessions with the change.
+    user = await user_manager.set_password(current_user, password_change.new_password)
+    access_token = await get_jwt_strategy().write_token(user)
+
+    return {
+        "message": "Password changed successfully",
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
 
 
 @router.delete("/me/account")

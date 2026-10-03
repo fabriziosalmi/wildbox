@@ -20,6 +20,9 @@ MAX_ATTEMPTS = 5
 CHANGE_PASSWORD = f"{GATEWAY_URL}/api/v1/identity/admin/me/change-password"
 PATCH_ME = f"{GATEWAY_URL}/auth/users/me"
 PROFILE = f"{GATEWAY_URL}/api/v1/identity/admin/me/profile"
+# Authenticated by the gateway (auth_handler), unlike the identity routes
+# above, which identity checks itself.
+PROTECTED = f"{GATEWAY_URL}/api/v1/data/health"
 
 
 def new_account():
@@ -59,6 +62,11 @@ def change_password(token, current, new):
         headers=bearer(token),
         timeout=TIMEOUT,
     )
+
+
+def gateway_status(token):
+    """Status of a route the gateway itself authenticates (auth cache and all)."""
+    return requests.get(PROTECTED, headers=bearer(token), timeout=TIMEOUT).status_code
 
 
 def email_of(token):
@@ -101,6 +109,31 @@ def test_an_email_change_with_the_current_password_is_saved():
     assert response.status_code == 200, response.text[:200]
     assert email_of(token) == new_email
     assert login(new_email, password).status_code == 200
+
+
+def test_a_password_change_ends_the_other_sessions_at_the_gateway():
+    """No flake tolerance: one request each, right after the change."""
+    email, password = new_account()
+    other = token_for(email, password)
+    this = token_for(email, password)
+    # Both decisions are now in the gateway's auth cache.
+    for token in (other, this):
+        assert gateway_status(token) == 200
+
+    new_password = f"Changed-{secrets.token_hex(8)}!"
+    response = change_password(this, password, new_password)
+    assert response.status_code == 200, response.text[:200]
+    fresh = response.json()["access_token"]
+
+    assert gateway_status(other) == 401
+    assert gateway_status(this) == 401
+    assert gateway_status(fresh) == 200
+    # Identity's own routes agree with the gateway.
+    me = requests.get(PATCH_ME, headers=bearer(other), timeout=TIMEOUT)
+    assert me.status_code == 401, me.text[:200]
+    assert email_of(fresh) == email
+    # A new login with the new password opens a session as usual.
+    assert gateway_status(token_for(email, new_password)) == 200
 
 
 def test_repeated_wrong_current_passwords_lock_the_account():

@@ -9,6 +9,7 @@ import {
   gatewayApi,
   loginStatus,
   readSeed,
+  sessionToken,
   startSession,
   strongPassword,
   throwawayAccount,
@@ -224,12 +225,32 @@ test.describe('Settings', { tag: '@backend' }, () => {
     test('changes the password with the current one', async ({ page, context }) => {
       const account = await openProfile(page, context, 'profile-password')
       const newPassword = strongPassword()
+      // A second session of the same account, open at the gateway.
+      const protectedRoute = '/api/v1/data/health'
+      const otherSession = await apiLogin(api, account)
+      expect((await api.get(protectedRoute, { headers: bearer(otherSession) })).status()).toBe(200)
 
       await fillPasswordForm(page, account.password, newPassword)
 
       await expect(page.getByText('Password changed successfully', { exact: true })).toBeVisible()
       expect(await loginStatus(api, { email: account.email, password: newPassword })).toBe(200)
       expect(await loginStatus(api, account)).toBe(400)
+
+      // The change ends every earlier session (#569): the other one, and the
+      // token this page was opened with. No retry: a session that survives
+      // is the defect, not a flake.
+      for (const token of [otherSession, account.token]) {
+        expect((await api.get(protectedRoute, { headers: bearer(token) })).status()).toBe(401)
+      }
+      // The page carries on with the new token identity handed over.
+      const current = await sessionToken(context)
+      expect(current).toBeTruthy()
+      expect(current).not.toBe(account.token)
+      expect((await api.get(protectedRoute, { headers: bearer(current!) })).status()).toBe(200)
+      await page.reload()
+      await expect(page.getByLabel('Email Address')).toHaveValue(account.email, {
+        timeout: 20_000,
+      })
     })
 
     test('refuses a password change with a wrong current password', async ({ page, context }) => {

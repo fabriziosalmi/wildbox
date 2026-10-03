@@ -3,6 +3,7 @@ FastAPI Users configuration and user management logic.
 """
 
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -22,11 +23,11 @@ from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import verify_access_token, verify_password
+from .auth import token_predates_cutoff, verify_access_token, verify_password
 from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
-from .logout import revoke_token
+from .logout import RevocationError, revoke_sessions_issued_before, revoke_token
 from .token_blacklist import (
     clear_failed_logins,
     is_account_locked,
@@ -112,6 +113,12 @@ class RevocableJWTStrategy(JWTStrategy):
     Here every token gets a random jti and an iat; read_token() refuses a
     blacklisted jti, so identity's own routes honour revocation as the gateway
     already does (/internal/authorize); destroy_token() revokes.
+
+    The iat is fractional (RFC 7519 allows a non-integer NumericDate). A
+    password change refuses the tokens issued up to the instant it happened
+    (users.tokens_valid_after, #569); in whole seconds, the new token handed
+    to the session that made the change would fall in the same second as the
+    tokens it replaces and could not be told apart from them.
     """
 
     async def write_token(self, user) -> str:
@@ -119,7 +126,7 @@ class RevocableJWTStrategy(JWTStrategy):
             "sub": str(user.id),
             "aud": self.token_audience,
             "jti": uuid.uuid4().hex,
-            "iat": datetime.now(timezone.utc),
+            "iat": time.time(),
         }
         return generate_jwt(data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm)
 
@@ -133,7 +140,11 @@ class RevocableJWTStrategy(JWTStrategy):
         jti = data.get("jti")
         if jti and await is_token_blacklisted(jti):
             return None
-        return await super().read_token(token, user_manager)
+        user = await super().read_token(token, user_manager)
+        # Issued before the password last changed: that change ended it (#569).
+        if user is not None and token_predates_cutoff(data, user):
+            return None
+        return user
 
     async def destroy_token(self, token: str, user) -> None:
         await revoke_token(token)
@@ -188,6 +199,47 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
     # Where a signed-in user changes their own password. It verifies the
     # current one; the self-service update below refuses to.
     CHANGE_PASSWORD_ROUTE = "POST /api/v1/admin/me/change-password"
+
+    async def _update(self, user, update_dict):
+        """End the account's sessions whenever its password changes (#569).
+
+        Every path that sets a password comes through here: change-password
+        (set_password), the reset-password flow, and an administrator's reset
+        (PATCH /users/{id}). A changed password used to leave every token
+        already issued valid until it expired, so changing it after a
+        compromise did not lock the intruder out.
+
+        The cutoff is stored with the new hash (users.tokens_valid_after);
+        tokens issued up to it are refused by identity's routes and by
+        /internal/authorize. The gateway is told first and must confirm: it
+        refuses those tokens even on a cached decision or one in flight. If
+        it cannot be told, the password is not changed (503) -- the other
+        sessions would otherwise stay open at the gateway until their
+        decisions expired from its cache. API keys are not sessions and are
+        left alone; they are revoked on the API keys page.
+        """
+        password = update_dict.get("password")
+        if password is not None:
+            # Before the sessions are ended: an invalid password changes nothing.
+            await self.validate_password(password, user)
+            not_before = datetime.now(timezone.utc)
+            try:
+                await revoke_sessions_issued_before(user.id, not_before)
+            except RevocationError as exc:
+                logger.error("Password not changed: sessions could not be ended: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "The password was not changed: the account's other "
+                        "sessions could not be ended. Try again."
+                    ),
+                ) from exc
+            update_dict = {**update_dict, "tokens_valid_after": not_before}
+        return await super()._update(user, update_dict)
+
+    async def set_password(self, user, password: str):
+        """Set the user's password, ending their other sessions (see _update)."""
+        return await self._update(user, {"password": password})
 
     async def update(self, user_update, user, safe: bool = False, request=None):
         """Re-authenticate the changes a stolen session could take an account with.

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useAuth } from '@/components/auth-provider'
+import { storeSessionToken, useAuth } from '@/components/auth-provider'
 import { identityClient, getAuthPath, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,14 @@ interface UpdateProfileRequest {
 interface ChangePasswordRequest {
   current_password: string
   new_password: string
+}
+
+// A password change ends every session issued before it, this one included,
+// and answers with a new token for this session (#569).
+interface ChangePasswordResponse {
+  message: string
+  access_token: string
+  token_type: string
 }
 
 interface MyMembership {
@@ -164,7 +172,12 @@ export default function ProfilePage() {
         new_password: passwordForm.new_password,
       }
 
-      await identityClient.post(changePasswordPath(), changeData)
+      const { access_token } = await identityClient.post<ChangePasswordResponse>(
+        changePasswordPath(),
+        changeData
+      )
+      // The token this page was using no longer works; carry on with the new one.
+      storeSessionToken(access_token)
 
       setPasswordForm({
         current_password: '',

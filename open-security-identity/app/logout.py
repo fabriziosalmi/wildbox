@@ -21,7 +21,12 @@ from typing import Mapping, Optional
 from fastapi import APIRouter, Header, HTTPException, status
 
 from .auth import verify_access_token
-from .gateway_cache import GatewayRevocationError, revoke_jtis_at_gateway
+from .config import settings
+from .gateway_cache import (
+    GatewayRevocationError,
+    revoke_jtis_at_gateway,
+    revoke_user_sessions_at_gateway,
+)
 from .token_blacklist import blacklist_token
 
 logger = logging.getLogger(__name__)
@@ -72,6 +77,32 @@ async def revoke_jtis(sessions: Mapping[str, datetime]) -> None:
             await blacklist_token(jti, expires_at)
     except Exception as exc:
         raise RevocationError("the blacklist could not be written") from exc
+
+
+async def revoke_sessions_issued_before(user_id, not_before: datetime) -> None:
+    """End, at the gateway, the user's sessions issued up to ``not_before`` (#569).
+
+    The other half of a password change: the caller stores the same instant in
+    users.tokens_valid_after, which identity's own routes and
+    /internal/authorize check, and must do so only after this returns. The
+    gateway goes first for the reason revoke_jtis() gives: once it confirms,
+    no request carrying one of those tokens is let through, not even one whose
+    authorization was in flight, and if it does not, nothing has changed yet
+    and the caller can retry. Raises RevocationError.
+
+    The marker lasts as long as a token issued just before the change could
+    (the access-token lifetime); after that the database cutoff alone holds,
+    since no such token is still unexpired.
+    """
+    if not_before.tzinfo is None:
+        not_before = not_before.replace(tzinfo=timezone.utc)
+    try:
+        await revoke_user_sessions_at_gateway(
+            {str(user_id): not_before.timestamp()},
+            ttl_seconds=settings.jwt_access_token_expire_minutes * 60,
+        )
+    except GatewayRevocationError as exc:
+        raise RevocationError(str(exc)) from exc
 
 
 async def revoke_token(token: str) -> None:

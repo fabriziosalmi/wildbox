@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from .database import get_db
 from .models import User, Team, TeamMembership, ApiKey
 from .schemas import AuthorizationResponse
-from .auth import verify_access_token
+from .auth import token_predates_cutoff, verify_access_token
 from .config import settings
 from datetime import datetime
 import hmac
@@ -130,6 +130,14 @@ async def authorize_request(
                 )
 
             user, team, membership = row
+
+            # A password change ends the account's other sessions (#569).
+            if token_predates_cutoff(payload, user):
+                logger.info(f"Rejected a session issued before a password change (jti={jti})")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token has been revoked",
+                )
 
             # Build authorization response. Bearer (interactive) auth is not
             # scope-limited — scopes=None means unrestricted at the gateway.
