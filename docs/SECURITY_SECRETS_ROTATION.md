@@ -33,8 +33,12 @@ What the script does:
    `POSTGRES_PASSWORD`, `NEXTAUTH_SECRET`. Any other name exits with an error.
 2. Works on `.env` in the repository root, or on the file named by the
    `ENV_FILE` environment variable, and exits if the file does not exist.
-3. Refuses `JWT_SECRET_KEY` while `.env` has no non-empty
-   `API_KEY_HASH_SECRET` (see [JWT_SECRET_KEY](#jwt_secret_key)).
+3. Refuses `JWT_SECRET_KEY` until identity receives a separate
+   `API_KEY_HASH_SECRET`: `.env` sets it, `docker compose config` passes it
+   to identity, and the running identity container, if any, has it (see
+   [JWT_SECRET_KEY](#jwt_secret_key)). Set `COMPOSE_FILE` to the files you
+   start the stack with, for example
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
 4. Copies the file to `.env.bak.<timestamp>` with mode `0600`. The copy
    holds the **old** secret: delete it once the rotation is verified.
 5. Generates the new value with Python's `secrets.token_urlsafe(48)` (64
@@ -71,38 +75,40 @@ together.
 Identity signs session tokens with it. Rotating it ends every session: users
 have to log in again.
 
-Identity also keys the HMAC of stored API-key digests with it whenever
-`API_KEY_HASH_SECRET` is unset
-(`open-security-identity/app/auth.py`, `_api_key_hash_secret()`), so in that
-case rotating it also makes every stored API key invalid. That is why the
-script refuses `JWT_SECRET_KEY` until `.env` sets `API_KEY_HASH_SECRET`.
-
-> **Current limitation.** `docker-compose.yml` does not pass
-> `API_KEY_HASH_SECRET` to the identity container: its environment lists
-> `JWT_SECRET_KEY` but not `API_KEY_HASH_SECRET`, and `.env` is not copied into
-> the image. Identity therefore keys API-key digests with `JWT_SECRET_KEY`
-> whatever `.env` says, and rotating `JWT_SECRET_KEY` invalidates every stored
-> API key even though the script's check passes. Until the compose file
-> passes the variable, plan a JWT rotation as an API-key rotation as well:
-> every user and team re-creates its keys afterwards.
+API-key digests are keyed by `API_KEY_HASH_SECRET`, not by this key, so
+rotating `JWT_SECRET_KEY` leaves API keys working. Identity falls back to
+`JWT_SECRET_KEY` only when `API_KEY_HASH_SECRET` is unset, which the
+production configuration does not allow (below); the script refuses
+`JWT_SECRET_KEY` until it has checked that identity has a separate one.
 
 ### API_KEY_HASH_SECRET
 
 The HMAC key for stored API-key digests. Rotating it to a new random value
-makes every stored API key invalid.
+makes every stored API key invalid: every user and team re-creates its keys.
 
-`--init` is the safe first step on an existing deployment: it sets
-`API_KEY_HASH_SECRET` to the current `JWT_SECRET_KEY`, so existing digests
-still verify, and from then on the two can be rotated separately:
+It is required:
+
+- both `docker-compose.yml` and `docker-compose.prod.yml` pass it to
+  identity as `${API_KEY_HASH_SECRET:?...}`, so Compose refuses to start
+  without it;
+- with `ENVIRONMENT=production`, identity refuses to start when it is unset,
+  shorter than 32 characters, a placeholder from `.env.example`, or has too
+  few distinct characters.
+
+`make generate-secrets` writes a random value for a new deployment. A
+deployment that ran before this variable reached identity has its API-key
+digests keyed by `JWT_SECRET_KEY`. Before upgrading it, seed the new variable
+from that key once, so existing keys keep working; the step is described in
+[UPGRADING.md](https://github.com/fabriziosalmi/wildbox/blob/main/UPGRADING.md)
+under "Seed `API_KEY_HASH_SECRET` from `JWT_SECRET_KEY`":
 
 ```bash
-./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
+make init-api-key-hash
+# same as: ./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
 ```
 
-`make generate-secrets` writes a random `API_KEY_HASH_SECRET` that differs
-from `JWT_SECRET_KEY`. Today that value does not reach identity (see the
-limitation above). If you make it reach identity, keys created while identity
-used `JWT_SECRET_KEY` stop working, so run `--init` first.
+It copies `JWT_SECRET_KEY` into `API_KEY_HASH_SECRET` inside `.env`; from
+then on the two can be rotated separately.
 
 ### API_KEY
 
