@@ -92,6 +92,7 @@ async def execute_tool(data: BlockchainSecurityAnalyzerInput) -> BlockchainSecur
     risk_level = determine_risk_level(critical_vulns, high_vulns, medium_vulns)
     
     return BlockchainSecurityAnalyzerOutput(
+        success=True,
         contract_address=data.contract_address,
         blockchain=data.blockchain,
         analysis_timestamp=datetime.utcnow().isoformat(),

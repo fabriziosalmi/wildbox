@@ -35,6 +35,7 @@ sys.path.insert(0, str(SERVICE_ROOT))
 from app.tools.iot_security_scanner import main as _tool_main  # noqa: E402
 from app.tools.iot_security_scanner import schemas as _tool_schemas  # noqa: E402
 from app import standardized_schemas as _std_schemas  # noqa: E402
+from pydantic import ValidationError  # noqa: E402
 
 _std = _std_schemas
 _schemas = _tool_schemas
@@ -80,9 +81,15 @@ class TestDiscovery:
         assert out.devices_found[0].open_ports == [22, 80]
 
     def test_missing_target_is_rejected(self):
-        out = asyncio.run(
-            iot.execute_tool(_schemas.IoTSecurityScannerInput(port_scan_range="1-100"))
+        # Refused by the input model, so the endpoint answers 422 (#611).
+        with pytest.raises(ValidationError, match="target_ip or ip_range"):
+            _schemas.IoTSecurityScannerInput(port_scan_range="1-100")
+
+    def test_missing_target_is_still_rejected_at_run_time(self):
+        params = _schemas.IoTSecurityScannerInput.model_construct(
+            target_ip=None, ip_range=None, port_scan_range="1-100", timeout=10
         )
+        out = asyncio.run(iot.execute_tool(params))
         assert out.success is False
         assert "target_ip or ip_range" in out.summary
 

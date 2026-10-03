@@ -10,8 +10,12 @@ from datetime import datetime
 
 class PasswordStrengthInput(BaseToolInput):
     """Input schema for password strength analysis"""
+    # Bounded: the crack-time estimate computes 2 ** entropy, which overflows
+    # (an uncaught OverflowError) for a long enough password (#611).
     password: str = Field(
-        description="Password to analyze"
+        min_length=1,
+        max_length=128,
+        description="Password to analyze (1-128 characters)"
     )
     check_common: bool = Field(
         default=True,

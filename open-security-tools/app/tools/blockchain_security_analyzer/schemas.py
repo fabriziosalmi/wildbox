@@ -1,18 +1,28 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Literal, Optional, Dict, Any, Union
 
 class BlockchainSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Blockchain Security Analyzer tool"""
     contract_address: Optional[str] = Field(None, description="Smart contract address to analyze")
     contract_code: Optional[str] = Field(None, description="Smart contract source code (Solidity)")
-    blockchain: str = Field(default="ethereum", description="Blockchain network (ethereum, bsc, polygon)")
+    # The networks main.py has explorers for; another value fetched nothing
+    # (#611).
+    blockchain: Literal["ethereum", "bsc", "polygon"] = Field(default="ethereum", description="Blockchain network (ethereum, bsc, polygon)")
     analysis_type: str = Field(default="comprehensive", description="Analysis type (comprehensive, quick, vulnerabilities)")
     check_reentrancy: bool = Field(default=True, description="Check for reentrancy vulnerabilities")
     check_overflow: bool = Field(default=True, description="Check for integer overflow/underflow")
     check_access_control: bool = Field(default=True, description="Check access control mechanisms")
     check_gas_optimization: bool = Field(default=True, description="Check gas optimization opportunities")
-    api_key: Optional[str] = Field(None, description="Blockchain API key for enhanced analysis")
+    api_key: Optional[str] = Field(None, description="Blockchain explorer API key, required to fetch a contract by address")
+
+    @model_validator(mode="after")
+    def _a_contract_given(self):
+        # Without source code, or an address and a key to fetch it with,
+        # there is nothing to analyse (#611).
+        if not self.contract_code and not (self.contract_address and self.api_key):
+            raise ValueError("Provide contract_code, or contract_address with api_key")
+        return self
 
 class SecurityVulnerability(BaseModel):
     severity: str  # Critical, High, Medium, Low, Info

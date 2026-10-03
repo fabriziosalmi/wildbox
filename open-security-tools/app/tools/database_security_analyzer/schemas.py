@@ -1,15 +1,24 @@
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
+# Compared regardless of case by main.py (#611).
+DatabaseEngine = CaseInsensitiveChoice("postgresql", "postgres", "mysql", "mariadb")
+
+
 class DatabaseSecurityAnalyzerInput(BaseToolInput):
     """Input schema for Database Security Analyzer tool"""
-    database_type: str = Field(description="Database type (mysql, postgresql, mongodb, oracle, mssql)")
-    host: str = Field(description="Database host address")
-    port: int = Field(description="Database port number")
+    # The engines main.py implements; mongodb, oracle and mssql were listed
+    # and refused at run time (#611).
+    database_type: DatabaseEngine = Field(
+        description="Database type (postgresql, mysql, mariadb)"
+    )
+    host: str = Field(min_length=1, description="Database host address")
+    port: int = Field(ge=1, le=65535, description="Database port number")
     database_name: Optional[str] = Field(None, description="Specific database name to analyze")
-    username: Optional[str] = Field(None, description="Database username for connection")
+    # Required: main.py refuses to connect without it (#611).
+    username: str = Field(min_length=1, description="Database username for connection")
     password: Optional[str] = Field(None, description="Database password (will be handled securely)")
     connection_string: Optional[str] = Field(None, description="Full connection string")
     check_configuration: bool = Field(default=True, description="Check database configuration security")

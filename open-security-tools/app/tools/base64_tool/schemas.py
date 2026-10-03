@@ -12,7 +12,9 @@ class Base64ToolInput(BaseToolInput):
     operation: Literal["encode", "decode"] = Field(
         description="Operation to perform: encode or decode"
     )
+    # Not empty: encoding "" divided by zero in the size statistics (#611).
     data: str = Field(
+        min_length=1,
         description="Data to encode/decode"
     )
     url_safe: bool = Field(

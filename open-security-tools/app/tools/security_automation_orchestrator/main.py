@@ -7,10 +7,10 @@ import os
 from datetime import datetime
 
 from fastapi import HTTPException
-from pydantic import BaseModel
 
 from ...execution_manager import tool_acts_for_caller
 from ...input_validation import InputSanitizer
+from ...tool_loader import find_schema_classes
 from .schemas import (
     AutomationWorkflowInput,
     SecurityAutomationOutput,
@@ -356,18 +356,9 @@ class SecurityAutomationOrchestrator:
         except ImportError as e:
             raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' has no input schema: {e}")
 
-        input_class = None
-        for attr_name in dir(schema_module):
-            attr = getattr(schema_module, attr_name)
-            if (
-                isinstance(attr, type)
-                and issubclass(attr, BaseModel)
-                and attr is not BaseModel
-                and attr.__name__ != "BaseToolInput"
-                and ("input" in attr.__name__.lower() or "request" in attr.__name__.lower())
-            ):
-                input_class = attr
-                break
+        # The model the tool's own endpoint validates with, found the same way
+        # (#611).
+        input_class, _ = find_schema_classes(schema_module)
 
         if input_class is None:
             raise HTTPException(status_code=422, detail=f"Tool '{tool_name}' has no input schema")

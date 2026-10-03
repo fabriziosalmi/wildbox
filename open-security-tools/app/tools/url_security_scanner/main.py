@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
+from ...tool_errors import RUN_ERRORS
 from ...input_validation import InputSanitizer
 from ...safe_http import guarded_session
 from .schemas import (
@@ -492,7 +493,7 @@ async def execute_tool(input_data: URLSecurityInput) -> URLSecurityOutput:
             analysis_timestamp=analysis_timestamp
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return URLSecurityOutput(
             success=False,
             original_url=input_data.url,

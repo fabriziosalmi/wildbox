@@ -29,7 +29,7 @@ class PasswordGeneratorInput(BaseToolInput):
     )
     include_symbols: bool = Field(
         default=True,
-        description="Include special symbols (!@#$%^&*)"
+        description="Include special symbols (!@#$%^&*()_+-=[]{}|;:,.<>?)"
     )
     exclude_ambiguous: bool = Field(
         default=False,

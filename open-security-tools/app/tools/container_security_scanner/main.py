@@ -297,6 +297,9 @@ class ContainerSecurityScanner:
                 return self._failure(target_label, str(exc))
             except TrivyScanError as exc:
                 return self._failure(target_label, f"Trivy scan failed: {exc}")
+            except OSError as exc:
+                # The binary vanished or cannot be executed (#611).
+                return self._failure(target_label, f"Could not run trivy: {exc}")
         finally:
             if dockerfile_path:
                 try:

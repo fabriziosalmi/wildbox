@@ -20,6 +20,7 @@ except ImportError:
     CRYPTO_AVAILABLE = False
 
 from ...utils.tls import probe_certificate_trust
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from .schemas import (
     CAAnalyzerInput, CAAnalyzerOutput, CertificateInfo, CertificateChainAnalysis,
     RevocationStatus, SecurityAnalysis
@@ -87,13 +88,13 @@ class CAAnalyzer:
                         return [peer_cert]
             
             return []
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Failed to retrieve certificate chain: {str(e)}")
+        except RUN_ERRORS as e:
+            raise ToolRunError(f"Failed to retrieve certificate chain: {str(e)}")
     
     def parse_certificate(self, cert_der: bytes) -> Dict[str, Any]:
         """Parse certificate and extract information"""
         if not CRYPTO_AVAILABLE:
-            raise Exception("cryptography library not available for certificate parsing")
+            raise ToolRunError("cryptography library not available for certificate parsing")
         
         try:
             cert = x509.load_der_x509_certificate(cert_der, default_backend())
@@ -150,8 +151,8 @@ class CAAnalyzer:
                 'fingerprint_sha1': sha1_fingerprint,
                 'cert_object': cert
             }
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Failed to parse certificate: {str(e)}")
+        except RUN_ERRORS as e:
+            raise ToolRunError(f"Failed to parse certificate: {str(e)}")
     
     def analyze_certificate_chain(self, chain_data: List[Dict[str, Any]]) -> CertificateChainAnalysis:
         """Analyze the certificate chain"""
@@ -379,7 +380,7 @@ class CAAnalyzer:
         # Get certificate chain
         cert_chain_der = self.get_certificate_chain(hostname, port, timeout)
         if not cert_chain_der:
-            raise Exception("No certificates found")
+            raise ToolRunError("No certificates found")
         
         # Parse certificates
         chain_data = []
@@ -463,7 +464,7 @@ async def execute_tool(input_data: CAAnalyzerInput) -> CAAnalyzerOutput:
             analysis_timestamp=datetime.now(timezone.utc)
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return CAAnalyzerOutput(
             success=False,
             target=input_data.target,

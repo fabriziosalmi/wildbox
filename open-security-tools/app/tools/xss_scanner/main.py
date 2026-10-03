@@ -15,6 +15,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
+from ...tool_errors import RUN_ERRORS
 from ...safe_http import guarded_requests_session
 from .schemas import XSSScannerInput, XSSScannerOutput, XSSResult
 # XSS payloads for different types
@@ -159,7 +160,7 @@ def test_xss_payload(url: str, method: str, param_name: str, payload: str, xss_t
             confidence=confidence
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         response_time = time.time() - start_time
         return XSSResult(
             parameter=param_name,
@@ -237,6 +238,7 @@ def execute_tool(input_data: XSSScannerInput) -> XSSScannerOutput:
         recommendations.insert(1, "Review all user input handling and output encoding")
     
     return XSSScannerOutput(
+        success=True,
         target_url=input_data.target_url,
         timestamp=timestamp,
         total_tests=len(results),

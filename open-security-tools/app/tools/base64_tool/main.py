@@ -10,6 +10,7 @@ import re
 import binascii
 from typing import Optional, Dict, Any
 
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from .schemas import Base64ToolInput, Base64ToolOutput
 # Tool metadata
 TOOL_INFO = {
@@ -100,7 +101,7 @@ class Base64Tool:
             }
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Encoding failed: {str(e)}")
+            raise ToolRunError(f"Encoding failed: {str(e)}")
     
     def decode(
         self,
@@ -164,7 +165,7 @@ class Base64Tool:
             }
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Decoding failed: {str(e)}")
+            raise ToolRunError(f"Decoding failed: {str(e)}")
     
     def _clean_base64_input(self, data: str) -> str:
         """Clean Base64 input by removing whitespace and line breaks"""
@@ -307,7 +308,7 @@ async def execute_tool(params: Base64ToolInput) -> Base64ToolOutput:
         else:
             raise ValueError(f"Unknown operation: {params.operation}")
             
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return Base64ToolOutput(
             success=False,
             operation=params.operation,

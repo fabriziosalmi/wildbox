@@ -59,6 +59,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **hash_generator runs with its defaults** (#611). `hash_types`
+  defaulted to md5, sha1, sha256 and sha512 while the tool no longer
+  implemented md5 or sha1, so a run with the defaults, and the form the
+  dashboard builds from the schema, answered `success: false`. The field
+  is now an enum built from the same tuple as the tool's algorithm
+  table (sha224, sha256, sha384, sha512, blake2b, blake2s), defaults to
+  sha256 and sha512, and an unsupported algorithm is a 422 before the
+  tool runs. `output_format` is an enum too, and a salted hash uses the
+  algorithm it is labelled with: sha224 and blake2 fell back to SHA-256.
+- **Every tool's input schema describes what the tool accepts** (#611).
+  An audit of all 52 tools found the same mismatch in many of them: a
+  free-text field whose tool implements a fixed set of values, an
+  unknown value then failing the run, running nothing while reporting
+  success, or falling back to another value silently. Those fields are
+  now enums of the values the tool implements (fields the tool compares
+  regardless of case still accept any case), defaults outside them are
+  gone (threat_intelligence_aggregator listed the unimplemented
+  MalwareBazaar source, cloud_security_analyzer scored nist 100% compliant
+  without checking it), and inputs a tool cannot run without, such as
+  one of `target_ip`/`ip_range` or `file_url`/`file_data`, are checked
+  by the model. Such a request is now a 422 before the tool runs. The
+  per-tool list is in the pull request.
+- **`/info` publishes the model the tool endpoint validates** (#611).
+  It took any class whose name contains "Input", so for six tools whose
+  model sorts before `BaseToolInput` (api_security_analyzer,
+  api_security_tester, base64_tool, security_automation_orchestrator,
+  threat_intelligence_aggregator, web_application_firewall_bypass) it
+  published the base class, and the dashboard built a form without the
+  tool's fields. For five tools that list their classes in `TOOL_INFO`
+  it answered 500. The endpoint, `/info` and the worker now share one
+  lookup, and `/info` leaves classes out of the metadata.
+- **Every tool answers with its output model** (#611). Seventeen tools
+  built their output without `success`, which `BaseToolOutput`
+  requires, so every one of their runs failed validation:
+  api_security_analyzer, api_security_tester,
+  blockchain_security_analyzer, cloud_security_analyzer,
+  crypto_strength_analyzer, digital_footprint_analyzer,
+  directory_bruteforcer, dns_enumerator, email_harvester,
+  file_upload_scanner, hash_cracker, jwt_analyzer,
+  mobile_security_analyzer, static_malware_analyzer, subdomain_scanner,
+  threat_intelligence_aggregator, xss_scanner. port_scanner,
+  network_scanner and header_analyzer built theirs from fields their
+  schema does not have (header_analyzer also handed pydantic's `HttpUrl`
+  to `urlparse`, so it never ran), and ip_geolocation and
+  malware_hash_checker declared `Optional` fields without a default,
+  which pydantic treats as required. A target that could not be reached
+  also escaped many tools as an exception: they caught `ConnectionError`,
+  which a DNS failure, an aiohttp or requests error, a dnspython error
+  or the bare `Exception` some of them re-raised is not. They now catch
+  `app.tool_errors.RUN_ERRORS` and answer `success: false` with the
+  reason; a malformed threat indicator, input base64_tool cannot decode
+  and a trivy binary that cannot be started are reported the same way.
+- **A workflow step gets its tool's input model** (#611). The
+  orchestrator took the first schema class whose name ends in "Input",
+  which was the imported `BaseToolInput` for every tool.
 - **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
   cspm worker commented out and `docker-compose.prod.yml` declared none,
   so every scan stayed `queued` and the compliance pages, the cloud

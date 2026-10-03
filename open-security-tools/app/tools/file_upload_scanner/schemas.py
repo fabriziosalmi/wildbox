@@ -2,14 +2,23 @@
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict
+from typing import List, Literal, Optional, Dict
 from datetime import datetime
 
 class FileUploadScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL with file upload functionality", example="https://example.com/upload")
     file_param: str = Field(default="file", description="File parameter name", example="file")
     additional_params: Optional[Dict[str, str]] = Field(None, description="Additional form parameters")
-    test_types: List[str] = Field(default=["extension", "content_type", "magic_bytes"], description="Types of tests to perform")
+    # The test groups main.py maps to test files; an unknown name was dropped
+    # silently (#611).
+    test_types: List[Literal[
+        "extension", "content_type", "magic_bytes", "path_traversal",
+        "large_file", "executable", "all",
+    ]] = Field(
+        default=["extension", "content_type", "magic_bytes"], min_length=1,
+        description="Types of tests to perform (extension, content_type, magic_bytes, "
+                    "path_traversal, large_file, executable, or all)"
+    )
     timeout: int = Field(default=30, description="Request timeout in seconds", ge=5, le=120)
 
 class FileUploadResult(BaseModel):

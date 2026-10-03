@@ -5,6 +5,7 @@ import asyncio
 import logging
 from datetime import datetime
 from typing import List, Optional
+from ...standardized_schemas import NetworkPort
 from .schemas import PortScannerInput, PortScannerOutput, PortScanResult
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ async def scan_port_async(target: str, port: int, timeout: int) -> PortScanResul
         logger.debug(f"Port {port} is closed on {target}: {type(e).__name__}")
     
     service = SERVICE_MAP.get(port)
-    return PortScanResult(port=port, state=state, service=service)
+    return PortScanResult(success=True, port=port, state=state, service=service)
 
 def scan_port(target: str, port: int, timeout: int) -> PortScanResult:
     """Synchronously scan a single port."""
@@ -84,7 +85,7 @@ def scan_port(target: str, port: int, timeout: int) -> PortScanResult:
         s.close()
     
     service = SERVICE_MAP.get(port)
-    return PortScanResult(port=port, state=state, service=service)
+    return PortScanResult(success=True, port=port, state=state, service=service)
 
 async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
     """Execute the port scanner tool - main entry point."""
@@ -132,11 +133,22 @@ async def execute_tool(input_data: PortScannerInput) -> PortScannerOutput:
         duration = (datetime.now() - start_time).total_seconds()
         logger.info(f"Port scan completed in {duration:.2f}s, found {len(open_ports)} open ports")
         
-        return PortScannerOutput(target=input_data.target, results=open_ports)
+        # The output's fields: it was built without success and with a
+        # "results" field it does not have, so every scan failed (#611).
+        return PortScannerOutput(
+            success=True,
+            target=input_data.target,
+            open_ports=[
+                NetworkPort(port=r.port, protocol="tcp", state=r.state, service=r.service)
+                for r in open_ports
+            ],
+            closed_ports=len(valid_results) - len(open_ports),
+            execution_time=duration,
+        )
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Port scan failed: {e}")
-        return PortScannerOutput(target=input_data.target, results=[])
+        return PortScannerOutput(success=False, target=input_data.target, error_message=str(e))
 
 # Tool metadata
 TOOL_INFO = {

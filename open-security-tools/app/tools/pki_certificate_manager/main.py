@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, rsa
 
 from ...utils.tls import probe_certificate_trust
+from ...tool_errors import RUN_ERRORS
 from .schemas import (
     PKICertificateManagerInput, 
     PKICertificateManagerOutput,
@@ -91,7 +92,7 @@ class PKICertificateManager:
                 compliance_status=compliance_status
             )
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except RUN_ERRORS as e:
             # Return error response
             return PKICertificateManagerOutput(
                 success=False,

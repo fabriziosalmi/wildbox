@@ -11,6 +11,7 @@ from celery.exceptions import SoftTimeLimitExceeded
 
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
+from app.tool_loader import find_schema_classes
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
@@ -229,22 +230,6 @@ def _load_tool_module(tool_name: str):
 
 def _find_input_schema(schemas_module, tool_name: str):
     """Find the input schema class in a schemas module."""
-    if not schemas_module:
-        return None
-    
-    from pydantic import BaseModel
-    
-    for attr_name in dir(schemas_module):
-        try:
-            attr = getattr(schemas_module, attr_name)
-            if (isinstance(attr, type) and 
-                issubclass(attr, BaseModel) and 
-                attr is not BaseModel):
-                attr_name_lower = attr.__name__.lower()
-                if 'input' in attr_name_lower or 'request' in attr_name_lower:
-                    if attr.__name__ not in ('BaseToolInput',):
-                        return attr
-        except (TypeError, AttributeError):
-            continue
-    
-    return None
+    # The same model the synchronous endpoint validates with (#611).
+    input_cls, _ = find_schema_classes(schemas_module)
+    return input_cls

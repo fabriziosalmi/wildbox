@@ -1,11 +1,14 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Literal, Optional, Dict, Any, Union
 
 class DigitalFootprintAnalyzerInput(BaseToolInput):
     """Input schema for Digital Footprint Analyzer tool"""
     target_identifier: str = Field(..., description="Target identifier (email, username, phone, domain)")
-    identifier_type: str = Field(default="auto", description="Type of identifier (email, username, phone, domain, auto)")
+    # The types main.py handles; another one searched nothing (#611).
+    identifier_type: Literal["auto", "email", "username", "phone", "domain"] = Field(
+        default="auto", description="Type of identifier (auto, email, username, phone, domain)"
+    )
     search_depth: str = Field(default="standard", description="Search depth (quick, standard, deep)")
     include_social_media: bool = Field(default=True, description="Search social media platforms")
     include_data_breaches: bool = Field(default=True, description="Check data breach databases")
@@ -13,7 +16,14 @@ class DigitalFootprintAnalyzerInput(BaseToolInput):
     include_phone_info: bool = Field(default=True, description="Include phone number information")
     include_public_records: bool = Field(default=False, description="Include public records (where legal)")
     respect_privacy: bool = Field(default=True, description="Respect privacy settings and robots.txt")
-    max_results_per_platform: int = Field(default=10, description="Maximum results per platform")
+    max_results_per_platform: int = Field(default=10, ge=1, le=100, description="Maximum results per platform")
+
+    @model_validator(mode="after")
+    def _an_email_is_an_email(self):
+        # main.py splits an email on "@"; without one it crashed (#611).
+        if self.identifier_type == "email" and "@" not in self.target_identifier:
+            raise ValueError("identifier_type 'email' needs an address with '@'")
+        return self
 
 class SocialMediaProfile(BaseModel):
     platform: str

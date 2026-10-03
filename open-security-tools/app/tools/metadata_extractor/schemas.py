@@ -2,7 +2,7 @@
 Schemas for Metadata Extractor Tool
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
@@ -40,6 +40,14 @@ class MetadataExtractorInput(BaseToolInput):
         le=120,
         description="Processing timeout in seconds"
     )
+
+    @model_validator(mode="after")
+    def _a_file_given(self):
+        # main.py raises when neither is given, and that error escaped
+        # execute_tool; the defaults alone could not run (#611).
+        if not self.file_url and not self.file_data:
+            raise ValueError("Either file_url or file_data must be provided")
+        return self
 
 
 class FileInfo(BaseModel):

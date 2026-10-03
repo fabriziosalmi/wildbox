@@ -1,13 +1,14 @@
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Literal, Optional
 from datetime import datetime
 
 class AutomationWorkflowInput(BaseToolInput):
     workflow_name: str = Field(..., description="Name of the automation workflow")
-    trigger_type: str = Field(..., description="Trigger type (event, schedule, manual, api)")
+    trigger_type: Literal["event", "schedule", "manual", "api"] = Field(..., description="Trigger type (event, schedule, manual, api)")
     workflow_steps: List[Dict[str, Any]] = Field(..., description="List of workflow steps with tool and parameters")
-    execution_mode: str = Field("sequential", description="Execution mode (sequential, parallel, conditional)")
+    # The modes main.py runs; any other value ran the conditional mode (#611).
+    execution_mode: Literal["sequential", "parallel", "conditional"] = Field("sequential", description="Execution mode (sequential, parallel, conditional)")
     timeout_minutes: Optional[int] = Field(30, description="Workflow timeout in minutes")
     retry_policy: Optional[Dict[str, Any]] = Field({}, description="Retry policy configuration")
 

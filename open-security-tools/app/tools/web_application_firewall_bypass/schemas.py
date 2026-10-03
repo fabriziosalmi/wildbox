@@ -1,22 +1,28 @@
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 from datetime import datetime
 
 class WAFBypassRequest(BaseToolInput):
     """Request model for WAF bypass testing"""
     target_url: str = Field(..., description="Target URL to test WAF bypass techniques")
-    payload_types: List[str] = Field(
+    # The payload sets, encodings and obfuscations main.py implements. An
+    # unknown payload type was skipped, an unknown encoding or obfuscation
+    # sent the payload unchanged, and double_url was not listed (#611). "none"
+    # leaves the payload as it is, explicitly.
+    payload_types: List[Literal["sql_injection", "xss", "command_injection", "path_traversal", "xxe", "ssrf"]] = Field(
         default=["sql_injection", "xss", "command_injection", "path_traversal"],
+        min_length=1,
         description="Types of payloads to test: sql_injection, xss, command_injection, path_traversal, xxe, ssrf"
     )
-    encoding_techniques: List[str] = Field(
+    encoding_techniques: List[Literal["url_encoding", "double_url", "html_encoding", "unicode", "base64", "hex", "none"]] = Field(
         default=["url_encoding", "html_encoding", "unicode", "base64"],
-        description="Encoding techniques to apply: url_encoding, html_encoding, unicode, base64, hex"
+        min_length=1,
+        description="Encoding techniques to apply: url_encoding, double_url, html_encoding, unicode, base64, hex, or none"
     )
-    obfuscation_methods: List[str] = Field(
+    obfuscation_methods: List[Literal["case_variation", "comment_insertion", "whitespace_manipulation", "concatenation", "none"]] = Field(
         default=["case_variation", "comment_insertion", "whitespace_manipulation"],
-        description="Obfuscation methods: case_variation, comment_insertion, whitespace_manipulation, concatenation"
+        description="Obfuscation methods: case_variation, comment_insertion, whitespace_manipulation, concatenation, or none"
     )
     test_depth: str = Field(default="medium", description="Test depth: light, medium, aggressive")
     custom_headers: Optional[Dict[str, str]] = Field(default=None, description="Custom HTTP headers to include")

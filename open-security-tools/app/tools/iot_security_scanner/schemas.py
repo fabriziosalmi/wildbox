@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
 from typing import List, Optional, Dict, Any, Union
 
@@ -15,6 +15,14 @@ class IoTSecurityScannerInput(BaseToolInput):
     check_web_interface: bool = Field(default=True, description="Scan web management interface")
     port_scan_range: str = Field(default="1-10000", description="Port range to scan")
     timeout: int = Field(default=30, description="Scan timeout in seconds")
+
+    @model_validator(mode="after")
+    def _a_target_given(self):
+        # Without either the tool scans nothing and answers success=false;
+        # the defaults alone could not run (#611).
+        if not self.target_ip and not self.ip_range:
+            raise ValueError("Provide either target_ip or ip_range.")
+        return self
 
 class IoTDevice(BaseModel):
     ip_address: str
