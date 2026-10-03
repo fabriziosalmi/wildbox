@@ -198,6 +198,25 @@ is at the top of the file.
   `framework`, `control_id` and `control_title`, and `severity` is null
   when the check is unknown. A script that read the old fields must move
   to the new ones.
+- cspm's `GET /api/v1/dashboard/executive-summary` and
+  `GET /api/v1/scans/{scan_id}/remediation-roadmap` are removed (#578) and
+  answer 404. They read `scan:{id}:results`, which nothing writes, so the
+  first reported zeros after any scan and the second was 404 for every
+  scan already. Read `GET /api/v1/dashboard/summary` for the figures and
+  `GET /api/v1/compliance/findings?status=failed` for the failed checks,
+  their severity and remediation.
+- cspm's `GET /api/v1/dashboard/summary` (#578) no longer has
+  `active_scans`, `completed_scans` or `failed_scans`: they came from a
+  status that never changed after a scan started, so every scan was
+  "active". Its findings, severity counts and `compliance_score` now come
+  from the newest completed scan of each account in the period (new
+  `days` query parameter, default 30, echoed as `summary_period_days`), as
+  `/api/v1/compliance/summary` computes them; they used to be 0 whatever
+  had been scanned. `compliance_score` is null when no scan completed in
+  the period. `accounts_assessed`, `info_findings` and
+  `unknown_severity_findings` are new. A script that read the removed
+  fields must stop, and one that reads `compliance_score` must accept
+  null.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 

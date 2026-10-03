@@ -37,15 +37,19 @@ test.describe('Dashboard home', { tag: '@backend' }, () => {
     const summary = (await response.json()) as {
       total_scans: number
       total_findings: number
-      compliance_score: number
+      compliance_score: number | null
     }
     await api.dispose()
 
     await page.goto('/dashboard')
 
-    // An account with no scans has no score; the card used to read 87%.
+    // An account with no completed scan has no score; the card used to read 87%.
     const expected =
-      summary.total_scans === 0 ? 'No scans' : `${Math.round(summary.compliance_score)}%`
+      summary.compliance_score !== null
+        ? `${Math.round(summary.compliance_score)}%`
+        : summary.total_scans > 0
+          ? 'Not assessed'
+          : 'No scans'
     await expect(page.getByTestId('metric-cloud-compliance-value')).toHaveText(expected, {
       timeout: 20_000,
     })

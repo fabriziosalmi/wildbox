@@ -25,9 +25,8 @@ from .checks.runner import check_runner
 from .checks.framework import CloudProvider
 from . import schemas
 from .utils import (
-    _estimate_scan_duration, _calculate_compliance_score, _generate_executive_summary,
-    _get_trending_metrics, _get_resource_inventory_summary, _generate_remediation_roadmap,
-    _summarize_compliance, _compliance_findings,
+    _estimate_scan_duration, _summarize_compliance, _compliance_findings,
+    _count_failed_by_severity,
 )
 
 # Configure logging
@@ -631,178 +630,49 @@ async def cancel_scan(
 
 @app.get("/api/v1/dashboard/summary", response_model=schemas.DashboardSummaryResponse)
 async def get_dashboard_summary(
+    days: int = Query(30, ge=1, le=365),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """Get summary for dashboard."""
+    """Scan count and the figures of the team's newest completed scans.
+
+    Findings, severities and the compliance score come from the same reports
+    as GET /api/v1/compliance/summary: the newest completed scan of each of
+    the team's accounts in the period. Severity is the one the check declares
+    in its metadata. This endpoint used to read ``scan:{id}:results``, which
+    nothing writes, so every figure was 0 even after a real scan, and it
+    counted every scan as active because the stored scan status is never
+    updated after the scan starts.
+    """
+    team_id = current_user["team_id"]
     try:
         # Get the team's scans via its index set (no cross-team key scanning).
-        team_scans = list(_iter_team_scan_metadata(current_user["team_id"]))
-
-        total_scans = len(team_scans)
-        active_states = {"started", "running", "queued", "pending"}
-        active_scans = sum(1 for s in team_scans if s.get("status") in active_states)
-        failed_scans = sum(1 for s in team_scans if s.get("status") == "failed")
-        completed_scans = sum(1 for s in team_scans if s.get("status") == "completed")
-
-        # Aggregate findings from each scan's results (present only after a scan
-        # completes). Per-check severity isn't tracked yet, so the per-severity
-        # buckets stay 0; total_findings counts failed checks.
-        all_results = []
-        for s in team_scans:
-            raw = redis_client.get(f"scan:{s['scan_id']}:results")
-            if not raw:
-                continue
-            try:
-                all_results.extend(json.loads(raw).get("results", []))
-            except (ValueError, TypeError):
-                continue
-        total_findings = sum(1 for r in all_results if r.get("status") == "failed")
-        compliance_score = (
-            _calculate_compliance_score({"results": all_results}) if all_results else 0.0
-        )
-
-        # Most recent scan start time.
         started_times = []
-        for s in team_scans:
+        total_scans = 0
+        for metadata in _iter_team_scan_metadata(team_id):
+            total_scans += 1
             try:
-                started_times.append(datetime.fromisoformat(s["started_at"]))
+                started_times.append(datetime.fromisoformat(metadata["started_at"]))
             except (KeyError, ValueError, TypeError):
                 continue
-        last_scan_at = max(started_times) if started_times else None
+
+        reports = _team_compliance_reports(team_id, days, None)
+        catalog = {check["check_id"]: check for check in check_runner.get_available_checks()}
+        compliance = _summarize_compliance(reports)
 
         return schemas.DashboardSummaryResponse(
             total_scans=total_scans,
-            active_scans=active_scans,
-            failed_scans=failed_scans,
-            completed_scans=completed_scans,
-            total_findings=total_findings,
-            critical_findings=0,
-            high_findings=0,
-            medium_findings=0,
-            low_findings=0,
-            compliance_score=compliance_score,
-            last_scan_at=last_scan_at,
+            last_scan_at=max(started_times) if started_times else None,
+            summary_period_days=days,
+            accounts_assessed=len(reports),
+            compliance_score=compliance["overall_score"],
+            **_count_failed_by_severity(_compliance_findings(reports, catalog)),
         )
-        
+
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get dashboard summary: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get dashboard summary"
-        )
-
-
-@app.get("/api/v1/dashboard/executive-summary", response_model=schemas.ExecutiveSummaryResponse)
-async def get_executive_summary(
-    provider: Optional[str] = None,
-    days: int = 30,
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Get executive summary with high-level security metrics."""
-    try:
-        # Get the team's recent scans via its index set (no cross-team scan).
-        recent_scans = []
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-
-        for metadata in _iter_team_scan_metadata(current_user["team_id"]):
-            try:
-                if datetime.fromisoformat(metadata.get("started_at", "")) < cutoff_date:
-                    continue
-                if provider and metadata.get("provider") != provider:
-                    continue
-                # Get scan results
-                scan_id = metadata["scan_id"]
-                results_data = redis_client.get(f"scan:{scan_id}:results")
-                if results_data:
-                    recent_scans.append({
-                        "metadata": metadata,
-                        "results": json.loads(results_data)
-                    })
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                logger.warning(f"Error processing scan metadata: {e}")
-                continue
-        
-        # Generate executive summary from all recent scans
-        all_results = []
-        for scan in recent_scans:
-            all_results.extend(scan.get("results", {}).get("results", []))
-        
-        executive_summary = _generate_executive_summary({"results": all_results})
-        
-        # Trending data, from the same scans the summary above was built from.
-        trending_metrics = _get_trending_metrics(recent_scans)
-        
-        return schemas.ExecutiveSummaryResponse(
-            summary_period_days=days,
-            provider_filter=provider,
-            security_posture=executive_summary,
-            trending_metrics=trending_metrics,
-            scan_coverage={
-                "total_scans": len(recent_scans),
-                "providers_covered": list(set(s["metadata"]["provider"] for s in recent_scans)),
-                "accounts_covered": list(set(s["metadata"]["account_id"] for s in recent_scans))
-            }
-        )
-        
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Failed to get executive summary: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get executive summary"
-        )
-
-
-@app.get("/api/v1/scans/{scan_id}/remediation-roadmap", response_model=schemas.RemediationRoadmapResponse)
-async def get_remediation_roadmap(
-    scan_id: str = Path(..., pattern=_UUID_REGEX),
-    current_user: Dict[str, Any] = Depends(get_current_user)
-):
-    """Get prioritized remediation roadmap for a scan."""
-    try:
-        # Check authorization (user can only access their own scans)
-        metadata_json = redis_client.get(f"scan:{scan_id}:metadata")
-        if not metadata_json:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Scan not found"
-            )
-
-        metadata = json.loads(metadata_json)
-        if metadata.get("team_id") != current_user["team_id"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied"
-            )
-
-        # Get scan results
-        results_key = f"scan:{scan_id}:results"
-        results_data = redis_client.get(results_key)
-
-        if not results_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Scan results not found"
-            )
-
-        results = json.loads(results_data)
-        
-        # Generate remediation roadmap
-        roadmap = _generate_remediation_roadmap(results)
-        
-        return schemas.RemediationRoadmapResponse(
-            scan_id=scan_id,
-            generated_at=datetime.utcnow(),
-            total_remediation_items=len(roadmap),
-            roadmap=roadmap
-        )
-        
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        logger.error(f"Failed to get remediation roadmap: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get remediation roadmap"
         )
 
 

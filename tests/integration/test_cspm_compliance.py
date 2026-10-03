@@ -60,67 +60,43 @@ class TestCSPMCompliance:
             self.log_test_result("CSPM Service Health", False, f"Error: {str(e)}")
             raise
             
-    async def test_executive_dashboard_summary(self) -> None:
-        """Test executive dashboard summary"""
+    async def test_dashboard_summary(self) -> None:
+        """Test the dashboard summary.
+
+        GET /dashboard/executive-summary is gone (#578): it read
+        scan:{id}:results, a key nothing writes. The summary reports the
+        team's stored scan reports instead.
+        """
         try:
-            response = requests.get(f"{self.base_url}/dashboard/executive-summary", headers=self.headers, timeout=15)
-            
+            response = requests.get(f"{self.base_url}/dashboard/summary", headers=self.headers, timeout=15)
+
             if response.status_code == 200:
-                dashboard_data = response.json()
-                
-                # The response's real shape (ExecutiveSummaryResponse): the
-                # posture figures live under security_posture, not at the top
-                # level. The previous expectation -- compliance_score,
-                # total_checks, critical_findings, summary as top-level keys --
-                # matched nothing the endpoint has ever returned.
-                posture = dashboard_data.get("security_posture")
-                trending = dashboard_data.get("trending_metrics")
-
-                problems = []
-                if not isinstance(posture, dict):
-                    problems.append("security_posture missing or not an object")
-                else:
-                    for field in ("security_score", "critical_findings",
-                                  "high_findings", "compliance_frameworks"):
-                        if field not in posture:
-                            problems.append(f"security_posture.{field} missing")
-                if not isinstance(trending, list):
-                    problems.append("trending_metrics missing or not a list")
-                else:
-                    # An account with no scan history must report no trend, not
-                    # an invented one: _get_trending_metrics used to synthesise
-                    # a steadily improving curve out of nothing.
-                    scanned = (posture or {}).get("total_resources_scanned")
-                    if scanned == 0 and trending:
-                        problems.append(
-                            f"{len(trending)} trend points reported for an "
-                            "account with no scanned resources"
-                        )
-
+                summary = response.json()
+                problems = [
+                    f"{field} missing"
+                    for field in ("total_scans", "accounts_assessed", "compliance_score",
+                                  "total_findings", "critical_findings")
+                    if field not in summary
+                ]
+                # Nothing assessed is a null score, not 0%.
+                if summary.get("accounts_assessed") == 0 and summary.get("compliance_score") is not None:
+                    problems.append("a score reported with no completed scan")
                 passed = not problems
-                if passed:
-                    details = (
-                        f"Executive dashboard: score={posture['security_score']}, "
-                        f"critical={posture['critical_findings']}, "
-                        f"{len(trending)} trend point(s)"
-                    )
-                else:
-                    details = "; ".join(problems)
-                    
+                details = "; ".join(problems) or f"Dashboard summary: {summary.get('total_scans')} scan(s)"
             elif response.status_code in [401, 403]:
-                details = "Executive dashboard requires authentication (expected)"
+                details = "Dashboard summary requires authentication (expected)"
                 passed = True
             else:
                 passed = response.status_code != 404
                 details = f"Dashboard endpoint responds (HTTP {response.status_code})"
-                
-            self.log_test_result("Executive Dashboard Summary", passed, details)
+
+            self.log_test_result("Dashboard Summary", passed, details)
             assert passed, details
-            
+
         except Exception as e:
-            self.log_test_result("Executive Dashboard Summary", False, f"Error: {str(e)}")
+            self.log_test_result("Dashboard Summary", False, f"Error: {str(e)}")
             raise
-            
+
     async def test_cloud_scanning_business_plus(self) -> None:
         """Test cloud scanning trigger for Business+ plans"""
         try:
@@ -267,7 +243,7 @@ async def run_tests() -> Dict[str, Any]:
     # Run tests in sequence
     tests = [
         tester.test_service_health,
-        tester.test_executive_dashboard_summary,
+        tester.test_dashboard_summary,
         tester.test_cloud_scanning_business_plus,
         tester.test_team_scoped_findings,
         tester.test_compliance_frameworks,
