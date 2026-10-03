@@ -124,6 +124,27 @@ request "tools:execute key POST allowed" 200 \
 request "tools:execute key GET allowed" 200 \
     -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/tools/echo"
 
+# 9-ingest. A sensor's data:ingest key (#628) sends telemetry and does nothing
+#           else; a key without it cannot send telemetry.
+request "data:ingest key posts a batch" 200 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/ingest"
+assert_json "batch reaches the data ingest route" '.path' '/api/v1/data/ingest'
+assert_json "batch carries the key's team" '.headers["x-wildbox-team-id"]' 'team-8888'
+assert_json "key stripped before the data service" '.headers["x-api-key"] // "absent"' 'absent'
+request "data:ingest key cannot read telemetry" 403 \
+    -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/telemetry/events"
+assert_json "reading needs read" '.required_scope' 'read'
+request "data:ingest key cannot write other data" 403 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/data/sources"
+assert_json "other writes need write" '.required_scope' 'write'
+request "data:ingest key cannot run tools" 403 \
+    -X POST -H "X-API-Key: wsk_ingest_ci_fixture" "$GATEWAY_URL/api/v1/tools/echo"
+request "read-only key cannot post a batch" 403 \
+    -X POST -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/data/ingest"
+assert_json "ingest needs data:ingest" '.required_scope' 'data:ingest'
+request "unrestricted session posts a batch" 200 \
+    -X POST -H "Authorization: Bearer valid-bearer-token" "$GATEWAY_URL/api/v1/data/ingest"
+
 # 9a-9e. Asynchronous tool tasks (#567): routed to the service's /api/tasks,
 #        authenticated, read with tools:read and cancelled with tools:execute.
 request "task read without credentials rejected" 401 \

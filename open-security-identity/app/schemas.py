@@ -127,6 +127,9 @@ VALID_API_KEY_SCOPES = frozenset({
     "read", "write", "admin",
     "tools:read", "tools:execute", "tools:admin",
     "data:read", "data:write", "data:delete",
+    # Telemetry ingest only: POST /api/v1/data/ingest and nothing else. The
+    # key a sensor is given (#628).
+    "data:ingest",
     "reports:read", "reports:write",
     "team:read", "team:manage",
 })

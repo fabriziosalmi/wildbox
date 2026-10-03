@@ -19,15 +19,17 @@
 #
 # Network map, and the connection each attachment exists for:
 #
-#   frontend  gateway, dashboard
+#   frontend  gateway, dashboard, sensor
 #             browser -> gateway; dashboard SSR -> open-security-gateway:8080
-#             (INTERNAL_GATEWAY_URL); gateway -> open-security-dashboard:3000
+#             (INTERNAL_GATEWAY_URL); gateway -> open-security-dashboard:3000;
+#             sensor -> open-security-gateway:443 (telemetry ingest, #628:
+#             the sensor is a client of the gateway like a browser, and
+#             reaches no backend service directly)
 #   backend   gateway, identity, api, data, cspm, guardian, responder, agents,
-#             sensor, automations, prometheus
+#             automations, prometheus
 #             gateway -> every upstream in nginx/conf.d/wildbox_gateway.conf;
 #             identity -> open-security-gateway:8081 (auth-cache purge);
-#             agents -> api:8000 (WILDBOX_API_URL); sensor ->
-#             open-security-data:8002 (config.yaml.example); prometheus ->
+#             agents -> api:8000 (WILDBOX_API_URL); prometheus ->
 #             the /metrics targets in monitoring/prometheus.yml
 #   data      postgres, wildbox-redis, and only the services whose
 #   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup.
@@ -395,7 +397,7 @@ services:
     networks: !override
       backend:
         aliases:
-          # The gateway's data_service upstream, sensor and prometheus.
+          # The gateway's data_service upstream and prometheus.
           - open-security-data
       data: {}
 
@@ -428,9 +430,11 @@ services:
         max-size: "10m"
         max-file: "5"
 
+  # A client of the gateway, as a sensor on another host would be (#628):
+  # frontend reaches the gateway's HTTPS listener and no backend service.
   sensor:
     networks: !override
-      - backend
+      - frontend
 
   automations:
     networks: !override

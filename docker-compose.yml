@@ -369,6 +369,10 @@ services:
       # writable so the entrypoint can generate a self-signed dev cert if none
       # is provided (mount real certs here in production)
       - ./open-security-gateway/ssl:/etc/ssl/wildbox
+      # The entrypoint copies the certificate (not the key) here, for the
+      # containers that call the gateway over HTTPS and must trust it: the
+      # sensor (#628).
+      - gateway_cert:/etc/ssl/wildbox-public
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx
@@ -1051,6 +1055,21 @@ services:
       # every route but /health answers 503, which left the sensor running and
       # unusable.
       - SENSOR_API_KEY=${SENSOR_API_KEY:?SENSOR_API_KEY is required}
+      # Telemetry goes to the gateway's HTTPS listener, authenticated with a
+      # personal API key (data:ingest scope) of the team member created for
+      # the sensor; the gateway forwards it to the data service under that
+      # member's team (#628). With no key the sensor runs and forwards
+      # nothing. See open-security-sensor/README.md.
+      - SENSOR_DATA_LAKE_ENDPOINT=${SENSOR_DATA_LAKE_ENDPOINT:-https://open-security-gateway}
+      - SENSOR_DATA_LAKE_API_KEY=${SENSOR_DATA_LAKE_API_KEY:-}
+      # The gateway's certificate, published by the gateway into the
+      # gateway_cert volume below. `-`, not `:-`: an empty value selects the
+      # system trust store, for a gateway with a publicly signed certificate.
+      - SENSOR_DATA_LAKE_CA_BUNDLE=${SENSOR_DATA_LAKE_CA_BUNDLE-/etc/ssl/wildbox/wildbox.crt}
+      # The sensor's name in the data service. It defaults to the hostname,
+      # which in a container is its ID and changes when it is recreated:
+      # each recreation would appear as a new sensor.
+      - SENSOR_DATA_LAKE_SENSOR_ID=${SENSOR_DATA_LAKE_SENSOR_ID:-open-security-sensor}
       - PYTHONPATH=/app
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -1058,6 +1077,12 @@ services:
       - ./open-security-sensor/config.yaml.example:/etc/security-sensor/config.yaml:ro
       - sensor_logs:/var/log/security-sensor
       - sensor_data:/var/lib/security-sensor
+      # The gateway's certificate, never its key: the gateway copies
+      # wildbox.crt alone into this volume when it starts. Not a bind of
+      # ./open-security-gateway/ssl/wildbox.crt, as automations has: that file
+      # does not exist before the gateway's first start, and the sensor is
+      # in the default stack, so the bind would fail a fresh `up`.
+      - gateway_cert:/etc/ssl/wildbox:ro
       # Host monitoring (limited to safe read-only paths)
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
@@ -1065,6 +1090,11 @@ services:
       - /sys/class/net:/host/sys/class/net:ro
     networks:
       - wildbox
+    depends_on:
+      # Healthy, so its certificate is in gateway_cert before the sensor
+      # validates its CA bundle.
+      gateway:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
@@ -1222,3 +1252,5 @@ volumes:
   # Service-specific volumes
   sensor_logs:
   sensor_data:
+  # The gateway's TLS certificate (no key), for the sensor to trust.
+  gateway_cert:

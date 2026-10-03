@@ -12,17 +12,122 @@ from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
+# Where a batch goes, relative to the gateway (#628). The sensor never talks
+# to the data service directly: the data service accepts only requests the
+# gateway has authenticated, so the sensor authenticates at the gateway with
+# an identity API key, and the gateway forwards the batch with the key's team.
+INGEST_PATH = "/api/v1/data/ingest"
+
+# Values that mean "no key yet". The shipped configuration carried the first
+# one, which nothing could ever have accepted.
+_UNSET_API_KEYS = {"", "CONFIGURE_VIA_ENV", "your-api-key-here"}
+
+
 @dataclass
 class DataLakeConfig:
-    """Data lake connection configuration"""
+    """Data lake connection configuration.
+
+    ``endpoint`` is the gateway: ``https://<gateway>`` or the full
+    ``https://<gateway>/api/v1/data/ingest``. ``api_key`` is an identity
+    personal API key (``wsk_...``), sent as X-API-Key; scope it to
+    ``data:ingest``. ``ca_bundle`` is a PEM file of certificates to trust for
+    the gateway, for a gateway whose certificate no public CA signed (the
+    development stack's self-signed one).
+    """
     endpoint: str
     api_key: str
     tls_verify: bool = True
+    ca_bundle: Optional[str] = None
+    sensor_id: Optional[str] = None
     batch_size: int = 100
     flush_interval: int = 30
     timeout: int = 30
     retry_attempts: int = 3
     retry_delay: int = 5
+
+    @property
+    def forwarding_enabled(self) -> bool:
+        """Is there a key to forward with?
+
+        A deployment starts before anyone can have created the key (identity
+        issues it, and identity is part of the same stack), so a missing key
+        disables forwarding instead of stopping the sensor. Everything else
+        about the destination is validated at start-up.
+        """
+        return (self.api_key or "").strip() not in _UNSET_API_KEYS
+
+    @property
+    def ingest_url(self) -> str:
+        """The URL batches are posted to, derived from ``endpoint``."""
+        endpoint = (self.endpoint or "").strip().rstrip("/")
+        if urlparse(endpoint).path.endswith(INGEST_PATH):
+            return endpoint
+        return endpoint + INGEST_PATH
+
+    def validate(self) -> List[str]:
+        """Errors in the destination, the credential and the TLS trust."""
+        errors = []
+        endpoint = (self.endpoint or "").strip()
+        if not endpoint:
+            errors.append(
+                "data_lake.endpoint is required: the gateway URL, "
+                "https://<gateway> (SENSOR_DATA_LAKE_ENDPOINT)"
+            )
+        else:
+            parsed = urlparse(endpoint)
+            path = parsed.path.rstrip("/")
+            if parsed.scheme != "https" or not parsed.hostname:
+                errors.append(
+                    f"data_lake.endpoint must be the gateway's https:// URL, "
+                    f"got {endpoint!r}: the gateway serves the API over HTTPS "
+                    f"only"
+                )
+            elif path and not path.endswith(INGEST_PATH):
+                errors.append(
+                    f"data_lake.endpoint must be https://<gateway> or "
+                    f"https://<gateway>{INGEST_PATH}, got path {path!r}. The "
+                    f"sensor no longer posts to the data service's "
+                    f"/api/v1/ingest directly; see UPGRADING.md"
+                )
+            if parsed.query or parsed.fragment or parsed.username:
+                errors.append(
+                    "data_lake.endpoint must not carry a query, a fragment or "
+                    "credentials"
+                )
+
+        key = (self.api_key or "").strip()
+        if self.forwarding_enabled:
+            if not key.startswith("wsk_"):
+                errors.append(
+                    "data_lake.api_key is not an identity API key (those "
+                    "begin with wsk_). Create one for the sensor's team "
+                    "member, with the data:ingest scope"
+                )
+            elif any(c.isspace() for c in key):
+                errors.append("data_lake.api_key must not contain whitespace")
+
+        if self.ca_bundle:
+            if not self.tls_verify:
+                errors.append(
+                    "data_lake.ca_bundle is set but data_lake.tls_verify is "
+                    "false, so the bundle would be ignored: remove one of them"
+                )
+            elif not os.path.isfile(self.ca_bundle):
+                errors.append(
+                    f"data_lake.ca_bundle {self.ca_bundle!r} does not exist or "
+                    f"is not a file"
+                )
+            elif not os.access(self.ca_bundle, os.R_OK):
+                errors.append(
+                    f"data_lake.ca_bundle {self.ca_bundle!r} is not readable"
+                )
+
+        for name in ("batch_size", "flush_interval", "timeout", "retry_attempts"):
+            if getattr(self, name) < 1:
+                errors.append(f"data_lake.{name} must be at least 1")
+        if self.retry_delay < 0:
+            errors.append("data_lake.retry_delay must not be negative")
+        return errors
 
 @dataclass
 class CollectionConfig:
@@ -88,16 +193,8 @@ class SensorConfig:
         errors = []
         
         # Validate data lake configuration
-        if not self.data_lake.endpoint:
-            errors.append("data_lake.endpoint is required")
-        else:
-            parsed = urlparse(self.data_lake.endpoint)
-            if not parsed.scheme or not parsed.netloc:
-                errors.append("data_lake.endpoint must be a valid URL")
-        
-        if not self.data_lake.api_key:
-            errors.append("data_lake.api_key is required")
-        
+        errors.extend(self.data_lake.validate())
+
         # Validate performance limits
         if self.performance.max_memory_mb < 32:
             errors.append("performance.max_memory_mb must be at least 32MB")
@@ -181,6 +278,8 @@ def _apply_env_overrides(config_data: Dict[str, Any]) -> Dict[str, Any]:
         'SENSOR_DATA_LAKE_ENDPOINT': ['data_lake', 'endpoint'],
         'SENSOR_DATA_LAKE_API_KEY': ['data_lake', 'api_key'],
         'SENSOR_DATA_LAKE_TLS_VERIFY': ['data_lake', 'tls_verify'],
+        'SENSOR_DATA_LAKE_CA_BUNDLE': ['data_lake', 'ca_bundle'],
+        'SENSOR_DATA_LAKE_SENSOR_ID': ['data_lake', 'sensor_id'],
         'SENSOR_LOGGING_LEVEL': ['logging', 'level'],
         'SENSOR_LOGGING_FILE': ['logging', 'file'],
         'SENSOR_PERFORMANCE_MAX_MEMORY': ['performance', 'max_memory_mb'],
@@ -226,9 +325,12 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
     # Data lake configuration (required)
     data_lake_data = config_data.get('data_lake', {})
     data_lake = DataLakeConfig(
-        endpoint=data_lake_data.get('endpoint', ''),
-        api_key=data_lake_data.get('api_key', ''),
+        endpoint=data_lake_data.get('endpoint') or '',
+        api_key=data_lake_data.get('api_key') or '',
         tls_verify=data_lake_data.get('tls_verify', True),
+        # An empty value (an unset compose variable) means "not set".
+        ca_bundle=data_lake_data.get('ca_bundle') or None,
+        sensor_id=data_lake_data.get('sensor_id') or None,
         batch_size=data_lake_data.get('batch_size', 100),
         flush_interval=data_lake_data.get('flush_interval', 30),
         timeout=data_lake_data.get('timeout', 30),

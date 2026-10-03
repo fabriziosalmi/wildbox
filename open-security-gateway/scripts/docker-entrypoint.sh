@@ -33,4 +33,17 @@ if [ ! -f "$CRT" ] || [ ! -f "$KEY" ]; then
     fi
 fi
 
+# Publish the certificate -- never the key -- for containers that call the
+# gateway over HTTPS and must trust it (the sensor, #628). Mounted only where
+# docker-compose.yml provides the volume. Copied on every start, so a replaced
+# certificate reaches them at the next restart; written to a temporary name
+# and renamed, so no reader sees a half-written file.
+PUBLIC_DIR=/etc/ssl/wildbox-public
+if [ -f "$CRT" ] && [ -d "$PUBLIC_DIR" ] && [ -w "$PUBLIC_DIR" ]; then
+    cp "$CRT" "$PUBLIC_DIR/.wildbox.crt.tmp"
+    chmod 0644 "$PUBLIC_DIR/.wildbox.crt.tmp"
+    mv -f "$PUBLIC_DIR/.wildbox.crt.tmp" "$PUBLIC_DIR/wildbox.crt"
+    echo "[entrypoint] Published the TLS certificate to $PUBLIC_DIR."
+fi
+
 exec /usr/local/openresty/bin/openresty -c /etc/nginx/nginx.conf -g "daemon off;"

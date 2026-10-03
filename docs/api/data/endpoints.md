@@ -419,95 +419,106 @@ curl -X GET http://localhost:8002/api/v1/sources/src-001/stream \
 
 ## Telemetry
 
-### POST /telemetry/events
+Sensor telemetry belongs to a team: the team of the API key the sensor sends
+it with. Every route below is reached through the gateway, at
+`https://<gateway>/api/v1/data/...`, and reads or writes the caller's team's
+telemetry only. The data service itself accepts only requests the gateway has
+authenticated.
 
-Ingest telemetry events from sensors and endpoints.
+### POST /ingest
+
+Store a batch of telemetry events. The sensor's forwarder calls it; see the
+sensor README, "Sending telemetry to Wildbox".
 
 **Method**: `POST`
-**Endpoint**: `/api/v1/telemetry/events`
-**Authentication**: Optional
+**Endpoint**: `/api/v1/data/ingest` (gateway), `/api/v1/ingest` (data service)
+**Authentication**: an identity API key in `X-API-Key` with the `data:ingest`
+scope (or `write`, `data:write`), or a session. The events are stored under
+the caller's team; a team named in the body is ignored.
 
 **Request Body**:
 
 | Field | Type | Required | Description |
 | ------- | ------ | ---------- | ------------- |
-| events | array | Yes | Array of telemetry events |
-| events[].type | string | Yes | Event type: network_connection, file_operation, process_execution, dns_query |
-| events[].sensor_id | string | Yes | Sensor/endpoint identifier |
-| events[].timestamp | string | Yes | ISO-8601 timestamp |
-| events[].data | object | Yes | Event-specific data |
+| batch_id | string | No | Identifies the batch; generated when absent |
+| events | array | Yes | Up to 1000 events (`MAX_BATCH_SIZE`) |
+| events[].sensor_id | string | Yes | The sensor's name, unique within the team |
+| events[].event_type | string | Yes | `process_event`, `network_connection`, `file_change`, `user_event`, `system_inventory`, `authentication` or `security_event` |
+| events[].timestamp | string | Yes | ISO-8601 time of the event |
+| events[].event_data | object | Yes | Event-specific data |
+| events[].source_host | string | No | Host the event comes from |
+| events[].raw_data | string | No | The raw record |
+| events[].severity | integer | No | 1 to 10, default 1 |
+| events[].tags | array | No | Strings |
 
 **Request**:
 
 ```bash
-curl -X POST http://localhost:8002/api/v1/telemetry/events \
+curl --cacert open-security-gateway/ssl/wildbox.crt \
+  -X POST https://localhost/api/v1/data/ingest \
+  -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "events": [
       {
-        "type": "network_connection",
         "sensor_id": "sensor-001",
+        "event_type": "network_connection",
         "timestamp": "2024-11-07T18:00:00Z",
-        "data": {
-          "source_ip": "192.168.1.100",
-          "destination_ip": "8.8.8.8",
-          "destination_port": 53,
-          "protocol": "udp"
-        }
+        "source_host": "web-1",
+        "event_data": {"remote_address": "8.8.8.8", "remote_port": 53},
+        "tags": ["network.process_connections"]
       }
     ]
   }'
-```
-
-**Response (202 Accepted)**:
-
-```json
-{
-  "ingested": 1,
-  "errors": 0,
-  "message": "Events queued for processing"
-}
-```
-
----
-
-### GET /telemetry/statistics
-
-Get aggregated telemetry statistics and metrics.
-
-**Method**: `GET`
-**Endpoint**: `/api/v1/telemetry/statistics`
-**Authentication**: Optional
-
-**Query Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| time_range | string | 1h, 24h, 7d, 30d (default: 24h) |
-| sensor_id | string | Filter by specific sensor |
-
-**Request**:
-
-```bash
-curl -X GET "http://localhost:8002/api/v1/telemetry/statistics?time_range=24h"
 ```
 
 **Response (200 OK)**:
 
 ```json
 {
-  "total_events": 45000,
-  "events_by_type": {
-    "network_connection": 30000,
-    "dns_query": 10000,
-    "file_operation": 4000,
-    "process_execution": 1000
-  },
-  "active_sensors": 15,
-  "events_per_sensor": 3000,
-  "suspicious_events": 45
+  "batch_id": "0b6b2c9e-5d0f-4a51-9c3e-2b1f7a8d9e10",
+  "events_received": 1,
+  "events_ingested": 1,
+  "errors": [],
+  "ingested_at": "2024-11-07T18:00:01Z"
 }
 ```
+
+401 from the gateway: the key is invalid, expired or revoked. 403
+`insufficient_scope`: the key lacks `data:ingest`. 400: more events than
+`MAX_BATCH_SIZE`. 503: the batch was not stored; send it again.
+
+---
+
+### GET /telemetry/events
+
+The caller's team's events, most recent first.
+
+**Endpoint**: `/api/v1/data/telemetry/events` (gateway)
+
+**Query Parameters**: `sensor_id`, `event_type`, `start_time`, `end_time`
+(ISO-8601), `limit` (up to 1000, default 100), `offset`.
+
+```bash
+curl --cacert open-security-gateway/ssl/wildbox.crt -H "X-API-Key: $KEY" \
+  "https://localhost/api/v1/data/telemetry/events?sensor_id=sensor-001&limit=10"
+```
+
+### GET /telemetry/stats
+
+Counts over the caller's team's events in the last `hours` (default 24):
+`total_events`, `active_sensors`, `events_by_type`. `sensor_id` narrows them
+to one sensor.
+
+```bash
+curl --cacert open-security-gateway/ssl/wildbox.crt -H "X-API-Key: $KEY" \
+  "https://localhost/api/v1/data/telemetry/stats?hours=24"
+```
+
+### GET /sensors and GET /sensors/{sensor_id}
+
+The caller's team's sensors (`active_only`, default true), and one of them by
+its ID; another team's sensor answers 404.
 
 ---
 
