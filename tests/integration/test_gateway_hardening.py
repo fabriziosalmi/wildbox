@@ -281,16 +281,26 @@ class TestGatewayHardening:
                 result = response.json()
                 run_id = result.get('run_id')
                 
-                # Wait for execution to complete
-                await asyncio.sleep(5)
-                
-                # Check run status
-                status_response = requests.get(
-                    f"{self.base_url}/api/v1/responder/runs/{run_id}",
-                    headers=self.admin_headers,
-                    timeout=10
-                )
-                
+                # Wait for the run to finish. Five seconds used to be enough
+                # because every connector call failed at once (#616); the
+                # steps now reach the tools and agents services, and the port
+                # scan and threat-intelligence lookups take their time.
+                deadline = time.monotonic() + 180
+                while True:
+                    status_response = requests.get(
+                        f"{self.base_url}/api/v1/responder/runs/{run_id}",
+                        headers=self.admin_headers,
+                        timeout=10
+                    )
+                    if (
+                        status_response.status_code != 200
+                        or status_response.json().get('status')
+                        in ('completed', 'failed', 'cancelled')
+                        or time.monotonic() > deadline
+                    ):
+                        break
+                    await asyncio.sleep(2)
+
                 if status_response.status_code == 200:
                     run_data = status_response.json()
                     status = run_data.get('status')
