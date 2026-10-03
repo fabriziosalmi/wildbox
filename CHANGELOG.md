@@ -322,6 +322,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Changing the password ends the account's other sessions** (#569).
+  A password change updated the hash and nothing else, so every token
+  already issued stayed valid until it expired and changing the password
+  after a compromise did not lock the intruder out. identity now records
+  the time of the change per user (`users.tokens_valid_after`, a new
+  migration) and refuses session tokens issued up to it, on its own
+  routes and for the gateway; the gateway keeps the same cutoff per user
+  and checks it on every request, so a decision it cached before the
+  change, or one in flight across it, is not served. identity tells the
+  gateway first and changes the password only once the gateway has
+  confirmed (503 otherwise). This covers change-password, the
+  reset-password flow and an administrator's reset. change-password
+  answers with a new access token for the session that made the change;
+  the dashboard switches to it. Login tokens now carry a fractional
+  `iat`, so that token is told apart from the ones it replaces within
+  the same second. API keys are not affected.
+- **Changing the email needs the current password** (#569). With a
+  session alone, `PATCH /auth/users/me` and
+  `PATCH /api/v1/identity/admin/me/profile` moved the account to another
+  address, after which forgot-password sends the reset link there. Both
+  now require `current_password` for an email change, and the dashboard's
+  profile form asks for it. Password-reset tokens carry the email they
+  were issued for and stop working once it changes.
+- **Current-password checks count towards the login lockout** (#569).
+  A wrong current password on change-password, account deletion or an
+  email change answered 400 and counted nothing, so a session could be
+  used to guess the password without limit. It now counts as a failed
+  login, and a locked account is refused with the login's 429 and
+  `Retry-After`, even with the right password.
+- **`/admin/me/profile` no longer sets a password** (#569). It accepted
+  any `new_password`, with no length rule and without identity's password
+  validation. Nothing used it; a request carrying one is now refused and
+  pointed to change-password.
+- **A superuser's own account follows the self-service rules** (#569).
+  `PATCH /auth/users/{id}` with the caller's own id changed the password,
+  or the email, without the current password. It now refuses a password
+  there, like `PATCH /auth/users/me`, and needs `current_password` for an
+  email change; resets of other accounts are unchanged.
 - **The threat-intel dashboard metrics counted every team's data**
   (#570). `GET /api/v1/data/dashboard/threat-intel` counted the sources
   and indicators of all teams, so any signed-in user learned how many

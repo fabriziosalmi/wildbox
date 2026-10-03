@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Collection, Optional
+from typing import Collection, Mapping, Optional
 
 import httpx
 
@@ -90,7 +90,9 @@ class GatewayRevocationError(RuntimeError):
 _RETRY_DELAYS = (0.1, 0.5)
 
 
-def _unconfirmed(response: httpx.Response, expected: int) -> Optional[str]:
+def _unconfirmed(
+    response: httpx.Response, expected: int, scope: Optional[str] = None
+) -> Optional[str]:
     """Why ``response`` does not confirm ``expected`` revocations, or None.
 
     The reason carries the status and the start of the body: the gateway's
@@ -108,6 +110,8 @@ def _unconfirmed(response: httpx.Response, expected: int) -> Optional[str]:
         # An older gateway flushes its cache and answers 200 without
         # counting: it cannot refuse a decision already in flight.
         return f"HTTP 200 without {expected} revoked: {excerpt!r}"
+    if scope is not None and body.get("scope") != scope:
+        return f"HTTP 200 for scope {body.get('scope')!r}, not {scope!r}: {excerpt!r}"
     return None
 
 
@@ -131,11 +135,50 @@ async def revoke_jtis_at_gateway(
     jtis = list(jtis)
     if not jtis:
         return
+    await _post_confirmed(
+        {"jtis": jtis, "ttl": max(int(ttl_seconds), 1)}, len(jtis), timeout=timeout
+    )
+
+
+async def revoke_user_sessions_at_gateway(
+    cutoffs: Mapping[str, float],
+    ttl_seconds: int,
+    timeout: float = 2.0,
+) -> None:
+    """
+    Make the gateway refuse every session token of these users issued up to
+    their cutoff (``{user_id: epoch seconds}``) -- what a password change
+    needs (#569).
+
+    The gateway keeps one marker per user for ``ttl_seconds`` (raised to its
+    auth-cache TTL) and checks it on every request against the token's iat,
+    cached decision or not, so a decision cached before the change, or one in
+    flight across it, is not served. Raises GatewayRevocationError unless the
+    gateway confirms every user; an older gateway, which does not know this
+    body, flushes its cache and answers without the count, and is refused.
+    """
+    users = [
+        {"user_id": str(user_id), "not_before": float(not_before)}
+        for user_id, not_before in cutoffs.items()
+    ]
+    if not users:
+        return
+    await _post_confirmed(
+        {"users": users, "ttl": max(int(ttl_seconds), 1)},
+        len(users),
+        scope="users",
+        timeout=timeout,
+    )
+
+
+async def _post_confirmed(
+    payload: dict, expected: int, scope: Optional[str] = None, timeout: float = 2.0
+) -> None:
+    """POST a revocation to the gateway, retried, until it confirms ``expected``."""
     secret = os.getenv("GATEWAY_INTERNAL_SECRET")
     if not secret:
         raise GatewayRevocationError("GATEWAY_INTERNAL_SECRET is not set")
 
-    payload = {"jtis": jtis, "ttl": max(int(ttl_seconds), 1)}
     problem = "no attempt made"
     for attempt, delay in enumerate((0.0, *_RETRY_DELAYS), start=1):
         if delay:
@@ -145,7 +188,7 @@ async def revoke_jtis_at_gateway(
                 response = await client.post(
                     _DEFAULT_URL, json=payload, headers={"X-Gateway-Secret": secret}
                 )
-            problem = _unconfirmed(response, len(jtis))
+            problem = _unconfirmed(response, expected, scope)
             if problem is None:
                 return
         except Exception as exc:  # noqa: BLE001 - retried, then raised

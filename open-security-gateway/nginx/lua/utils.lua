@@ -110,13 +110,12 @@ function _M.generate_auth_cache_key(token, token_type)
     return "auth:" .. token_type .. ":" .. hash
 end
 
--- The `jti` claim of a JWT, or nil.
+-- The claims of a JWT, decoded but NOT verified, or nil.
 --
--- Read without verifying the signature, and only ever used as the name of a
--- revocation marker: identity has verified the token before any decision for
--- it is cached, and a forged token naming someone else's jti can at most get
--- itself refused.
-function _M.jwt_jti(token)
+-- Only ever read for a token identity has verified: a decision is cached
+-- under a key derived from the whole token, so a token whose claims were
+-- altered is a different token that identity refuses.
+local function jwt_claims(token)
     local segment = token:match("^[^.]+%.([^.]+)%.[^.]*$")
     if not segment then
         return nil
@@ -131,8 +130,34 @@ function _M.jwt_jti(token)
         return nil
     end
     local claims = _M.json_decode(raw)
-    if type(claims) == "table" and type(claims.jti) == "string" and claims.jti ~= "" then
+    if type(claims) ~= "table" then
+        return nil
+    end
+    return claims
+end
+
+-- The `jti` claim of a JWT, or nil.
+--
+-- Read without verifying the signature, and only ever used as the name of a
+-- revocation marker: identity has verified the token before any decision for
+-- it is cached, and a forged token naming someone else's jti can at most get
+-- itself refused.
+function _M.jwt_jti(token)
+    local claims = jwt_claims(token)
+    if claims and type(claims.jti) == "string" and claims.jti ~= "" then
         return claims.jti
+    end
+    return nil
+end
+
+-- The `iat` claim of a JWT (seconds, possibly fractional), or nil.
+--
+-- Compared with the cutoff a password change records for the token's user
+-- (#569); see jwt_claims() for why reading it unverified is safe.
+function _M.jwt_iat(token)
+    local claims = jwt_claims(token)
+    if claims and type(claims.iat) == "number" then
+        return claims.iat
     end
     return nil
 end

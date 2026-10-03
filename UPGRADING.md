@@ -249,7 +249,7 @@ and a notification log; `guardian` applies it when it starts.
 - `trigger_count` and `last_triggered` now count and date the times a rule
   started firing, not every evaluation that found it firing.
 
-### 16. guardian runs the discovery rules and report schedules users define
+### 15. guardian runs the discovery rules and report schedules users define
 
 Asset discovery rules and report schedules were stored and never run. A new
 periodic task, sent by `guardian-beat` every minute
@@ -282,7 +282,7 @@ describes what can be scheduled.
   3389 (a refused connection counts as up), not by ping, which was not
   installed in the image. A host that answers only ICMP is not found.
 
-### 17. Rebuild the dashboard image; leave `NEXT_PUBLIC_GATEWAY_URL` empty
+### 16. Rebuild the dashboard image; leave `NEXT_PUBLIC_GATEWAY_URL` empty
 
 `NEXT_PUBLIC_*` is compiled into the dashboard's browser code when the image
 is built, and the production Dockerfile took no value for it, so a production
@@ -305,15 +305,65 @@ reads from `.env`.
 
 See the [deployment guide](https://www.wildbox.io/guides/deployment/#the-dashboards-browser-settings).
 
-### 18. `PATCH /auth/users/me` no longer changes the password
+### 17. `PATCH /auth/users/me` no longer changes the password
 
 It changed the password without asking for the current one. It now answers
 400 (`UPDATE_USER_INVALID_PASSWORD`) to a request with a `password` field and
-changes nothing; email changes work as before. A script that changes a
+changes nothing; an email change needs the current password (section 19). A
+script that changes a
 user's own password must call
 `POST /api/v1/identity/admin/me/change-password` with `current_password` and
 `new_password` (at least 12 characters). Administrators resetting another
 account's password through `PATCH /auth/users/{id}` are not affected.
+
+### 18. Account changes need the current password; a password change ends the other sessions
+
+identity adds one column, `users.tokens_valid_after` (alembic revision
+`a6b7c8d9e0f1`), which it applies itself at start (`alembic upgrade head` in
+its entrypoint). The column is nullable and is not backfilled.
+
+- **Sessions open at the upgrade stay valid** until they expire, as before.
+  The cutoff only exists once an account's password changes.
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). A password change now asks the gateway to refuse the account's
+  earlier sessions and changes the password only once the gateway has
+  confirmed. An older gateway, or one identity cannot reach on port 8081
+  (section 3), makes every password change answer 503 and change nothing.
+  With more than one gateway replica, only the one identity reaches keeps
+  the cutoff; the others refuse those sessions once their cached decisions
+  expire (`AUTH_CACHE_TTL`).
+
+API changes that clients and scripts have to follow:
+
+- **`POST /api/v1/identity/admin/me/change-password`** (and
+  `PUT /api/v1/identity/admin/me/password`) ends every session of the
+  account issued up to the change, **including the token the request was
+  made with**. The answer now carries a new one:
+  `{"message", "access_token", "token_type": "bearer"}`. A client that
+  keeps using the old token gets 401; it must switch to the new one or
+  log in again. API keys keep working; revoke them on the API keys page if
+  they may be compromised. The reset-password flow and an administrator's
+  reset (`PATCH /auth/users/{id}`) end the account's sessions the same way.
+- **An email change needs `current_password`**, on `PATCH /auth/users/me`
+  and on `PATCH /api/v1/identity/admin/me/profile` (and `PUT
+  /api/v1/identity/admin/me`). Without it the answer is 400 and nothing
+  changes.
+- **A wrong current password counts as a failed login** on change-password,
+  account deletion and an email change. After 5 (the login lockout's
+  limit), those routes and login answer 429 with `Retry-After: 900`, even
+  with the right password. Scripts that retry with a stale password will
+  lock their account.
+- **`/admin/me/profile` and `PUT /admin/me` refuse `new_password`** with 400.
+  Use change-password.
+- **A superuser changing their own account through
+  `PATCH /auth/users/{own id}`** gets the self-service rules: a `password`
+  is refused (400 `UPDATE_USER_INVALID_PASSWORD`), an email change needs
+  `current_password`.
+- **Password-reset tokens issued before the upgrade no longer work**; they
+  do not carry the email that new tokens are bound to. Request a new one.
+- **Login tokens carry a fractional `iat`** (seconds since the epoch, as a
+  JSON number with a fraction). A client that parses the claim as an integer
+  has to accept a number.
 
 ## Upgrading to 0.10.0
 

@@ -354,6 +354,71 @@ function _M.purge_all_cache()
     return flush_auth_cache()
 end
 
+-- Sessions issued before a password change (#569).
+--
+-- A password change must end the account's other sessions, and identity
+-- does not keep the jtis it issued. It records instead, per user, the time
+-- up to which tokens are no longer valid (users.tokens_valid_after), and
+-- sends the same cutoff here before it commits the change. The gateway
+-- keeps it as a marker "user:<id>" = cutoff, in auth_revoked like the jti
+-- markers, and refuses a bearer token of that user whose iat is not later,
+-- on a cache hit and after a fresh authorization alike: a decision cached
+-- before the change, or one in flight across it, is not served. Tokens
+-- issued after the change (the new one identity hands the session that
+-- changed the password, or a new login) carry a later iat and pass. API
+-- keys are not sessions and are not affected.
+local function user_cutoff_key(user_id)
+    return "user:" .. tostring(user_id)
+end
+
+local function predates_password_change(token, token_type, auth_data)
+    if token_type ~= "bearer" or not auth_data or not auth_data.user_id then
+        return false
+    end
+    local state = ngx.shared.auth_revoked
+    local cutoff = state and state:get(user_cutoff_key(auth_data.user_id))
+    if type(cutoff) ~= "number" then
+        return false
+    end
+    -- A token without an iat cannot show that it is newer than the cutoff.
+    local iat = utils.jwt_iat(token)
+    return iat == nil or iat <= cutoff
+end
+
+-- Record per-user cutoffs: `users` is a list of {user_id, not_before}.
+-- Returns how many were stored. Unlike a jti marker, a cutoff that cannot
+-- be kept is reported as not stored -- flushing the cache would not cover
+-- the time until identity commits the change -- so identity refuses to
+-- change the password rather than leave the other sessions open.
+function _M.revoke_user_sessions(users, ttl)
+    bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if not state then
+        return 0
+    end
+    ttl = math.min(
+        math.max(tonumber(ttl) or MAX_REVOCATION_TTL, configured_cache_ttl()),
+        MAX_REVOCATION_TTL
+    )
+    local stored = 0
+    for _, entry in ipairs(users) do
+        local key = user_cutoff_key(entry.user_id)
+        local cutoff = entry.not_before
+        -- Two changes close together: keep the later cutoff.
+        local current = state:get(key)
+        if type(current) == "number" and current > cutoff then
+            cutoff = current
+        end
+        local ok, err = state:safe_set(key, cutoff, ttl)
+        if ok then
+            stored = stored + 1
+        else
+            utils.log("warn", "Password-change cutoff not stored", {error = err})
+        end
+    end
+    return stored
+end
+
 local function refuse_revoked()
     utils.log("info", "Refused a revoked token")
     ngx.status = ngx.HTTP_UNAUTHORIZED
@@ -619,6 +684,11 @@ function _M.authenticate()
         ngx.shared.auth_cache:delete(cache_key)
         refuse_revoked()
     end
+    -- Nor may it outlive a password change of its user (#569).
+    if auth_data and predates_password_change(token, token_type, auth_data) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_revoked()
+    end
 
     -- If not in cache, validate with identity service
     if cache_err == "cache_miss" then
@@ -658,6 +728,9 @@ function _M.authenticate()
         -- Identity may have answered before a logout that has since been
         -- recorded here.
         if is_revoked(rid) then
+            refuse_revoked()
+        end
+        if predates_password_change(token, token_type, auth_data) then
             refuse_revoked()
         end
 

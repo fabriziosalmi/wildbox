@@ -19,8 +19,10 @@ from ...schemas import (
     UserProfileUpdate, PasswordChangeRequest, AccountDeletionRequest,
     UserStatusUpdate, TeamRoleUpdate, UserActivityResponse, TeamMembershipInfo
 )
-from ...user_manager import current_superuser, current_active_user, get_user_manager, UserManager
-from ...auth import verify_password, get_password_hash
+from ...user_manager import (
+    current_superuser, current_active_user, get_jwt_strategy, get_user_manager,
+    UserManager, require_current_password, verify_current_password,
+)
 from ...gateway_cache import purge_gateway_auth_cache
 from ...config import settings
 
@@ -510,12 +512,36 @@ async def update_my_profile(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    User endpoint: Update own profile information.
+    User endpoint: Update own profile information (the email address).
+
+    It does not set a password (#569). It used to, with no length rule and
+    without UserManager's validation, hashing the new password directly --
+    a second, weaker way to do what change-password does, which nothing
+    used (the dashboard calls change-password). A request carrying
+    new_password is refused rather than silently ignored, so a client that
+    relied on it learns where to go.
     """
+    if profile_update.new_password is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "The password cannot be changed here. Use "
+                f"{UserManager.CHANGE_PASSWORD_ROUTE} with your current password."
+            ),
+        )
+
     updates_made = False
     
     # Update email if provided
     if profile_update.email and profile_update.email != current_user.email:
+        # A session alone used to be enough to move the account to another
+        # address, after which forgot-password sends the reset link there
+        # (#569). Checked first, so the answer below does not tell a caller
+        # without the password which addresses are registered.
+        await require_current_password(
+            current_user, profile_update.current_password, "the email address"
+        )
+
         # Check if email is already taken
         result = await db.execute(
             select(User).where(User.email == profile_update.email, User.id != current_user.id)
@@ -527,25 +553,9 @@ async def update_my_profile(
             )
         
         current_user.email = profile_update.email
-        updates_made = True
-    
-    # Update password if provided
-    if profile_update.new_password:
-        if not profile_update.current_password:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Current password required to set new password"
-            )
-        
-        # Verify current password
-        if not verify_password(profile_update.current_password, current_user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Incorrect current password"
-            )
-        
-        # Hash and set new password
-        current_user.hashed_password = get_password_hash(profile_update.new_password)
+        # As fastapi-users does on an email change: the new address is not
+        # verified yet.
+        current_user.is_verified = False
         updates_made = True
     
     if updates_made:
@@ -571,35 +581,44 @@ async def update_my_profile_put(
 async def change_my_password_put(
     password_change: PasswordChangeRequest,
     current_user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_db)
+    user_manager: UserManager = Depends(get_user_manager),
 ):
     """
     User endpoint: Change own password (PUT version).
     """
-    return await change_my_password(password_change, current_user, db)
+    return await change_my_password(
+        password_change, current_user=current_user, user_manager=user_manager
+    )
 
 
 @router.post("/me/change-password")
 async def change_my_password(
     password_change: PasswordChangeRequest,
     current_user: User = Depends(current_active_user),
-    db: AsyncSession = Depends(get_db)
+    user_manager: UserManager = Depends(get_user_manager),
 ):
     """
     User endpoint: Change own password.
+
+    The change ends every session of the account, the one making the request
+    included (#569): a password changed after a compromise must lock the
+    intruder out. So that the caller is not signed out by their own change,
+    the answer carries a new access token, issued after the change, which
+    replaces the one the request was made with. API keys are not sessions
+    and keep working; they are revoked on the API keys page.
     """
-    # Verify current password
-    if not verify_password(password_change.current_password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect current password"
-        )
-    
-    # Hash and set new password
-    current_user.hashed_password = get_password_hash(password_change.new_password)
-    await db.commit()
-    
-    return {"message": "Password changed successfully"}
+    # Verify current password; a wrong one counts towards the lockout (#569).
+    await verify_current_password(current_user, password_change.current_password)
+
+    # Through UserManager, which ends the other sessions with the change.
+    user = await user_manager.set_password(current_user, password_change.new_password)
+    access_token = await get_jwt_strategy().write_token(user)
+
+    return {
+        "message": "Password changed successfully",
+        "access_token": access_token,
+        "token_type": "bearer",
+    }
 
 
 @router.delete("/me/account")
@@ -617,12 +636,12 @@ async def delete_my_account(
             detail="Account deletion must be confirmed"
         )
     
-    # Verify password
-    if not verify_password(deletion_request.password, current_user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Incorrect password"
-        )
+    # Verify password; a wrong one counts towards the lockout (#569).
+    await verify_current_password(
+        current_user,
+        deletion_request.password,
+        wrong_detail="Incorrect password",
+    )
     
     # Check if user is the only owner of any teams
     owned_teams = await db.execute(

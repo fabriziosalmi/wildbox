@@ -84,16 +84,20 @@ All under `/api/v1/auth` (fastapi-users):
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/v1/users/me` | The authenticated user |
-| PATCH | `/api/v1/users/me` | Update the authenticated user (fastapi-users) |
-| PATCH | `/api/v1/admin/me/profile` | Update profile fields |
-| PUT | `/api/v1/admin/me` | Update the authenticated user |
+| PATCH | `/api/v1/users/me` | Update the authenticated user (fastapi-users); an email change needs `current_password`, a password is refused |
+| PATCH | `/api/v1/admin/me/profile` | Change the email; body `email`, `current_password` |
+| PUT | `/api/v1/admin/me` | Same as `PATCH /api/v1/admin/me/profile` |
 | PUT | `/api/v1/admin/me/password` | Change password; same body as below |
-| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password` |
+| POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password`; answers a new `access_token` and ends the account's other sessions |
 | DELETE | `/api/v1/admin/me/account` | Deactivate own account; body `password`, `confirm_deletion` |
 | GET | `/api/v1/admin/me/activity` | Own recent activity |
 
 Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
 account and need only a valid token.
+
+A wrong `current_password` (or `password` on account deletion) counts
+towards the login lockout, and a locked account answers 429 there as at
+login.
 
 Every route that sets a password hashes it with Argon2id through
 fastapi-users' `PasswordHelper`, the same helper login verifies with; bcrypt
