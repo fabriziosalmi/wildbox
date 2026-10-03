@@ -14,18 +14,22 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import hmac
 
-from .schemas import HashGeneratorInput, HashGeneratorOutput, HashResult, HashAnalysis
+from .schemas import (
+    SUPPORTED_HASH_ALGORITHMS,
+    HashAnalysis,
+    HashGeneratorInput,
+    HashGeneratorOutput,
+    HashResult,
+)
+
+
 class HashGenerator:
     """Cryptographic Hash Generator and Analyzer"""
     
     # Supported hash algorithms
+    # Built from the tuple the input schema's enum is built from (#611).
     SUPPORTED_ALGORITHMS = {
-        'sha224': hashlib.sha224,
-        'sha256': hashlib.sha256,
-        'sha384': hashlib.sha384,
-        'sha512': hashlib.sha512,
-        'blake2b': hashlib.blake2b,
-        'blake2s': hashlib.blake2s,
+        name: getattr(hashlib, name) for name in SUPPORTED_HASH_ALGORITHMS
     }
     
     # Security ratings for hash algorithms
@@ -140,15 +144,11 @@ class HashGenerator:
         """Generate a salted hash using PBKDF2"""
         salt_bytes = salt.encode('utf-8')
         
-        # Use PBKDF2 with the specified hash algorithm
-        if hash_type in ['sha256', 'sha384', 'sha512']:
-            hash_name = hash_type.upper()
-        else:
-            hash_name = 'SHA256'  # Default for unsupported algorithms in PBKDF2
-        
-        # Generate PBKDF2 hash
+        # PBKDF2-HMAC with the requested algorithm. sha224, blake2b and
+        # blake2s used to fall back to SHA-256 while the result was labelled
+        # with the requested name (#611); hashlib supports all of them.
         pbkdf2_hash = hashlib.pbkdf2_hmac(
-            hash_name.lower().replace('sha', 'sha'),
+            hash_type,
             input_bytes,
             salt_bytes,
             iterations
@@ -291,7 +291,7 @@ if __name__ == "__main__":
     async def test():
         test_input = HashGeneratorInput(
             input_text="Hello, World!",
-            hash_types=["md5", "sha256", "sha512"],
+            hash_types=["sha256", "sha512"],
             include_salted=True,
             iterations=1000
         )

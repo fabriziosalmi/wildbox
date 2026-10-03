@@ -20,6 +20,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from .schemas import IPGeolocationInput, IPGeolocationOutput, GeolocationData, ISPInfo, ThreatIntel, WHOISInfo
 class IPGeolocationLookup:
     """IP Geolocation and Analysis Tool"""
@@ -108,9 +109,9 @@ class IPGeolocationLookup:
             }
             
         except ValueError as e:
-            raise Exception(f"Invalid IP address: {str(e)}")
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Geolocation lookup failed: {str(e)}")
+            raise ToolRunError(f"Invalid IP address: {str(e)}")
+        except RUN_ERRORS as e:
+            raise ToolRunError(f"Geolocation lookup failed: {str(e)}")
     
     def _is_private_ip(self, ip_obj: ipaddress.IPv4Address) -> bool:
         """Check if IP is in private range"""
@@ -305,7 +306,7 @@ async def execute_tool(params: IPGeolocationInput) -> IPGeolocationOutput:
             error=None
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return IPGeolocationOutput(
             success=False,
             ip_address=params.ip_address,

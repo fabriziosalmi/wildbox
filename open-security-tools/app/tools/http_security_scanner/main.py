@@ -11,6 +11,7 @@ import re
 from ...input_validation import InputSanitizer
 from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
+from ...tool_errors import RUN_ERRORS
 from .schemas import HttpSecurityScannerInput, HttpSecurityScannerOutput, SecurityHeader
 logger = logging.getLogger(__name__)
 
@@ -347,7 +348,7 @@ async def execute_tool(input_data: HttpSecurityScannerInput) -> HttpSecurityScan
             security_score=0,
             findings={"error": message, "certificate_verification": "failed"}
         )
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         logger.error(f"HTTP security scan failed: {e}")
         duration = (datetime.now() - start_time).total_seconds()
         

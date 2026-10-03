@@ -8,7 +8,7 @@ import json
 import uuid
 import logging
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional, List
 from jinja2 import (
     DictLoader, TemplateRuntimeError, TemplateSyntaxError, UndefinedError, nodes
@@ -46,9 +46,14 @@ dramatiq.set_broker(broker)
 # like __class__, __subclasses__, __import__, etc. that could lead to RCE.
 from jinja2 import StrictUndefined
 
+# No autoescape. A step input is an argument to an action -- a URL to
+# blacklist, a title for a finding -- not HTML, and escaping it changed the
+# data: `{{ trigger.url }}` turned "?a=1&b=2" into "?a=1&amp;b=2", so
+# triage_url would have blacklisted a URL nobody submitted (#605). The
+# sandbox, not escaping, is what stands between a template and Python.
 jinja_env = SandboxedEnvironment(
     loader=DictLoader({}),
-    autoescape=True,
+    autoescape=False,
     undefined=StrictUndefined
 )
 
@@ -93,6 +98,22 @@ condition_env = SandboxedEnvironment(
     autoescape=True,
     undefined=_ConditionUndefined
 )
+
+
+def run_context(run_id: str, playbook_id: str, started_at: datetime) -> Dict[str, Any]:
+    """The `run` entry of a step's template context.
+
+    Gives a playbook the facts about its own run: `run.id`, `run.playbook_id`
+    and `run.started_at`, the time the run was queued as an ISO 8601 string in
+    UTC. all_star_e2e.yml read a `system.timestamp` that nothing ever
+    provided, so its threat_assessment step could not render and the run
+    stopped there (#605).
+    """
+    return {
+        "id": run_id,
+        "playbook_id": playbook_id,
+        "started_at": started_at.replace(tzinfo=timezone.utc).isoformat(),
+    }
 
 
 class ExecutionStateCorruptError(Exception):
@@ -592,7 +613,13 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
             # Update status to RUNNING
             execution_result.status = ExecutionStatus.RUNNING
             execution_result.playbook_name = playbook.name
-        
+
+        # Every run's context carries `run`, built from the persisted start
+        # time so it reads the same however often the record is reloaded.
+        execution_result.context.setdefault(
+            "run", run_context(run_id, playbook_id, execution_result.start_time)
+        )
+
         # Save updated state (QUEUED -> RUNNING transition)
         workflow_engine.save_execution_state(run_id, execution_result)
         workflow_engine.add_log(run_id, f"Starting execution of playbook '{playbook.name}'")

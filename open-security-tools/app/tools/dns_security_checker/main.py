@@ -15,6 +15,7 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 import re
 
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from .schemas import DNSSecurityInput, DNSSecurityOutput, DNSRecord, SecurityCheck
 class DNSSecurityChecker:
     """DNS Security Analysis Tool"""
@@ -81,8 +82,8 @@ class DNSSecurityChecker:
                 'recommendations': recommendations
             }
             
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"DNS security check failed: {str(e)}")
+        except RUN_ERRORS as e:
+            raise ToolRunError(f"DNS security check failed: {str(e)}")
     
     async def _get_dns_records(self, domain: str) -> Dict[str, List[DNSRecord]]:
         """Get basic DNS records for the domain"""
@@ -526,7 +527,7 @@ async def execute_tool(params: DNSSecurityInput) -> DNSSecurityOutput:
             error=None
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return DNSSecurityOutput(
             success=False,
             domain=params.domain,

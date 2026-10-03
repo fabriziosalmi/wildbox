@@ -17,6 +17,7 @@ from ...utils.tool_utils import RateLimiter
 from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 from ...tool_config import ToolConfig
+from ...tool_errors import RUN_ERRORS
 from .schemas import (
     WebVulnScannerInput, WebVulnScannerOutput, VulnerabilityFinding,
     SecurityHeader, VulnerabilityLevel, ScanDepth
@@ -75,7 +76,7 @@ async def check_security_headers(url: str, rate_limiter: RateLimiter = None,
                     
     except aiohttp.ClientConnectorCertificateError:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         logger.error(f"Error checking security headers: {e}")
         
     return security_headers
@@ -184,7 +185,7 @@ async def scan_for_vulnerabilities(url: str, scan_depth: ScanDepth, rate_limiter
                     
     except aiohttp.ClientConnectorCertificateError:
         raise
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         logger.error(f"Error during vulnerability scanning: {e}")
         
     return vulnerabilities

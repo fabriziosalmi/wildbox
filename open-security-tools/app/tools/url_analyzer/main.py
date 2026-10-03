@@ -17,6 +17,7 @@ from ...input_validation import InputSanitizer  # SSRF guard
 from ...safe_http import guarded_session
 from ...utils.tls import certificate_error_message, client_ssl
 
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from .schemas import URLShortenerInput, URLShortenerOutput, RedirectHop, SecurityAnalysis
 class URLShortenerAnalyzer:
     """URL Shortener Security Analyzer"""
@@ -181,9 +182,9 @@ class URLShortenerAnalyzer:
         except aiohttp.ClientConnectorCertificateError:
             raise
         except asyncio.TimeoutError:
-            raise Exception(f"Request timeout for {url}")
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Analysis failed: {str(e)}")
+            raise ToolRunError(f"Request timeout for {url}")
+        except RUN_ERRORS as e:
+            raise ToolRunError(f"Analysis failed: {str(e)}")
     
     def _detect_shortener_service(self, url: str) -> Optional[str]:
         """Detect the URL shortener service"""
@@ -321,7 +322,7 @@ async def execute_tool(params: URLShortenerInput) -> URLShortenerOutput:
             error=message,
             error_message=message
         )
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return URLShortenerOutput(
             success=False,
             original_url=str(params.shortened_url),

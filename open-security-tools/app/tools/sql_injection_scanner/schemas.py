@@ -1,13 +1,18 @@
 """Pydantic schemas for the SQL injection scanner tool."""
 
 from pydantic import BaseModel, Field
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
 from typing import List, Optional, Dict
 from datetime import datetime
 
+# Compared regardless of case by main.py (#611).
+HttpMethod = CaseInsensitiveChoice("GET", "POST")
+
+
 class SQLInjectionScannerInput(BaseToolInput):
     target_url: str = Field(..., description="Target URL to test for SQL injection", example="https://example.com/login.php")
-    method: str = Field(default="GET", description="HTTP method to use", example="GET")
+    # main.py sends GET or, for any other value, POST (#611).
+    method: HttpMethod = Field(default="GET", description="HTTP method to use (GET or POST)", example="GET")
     parameters: Optional[Dict[str, str]] = Field(None, description="Parameters to test", example={"id": "1", "name": "test"})
     headers: Optional[Dict[str, str]] = Field(None, description="Custom HTTP headers")
     timeout: int = Field(default=10, description="Request timeout in seconds", ge=1, le=60)

@@ -3,8 +3,8 @@ Standardized Schema Validator for Security Tools
 Blueprint Phase 1 - Output Standardization Implementation
 """
 
-from typing import Dict, Any, Optional, List, Type, Union
-from pydantic import BaseModel, Field, create_model, ValidationError
+from typing import Annotated, Dict, Any, Literal, Optional, List, Type, Union
+from pydantic import BaseModel, BeforeValidator, Field, create_model, ValidationError
 from datetime import datetime
 from enum import Enum
 import logging
@@ -33,6 +33,25 @@ class ToolSeverity(str, Enum):
     MEDIUM = "medium"
     LOW = "low"
     INFO = "info"
+
+
+def CaseInsensitiveChoice(*choices: str) -> Any:
+    """
+    A Literal of ``choices`` that also accepts them in any case.
+
+    For a field whose tool compares the value case-insensitively: the schema
+    publishes the canonical spellings as its enum, and a request that spells
+    one differently, as it could before the field was restricted (#611), is
+    mapped onto it instead of being refused.
+    """
+    canonical = {choice.lower(): choice for choice in choices}
+
+    def _normalize(value: Any) -> Any:
+        if isinstance(value, str):
+            return canonical.get(value.strip().lower(), value)
+        return value
+
+    return Annotated[Literal[choices], BeforeValidator(_normalize)]
 
 
 class BaseToolInput(BaseModel):

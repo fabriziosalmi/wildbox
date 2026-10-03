@@ -2,12 +2,15 @@
 
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 
 class SubdomainScannerInput(BaseToolInput):
     domain: str = Field(..., description="Target domain to scan for subdomains", example="example.com")
-    wordlist_size: str = Field(default="medium", description="Wordlist size: small, medium, large", example="medium")
+    # The wordlists main.py has; another value used "medium" silently (#611).
+    wordlist_size: Literal["small", "medium", "large"] = Field(
+        default="medium", description="Wordlist size: small, medium, large", example="medium"
+    )
     timeout: int = Field(default=5, description="Timeout in seconds for DNS queries", ge=1, le=30)
 
 class SubdomainResult(BaseModel):

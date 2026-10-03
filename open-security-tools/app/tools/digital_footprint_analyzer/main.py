@@ -90,6 +90,7 @@ async def execute_tool(data: DigitalFootprintAnalyzerInput) -> DigitalFootprintA
         )
         
         return DigitalFootprintAnalyzerOutput(
+            success=True,
             target_identifier=data.target_identifier,
             identifier_type=identifier_type,
             analysis_timestamp=datetime.utcnow().isoformat(),
@@ -120,6 +121,7 @@ async def execute_tool(data: DigitalFootprintAnalyzerInput) -> DigitalFootprintA
         ))
         
         return DigitalFootprintAnalyzerOutput(
+            success=False,
             target_identifier=data.target_identifier,
             identifier_type=identifier_type,
             analysis_timestamp=datetime.utcnow().isoformat(),

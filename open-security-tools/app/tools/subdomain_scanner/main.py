@@ -63,6 +63,7 @@ async def execute_tool(input_data: SubdomainScannerInput) -> SubdomainScannerOut
     duration = (datetime.now() - start_time).total_seconds()
     
     return SubdomainScannerOutput(
+        success=True,
         domain=input_data.domain,
         timestamp=start_time,
         duration=duration,

@@ -245,6 +245,7 @@ def execute_tool(input_data: JWTAnalyzerInput) -> JWTAnalyzerOutput:
     
     if header is None or payload is None:
         return JWTAnalyzerOutput(
+            success=False,
             timestamp=timestamp,
             valid_format=False,
             header=None,
@@ -304,6 +305,7 @@ def execute_tool(input_data: JWTAnalyzerInput) -> JWTAnalyzerOutput:
         recommendations.insert(0, "Address identified vulnerabilities immediately")
     
     return JWTAnalyzerOutput(
+        success=True,
         timestamp=timestamp,
         valid_format=True,
         header=header,

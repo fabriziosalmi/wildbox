@@ -111,6 +111,7 @@ async def execute_tool(data: MobileSecurityAnalyzerInput) -> MobileSecurityAnaly
         )
         
         return MobileSecurityAnalyzerOutput(
+            success=True,
             platform=data.platform,
             analysis_timestamp=datetime.utcnow().isoformat(),
             analysis_depth=data.analysis_depth,
@@ -134,6 +135,7 @@ async def execute_tool(data: MobileSecurityAnalyzerInput) -> MobileSecurityAnaly
         
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         return MobileSecurityAnalyzerOutput(
+            success=False,
             platform=data.platform,
             analysis_timestamp=datetime.utcnow().isoformat(),
             analysis_depth=data.analysis_depth,

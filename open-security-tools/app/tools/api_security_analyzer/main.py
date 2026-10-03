@@ -116,6 +116,7 @@ async def execute_tool(data: APISecurityAnalyzerInput) -> APISecurityAnalyzerOut
         execution_time = time.time() - start_time
         
         return APISecurityAnalyzerOutput(
+            success=True,
             target_url=data.target_url,
             api_type=data.api_type,
             analysis_timestamp=datetime.now().isoformat(),
@@ -149,6 +150,7 @@ async def execute_tool(data: APISecurityAnalyzerInput) -> APISecurityAnalyzerOut
         )
         
         return APISecurityAnalyzerOutput(
+            success=False,
             target_url=data.target_url,
             api_type=data.api_type,
             analysis_timestamp=datetime.now().isoformat(),

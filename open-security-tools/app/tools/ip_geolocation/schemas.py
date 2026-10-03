@@ -36,15 +36,15 @@ class IPGeolocationInput(BaseToolInput):
 
 class GeolocationData(BaseModel):
     """Geolocation information"""
-    country: Optional[str] = Field(description="Country name")
-    country_code: Optional[str] = Field(description="Country code (ISO 3166-1 alpha-2)")
-    region: Optional[str] = Field(description="Region/state name")
-    region_code: Optional[str] = Field(description="Region/state code")
-    city: Optional[str] = Field(description="City name")
-    postal_code: Optional[str] = Field(description="Postal/ZIP code")
-    latitude: Optional[float] = Field(description="Latitude coordinate")
-    longitude: Optional[float] = Field(description="Longitude coordinate")
-    timezone: Optional[str] = Field(description="Timezone")
+    country: Optional[str] = Field(None, description="Country name")
+    country_code: Optional[str] = Field(None, description="Country code (ISO 3166-1 alpha-2)")
+    region: Optional[str] = Field(None, description="Region/state name")
+    region_code: Optional[str] = Field(None, description="Region/state code")
+    city: Optional[str] = Field(None, description="City name")
+    postal_code: Optional[str] = Field(None, description="Postal/ZIP code")
+    latitude: Optional[float] = Field(None, description="Latitude coordinate")
+    longitude: Optional[float] = Field(None, description="Longitude coordinate")
+    timezone: Optional[str] = Field(None, description="Timezone")
 
 
 class ISPInfo(BaseModel):

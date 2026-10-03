@@ -6,6 +6,7 @@ import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
+from ...tool_errors import RUN_ERRORS
 from .schemas import ThreatIntelligenceRequest, ThreatIntelligenceResponse, ThreatIntelligenceSource
 # Tool metadata
 TOOL_INFO = {
@@ -105,7 +106,7 @@ class ThreatIntelligenceAggregator:
                     else:
                         return None
                         
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except RUN_ERRORS as e:
             print(f"VirusTotal API error: {e}")
             return None
     
@@ -166,7 +167,7 @@ class ThreatIntelligenceAggregator:
                         data = await response.json()
                         return self._parse_alienvault_response(data, indicator)
                         
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except RUN_ERRORS as e:
             print(f"AlienVault API error: {e}")
             return None
     
@@ -212,7 +213,7 @@ class ThreatIntelligenceAggregator:
                         data = await response.json()
                         return self._parse_threatcrowd_response(data, indicator)
                         
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except RUN_ERRORS as e:
             print(f"ThreatCrowd API error: {e}")
             return None
     
@@ -367,7 +368,30 @@ async def execute_tool(request: ThreatIntelligenceRequest) -> ThreatIntelligence
     
     # Validate indicator
     if not aggregator._validate_indicator(request.indicator, request.indicator_type):
-        raise ValueError(f"Invalid {request.indicator_type} format: {request.indicator}")
+        # Reported, not raised: execute_tool answers with its output (#611).
+        return ThreatIntelligenceResponse(
+            success=False,
+            error_message=f"Invalid {request.indicator_type} format: {request.indicator}",
+            indicator=request.indicator,
+            indicator_type=request.indicator_type,
+            overall_threat_score=0,
+            confidence_level="No Data",
+            threat_classification="Unknown",
+            sources_data=[],
+            malware_families=[],
+            threat_types=[],
+            countries=[],
+            asn_info={},
+            first_seen=None,
+            last_seen=None,
+            activity_timeline=[],
+            risk_factors=[],
+            mitigations=["Check the indicator and its type"],
+            related_indicators=[],
+            campaign_attribution=[],
+            timestamp=datetime.now().isoformat(),
+            processing_time_ms=int((time.time() - start_time) * 1000),
+        )
     
     # Query real APIs instead of simulating
     sources_data = []
@@ -392,6 +416,7 @@ async def execute_tool(request: ThreatIntelligenceRequest) -> ThreatIntelligence
     # Return empty response if no sources provide data
     if not sources_data:
         return ThreatIntelligenceResponse(
+            success=True,
             indicator=request.indicator,
             indicator_type=request.indicator_type,
             overall_threat_score=0,
@@ -464,6 +489,7 @@ async def execute_tool(request: ThreatIntelligenceRequest) -> ThreatIntelligence
     processing_time = int((time.time() - start_time) * 1000)
     
     return ThreatIntelligenceResponse(
+        success=True,
         indicator=request.indicator,
         indicator_type=request.indicator_type,
         overall_threat_score=overall_threat_score,

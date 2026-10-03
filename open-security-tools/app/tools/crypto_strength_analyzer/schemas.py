@@ -1,14 +1,25 @@
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Union
+from pydantic import BaseModel, Field, model_validator
+from typing import Dict, List, Literal, Optional, Union
 from datetime import datetime
-from ...standardized_schemas import BaseToolInput, BaseToolOutput
+from ...standardized_schemas import BaseToolInput, BaseToolOutput, CaseInsensitiveChoice
+
+# Compared regardless of case by main.py (#611).
+AlgorithmName = CaseInsensitiveChoice("AES", "DES", "3DES", "RSA", "ECC", "MD5", "SHA1", "SHA256", "SHA512")
+
 
 class CryptoStrengthAnalyzerInput(BaseToolInput):
     """Input schema for Crypto Strength Analyzer tool"""
-    analysis_type: str = Field(..., description="Type of analysis: algorithm, key, implementation, certificate, random")
+    # The analyses main.py runs ("certificate" was listed and never ran);
+    # each needs its own input field, checked below (#611).
+    analysis_type: Literal["algorithm", "key", "implementation", "random", "all"] = Field(
+        ..., description="Type of analysis: algorithm, key, implementation, random, or all"
+    )
     
     # For algorithm analysis
-    algorithm_name: Optional[str] = Field(default=None, description="Cryptographic algorithm name (AES, RSA, SHA256, etc.)")
+    # The algorithms main.py rates; another name was rated "Unknown" (#611).
+    algorithm_name: Optional[
+        AlgorithmName
+    ] = Field(default=None, description="Cryptographic algorithm name")
     key_size: Optional[int] = Field(default=None, description="Key size in bits")
     mode_of_operation: Optional[str] = Field(default=None, description="Mode of operation (CBC, GCM, ECB, etc.)")
     
@@ -27,14 +38,34 @@ class CryptoStrengthAnalyzerInput(BaseToolInput):
     
     # For randomness analysis
     random_data: Optional[str] = Field(default=None, description="Random data to analyze (hex or base64)")
-    data_format: Optional[str] = Field(default="hex", description="Random data format: hex, base64, binary")
+    data_format: Literal["hex", "base64", "binary"] = Field(
+        default="hex", description="Random data format: hex, base64, or binary (the text as UTF-8 bytes)"
+    )
     
     # General options
-    compliance_standards: List[str] = Field(
+    # The standards main.py checks; another one always "failed" (#611).
+    compliance_standards: List[Literal["NIST", "FIPS", "OWASP"]] = Field(
         default=["NIST", "FIPS", "OWASP"],
-        description="Compliance standards to check against"
+        description="Compliance standards to check against (NIST, FIPS, OWASP)"
     )
     include_recommendations: bool = Field(default=True, description="Include security recommendations")
+
+    @model_validator(mode="after")
+    def _the_analysed_input_given(self):
+        # Without it the analysis was skipped, and an empty analysis met
+        # every compliance standard (#611).
+        needed = {
+            "algorithm": ("algorithm_name",),
+            "key": ("public_key",),
+            "implementation": ("code_snippet",),
+            "random": ("random_data",),
+            "all": ("algorithm_name", "public_key", "code_snippet", "random_data"),
+        }[self.analysis_type]
+        if not any(getattr(self, name) for name in needed):
+            raise ValueError(
+                f"analysis_type '{self.analysis_type}' needs " + " or ".join(needed)
+            )
+        return self
 
 class AlgorithmAnalysis(BaseModel):
     """Algorithm strength analysis"""

@@ -18,6 +18,9 @@ import {
  * model written to hold every construct the mapping handles.
  */
 
+/** hash_generator's algorithms, the enum of its hash_types items (#611). */
+const HASH_ALGORITHMS = ['sha224', 'sha256', 'sha384', 'sha512', 'blake2b', 'blake2s']
+
 const HASH_GENERATOR: JsonSchema = {
   description: 'Input schema for hash generation',
   properties: {
@@ -43,9 +46,10 @@ const HASH_GENERATOR: JsonSchema = {
     },
     input_text: { description: 'Text to generate hashes for', title: 'Input Text', type: 'string' },
     hash_types: {
-      default: ['md5', 'sha1', 'sha256', 'sha512'],
-      description: 'List of hash types to generate',
-      items: { type: 'string' },
+      default: ['sha256', 'sha512'],
+      description: 'Hash algorithms to generate (sha224, sha256, sha384, sha512, blake2b, blake2s)',
+      items: { enum: HASH_ALGORITHMS, type: 'string' },
+      minItems: 1,
       title: 'Hash Types',
       type: 'array',
     },
@@ -61,6 +65,13 @@ const HASH_GENERATOR: JsonSchema = {
       minimum: 1,
       title: 'Iterations',
       type: 'integer',
+    },
+    output_format: {
+      default: 'hex',
+      description: 'Output format: hex, base64, or raw (the raw digest bytes, hex-encoded)',
+      enum: ['hex', 'base64', 'raw'],
+      title: 'Output Format',
+      type: 'string',
     },
   },
   required: ['input_text'],
@@ -131,6 +142,7 @@ test.describe('tool schema to form', () => {
       'hash_types',
       'include_salted',
       'iterations',
+      'output_format',
     ])
     const f = byName(fields)
     expect(f.target).toMatchObject({ kind: 'string', required: false, label: 'Target' })
@@ -138,8 +150,19 @@ test.describe('tool schema to form', () => {
     expect(f.verify_ssl).toMatchObject({ kind: 'boolean', default: true })
     expect(f.input_text).toMatchObject({ kind: 'string', required: true, hasDefault: false })
     expect(f.input_text.description).toBe('Text to generate hashes for')
-    expect(f.hash_types).toMatchObject({ kind: 'array', items: { kind: 'string' } })
+    // An array of enum members: a group of checkboxes, one per algorithm.
+    expect(f.hash_types).toMatchObject({
+      kind: 'array',
+      items: { kind: 'enum', enumValues: HASH_ALGORITHMS },
+      minItems: 1,
+      default: ['sha256', 'sha512'],
+    })
     expect(f.iterations).toMatchObject({ kind: 'integer', minimum: 1, maximum: 1000000 })
+    expect(f.output_format).toMatchObject({
+      kind: 'enum',
+      enumValues: ['hex', 'base64', 'raw'],
+      default: 'hex',
+    })
   })
 
   test('resolves $ref, unwraps Optional, and falls back to JSON for objects', () => {
@@ -175,9 +198,10 @@ test.describe('tool schema to form', () => {
       timeout: '30',
       verify_ssl: true,
       input_text: '',
-      hash_types: 'md5\nsha1\nsha256\nsha512',
+      hash_types: [enumKey('sha256'), enumKey('sha512')],
       include_salted: false,
       iterations: '1',
+      output_format: enumKey('hex'),
     })
     const everything = initialValues(fieldsFromSchema(EVERYTHING))
     expect(everything.mode).toBe(enumKey('fast'))
@@ -190,7 +214,10 @@ test.describe('tool schema to form', () => {
     const fields = fieldsFromSchema(HASH_GENERATOR)
     const result = buildRequestBody(
       fields,
-      valuesWith(fields, { input_text: 'wildbox', hash_types: ' sha256 \n\n md5 ' })
+      valuesWith(fields, {
+        input_text: 'wildbox',
+        hash_types: [enumKey('sha256'), enumKey('blake2b')],
+      })
     )
     expect(result).toEqual({
       ok: true,
@@ -198,10 +225,39 @@ test.describe('tool schema to form', () => {
         timeout: 30,
         verify_ssl: true,
         input_text: 'wildbox',
-        hash_types: ['sha256', 'md5'],
+        hash_types: ['sha256', 'blake2b'],
         include_salted: false,
         iterations: 1,
+        output_format: 'hex',
       },
+    })
+    // No algorithm checked: hash_types is optional, so the service default
+    // applies instead of an empty list its minItems would refuse.
+    expect(
+      buildRequestBody(fields, valuesWith(fields, { input_text: 'x', hash_types: [] }))
+    ).toEqual({
+      ok: true,
+      body: {
+        timeout: 30,
+        verify_ssl: true,
+        input_text: 'x',
+        include_salted: false,
+        iterations: 1,
+        output_format: 'hex',
+      },
+    })
+  })
+
+  test('only the enum members can be sent', () => {
+    // md5 is not among hash_generator's algorithms, so the form cannot send it.
+    const fields = fieldsFromSchema(HASH_GENERATOR)
+    const result = buildRequestBody(
+      fields,
+      valuesWith(fields, { input_text: 'x', hash_types: [enumKey('sha256'), enumKey('md5')] })
+    )
+    expect(result).toEqual({
+      ok: false,
+      errors: { hash_types: 'Item 2 ("md5"): Choose one of the listed values' },
     })
   })
 
@@ -268,7 +324,7 @@ test.describe('tool schema to form', () => {
         url: 'https://example.com',
         opt_mode: enumKey('full'),
         flag: enumKey(false),
-        ports: '22\n443',
+        ports: ' 22 \n\n 443 ',
         kinds: [enumKey('fast'), enumKey('full')],
         headers: '{"X-A": "1"}',
       })

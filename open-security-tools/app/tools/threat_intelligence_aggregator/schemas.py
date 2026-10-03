@@ -1,18 +1,26 @@
 from pydantic import BaseModel, Field
 from ...standardized_schemas import BaseToolInput, BaseToolOutput
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 from datetime import datetime
 
 class ThreatIntelligenceRequest(BaseToolInput):
     """Request model for threat intelligence aggregation"""
-    indicator: str = Field(..., description="Threat indicator (IP, domain, hash, URL)")
-    indicator_type: str = Field(..., description="Type of indicator: ip, domain, hash, url, email")
-    sources: Optional[List[str]] = Field(
-        default=["virustotal", "alienvault", "threatcrowd", "malwarebazaar"],
-        description="Threat intelligence sources to query"
+    indicator: str = Field(..., description="Threat indicator (IP, domain, hash, URL, email)", examples=["8.8.8.8"])
+    # The types main.py validates; another one raised out of execute_tool
+    # (#611).
+    indicator_type: Literal["ip", "domain", "hash", "url", "email"] = Field(
+        ..., description="Type of indicator: ip, domain, hash, url, email", examples=["ip"]
+    )
+    # The sources main.py queries. The default listed malwarebazaar, which is
+    # not implemented and was skipped silently, and null crashed the lookup
+    # (#611).
+    sources: List[Literal["virustotal", "alienvault", "threatcrowd"]] = Field(
+        default=["virustotal", "alienvault", "threatcrowd"],
+        min_length=1,
+        description="Threat intelligence sources to query (virustotal, alienvault, threatcrowd)"
     )
     include_historical: bool = Field(default=True, description="Include historical threat data")
-    confidence_threshold: int = Field(default=50, description="Minimum confidence score (0-100)")
+    confidence_threshold: int = Field(default=50, ge=0, le=100, description="Minimum confidence score (0-100)")
 
 class ThreatIntelligenceSource(BaseModel):
     """Threat intelligence source information"""

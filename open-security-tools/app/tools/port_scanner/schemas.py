@@ -2,7 +2,7 @@ from ...standardized_schemas import BaseToolInput, BaseToolOutput
 """Pydantic schemas for the port scanner tool - STANDARDIZED VERSION."""
 
 from pydantic import Field
-from typing import List, Optional
+from typing import Annotated, List, Literal, Optional
 import sys
 import os
 
@@ -19,8 +19,15 @@ from ...standardized_schemas import (
 
 class PortScannerInput(BaseToolInput):
     """Port scanner input schema - inherits from BaseToolInput."""
-    ports: Optional[List[int]] = Field(None, description="List of ports to scan. If not provided, scans common ports.")
-    scan_type: str = Field(default="tcp", description="Scan type (tcp/udp/syn)")
+    # Required here although optional in BaseToolInput: main.py refuses an
+    # empty target, so the defaults alone could not run (#611).
+    target: str = Field(..., min_length=1, description="Host name or IP address to scan", examples=["127.0.0.1"])
+    ports: Optional[List[Annotated[int, Field(ge=1, le=65535)]]] = Field(
+        None, description="List of ports to scan. If not provided, scans common ports."
+    )
+    # main.py performs a TCP connect scan only; udp and syn were offered and
+    # ignored (#611).
+    scan_type: Literal["tcp"] = Field(default="tcp", description="Scan type (tcp: TCP connect scan)")
 
 class PortScannerOutput(BaseToolOutput):
     """Port scanner output schema - inherits from BaseToolOutput."""

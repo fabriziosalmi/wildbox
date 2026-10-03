@@ -6,6 +6,7 @@ import re
 import logging
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
+from ...tool_errors import RUN_ERRORS, ToolRunError
 from ...input_validation import InputSanitizer
 from ...url_guard import is_local_hostname, parse_target_url
 from .schemas import WHOISLookupInput, WHOISLookupOutput, WHOISResult, WHOISContact
@@ -116,8 +117,8 @@ def query_whois_server(domain: str, server: str, timeout: int, address: Optional
         sock.close()
         return response.decode('utf-8', errors='ignore')
 
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-        raise Exception(f"Failed to query WHOIS server {server}: {str(e)}")
+    except RUN_ERRORS as e:
+        raise ToolRunError(f"Failed to query WHOIS server {server}: {str(e)}")
 
 def parse_date(date_str: str) -> Optional[datetime]:
     """Parse various date formats found in WHOIS data."""
@@ -334,7 +335,7 @@ def execute_tool(input_data: WHOISLookupInput) -> WHOISLookupOutput:
             days_until_expiry=days_until_expiry
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return WHOISLookupOutput(
             timestamp=timestamp,
             domain=domain,
