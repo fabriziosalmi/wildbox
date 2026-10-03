@@ -214,16 +214,6 @@ async def identity_client(
 
 
 @pytest_asyncio.fixture(scope="function", loop_scope="session")
-async def api_client(
-    http_client: httpx.AsyncClient, api_url: str, test_api_key: str
-) -> httpx.AsyncClient:
-    """HTTP client configured for tools/API service with auth"""
-    http_client.base_url = api_url
-    http_client.headers.update({"X-API-Key": test_api_key})
-    return http_client
-
-
-@pytest_asyncio.fixture(scope="function", loop_scope="session")
 async def data_client(
     http_client: httpx.AsyncClient, data_url: str, test_api_key: str
 ) -> httpx.AsyncClient:

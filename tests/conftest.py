@@ -70,36 +70,6 @@ def admin_token(service_urls: Dict[str, str], test_credentials: Dict[str, str]) 
     pytest.fail("Admin authentication failed - verify credentials in test environment")
 
 
-@pytest.fixture(scope="function")
-def api_client(service_urls: Dict[str, str], test_credentials: Dict[str, str]):
-    """Create authenticated API client"""
-    import requests
-
-    class APIClient:
-        def __init__(self, service: str):
-            self.base_url = service_urls[service]
-            self.api_key = test_credentials["api_key"]
-            self.session = requests.Session()
-            self.session.headers.update({
-                "X-API-Key": self.api_key,
-                "Content-Type": "application/json"
-            })
-
-        def get(self, path: str, **kwargs):
-            return self.session.get(f"{self.base_url}{path}", **kwargs)
-
-        def post(self, path: str, **kwargs):
-            return self.session.post(f"{self.base_url}{path}", **kwargs)
-
-        def put(self, path: str, **kwargs):
-            return self.session.put(f"{self.base_url}{path}", **kwargs)
-
-        def delete(self, path: str, **kwargs):
-            return self.session.delete(f"{self.base_url}{path}", **kwargs)
-
-    return APIClient
-
-
 @pytest.fixture(scope="session")
 def wait_for_services(service_urls: Dict[str, str]):
     """Wait for services to be ready before running tests"""
