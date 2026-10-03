@@ -2,6 +2,25 @@
 
 This guide helps you test the Wildbox log ingestion and analysis pipeline using the web attack detection use case.
 
+## Before You Start
+
+The sensor sends its events to the gateway with an API key of its own,
+scoped to `data:ingest`, and you read them back through the gateway as a
+member of the same team. Set up both as the
+[use case README](../README.md#step-1b-create-the-sensors-account-and-api-key)
+describes, then, from the Wildbox root:
+
+```bash
+# The sensor's key (data:ingest), read by the sensor
+export SENSOR_DATA_LAKE_API_KEY=wsk_...
+# The certificate the gateway generated, and a key of yours with the read scope
+export WILDBOX_CA=$PWD/open-security-gateway/ssl/wildbox.crt
+export H="X-API-Key: wsk_your_read_key"
+```
+
+Every `curl` below goes through the gateway, `https://localhost/api/v1/data`,
+and shows your team's telemetry only.
+
 ## 🧪 Test Scenarios
 
 ### Scenario 1: Basic Log Ingestion
@@ -37,13 +56,17 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
        path: /tmp/wildbox-test/access.log
    ```
 
+   The sensor does not read `log_sources` yet (#638): until it does, copy
+   the test logs to `/var/log/nginx/access.log` on a test host instead.
+
 4. Start the sensor and verify ingestion:
 
    ```bash
    # Check telemetry stats
-   curl http://localhost:8001/api/v1/telemetry/stats | jq
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats" | jq
 
-   # Expected output: events_by_type should show log.nginx_access
+   # Expected output: events_by_type counts security_event; each log
+   # event carries the tag log.nginx_access
    ```
 
 **Expected Result**: Events appear in telemetry stats.
@@ -73,7 +96,7 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
 
    ```bash
    # Watch stats update
-   watch -n 2 'curl -s http://localhost:8001/api/v1/telemetry/stats | jq'
+   watch -n 2 "curl -s --cacert '$WILDBOX_CA' -H '$H' https://localhost/api/v1/data/telemetry/stats | jq"
    ```
 
 **Expected Result**: Event count increases in real-time.
@@ -99,18 +122,19 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
 
    ```bash
    # Get all events
-   curl "http://localhost:8001/api/v1/telemetry/events?limit=100" | jq
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=100" | jq
 
-   # Filter by specific tags (if implemented)
-   curl "http://localhost:8001/api/v1/telemetry/events?event_type=log.nginx_access&limit=100" | jq
+   # Log events: type security_event, log source as a tag
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?event_type=security_event&limit=100" | \
+     jq '[.[] | select(.tags | index("log.nginx_access"))]'
    ```
 
 3. Analyze event data:
 
    ```bash
    # Look for SQL injection patterns in event_data
-   curl "http://localhost:8001/api/v1/telemetry/events?limit=500" | \
-     jq '.[] | select(.event_data.request | contains("OR")) | {timestamp, ip: .event_data.client_ip, request: .event_data.request}'
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=500" | \
+     jq '.[] | select(.event_data.data.request | contains("OR")) | {timestamp, ip: .event_data.data.client_ip, request: .event_data.data.request}'
    ```
 
 **Expected Result**: Different attack types are visible in the event data.
@@ -145,7 +169,7 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
 3. Verify all events were ingested:
 
    ```bash
-   curl "http://localhost:8001/api/v1/telemetry/stats" | jq .total_events
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats" | jq .total_events
    ```
 
 **Expected Result**: All 10,000 events ingested without errors or high resource usage.
@@ -171,16 +195,16 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
 
    ```bash
    # Get all events from a specific IP
-   curl "http://localhost:8001/api/v1/telemetry/events?limit=1000" | \
-     jq '[.[] | select(.event_data.client_ip == "10.0.0.100")] | length'
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=1000" | \
+     jq '[.[] | select(.event_data.data.client_ip == "10.0.0.100")] | length'
    ```
 
 3. Identify top attacking IPs:
 
    ```bash
    # Count events per IP (requires jq processing)
-   curl "http://localhost:8001/api/v1/telemetry/events?limit=1000" | \
-     jq -r '.[].event_data.client_ip' | sort | uniq -c | sort -rn | head -10
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=1000" | \
+     jq -r '.[].event_data.data.client_ip' | sort | uniq -c | sort -rn | head -10
    ```
 
 **Expected Result**: Attacker IPs (10.0.0.100-119) show higher event counts.
@@ -206,17 +230,17 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
    ```bash
    # Events from last hour
    START_TIME=$(date -u -v-1H +"%Y-%m-%dT%H:%M:%SZ")
-   curl "http://localhost:8001/api/v1/telemetry/events?start_time=${START_TIME}&limit=100" | jq
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?start_time=${START_TIME}&limit=100" | jq
    ```
 
 3. Check stats for different time windows:
 
    ```bash
    # Last 1 hour
-   curl "http://localhost:8001/api/v1/telemetry/stats?hours=1" | jq
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats?hours=1" | jq
 
    # Last 24 hours
-   curl "http://localhost:8001/api/v1/telemetry/stats?hours=24" | jq
+   curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats?hours=24" | jq
    ```
 
 **Expected Result**: Events are properly filtered by time range.
@@ -229,7 +253,7 @@ This guide helps you test the Wildbox log ingestion and analysis pipeline using 
 
 - [ ] Sensor service is running
 - [ ] No errors in sensor logs
-- [ ] Sensor appears in sensors list: `curl http://localhost:8001/api/v1/sensors`
+- [ ] Sensor appears in sensors list: `curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/sensors"`
 - [ ] Memory usage is within limits (< 128MB by default)
 
 ### ✅ Data Ingestion
@@ -270,15 +294,21 @@ docker-compose logs sensor
 # Verify log file exists and is readable
 ls -la /tmp/wildbox-test/access.log
 
-# Test Data Lake connectivity
-docker-compose exec sensor curl http://data:8001/health
+# Test the connection to the gateway with the sensor's key
+docker-compose exec sensor python main.py --config /etc/security-sensor/config.yaml --test-connection
 ```
 
 **Common Fixes**:
 
 - Ensure log file path is correct in config
-- Check Data Lake is running: `docker-compose ps data`
-- Verify API key is set in config
+- Check the gateway is running: `docker-compose ps gateway`
+- Set `SENSOR_DATA_LAKE_API_KEY` to an identity API key with the
+  `data:ingest` scope; without one the sensor logs that forwarding is
+  disabled
+- A 401 in the sensor's log: the key is invalid, expired or revoked; a 403
+  `insufficient_scope`: it lacks `data:ingest`; a certificate error:
+  `data_lake.ca_bundle` is not the gateway's certificate
+- Read the events as a member of the sensor's team: other teams see none
 - Check file permissions
 
 ### Test Fails: Events Missing Data
@@ -287,7 +317,7 @@ docker-compose exec sensor curl http://data:8001/health
 
 ```bash
 # Check raw event structure
-curl "http://localhost:8001/api/v1/telemetry/events?limit=1" | jq '.[0]'
+curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events?limit=1" | jq '.[0]'
 
 # Verify log format matches nginx format
 head -5 /tmp/wildbox-test/access.log
@@ -326,11 +356,11 @@ Track these metrics during testing:
 
 | Metric | Target | Command |
 | -------- | -------- | --------- |
-| Events ingested | 100% of generated | `curl http://localhost:8001/api/v1/telemetry/stats` |
+| Events ingested | 100% of generated | `curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/stats"` |
 | Memory usage | < 128 MB | `docker stats sensor` |
 | CPU usage | < 5% | `docker stats sensor` |
 | Ingestion latency | < 5 seconds | Compare log timestamp to ingested_at |
-| API response time | < 500ms | `time curl http://localhost:8001/api/v1/telemetry/events` |
+| API response time | < 500ms | `time curl --cacert "$WILDBOX_CA" -H "$H" "https://localhost/api/v1/data/telemetry/events"` |
 
 ---
 
@@ -396,4 +426,4 @@ Use this template to document your test results:
 
 - [Main README](../README.md)
 - [Attack Patterns Reference](attack-patterns.md)
-- [Wildbox Data Lake API](http://localhost:8001/docs)
+- [Wildbox Data Lake API](../../../docs/api/data/endpoints.md)

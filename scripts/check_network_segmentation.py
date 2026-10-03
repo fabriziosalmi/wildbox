@@ -46,7 +46,8 @@ EXPECTED_NETWORKS = {
     "guardian": {"backend", "data"},
     "responder": {"backend", "data"},
     "agents": {"backend", "data"},
-    "sensor": {"backend"},
+    # A gateway client, like a browser (#628).
+    "sensor": {"frontend"},
     "automations": {"backend"},
     "prometheus": {"backend"},
     "tools-worker": {"data", "egress"},
@@ -106,7 +107,7 @@ MUST_CONNECT = [
     ("cspm-worker", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "api", 8000, "WILDBOX_API_URL"),
-    ("sensor", "open-security-data", 8002, "ingest endpoint"),
+    ("sensor", "open-security-gateway", 443, "telemetry ingest via the gateway"),
     ("api", "github.com", 443, "outbound internet via backend"),
     ("agents", "api.anthropic.com", 443, "outbound internet via backend"),
     ("tools-worker", "github.com", 443, "outbound internet via egress"),
@@ -126,6 +127,8 @@ MUST_NOT_CONNECT = [
     ("gateway", "wildbox-redis", 6379, "gateway is not on data"),
     ("sensor", "wildbox-postgres", 5432, "sensor is not on data"),
     ("sensor", "wildbox-redis", 6379, "sensor is not on data"),
+    ("sensor", "open-security-data", 8002, "sensor ingests through the gateway"),
+    ("sensor", "open-security-identity", 8001, "sensor is not on backend"),
     (
         "gateway",
         "open-security-tools-flower",

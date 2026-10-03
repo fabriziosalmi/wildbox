@@ -759,6 +759,12 @@ local function required_scope_for_request(uri, method)
     if uri:find("^/api/v1/automations/") then
         return "tools:admin"
     end
+    -- Sensor telemetry ingest (#628): its own scope, so that a sensor's key
+    -- can be limited to sending telemetry. data:ingest satisfies nothing
+    -- else, and "write" and "data:write" keep satisfying this route.
+    if uri == "/api/v1/data/ingest" then
+        return is_read and "read" or "data:ingest"
+    end
     -- Guardian: vulnerability/asset/compliance data.
     if uri:find("^/api/v1/guardian/") then
         if is_read then return "data:read" end
@@ -803,6 +809,10 @@ local function scopes_satisfy(granted, required)
                 or set["read"] or set["write"]) == true
     elseif action == "write" or action == "execute" then
         return (set[res .. ":write"] or set[res .. ":execute"] or set["write"]) == true
+    elseif action == "ingest" then
+        -- Granted explicitly, or by a write scope on the resource (or a
+        -- generic one): a key that could write data could ingest before.
+        return (set[res .. ":ingest"] or set[res .. ":write"] or set["write"]) == true
     elseif action == "delete" then
         return set[res .. ":delete"] == true  -- needs explicit delete (or res admin, above)
     end

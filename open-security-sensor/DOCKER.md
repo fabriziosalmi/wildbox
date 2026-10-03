@@ -25,7 +25,10 @@ This guide provides comprehensive instructions for deploying the Open Security S
 
    ```bash
    nano config.yaml
-   # Update data_lake.endpoint and data_lake.api_key
+   # Set data_lake.endpoint to your gateway (https://...) and, if no public
+   # CA signed its certificate, data_lake.ca_bundle. Give the API key
+   # through SENSOR_DATA_LAKE_API_KEY; see README.md, "Sending telemetry to
+   # Wildbox".
    ```
 
 3. **Deploy:**
@@ -313,43 +316,29 @@ performance:
 
 ## Integration with Security Suite
 
-### Connect to Data Lake
+### Connect to Wildbox
 
-Update `config.yaml`:
+The sensor sends telemetry to the Wildbox gateway over HTTPS, with an identity
+API key scoped to `data:ingest`; the gateway stores it under the key's team.
+It never connects to the data service directly. Update `config.yaml`:
 
 ```yaml
 data_lake:
-  endpoint: "https://your-data-lake.com/api/v1/ingest"
-  api_key: "your-api-key"
+  endpoint: "https://wildbox.example.com"
+  tls_verify: true
+  ca_bundle: "/etc/ssl/wildbox/wildbox.crt"  # if no public CA signed it
 ```
 
-### Multi-Component Deployment
-
-Deploy with other security components:
-
-```bash
-# Create shared network
-docker network create security-suite
-
-# Deploy data lake
-cd ../open-security-data
-docker-compose up -d
-
-# Deploy sensor
-cd ../open-security-sensor  
-docker-compose up -d
-```
-
-### Service Discovery
-
-Components communicate via Docker networks:
+and pass the key in the environment:
 
 ```yaml
-networks:
-  security-suite:
-    external: true
-    name: security-suite
+environment:
+  - SENSOR_DATA_LAKE_API_KEY=${SENSOR_DATA_LAKE_API_KEY}
 ```
+
+How to create the sensor's member and key, and how to check the connection,
+is in [README.md](README.md#sending-telemetry-to-wildbox). Inside the Wildbox
+stack itself the root `docker-compose.yml` already wires all of this.
 
 ## Advanced Configuration
 

@@ -79,6 +79,14 @@ TOKENS = {
         "scopes": ["tools:execute"],
         "api_key_id": "key-toolsexec",
     },
+    # A sensor's key: telemetry ingest and nothing else (#628).
+    "wsk_ingest_ci_fixture": {
+        "user_id": "user-7777",
+        "team_id": "team-8888",
+        "role": "user",
+        "scopes": ["data:ingest"],
+        "api_key_id": "key-ingest",
+    },
     # An answer for an API key that does not name the key, as identity
     # before #593 gave: the gateway cannot check it against a revocation,
     # so it must not serve it.

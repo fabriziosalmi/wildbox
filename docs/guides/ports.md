@@ -28,7 +28,7 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `identity` | `open-security-identity` | `127.0.0.1:8001` | Users, JWT (JSON Web Token) login, API keys, teams | `http://localhost:8001/health` |
 | `api` | (Compose default) | `127.0.0.1:8000` | Security tools API | `http://localhost:8000/health` |
 | `data` | (Compose default) | `127.0.0.1:8002` | Threat intelligence and IOC (indicator of compromise) data | `http://localhost:8002/health` |
-| `sensor` | `open-security-sensor` | `127.0.0.1:8004` | Endpoint telemetry (not routed through the gateway) | `http://localhost:8004/health` |
+| `sensor` | `open-security-sensor` | `127.0.0.1:8004` | Endpoint telemetry. Its local API is not routed through the gateway; it sends telemetry to the gateway's `443` (`/api/v1/data/ingest`) | `http://localhost:8004/health` |
 | `agents` | `open-security-agents` | `127.0.0.1:8006` | AI-assisted analysis | `http://localhost:8006/health` |
 | `guardian` | `open-security-guardian` | `127.0.0.1:8013` | Vulnerability and asset management | `http://localhost:8013/health` |
 | `responder` | `open-security-responder` | `127.0.0.1:8018` | Incident response playbooks | `http://localhost:8018/health` |

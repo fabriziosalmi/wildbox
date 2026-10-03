@@ -1,10 +1,13 @@
 # Open Security Sensor Configuration
 
 # Data Lake Connection
+# Through the gateway, with an identity API key scoped to data:ingest; see
+# config.yaml.example and README.md.
 data_lake:
-  endpoint: "http://open-security-data:8002/api/v1/ingest"  # Connect to internal data service
-  api_key: "CONFIGURE_VIA_ENV"  # Set via SENSOR_DATA_LAKE_API_KEY env var
+  endpoint: "https://open-security-gateway"  # SENSOR_DATA_LAKE_ENDPOINT
+  api_key: ""  # SENSOR_DATA_LAKE_API_KEY; unset, nothing is forwarded
   tls_verify: true
+  ca_bundle: ""  # SENSOR_DATA_LAKE_CA_BUNDLE
   batch_size: 50
   flush_interval: 30
   timeout: 30
