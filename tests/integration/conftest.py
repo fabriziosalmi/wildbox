@@ -416,6 +416,7 @@ _MODULE_SERVICE = {
     "test_responder_tenancy": "responder",
     "test_sensor_telemetry": "sensor",
     "test_tools_execution": "tools",
+    "test_tools_async_tasks": "tools",
     "test_admin_auth": "identity",
     # Module-level test functions, not classes. These were always collected and
     # always failed locally when the stack was down; they now skip with a reason
