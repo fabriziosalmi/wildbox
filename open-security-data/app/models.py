@@ -377,6 +377,11 @@ class TelemetryEvent(Base):
     __tablename__ = "telemetry_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # The team whose sensor reported the event: the team of the API key the
+    # sensor authenticated with at the gateway (#628). Telemetry is private to
+    # that team; unlike indicators there are no global rows, and a NULL (a row
+    # from before this column) is visible to no team.
+    team_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     sensor_id = Column(String(255), nullable=False, index=True)
     event_type = Column(String(50), nullable=False, index=True)
     timestamp = Column(DateTime(timezone=True), nullable=False, index=True)
@@ -395,6 +400,8 @@ class TelemetryEvent(Base):
     
     __table_args__ = (
         Index("idx_telemetry_sensor_timestamp", "sensor_id", "timestamp"),
+        # Every read is scoped to a team and ordered by time.
+        Index("idx_telemetry_team_timestamp", "team_id", "timestamp"),
         Index("idx_telemetry_type_timestamp", "event_type", "timestamp"),
         Index("idx_telemetry_ingested", "ingested_at"),
         Index("idx_telemetry_processed", "processed", "processed_at"),
@@ -405,7 +412,11 @@ class SensorMetadata(Base):
     __tablename__ = "sensor_metadata"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sensor_id = Column(String(255), unique=True, nullable=False, index=True)
+    # Owned by a team, as its events are (#628). A sensor ID is the sensor's
+    # own name for itself, so two teams may use the same one: it is unique
+    # per team, not globally, or one team's sensor would update another's.
+    team_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    sensor_id = Column(String(255), nullable=False, index=True)
     hostname = Column(String(255), nullable=True)
     platform = Column(String(100), nullable=True)
     sensor_version = Column(String(50), nullable=True)
@@ -424,4 +435,5 @@ class SensorMetadata(Base):
     
     __table_args__ = (
         Index("idx_sensor_active_last_seen", "active", "last_seen"),
+        UniqueConstraint("team_id", "sensor_id", name="uq_sensor_metadata_team_sensor"),
     )
