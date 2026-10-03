@@ -14,7 +14,7 @@ import redis
 
 from .config import settings
 from .agents.threat_enrichment_agent import get_threat_enrichment_agent
-from .tools.wildbox_client import set_caller_identity
+from .tools.wildbox_client import CallerIdentityUnavailable, caller_identity
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -69,20 +69,44 @@ def run_threat_enrichment_task(
 
     Returns:
         Complete analysis result dictionary
-    """
 
+    Raises:
+        CallerIdentityUnavailable: ``caller`` is missing or incomplete. The
+            task is refused before any work, so no tool call is made (#594).
+    """
+    # The worker runs task after task in the same context. Each task sets the
+    # identity from its own caller, or is refused, and the previous value is
+    # restored when it ends however it ends, so one task's identity is never
+    # what the next one's tool calls send (#594). It is set before the event
+    # loop runs: the task wrapping the agent coroutine, and the tool calls it
+    # gathers, copy the context they start from.
+    try:
+        with caller_identity(caller):
+            return _run_threat_enrichment(self, task_id, ioc)
+    except CallerIdentityUnavailable as e:
+        logger.error(f"Threat enrichment task {task_id} has no identity to send: {e}")
+        _record_failure(task_id)
+        raise
+
+
+def _record_failure(task_id: str) -> None:
+    """Mark a task failed in Redis, without masking why it failed."""
+    try:
+        redis_client.setex(
+            f"task:{task_id}:status", settings.task_result_expires, "failed"
+        )
+        redis_client.incr("stats:failed_today")
+    except Exception:
+        logger.error(f"Could not record the failure of task {task_id}", exc_info=True)
+
+
+def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str, Any]:
+    """The body of run_threat_enrichment_task, run inside the caller's scope."""
     try:
         logger.info(f"Starting threat enrichment task {task_id} for IOC type: {ioc['type']}")
 
-        # Forward the caller's identity to internal tool calls (#175). Set before
-        # the event loop runs so it is visible to the async agent/tool stack.
-        if caller and caller.get("user_id") and caller.get("team_id"):
-            set_caller_identity(
-                caller["user_id"], caller["team_id"], caller.get("role", "member")
-            )
-        
         # Update task status to running
-        self.update_state(
+        task.update_state(
             state="STARTED",
             meta={"progress": "Initializing AI agent..."}
         )
@@ -100,7 +124,7 @@ def run_threat_enrichment_task(
         
         try:
             # Update progress
-            self.update_state(
+            task.update_state(
                 state="STARTED",
                 meta={"progress": "Running AI analysis..."}
             )
@@ -144,7 +168,7 @@ def run_threat_enrichment_task(
         redis_client.incr("stats:failed_today")
         
         # Update task state
-        self.update_state(
+        task.update_state(
             state="FAILURE",
             meta={"error": str(e)}
         )

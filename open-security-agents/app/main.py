@@ -36,6 +36,7 @@ from .schemas import (
 from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
+from .tools.wildbox_client import CallerIdentityUnavailable, require_caller_identity
 
 # Configure logging
 logging.basicConfig(
@@ -264,7 +265,24 @@ async def analyze_ioc(
     to investigate the IOC and generate a comprehensive threat intelligence report.
     """
     logger.info(f"[AUTH] Authenticated user {user.user_id} (team: {user.team_id}) analyzing IOC type: {analysis.ioc.type}")
-    
+
+    # The worker refuses a task whose caller is missing or incomplete (#594);
+    # refuse it here as well, before any state is written or work enqueued.
+    try:
+        caller = require_caller_identity(
+            {
+                "user_id": user.user_id,
+                "team_id": user.team_id,
+                "role": getattr(user, "role", "member"),
+            }
+        )
+    except CallerIdentityUnavailable as e:
+        logger.warning(f"[AUTH] Refusing analysis: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="A user and team identity is required to run an analysis",
+        )
+
     try:
         # Generate unique task ID
         task_id = str(uuid.uuid4())
@@ -307,11 +325,7 @@ async def analyze_ioc(
             celery_task = run_threat_enrichment_task.delay(
                 task_id=task_id,
                 ioc=analysis.ioc.dict(),
-                caller={
-                    "user_id": str(user.user_id),
-                    "team_id": str(user.team_id),
-                    "role": getattr(user, "role", "member"),
-                },
+                caller=caller,
             )
         except Exception:
             # Nothing was enqueued: remove the state we just wrote so a failed
