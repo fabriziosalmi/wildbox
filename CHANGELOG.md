@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request as an error with a retry. The statistics no longer announce
   "No Vulnerabilities Found" while they are still loading, and their
   error card gains a retry.
+- **`/api-docs` no longer documents endpoints that do not exist** (#572).
+  Its hand-written catalogue listed routes no service serves (responder
+  `GET /v1/metrics`, identity `GET /api/v1/user/profile`), showed
+  "healthy" on every service without probing any, labelled endpoints
+  with Free / Business plans that nothing enforces, and gave an example
+  response with invented indicator counts and an `api.wildbox.local` base
+  URL. The services' OpenAPI pages are not routed through the gateway,
+  so the page now lists the gateway's routes, explains how to
+  authenticate, and links the endpoint references in `docs/api/` and on
+  the documentation site.
 - **`/cloud-security/scans` no longer lists invented scans** (#570).
   The CSPM service has no endpoint that lists scans, and the page filled
   the gap with three made-up ones, refreshed every 10 seconds, whose
