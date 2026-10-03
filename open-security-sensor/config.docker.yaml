@@ -1,10 +1,13 @@
 # Open Security Sensor Configuration for Docker Deployment
 
 # Data Lake Connection
+# Through the gateway, with an identity API key scoped to data:ingest; see
+# config.yaml.example and README.md.
 data_lake:
-  endpoint: "https://your-security-data-platform.com/api/v1/ingest"
-  api_key: "your-api-key-here"
+  endpoint: "https://wildbox.example.com"  # your gateway; SENSOR_DATA_LAKE_ENDPOINT
+  api_key: ""  # SENSOR_DATA_LAKE_API_KEY; unset, nothing is forwarded
   tls_verify: true
+  ca_bundle: ""  # SENSOR_DATA_LAKE_CA_BUNDLE, if no public CA signed the gateway's certificate
   batch_size: 100
   flush_interval: 30
   timeout: 30
