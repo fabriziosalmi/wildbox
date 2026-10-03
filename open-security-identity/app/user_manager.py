@@ -22,7 +22,7 @@ from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .auth import verify_password
+from .auth import verify_access_token, verify_password
 from .database import get_db
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
@@ -205,8 +205,11 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
           `current_password`, checked against the login lockout.
 
         The superuser update (PATCH /api/v1/users/{id}, safe=False) is an
-        administrator's change to another account and is left as it is.
-        `current_password` is never written to the user.
+        administrator's change to another account and is left as it is --
+        except when the account is the caller's own: a superuser's session
+        could otherwise do through /users/{own id} what /users/me refuses, so
+        the same rules apply there (#569). `current_password` is never
+        written to the user.
         """
         current_password = getattr(user_update, "current_password", None)
         if "current_password" in user_update.model_fields_set:
@@ -216,7 +219,7 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
                 )
             )
 
-        if safe:
+        if safe or self._is_callers_own_account(user, request):
             if getattr(user_update, "password", None) is not None:
                 raise exceptions.InvalidPasswordException(
                     reason=(
@@ -228,6 +231,25 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
             if new_email is not None and new_email != user.email:
                 await require_current_password(user, current_password, "the email address")
         return await super().update(user_update, user, safe=safe, request=request)
+
+    @staticmethod
+    def _is_callers_own_account(user, request) -> bool:
+        """Whether the bearer token behind `request` belongs to `user`.
+
+        fastapi-users does not pass the caller to update(). The route has
+        already authenticated this token (current_superuser), so reading its
+        subject again is safe; a request without one is not the user's own.
+        """
+        if request is None:
+            return False
+        scheme, _, token = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not token.strip():
+            return False
+        try:
+            payload = verify_access_token(token.strip())
+        except HTTPException:
+            return False
+        return payload.get("sub") == str(user.id)
 
     async def forgot_password(self, user, request=None) -> None:
         """Issue a reset token bound to the account's current email (#569).
