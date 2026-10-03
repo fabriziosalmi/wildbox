@@ -8,16 +8,30 @@
 # which half the services hold the old value and reject the other half
 # (WILDBO-SEC-04).
 #
-# It also matters WHICH secret you rotate. Until API_KEY_HASH_SECRET is set,
-# stored API-key digests are HMACs keyed by JWT_SECRET_KEY, so rotating the JWT
-# key invalidates every API key in the database (WILDBO-SEC-01). This script
-# refuses to rotate the JWT key until that decoupling is in place.
+# It also matters WHICH secret you rotate. Stored API-key digests are HMACs
+# keyed by API_KEY_HASH_SECRET, and identity used to fall back to
+# JWT_SECRET_KEY because compose never passed API_KEY_HASH_SECRET to it, so
+# rotating the JWT key invalidated every API key in the database
+# (WILDBO-SEC-01, #648). This script refuses to rotate the JWT key until
+# identity actually receives a separate API_KEY_HASH_SECRET: .env sets it,
+# `docker compose config` passes it to identity, and the running identity
+# container (if any) has it.
+#
+# On an existing deployment, seed API_KEY_HASH_SECRET with the current
+# JWT_SECRET_KEY ONCE, before identity starts with it (`--init`, or
+# `make init-api-key-hash`). The digests stored so far were keyed by that
+# value, so they keep matching.
 #
 # Usage:
 #   ./scripts/rotate_secrets.sh --list
 #   ./scripts/rotate_secrets.sh --secret GATEWAY_INTERNAL_SECRET
 #   ./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY
 #   ./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
+#
+# The compose checks use the files docker compose would use by default; set
+# COMPOSE_FILE to match how you start the stack, for example
+# COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml. No secret value is
+# ever printed.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -33,7 +47,7 @@ while [ $# -gt 0 ]; do
     --secret=*) SECRET="${1#*=}"; shift ;;
     --init) INIT=true; shift ;;
     --list) LIST=true; shift ;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -49,10 +63,11 @@ if [ "$LIST" = true ]; then
   echo "                           already-restarted and not-yet-restarted"
   echo "                           services. Stop-the-world; window is one restart."
   echo "  JWT_SECRET_KEY           Invalidates every active session (users must"
-  echo "                           log in again). ALSO invalidates every stored"
-  echo "                           API key unless API_KEY_HASH_SECRET is set."
-  echo "  API_KEY_HASH_SECRET      Invalidates every stored API key. Set it ONCE"
-  echo "                           (--init) before it diverges from the JWT key."
+  echo "                           log in again). Refused until identity receives"
+  echo "                           a separate API_KEY_HASH_SECRET."
+  echo "  API_KEY_HASH_SECRET      Invalidates every stored API key. On an existing"
+  echo "                           deployment seed it ONCE with --init (copies the"
+  echo "                           current JWT_SECRET_KEY) before identity uses it."
   echo "  API_KEY                  The tools service's static key. Restart the"
   echo "                           api and tools-worker containers together."
   echo "  CSPM_CREDENTIAL_KEY      In-flight scan credentials become undecryptable;"
@@ -76,25 +91,97 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-# Guard the coupling described above.
-if [ "$SECRET" = "JWT_SECRET_KEY" ]; then
-  if ! grep -qE '^API_KEY_HASH_SECRET=.+' "$ENV_FILE"; then
-    cat >&2 <<'MSG'
-REFUSING to rotate JWT_SECRET_KEY.
+if [ "$INIT" = true ] && [ "$SECRET" != "API_KEY_HASH_SECRET" ]; then
+  echo "ERROR: --init applies to API_KEY_HASH_SECRET only" >&2
+  exit 2
+fi
 
-Stored API-key digests are HMACs keyed by JWT_SECRET_KEY until
-API_KEY_HASH_SECRET is set, so rotating the JWT key now would silently
-invalidate every API key in the database with no way to bring them back
-(WILDBO-SEC-01).
+# Exit 0 when the variable named by $1 is non-empty in the environment of
+# identity as `docker compose config` renders it. The rendered config holds
+# every secret, so it goes straight into python and is never printed.
+compose_passes_to_identity() {
+  docker compose --env-file "$ENV_FILE" config --format json 2>/dev/null \
+    | VAR="$1" python3 -c '
+import json, os, sys
+try:
+    env = json.load(sys.stdin)["services"]["identity"].get("environment") or {}
+except (ValueError, KeyError, TypeError):
+    sys.exit(1)
+if isinstance(env, list):
+    env = dict(item.split("=", 1) for item in env if "=" in item)
+sys.exit(0 if (env.get(os.environ["VAR"]) or "").strip() else 1)
+'
+}
 
-Decouple them first:
+# Exit 0 when the identity container is not running, or when it is and has
+# the variable named by $1 set. Checked inside the container; nothing is
+# printed.
+running_identity_has() {
+  local id
+  id=$(docker compose --env-file "$ENV_FILE" ps --status running -q identity 2>/dev/null || true)
+  if [ -z "$id" ]; then
+    echo "identity is not running; checked the compose configuration only."
+    return 0
+  fi
+  docker compose --env-file "$ENV_FILE" exec -T identity python -c \
+    "import os, sys; sys.exit(0 if os.environ.get('$1', '').strip() else 1)" \
+    >/dev/null 2>&1
+}
+
+refuse_jwt_rotation() {
+  cat >&2 <<MSG
+REFUSING to rotate JWT_SECRET_KEY: $1
+
+Unless identity receives a separate API_KEY_HASH_SECRET, it keys stored
+API-key digests with JWT_SECRET_KEY, so rotating the JWT key now would
+silently invalidate every API key in the database with no way to bring them
+back (WILDBO-SEC-01, #648).
+
+On an existing deployment, seed it with the current JWT key, then recreate
+identity with the release that passes it (see UPGRADING.md):
 
     ./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
+    docker compose up -d identity
 
-That sets API_KEY_HASH_SECRET to the CURRENT JWT_SECRET_KEY, so existing API
-keys keep working, and the two can then be rotated independently.
+Existing API keys keep working, and the two secrets can then be rotated
+independently. Set COMPOSE_FILE if you start the stack with an overlay.
 MSG
-    exit 1
+  exit 1
+}
+
+# Guard the coupling described above. Trusting .env alone is not enough:
+# generate_secrets.py always writes API_KEY_HASH_SECRET, while identity did
+# not receive it, so a check of .env passed on every deployment (#648).
+if [ "$SECRET" = "JWT_SECRET_KEY" ]; then
+  if ! grep -qE '^API_KEY_HASH_SECRET=.+' "$ENV_FILE"; then
+    refuse_jwt_rotation "API_KEY_HASH_SECRET is not set in $ENV_FILE."
+  fi
+  if ! command -v docker >/dev/null 2>&1; then
+    refuse_jwt_rotation "docker is not available, so it cannot be verified that identity receives API_KEY_HASH_SECRET."
+  fi
+  if ! compose_passes_to_identity API_KEY_HASH_SECRET; then
+    refuse_jwt_rotation "the compose configuration does not pass API_KEY_HASH_SECRET to identity."
+  fi
+  if ! running_identity_has API_KEY_HASH_SECRET; then
+    refuse_jwt_rotation "the running identity container does not have API_KEY_HASH_SECRET; recreate it first (docker compose up -d identity)."
+  fi
+fi
+
+if [ "$SECRET" = "API_KEY_HASH_SECRET" ] && [ "$INIT" = true ]; then
+  # Read without echoing; compared and written by python, never printed.
+  if ENV_FILE="$ENV_FILE" python3 - <<'PY'
+import os, re, sys
+values = {}
+for line in open(os.environ["ENV_FILE"], encoding="utf-8"):
+    m = re.match(r"^(JWT_SECRET_KEY|API_KEY_HASH_SECRET)=(.*)$", line.rstrip("\n"))
+    if m and m.group(1) not in values:
+        values[m.group(1)] = m.group(2)
+jwt = values.get("JWT_SECRET_KEY", "")
+sys.exit(0 if jwt and values.get("API_KEY_HASH_SECRET") == jwt else 1)
+PY
+  then
+    echo "API_KEY_HASH_SECRET already equals JWT_SECRET_KEY in $ENV_FILE; nothing to do."
+    exit 0
   fi
 fi
 
@@ -115,12 +202,16 @@ else
   NEW=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
 fi
 
+# The value travels in the environment, not in argv, where any local user
+# could read it with ps.
 if grep -qE "^${SECRET}=" "$ENV_FILE"; then
-  python3 - "$ENV_FILE" "$SECRET" "$NEW" <<'PY'
-import sys, re
-path, name, value = sys.argv[1], sys.argv[2], sys.argv[3]
+  ENV_FILE="$ENV_FILE" NAME="$SECRET" VALUE="$NEW" python3 - <<'PY'
+import os, re
+path, name, value = os.environ["ENV_FILE"], os.environ["NAME"], os.environ["VALUE"]
 lines = open(path).read().split('\n')
-out = [re.sub(rf'^{re.escape(name)}=.*$', f'{name}={value}', l) for l in lines]
+# A function replacement: the value is inserted literally, so a backslash
+# in it is not read as a group reference.
+out = [re.sub(rf'^{re.escape(name)}=.*$', lambda _m: f'{name}={value}', l) for l in lines]
 open(path, 'w').write('\n'.join(out))
 PY
 else
