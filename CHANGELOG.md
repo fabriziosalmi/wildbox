@@ -36,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A protected route no longer answers 503 when identity closes an idle
+  connection** (#609). The gateway asks identity to authorize every
+  uncached token over connections it keeps alive, and kept them idle for
+  60 s, while identity (uvicorn) closes them after 5 s. A request written
+  into a connection identity was closing failed with "connection reset
+  by peer" or "broken pipe", and the gateway answered 503 with nginx's
+  HTML error page: about one E2E repetition in a hundred, at times three.
+  Ten of those within a minute opened the circuit breaker, and every
+  uncached token then got 503 for a minute. The gateway now gives an
+  idle connection up after 4 s, for its Lua calls and for every upstream
+  it proxies to (a POST written into a closing connection got a 502), and
+  sends an authorization that met a closed connection once more, on
+  another one: authorizing changes nothing at identity. Only a failure
+  that survives that counts toward the circuit breaker. When identity
+  cannot be reached, the 503 is now JSON, like every other refusal of
+  the gateway, with `Retry-After`.
+
 - **A responder step condition on an undefined name is false** (#595).
   Templates render with `StrictUndefined`, so a condition that checked
   an optional field, such as `trigger.tag == 'urgent'` when the trigger
@@ -1027,6 +1044,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   finding is a GitHub annotation and any finding fails the job, which is
   no longer advisory. The 16 findings left in the documentation are
   fixed.
+
+- **A failed E2E run keeps what is needed to trace it** (#609). The
+  workflow printed the last 150 lines of `docker compose logs`, which do
+  not include the gateway's access and error logs: they are files. On
+  failure it now uploads them, with the state and restart count of every
+  container and the full, timestamped logs of gateway, identity and
+  data, and prints the access log's 5xx lines. The access log records
+  `$request_id`, `$upstream_addr` and `$upstream_status`, so a 5xx line
+  says whether an upstream answered it or the gateway did.
 
 - **Every test file runs in CI, and a new one cannot be left out**
   (#582). Sixteen files named `test_*.py` sat where no workflow looked:
