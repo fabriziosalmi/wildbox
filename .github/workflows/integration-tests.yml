@@ -204,6 +204,35 @@ jobs:
         if: failure()
         run: docker compose logs --tail=200
 
+      # The tail above is 200 lines per service, interleaved, so the request
+      # that failed is often already out of it: the 500 of #619 left only
+      # "HTTP request failed" from the tools service. Every service's full
+      # log goes into an artifact, one file each, with the tools service's
+      # failures and tracebacks printed here. Container logs and states
+      # only: nothing here prints the environment or .env.
+      - name: Collect service diagnostics
+        if: failure()
+        run: |
+          out=integration-diagnostics
+          mkdir -p "$out"
+          docker compose ps -a > "$out/compose-ps.txt" 2>&1 || true
+          for svc in $(docker compose ps -a --format '{{.Service}}' | sort -u); do
+            docker compose logs --timestamps --no-color "$svc" > "$out/$svc.log" 2>&1 || true
+          done
+          for svc in api tools-worker; do
+            echo "--- $svc: failed requests and tracebacks ---"
+            grep -nE '" 5[0-9]{2} |request failed|Traceback|Error' "$out/$svc.log" | tail -50 || true
+          done
+
+      - name: Upload service diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-diagnostics
+          path: integration-diagnostics/
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v7

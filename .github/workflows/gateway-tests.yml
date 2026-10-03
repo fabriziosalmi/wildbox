@@ -55,10 +55,17 @@ jobs:
             -e GATEWAY_INTERNAL_SECRET=not-the-right-proof-of-origin \
             -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
             wildbox-gateway-test
+          # A low per-team budget: 120 an hour is 2 requests a minute, which
+          # ci_auth_tests.sh exhausts (#627).
+          docker run -d --name gateway-low-limit --network gwtest -p 8083:80 \
+            -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
+            -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
+            -e RATE_LIMIT_PER_HOUR=120 \
+            wildbox-gateway-test
 
       - name: Wait for services
         run: |
-          for url in http://localhost:8001/health http://localhost:8080/health http://localhost:8081/health; do
+          for url in http://localhost:8001/health http://localhost:8080/health http://localhost:8081/health http://localhost:8083/health; do
             for i in $(seq 1 30); do
               if curl -fsS "$url" >/dev/null 2>&1; then
                 echo "$url ready"
@@ -80,6 +87,11 @@ jobs:
       - name: Run gateway revocation tests
         run: bash open-security-gateway/test/revocation_tests.sh
 
+      # A RATE_LIMIT_PER_HOUR that is not a positive integer stops the
+      # gateway from starting (#627).
+      - name: Run gateway start-up configuration tests
+        run: bash open-security-gateway/test/startup_config_tests.sh wildbox-gateway-test gwtest
+
       - name: Dump container logs on failure
         if: failure()
         run: |
@@ -87,5 +99,7 @@ jobs:
           docker logs gateway 2>&1 | tail -100 || true
           echo "===== gateway-wrong-secret ====="
           docker logs gateway-wrong-secret 2>&1 | tail -50 || true
+          echo "===== gateway-low-limit ====="
+          docker logs gateway-low-limit 2>&1 | tail -50 || true
           echo "===== identity-test ====="
           docker logs identity-test 2>&1 | tail -50 || true
