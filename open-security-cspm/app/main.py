@@ -376,9 +376,15 @@ async def get_scan_status(
                 detail="Access denied"
             )
         
-        # Get task status and result
-        task_status = task_result.status
-        task_info = task_result.info or {}
+        # A final status in the metadata wins, and the result backend is
+        # not read for it: the Celery result of a finished scan expires
+        # after a few hours (result_expires), and the backend then reports
+        # it as PENDING, i.e. "queued" (#591).
+        if metadata.get("status") in scan_store.FINAL_STATUSES:
+            task_status, task_info = None, {}
+        else:
+            task_status = task_result.status
+            task_info = task_result.info or {}
         
         # Map Celery status to our status. STARTED is what a worker reports
         # as soon as it takes the task (task_track_started), before the scan
@@ -393,9 +399,6 @@ async def get_scan_status(
         }
         
         scan_status = status_mapping.get(task_status, "unknown")
-        # A final status in the metadata wins: the Celery result of a
-        # finished scan expires after a few hours (result_expires), and the
-        # backend then reports it as PENDING, i.e. "queued" (#591).
         if metadata.get("status") in scan_store.FINAL_STATUSES:
             scan_status = metadata["status"]
 

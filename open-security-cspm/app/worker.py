@@ -227,20 +227,14 @@ def run_cspm_scan_task(
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"CSPM scan {scan_id} failed: {e}", exc_info=True)
 
-        # Update task state (no traceback or raw error in stored meta)
-        self.update_state(
-            state="FAILURE",
-            meta={
-                "status": "failed",
-                "provider": provider_str,
-                "account_id": scan_config.get("account_id", "unknown"),
-                "error": "Scan failed. Check server logs for details.",
-                "failed_at": datetime.utcnow().isoformat()
-            }
-        )
-
-        # Re-raise to mark task as failed
-        raise
+        # Fail the task with an error that carries no detail: the result
+        # backend stores the exception, and the logged one may name the
+        # account or the cause. This used to store a FAILURE state whose
+        # meta was a plain dict, which Celery cannot read back as an
+        # exception: GET /api/v1/scans/{id} answered 500 ("Exception
+        # information must include the exception type") until the task's
+        # own failure replaced it. ScanTask.on_failure marks the scan failed.
+        raise RuntimeError("Scan failed. Check server logs for details.") from None
 
 
 def _create_cloud_session(provider: CloudProvider, credentials: Dict[str, Any]):

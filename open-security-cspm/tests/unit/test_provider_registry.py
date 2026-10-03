@@ -271,7 +271,13 @@ def test_no_session_factory_for_gcp_or_azure(provider):
 @pytest.fixture
 def worker_env(monkeypatch, fake_redis):
     monkeypatch.setattr(worker, "redis_client", fake_redis)
-    monkeypatch.setattr(worker.run_cspm_scan_task, "update_state", lambda **_: None)
+    states = []
+    monkeypatch.setattr(
+        worker.run_cspm_scan_task,
+        "update_state",
+        lambda state=None, meta=None, **_: states.append(state),
+    )
+    fake_redis.states = states
     return fake_redis
 
 
@@ -298,12 +304,47 @@ def test_a_scan_with_malformed_aws_keys_fails_without_reaching_aws(
 
     monkeypatch.setattr(worker.check_runner, "run_scan", run_scan)
 
-    worker.run_cspm_scan_task.apply(args=[scan_config], task_id=scan_id)
+    result = worker.run_cspm_scan_task.apply(args=[scan_config], task_id=scan_id)
 
     assert scan_store.load_metadata(worker_env, scan_id)["status"] == "failed"
     assert scan_store.load_report(worker_env, scan_id) is None
     # The credentials were deleted when the worker read them.
     assert worker_env.get(scan_config["credential_ref"]) is None
+    # The task fails with an exception the result backend can store and
+    # read back, with no detail of the cause. A FAILURE state set by hand
+    # with a dict as its meta made GET /api/v1/scans/{id} answer 500.
+    assert result.failed()
+    assert "FAILURE" not in worker_env.states
+    assert isinstance(result.result, RuntimeError)
+    assert "access key" not in str(result.result)
+
+
+class UnreadableBackend:
+    """A result backend holding a FAILURE meta Celery cannot decode."""
+
+    def AsyncResult(self, task_id):  # noqa: N802 - Celery's name
+        class Result:
+            @property
+            def status(self):
+                raise ValueError(
+                    "Exception information must include the exception type"
+                )
+
+            info = status
+
+        return Result()
+
+
+def test_a_failed_scan_reads_failed_whatever_the_result_backend_holds(
+    monkeypatch, fake_redis
+):
+    scan_id, _ = _queue(monkeypatch, fake_redis, _scan("aws", AWS_CREDENTIALS))
+    scan_store.fail_scan(fake_redis, scan_id, "2026-10-03T12:00:00")
+    monkeypatch.setattr(main, "celery_app", UnreadableBackend())
+
+    status = asyncio.run(main.get_scan_status(scan_id, USER))
+
+    assert status.status == "failed"
 
 
 def test_a_gcp_scan_queued_before_the_upgrade_fails(

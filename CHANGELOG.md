@@ -82,7 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   boto3 session, so such a scan fails without a request to AWS; the
   integration tests of cspm-worker use that path to reach `failed`
   instead of a GCP scan. `assume_role` now also passes `external_id` to
-  STS when one is given; it was accepted and ignored.
+  STS when one is given; it was accepted and ignored. A scan that failed
+  on such an error could read 500 at `GET /api/v1/scans/{id}` for a
+  moment: the worker stored a FAILURE state with a plain dict as its
+  meta, which Celery cannot read back as an exception. The worker now
+  fails the task with a detail-free exception, and a scan whose stored
+  status is final no longer reads the result backend.
 - **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
   cspm worker commented out and `docker-compose.prod.yml` declared none,
   so every scan stayed `queued` and the compliance pages, the cloud
