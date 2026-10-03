@@ -90,7 +90,7 @@ All under `/api/v1/auth` (fastapi-users):
 | PUT | `/api/v1/admin/me/password` | Change password; same body as below |
 | POST | `/api/v1/admin/me/change-password` | Change password; body `current_password`, `new_password`; answers a new `access_token` and ends the account's other sessions |
 | DELETE | `/api/v1/admin/me/account` | Deactivate own account; body `password`, `confirm_deletion` |
-| GET | `/api/v1/admin/me/activity` | Own recent activity |
+| GET | `/api/v1/admin/me/activity` | Own recent activity; `team_memberships` oldest first, the first being the team the session works in |
 
 Despite the `/admin` prefix, the `/admin/me/...` routes act on the caller's own
 account and need only a valid token.
@@ -138,8 +138,52 @@ Team keys, which require the `admin` or `owner` role in the team:
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/v1/admin/teams/{team_id}/members` | List members |
+| POST | `/api/v1/admin/teams/{team_id}/members` | Create an account in the team; body `email`, `password`, `role` |
 | PUT | `/api/v1/admin/teams/{team_id}` | Update a team |
 | DELETE | `/api/v1/admin/teams/{team_id}/members/{user_id}` | Remove a member |
+
+Listing members is open to any member of the team. Creating, updating and
+removing need the `owner` or `admin` role in that team, or a superuser.
+
+### Create a Member
+
+`POST /api/v1/admin/teams/{team_id}/members` creates a **new** account whose
+only membership is this team; it gets no team of its own, so its sessions
+work in this team. There is no adding of an existing account, and no email
+is sent: the administrator gives the new member the initial password.
+
+```json
+{"email": "new.member@example.com", "password": "an initial password", "role": "member"}
+```
+
+- `password`: at least 12 characters. The account is created with
+  `must_change_password: true`.
+- `role`: `member` (the default) or `admin`, strictly below the caller's
+  own role: an owner (or a superuser) creates admins and members, an admin
+  creates members. `owner` is never accepted.
+
+| Status | When |
+| --- | --- |
+| 201 | Created; the body is the new membership, as in the member list |
+| 403 | The caller is not an owner or admin of the team, or the role is not one it may give |
+| 404 | A superuser named a team that does not exist |
+| 409 | The email is already registered (in any letter case) |
+| 422 | Invalid email, unknown role or a password under 12 characters |
+
+The creation is logged (`audit: team_member_created`) with the caller, the
+new account, the team and the role, never the password.
+
+### Accounts That Must Change Their Password
+
+While `must_change_password` is true (`GET /api/v1/users/me` reports it),
+the account's sessions can only read the account (`GET /api/v1/users/me`),
+change the password (`POST /api/v1/admin/me/change-password`, or `PUT
+/api/v1/admin/me/password`) and log out. Every other identity route answers
+403 with the message `PASSWORD_CHANGE_REQUIRED`, and the gateway answers
+403 `{"error": "PASSWORD_CHANGE_REQUIRED"}` for every other service, because
+`/internal/authorize` reports `password_change_required: true`. Changing the
+password clears the flag and returns a new token, as for any password
+change.
 
 ---
 

@@ -137,6 +137,20 @@ assert_json "cancel reaches the service as DELETE" '.method' 'DELETE'
 request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
 assert_json "auth cache short-circuits revalidation" '."valid-bearer-token"' '1'
 
+# 10b. An account that must change its initial password (#573) is refused
+#      every service, on the first request and on the cached decision
+#      alike, and nothing reaches the backend.
+for attempt in first cached; do
+    request "pending password change refused ($attempt)" 403 \
+        -H "Authorization: Bearer pending-password-change-token" \
+        "$GATEWAY_URL/api/v1/auth/me"
+    assert_json "pending password change code ($attempt)" '.error' 'PASSWORD_CHANGE_REQUIRED'
+    assert_json "backend not reached ($attempt)" '.headers // "absent"' 'absent'
+done
+assert_strict_json "pending password change error body"
+request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"
+assert_json "pending decision cached" '."pending-password-change-token"' '1'
+
 # 11. Proof-of-origin: a gateway configured with the wrong
 #     GATEWAY_INTERNAL_SECRET is rejected by identity (403) and must NOT
 #     let the request through

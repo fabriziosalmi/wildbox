@@ -1,4 +1,4 @@
-"""The admin analytics report counts, never estimates (#570).
+"""The admin analytics report counts, never estimates (#570, #573).
 
 GET /analytics/admin/usage-summary returned ``api_requests_today`` as the
 number of API keys used in the last day times 75, and
@@ -81,3 +81,22 @@ def test_system_stats_report_no_request_estimates():
     api_usage = _system_stats()["api_usage"]
     assert set(api_usage) == {"total_keys", "active_keys", "keys_used_today"}
     assert api_usage["keys_used_today"] == COUNT
+
+
+def test_system_stats_report_no_login_estimate():
+    # recent_logins counted users whose updated_at moved in the last day: a
+    # profile change counted as a login, a login that changed nothing did
+    # not. identity records no successful logins, so the field is gone
+    # (#573) rather than replaced by another estimate.
+    users = _system_stats()["users"]
+    assert "recent_logins" not in users
+    assert set(users) == {
+        "total",
+        "active",
+        "inactive",
+        "super_admins",
+        "new_this_week",
+        "new_today",
+        "growth_rate_percent",
+        "inactive_percentage",
+    }

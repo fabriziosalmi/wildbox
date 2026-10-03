@@ -126,14 +126,6 @@ async def get_system_analytics(
             role_name = role.value if hasattr(role, 'value') else str(role)
             role_distribution[role_name] = count
         
-        # Recent activity metrics
-        recent_logins = await db.execute(
-            select(func.count(User.id.distinct())).filter(
-                User.updated_at >= yesterday  # Approximation for recent login activity
-            )
-        )
-        recent_logins = recent_logins.scalar() or 0
-        
         # System health indicators
         inactive_users = total_users - active_users
         inactive_percentage = (inactive_users / max(total_users, 1)) * 100
@@ -152,7 +144,9 @@ async def get_system_analytics(
                 "new_today": new_users_today,
                 "growth_rate_percent": round(user_growth_rate, 2),
                 "inactive_percentage": round(inactive_percentage, 2),
-                "recent_logins": recent_logins
+                # No recent_logins: it counted users whose updated_at moved
+                # in the last day, and identity records no successful
+                # logins to count instead (#573).
             },
             
             # Team metrics

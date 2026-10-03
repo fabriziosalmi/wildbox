@@ -42,7 +42,8 @@ interface FeedStats {
   /** null until a collection run has completed */
   last_updated: string | null
   new_indicators: number
-  trends_change: number
+  /** null when the previous 24 hours had no indicators to compare with */
+  trends_change: number | null
 }
 
 async function fetchFeeds(): Promise<Feed[]> {
@@ -223,7 +224,8 @@ export default function ThreatIntelFeedsPage() {
                     : 'Never'}
               </div>
               <p className="text-xs text-muted-foreground">
-                {stats?.trends_change !== undefined && (
+                {stats?.trends_change === null && <span>— no prior data</span>}
+                {typeof stats?.trends_change === 'number' && (
                   <span className={stats.trends_change >= 0 ? 'text-green-600' : 'text-red-600'}>
                     {stats.trends_change >= 0 ? '+' : ''}
                     {stats.trends_change}% vs previous period

@@ -12,7 +12,7 @@ from typing import Optional
 
 from sqlalchemy import (
     Boolean, CheckConstraint, Column, DateTime, ForeignKey, String, Text,
-    UniqueConstraint, Index, JSON
+    UniqueConstraint, Index, JSON, false
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.ext.declarative import declarative_base
@@ -47,6 +47,13 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
     # whenever the password changes, so the change ends every other session;
     # NULL (never changed since the column was added) refuses nothing.
     tokens_valid_after = Column(DateTime(timezone=True), nullable=True)
+
+    # Set on an account a team admin created with an initial password (#573),
+    # cleared when its user changes the password. While set, the account's
+    # sessions can only change the password, read the account and log out.
+    must_change_password = Column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
 
     # Relationships (aggiornate con sintassi moderna)
     team_memberships: Mapped[list["TeamMembership"]] = relationship("TeamMembership", back_populates="user", cascade="all, delete-orphan")

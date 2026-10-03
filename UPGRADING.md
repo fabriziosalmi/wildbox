@@ -417,6 +417,50 @@ service, its worker and the gateway together (section 1 does).
   `wildbox:tools:task-owner:*` and `wildbox:tools:user-tasks:*`, and expire
   after a day. Without Redis the task endpoints answer 503.
 
+### 20. `trends_change` can be null
+
+`GET /api/v1/dashboard/threat-intel` (data) answers `trends_change: null`
+when the previous 24 hours had no indicators; it used to report 100.0 (or
+0.0 when both periods were empty). A client that reads the field must
+accept null. Every other value is unchanged.
+
+### 21. `users.recent_logins` is gone from identity's system statistics
+
+`GET /api/v1/analytics/admin/system-stats` no longer returns
+`users.recent_logins`. It counted users whose record changed in the last
+day, not logins, and identity has no login count to put in its place. A
+script that reads it must stop; the dashboard never did.
+
+### 22. Team admins can create accounts; those accounts change their password first
+
+identity adds one column, `users.must_change_password` (alembic revision
+`b7c8d9e0f1a2`), which it applies itself at start. It is `NOT NULL` with a
+default of false, so no existing account is affected.
+
+- **New endpoint:** `POST /api/v1/identity/admin/teams/{team_id}/members`
+  with `{"email", "password", "role"}` creates a new account in the team
+  (no team of its own). Owners and admins of the team, and superusers, may
+  call it; the role must be below the caller's (an owner creates `admin`
+  or `member`, an admin creates `member`). 409 means the email is already
+  registered. No email is sent: give the new member the initial password
+  yourself, privately. See the
+  [identity API reference](https://www.wildbox.io/api/identity/endpoints/#create-a-member).
+- **Accounts created this way must change the initial password** before
+  anything else. Until they do, identity answers 403
+  `PASSWORD_CHANGE_REQUIRED` to every route except `GET /auth/users/me`,
+  change-password and logout, and the gateway answers 403
+  `{"error": "PASSWORD_CHANGE_REQUIRED"}` for every other service. A
+  script that uses such an account must first call
+  `POST /api/v1/identity/admin/me/change-password` and continue with the
+  token it returns.
+- **Rebuild and restart identity and the gateway together** (section 1
+  does). An older gateway ignores `password_change_required` and would let
+  such a session use the other services; an older identity never reports
+  it.
+- `GET /api/v1/identity/admin/me/activity` lists `team_memberships` oldest
+  first. Superusers can now list, rename and remove the members of any
+  team.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

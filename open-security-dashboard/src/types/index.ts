@@ -6,6 +6,8 @@ export interface User {
   is_superuser: boolean
   created_at: string
   updated_at: string
+  /** Set until the user changes the initial password a team admin chose (#573). */
+  must_change_password?: boolean
   team_memberships?: TeamMembership[]
   // Legacy fields for backward compatibility
   name?: string

@@ -7,7 +7,7 @@ import { Shield, Eye, EyeOff, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useAuth } from '@/components/auth-provider'
+import { CHANGE_PASSWORD_PAGE, useAuth } from '@/components/auth-provider'
 import { getErrorMessage } from '@/lib/utils'
 
 export default function LoginPage() {
@@ -17,15 +17,17 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const { login, isAuthenticated, isLoading: authLoading } = useAuth()
+  const { login, isAuthenticated, isLoading: authLoading, user } = useAuth()
   const router = useRouter()
+  const mustChangePassword = !!user?.must_change_password
 
-  // Redirect to dashboard if already authenticated
+  // Redirect to dashboard if already authenticated, or first to the
+  // change-password screen for an account with an initial password (#573).
   useEffect(() => {
     if (isAuthenticated && !authLoading) {
-      router.replace('/dashboard')
+      router.replace(mustChangePassword ? CHANGE_PASSWORD_PAGE : '/dashboard')
     }
-  }, [isAuthenticated, authLoading, router])
+  }, [isAuthenticated, authLoading, mustChangePassword, router])
 
   // Show loading while checking auth state
   if (authLoading) {
