@@ -183,7 +183,5 @@ setup:
 urls:
 	@echo "Wildbox Security API URLs:"
 	@echo "========================="
-	@echo "Web Interface:  http://localhost:8000"
-	@echo "API Docs:       http://localhost:8000/docs"
-	@echo "ReDoc:          http://localhost:8000/redoc"
 	@echo "Health Check:   http://localhost:8000/health"
+	@echo "OpenAPI schema: http://localhost:8000/openapi.json"
