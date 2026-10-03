@@ -101,10 +101,23 @@ class TaskStatusView(APIView):
     ``queue`` is the queue the task was delivered on, once a worker has
     taken it (CELERY_RESULT_EXTENDED), and null before: it shows that a task
     went where guardian/celery.py routes it (#545).
+
+    A team sees the tasks it dispatched and no other: the result backend
+    knows nothing of teams, so the endpoints that answer with a task_id
+    record the team that asked (apps.core.tenancy.record_team_task), and
+    any other id answers 404, whether another team dispatched it or nobody
+    did (#642).
     """
 
     def get(self, request, task_id):
+        from apps.core.models import TeamTask
+        from apps.core.tenancy import request_team_id
         from guardian.celery import app as celery_app
+
+        if not TeamTask.objects.filter(
+            task_id=str(task_id), team_id=request_team_id(request)
+        ).exists():
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
 
         result = celery_app.AsyncResult(str(task_id))
         state = result.state

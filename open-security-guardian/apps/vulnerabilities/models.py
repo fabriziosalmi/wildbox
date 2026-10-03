@@ -11,6 +11,8 @@ from django.utils import timezone
 import uuid
 import json
 
+from apps.core.models import team_id_field
+
 
 class VulnerabilitySeverity(models.TextChoices):
     """Vulnerability severity levels"""
@@ -42,6 +44,8 @@ class ThreatLevel(models.TextChoices):
 
 class Vulnerability(models.Model):
     """Core vulnerability model"""
+    # A finding belongs to the team of the asset it was found on (#642).
+    TEAM_LOOKUP = 'asset__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     
     # Basic Information
@@ -204,8 +208,16 @@ class Vulnerability(models.Model):
 
 
 class VulnerabilityTemplate(models.Model):
-    """Template for common vulnerabilities with standard descriptions and solutions"""
-    cve_id = models.CharField(max_length=20, unique=True, blank=True)
+    """Template for common vulnerabilities with standard descriptions and solutions
+
+    Shared reference data (#642): a template without a team is read by every
+    team and changed by none through the API; a team's own templates are
+    its own.
+    """
+    TEAM_LOOKUP = 'team_id'
+    TEAM_GLOBAL_ROWS = True
+    team_id = team_id_field()
+    cve_id = models.CharField(max_length=20, blank=True)
     title = models.CharField(max_length=500)
     description_template = models.TextField()
     solution_template = models.TextField()
@@ -236,6 +248,7 @@ class VulnerabilityTemplate(models.Model):
 
     class Meta:
         ordering = ['cve_id', 'title']
+        unique_together = [('team_id', 'cve_id')]
 
     def __str__(self):
         return f"{self.cve_id} - {self.title}" if self.cve_id else self.title
@@ -243,6 +256,7 @@ class VulnerabilityTemplate(models.Model):
 
 class VulnerabilityAssessment(models.Model):
     """Risk assessment details for vulnerabilities"""
+    TEAM_LOOKUP = 'vulnerability__asset__team_id'
     vulnerability = models.OneToOneField(Vulnerability, on_delete=models.CASCADE, related_name='assessment')
     
     # Threat Intelligence Data
@@ -402,6 +416,7 @@ class VulnerabilityAssessment(models.Model):
 
 class VulnerabilityNote(models.Model):
     """Notes and comments on vulnerabilities"""
+    TEAM_LOOKUP = 'vulnerability__asset__team_id'
     vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='notes')
     author = models.ForeignKey(User, on_delete=models.CASCADE)
     content = models.TextField()
@@ -425,6 +440,7 @@ class VulnerabilityNote(models.Model):
 
 class VulnerabilityHistory(models.Model):
     """History of vulnerability status changes"""
+    TEAM_LOOKUP = 'vulnerability__asset__team_id'
     vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='history')
     changed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     
@@ -457,13 +473,25 @@ def validate_attachment_file(value):
         raise ValidationError(f"File size {value.size} exceeds maximum of {MAX_FILE_SIZE} bytes.")
 
 
+def attachment_upload_to(instance, filename):
+    """Store an attachment under its team's directory (#642).
+
+    Files of different teams never share a directory; rows without a team
+    (written before guardian kept one) go under "unassigned".
+    """
+    team_id = instance.vulnerability.asset.team_id
+    day = timezone.now().strftime('%Y/%m/%d')
+    return f"vulnerability_attachments/{team_id or 'unassigned'}/{day}/{filename}"
+
+
 class VulnerabilityAttachment(models.Model):
     """File attachments for vulnerabilities"""
+    TEAM_LOOKUP = 'vulnerability__asset__team_id'
     vulnerability = models.ForeignKey(Vulnerability, on_delete=models.CASCADE, related_name='attachments')
     uploaded_by = models.ForeignKey(User, on_delete=models.CASCADE)
 
     # File details
-    file = models.FileField(upload_to='vulnerability_attachments/%Y/%m/%d/', validators=[validate_attachment_file])
+    file = models.FileField(upload_to=attachment_upload_to, validators=[validate_attachment_file])
     filename = models.CharField(max_length=255)
     file_size = models.PositiveIntegerField()
     content_type = models.CharField(max_length=100)

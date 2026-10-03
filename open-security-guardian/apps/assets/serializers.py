@@ -7,6 +7,12 @@ Django REST Framework serializers for asset management.
 import ipaddress
 
 from rest_framework import serializers
+
+from apps.core.tenancy import (
+    TeamScopedModelSerializer,
+    context_team_id,
+    scope_to_team,
+)
 from django.contrib.auth.models import User
 
 from apps.core.schedules import InvalidSchedule, schedule_timezone, validate_cron
@@ -17,7 +23,7 @@ from .models import (
 )
 
 
-class EnvironmentSerializer(serializers.ModelSerializer):
+class EnvironmentSerializer(TeamScopedModelSerializer):
     """Environment serializer"""
     asset_count = serializers.SerializerMethodField()
 
@@ -30,7 +36,7 @@ class EnvironmentSerializer(serializers.ModelSerializer):
         return obj.asset_set.count()
 
 
-class BusinessFunctionSerializer(serializers.ModelSerializer):
+class BusinessFunctionSerializer(TeamScopedModelSerializer):
     """Business function serializer"""
     asset_count = serializers.SerializerMethodField()
 
@@ -43,7 +49,7 @@ class BusinessFunctionSerializer(serializers.ModelSerializer):
         return obj.asset_set.count()
 
 
-class AssetSoftwareSerializer(serializers.ModelSerializer):
+class AssetSoftwareSerializer(TeamScopedModelSerializer):
     """Asset software serializer"""
     
     class Meta:
@@ -52,7 +58,7 @@ class AssetSoftwareSerializer(serializers.ModelSerializer):
         read_only_fields = ['asset', 'first_discovered', 'last_verified']
 
 
-class AssetPortSerializer(serializers.ModelSerializer):
+class AssetPortSerializer(TeamScopedModelSerializer):
     """Asset port serializer"""
     
     class Meta:
@@ -61,7 +67,7 @@ class AssetPortSerializer(serializers.ModelSerializer):
         read_only_fields = ['asset', 'first_discovered', 'last_verified']
 
 
-class AssetSerializer(serializers.ModelSerializer):
+class AssetSerializer(TeamScopedModelSerializer):
     """Asset serializer for list/create operations"""
     environment_name = serializers.CharField(source='environment.name', read_only=True)
     business_function_name = serializers.CharField(source='business_function.name', read_only=True)
@@ -87,9 +93,15 @@ class AssetSerializer(serializers.ModelSerializer):
         ]
 
     def validate_ip_address(self, value):
-        """Validate IP address uniqueness"""
+        """Validate IP address uniqueness within the caller's team.
+
+        Across teams it told a team which addresses another team tracks,
+        and stopped it from registering its own host at one (#642).
+        """
         if value:
-            existing = Asset.objects.filter(ip_address=value)
+            existing = scope_to_team(
+                Asset.objects.filter(ip_address=value), context_team_id(self.context)
+            )
             if self.instance:
                 existing = existing.exclude(id=self.instance.id)
             if existing.exists():
@@ -120,7 +132,7 @@ class AssetDetailSerializer(AssetSerializer):
         }
 
 
-class AssetGroupSerializer(serializers.ModelSerializer):
+class AssetGroupSerializer(TeamScopedModelSerializer):
     """Asset group serializer"""
     asset_count = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
@@ -135,7 +147,7 @@ class AssetGroupSerializer(serializers.ModelSerializer):
         return obj.assets.count()
 
 
-class AssetDiscoveryRuleSerializer(serializers.ModelSerializer):
+class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
     """Asset discovery rule serializer"""
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
     

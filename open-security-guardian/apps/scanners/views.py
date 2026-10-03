@@ -6,6 +6,7 @@ Django REST Framework views for scanner management.
 
 from rest_framework import viewsets, status, permissions
 from apps.core.permissions import IsGatewayAdminOrReadOnly
+from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -27,7 +28,7 @@ from .serializers import (
 )
 
 
-class ScannerViewSet(viewsets.ModelViewSet):
+class ScannerViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing scanners"""
     queryset = Scanner.objects.all()
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -61,14 +62,16 @@ class ScannerViewSet(viewsets.ModelViewSet):
         # output; returning only the scanner counts made it raise KeyError
         # and the endpoint answered 500.
         now = timezone.now()
-        total_scanners = Scanner.objects.count()
-        active_scanners = Scanner.objects.filter(status=ScannerStatus.ACTIVE).count()
-        scans = Scan.objects.all()
+        # The caller's team's scanners and scans only (#642).
+        scanners = self.team_queryset(Scanner)
+        total_scanners = scanners.count()
+        active_scanners = scanners.filter(status=ScannerStatus.ACTIVE).count()
+        scans = self.team_queryset(Scan)
         data = {
             'total_scanners': total_scanners,
             'active_scanners': active_scanners,
             'inactive_scanners': total_scanners - active_scanners,
-            'error_scanners': Scanner.objects.filter(status=ScannerStatus.ERROR).count(),
+            'error_scanners': scanners.filter(status=ScannerStatus.ERROR).count(),
             'total_scans': scans.count(),
             'running_scans': scans.filter(status=ScanStatus.RUNNING).count(),
             'completed_scans': scans.filter(status=ScanStatus.COMPLETED).count(),
@@ -82,7 +85,7 @@ class ScannerViewSet(viewsets.ModelViewSet):
                 )['avg'] or 0
             ) / 60,
             'scanner_types': dict(
-                Scanner.objects.values_list('scanner_type')
+                scanners.values_list('scanner_type')
                 .annotate(n=Count('id'))
                 .order_by()
             ),
@@ -96,7 +99,7 @@ class ScannerViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
-class ScanProfileViewSet(viewsets.ModelViewSet):
+class ScanProfileViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing scan profiles"""
     queryset = ScanProfile.objects.all()
     serializer_class = ScanProfileSerializer
@@ -108,7 +111,7 @@ class ScanProfileViewSet(viewsets.ModelViewSet):
     ordering = ['name']
 
 
-class ScanViewSet(viewsets.ModelViewSet):
+class ScanViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing scans"""
     queryset = Scan.objects.all()
     permission_classes = [IsGatewayAdminOrReadOnly]
@@ -177,14 +180,16 @@ class ScanViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'])
     def import_results(self, request):
         """Import scan results from external source"""
-        serializer = ScanImportSerializer(data=request.data)
+        serializer = ScanImportSerializer(
+            data=request.data, context=self.get_serializer_context()
+        )
         if serializer.is_valid():
             # TODO: Implement actual import logic
             return Response({'status': 'success', 'message': 'Results imported'})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class ScanResultViewSet(viewsets.ModelViewSet):
+class ScanResultViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing scan results"""
     queryset = ScanResult.objects.all()
     serializer_class = ScanResultSerializer
@@ -204,7 +209,7 @@ SCAN_SCHEDULES_UNSUPPORTED = (
 )
 
 
-class ScanScheduleViewSet(viewsets.ModelViewSet):
+class ScanScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing scan schedules.
 
     A scan schedule names an external scanner (Nessus, Qualys, OpenVAS,

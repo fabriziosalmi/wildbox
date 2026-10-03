@@ -36,6 +36,9 @@ from guardian.schedule import build_beat_schedule
 UTC = dt_timezone.utc
 NOW = datetime(2026, 10, 2, 17, 33, 20, tzinfo=UTC)
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 
 
 @pytest.fixture
@@ -55,7 +58,7 @@ def client(locmem_cache, monkeypatch):
 def _headers(role="admin"):
     return {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": role,
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -215,6 +218,7 @@ def _rule(schedule="*/5 * * * *", **fields):
     fields.setdefault("name", f"rule-{uuid.uuid4().hex[:8]}")
     fields.setdefault("discovery_type", "network_scan")
     fields.setdefault("target_specification", {"networks": ["192.0.2.0/30"]})
+    fields.setdefault("team_id", TEAM_ID)
     return AssetDiscoveryRule.objects.create(schedule=schedule, **fields)
 
 
@@ -384,7 +388,8 @@ def test_execute_records_its_own_last_run():
     with mock.patch("apps.assets.tasks.discover_assets") as discover:
         result = execute_discovery_rule.apply(args=(rule.pk,)).get()
     assert result["status"] == "completed"
-    discover.delay.assert_called_once_with("192.0.2.0/30", "basic")
+    # The hosts it finds are the rule's team's assets (#642).
+    discover.delay.assert_called_once_with("192.0.2.0/30", "basic", team_id=TEAM_ID)
     next_run = rule.next_run
     rule.refresh_from_db()
     assert rule.last_run is not None
@@ -467,6 +472,7 @@ def _template(report_type="vulnerability_summary"):
     from apps.reporting.models import ReportTemplate
 
     return ReportTemplate.objects.create(
+        team_id=TEAM_ID,
         name=f"template-{uuid.uuid4().hex[:8]}",
         report_type=report_type,
         template_content="unused",
@@ -671,7 +677,7 @@ def _vulnerability(title="exposed service"):
     with mock.patch("apps.assets.signals.scan_asset_ports"), mock.patch(
         "apps.vulnerabilities.signals.enrich_vulnerability_with_threat_intel"
     ), mock.patch("apps.vulnerabilities.signals.notify_vulnerability_assignment"):
-        asset = Asset.objects.create(name="host", status="active")
+        asset = Asset.objects.create(name="host", status="active", team_id=TEAM_ID)
         return Vulnerability.objects.create(
             title=title, description="d", asset=asset, severity="critical"
         )
@@ -905,7 +911,10 @@ def scan_schedule():
     from apps.scanners.models import Scanner, ScanProfile, ScanSchedule
 
     scanner = Scanner.objects.create(
-        name="nessus", scanner_type="nessus", base_url="https://nessus.invalid"
+        team_id=TEAM_ID,
+        name="nessus",
+        scanner_type="nessus",
+        base_url="https://nessus.invalid",
     )
     profile = ScanProfile.objects.create(name="full", scanner=scanner)
     return ScanSchedule.objects.create(

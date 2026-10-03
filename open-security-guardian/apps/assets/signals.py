@@ -23,9 +23,12 @@ def asset_post_save(sender, instance, created, **kwargs):
     if created:
         logger.info(f"New asset created: {instance.name} ({instance.ip_address})")
         
-        # Auto-assign to groups based on rules
+        # Auto-assign to the groups of the asset's team, by their rules:
+        # another team's group never collects it (#642)
+        from apps.core.tenancy import scope_to_team
+
         from .models import AssetGroup
-        for group in AssetGroup.objects.all():
+        for group in scope_to_team(AssetGroup.objects.all(), instance.team_id):
             if group.auto_assignment_rules:
                 group.apply_auto_assignment_rules()
         

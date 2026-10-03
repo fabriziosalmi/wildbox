@@ -71,7 +71,8 @@ def _uuid(name):
 @dataclass(frozen=True)
 class Metric:
     description: str
-    compute: Callable[[dict], float]
+    # compute(filters, team_id): the value over that team's rows (#642).
+    compute: Callable[[dict, object], float]
     filters: Dict[str, Callable] = field(default_factory=dict)
 
 
@@ -84,10 +85,11 @@ def _vulnerability_filters():
     }
 
 
-def _vulnerabilities(filters):
+def _vulnerabilities(filters, team_id):
+    from apps.core.tenancy import scope_to_team
     from apps.vulnerabilities.models import Vulnerability
 
-    queryset = Vulnerability.objects.all()
+    queryset = scope_to_team(Vulnerability.objects.all(), team_id)
     if "severity" in filters:
         queryset = queryset.filter(severity__in=filters["severity"])
     if "asset" in filters:
@@ -98,42 +100,49 @@ def _vulnerabilities(filters):
 UNRESOLVED = ("open", "in_progress")
 
 
-def _unresolved(filters):
-    return float(_vulnerabilities(filters).filter(status__in=UNRESOLVED).count())
+def _unresolved(filters, team_id):
+    return float(_vulnerabilities(filters, team_id).filter(status__in=UNRESOLVED).count())
 
 
-def _overdue(filters):
+def _overdue(filters, team_id):
     return float(
-        _vulnerabilities(filters)
+        _vulnerabilities(filters, team_id)
         .filter(status="open", due_date__lt=timezone.now())
         .count()
     )
 
 
-def _max_risk_score(filters):
+def _max_risk_score(filters, team_id):
     found = (
-        _vulnerabilities(filters)
+        _vulnerabilities(filters, team_id)
         .filter(status__in=UNRESOLVED)
         .aggregate(value=Max("risk_score"))["value"]
     )
     return float(found or 0.0)
 
 
-def _non_compliant_results(filters):
+def _non_compliant_results(filters, team_id):
     from apps.compliance.models import ComplianceResult
+    from apps.core.tenancy import scope_to_team
 
-    queryset = ComplianceResult.objects.filter(status="non_compliant")
+    queryset = scope_to_team(
+        ComplianceResult.objects.filter(status="non_compliant"), team_id
+    )
     if "risk_level" in filters:
         queryset = queryset.filter(risk_level__in=filters["risk_level"])
     return float(queryset.count())
 
 
-def _overdue_assessments(filters):
+def _overdue_assessments(filters, team_id):
     from apps.compliance.models import ComplianceAssessment
+    from apps.core.tenancy import scope_to_team
 
     return float(
-        ComplianceAssessment.objects.filter(
-            due_date__lt=timezone.now(), status__in=["planned", "in_progress"]
+        scope_to_team(
+            ComplianceAssessment.objects.filter(
+                due_date__lt=timezone.now(), status__in=["planned", "in_progress"]
+            ),
+            team_id,
         ).count()
     )
 
@@ -224,7 +233,12 @@ def parse_rule(data_source, condition_type, operator, threshold_value, config):
 
 
 def current_value(rule):
-    """The value of ``rule``'s metric now; UnsupportedAlertRule if it has none."""
+    """The value of ``rule``'s metric now; UnsupportedAlertRule if it has none.
+
+    Over the rule's team's rows only (#642): a rule of one team never counts
+    another team's findings. A rule without a team (written before guardian
+    kept one) counts the rows without a team.
+    """
     metric, filters = parse_rule(
         rule.data_source,
         rule.condition_type,
@@ -232,4 +246,4 @@ def current_value(rule):
         rule.threshold_value,
         rule.condition_config,
     )
-    return metric.compute(filters)
+    return metric.compute(filters, rule.team_id)

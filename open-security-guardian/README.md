@@ -97,6 +97,55 @@ A request made directly to guardian's port answers 403
 (`apps.core.models.APIKey`) were removed (#629): they authenticated beside
 the gateway, as an administrator.
 
+### Team isolation
+
+Every request acts for the team the gateway names in `X-Wildbox-Team-ID`,
+and reads and writes that team's data only (#642). The role decides what a
+member of the team may do: a `member` reads, an `owner` or `admin` also
+writes.
+
+- **Each row belongs to one team.** Assets, environments, business
+  functions, asset groups, discovery rules, scanners, compliance
+  assessments, exceptions and metrics, external systems, notification
+  channels, remediation tickets and templates, report templates,
+  dashboards, widgets and alert rules store the team that created them in
+  `team_id`. The API sets it from the gateway's header; a `team_id` in a
+  request body is ignored. The other rows belong to the team of the row
+  they hang off: a vulnerability to its asset's team, a scan to its
+  scanner's, a report to its template's, a remediation workflow to its
+  vulnerability's.
+- **Another team's rows do not exist for you.** Lists leave them out, and
+  a detail route or action on one of their ids answers 404, as an id that
+  does not exist does. Statistics, summaries, trends, reports, widgets
+  and alert rules count your team's rows only.
+- **A reference to another team's row is refused.** A foreign key or a
+  list of ids in a request body (an asset, a framework, a scanner, a
+  template, a user) must name a row your team can see, or the request
+  answers 400 with "object does not exist". A user can be named once they
+  have made a request as a member of your team.
+- **Shared reference data.** Compliance frameworks, their controls and
+  vulnerability templates without a team are shared: every team reads them
+  and builds on them (an assessment of a shared framework is the team's
+  own), and no team changes or deletes them through the API. A team can
+  also define its own.
+- **Background work stays in the team.** A discovery rule creates assets
+  for its team, an alert rule measures its team's data and notifies its
+  own recipients, a scheduled report holds its template's team's data and
+  is written under `MEDIA_ROOT/reports/<team id>/`.
+  `GET /api/v1/tasks/<task_id>/` answers for the tasks your team dispatched
+  and 404 for any other.
+- **Rows written before guardian kept a team have none.** No team reaches
+  them through the API until an operator gives them to one:
+
+  ```bash
+  docker compose exec guardian python manage.py assign_guardian_team --list
+  docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>
+  ```
+
+  `--dry-run` reports what it would change; `--include-shared` also gives
+  the shared frameworks and vulnerability templates to that team. See
+  [UPGRADING.md](../UPGRADING.md).
+
 ---
 
 ## Common Tasks

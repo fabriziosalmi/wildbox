@@ -4,6 +4,7 @@ from django.utils import timezone
 from django.db.models import Count, Q
 from .models import ComplianceAssessment, ComplianceResult, ComplianceMetrics
 from apps.core.locks import single_instance
+from apps.core.tenancy import scope_to_team
 from apps.core.utils import send_notification
 import logging
 
@@ -45,11 +46,18 @@ def _calculate_compliance_metrics(assessment_id):
         medium_risk = results.filter(risk_level='medium').count()
         low_risk = results.filter(risk_level='low').count()
         
-        # Get open exceptions for this framework
-        open_exceptions = assessment.framework.controls.filter(
-            exceptions__status='approved',
-            exceptions__valid_until__gt=timezone.now()
-        ).distinct().count()
+        # Open exceptions of the assessment's team on this framework's
+        # controls: a shared framework's controls carry every team's (#642)
+        from .models import ComplianceException
+
+        open_exceptions = scope_to_team(
+            ComplianceException.objects.filter(
+                control__framework=assessment.framework,
+                status='approved',
+                valid_until__gt=timezone.now(),
+            ),
+            assessment.team_id,
+        ).values('control').distinct().count()
         
         # Create or update metrics: one row per assessment and day. metric_date
         # is a DateTimeField; today's midnight, aware, is the value a bare date
@@ -60,6 +68,7 @@ def _calculate_compliance_metrics(assessment_id):
             assessment=assessment,
             metric_date=today,
             defaults={
+                'team_id': assessment.team_id,
                 'total_controls': total_controls,
                 'compliant_controls': compliant,
                 'non_compliant_controls': non_compliant,
@@ -206,15 +215,20 @@ def check_expiring_exceptions():
 
 
 @shared_task
-def generate_compliance_report(framework_id, report_type='summary'):
+def generate_compliance_report(framework_id, report_type='summary', team_id=None):
     """
-    Generate compliance reports
+    Generate a team's compliance report for a framework
+
+    From the team's own metrics and results (#642): a shared framework
+    carries every team's. None is the rows without a team.
     """
     try:
         from .models import ComplianceFramework
-        
-        framework = ComplianceFramework.objects.get(id=framework_id)
-        latest_metrics = framework.metrics.order_by('-metric_date').first()
+
+        framework = scope_to_team(ComplianceFramework.objects.all(), team_id).get(id=framework_id)
+        latest_metrics = scope_to_team(
+            ComplianceMetrics.objects.filter(framework=framework), team_id
+        ).order_by('-metric_date').first()
         
         if not latest_metrics:
             logger.error(f"No metrics found for framework {framework.name}")
@@ -236,7 +250,9 @@ def generate_compliance_report(framework_id, report_type='summary'):
             # Add detailed control results
             controls_data = []
             for control in framework.controls.all():
-                latest_result = control.results.order_by('-tested_at').first()
+                latest_result = scope_to_team(
+                    ComplianceResult.objects.filter(control=control), team_id
+                ).order_by('-tested_at').first()
                 if latest_result:
                     controls_data.append({
                         'control_id': control.control_id,

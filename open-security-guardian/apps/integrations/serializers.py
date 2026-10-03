@@ -13,6 +13,8 @@ the same credentials (authorization headers, OAuth token responses).
 
 from rest_framework import serializers
 
+from apps.core.tenancy import TeamScopedModelSerializer
+
 from .models import (
     ExternalSystem,
     IntegrationLog,
@@ -23,7 +25,7 @@ from .models import (
 )
 
 
-class ExternalSystemSerializer(serializers.ModelSerializer):
+class ExternalSystemSerializer(TeamScopedModelSerializer):
     is_healthy = serializers.ReadOnlyField()
     success_rate = serializers.ReadOnlyField()
 
@@ -80,7 +82,7 @@ class ExternalSystemSerializer(serializers.ModelSerializer):
         extra_kwargs = {"auth_config": {"write_only": True}}
 
 
-class IntegrationMappingSerializer(serializers.ModelSerializer):
+class IntegrationMappingSerializer(TeamScopedModelSerializer):
     class Meta:
         model = IntegrationMapping
         fields = (
@@ -101,7 +103,7 @@ class IntegrationMappingSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "updated_at")
 
 
-class SyncRecordSerializer(serializers.ModelSerializer):
+class SyncRecordSerializer(TeamScopedModelSerializer):
     class Meta:
         model = SyncRecord
         fields = (
@@ -125,7 +127,7 @@ class SyncRecordSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "created_at", "last_sync_at")
 
 
-class WebhookEndpointSerializer(serializers.ModelSerializer):
+class WebhookEndpointSerializer(TeamScopedModelSerializer):
     class Meta:
         model = WebhookEndpoint
         fields = (
@@ -156,7 +158,7 @@ class WebhookEndpointSerializer(serializers.ModelSerializer):
         extra_kwargs = {"secret_token": {"write_only": True}}
 
 
-class IntegrationLogSerializer(serializers.ModelSerializer):
+class IntegrationLogSerializer(TeamScopedModelSerializer):
     class Meta:
         model = IntegrationLog
         fields = (
@@ -175,7 +177,7 @@ class IntegrationLogSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
-class NotificationChannelSerializer(serializers.ModelSerializer):
+class NotificationChannelSerializer(TeamScopedModelSerializer):
     class Meta:
         model = NotificationChannel
         fields = (

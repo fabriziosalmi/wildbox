@@ -22,6 +22,9 @@ from django.utils import timezone
 from guardian.schedule import alert_renotify_interval
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 DAY = timedelta(days=1)
 
 
@@ -42,7 +45,7 @@ def client(locmem_cache, monkeypatch):
 def _headers(role="admin"):
     return {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": role,
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -55,7 +58,7 @@ def _asset(name="host"):
     from apps.assets.models import Asset
 
     with mock.patch("apps.assets.signals.scan_asset_ports"):
-        return Asset.objects.create(name=name)
+        return Asset.objects.create(name=name, team_id=TEAM_ID)
 
 
 def _vulnerability(asset, **fields):
@@ -84,6 +87,7 @@ def _rule(data_source="vulnerabilities.unresolved", **fields):
     fields.setdefault("condition_type", "threshold")
     fields.setdefault("operator", "gt")
     fields.setdefault("threshold_value", 0)
+    fields.setdefault("team_id", TEAM_ID)
     # Without the test-mode check its creation queues (signals.py).
     with mock.patch("apps.reporting.signals.check_alert_rule"):
         return AlertRule.objects.create(data_source=data_source, **fields)
@@ -154,12 +158,14 @@ def test_compliance_metrics():
     ):
         framework = ComplianceFramework.objects.create(name="ISO27001")
         late = ComplianceAssessment.objects.create(
+            team_id=TEAM_ID,
             name="late",
             framework=framework,
             assessment_type="self_assessment",
             due_date=now - DAY,
         )
         ComplianceAssessment.objects.create(
+            team_id=TEAM_ID,
             name="done",
             framework=framework,
             assessment_type="self_assessment",

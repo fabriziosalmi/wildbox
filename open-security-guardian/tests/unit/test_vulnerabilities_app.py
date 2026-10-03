@@ -32,6 +32,9 @@ from django.test import Client
 from django.urls import resolve
 
 _GW_SECRET = "test-gateway-secret"
+# Every row these tests seed belongs to this team, and every request is
+# made as a member of it: guardian answers 404 for another team's rows (#642).
+TEAM_ID = str(uuid.uuid4())
 _BASE = "/api/v1/vulnerabilities/"
 
 
@@ -70,7 +73,7 @@ def api(settings, monkeypatch):
     client = Client()
     headers = {
         "HTTP_X_WILDBOX_USER_ID": str(uuid.uuid4()),
-        "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
+        "HTTP_X_WILDBOX_TEAM_ID": TEAM_ID,
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
     }
@@ -82,7 +85,7 @@ def api(settings, monkeypatch):
 
 
 def _vulnerability(**kwargs):
-    asset = Asset.objects.create(name="host")
+    asset = Asset.objects.create(name="host", team_id=TEAM_ID)
     return Vulnerability.objects.create(
         title="v", description="d", asset=asset, **kwargs
     )

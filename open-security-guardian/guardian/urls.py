@@ -7,7 +7,6 @@ The Guardian: Proactive Vulnerability Management
 from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
-from django.conf.urls.static import static
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularRedocView,
@@ -37,7 +36,10 @@ urlpatterns = [
     path('api/v1/reports/', include('apps.reporting.urls')),
 ]
 
-# Serve media files and API docs in development
+# Serve the API docs in development. Media files (generated reports,
+# attachments) are not served as static files, even in development: they
+# are outside /api/, so no gateway authentication and no team check applied
+# to them. A team downloads its reports through the reports API (#642).
 if settings.DEBUG:
     urlpatterns += [
         # API documentation
@@ -45,7 +47,6 @@ if settings.DEBUG:
         path('docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
         path('redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
     ]
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
     
     # Debug toolbar
     if 'debug_toolbar' in settings.INSTALLED_APPS:
