@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 import redis
 
 from .models import (
-    PlaybookExecutionRequest, PlaybookExecutionResult, 
+    ExecutionStatus, PlaybookExecutionRequest, PlaybookExecutionResult,
     PlaybookListResponse, HealthCheckResponse
 )
 from .config import settings
@@ -327,35 +327,45 @@ async def list_connectors(current_user: GatewayUser = Depends(get_current_user))
 
 @app.delete("/v1/runs/{run_id}")
 async def cancel_execution(run_id: str, current_user: GatewayUser = Depends(get_current_user)):
-    """Cancel a running execution"""
-    try:
-        # For now, we'll just mark it as cancelled in Redis
-        execution_result = workflow_engine.get_execution_state(run_id)
+    """Cancel a run, and say what the cancel did (#653).
 
+    - A queued run is cancelled: no step will run. 200, ``cancelled``.
+    - A running run becomes ``cancelling``: the step in progress runs to its
+      end and is recorded as it ended, no further step starts, and the
+      worker then records the run as ``cancelled``. 202; poll the run.
+    - A run that has ended is left as it is: 200 with its status.
+    """
+    try:
         # "Not yours" -> 404, identical to "not found", to avoid cross-team leak.
-        if not execution_result or not workflow_engine.is_run_owner(run_id, current_user.team_id):
+        outcome = None
+        if workflow_engine.is_run_owner(run_id, current_user.team_id):
+            outcome = workflow_engine.request_cancel(run_id)
+        if outcome is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Execution '{run_id}' not found"
             )
-        
-        if execution_result.status in ["completed", "failed", "cancelled"]:
-            return {
-                "message": f"Execution '{run_id}' is already {execution_result.status}",
-                "status": execution_result.status
-            }
-        
-        # Mark as cancelled (simplified implementation)
-        execution_result.status = "cancelled"
-        execution_result.end_time = datetime.utcnow()
-        workflow_engine.save_execution_state(run_id, execution_result)
-        workflow_engine.add_log(run_id, "Execution cancelled by user request")
-        
-        return {
-            "message": f"Execution '{run_id}' cancelled successfully",
-            "status": "cancelled"
-        }
-        
+
+        run_status, accepted = outcome
+        if run_status == ExecutionStatus.CANCELLING:
+            message = (
+                "Cancel requested. The step in progress runs to its end and is "
+                "recorded as it ends; no further step will start. The run's "
+                "status becomes 'cancelled' when the worker stops it."
+            )
+            code = status.HTTP_202_ACCEPTED
+        elif run_status == ExecutionStatus.CANCELLED and accepted:
+            message = "Cancelled before it started: no step ran."
+            code = status.HTTP_200_OK
+        else:
+            message = f"Execution '{run_id}' is already {run_status.value}"
+            code = status.HTTP_200_OK
+
+        return JSONResponse(
+            status_code=code,
+            content={"run_id": run_id, "status": run_status.value, "message": message},
+        )
+
     except HTTPException:
         raise
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:

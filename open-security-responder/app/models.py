@@ -145,6 +145,9 @@ class ExecutionStatus(str, Enum):
     QUEUED = "queued"      # Added for state persistence fix
     PENDING = "pending"
     RUNNING = "running"
+    # A cancel was accepted while a step was running: that step runs to its
+    # end, no further step starts, and the run then ends CANCELLED (#653).
+    CANCELLING = "cancelling"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

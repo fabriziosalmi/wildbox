@@ -835,6 +835,25 @@ of them failed.
   `backend`, as before; `scripts/check_network_segmentation.py runtime`
   checks it.
 
+### 32. Cancelling a responder run stops it
+
+`DELETE /api/v1/responder/runs/{run_id}` now stops the run instead of only
+relabelling it (#653).
+
+- **New status `cancelling`.** A run cancelled while a step is running
+  reads `cancelling` until the worker stops it, then `cancelled`. A client
+  that waits for `completed`, `failed` or `cancelled` keeps working; one
+  that lists the statuses it knows must add `cancelling`.
+- **The answer says what happened.** `DELETE` answers 202 with
+  `"status": "cancelling"` for a running run, 200 with `cancelled` for a
+  queued one, and 200 with the run's status when it had already ended. It
+  used to answer 200 `cancelled` in every case. The body carries `run_id`,
+  `status` and `message`.
+- **A cancelled run's steps.** The step in progress when the cancel
+  arrives runs to its end and is kept in `step_results`; the steps after it
+  do not run. A run whose last step had already started when the cancel
+  arrived reads `cancelled` with every step in `step_results`.
+
 ## Upgrading to 0.10.0
 
 From 0.9.x: five changes stop an existing deployment from starting, or change behavior in a

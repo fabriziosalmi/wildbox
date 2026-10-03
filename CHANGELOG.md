@@ -59,6 +59,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Cancelling a responder run stops it** (#653). `DELETE
+  /v1/runs/{run_id}` only rewrote the stored status: the worker never
+  read it again, so a cancelled run executed every remaining step, side
+  effects included, and then wrote `completed` over `cancelled`, and a
+  run cancelled while queued was set back to running and executed in
+  full. The cancel is now a request stored with the run, which the
+  worker checks before the run starts and before each step. A queued run
+  is cancelled at once and runs no step; a running run becomes the new
+  status `cancelling`, its step in progress runs to its end and is
+  recorded as it ended, no further step starts, and the run ends
+  `cancelled`. The worker's writes are compare-and-set (WATCH/MULTI)
+  against the run's status and the request, so a `cancelled` run is
+  never recorded as anything else and a race between completion and
+  cancel goes to whichever commits first. `DELETE` answers 200 with
+  `cancelled`, 202 with `cancelling`, or 200 with the status of a run
+  that had ended, and is checked against the run's team as before. A
+  run's `logs` also keep every line again: saving the worker's copy of
+  the record replaced the lines written since the run started.
+
 - **Reading a just-cancelled async task no longer answers 500** (#619).
   `GET /api/v1/tasks/{id}` read `AsyncResult.state` and then
   `AsyncResult.info`: two reads of the result backend while the task
@@ -76,6 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result backend is a 503. The tools service now logs the class and
   traceback of a request that fails, and the integration workflow
   uploads every service's full log when it fails.
+
 - **cspm refuses scans of providers it cannot scan** (#612). The scan
   API accepted `provider: gcp` and `provider: azure`, single and batch,
   and answered with a scan id; the worker then failed every such scan,

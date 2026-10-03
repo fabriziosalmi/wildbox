@@ -49,6 +49,7 @@ os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "y" * 40)
 
 import app.workflow_engine as engine_module  # noqa: E402
 import service_contracts as contracts  # noqa: E402
+from memory_redis import MemoryRedis  # noqa: E402
 from app.caller import CallerIdentityUnavailable  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.connectors import connector_registry  # noqa: E402
@@ -358,47 +359,6 @@ class Services:
 # --- The engine, as production runs it --------------------------------------
 
 
-class FakeRedis:
-    """The part of redis-py the engine uses, in memory."""
-
-    def __init__(self):
-        self.hashes, self.lists, self.strings = {}, {}, {}
-
-    def hset(self, key, mapping):
-        # As redis-py encodes: a str (an ExecutionStatus too) by its value.
-        self.hashes.setdefault(key, {}).update(
-            {
-                k: (
-                    v
-                    if isinstance(v, bytes)
-                    else str.encode(v) if isinstance(v, str) else str(v).encode()
-                )
-                for k, v in mapping.items()
-            }
-        )
-
-    def hget(self, key, field):
-        return self.hashes.get(key, {}).get(field)
-
-    def expire(self, key, seconds):
-        pass
-
-    def rpush(self, key, value):
-        self.lists.setdefault(key, []).append(value)
-
-    def set(self, key, value, ex=None):
-        self.strings[key] = str(value).encode()
-
-    def get(self, key):
-        return self.strings.get(key)
-
-    def pipeline(self):
-        return self
-
-    def execute(self):
-        return []
-
-
 @pytest.fixture(scope="module")
 def playbooks():
     return PlaybookParser(playbooks_directory=str(PLAYBOOKS_DIR)).load_playbooks()
@@ -408,7 +368,7 @@ def playbooks():
 def run(monkeypatch, playbooks):
     """Run a shipped playbook end to end; return its persisted record."""
     engine = engine_module.workflow_engine
-    monkeypatch.setattr(engine, "redis_client", FakeRedis())
+    monkeypatch.setattr(engine, "redis_client", MemoryRedis())
     monkeypatch.setattr(engine_module.playbook_parser, "playbooks", playbooks)
     actor = engine_module.execute_playbook_actor
     monkeypatch.setattr(actor, "send", lambda *args: actor.fn(*args))
@@ -852,7 +812,7 @@ def test_a_run_is_not_started_without_a_complete_caller(run, caller):
 def test_a_run_without_a_caller_fails_before_any_call(monkeypatch, playbooks):
     """A message without a caller -- queued by an older version, say."""
     engine = engine_module.workflow_engine
-    monkeypatch.setattr(engine, "redis_client", FakeRedis())
+    monkeypatch.setattr(engine, "redis_client", MemoryRedis())
     monkeypatch.setattr(engine_module.playbook_parser, "playbooks", playbooks)
     services = ip_services([(22, "ssh")], 85)
     transport = httpx.MockTransport(services.handle)
