@@ -4,12 +4,34 @@ import re
 import json
 from typing import Any, Dict, List, Union
 from fastapi import Request, HTTPException, status
-from pydantic import BaseModel
+from pydantic import AnyUrl, BaseModel
+import pydantic_core
 import logging
 
 from .url_guard import is_local_hostname, parse_target_url
 
 logger = logging.getLogger(__name__)
+
+
+def _pydantic_url_types() -> tuple:
+    """The classes a validated pydantic URL field holds.
+
+    ``AnyUrl`` is the base of ``HttpUrl``, ``AnyHttpUrl`` and the other
+    single-host URL types. The multi-host types (``PostgresDsn`` and the
+    like) share only a private base class, so it is looked up by name; the
+    ``pydantic_core`` classes cover values built by the core directly.
+    """
+    import pydantic.networks
+
+    types = [AnyUrl, pydantic_core.Url, pydantic_core.MultiHostUrl]
+    for name in ("_BaseUrl", "_BaseMultiHostUrl"):
+        base = getattr(pydantic.networks, name, None)
+        if isinstance(base, type):
+            types.append(base)
+    return tuple(types)
+
+
+_PYDANTIC_URL_TYPES = _pydantic_url_types()
 
 class InputSanitizer:
     """Utility class for input sanitization and validation."""
@@ -172,29 +194,88 @@ class InputSanitizer:
         "callback_url", "feed_url", "proxy",
     )
 
+    # How deep the guard follows nested models, lists and dicts. Tool inputs
+    # are a few levels deep at most; anything deeper is refused rather than
+    # left unchecked.
+    URL_WALK_MAX_DEPTH = 16
+
+    @classmethod
+    def is_url_field_name(cls, name: object) -> bool:
+        """True if a field (or dict key) of this name carries a URL to fetch."""
+        if not isinstance(name, str):
+            return False
+        name = name.lower()
+        return (
+            name in cls.URL_REQUEST_FIELDS
+            or name in ("urls", "uri", "uris")
+            or name.endswith(("_url", "_uri", "_urls", "_uris"))
+        )
+
     @classmethod
     def validate_request_urls(cls, input_obj) -> None:
         """SSRF guard for tool inputs.
 
-        Validate any URL-bearing field on a validated tool-input object so a tool
-        cannot be pointed at private/internal/cloud-metadata hosts. Only http(s)
-        values are checked (non-URL fields are left untouched for the tool to
-        handle). Raises ValueError if a target resolves to a blocked host.
-        """
-        # Check every declared field whose *name* looks like a URL carrier, plus
-        # the explicit list. Matching on the "_url" suffix as well as the list
-        # means a new field called e.g. "callback_url" is covered without anyone
-        # remembering to update a tuple.
-        candidate_names = set(cls.URL_REQUEST_FIELDS)
-        model_fields = getattr(type(input_obj), "model_fields", None) or {}
-        for name in model_fields:
-            if name.endswith("_url") or name.endswith("_uri") or name == "url":
-                candidate_names.add(name)
+        Walk a validated tool-input object and check every URL a tool may
+        connect to, so it cannot be pointed at private, internal or
+        cloud-metadata hosts. Raises ValueError for the first refused URL.
 
-        for field in sorted(candidate_names):
-            value = getattr(input_obj, field, None)
-            if isinstance(value, str) and re.match(r'^https?://', value.strip(), re.IGNORECASE):
+        The walk follows nested models, lists, tuples, sets and dict values
+        to any depth up to ``URL_WALK_MAX_DEPTH``. What is checked:
+
+        * every value of a pydantic URL type (``HttpUrl``, ``AnyUrl``,
+          ``AnyHttpUrl`` and the other ``Url`` types), wherever it sits and
+          whatever the field is called. The declared type says the value is
+          a URL, so it is checked in full: its string form goes through
+          :meth:`validate_url`, which also refuses a scheme other than
+          http(s). These used to be skipped because they are not ``str``
+          (#610);
+        * every ``str`` that starts with ``http://`` or ``https://`` and sits
+          under a field or dict key named like a URL carrier (see
+          :meth:`is_url_field_name`), including the items of a list held by
+          such a field. Other strings are left to the tool: a free-text field
+          or an indicator sent to a third-party API may legitimately contain
+          a URL that nobody fetches.
+        """
+        cls._walk_request_urls(input_obj, url_named=False, depth=0, seen=set())
+
+    @classmethod
+    def _walk_request_urls(cls, value, *, url_named: bool, depth: int, seen: set) -> None:
+        if depth > cls.URL_WALK_MAX_DEPTH:
+            raise ValueError("Tool input is nested too deeply to validate")
+
+        if isinstance(value, _PYDANTIC_URL_TYPES):
+            cls.validate_url(str(value))
+            return
+
+        if isinstance(value, str):
+            if url_named and re.match(r'^https?://', value.strip(), re.IGNORECASE):
                 cls.validate_url(value)
+            return
+
+        if value is None or isinstance(value, (bool, int, float, bytes)):
+            return
+
+        # Containers: guard against reference cycles in dicts and lists.
+        marker = id(value)
+        if marker in seen:
+            return
+        seen.add(marker)
+
+        if isinstance(value, BaseModel):
+            fields = dict(value)  # declared fields, then extra ones
+            for name, item in fields.items():
+                cls._walk_request_urls(
+                    item, url_named=cls.is_url_field_name(name), depth=depth + 1, seen=seen
+                )
+        elif isinstance(value, dict):
+            for key, item in value.items():
+                cls._walk_request_urls(
+                    item, url_named=cls.is_url_field_name(key), depth=depth + 1, seen=seen
+                )
+        elif isinstance(value, (list, tuple, set, frozenset)):
+            # The items of a list carry the name of the field that holds it.
+            for item in value:
+                cls._walk_request_urls(item, url_named=url_named, depth=depth + 1, seen=seen)
 
     @classmethod
     def validate_ip(cls, ip_str: str) -> str:

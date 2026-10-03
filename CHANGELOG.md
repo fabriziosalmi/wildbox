@@ -523,6 +523,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The tools SSRF guard checks URL-typed and nested inputs** (#610).
+  `InputSanitizer.validate_request_urls`, which runs on every validated
+  tool input before the tool starts, on the synchronous endpoint and in the
+  Celery task alike, checked only top-level `str` fields named like a URL.
+  A field declared as `HttpUrl`, `AnyUrl` or `AnyHttpUrl` holds a pydantic
+  `Url` object after validation, so it was skipped, as was any URL inside
+  a nested model, a list or a dict. A tool that relied on the generic guard
+  for such a field could be pointed at loopback, private ranges or the
+  cloud metadata address. The guard now walks the whole input: every value
+  of a pydantic URL type is checked wherever it sits and whatever it is
+  called, through the same structural parser, host rules and DNS
+  resolution as string URLs, and a non-http(s) scheme in such a field is
+  refused; strings named like URL carriers are checked in nested models,
+  lists and dict values too. Input nested deeper than 16 levels is refused
+  rather than left unchecked. `header_analyzer` and `url_analyzer`, the
+  two tools with `HttpUrl` fields, are now covered by the generic guard
+  as well as by their own checks.
+
 - **An agents task never sends another task's caller identity** (#594).
   The analysis task set the caller identity, a `ContextVar` the Wildbox
   client forwards on every tool call, only when its caller had both a user
