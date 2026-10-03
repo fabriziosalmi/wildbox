@@ -12,7 +12,7 @@ import uuid
 import redis
 import json
 
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, status, Request, Path, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -26,7 +26,8 @@ from .checks.framework import CloudProvider
 from . import schemas
 from .utils import (
     _estimate_scan_duration, _calculate_compliance_score, _generate_executive_summary,
-    _get_trending_metrics, _get_resource_inventory_summary, _generate_remediation_roadmap
+    _get_trending_metrics, _get_resource_inventory_summary, _generate_remediation_roadmap,
+    _summarize_compliance, _compliance_findings,
 )
 
 # Configure logging
@@ -877,67 +878,58 @@ async def start_batch_scans(
         )
 
 
+def _team_compliance_reports(
+    team_id: str, days: int, provider: Optional[str]
+) -> List[Dict[str, Any]]:
+    """The newest completed scan report of each of the team's accounts.
+
+    Reports live in the Celery result backend, as GET /api/v1/scans/{id}/report
+    reads them. Scans that started before the period, are not finished, or
+    whose result has expired are skipped; an older scan of an account that
+    was scanned again is superseded by the newer one.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    newest: Dict[tuple, tuple] = {}
+    for metadata in _iter_team_scan_metadata(team_id):
+        if provider and metadata.get("provider") != provider:
+            continue
+        try:
+            started = datetime.fromisoformat(metadata["started_at"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if started < cutoff:
+            continue
+        task_result = celery_app.AsyncResult(metadata["scan_id"])
+        if task_result.status != "SUCCESS":
+            continue
+        result = task_result.result
+        if not isinstance(result, dict) or not isinstance(result.get("report"), dict):
+            continue
+        key = (metadata.get("provider"), metadata.get("account_id"))
+        if key not in newest or started > newest[key][0]:
+            newest[key] = (started, result["report"])
+    return [report for _, report in newest.values()]
+
+
 @app.get("/api/v1/compliance/summary", response_model=schemas.ComplianceSummaryResponse)
 async def get_compliance_summary(
-    days: int = 30,
+    days: int = Query(30, ge=1, le=365),
     provider: Optional[str] = None,
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """
-    Get aggregated compliance summary across all scans.
+    """Compliance across the newest completed scan of each of the team's accounts.
+
+    With no completed scan in the period every count is 0, ``frameworks`` is
+    empty and ``overall_score`` is null. This endpoint used to return the same
+    invented account (1547 resources, 86.7%) to every team.
     """
     try:
-        # For now, return mock data that matches the dashboard expectations
-        # In production, this would aggregate data from recent scans
-        
-        frameworks = [
-            {
-                "name": "CIS AWS Foundations",
-                "version": "1.4.0",
-                "description": "Center for Internet Security AWS Foundations Benchmark",
-                "total_controls": 51,
-                "passed_controls": 43,
-                "failed_controls": 8,
-                "compliance_percentage": 84.3,
-                "last_assessment": (datetime.utcnow() - timedelta(hours=2)).isoformat()
-            },
-            {
-                "name": "NIST Cybersecurity Framework",
-                "version": "1.1",
-                "description": "NIST Cybersecurity Framework controls",
-                "total_controls": 108,
-                "passed_controls": 97,
-                "failed_controls": 11,
-                "compliance_percentage": 89.8,
-                "last_assessment": (datetime.utcnow() - timedelta(hours=3)).isoformat()
-            },
-            {
-                "name": "PCI DSS",
-                "version": "3.2.1",
-                "description": "Payment Card Industry Data Security Standard",
-                "total_controls": 78,
-                "passed_controls": 67,
-                "failed_controls": 11,
-                "compliance_percentage": 85.9,
-                "last_assessment": (datetime.utcnow() - timedelta(hours=1)).isoformat()
-            }
-        ]
-        
+        reports = _team_compliance_reports(current_user["team_id"], days, provider)
         return {
-            "total_resources": 1547,
-            "compliant_resources": 1342,
-            "non_compliant_resources": 205,
-            "overall_score": 86.7,
-            "frameworks": frameworks,
-            "trend": {
-                "direction": "up",
-                "percentage": 2.4
-            },
+            **_summarize_compliance(reports),
             "summary_period_days": days,
             "provider_filter": provider,
-            "last_updated": datetime.utcnow().isoformat()
         }
-        
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get compliance summary: {e}")
         raise HTTPException(
@@ -946,117 +938,41 @@ async def get_compliance_summary(
         )
 
 
-@app.get("/api/v1/compliance/findings")
+@app.get("/api/v1/compliance/findings", response_model=schemas.ComplianceFindingsResponse)
 async def get_compliance_findings(
     framework: Optional[str] = None,
     severity: Optional[str] = None,
-    status: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
+    status_filter: Optional[str] = Query(None, alias="status"),
+    days: int = Query(30, ge=1, le=365),
+    provider: Optional[str] = None,
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
-    """
-    Get detailed compliance findings across all scans.
+    """Check verdicts from the newest completed scan of each of the team's accounts.
+
+    This endpoint used to return five invented findings to every team.
     """
     try:
-        # Mock compliance findings that match dashboard expectations
-        findings = [
-            {
-                "finding_id": "finding-001",
-                "framework": "CIS AWS Foundations",
-                "control_id": "CIS-2.1",
-                "control_title": "Ensure CloudTrail is enabled in all regions",
-                "resource_id": "arn:aws:cloudtrail:us-west-2:123456789012:trail/demo-trail",
-                "resource_type": "CloudTrail",
-                "region": "us-west-2",
-                "status": "failed",
-                "severity": "high",
-                "description": "CloudTrail is not enabled in all AWS regions",
-                "remediation": "Enable CloudTrail in all regions to ensure comprehensive logging",
-                "last_checked": (datetime.utcnow() - timedelta(minutes=30)).isoformat()
-            },
-            {
-                "finding_id": "finding-002",
-                "framework": "NIST Cybersecurity Framework",
-                "control_id": "NIST-PR.AC-1",
-                "control_title": "Access Control Policy and Procedures",
-                "resource_id": "arn:aws:iam::123456789012:policy/demo-policy",
-                "resource_type": "IAM Policy",
-                "region": "global",
-                "status": "passed",
-                "severity": "medium",
-                "description": "Access control policy meets NIST requirements",
-                "remediation": "Continue monitoring access control policies",
-                "last_checked": (datetime.utcnow() - timedelta(minutes=15)).isoformat()
-            },
-            {
-                "finding_id": "finding-003",
-                "framework": "PCI DSS",
-                "control_id": "PCI-3.4",
-                "control_title": "Render PANs unreadable",
-                "resource_id": "arn:aws:s3:::demo-bucket",
-                "resource_type": "S3 Bucket",
-                "region": "us-east-1",
-                "status": "failed",
-                "severity": "critical",
-                "description": "S3 bucket may contain unencrypted cardholder data",
-                "remediation": "Enable encryption at rest for all S3 buckets containing cardholder data",
-                "last_checked": (datetime.utcnow() - timedelta(minutes=45)).isoformat()
-            },
-            {
-                "finding_id": "finding-004",
-                "framework": "CIS AWS Foundations",
-                "control_id": "CIS-1.1",
-                "control_title": "Ensure multi-factor authentication is enabled for root account",
-                "resource_id": "arn:aws:iam::123456789012:root",
-                "resource_type": "IAM Root Account",
-                "region": "global",
-                "status": "passed",
-                "severity": "critical",
-                "description": "Root account has MFA enabled",
-                "remediation": "Continue monitoring root account MFA status",
-                "last_checked": (datetime.utcnow() - timedelta(minutes=10)).isoformat()
-            },
-            {
-                "finding_id": "finding-005",
-                "framework": "NIST Cybersecurity Framework",
-                "control_id": "NIST-PR.DS-1",
-                "control_title": "Data-at-rest is protected",
-                "resource_id": "arn:aws:rds:us-east-1:123456789012:db:prod-database",
-                "resource_type": "RDS Instance",
-                "region": "us-east-1",
-                "status": "failed",
-                "severity": "high",
-                "description": "RDS instance is not encrypted at rest",
-                "remediation": "Enable encryption at rest for RDS instances containing sensitive data",
-                "last_checked": (datetime.utcnow() - timedelta(minutes=20)).isoformat()
-            }
-        ]
-        
-        # Apply filters
-        filtered_findings = findings
-        
+        reports = _team_compliance_reports(current_user["team_id"], days, provider)
+        catalog = {check["check_id"]: check for check in check_runner.get_available_checks()}
+        findings = _compliance_findings(reports, catalog)
+
         if framework:
-            filtered_findings = [f for f in filtered_findings if f["framework"] == framework]
-        
+            findings = [f for f in findings if framework in f["frameworks"]]
         if severity:
-            filtered_findings = [f for f in filtered_findings if f["severity"] == severity]
-            
-        if status:
-            filtered_findings = [f for f in filtered_findings if f["status"] == status]
-        
-        # Apply pagination
-        total_count = len(filtered_findings)
-        paginated_findings = filtered_findings[offset:offset + limit]
-        
+            findings = [f for f in findings if f["severity"] == severity]
+        if status_filter:
+            findings = [f for f in findings if f["status"] == status_filter]
+
+        total_count = len(findings)
         return {
-            "findings": paginated_findings,
+            "findings": findings[offset:offset + limit],
             "total_count": total_count,
             "limit": limit,
             "offset": offset,
             "has_more": (offset + limit) < total_count
         }
-        
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Failed to get compliance findings: {e}")
         raise HTTPException(

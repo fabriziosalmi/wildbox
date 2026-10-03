@@ -1,673 +1,238 @@
-'use client'
-
-import { useState } from 'react'
-import {
-  Server,
-  Shield,
-  Database,
-  Cloud,
-  Bug,
-  Zap,
-  Activity,
-  Copy,
-  CheckCircle,
-  ExternalLink,
-  AlertCircle,
-} from 'lucide-react'
+import Link from 'next/link'
+import { BookOpen, ExternalLink, KeyRound, Route } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { MainLayout } from '@/components/main-layout'
-import { gatewayDataClient } from '@/lib/api-client'
-import { getErrorMessage } from '@/lib/utils'
 
-interface ApiEndpoint {
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
-  path: string
-  description: string
-  gateway_path: string
-  requires_auth: boolean
-  plan_required: 'Free' | 'Business' | 'Enterprise'
-  parameters?: Array<{
-    name: string
-    type: string
-    required: boolean
-    description: string
-  }>
-  example_response?: Record<string, unknown>
+/*
+ * Where the Wildbox APIs are and how to call them, and nothing else.
+ *
+ * This page used to carry a hand-written endpoint catalogue that described
+ * routes no service serves (responder GET /v1/metrics, identity GET
+ * /api/v1/user/profile), a "healthy" badge on every service that no probe
+ * ever set, Free / Business plan labels that nothing enforces, and an
+ * example response with invented indicator counts (#572). The services'
+ * OpenAPI pages are not routed through the gateway (identity's are off in
+ * production), so the page points at the references maintained in the
+ * repository and on the documentation site instead of copying them.
+ */
+
+const REPO_DOCS = 'https://github.com/fabriziosalmi/wildbox/blob/main/docs/api'
+const SITE = 'https://www.wildbox.io'
+
+interface GatewayRoute {
+  prefix: string
+  service: string
+  upstream: string
+  reference?: string
+  note?: string
 }
 
-interface ApiService {
-  name: string
-  description: string
-  port: number
-  icon: React.ComponentType<{ className?: string }>
-  status: 'healthy' | 'degraded' | 'down'
-  endpoints: ApiEndpoint[]
-}
-
-const apiServices: ApiService[] = [
+/* Mirrors open-security-gateway/nginx/conf.d/wildbox_gateway.conf, as the
+   gateway routes table on the documentation site does. */
+const GATEWAY_ROUTES: GatewayRoute[] = [
   {
-    name: 'Threat Intelligence Data',
-    description: 'Security data lake with threat intelligence and IOCs',
-    port: 8002,
-    icon: Database,
-    status: 'healthy',
-    endpoints: [
-      {
-        method: 'GET',
-        path: '/health',
-        gateway_path: '/api/v1/data/health',
-        description: 'Health check endpoint',
-        requires_auth: false,
-        plan_required: 'Free',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/stats',
-        gateway_path: '/api/v1/data/stats',
-        description: 'Get system statistics including indicator counts',
-        requires_auth: true,
-        plan_required: 'Free',
-        example_response: {
-          total_indicators: 150420,
-          indicator_types: {
-            ip_address: 45230,
-            domain: 38940,
-            file_hash: 25850,
-            url: 18650,
-            email: 12750,
-          },
-          total_sources: 15,
-          active_sources: 12,
-          recent_collections: 42,
-        },
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/indicators/search',
-        gateway_path: '/api/v1/data/indicators/search',
-        description: 'Search security indicators with filters',
-        requires_auth: true,
-        plan_required: 'Free',
-        parameters: [
-          { name: 'q', type: 'string', required: false, description: 'Search query' },
-          {
-            name: 'indicator_type',
-            type: 'string',
-            required: false,
-            description: 'Filter by type',
-          },
-          { name: 'confidence', type: 'string', required: false, description: 'Confidence level' },
-          {
-            name: 'min_severity',
-            type: 'number',
-            required: false,
-            description: 'Minimum severity (1-10)',
-          },
-          {
-            name: 'limit',
-            type: 'number',
-            required: false,
-            description: 'Results limit (max 10000)',
-          },
-          { name: 'offset', type: 'number', required: false, description: 'Pagination offset' },
-        ],
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/indicators/{indicator_id}',
-        gateway_path: '/api/v1/data/indicators/{indicator_id}',
-        description: 'Get detailed information about a specific indicator',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-      {
-        method: 'POST',
-        path: '/api/v1/indicators/lookup',
-        gateway_path: '/api/v1/data/indicators/lookup',
-        description: 'Bulk lookup of indicators',
-        requires_auth: true,
-        plan_required: 'Business',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/ips/{ip_address}',
-        gateway_path: '/api/v1/data/ips/{ip_address}',
-        description: 'Get intelligence about an IP address',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/domains/{domain}',
-        gateway_path: '/api/v1/data/domains/{domain}',
-        description: 'Get intelligence about a domain',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/hashes/{file_hash}',
-        gateway_path: '/api/v1/data/hashes/{file_hash}',
-        description: 'Get intelligence about a file hash',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/sources',
-        gateway_path: '/api/v1/data/sources',
-        description: 'List data sources and their status',
-        requires_auth: true,
-        plan_required: 'Business',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/feeds/realtime',
-        gateway_path: '/api/v1/data/feeds/realtime',
-        description: 'Real-time threat intelligence feed (NDJSON stream)',
-        requires_auth: true,
-        plan_required: 'Business',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/dashboard/threat-intel',
-        gateway_path: '/api/v1/data/dashboard/threat-intel',
-        description: 'Dashboard metrics for threat intelligence',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-    ],
+    prefix: '/auth/jwt/…, /auth/register',
+    service: 'identity',
+    upstream: '/api/v1/auth/…',
+    reference: `${REPO_DOCS}/identity/endpoints.md`,
+    note: 'No token needed to log in or register.',
   },
   {
-    name: 'Cloud Security (CSPM)',
-    description: 'Cloud Security Posture Management and compliance scanning',
-    port: 8019,
-    icon: Cloud,
-    status: 'healthy',
-    endpoints: [
-      {
-        method: 'GET',
-        path: '/api/v1/dashboard/executive-summary',
-        gateway_path: '/api/v1/cspm/dashboard/executive-summary',
-        description: 'Executive dashboard summary with compliance scores',
-        requires_auth: true,
-        plan_required: 'Business',
-      },
-    ],
+    prefix: '/api/v1/identity/…',
+    service: 'identity',
+    upstream: '/api/v1/…',
+    reference: `${REPO_DOCS}/identity/endpoints.md`,
   },
   {
-    name: 'Vulnerability Management',
-    description: 'Guardian vulnerability scanning and reporting',
-    port: 8013,
-    icon: Bug,
-    status: 'healthy',
-    endpoints: [
-      {
-        method: 'GET',
-        path: '/api/v1/reports/dashboards/1/data/',
-        gateway_path: '/api/v1/guardian/reports/dashboards/1/data/',
-        description: 'Dashboard vulnerability data and metrics',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-    ],
+    prefix: '/api/v1/data/…',
+    service: 'data',
+    upstream: '/api/v1/…',
+    reference: `${REPO_DOCS}/data/endpoints.md`,
   },
   {
-    name: 'Response Automation',
-    description: 'Security playbooks and automated response',
-    port: 8018,
-    icon: Zap,
-    status: 'healthy',
-    endpoints: [
-      {
-        method: 'GET',
-        path: '/v1/metrics',
-        gateway_path: '/api/v1/responder/metrics',
-        description: 'Response automation metrics and playbook stats',
-        requires_auth: true,
-        plan_required: 'Business',
-      },
-    ],
+    prefix: '/api/v1/guardian/…',
+    service: 'guardian',
+    upstream: '/api/v1/…',
+    reference: `${REPO_DOCS}/guardian/endpoints.md`,
   },
   {
-    name: 'Identity & Authentication',
-    description: 'User management and authentication services',
-    port: 8001,
-    icon: Shield,
-    status: 'healthy',
-    endpoints: [
-      {
-        method: 'POST',
-        path: '/auth/login',
-        gateway_path: '/auth/login',
-        description: 'User authentication',
-        requires_auth: false,
-        plan_required: 'Free',
-      },
-      {
-        method: 'GET',
-        path: '/api/v1/user/profile',
-        gateway_path: '/api/v1/identity/user/profile',
-        description: 'Get user profile information',
-        requires_auth: true,
-        plan_required: 'Free',
-      },
-    ],
+    prefix: '/api/v1/responder/…',
+    service: 'responder',
+    upstream: '/v1/…',
+    reference: `${REPO_DOCS}/responder/endpoints.md`,
+  },
+  {
+    prefix: '/api/v1/agents/…',
+    service: 'agents',
+    upstream: '/v1/…',
+    reference: `${REPO_DOCS}/agents/endpoints.md`,
+  },
+  {
+    prefix: '/api/v1/tools, /api/v1/tools/…',
+    service: 'tools',
+    upstream: '/api/tools/…',
+    reference: `${REPO_DOCS}/tools/endpoints.md`,
+  },
+  {
+    prefix: '/api/v1/cspm/…',
+    service: 'cspm',
+    upstream: '/api/v1/…',
+    note: 'No written reference yet.',
+  },
+  {
+    prefix: '/api/v1/automations/…',
+    service: 'automations',
+    upstream: '/…',
+    note: 'Only with the automations Compose profile; 502 otherwise.',
   },
 ]
 
-interface TestResult {
-  loading?: boolean
-  success?: boolean
-  response?: unknown
-  error?: string
-}
+const LOGIN_EXAMPLE = `curl -X POST "https://<gateway-host>/auth/jwt/login" \\
+  -d "username=<email>" -d "password=<password>"`
 
-async function testEndpoint(endpoint: ApiEndpoint): Promise<TestResult> {
-  try {
-    let response
-    const client = gatewayDataClient // Use gateway client for testing
+const CALL_EXAMPLE = `curl "https://<gateway-host>/api/v1/guardian/vulnerabilities/" \\
+  -H "Authorization: Bearer <access_token>"`
 
-    switch (endpoint.method) {
-      case 'GET':
-        response = await client.get(endpoint.path.replace('/api/v1/', '/'))
-        break
-      default:
-        throw new Error(`Testing ${endpoint.method} endpoints not implemented yet`)
-    }
-
-    return { success: true, response }
-  } catch (error) {
-    return {
-      success: false,
-      // ApiError.message already carries the server's message.
-      error: getErrorMessage(error, 'Unknown error'),
-    }
-  }
+function ExternalAnchor({ href, children }: { href: string; children: React.ReactNode }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-1 text-primary underline-offset-4 hover:underline"
+    >
+      {children}
+      <ExternalLink className="h-3 w-3" aria-hidden="true" />
+    </a>
+  )
 }
 
 export default function APIDocumentation() {
-  const [selectedService, setSelectedService] = useState<string>('Threat Intelligence Data')
-  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
-  const [copiedCode, setCopiedCode] = useState<string>('')
-
-  const handleTestEndpoint = async (endpoint: ApiEndpoint) => {
-    const key = `${endpoint.method}-${endpoint.path}`
-    setTestResults(prev => ({ ...prev, [key]: { loading: true } }))
-
-    const result = await testEndpoint(endpoint)
-    setTestResults(prev => ({ ...prev, [key]: result }))
-  }
-
-  const copyToClipboard = (text: string, key: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedCode(key)
-    setTimeout(() => setCopiedCode(''), 2000)
-  }
-
-  const generateCurlCommand = (endpoint: ApiEndpoint) => {
-    const baseUrl = 'https://api.wildbox.local'
-    let curl = `curl -X ${endpoint.method} "${baseUrl}${endpoint.gateway_path}"`
-
-    if (endpoint.requires_auth) {
-      curl += ` \\\n  -H "Authorization: Bearer YOUR_TOKEN"`
-    }
-
-    curl += ` \\\n  -H "Content-Type: application/json"`
-
-    if (endpoint.method === 'POST' && endpoint.path.includes('lookup')) {
-      curl += ` \\\n  -d '{"indicators": [{"indicator_type": "ip_address", "value": "8.8.8.8"}]}'`
-    }
-
-    return curl
-  }
-
-  const generateJavaScriptCode = (endpoint: ApiEndpoint) => {
-    const path = endpoint.gateway_path.replace('/api/v1/data/', '/')
-    return `// Using Wildbox Gateway Client
-import { gatewayDataClient } from '@/lib/api-client'
-
-try {
-  const response = await gatewayDataClient.${endpoint.method.toLowerCase()}('${path}')
-  console.log(response)
-} catch (error) {
-  console.error('API Error:', error)
-}`
-  }
-
-  const selectedServiceData = apiServices.find(s => s.name === selectedService)
-
   return (
     <MainLayout>
-      <div className="space-y-6">
-        {/* Header */}
+      <div className="space-y-6" data-testid="api-docs">
         <div>
           <h1 className="text-3xl font-bold">API Documentation</h1>
           <p className="mt-2 text-muted-foreground">
-            Complete API reference for all Wildbox security services with gateway integration
+            Every Wildbox API is reached through the gateway, the same host that serves this
+            dashboard. The endpoint references live with the code and on the documentation site.
           </p>
         </div>
 
-        {/* Service Status Overview */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5" />
-              Service Status
+              <BookOpen className="h-5 w-5" />
+              References
             </CardTitle>
-            <CardDescription>Real-time status of all API services</CardDescription>
+            <CardDescription>Maintained in the repository, next to the code</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {apiServices.map(service => {
-                const Icon = service.icon
-                return (
-                  <div
-                    key={service.name}
-                    className="flex items-center justify-between rounded-lg border p-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5 text-blue-500" />
-                      <div>
-                        <div className="font-medium">{service.name}</div>
-                        <div className="text-sm text-muted-foreground">Port {service.port}</div>
-                      </div>
-                    </div>
-                    <Badge
-                      variant={service.status === 'healthy' ? 'default' : 'destructive'}
-                      className={service.status === 'healthy' ? 'bg-green-500' : ''}
-                    >
-                      {service.status}
-                    </Badge>
-                  </div>
-                )
-              })}
-            </div>
+            <ul className="space-y-2 text-sm">
+              <li>
+                <ExternalAnchor href={`${REPO_DOCS}/README.md`}>
+                  API documentation index
+                </ExternalAnchor>
+                <span className="text-muted-foreground">
+                  : one endpoint reference per service, in <code>docs/api/</code>.
+                </span>
+              </li>
+              <li>
+                <ExternalAnchor href={`${SITE}/docs.html#gateway-routes`}>
+                  Gateway routes
+                </ExternalAnchor>
+                <span className="text-muted-foreground">
+                  : the prefixes the gateway serves and which need authentication.
+                </span>
+              </li>
+              <li>
+                <ExternalAnchor href={`${SITE}/guides/authentication/`}>
+                  Authentication and sessions
+                </ExternalAnchor>
+                <span className="text-muted-foreground">
+                  : login, token lifetime, logout and the failed-login lockout.
+                </span>
+              </li>
+            </ul>
           </CardContent>
         </Card>
 
-        {/* Service Selector */}
-        <Card>
-          <CardHeader>
-            <CardTitle>API Services</CardTitle>
-            <CardDescription>Select a service to view its endpoints</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {apiServices.map(service => {
-                const Icon = service.icon
-                const isSelected = selectedService === service.name
-                return (
-                  <div
-                    key={service.name}
-                    className={`cursor-pointer rounded-lg border p-4 transition-colors ${
-                      isSelected ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                    }`}
-                    onClick={() => setSelectedService(service.name)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Icon className="mt-1 h-6 w-6 text-blue-500" />
-                      <div>
-                        <h3 className="font-semibold">{service.name}</h3>
-                        <p className="mt-1 text-sm text-muted-foreground">{service.description}</p>
-                        <div className="mt-2 flex items-center gap-2">
-                          <Badge variant="outline">{service.endpoints.length} endpoints</Badge>
-                          <Badge variant="outline">Port {service.port}</Badge>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Selected Service Endpoints */}
-        {selectedServiceData && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <selectedServiceData.icon className="h-5 w-5" />
-                {selectedServiceData.name} - API Endpoints
-              </CardTitle>
-              <CardDescription>{selectedServiceData.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {selectedServiceData.endpoints.map((endpoint, index) => {
-                const testKey = `${endpoint.method}-${endpoint.path}`
-                const testResult = testResults[testKey]
-                const curlKey = `curl-${index}`
-                const jsKey = `js-${index}`
-
-                return (
-                  <div key={index} className="space-y-4 rounded-lg border p-4">
-                    {/* Endpoint Header */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Badge
-                          className={`${
-                            endpoint.method === 'GET'
-                              ? 'bg-green-500'
-                              : endpoint.method === 'POST'
-                                ? 'bg-blue-500'
-                                : endpoint.method === 'PUT'
-                                  ? 'bg-yellow-500'
-                                  : endpoint.method === 'DELETE'
-                                    ? 'bg-red-500'
-                                    : 'bg-gray-500'
-                          } text-white`}
-                        >
-                          {endpoint.method}
-                        </Badge>
-                        <code className="rounded bg-gray-100 px-2 py-1 text-sm">
-                          {endpoint.gateway_path}
-                        </code>
-                        {endpoint.requires_auth && (
-                          <Badge variant="outline">
-                            <Shield className="mr-1 h-3 w-3" />
-                            Auth Required
-                          </Badge>
-                        )}
-                        <Badge variant="outline">{endpoint.plan_required}+</Badge>
-                      </div>
-
-                      {endpoint.method === 'GET' && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleTestEndpoint(endpoint)}
-                          disabled={testResult?.loading}
-                        >
-                          {testResult?.loading ? 'Testing...' : 'Test'}
-                        </Button>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <p className="text-sm text-muted-foreground">{endpoint.description}</p>
-
-                    {/* Parameters */}
-                    {endpoint.parameters && (
-                      <div>
-                        <h5 className="mb-2 font-medium">Parameters</h5>
-                        <div className="space-y-2">
-                          {endpoint.parameters.map((param, paramIndex) => (
-                            <div key={paramIndex} className="grid grid-cols-4 gap-2 text-sm">
-                              <div className="font-mono">
-                                {param.name}
-                                {param.required && <span className="text-red-500">*</span>}
-                              </div>
-                              <div className="text-blue-600">{param.type}</div>
-                              <div>{param.required ? 'Required' : 'Optional'}</div>
-                              <div className="text-muted-foreground">{param.description}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Code Examples */}
-                    <div className="space-y-3">
-                      {/* cURL Example */}
-                      <div>
-                        <div className="mb-2 flex items-center justify-between">
-                          <h5 className="font-medium">cURL Example</h5>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => copyToClipboard(generateCurlCommand(endpoint), curlKey)}
-                          >
-                            {copiedCode === curlKey ? (
-                              <CheckCircle className="h-4 w-4" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                        <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
-                          {generateCurlCommand(endpoint)}
-                        </pre>
-                      </div>
-
-                      {/* JavaScript Example */}
-                      <div>
-                        <div className="mb-2 flex items-center justify-between">
-                          <h5 className="font-medium">JavaScript Example</h5>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => copyToClipboard(generateJavaScriptCode(endpoint), jsKey)}
-                          >
-                            {copiedCode === jsKey ? (
-                              <CheckCircle className="h-4 w-4" />
-                            ) : (
-                              <Copy className="h-4 w-4" />
-                            )}
-                          </Button>
-                        </div>
-                        <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
-                          {generateJavaScriptCode(endpoint)}
-                        </pre>
-                      </div>
-                    </div>
-
-                    {/* Test Results */}
-                    {testResult && (
-                      <div
-                        className={`rounded p-3 ${
-                          testResult.success
-                            ? 'border-green-200 bg-green-50'
-                            : 'border-red-200 bg-red-50'
-                        } border`}
-                      >
-                        <div className="mb-2 flex items-center gap-2">
-                          {testResult.success ? (
-                            <CheckCircle className="h-4 w-4 text-green-500" />
-                          ) : (
-                            <AlertCircle className="h-4 w-4 text-red-500" />
-                          )}
-                          <span className="font-medium">
-                            {testResult.success ? 'Success' : 'Error'}
-                          </span>
-                        </div>
-                        {!!testResult.response && (
-                          <pre className="overflow-x-auto rounded border bg-white p-2 text-xs">
-                            {JSON.stringify(testResult.response, null, 2)}
-                          </pre>
-                        )}
-                        {testResult.error && (
-                          <div className="text-sm text-red-600">{testResult.error}</div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Example Response */}
-                    {endpoint.example_response && (
-                      <div>
-                        <h5 className="mb-2 font-medium">Example Response</h5>
-                        <pre className="overflow-x-auto rounded bg-gray-100 p-3 text-xs">
-                          {JSON.stringify(endpoint.example_response, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Gateway Integration Guide */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Server className="h-5 w-5" />
-              Gateway Integration Guide
+              <KeyRound className="h-5 w-5" />
+              Authentication
+            </CardTitle>
+            <CardDescription>Log in once, then send the token with every request</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <p>
+              <code>POST /auth/jwt/login</code> takes a form-encoded <code>username</code> (the
+              email address) and <code>password</code> and returns an <code>access_token</code>.
+            </p>
+            <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
+              {LOGIN_EXAMPLE}
+            </pre>
+            <p>
+              Send it as <code>Authorization: Bearer &lt;access_token&gt;</code>. The gateway also
+              accepts a personal API key in the <code>X-API-Key</code> header; create one under{' '}
+              <Link href="/settings/api-keys" className="text-primary hover:underline">
+                Settings, API Keys
+              </Link>
+              .
+            </p>
+            <pre className="overflow-x-auto rounded bg-gray-900 p-3 text-xs text-white">
+              {CALL_EXAMPLE}
+            </pre>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Route className="h-5 w-5" />
+              Gateway routes
             </CardTitle>
             <CardDescription>
-              How to use the Wildbox Security Gateway for authenticated API access
+              Each prefix is forwarded to its service with the upstream path shown. Every{' '}
+              <code>/api/v1/</code> prefix needs a token or an API key, and any other path under{' '}
+              <code>/api/</code> answers 404.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-              <div>
-                <h4 className="mb-2 font-semibold">Gateway Benefits</h4>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>• Unified authentication across all services</li>
-                  <li>• Rate limiting</li>
-                  <li>• SSL termination and security headers</li>
-                  <li>• Request/response logging and monitoring</li>
-                  <li>• Load balancing and failover</li>
-                </ul>
-              </div>
-              <div>
-                <h4 className="mb-2 font-semibold">Authentication</h4>
-                <ul className="space-y-1 text-sm text-muted-foreground">
-                  <li>• Include Bearer token in Authorization header</li>
-                  <li>• Tokens are validated against identity service</li>
-                  <li>• Rate limits are applied per user/team</li>
-                </ul>
-              </div>
+          <CardContent>
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full text-sm" data-testid="api-docs-routes">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="p-3 text-left font-medium">Gateway path</th>
+                    <th className="p-3 text-left font-medium">Service</th>
+                    <th className="p-3 text-left font-medium">Upstream path</th>
+                    <th className="p-3 text-left font-medium">Reference</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {GATEWAY_ROUTES.map(route => (
+                    <tr key={route.prefix} className="border-b last:border-0">
+                      <td className="p-3 font-mono text-xs">{route.prefix}</td>
+                      <td className="p-3">{route.service}</td>
+                      <td className="p-3 font-mono text-xs">{route.upstream}</td>
+                      <td className="p-3">
+                        {route.reference && (
+                          <ExternalAnchor href={route.reference}>endpoints.md</ExternalAnchor>
+                        )}
+                        {route.note && (
+                          <span className="block text-xs text-muted-foreground">{route.note}</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            <div>
-              <h4 className="mb-2 font-semibold">Gateway URL Structure</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Base URL</Badge>
-                  <code>https://api.wildbox.local</code>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Data Service</Badge>
-                  <code>https://api.wildbox.local/api/v1/data/*</code>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">CSPM Service</Badge>
-                  <code>https://api.wildbox.local/api/v1/cspm/*</code>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline">Guardian Service</Badge>
-                  <code>https://api.wildbox.local/api/v1/guardian/*</code>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <a href="https://api.wildbox.local/docs" target="_blank" rel="noopener noreferrer">
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Gateway API Docs
-                </a>
-              </Button>
-              <Button variant="outline" asChild>
-                <a href="/auth/login" target="_blank" rel="noopener noreferrer">
-                  <Shield className="mr-2 h-4 w-4" />
-                  Get API Token
-                </a>
-              </Button>
-            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              The services&apos; interactive OpenAPI pages are not routed through the gateway, and
+              identity&apos;s are disabled in production.
+            </p>
           </CardContent>
         </Card>
       </div>
