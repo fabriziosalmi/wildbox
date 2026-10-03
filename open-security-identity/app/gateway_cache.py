@@ -11,9 +11,10 @@ remaining lifetime.
 Every revocation is confirmed (#571). It backs a change that must not
 report success while the gateway can still serve the credential: a logout
 (``revoke_jtis_at_gateway()``), a password change
-(``revoke_user_sessions_at_gateway()``, #569) and an API key disabled
-(``revoke_api_keys_at_gateway()``, #593). Each retries, and raises unless the
-gateway confirms every item it was given. The best-effort full flush that
+(``revoke_user_sessions_at_gateway()``, #569), an API key disabled
+(``revoke_api_keys_at_gateway()``, #593) and a member removed from a team
+(``revoke_team_sessions_at_gateway()``, #613). Each retries, and raises
+unless the gateway confirms every item it was given. The best-effort full flush that
 user deactivation used, ``purge_gateway_auth_cache()``, is gone with #593:
 deactivation now revokes the account's keys and sessions the same way.
 """
@@ -23,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Collection, Mapping, Optional
+from typing import Collection, Mapping, Optional, Tuple
 
 import httpx
 
@@ -157,6 +158,48 @@ async def revoke_api_keys_at_gateway(
             {"api_keys": chunk, "ttl": max(int(ttl_seconds), 1)},
             len(chunk),
             scope="api_keys",
+            timeout=timeout,
+        )
+
+
+#: The most memberships the gateway accepts in one body.
+_MAX_MEMBERSHIPS_PER_CALL = 1000
+
+
+async def revoke_team_sessions_at_gateway(
+    memberships: Collection[Tuple[str, str]],
+    not_before: float,
+    ttl_seconds: int,
+    timeout: float = 2.0,
+) -> None:
+    """
+    Make the gateway refuse, in one team each, the session tokens a user was
+    issued up to ``not_before`` (epoch seconds): what removing a member from
+    a team needs (#613). ``memberships`` lists ``(user_id, team_id)`` pairs.
+
+    A session is not bound to a team: identity resolves one on every
+    authorization, and the gateway caches the answer. The gateway keeps one
+    marker per pair for ``ttl_seconds`` (raised to its auth-cache TTL) and
+    refuses a session decision of that user in that team whose token's iat is
+    not later, cached decision or not; the user's sessions in their other
+    teams are not affected. Raises GatewayRevocationError unless the gateway
+    confirms every pair; an older gateway, which does not know this body,
+    flushes its cache and answers without the count, and is refused.
+    """
+    entries = [
+        {
+            "user_id": str(user_id),
+            "team_id": str(team_id),
+            "not_before": float(not_before),
+        }
+        for user_id, team_id in memberships
+    ]
+    for start in range(0, len(entries), _MAX_MEMBERSHIPS_PER_CALL):
+        chunk = entries[start : start + _MAX_MEMBERSHIPS_PER_CALL]
+        await _post_confirmed(
+            {"memberships": chunk, "ttl": max(int(ttl_seconds), 1)},
+            len(chunk),
+            scope="memberships",
             timeout=timeout,
         )
 

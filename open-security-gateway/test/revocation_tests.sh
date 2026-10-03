@@ -401,6 +401,169 @@ else
     fail "malformed api_keys purges answered $code_a and $code_b"
 fi
 
+# ---------------------------------------------------------------------------
+# Team memberships (#613). Removing a member from a team: identity sends
+# {"memberships": [{user_id, team_id, not_before}]} before it commits the
+# removal, and needs the count back. The gateway then refuses, in that team
+# only, the user's sessions issued up to not_before, cached decision or not;
+# once identity has committed, the next fresh authorization resolves the team
+# the user still belongs to.
+
+# member_session <jti> <user> <iat> <delay_ms> <team>... -- a session of
+# <user>, whose teams the mock resolves in the order given (oldest first).
+member_session() {
+    local header payload jti="$1" user="$2" iat="$3" delay="$4" teams
+    shift 4
+    teams=$(printf '"%s",' "$@")
+    header=$(printf '{"alg":"HS256","typ":"JWT"}' | b64url)
+    payload=$(printf '{"sub":"%s","jti":"%s","iat":%s,"delay_ms":%s,"teams":[%s]}' \
+        "$user" "$jti" "$iat" "$delay" "${teams%,}" | b64url)
+    printf '%s.%s.c2ln' "$header" "$payload"
+}
+
+# "<status> <team>": the team the gateway authorized the request in, from the
+# X-Wildbox-Team-ID header it sets on every request it lets through.
+team_status_of() {
+    curl -s -o /dev/null -D - -H "Authorization: Bearer $1" "$GATEWAY_URL$ROUTE" \
+        | awk 'NR == 1 { code = $2 }
+               tolower($1) == "x-wildbox-team-id:" { team = $2 }
+               END { gsub("\r", "", team); print code " " team }'
+}
+
+remove_member_at_identity() {
+    curl -s -o /dev/null -X POST -H 'Content-Type: application/json' \
+        -d "{\"user_id\":\"$1\",\"team_id\":\"$2\"}" "$MOCK_URL/__mock/remove_member"
+}
+
+# 20. A cached decision for the team is refused on the very next request,
+#     without asking identity, before identity has committed the removal;
+#     a fresh decision identity still grants for that team is refused too.
+user="member-$RUN_ID"
+team_a="team-a-$RUN_ID"
+team_b="team-b-$RUN_ID"
+tok=$(member_session "member-$RUN_ID" "$user" 1800000000.25 0 "$team_a" "$team_b")
+first=$(team_status_of "$tok")
+second=$(team_status_of "$tok")
+before=$(authorize_count "$tok")
+answer=$(curl -s -X POST -H 'Content-Type: application/json' -H "X-Gateway-Secret: $SECRET" \
+    -d "{\"memberships\":[{\"user_id\":\"$user\",\"team_id\":\"$team_a\",\"not_before\":1800000000.5}],\"ttl\":1800}" \
+    "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")
+next=$(team_status_of "$tok")
+after=$(authorize_count "$tok")
+if [ "$first" = "200 $team_a" ] && [ "$second" = "200 $team_a" ] && [ "$before" = 1 ] \
+        && [ "$next" = "403 " ] && [ "$after" = 1 ]; then
+    pass "a removed member's cached decision for the team is refused (identity not asked)"
+else
+    fail "membership, cached: '$first'/'$second' (identity asked $before), then '$next' (asked $after)"
+fi
+fresh=$(team_status_of "$tok")
+if [ "$fresh" = "403 " ] && [ "$(authorize_count "$tok")" -gt 1 ]; then
+    pass "a fresh decision for the team left is refused although identity grants it"
+else
+    fail "membership, fresh: '$fresh' before identity committed the removal"
+fi
+if printf '%s' "$answer" | python3 -c '
+import json, sys
+body = json.loads(sys.stdin.read())
+sys.exit(not (body["revoked"] == 1 and body["scope"] == "memberships"))' 2>/dev/null; then
+    pass "the memberships purge answers strict JSON counting the memberships"
+else
+    fail "memberships purge answer is not what identity parses: $answer"
+fi
+
+# 21. The marker names one user in one team: another member of that team is
+#     not refused, nor is a session of the user issued after the cutoff
+#     (a new login once the user is added back to the team).
+other=$(member_session "member-other-$RUN_ID" "other-$user" 1700000000 0 "$team_a")
+later=$(member_session "member-later-$RUN_ID" "$user" 1800000000.75 0 "$team_a")
+if [ "$(team_status_of "$other")" = "200 $team_a" ] \
+        && [ "$(team_status_of "$later")" = "200 $team_a" ]; then
+    pass "another member, and a session issued after the cutoff, still work in the team"
+else
+    fail "the membership marker refused a session it does not name"
+fi
+
+# 22. Once identity has committed the removal, the same session works again,
+#     in the team its user still belongs to, on every worker.
+remove_member_at_identity "$user" "$team_a"
+moved=0
+for i in $(seq 1 "$PROBES"); do
+    [ "$(team_status_of "$tok")" = "200 $team_b" ] && moved=$((moved + 1))
+done
+if [ "$moved" = "$PROBES" ]; then
+    pass "after the removal the session works in the team its user still belongs to"
+else
+    fail "after the removal only $moved/$PROBES requests were served in the remaining team"
+fi
+
+# 23. A member of one team only: refused at once, then refused by identity.
+solo="member-solo-$RUN_ID"
+solo_team="team-solo-$RUN_ID"
+tok=$(member_session "$solo" "$solo" 1800000000 0 "$solo_team")
+warm_code=$(team_status_of "$tok")
+code=$(purge "{\"memberships\":[{\"user_id\":\"$solo\",\"team_id\":\"$solo_team\",\"not_before\":1800000001}],\"ttl\":1800}")
+next=$(team_status_of "$tok")
+remove_member_at_identity "$solo" "$solo_team"
+final=$(team_status_of "$tok")
+if [ "$warm_code" = "200 $solo_team" ] && [ "$code" = 200 ] && [ "$next" = "403 " ] \
+        && [ "$final" = "401 " ]; then
+    pass "a member of one team only is refused at once, then has no team"
+else
+    fail "single-team removal: '$warm_code', purge $code, then '$next', then '$final'"
+fi
+
+# 24. The race: an authorization in flight across the removal -- identity
+#     resolved the team before the commit -- is neither served nor cached:
+#     every later request is served in the remaining team.
+failed=0
+for i in $(seq 1 10); do
+    race_user="member-race-$RUN_ID-$i"
+    race_a="team-race-a-$RUN_ID-$i"
+    race_b="team-race-b-$RUN_ID-$i"
+    tok=$(member_session "$race_user" "$race_user" 1800000000 400 "$race_a" "$race_b")
+    inflight_out="$(mktemp)"
+    team_status_of "$tok" >"$inflight_out" &
+    inflight=$!
+    sleep 0.15
+    code=$(purge "{\"memberships\":[{\"user_id\":\"$race_user\",\"team_id\":\"$race_a\",\"not_before\":1800000001}],\"ttl\":1800}")
+    remove_member_at_identity "$race_user" "$race_a"
+    wait "$inflight"
+    inflight_answer=$(cat "$inflight_out")
+    rm -f "$inflight_out"
+    moved=0
+    for j in $(seq 1 "$PROBES"); do
+        [ "$(team_status_of "$tok")" = "200 $race_b" ] && moved=$((moved + 1))
+    done
+    if [ "$code" != 200 ] || [ "$inflight_answer" != "403 " ] || [ "$moved" != "$PROBES" ]; then
+        echo "  race $i: purge $code, in flight '$inflight_answer', $moved/$PROBES in the remaining team"
+        failed=$((failed + 1))
+    fi
+done
+if [ "$failed" = 0 ]; then
+    pass "membership: an in-flight authorization for the team left is not served (10/10)"
+else
+    fail "membership: a decision for the team left was served after $failed/10 removals"
+fi
+
+# 25. A cutoff never moves back, and malformed entries are refused.
+kept_user="member-kept-$RUN_ID"
+kept_team="team-kept-$RUN_ID"
+purge "{\"memberships\":[{\"user_id\":\"$kept_user\",\"team_id\":\"$kept_team\",\"not_before\":1800000000.5}],\"ttl\":1800}" >/dev/null
+purge "{\"memberships\":[{\"user_id\":\"$kept_user\",\"team_id\":\"$kept_team\",\"not_before\":1700000000}],\"ttl\":1800}" >/dev/null
+early=$(member_session "member-early-$RUN_ID" "$kept_user" 1800000000.25 0 "$kept_team")
+if [ "$(team_status_of "$early")" = "403 " ]; then
+    pass "a later membership cutoff is kept"
+else
+    fail "an earlier membership cutoff reopened a session the later one had ended"
+fi
+code_a=$(purge '{"memberships":[]}')
+code_b=$(purge '{"memberships":[{"user_id":"u","not_before":1800000000}]}')
+if [ "$code_a" = 400 ] && [ "$code_b" = 400 ]; then
+    pass "a memberships purge with an empty list or an invalid entry is refused"
+else
+    fail "malformed memberships purges answered $code_a and $code_b"
+fi
+
 # 7. The purge refuses a caller without the secret.
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
     -d '{"jtis":["x"]}' "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")

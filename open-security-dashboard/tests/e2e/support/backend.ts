@@ -6,7 +6,7 @@
  * exception is the threat-intel seed (fixtures/threat-intel-seed.sql), because
  * the data service has no API that creates indicators -- see that file.
  */
-import { APIRequestContext, BrowserContext, Page, expect, request } from '@playwright/test'
+import { APIRequestContext, BrowserContext, Locator, Page, expect, request } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -226,4 +226,14 @@ export async function uiLogin(page: Page, account: Account) {
   await page.getByLabel('Password', { exact: true }).fill(account.password)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page).toHaveURL(/\/dashboard$/, { timeout: 30_000 })
+}
+
+/**
+ * The toast whose title or description reads exactly `text`. Radix copies
+ * every toast's text into a transient aria-live span for screen readers,
+ * outside the toast, so a page-wide getByText can match both while the
+ * announcement lasts (#602). Scoping to the toast itself never does.
+ */
+export function toast(page: Page, text: string): Locator {
+  return page.getByTestId('toast').getByText(text, { exact: true })
 }

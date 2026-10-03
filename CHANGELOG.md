@@ -605,6 +605,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A member removed from a team loses the team at the gateway on the
+  next request** (#613). A session is not bound to a team:
+  `/internal/authorize` resolves the oldest membership on every request,
+  and the gateway caches the answer for `AUTH_CACHE_TTL` (300 s). Since
+  #593 the removal revoked the member's API keys for the team, but their
+  sessions kept the cached "allowed in this team" decision, and the
+  removed member went on acting in the team for up to five minutes.
+  Removing a member (`DELETE /api/v1/admin/teams/{team_id}/members/{user_id}`,
+  by the team's owner or an admin, or by a superuser) now also sends the
+  gateway `{"memberships": [{"user_id", "team_id", "not_before"}], "ttl": <seconds>}`
+  before it commits, and commits only once the gateway confirms the
+  count; otherwise nothing changes and the request answers 503. The
+  gateway keeps a marker per user and team and refuses, with 403
+  `team_membership_ended`, a session decision of that user in that team
+  whose token was issued up to the removal, on a cache hit and after a
+  fresh authorization, so a request in flight across the removal is
+  refused too. The refused decision is dropped from the cache: the next
+  request with the same session is authorized afresh, and works in the
+  team the user still belongs to, if any. The user's sessions in their
+  other teams are not ended, which the per-user cutoff a password change
+  uses (#569) would have done. Deleting an account already ended all its
+  sessions (#593), including in the teams deleted with it, whose only
+  member it is.
+
 - **The tools SSRF guard checks URL-typed and nested inputs** (#610).
   `InputSanitizer.validate_request_urls`, which runs on every validated
   tool input before the tool starts, on the synchronous endpoint and in the
@@ -1070,6 +1094,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
+
+- **The dashboard E2E specs no longer race the toast announcement**
+  (#602). Radix renders a toast's text twice for about a second: in the
+  toast, and in a visually hidden `aria-live` span outside it for screen
+  readers. A page-wide `getByText` on toast text matched both while the
+  announcement lasted and failed Playwright's strict mode, which made
+  "creates a user from the form" flaky. Each toast now carries
+  `data-testid="toast"`, and the admin and settings specs find toast text
+  only inside it through a `toast()` helper, with the outcome still
+  asserted through the API. No retry or timeout was added. Repeated 30
+  times with no retries, the test failed 9 of 30 runs before the change
+  and passed 30 of 30 after it.
 
 - **Prose Quality checks the Markdown and fails on findings** (#606).
   The job installed proselint unpinned and ran
