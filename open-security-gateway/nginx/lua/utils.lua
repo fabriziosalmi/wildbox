@@ -49,9 +49,13 @@ function _M.json_decode(str)
 end
 
 -- Safe JSON encode with error handling
+-- Returns the JSON text alone on success, so ngx.say(utils.json_encode(x))
+-- writes exactly that text. It used to return (text, nil), and ngx.say prints
+-- every argument: each JSON error body the gateway wrote ended in "nil" and
+-- was not valid JSON (#571). On failure: nil and the error.
 function _M.json_encode(obj)
     if not obj then
-        return "{}", nil
+        return "{}"
     end
 
     local ok, result = pcall(cjson.encode, obj)
@@ -59,7 +63,7 @@ function _M.json_encode(obj)
         return nil, "encode error: " .. tostring(result)
     end
 
-    return result, nil
+    return result
 end
 
 -- Extract authentication token from request headers
@@ -104,6 +108,33 @@ end
 function _M.generate_auth_cache_key(token, token_type)
     local hash = ngx.encode_base64(ngx.sha1_bin(token))
     return "auth:" .. token_type .. ":" .. hash
+end
+
+-- The `jti` claim of a JWT, or nil.
+--
+-- Read without verifying the signature, and only ever used as the name of a
+-- revocation marker: identity has verified the token before any decision for
+-- it is cached, and a forged token naming someone else's jti can at most get
+-- itself refused.
+function _M.jwt_jti(token)
+    local segment = token:match("^[^.]+%.([^.]+)%.[^.]*$")
+    if not segment then
+        return nil
+    end
+    segment = segment:gsub("%-", "+"):gsub("_", "/")
+    local remainder = #segment % 4
+    if remainder > 0 then
+        segment = segment .. string.rep("=", 4 - remainder)
+    end
+    local raw = ngx.decode_base64(segment)
+    if not raw then
+        return nil
+    end
+    local claims = _M.json_decode(raw)
+    if type(claims) == "table" and type(claims.jti) == "string" and claims.jti ~= "" then
+        return claims.jti
+    end
+    return nil
 end
 
 -- Clean sensitive headers before forwarding to backend

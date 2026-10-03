@@ -42,6 +42,10 @@ async def blacklist_token(token_jti: str, expires_at: datetime) -> None:
     Args:
         token_jti: The JWT 'jti' (unique token ID) or the token hash.
         expires_at: When the token naturally expires (used to set TTL).
+
+    Raises whatever the Redis client raised. This used to log and return, so a
+    logout during a Redis outage answered 200 with nothing revoked (#571); the
+    caller must know the revocation did not happen.
     """
     try:
         r = await get_redis()
@@ -50,6 +54,7 @@ async def blacklist_token(token_jti: str, expires_at: datetime) -> None:
         logger.info(f"Token blacklisted (TTL={ttl}s)")
     except Exception as e:
         logger.error(f"Failed to blacklist token: {e}")
+        raise
 
 
 async def is_token_blacklisted(token_jti: str) -> bool:

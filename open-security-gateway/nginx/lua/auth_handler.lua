@@ -224,27 +224,145 @@ local function get_cached_auth_data(cache_key)
     return nil, "cache_miss"
 end
 
--- Purge a cached authorization decision.
+-- Revocation (#571).
 --
 -- Nothing could invalidate the cache: disabling a user, deleting an API key,
 -- changing a role or removing a team membership all took effect only when the
 -- 5-minute entry expired, and an administrator deactivating a compromised
 -- account had no way to tell how long was left (WILDBO-AUTH-03). Identity calls
 -- POST /internal/gateway/purge-auth-cache on those events.
-function _M.purge_cache_entry(token, token_type)
-    local auth_cache = ngx.shared.auth_cache
-    if not auth_cache then return false end
-    local cache_key = utils.generate_auth_cache_key(token, token_type or "bearer")
-    auth_cache:delete(cache_key)
-    return true
+--
+-- Deleting the entry was not enough. A request that missed the cache asks
+-- identity, identity checks its blacklist and then queries the database; a
+-- logout landing in that window blacklisted the jti and purged an entry that
+-- did not exist yet, and the request then stored identity's "allowed" in the
+-- cache. Every later request with the revoked token was served from that entry
+-- until the TTL ran out -- the intermittent E2E logout failure. Two shared
+-- (all-worker) records close it:
+--
+--   * a revocation marker per jti (per cache key for tokens without one),
+--     checked on every request, cache hit or not, and after every fresh
+--     authorization, so no ordering of fill and purge lets a revoked token
+--     through, and it holds even if identity later vouches for the token
+--     (its blacklist failing open while Redis is down);
+--   * a generation counter bumped by every purge: a decision that was in
+--     flight across a purge is not kept, which is what protects a full flush
+--     (user or key deactivated), where nothing names the token.
+--
+-- Both live in auth_revoked rather than auth_cache, so flushing the cache
+-- does not wipe them.
+local GENERATION_KEY = "generation"
+local MAX_REVOCATION_TTL = 86400
+
+local function auth_generation()
+    local state = ngx.shared.auth_revoked
+    return state and state:get(GENERATION_KEY) or 0
 end
 
-function _M.purge_all_cache()
+local function bump_auth_generation()
+    local state = ngx.shared.auth_revoked
+    if state then
+        state:incr(GENERATION_KEY, 1, 0)
+    end
+end
+
+-- The name a token is revoked under: its jti when it is a JWT that carries
+-- one (so identity can revoke a session it holds no raw token for), otherwise
+-- its cache key.
+local function revocation_id(token, token_type, cache_key)
+    if token_type == "bearer" then
+        local jti = utils.jwt_jti(token)
+        if jti then
+            return "jti:" .. jti
+        end
+    end
+    return "key:" .. cache_key
+end
+
+local function is_revoked(rid)
+    local state = ngx.shared.auth_revoked
+    return state ~= nil and rid ~= nil and state:get(rid) ~= nil
+end
+
+local function flush_auth_cache()
     local auth_cache = ngx.shared.auth_cache
     if not auth_cache then return false end
     auth_cache:flush_all()
     auth_cache:flush_expired()
     return true
+end
+
+-- Record revocation markers. Returns how many were stored.
+--
+-- safe_set never evicts another live entry, so neither the generation counter
+-- nor an earlier marker can be pushed out. If the dict is full the marker
+-- cannot be kept; the whole auth cache is flushed instead, so no cached
+-- decision survives and the next request goes to identity, whose blacklist
+-- refuses the token. The revocation is still effective, only without the
+-- defense in depth, and it is still reported as done.
+local function store_markers(rids, ttl, cache_ttl)
+    local state = ngx.shared.auth_revoked
+    if not state then
+        flush_auth_cache()
+        return #rids
+    end
+    ttl = math.min(math.max(tonumber(ttl) or MAX_REVOCATION_TTL, cache_ttl), MAX_REVOCATION_TTL)
+    local flushed = false
+    for _, rid in ipairs(rids) do
+        local ok, err = state:safe_set(rid, true, ttl)
+        if not ok and not flushed then
+            utils.log("warn", "Revocation marker not stored; flushing the auth cache", {error = err})
+            flush_auth_cache()
+            flushed = true
+        end
+    end
+    return #rids
+end
+
+local function configured_cache_ttl()
+    local config = get_config()
+    return (config and config.cache_ttl) or CACHE_TTL
+end
+
+-- Revoke JWTs by jti. `ttl` should be the tokens' remaining lifetime; it is
+-- raised to the cache TTL, so a marker always outlives any decision cached
+-- before it, and capped at a day.
+function _M.revoke_jtis(jtis, ttl)
+    bump_auth_generation()
+    local rids = {}
+    for _, jti in ipairs(jtis) do
+        rids[#rids + 1] = "jti:" .. jti
+    end
+    return store_markers(rids, ttl, configured_cache_ttl())
+end
+
+-- Revoke one token given in full (the purge older identity versions send).
+function _M.purge_cache_entry(token, token_type, ttl)
+    bump_auth_generation()
+    token_type = token_type or "bearer"
+    local cache_key = utils.generate_auth_cache_key(token, token_type)
+    store_markers({revocation_id(token, token_type, cache_key)}, ttl, configured_cache_ttl())
+    local auth_cache = ngx.shared.auth_cache
+    if auth_cache then
+        auth_cache:delete(cache_key)
+    end
+    return true
+end
+
+function _M.purge_all_cache()
+    bump_auth_generation()
+    return flush_auth_cache()
+end
+
+local function refuse_revoked()
+    utils.log("info", "Refused a revoked token")
+    ngx.status = ngx.HTTP_UNAUTHORIZED
+    ngx.header.content_type = "application/json"
+    ngx.say(utils.json_encode({
+        error = "invalid_token",
+        message = "Authentication token is invalid or expired"
+    }))
+    ngx.exit(ngx.HTTP_UNAUTHORIZED)
 end
 
 -- Set authentication data in cache with proper TTL
@@ -494,8 +612,21 @@ function _M.authenticate()
     -- Try to get auth data from cache first
     local auth_data, cache_err = get_cached_auth_data(cache_key)
 
+    -- A cache hit is only as good as the revocation markers allow (#571).
+    -- Entries cached before the marker existed carry no revocation_id.
+    if auth_data and is_revoked(auth_data.revocation_id
+                                or revocation_id(token, token_type, cache_key)) then
+        ngx.shared.auth_cache:delete(cache_key)
+        refuse_revoked()
+    end
+
     -- If not in cache, validate with identity service
     if cache_err == "cache_miss" then
+        -- Read before asking identity: if a purge lands while the answer is
+        -- in flight, the answer is not kept (see bump_auth_generation).
+        local generation = auth_generation()
+        local rid = revocation_id(token, token_type, cache_key)
+
         local validation_err
         auth_data, validation_err = validate_token_with_identity(token, token_type, config)
 
@@ -524,8 +655,22 @@ function _M.authenticate()
             end
         end
 
-        -- Cache the validation result
+        -- Identity may have answered before a logout that has since been
+        -- recorded here.
+        if is_revoked(rid) then
+            refuse_revoked()
+        end
+
+        -- Cache the validation result, then drop it again if a purge ran
+        -- meanwhile. The order matters against a purge running in another
+        -- worker: it bumps the generation before writing its marker, so
+        -- either the check below sees the bump, or the marker is written
+        -- after this entry and every hit on it is refused above.
+        auth_data.revocation_id = rid
         set_cached_auth_data(cache_key, auth_data, config)
+        if auth_generation() ~= generation then
+            ngx.shared.auth_cache:delete(cache_key)
+        end
     end
 
     -- Enforce API-key least-privilege scopes (no-op for interactive/JWT auth)
