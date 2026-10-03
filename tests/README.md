@@ -73,48 +73,38 @@ pytest tests/integration/test_agents_ai.py::AgentsAITester::test_ioc_analysis -v
 - `test_sensor_telemetry.py` - Endpoint telemetry
 - `test_tools_execution.py` - Security tool execution (55+ tools)
 
-### Unit Tests (7 files)
+### Unit Tests
 
-Test isolated components and business logic.
-
-```bash
-# Run all unit tests
-pytest tests/ -v --ignore=tests/integration/
-
-# Specific unit tests
-pytest tests/test_identity_comprehensive.py -v
-pytest tests/test_pulse_check_system.py -v
-pytest open-security-identity/tests/test_basic.py -v
-pytest open-security-agents/tests/test_basic.py -v
-```
-
-**Available Unit Tests:**
-
-- `tests/test_identity_comprehensive.py` - Identity service logic (457 lines!)
-- `tests/test_pulse_check_system.py` - System health monitoring
-- `tests/utils/test_data_generator.py` - Test data generation utilities
-- `open-security-identity/tests/test_basic.py` - Identity service basics
-- `open-security-agents/tests/test_basic.py` - Agents service schemas
-- `open-security-responder/test_basic.py` - Responder models & parsers
-
-### Script-Based Tests (2 files)
-
-Executable test scripts with custom test runners.
+Test isolated components and business logic. They need no running services.
+Each service keeps its unit tests in `open-security-<service>/tests/unit/`,
+and the Unit Tests job in `.github/workflows/test.yml` runs exactly that
+directory, from inside the service, for every service in its matrix.
 
 ```bash
-# Agents service comprehensive test
-python open-security-agents/scripts/test_agents.py
+# One service's unit tests
+cd open-security-agents && pytest tests/unit/ -v
 
-# Responder service playbook test
-python open-security-responder/scripts/test_responder.py
+# Shared package and repository scripts
+pytest tests/shared tests/scripts -v -o addopts=""
 ```
 
-### E2E Tests (1 Python file)
+### Where a test must live to run in CI
 
-```bash
-# Responder end-to-end workflow
-python open-security-responder/test_e2e.py
-```
+A `test_*.py` file that no CI job collects never runs, so it cannot catch a
+regression and stops matching the code without anyone noticing (#582).
+`scripts/check_test_collection.py` reads the workflows, works out which
+directories their pytest commands collect, and fails the Code Quality job
+when a test file sits anywhere else:
+
+| Directory | Run by |
+| --- | --- |
+| `open-security-<service>/tests/unit/` | `test.yml`, Unit Tests |
+| `tests/shared/`, `tests/scripts/` | `test.yml`, Shared Package Unit Tests |
+| `tests/integration/` | `integration-tests.yml`, `production-stack.yml` |
+| `tests/chaos/` | `chaos-and-load.yml` (nightly) |
+
+A file that is meant to sit elsewhere goes in
+`scripts/test_collection_allowlist.txt`, with the reason on the same line.
 
 ---
 
@@ -186,11 +176,8 @@ npx playwright show-report
 # Integration test
 pytest tests/integration/test_agents_ai.py -v
 
-# Unit test
-pytest open-security-agents/tests/test_basic.py -v
-
-# Script test
-python open-security-agents/scripts/test_agents.py
+# Unit tests
+cd open-security-agents && pytest tests/unit/ -v
 ```
 
 ### Automations Service
@@ -222,8 +209,8 @@ npx playwright test
 # Integration test
 pytest tests/integration/test_data_integration.py -v
 
-# Unit test
-pytest tests/utils/test_data_generator.py -v
+# Unit tests
+cd open-security-data && pytest tests/unit/ -v
 ```
 
 ### Gateway Service
@@ -245,11 +232,7 @@ pytest tests/integration/test_guardian_monitoring.py -v
 pytest tests/integration/test_identity_comprehensive.py -v
 
 # Unit tests
-pytest tests/test_identity_comprehensive.py -v
-pytest open-security-identity/tests/test_basic.py -v
-
-# Migration test
-python open-security-identity/test_migration.py
+cd open-security-identity && pytest tests/unit/ -v
 ```
 
 ### Responder Service
@@ -258,17 +241,8 @@ python open-security-identity/test_migration.py
 # Integration test
 pytest tests/integration/test_responder_metrics.py -v
 
-# Unit test
-pytest open-security-responder/test_basic.py -v
-
-# Advanced scenarios
-python open-security-responder/test_advanced.py
-
-# E2E workflow
-python open-security-responder/test_e2e.py
-
-# Script test
-python open-security-responder/scripts/test_responder.py
+# Unit tests
+cd open-security-responder && pytest tests/unit/ -v
 ```
 
 ### Sensor Service
@@ -283,8 +257,8 @@ pytest tests/integration/test_sensor_telemetry.py -v
 # Integration test
 pytest tests/integration/test_tools_execution.py -v
 
-# Standalone test
-python open-security-tools/integration_test.py
+# Unit tests
+cd open-security-tools && pytest tests/unit/ -v
 ```
 
 ---
@@ -573,7 +547,7 @@ test('User can login', async ({ page }) => {
 - **Test Inventory**: `test_inventory.json` (machine-readable)
 - **Audit Report**: `TEST_SUITE_AUDIT_REPORT.md` (comprehensive analysis)
 - **Coverage Matrix**: `TEST_COVERAGE_MATRIX.md` (quick reference)
-- **Inventory Tool**: `tests/test_inventory_mapper.py` (reusable scanner)
+- **Collection check**: `scripts/check_test_collection.py` (lists every test file CI does not run)
 
 ---
 

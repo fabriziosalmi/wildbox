@@ -150,14 +150,11 @@ Environment variables:
 ## 🧪 Testing
 
 ```bash
-# Run all tests
+# Unit tests (no services needed)
 make test
 
-# Test a specific playbook
+# Playbook execution through the gateway (needs the whole stack running)
 make test-playbook
-
-# Run end-to-end test
-python scripts/test_responder.py
 ```
 
 ## 🏗️ Development

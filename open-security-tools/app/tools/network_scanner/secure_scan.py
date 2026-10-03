@@ -4,7 +4,7 @@ Secure Network Scanner (CIDR-bounded implementation).
 This is the conservative scanner: it accepts only CIDR notation or a single IP
 and refuses anything larger than MAX_HOSTS_TO_SCAN. It is not the registered
 tool -- ``main.py`` in this package is -- but it is covered by
-tests/tools/test_network_scanner.py and is kept here rather than deleted. It
+open-security-tools/tests/unit/test_secure_network_scanner.py and is kept here rather than deleted. It
 used to live in a sibling directory called ``network_scanner`` that the loader
 could never import (no execute_tool, and a relative import the old loader broke),
 which meant two confusingly named scanner directories, only one of which ran
