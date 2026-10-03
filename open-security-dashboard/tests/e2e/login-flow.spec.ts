@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test'
 import {
   adminAccount,
+  apiLogin,
+  apiLogout,
   bearer,
   gatewayApi,
   registerUser,
@@ -75,34 +77,77 @@ test.describe('Login flow', { tag: '@backend' }, () => {
     await expect(page.getByRole('link', { name: admin.email })).toBeVisible()
   })
 
-  test('logout revokes the token at the gateway and closes protected routes', async ({
-    page,
-    context,
-  }) => {
-    await uiLogin(page, adminAccount())
-    const token = await sessionToken(context)
-    expect(token).toBeTruthy()
+  /* Revocation is a security property, not a timing one: these two must pass
+     on the first attempt. A retry used to hide a revoked token that the
+     gateway kept accepting -- a request authorized while the logout ran had
+     its "allowed" cached after the purge (#571). */
+  test.describe('revocation', () => {
+    test.describe.configure({ retries: 0 })
 
-    const api = await gatewayApi()
-    const protectedRoute = '/api/v1/data/health'
-    expect((await api.get(protectedRoute, { headers: bearer(token!) })).status()).toBe(200)
+    test('logout revokes the token at the gateway and closes protected routes', async ({
+      page,
+      context,
+    }) => {
+      await uiLogin(page, adminAccount())
+      const token = await sessionToken(context)
+      expect(token).toBeTruthy()
 
-    const revoke = page.waitForResponse(
-      r => r.url().endsWith('/auth/jwt/logout') && r.request().method() === 'POST'
-    )
-    await page.getByRole('button', { name: 'Logout' }).click()
-    expect((await revoke).ok()).toBe(true)
+      const api = await gatewayApi()
+      const protectedRoute = '/api/v1/data/health'
+      expect((await api.get(protectedRoute, { headers: bearer(token!) })).status()).toBe(200)
 
-    await expect(page).toHaveURL(/\/auth\/login$/)
-    expect(await sessionToken(context)).toBeUndefined()
+      const revoke = page.waitForResponse(
+        r => r.url().endsWith('/auth/jwt/logout') && r.request().method() === 'POST'
+      )
+      await page.getByRole('button', { name: 'Logout' }).click()
+      expect((await revoke).ok()).toBe(true)
 
-    // The token the browser held is dead server-side, not merely forgotten.
-    expect((await api.get(protectedRoute, { headers: bearer(token!) })).status()).toBe(401)
+      await expect(page).toHaveURL(/\/auth\/login$/)
+      expect(await sessionToken(context)).toBeUndefined()
 
-    // And the dashboard sends an anonymous visitor back to sign in.
-    await page.goto('/dashboard')
-    await expect(page).toHaveURL(/\/\?redirect=%2Fdashboard$/)
-    await api.dispose()
+      // The token the browser held is dead server-side, not merely forgotten.
+      expect((await api.get(protectedRoute, { headers: bearer(token!) })).status()).toBe(401)
+
+      // And the dashboard sends an anonymous visitor back to sign in.
+      await page.goto('/dashboard')
+      await expect(page).toHaveURL(/\/\?redirect=%2Fdashboard$/)
+      await api.dispose()
+    })
+
+    test('a logout racing in-flight requests leaves no window', async () => {
+      // What the dashboard does on every sign-in: a burst of requests with a
+      // token the gateway has not cached yet, each one asking identity. A
+      // logout lands among them; once it has answered, the token must be
+      // refused, every time.
+      test.setTimeout(120_000)
+      const api = await gatewayApi()
+      const account = { email: uniqueEmail('revoke-race'), password: strongPassword() }
+      await registerUser(api, account)
+      const protectedRoute = '/api/v1/data/health'
+      const iterations = 25
+      const leaks: string[] = []
+
+      for (let i = 0; i < iterations; i++) {
+        const token = await apiLogin(api, account)
+        const inFlight = Array.from({ length: 3 }, () =>
+          api.get(protectedRoute, { headers: bearer(token) })
+        )
+        // Vary where the logout lands relative to the burst.
+        await new Promise(resolve => setTimeout(resolve, i % 5))
+        expect(await apiLogout(api, token)).toBe(204)
+        await Promise.all(inFlight)
+
+        for (let probe = 0; probe < 3; probe++) {
+          const status = (await api.get(protectedRoute, { headers: bearer(token) })).status()
+          if (status !== 401) leaks.push(`iteration ${i}, probe ${probe}: HTTP ${status}`)
+        }
+        // The auth routes allow 5 requests/s per address; two per iteration.
+        await new Promise(resolve => setTimeout(resolve, 450))
+      }
+
+      expect(leaks, `revoked token accepted after logout`).toEqual([])
+      await api.dispose()
+    })
   })
 
   test('hostile input in the password field is rejected and never executed', async ({

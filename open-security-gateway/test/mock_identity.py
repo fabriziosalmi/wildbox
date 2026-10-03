@@ -15,11 +15,21 @@ so tests can assert exactly which headers the gateway forwarded upstream
 
 GET /__mock/counts returns per-token /internal/authorize call counts, which
 lets tests prove the gateway's auth cache short-circuits repeat validations.
+
+Revocation (#571). Besides the fixture tokens, the mock accepts JWT-shaped
+tokens whose (unsigned) payload carries a ``jti``, the way identity's login
+tokens do, until POST /__mock/revoke {"jti": ...} blacklists that jti. Like
+the real endpoint, the blacklist is consulted *before* the rest of the work:
+a payload ``delay_ms`` makes the mock sleep after that check, standing in for
+the database query identity runs there, so a test can hold an authorization
+in flight across a logout deterministically.
 """
 
+import base64
 import hmac
 import json
 import os
+import time
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -50,6 +60,20 @@ TOKENS = {
 }
 
 authorize_calls = Counter()
+revoked_jtis = set()
+
+
+def jwt_claims(token):
+    """The payload of a JWT-shaped token, or None. Unsigned: test fixture."""
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    try:
+        padded = parts[1] + "=" * (-len(parts[1]) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(padded))
+    except ValueError:
+        return None
+    return claims if isinstance(claims, dict) and claims.get("jti") else None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -98,6 +122,22 @@ class Handler(BaseHTTPRequestHandler):
         authorize_calls[token] += 1
 
         auth = TOKENS.get(token)
+        claims = jwt_claims(token) if auth is None else None
+        if claims is not None:
+            if claims["jti"] in revoked_jtis:
+                self._reply(401, {"detail": "Token has been revoked"})
+                return
+            # Past the blacklist check: the real endpoint now queries the
+            # database, and a logout landing meanwhile goes unnoticed.
+            time.sleep(int(claims.get("delay_ms") or 0) / 1000)
+            auth = {
+                "user_id": claims.get("sub", "user-jwt"),
+                # A team per session: the gateway's per-team rate limit must
+                # not turn a test's repeated probes into 429s.
+                "team_id": "team-" + claims["jti"],
+                "role": "user",
+                "scopes": None,
+            }
         if auth is None:
             self._reply(401, {"detail": "Invalid or inactive credentials"})
             return
@@ -114,9 +154,17 @@ class Handler(BaseHTTPRequestHandler):
             },
         )
 
+    def _revoke(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        request = json.loads(self.rfile.read(length) or b"{}")
+        revoked_jtis.add(request["jti"])
+        self._reply(200, {"revoked": request["jti"]})
+
     def do_POST(self):
         if self.path == "/internal/authorize":
             self._authorize()
+        elif self.path == "/__mock/revoke":
+            self._revoke()
         else:
             self._echo()
 

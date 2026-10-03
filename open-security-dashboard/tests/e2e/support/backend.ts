@@ -93,6 +93,14 @@ export async function apiLogin(api: APIRequestContext, account: Account): Promis
   return body.access_token as string
 }
 
+/** Revokes `token` the way the dashboard's Logout button does; returns the HTTP status. */
+export async function apiLogout(api: APIRequestContext, token: string): Promise<number> {
+  const response = await withAuthRateLimit(() =>
+    api.post('/auth/jwt/logout', { headers: bearer(token) })
+  )
+  return response.status()
+}
+
 /** Registers a user through the public registration route (it gets a team of its own). */
 export async function registerUser(
   api: APIRequestContext,

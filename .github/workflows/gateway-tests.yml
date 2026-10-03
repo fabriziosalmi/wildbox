@@ -45,7 +45,9 @@ jobs:
             -e EXPECTED_GATEWAY_SECRET="$CI_GATEWAY_SECRET" \
             -v "$PWD/open-security-gateway/test/mock_identity.py:/mock_identity.py:ro" \
             python:3.12-alpine python /mock_identity.py
-          docker run -d --name gateway --network gwtest -p 8080:80 \
+          # 8081 is the internal listener (auth-cache purge). Published on the
+          # loopback here only, for revocation_tests.sh; never in compose.
+          docker run -d --name gateway --network gwtest -p 8080:80 -p 127.0.0.1:8082:8081 \
             -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
             -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
             wildbox-gateway-test
@@ -72,6 +74,11 @@ jobs:
 
       - name: Run gateway auth tests
         run: bash open-security-gateway/test/ci_auth_tests.sh
+
+      # Logout must hold on every worker even with an authorization in flight
+      # (#571). Strict: no retries, many iterations.
+      - name: Run gateway revocation tests
+        run: bash open-security-gateway/test/revocation_tests.sh
 
       - name: Dump container logs on failure
         if: failure()
