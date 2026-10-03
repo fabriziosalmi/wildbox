@@ -1,216 +1,42 @@
-# 🛡️ Wildbox Security Dashboard
+# Wildbox Security Dashboard
 
-A comprehensive security operations center and threat intelligence platform built with Next.js, TypeScript, and modern UI components.
+The web interface of the Wildbox suite: a Next.js application that signs a
+user in and drives the backend services (identity, data, tools, guardian,
+responder, cspm) through the Wildbox gateway.
 
-## 🎯 Overview
+## Pages
 
-The Wildbox Security Dashboard is the central command center for the Wildbox security suite, providing a unified interface to manage and monitor all security operations including:
+The routes under `src/app/`:
 
-- **Threat Intelligence**: IOC lookups, threat feeds management
-- **Cloud Security**: CSPM scans and compliance monitoring
-- **Endpoint Management**: Agent deployment and monitoring
-- **Vulnerability Management**: Security findings and remediation tracking
-- **Response Automation**: Playbook execution and incident response
-- **AI-Powered Analysis**: Intelligent threat hunting and analysis
+| Route | What it does |
+| ----- | ------------ |
+| `/` | Sign-in page (the `/auth/login` form) |
+| `/auth/login`, `/auth/signup`, `/auth/logout` | Sign in, register an account, sign out |
+| `/auth/change-password` | Where an account with an initial password is sent to replace it |
+| `/dashboard` | Summary figures from the data, cspm, guardian and responder services |
+| `/threat-intel/lookup` | Look up an IP address, domain or file hash in the data service |
+| `/threat-intel/feeds` | Threat-intel sources and feed statistics |
+| `/threat-intel/data` | Data service statistics, sources and an indicator search |
+| `/toolbox`, `/toolbox/<name>` | The tools service catalog, and a form to run one tool |
+| `/vulnerabilities` | Vulnerabilities held by guardian |
+| `/response`, `/response/playbooks`, `/response/runs` | Responder playbooks: list and start them, then follow a run's status |
+| `/cloud-security`, `/cloud-security/scans`, `/cloud-security/compliance` | CSPM summary, scan form and compliance findings (not in the sidebar, see below) |
+| `/settings/profile`, `/settings/api-keys`, `/settings/team` | Profile and password, API keys, team members |
+| `/api-docs` | Gateway routes, with links to the API references in `docs/api/` |
+| `/admin` | Superusers only: user management, system health and usage analytics |
 
-## 🚀 Features
+Notes:
 
-### 🔍 **Threat Intelligence**
-
-- Real-time IOC lookup and analysis
-- Threat feed management and monitoring
-- Reputation scoring and geolocation data
-- Integrated WHOIS and certificate intelligence
-
-### ☁️ **Cloud Security (CSPM)**
-
-- Multi-cloud account scanning (AWS, Azure, GCP)
-- Compliance framework assessment
-- Risk scoring and remediation guidance
-- Automated compliance reporting
-
-### 🖥️ **Endpoint Management**
-
-- Agent deployment and health monitoring
-- Telemetry collection and analysis
-- Endpoint alerts and incident management
-- Fleet management and configuration
-
-### 🔧 **Security Toolbox**
-
-- Every tool the tools service ships, listed with search and category filter
-- A form per tool, generated from the input schema the service publishes
-- Synchronous runs, or background tasks that are followed and can be cancelled
-- The output as tables and lists, with the raw JSON to copy or download
-
-### ⚡ **Response Automation**
-
-- Playbook creation and execution
-- Workflow orchestration
-- Step-by-step execution tracking
-- Integration with external systems
-
-### 🧠 **AI-Powered Analysis**
-
-- Intelligent threat analysis
-- Automated report generation
-- Context-aware recommendations
-- Real-time progress tracking
-
-## 🛠️ Technology Stack
-
-- **Framework**: Next.js 14 with App Router
-- **Language**: TypeScript
-- **Styling**: Tailwind CSS
-- **UI Components**: Shadcn/ui (Radix UI + Tailwind)
-- **State Management**: TanStack Query (React Query)
-- **HTTP Client**: Axios with interceptors
-- **Authentication**: JWT with secure cookie storage
-- **Charts**: Recharts
-- **Icons**: Lucide React
-
-## 🏗️ Architecture
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│                 Wildbox Security Dashboard                  │
-├─────────────────────────────────────────────────────────────┤
-│  Frontend (Next.js)                                         │
-│  ├── Authentication & Authorization                         │
-│  ├── Real-time Data Visualization                          │
-│  ├── Interactive Tool Execution                            │
-│  └── Responsive Mobile-First Design                        │
-├─────────────────────────────────────────────────────────────┤
-│  API Integration Layer                                       │
-│  ├── open-security-tools     (Tools & Execution)            │
-│  ├── open-security-data     (Threat Intelligence)          │
-│  ├── open-security-guardian (Vulnerability Management)     │
-│  ├── open-security-sensor   (Endpoint Management)          │
-│  ├── open-security-responder (Response Automation)         │
-│  └── open-security-agents   (AI Analysis)                  │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 📁 Project Structure
-
-```text
-src/
-├── app/                          # Next.js 14 App Router
-│   ├── auth/                    # Authentication pages
-│   ├── dashboard/               # Main dashboard
-│   ├── threat-intel/            # Threat intelligence features
-│   ├── toolbox/                 # Security tools catalog and runner
-│   ├── cloud-security/          # CSPM and compliance
-│   ├── endpoints/               # Endpoint management
-│   ├── vulnerabilities/         # Vulnerability management
-│   ├── response/                # Response automation
-│   ├── ai-analyst/              # AI-powered analysis
-│   ├── settings/                # User settings and configuration
-│   ├── layout.tsx               # Root layout
-│   ├── page.tsx                 # Home page (redirects to dashboard)
-│   ├── globals.css              # Global styles
-│   └── providers.tsx            # React Query and theme providers
-├── components/                   # React components
-│   ├── ui/                      # Base UI components (Shadcn/ui)
-│   ├── auth-provider.tsx        # Authentication context
-│   ├── main-layout.tsx          # Main application layout
-│   └── theme-provider.tsx       # Theme management
-├── lib/                         # Utility libraries
-│   ├── api-client.ts            # API client with interceptors
-│   └── utils.ts                 # Utility functions
-├── hooks/                       # Custom React hooks
-├── types/                       # TypeScript type definitions
-└── utils/                       # Additional utilities
-```
-
-## 🔧 Installation & Setup
-
-### Prerequisites
-
-- Node.js 18+
-- npm, yarn, or pnpm
-- Git
-
-### Quick Start
-
-1. **Clone the repository**
-
-   ```bash
-   cd open-security-dashboard
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   npm install
-   # or
-   yarn install
-   # or
-   pnpm install
-   ```
-
-3. **Environment setup**
-
-   ```bash
-   cp .env.example .env.local
-   ```
-
-   Edit `.env.local` with your configuration:
-
-   ```env
-   # Where the browser reaches the Wildbox gateway. Every API call goes
-   # through it. Empty means the page's own origin, which is right when
-   # the gateway serves the dashboard; set it to the gateway's origin
-   # when this dev server runs outside the stack.
-   NEXT_PUBLIC_GATEWAY_URL=https://localhost
-
-   # Authentication
-   NEXTAUTH_SECRET=your-secret-key
-   NEXTAUTH_URL=http://localhost:3000
-   ```
-
-4. **Start development server**
-
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   # or
-   pnpm dev
-   ```
-
-5. **Open in browser**
-   Navigate to [http://localhost:3000](http://localhost:3000)
-
-## 🔐 Authentication
-
-The dashboard uses JWT-based authentication with secure HTTP-only cookies. Default development credentials:
-
-- **Email**: `admin@wildbox.com`
-- **Password**: `admin123`
-
-## 📊 Key Features Implementation
-
-### Dashboard Overview
-
-- Real-time system health monitoring
-- Security metrics and trends visualization
-- Recent activity feed
-- Quick action shortcuts
-
-### Threat Intelligence
-
-- **IOC Lookup**: Analyze IPs, domains, URLs, hashes
-- **Feed Management**: Monitor and configure threat feeds
-- **Reputation Analysis**: Multi-source reputation scoring
-- **Geolocation & WHOIS**: Comprehensive indicator context
-
-### Cloud Security
-
-- **Scan Management**: Schedule and monitor compliance scans
-- **Finding Details**: Detailed remediation guidance
-- **Compliance Frameworks**: NIST, PCI-DSS, SOX, HIPAA support
-- **Risk Scoring**: Context-aware risk prioritization
+- **Cloud security** is reachable by URL but is not in the sidebar
+  (`src/components/main-layout.tsx`), and its pages show a "Coming in Future
+  Release" notice. The scan form offers only the providers the cspm service
+  lists at `GET /api/v1/cspm/providers`; on this version that is AWS only.
+- **Response runs**: the responder has no endpoint that lists runs, so
+  `/response/runs` shows the runs started from this browser and a run named
+  in the URL, each with the status the responder reports.
+- There is no endpoint (sensor) page and no AI analysis page. The route guard
+  in `src/proxy.ts` still lists `/endpoints` and `/ai-analyst`, but no page
+  exists for either.
 
 ### Security Toolbox
 
@@ -246,229 +72,164 @@ button opens `/toolbox/<name>`, which runs it (#585):
   JSON". Values are rendered as text, never as HTML, and URLs in the
   output are not links.
 
-### Response Automation
+## Technology
 
-- **Playbook Management**: Create and manage response playbooks
-- **Workflow Execution**: Step-by-step execution tracking
-- **Integration Ready**: Connect with SIEM and ticketing systems
-- **Audit Trail**: Complete execution history
+From `package.json`:
 
-### AI Analysis
+- Next.js 16 (App Router), React 19, TypeScript (`strict` mode)
+- Tailwind CSS, with Radix UI primitives wrapped in `src/components/ui/`
+  (shadcn/ui style), `class-variance-authority`, `tailwind-merge`
+- TanStack Query for data fetching, Axios for HTTP
+- `react-hook-form` and `zod` for forms, `date-fns`, `next-themes`
+  (light/dark), `lucide-react` icons, `react-syntax-highlighter`
+- `js-cookie` for the session cookie
+- Playwright for end-to-end tests (see [tests/README.md](tests/README.md))
 
-- **Intelligent Analysis**: Context-aware threat analysis
-- **Progress Tracking**: Real-time analysis progress
-- **Report Generation**: Professional markdown reports
-- **Recommendation Engine**: Actionable security insights
+The Docker images use Node.js 24 (`node:24-alpine`, pinned by digest).
 
-## 🧪 Development
+## How it talks to the backend
 
-### Available Scripts
+The dashboard calls only the gateway. `src/lib/api-client.ts` builds one
+Axios client per gateway prefix; it never calls a service port directly:
 
-- `npm run dev` - Start development server
-- `npm run build` - Build for production
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
-- `npm run type-check` - Run TypeScript checks
-- `npm run format` - Format code with Prettier
+| Client | Gateway path | Service |
+| ------ | ------------ | ------- |
+| `identityClient` | `/auth/...`, `/api/v1/identity/...` | identity |
+| `apiClient` | `/api/v1/tools/...`, `/api/v1/tasks/...` | tools |
+| `dataClient` | `/api/v1/data/...` | data |
+| `guardianClient` | `/api/v1/guardian/...` | guardian |
+| `responderClient` | `/api/v1/responder/...` | responder |
+| `cspmClient` | `/api/v1/cspm/...` | cspm |
 
-### Code Style
+In the root `docker-compose.yml` stack, the gateway serves both the dashboard
+and the API on one origin (`https://localhost`, self-signed certificate in
+development), so every request is relative to the page's origin.
 
-- **ESLint**: Configured with Next.js recommended rules
-- **Prettier**: Consistent code formatting
-- **TypeScript**: Strict mode enabled
-- **Tailwind CSS**: Utility-first styling approach
+## Authentication
 
-### Component Development
+- Sign-in posts the credentials to `/auth/jwt/login` through the gateway and
+  stores the returned JWT in a cookie named `auth_token`. The cookie is set
+  from JavaScript with `js-cookie` (`src/components/auth-provider.tsx`), so it
+  is **not** `HttpOnly`; it is `SameSite=Strict`, expires after 7 days, and is
+  `Secure` when the page is served over HTTPS. The API client sends it as an
+  `Authorization: Bearer` header.
+- `src/proxy.ts` redirects a request without the cookie away from the
+  protected routes. This only checks that the cookie is present; the gateway
+  and identity validate the token on every API call.
+- Sign-out revokes the token at `/auth/jwt/logout` before deleting the cookie.
+- There are no default credentials. The first superuser is created by the
+  identity service from `INITIAL_ADMIN_EMAIL` and `INITIAL_ADMIN_PASSWORD` in
+  the repository's `.env`. Passwords must be 12 to 128 characters and must
+  not contain the account's email address; identity also refuses the most common
+  passwords (`src/lib/password-policy.ts` mirrors the rule for form hints).
+- An account created by a team admin has `must_change_password` set and is
+  sent to `/auth/change-password` after sign-in.
 
-UI components follow the Shadcn/ui pattern:
+## Configuration
 
-- Base components in `components/ui/`
-- Compound components for complex features
-- Consistent prop interfaces
-- Forward refs for DOM access
+Next.js compiles `NEXT_PUBLIC_*` values into the browser bundle at build time,
+so they are build arguments of the production image, not runtime settings.
 
-## 🚀 Production Deployment
+| Variable | Read by | Meaning |
+| -------- | ------- | ------- |
+| `NEXT_PUBLIC_GATEWAY_URL` | `src/lib/api-client.ts`, `next.config.js` | Origin of the gateway. Empty (the default): call the API on the page's own origin, which is right when the gateway serves the dashboard. Set it only when the dashboard runs on another origin, such as `next dev` on port 3000; that origin is then added to the CSP `connect-src`. |
+| `NEXT_PUBLIC_USE_GATEWAY` | `src/lib/api-client.ts` | Defaults to on. `false` only for development against a bare service. |
+| `NEXT_PUBLIC_APP_URL` | `src/app/layout.tsx` | Public URL of the dashboard, for absolute links in page metadata. Defaults to `http://localhost:3000`. |
+| `INTERNAL_GATEWAY_URL` | `src/lib/api-client.ts` | Server side only: the gateway URL for requests made during server rendering. The root compose file sets it to `http://open-security-gateway:8080`. |
 
-### Build Optimization
+See [.env.example](.env.example) and, for production, the deployment guide,
+section [The dashboard's browser settings](../docs/guides/deployment.md#the-dashboards-browser-settings).
+
+## Running it
+
+### With the full stack
+
+The root `docker-compose.yml` builds the `dashboard` service from
+`Dockerfile.dev` (the Next.js dev server, source mounted from this directory)
+and puts it behind the gateway. Start the stack as described in the root
+README, then open `https://localhost`.
+
+### Local development server
+
+Requires Node.js 24 and npm (the repository ships `package-lock.json`).
 
 ```bash
-# Build for production
-npm run build
-
-# Start production server
-npm run start
+cd open-security-dashboard
+npm ci
+cp .env.example .env.local
+# In .env.local, set NEXT_PUBLIC_GATEWAY_URL=https://localhost to reach the
+# gateway of a running stack.
+npm run dev
 ```
 
-### Docker Deployment
+Then open `http://localhost:3000`. The browser has to trust the gateway's
+certificate (or you accept it once at `https://localhost`), otherwise every
+API call fails. The gateway's CORS allowlist accepts `localhost` and
+`127.0.0.1` origins on any port.
 
-```dockerfile
-FROM node:18-alpine AS base
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
+### Production image
 
-FROM base AS build
-COPY . .
-RUN npm run build
+`Dockerfile` is a multi-stage build:
 
-FROM base AS runtime
-COPY --from=build /app/.next ./.next
-COPY --from=build /app/public ./public
-EXPOSE 3000
-CMD ["npm", "start"]
+1. `base`: `node:24-alpine`, with the build metadata `GIT_SHA` and
+   `BUILD_DATE` as labels and environment variables.
+2. `deps`: `npm ci` from `package.json` and `package-lock.json`.
+3. `builder`: copies the source and runs `npm run build`, with
+   `NEXT_PUBLIC_GATEWAY_URL`, `NEXT_PUBLIC_USE_GATEWAY` and
+   `NEXT_PUBLIC_APP_URL` as build arguments.
+4. `runner`: the standalone output (`output: 'standalone'` in
+   `next.config.js`) and static assets, run as the non-root `nextjs` user
+   with `node server.js` on port 3000.
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_GATEWAY_URL= \
+  --build-arg NEXT_PUBLIC_APP_URL=https://wildbox.example.com \
+  -t wildbox-dashboard .
 ```
 
-### Environment Variables
+`docker-compose.prod.yml` at the repository root passes these build
+arguments from the root `.env`.
 
-`NEXT_PUBLIC_*` variables are compiled into the browser bundle by
-`npm run build`, so the production image takes them as build arguments
-(`docker build --build-arg NEXT_PUBLIC_GATEWAY_URL=...`); the running
-container's environment cannot change them. `docker-compose.prod.yml` passes
-them from the repository's `.env`:
+## Scripts
 
-```env
-# Empty: call the API on the dashboard's own origin (the gateway serves both)
-NEXT_PUBLIC_GATEWAY_URL=
-NEXT_PUBLIC_USE_GATEWAY=true
-# Public URL of the dashboard, for absolute links in page metadata
-NEXT_PUBLIC_APP_URL=https://wildbox.example.com
+| Script | Command |
+| ------ | ------- |
+| `npm run dev` | `next dev` |
+| `npm run build` | `next build` |
+| `npm run start` | `next start` |
+| `npm run lint` | `eslint . --max-warnings=0` |
+| `npm run type-check` | `tsc --noEmit` |
+| `npm run format` / `format:check` | Prettier write / check |
+| `npm run test:e2e` | `playwright test` (see [tests/README.md](tests/README.md)) |
+
+## Project structure
+
+```text
+src/
+├── app/                 # App Router pages (see "Pages")
+│   ├── api/admin/analytics/route.ts
+│   ├── layout.tsx, providers.tsx, page.tsx, globals.css
+│   ├── error.tsx, global-error.tsx, not-found.tsx
+│   └── admin/ api-docs/ auth/ cloud-security/ dashboard/ response/
+│       settings/ threat-intel/ toolbox/ vulnerabilities/
+├── components/
+│   ├── ui/              # Radix-based UI primitives
+│   ├── toolbox/         # Tool form, runner, task panel, result view
+│   ├── auth-provider.tsx, main-layout.tsx, theme-provider.tsx, json-view.tsx
+├── hooks/               # use-auth, use-threat-lookup, use-responder-playbooks, ...
+├── lib/                 # api-client, tools-api, tool-schema, password-policy, utils
+├── types/
+└── proxy.ts             # Route guard (Next.js 16 proxy, formerly middleware)
 ```
 
-See the deployment guide, "The dashboard's browser settings".
+## Security headers
 
-## 🔧 API Integration
+`next.config.js` sets `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+`Referrer-Policy`, `Permissions-Policy`, `Strict-Transport-Security` and a
+Content Security Policy. The CSP allows `'unsafe-inline'` scripts, and
+`'unsafe-eval'` only in development (`next dev` needs it).
 
-The dashboard integrates with multiple Wildbox microservices:
+## License
 
-### Service Endpoints
-
-| Service                 | Port | Purpose                  |
-| ----------------------- | ---- | ------------------------ |
-| open-security-tools     | 8000 | Security tools execution |
-| open-security-data      | 8002 | Threat intelligence data |
-| open-security-guardian  | 8003 | Vulnerability management |
-| open-security-sensor    | 8004 | Endpoint management      |
-| open-security-responder | 8018 | Response automation      |
-| open-security-agents    | 8006 | AI-powered analysis      |
-
-### API Client Features
-
-- **Automatic Authentication**: JWT token management
-- **Request/Response Interceptors**: Error handling and logging
-- **Retry Logic**: Automatic retry for failed requests
-- **Type Safety**: Full TypeScript integration
-- **Loading States**: Built-in loading state management
-
-## 🎨 UI/UX Design
-
-### Design System
-
-- **Color Palette**: Security-focused dark/light themes
-- **Typography**: Inter font family for readability
-- **Spacing**: Consistent 4px grid system
-- **Icons**: Lucide React icon library
-- **Animations**: Subtle transitions and micro-interactions
-
-### Responsive Design
-
-- **Mobile First**: Optimized for mobile devices
-- **Breakpoints**: Tailwind CSS responsive utilities
-- **Touch Friendly**: Large touch targets
-- **Progressive Enhancement**: Works without JavaScript
-
-### Accessibility
-
-- **WCAG 2.1 AA**: Compliant accessibility standards
-- **Keyboard Navigation**: Full keyboard support
-- **Screen Readers**: Semantic HTML and ARIA labels
-- **High Contrast**: Support for high contrast mode
-
-## 📈 Performance Optimization
-
-### React Query Integration
-
-- **Intelligent Caching**: Automatic data caching and invalidation
-- **Background Updates**: Seamless data refresh
-- **Optimistic Updates**: Immediate UI updates
-- **Error Boundaries**: Graceful error handling
-
-### Next.js Optimizations
-
-- **Image Optimization**: Automatic image optimization
-- **Code Splitting**: Automatic route-based splitting
-- **Static Generation**: Pre-rendered pages where possible
-- **API Route Caching**: Efficient API response caching
-
-## 🔒 Security Considerations
-
-### Data Protection
-
-- **HTTPS Only**: Secure communication channels
-- **JWT Tokens**: Secure authentication tokens
-- **Input Validation**: Client and server-side validation
-- **XSS Protection**: Content Security Policy headers
-
-### Access Control
-
-- **Role-Based Access**: Granular permission system
-- **Session Management**: Secure session handling
-- **API Key Management**: Secure API key storage
-- **Audit Logging**: Complete user action tracking
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-1. **API Connection Issues**
-   - Verify API endpoints in environment variables
-   - Check CORS configuration on backend services
-   - Ensure proper authentication tokens
-
-2. **Build Errors**
-   - Clear `.next` directory: `rm -rf .next`
-   - Reinstall dependencies: `rm -rf node_modules && npm install`
-   - Check TypeScript errors: `npm run type-check`
-
-3. **Authentication Problems**
-   - Verify JWT secret configuration
-   - Check cookie settings (secure, sameSite)
-   - Ensure proper token expiration handling
-
-## 🤝 Contributing
-
-1. **Fork the repository**
-2. **Create feature branch**: `git checkout -b feature/amazing-feature`
-3. **Commit changes**: `git commit -m 'Add amazing feature'`
-4. **Push to branch**: `git push origin feature/amazing-feature`
-5. **Open Pull Request**
-
-### Development Guidelines
-
-- Follow existing code style and patterns
-- Add TypeScript types for new features
-- Include unit tests for critical functionality
-- Update documentation for new features
-- Ensure responsive design compliance
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Shadcn/ui**: Beautiful and accessible UI components
-- **Tailwind CSS**: Utility-first CSS framework
-- **Radix UI**: Low-level UI primitives
-- **Lucide**: Beautiful icon library
-- **Next.js**: React framework for production
-
-## 📞 Support
-
-- **Documentation**: [Internal Wiki](https://wiki.wildbox.com)
-- **Issues**: [GitHub Issues](https://github.com/wildbox/dashboard/issues)
-- **Security**: security@wildbox.com
-- **General**: support@wildbox.com
-
----
-
-Built with ❤️ by the Wildbox Security Team
+MIT, see [LICENSE](../LICENSE).
