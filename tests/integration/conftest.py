@@ -398,6 +398,7 @@ _MODULE_SERVICE = {
     "test_data_cross_tenant": "data",
     "test_data_integration": "data",
     "test_data_tenancy": "data",
+    "test_telemetry_tenancy": "data",
     "test_gateway_hardening": "gateway",
     "test_gateway_security": "gateway",
     "test_guardian_monitoring": "guardian",
