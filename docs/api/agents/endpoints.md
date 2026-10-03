@@ -7,8 +7,8 @@
 >
 > All IDs, keys and host names in the examples are fictitious placeholders.
 
-**Gateway path**: `https://<host>/api/v1/agents/...`, proxied to the service's `/v1/...`
-**Authentication**: an API key in the `X-API-Key` header (see [Authentication](#authentication))
+**Gateway path**: `https://<host>/api/v1/agents/...`, proxied to the service's `/v1/...`; `/api/v1/agents/stats` to the service's `/stats`
+**Authentication**: a session token (JWT) or an API key, as on every gateway route (see [Authentication](#authentication))
 **LLM provider**: Anthropic (Claude) only
 
 ---
@@ -26,6 +26,7 @@ a confidence score, evidence and a Markdown report.
 - [Authentication](#authentication)
 - [Configuration](#configuration)
 - [Threat Analysis](#threat-analysis)
+- [Statistics](#statistics)
 - [Analysis Tools](#analysis-tools)
 - [Service Routes Outside the Gateway](#service-routes-outside-the-gateway)
 - [Error Codes](#error-codes)
@@ -37,55 +38,66 @@ a confidence score, evidence and a Markdown report.
 
 ## Authentication
 
-### Through the gateway: API key only
+### Through the gateway: a session token or an API key
 
 Every agents route is reached through the gateway. The examples use
 `--cacert open-security-gateway/ssl/wildbox.crt`, the certificate the
 gateway serves by default.
 
-The `/api/v1/agents/` route authenticates with its own inline code, not with
-the gateway's shared handler, and reads **only** the `X-API-Key` header:
+The agents routes authenticate with the gateway's shared handler,
+`auth_handler.authenticate()`, like every other route (#636). Send either
+credential:
 
-- no `X-API-Key` header: `401` with `{"error":"unauthorized","message":"API key required","code":"NO_API_KEY"}`.
-  This is also the answer to a request that carries only a JWT bearer token;
-- a key identity refuses: `401` with `"code":"INVALID_API_KEY"`;
-- identity unreachable: `503` with `"error":"service_unavailable"`.
-
-A JWT bearer token therefore does not work on this route today. Issue
-[#630](https://github.com/fabriziosalmi/wildbox/issues/630) tracks moving the
-route to the shared handler, so that it accepts a JWT like every other route.
-
-Create an API key with `POST https://<host>/api/v1/identity/api-keys` (a user
-key) or `POST https://<host>/api/v1/identity/teams/{team_id}/api-keys` (a team
-key), using a JWT from `POST https://<host>/auth/jwt/login`.
+- a session token (JWT) in `Authorization: Bearer <token>`, from
+  `POST https://<host>/auth/jwt/login`;
+- an API key in `X-API-Key`. Create one with
+  `POST https://<host>/api/v1/identity/api-keys` (a user key) or
+  `POST https://<host>/api/v1/identity/teams/{team_id}/api-keys` (a team key).
 
 ```bash
 CA=open-security-gateway/ssl/wildbox.crt
+
+# A session token
+curl --cacert "$CA" -X POST https://<host>/api/v1/agents/analyze \
+  -H "Authorization: Bearer your-jwt-token" \
+  -H "Content-Type: application/json" \
+  -d '{"ioc": {"type": "domain", "value": "suspicious-domain.com"}}'
+
+# An API key
 curl --cacert "$CA" -X POST https://<host>/api/v1/agents/analyze \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"ioc": {"type": "domain", "value": "suspicious-domain.com"}}'
 ```
 
+An API key with a scope list needs `tools:read` to read a task or the
+statistics (`GET`) and `tools:execute` to submit or cancel one; without it the
+gateway answers `403` with `"error":"insufficient_scope"` and the
+`required_scope`. A session token carries no scopes.
+
+The gateway's own refusals:
+
+- no credential: `401` with
+  `{"error":"authentication_required","message":"Valid authentication token required"}`;
+- a credential identity refuses, or a revoked session or API key: `401` with
+  `"error":"invalid_token"`;
+- an account that must change its initial password: `403` with
+  `"error":"PASSWORD_CHANGE_REQUIRED"`;
+- a user removed from the team the credential resolves to: `403` with
+  `"error":"team_membership_ended"`;
+- over the per-team rate limit: `429` (see [Rate Limiting](#rate-limiting));
+- identity unreachable: `503` with `"error":"service_unavailable"` and
+  `Retry-After`.
+
 ### How the caller reaches the service
 
-After identity accepts the key, the route's inline code removes any
+After identity accepts the credential, the shared handler removes any
 client-supplied `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`,
-`Authorization` and `X-API-Key` headers and sets the three `X-Wildbox-*`
-request headers from identity's answer. The shared proxy settings
-(`open-security-gateway/nginx/includes/proxy_params.conf`) add
+`Authorization` and `X-API-Key` headers and sets the caller's user, team and
+role from identity's answer. The shared proxy settings
+(`open-security-gateway/nginx/includes/proxy_params.conf`) send them to the
+service as `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`, with
 `X-Gateway-Secret`, the `GATEWAY_INTERNAL_SECRET` proof of origin.
-
-> **Known defect.** The same proxy settings also define `X-Wildbox-User-ID`,
-> `X-Wildbox-Team-ID` and `X-Wildbox-Role` from the variables
-> `$wildbox_user_id`, `$wildbox_team_id` and `$wildbox_role`. Only the shared
-> handler fills those variables; the agents route's inline code does not, so
-> they stay empty. nginx sends the proxy settings' value instead of the
-> request header of the same name, and drops a header whose value is empty,
-> so the agents service receives no caller identity from this route and
-> answers `403`. Moving the route to the shared handler, as
-> [#630](https://github.com/fabriziosalmi/wildbox/issues/630) proposes, fixes
-> this as well.
 
 The service authenticates every route below with the shared dependency
 `open_security_shared.gateway_auth.get_user_from_gateway_headers`. It refuses
@@ -127,6 +139,18 @@ Set in `docker-compose.yml` for the `agents` service:
 | `WILDBOX_API_URL` | `http://api:8000` | The tools service the agent calls. |
 | `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis database 4, with `REDIS_PASSWORD` | Task state and the Celery queue. |
 
+Read by the service (`open-security-agents/app/config.py`) but not passed by
+`docker-compose.yml`; to change them, add them to the service's `environment`
+in a compose override:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `ANALYZE_RATE_LIMIT` | `5/minute` | Analysis submissions each user may make, in the `limits` notation; several limits are separated by `;`, for example `5/minute;50/day`. Must not be empty. |
+| `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together, in the same notation. |
+
+The service refuses to start when either value cannot be parsed or names an
+amount below 1.
+
 Anthropic is the only provider: the agent is built on `ChatAnthropic`
 (`open-security-agents/app/agents/threat_enrichment_agent.py`).
 
@@ -139,7 +163,7 @@ Anthropic is the only provider: the agent is built on `ChatAnthropic`
 Submit an IOC for analysis. Served by the service's `POST /v1/analyze`.
 
 **Authentication**: required
-**Rate limit**: 5 requests per minute (see [Rate Limiting](#rate-limiting))
+**Rate limit**: 5 requests per minute per user by default (see [Rate Limiting](#rate-limiting))
 
 **Request body**:
 
@@ -199,7 +223,9 @@ curl --cacert "$CA" -X POST https://<host>/api/v1/agents/analyze \
 Return the status of a task, or its result once it has completed.
 
 **Authentication**: required. Only the user who submitted the task can read
-it; another user gets `403`. A task with no owner record answers `404`.
+it. Another user's task, a task with no owner record and a task that does not
+exist all answer the same `404`, so the answer does not reveal whether a task
+ID is live (#659).
 
 `task_id` must be a lowercase UUID; any other value is refused with `422`.
 
@@ -256,8 +282,8 @@ has no `status` field:
 `verdict` is one of `Malicious`, `Suspicious`, `Benign` or `Informational`;
 `confidence` is between 0 and 1.
 
-**Response (404 Not Found)**: the task does not exist or has expired (see
-[Task Limits](#task-limits)).
+**Response (404 Not Found)**: the task does not exist, has expired (see
+[Task Limits](#task-limits)), or belongs to another user.
 
 ---
 
@@ -265,7 +291,9 @@ has no `status` field:
 
 Cancel a queued or running task.
 
-**Authentication**: required. Canceling another user's task answers `403`.
+**Authentication**: required. The ownership check is the one the read
+uses, and it runs before anything is revoked: another user's task, or a task
+with no owner record, answers `404` and is not canceled (#659).
 
 ```bash
 CA=open-security-gateway/ssl/wildbox.crt
@@ -279,7 +307,48 @@ curl --cacert "$CA" -X DELETE https://<host>/api/v1/agents/analyze/550e8400-e29b
 {"message": "Task cancelled successfully"}
 ```
 
-**Response (404 Not Found)**: the task does not exist or has expired.
+**Response (404 Not Found)**: the task does not exist, has expired, or
+belongs to another user.
+
+**Response (503 Service Unavailable)**: Redis or the Celery broker could not
+be reached; the task may still be running.
+
+---
+
+## Statistics
+
+### GET /api/v1/agents/stats
+
+Task counters for the whole service, not for the caller's team. Served by the
+service's `GET /stats`, outside its `/v1` tree: the gateway routes this exact
+path there (#636).
+
+**Authentication**: required; an API key needs `tools:read`.
+
+```bash
+CA=open-security-gateway/ssl/wildbox.crt
+curl --cacert "$CA" https://<host>/api/v1/agents/stats \
+  -H "Authorization: Bearer your-jwt-token"
+```
+
+**Response (200 OK)**:
+
+```json
+{
+  "total_analyses": 42,
+  "pending_tasks": 0,
+  "running_tasks": 1,
+  "completed_today": 0,
+  "failed_today": 0,
+  "average_duration": null,
+  "uptime_seconds": 86400.0
+}
+```
+
+`average_duration` is always `null`. The worker increments `completed_today`
+and `failed_today` but nothing resets them, so despite their names they count
+since the Redis data was last cleared. `503` when Redis or the Celery broker
+cannot be reached.
 
 ---
 
@@ -315,19 +384,19 @@ and guardian services, so `threat_intel_query_tool` and
 
 ## Service Routes Outside the Gateway
 
-The gateway maps `/api/v1/agents/<path>` to `/v1/<path>` on the service.
-These service routes are not under `/v1/`, so the gateway does not reach them:
+The gateway maps `/api/v1/agents/<path>` to `/v1/<path>` on the service, and
+`/api/v1/agents/stats` to `/stats` (see [Statistics](#statistics)). These
+service routes are not under `/v1/`, so the gateway does not reach them:
 
 | Route | Authentication | Notes |
 | --- | --- | --- |
 | `GET /health` | none | Redis, Celery and Anthropic key status. Used by the container health check. |
-| `GET /stats` | gateway headers | Task counters. `/api/v1/agents/stats` maps to `/v1/stats`, which does not exist (#630). |
 | `GET /` | none | Service name, version and links. |
 | `/docs`, `/redoc`, `/openapi.json` | none | Disabled when `ENVIRONMENT=production`. |
 
 The service port is bound to `127.0.0.1` on the host. `/health` answers on
-it, from the host or inside the container; `/stats` needs the gateway headers
-and the proof of origin, so it answers `403` there.
+it, from the host or inside the container; `/stats` and the `/v1` routes need
+the gateway headers and the proof of origin, so they answer `403` there.
 
 ---
 
@@ -337,13 +406,13 @@ and the proof of origin, so it answers `403` there.
 | --- | --- |
 | 202 | Analysis task queued |
 | 400 | The request could not be turned into a task |
-| 401 | From the gateway: no `X-API-Key` (`NO_API_KEY`), or a key identity refuses (`INVALID_API_KEY`) |
-| 403 | No complete caller identity (#594); a task owned by another user; or a request without the gateway's identity headers or proof of origin (see the known defect under [Authentication](#authentication)) |
-| 404 | Task not found or expired |
+| 401 | From the gateway: no credential (`authentication_required`), or a credential identity refuses or that has been revoked (`invalid_token`) |
+| 403 | From the gateway: an API key without the required scope (`insufficient_scope`), a pending password change (`PASSWORD_CHANGE_REQUIRED`) or a team the user was removed from (`team_membership_ended`). From the service: no complete caller identity (#594), or a request without the gateway's identity headers or proof of origin |
+| 404 | Task not found, expired, or owned by another user |
 | 422 | Request body or `task_id` failed validation |
-| 429 | Rate limit exceeded |
+| 429 | The gateway's per-team limit, or the service's analysis limit per user or per team |
 | 500 | The task state could not be read |
-| 503 | Redis or the Celery broker unavailable; or, from the gateway, identity unreachable |
+| 503 | Redis or the Celery broker unavailable; or, from the gateway, identity unreachable (with `Retry-After`) |
 
 Errors raised by the service use the canonical Wildbox error body:
 
@@ -358,21 +427,50 @@ Errors raised by the service use the canonical Wildbox error body:
 }
 ```
 
-The gateway's own `401` and `503` answers use the flat bodies shown under
-[Authentication](#authentication).
+The gateway's own `401`, `403`, `429` and `503` answers use the flat bodies
+shown under [Authentication](#authentication) and [Rate Limiting](#rate-limiting).
 
 ---
 
 ## Rate Limiting
 
-`POST /v1/analyze` is limited to **5 requests per minute** by the service
-(`@limiter.limit("5/minute")`). The limiter keys on the client address the
-service sees. Behind the gateway that is the gateway's address, so the five
-requests per minute are shared by all callers together, not counted per user.
+Two limits apply to `POST /api/v1/agents/analyze`.
 
-The gateway's per-team limit of 10000 requests per hour is applied by its
-shared authentication handler, which this route does not use (#630). The
-gateway's per-address request limit still applies.
+**The service's analysis limit** (#659), from
+`open-security-agents/app/rate_limit.py`:
+
+- `ANALYZE_RATE_LIMIT` (default `5/minute`) per user. The key is the user ID
+  of the caller the gateway authenticated, read after the proof of origin has
+  been verified; no forwarded header is read, so a caller cannot move to
+  another bucket.
+- `ANALYZE_TEAM_RATE_LIMIT`, when set, a ceiling for all users of one team
+  together. The per-user limit is checked first, so a request over it is not
+  counted against the team.
+
+Over either limit the service answers `429`, and the body names the limit that
+was hit, per user or per team. The counters live in the service's memory:
+they reset when the container restarts.
+
+**The gateway's per-team limit** applies to every agents route, as to every
+authenticated gateway route. `RATE_LIMIT_PER_HOUR` (default 10000, set on the
+gateway; the gateway does not start when it is not a whole number from 1 to
+1,000,000,000) is enforced in 60-second windows of
+`floor(RATE_LIMIT_PER_HOUR / 60)` requests per team, 166 with the default.
+Every authenticated response carries `X-RateLimit-Limit` (the per-minute
+figure), `X-RateLimit-Remaining`, `X-RateLimit-Reset` and
+`X-RateLimit-Policy` (`10000;w=3600`). Over the limit the gateway answers
+`429` with `Retry-After`:
+
+```json
+{
+  "error": "rate_limit_exceeded",
+  "message": "Rate limit exceeded",
+  "limit_per_hour": 10000,
+  "retry_after_seconds": 42
+}
+```
+
+The gateway's per-address request limit applies as well.
 
 ---
 
@@ -425,8 +523,8 @@ done
 ### Analyze the addresses of critical Guardian assets
 
 Guardian is reached through the gateway as well. Its asset list is paginated
-(50 per page) and filters on `criticality`. Mind the agents rate limit of 5
-analysis requests per minute.
+(50 per page) and filters on `criticality`. Mind the agents rate limit, by
+default 5 analysis requests per minute per user.
 
 ```bash
 CA=open-security-gateway/ssl/wildbox.crt

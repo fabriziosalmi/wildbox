@@ -34,7 +34,7 @@ Wildbox is pre-1.0. Interfaces can change between minor releases; read
 | Cloud posture | 22 checks against live AWS accounts; GCP and Azure are not supported, and scans of them are refused | `open-security-cspm` |
 | Vulnerabilities | Asset inventory, findings, risk-based prioritization, remediation tracking | `open-security-guardian` |
 | Response | YAML playbooks executed as background jobs | `open-security-responder` |
-| Endpoint telemetry | osquery-based telemetry from hosts running the sensor; its delivery to the data service does not work yet ([#628](https://github.com/fabriziosalmi/wildbox/issues/628)) | `open-security-sensor` |
+| Endpoint telemetry | osquery-based telemetry from hosts running the sensor, sent through the gateway with a team member's API key and stored per team by the data service | `open-security-sensor` |
 | Analysis | Threat-enrichment reports generated with Anthropic Claude | `open-security-agents` |
 | Interface | Web dashboard | `open-security-dashboard` |
 

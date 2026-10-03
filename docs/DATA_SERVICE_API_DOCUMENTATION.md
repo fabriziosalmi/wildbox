@@ -54,13 +54,18 @@ The Open Security Data Service is a FastAPI-based security data lake providing t
   removed from `app/config.py` because nothing read them.
 - **Team scope**: indicators and sources are filtered to the caller's team
   plus the global (`team_id IS NULL`) rows. Telemetry events and sensors
-  have no team column and are not filtered.
+  belong to the team of the credential they were ingested with and are
+  filtered to the caller's team only, with no global rows; rows stored
+  before telemetry had a team (`team_id IS NULL`) are visible to no team.
 - **API key scopes** (checked by the gateway): `read` for `GET`, `write` for
-  `POST`.
+  `POST`. `POST /api/v1/data/ingest` takes `data:ingest`, `data:write` or
+  `write`; `data:ingest` allows that route only, and is the scope of the key
+  a sensor sends telemetry with.
 - **Rate limiting**: none in the service; `RATE_LIMIT_ENABLED`,
   `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` are read into the
-  configuration and used by nothing. The gateway limits each team to 10000
-  requests per hour, enforced in fixed 60-second windows of 166 requests.
+  configuration and used by nothing. The gateway limits each team to
+  `RATE_LIMIT_PER_HOUR` requests per hour (default 10000), enforced in
+  fixed 60-second windows of one sixtieth of that (166 by default).
 - **Batch operations**: limited by `MAX_BATCH_SIZE` (default 1000) and by
   the request schemas (1000 items).
 - **CORS**: configurable with an origins allow list.
@@ -466,7 +471,12 @@ Request: TelemetryBatch
 Response: TelemetryBatchResponse
 ```
 
-Ingest security sensor telemetry events in batch.
+Ingest security sensor telemetry events in batch, through the gateway at
+`POST https://<host>/api/v1/data/ingest`. The sensor sends its batches there
+with an identity API key in `X-API-Key` scoped to `data:ingest`. The events
+and the sensor's record are stored under the caller's team; the body carries
+no team, and a team named in it is ignored. A sensor's `sensor_id` is unique
+within its team.
 
 **Request Body:**
 
@@ -516,6 +526,9 @@ Ingest security sensor telemetry events in batch.
 }
 ```
 
+If the database refuses the batch, nothing is stored and the service answers
+503 with `Retry-After: 5`, so that the sensor sends it again.
+
 ---
 
 ### Telemetry - Event Query
@@ -529,6 +542,8 @@ Response: TelemetryEvent[]
 ```
 
 **Query Parameters:**
+
+The caller's team's events only.
 
 | Parameter | Type | Description |
 | ----------- | ------ | ------------- |
@@ -564,6 +579,8 @@ Tags: Telemetry
 Response: Object
 ```
 
+Counts cover the caller's team's telemetry only.
+
 **Query Parameters:**
 
 | Parameter | Type | Description |
@@ -593,10 +610,12 @@ Query Parameters:
   - active_only (bool): Return only active sensors (default: true)
 ```
 
+The caller's team's sensors only.
+
 **Response Fields per Sensor:**
 
 - `id` (string): Metadata record UUID
-- `sensor_id` (string): Unique sensor identifier
+- `sensor_id` (string): Sensor identifier, unique within the team
 - `hostname` (string): Sensor hostname
 - `platform` (string): OS platform (Windows, Linux, macOS, etc.)
 - `sensor_version` (string): Sensor version
@@ -619,7 +638,8 @@ Path Parameters:
   - sensor_id (string, required): Sensor identifier
 ```
 
-Returns full metadata for a specific registered sensor.
+Returns full metadata for one of the caller's team's sensors; 404 when the
+team has no sensor by that ID, including when another team has one.
 
 ---
 
@@ -812,6 +832,7 @@ Sensor telemetry events.
 ```sql
 Columns:
   - id (UUID): Primary key
+  - team_id (UUID, nullable): Owning team; NULL rows are visible to no team
   - sensor_id (String): Sensor identifier
   - event_type (String): Event type
   - timestamp (DateTime): Event time
@@ -826,6 +847,7 @@ Columns:
 
 Indexes:
   - (sensor_id, timestamp)
+  - (team_id, timestamp)
   - (event_type, timestamp)
   - ingested_at
   - processed, processed_at
@@ -838,7 +860,8 @@ Registered sensor information.
 ```sql
 Columns:
   - id (UUID): Primary key
-  - sensor_id (String, unique): Sensor identifier
+  - team_id (UUID, nullable): Owning team; NULL rows are visible to no team
+  - sensor_id (String): Sensor identifier, unique per team
   - hostname (String): Sensor hostname
   - platform (String): OS platform
   - sensor_version (String): Version number
@@ -851,7 +874,8 @@ Columns:
 
 Indexes:
   - (active, last_seen)
-  - sensor_id
+  - team_id, sensor_id
+  - UNIQUE (team_id, sensor_id)
 ```
 
 ---
@@ -1116,7 +1140,7 @@ BACKUP_RETENTION=30                   # 30 days
 
 **Sensor Management:**
 
-- Automatic registration on first ingest
+- Automatic registration on first ingest, under the ingesting team
 - Activity tracking (first_seen, last_seen)
 - Configuration storage per sensor
 - Event statistics aggregation
@@ -1163,6 +1187,7 @@ SENTRY_ENABLED=false                  # Optional error tracking
 - `429 Too Many Requests`: Gateway per-team rate limit exceeded (the service
   has no limit of its own)
 - `500 Internal Server Error`: Server-side error
+- `503 Service Unavailable`: Telemetry batch not stored; send it again
 
 ### Error Response Format
 
@@ -1227,8 +1252,10 @@ Optimized for common queries:
 ### Rate Limiting
 
 The service enforces no rate limit; its `RATE_LIMIT_*` settings are unused.
-The gateway limits each team to 10000 requests per hour (fixed 60-second
-windows of 166 requests) and answers 429 past it.
+The gateway limits each team to `RATE_LIMIT_PER_HOUR` requests per hour
+(default 10000, in fixed 60-second windows of one sixtieth of that) and
+answers 429 past it. A value of `RATE_LIMIT_PER_HOUR` that is not a whole
+number from 1 to 1000000000 stops the gateway at startup.
 
 ### Response Compression
 
@@ -1282,11 +1309,12 @@ curl -s --cacert "$CA" -H "$AUTH" \
 
 ### Ingest Sensor Events
 
-Sensor telemetry does not reach this endpoint today: the sensor posts to the
-service directly, without the gateway headers, and is refused (#628).
+The sensor sends its batches this way, with a team member's identity API
+key scoped to `data:ingest`; the events are stored under that team.
 
 ```bash
-curl -s --cacert "$CA" -H "$AUTH" -X POST "https://<host>/api/v1/data/ingest" \
+curl -s --cacert "$CA" -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" \
+  -X POST "https://<host>/api/v1/data/ingest" \
   -H "Content-Type: application/json" \
   -d '{
     "batch_id": "batch-001",

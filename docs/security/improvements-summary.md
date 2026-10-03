@@ -227,16 +227,16 @@ app = FastAPI(
 
 ### 3. Security Audit Documentation
 
-- **File**: `SECURITY_AUDIT_REPORT.md` (590 lines)
+- **File**: `SECURITY_AUDIT_REPORT.md` (590 lines), kept as
+  [audit-report.md](audit-report.md)
   - Detailed technical analysis
   - Code examples of vulnerabilities
   - Fix recommendations with code
   - OWASP/CWE mapping
 
-- **File**: `SECURITY_AUDIT_SUMMARY.txt`
-  - Quick reference of all 19 issues
-  - Severity levels
-  - Fix locations
+- **File**: `SECURITY_AUDIT_SUMMARY.txt`, a quick reference of the 19 issues
+  with their severities and fix locations. It is no longer in the
+  repository; [audit-report.md](audit-report.md) has the same findings.
 
 - **File**: `SECURITY_FINDINGS.json`
   - Machine-readable format
@@ -410,9 +410,10 @@ These are **transitive dependencies** from upstream packages - all tracked in [G
 
 ### For Understanding Issues
 
-1. Check: `SECURITY_AUDIT_SUMMARY.txt`
-2. Details: `SECURITY_AUDIT_REPORT.md`
-3. For CI/CD: Use `SECURITY_FINDINGS.json`
+1. Today: the [Security status](status.md) page
+2. Details of the 2024 audit: [audit-report.md](audit-report.md) (the
+   summary file and `SECURITY_FINDINGS.json` it was published with are no
+   longer in the repository)
 
 ---
 

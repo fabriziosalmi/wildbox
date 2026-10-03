@@ -182,7 +182,7 @@ permalink: /docs.html
                         <p>Obtain a JWT from the identity service with a form-encoded login (fields <code>username</code> and <code>password</code>), then send it as a bearer token. Through the gateway the login path is <code>/auth/jwt/login</code>; the <a href="/guides/quickstart/">Quick start</a> shows the full, tested sequence. Token lifetime (30 minutes, no refresh), logout and the failed-login lockout are described in <a href="/guides/authentication/">Authentication and sessions</a>.</p>
                         <ul>
                             <li><code>Authorization: Bearer &lt;access_token&gt;</code> &mdash; JWT returned by the login</li>
-                            <li><code>X-API-Key: &lt;key&gt;</code> &mdash; an API key created through the identity service, accepted by the gateway as an alternative, and the only credential the agents routes accept for now (<a href="https://github.com/fabriziosalmi/wildbox/issues/630" target="_blank" rel="noopener noreferrer">#630</a>)</li>
+                            <li><code>X-API-Key: &lt;key&gt;</code> &mdash; an API key created through the identity service, accepted by the gateway as an alternative</li>
                         </ul>
                     </div>
                 </div>
@@ -211,7 +211,7 @@ permalink: /docs.html
                                 <tr><td><code>/api/v1/data/&hellip;</code></td><td>data <code>/api/v1/&hellip;</code> (<code>/api/v1/data/health</code>: data <code>/health</code>)</td><td>required</td></tr>
                                 <tr><td><code>/api/v1/guardian/&hellip;</code></td><td>guardian <code>/api/v1/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/responder/&hellip;</code></td><td>responder <code>/v1/&hellip;</code></td><td>required</td></tr>
-                                <tr><td><code>/api/v1/agents/&hellip;</code></td><td>agents <code>/v1/&hellip;</code></td><td>required, API key (<code>X-API-Key</code>) only: a bearer token is refused with 401 (<a href="https://github.com/fabriziosalmi/wildbox/issues/630" target="_blank" rel="noopener noreferrer">#630</a>)</td></tr>
+                                <tr><td><code>/api/v1/agents/&hellip;</code></td><td>agents <code>/v1/&hellip;</code> (<code>/api/v1/agents/stats</code>: agents <code>/stats</code>)</td><td>required</td></tr>
                                 <tr><td><code>/api/v1/cspm/&hellip;</code></td><td>cspm <code>/api/v1/&hellip;</code></td><td>required</td></tr>
                                 <tr><td><code>/api/v1/automations/&hellip;</code></td><td>automations (only with the <code>automations</code> Compose profile; 502 otherwise)</td><td>required</td></tr>
                                 <tr><td><code>/</code></td><td>dashboard</td><td>handled by the dashboard</td></tr>

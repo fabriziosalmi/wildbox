@@ -20,7 +20,8 @@ Client --(JWT or API key)--> Gateway --(POST /internal/authorize)--> Identity
 
 ## What the gateway does
 
-On the routes that use the shared handler (`authenticate()` in
+On every authenticated `/api/v1/` route except identity's own, the gateway runs the
+shared handler (`authenticate()` in
 `open-security-gateway/nginx/lua/auth_handler.lua`):
 
 1. It reads the credential: `Authorization: Bearer <token>` first, otherwise
@@ -31,9 +32,10 @@ On the routes that use the shared handler (`authenticate()` in
    refuses gets `401` (`invalid_token`); identity unreachable gets `503`.
 3. It checks revocation markers, password changes, API-key revocation and
    team removal, and the API key's scopes, and applies the per-team limit of
-   10000 requests per hour, enforced in 60-second windows of 166 requests
-   (`RATE_LIMIT_PER_HOUR` is currently ignored,
-   [#627](https://github.com/fabriziosalmi/wildbox/issues/627)).
+   `RATE_LIMIT_PER_HOUR` requests per hour (10000 by default), enforced in
+   60-second windows of one sixtieth of that figure (166 with the default).
+   The gateway validates `RATE_LIMIT_PER_HOUR` at startup and does not start
+   when it is not a whole number from 1 to 1,000,000,000.
 4. It removes `Authorization`, `X-API-Key` and any client-supplied
    `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role`
    (`utils.clean_request_headers()`), then stores the validated identity in
@@ -62,19 +64,12 @@ strings, and nginx does not send a header whose value is empty.
 - **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
   authentication authority and validates the bearer token itself, so these
   routes do not run the shared handler and pass `Authorization` through.
-- **Agents** (`/api/v1/agents/`): authenticated by inline code in
-  `wildbox_gateway.conf`, not by the shared handler. It accepts only
-  `X-API-Key`, and a request with a JWT and no key gets `401 NO_API_KEY`.
-  The inline code sets the identity with `ngx.req.set_header()` but does not
-  fill the `$wildbox_*` variables, so the `proxy_set_header` lines above,
-  whose values are then empty, replace and drop those headers. Issue
-  [#630](https://github.com/fabriziosalmi/wildbox/issues/630) tracks moving
-  the route to the shared handler.
 - **Guardian** (`/api/v1/guardian/`): uses the shared handler, but guardian is
   a Django service with its own middleware
   (`open-security-guardian/apps/core/gateway_middleware.py`) rather than the
-  FastAPI dependency below. Its legacy direct `X-API-Key` path is tracked in
-  [#629](https://github.com/fabriziosalmi/wildbox/issues/629).
+  FastAPI dependency below. Like the FastAPI services, it accepts gateway
+  headers only and answers a direct request with `403`
+  `GATEWAY_AUTH_REQUIRED`; it has no API keys of its own (#633).
 
 ## Identity headers
 

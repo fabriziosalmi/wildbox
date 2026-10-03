@@ -40,6 +40,66 @@ certificates, including broken ones: they read the certificate over an
 unverified handshake, also attempt a verified one, and report an untrusted
 certificate as a finding.
 
+### Network Target Policy
+
+Before a tool runs, the service checks where it would connect
+(`enforce_target_policy` in `open-security-tools/app/target_policy.py`). It
+runs the URL guard on every URL in the input, then checks the host, address
+and range fields of the network tools: `port_scanner`,
+`network_port_scanner`, `network_vulnerability_scanner`, `network_scanner`,
+`iot_security_scanner`, `ssl_analyzer`, `ca_analyzer`,
+`pki_certificate_manager`, `database_security_analyzer`, `dns_enumerator`
+(its `dns_servers`, and the name servers it attempts a zone transfer from)
+and the registry of a `container_security_scanner` image. Unless the
+operator allows them, it refuses:
+
+- addresses that are private, loopback, link-local, unspecified, multicast,
+  reserved, shared (`100.64.0.0/10`) or otherwise not globally reachable,
+  such as the documentation ranges, and IPv4 addresses embedded in IPv6
+  ones (IPv4-mapped, 6to4, NAT64);
+- a CIDR or address range that contains such an address, and any range of
+  more than 1,024 addresses (an IPv4 `/22`), checked before the range is
+  expanded;
+- a host name that resolves to such an address (every answer is checked)
+  or does not resolve; both answer with the same message;
+- the deployment's own names: every name without a dot (`wildbox-redis`,
+  `postgres`, `gateway`), `localhost`, names ending in `.localhost`,
+  `.local`, `.internal`, `.localdomain` or `.home.arpa`, and the cloud
+  metadata names;
+- spellings that are not canonical (`127.1`), and values with whitespace
+  or control characters.
+
+How a refusal reaches the caller depends on the path: the synchronous run
+answers **400** with the reason in `error.message`, an asynchronous run
+ends as a task with status `failed` and the reason in `error`, and a
+`security_automation_orchestrator` step that names a refused target fails.
+The reason names the policy, for example
+`Target '10.0.0.5' is a private, loopback, link-local, multicast, reserved or otherwise internal address (network target policy; operators can allow internal targets with TOOLS_ALLOWED_INTERNAL_TARGETS)`.
+
+`TOOLS_ALLOWED_INTERNAL_TARGETS` (empty by default) opens internal targets
+for every caller of every network tool. It is a comma-separated list of
+CIDR ranges with their host bits zero, IP addresses and host names, for
+example `10.20.0.0/16,192.168.50.0/24,lab-dc01`. An address is allowed
+inside a listed range; a range when all its internal addresses are inside
+listed ranges; a host name when it is listed exactly (no subdomains) or
+when all its internal addresses are inside listed ranges. Set it in `.env`:
+`docker-compose.yml` passes it to both the `api` service and the
+`tools-worker`, which checks asynchronous runs. An entry that is not a
+CIDR range, an IP address or a host name stops both at startup. The range
+limit of 1,024 addresses per input still applies to allowed ranges.
+
+The check resolves a name, and most tools resolve it again when they
+connect: a name whose DNS answer changes between the two lookups can
+still reach an internal address in that window.
+
+`network_scanner` takes `network` as an IP address, a CIDR range or a
+last-octet range written `a.b.c.10-20`, at most 1,024 addresses; it
+refuses a larger range before any probe. It pings each host (`scan_type`
+`ping`, the default) and, with `scan_type` `tcp`, also tries a TCP connect
+to common ports on the hosts that answer. `timeout` (seconds per probe,
+1 to 30, default 3) and `max_threads` (concurrent probes, 1 to 100,
+default 50) bound the scan.
+
 ## Table of Contents
 
 - [Authentication](#authentication)
@@ -205,7 +265,7 @@ The service refuses a run with these statuses:
 
 | Status | When | `error.message` |
 | --- | --- | --- |
-| 400 | A URL in the input names a target the service's SSRF guard refuses | The guard's reason |
+| 400 | A URL or a network target in the input is refused (see [Network Target Policy](#network-target-policy)) | The policy's reason |
 | 404 | No tool has that name | `Not Found` |
 | 403 | The tool acts on behalf of the caller and the caller is not authorized for it (today `sql_injection_scanner`, which also needs an authenticated caller) | The authorization reason |
 | 408 | The run exceeded its time limit | `Tool execution timed out` |
@@ -248,9 +308,9 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/tools/hash_generator/async 
 ```
 
 The submit endpoint does not check the tool name or the input: an unknown
-tool, an input that fails validation, or a URL target the SSRF guard
-refuses all show up later as a task with status `failed` and the reason in
-`error`. A tool that refuses the caller shows up as status `refused`.
+tool, an input that fails validation, or a target the network target
+policy refuses all show up later as a task with status `failed` and the
+reason in `error`. A tool that refuses the caller shows up as status `refused`.
 
 The service records who submitted the task before queuing it. It answers
 **503** (`Asynchronous execution is unavailable`) when it cannot record the
@@ -317,15 +377,22 @@ curl -s --cacert "$CA" https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d
 | `state` | `status` | Other fields |
 | --- | --- | --- |
 | `PENDING` | `pending` | `message` |
-| `STARTED` or `RUNNING` | `running` | `message`, `info` while running |
+| `STARTED` or `RUNNING` | `running` | `message`; `info` with the progress fields `tool_name`, `started_at` and `status` when the worker has written them |
 | `SUCCESS` | `completed`, `failed`, `timeout` or `refused` (the task finished and reports how the tool ended) | `error`, `result` (the tool's output when completed), `duration`, `completed_at` |
-| `FAILURE` | `failed` | `error`, `message` |
-| `RETRY` | `retrying` | `message`, `info` |
+| `FAILURE` | `failed` | `error` (`Task execution failed (<exception class>)`, never the exception message), `message`, `completed_at` |
+| `RETRY` | `retrying` | `message`, `info` (the same failure text as `error` above) |
+| `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` |
 
-A Celery state outside this list is reported as status `unknown`. Reading a
-task after canceling it is being changed in #619 and is not described here.
+Any other state, including a result record the service cannot read, answers
+200 with status `unknown` and `message` `The task state cannot be read`
+(`state` is `UNKNOWN` when the record is unreadable). The service reads the
+task's record once per request (`open-security-tools/app/api/async_router.py`),
+so a task canceled while it is being read answers with one of these states,
+not with a 500.
 
-**404** for a task the caller did not submit or that does not exist.
+**404** for a task the caller did not submit or that does not exist;
+**503** (`Asynchronous execution is unavailable`) when the result backend
+(Redis) cannot be reached.
 
 ### DELETE /api/v1/tasks/{task_id}
 
@@ -346,9 +413,12 @@ curl -s --cacert "$CA" -X DELETE https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-
 }
 ```
 
+The answer means the cancellation was sent to the worker; reading the task
+afterward reports status `cancelled` once the worker has revoked it.
+
 **400** (`Task cannot be cancelled (current state: ...)`) for a task that
-has finished; **404** for a task the caller did not submit or that does not
-exist.
+has finished or was already canceled; **404** for a task the caller did not
+submit or that does not exist; **503** when Redis cannot be reached.
 
 ### GET /api/v1/tasks
 
@@ -437,16 +507,18 @@ None of them is part of the public API.
 
 The gateway applies two limits to tools and task requests:
 
-- **Per team**: 10000 requests per hour, enforced in fixed 60-second
-  windows of 166 requests per team
+- **Per team**: `RATE_LIMIT_PER_HOUR` requests per hour (default 10000),
+  enforced in fixed 60-second windows of one sixtieth of it, rounded down
+  and at least 1: 166 requests per team with the default
   (`open-security-gateway/nginx/lua/auth_handler.lua`). Every authenticated
-  response carries `X-RateLimit-Limit` (166), `X-RateLimit-Remaining` and
-  `X-RateLimit-Reset`, which describe the current minute, and
-  `X-RateLimit-Policy: 10000;w=3600`. Past the limit the gateway answers
-  429 with `Retry-After` and
+  response carries `X-RateLimit-Limit` (the per-minute figure),
+  `X-RateLimit-Remaining` and `X-RateLimit-Reset`, which describe the
+  current minute, and `X-RateLimit-Policy: <per hour>;w=3600`. Past the
+  limit the gateway answers 429 with `Retry-After` and
   `{"error": "rate_limit_exceeded", "message": "Rate limit exceeded", "limit_per_hour": 10000, "retry_after_seconds": ...}`.
-  The `RATE_LIMIT_PER_HOUR` variable in `docker-compose.yml` is ignored
-  today because `nginx.conf` does not declare it (#627).
+  `RATE_LIMIT_PER_HOUR` is set in `.env` and passed to the gateway by
+  `docker-compose.yml`; it must be a whole number from 1 to 1,000,000,000,
+  and any other value stops the gateway at startup.
 - **Per client IP**: the server-wide nginx `limit_req` zone `global`,
   100 requests per second with a burst of 10, answered with 429.
 
@@ -495,13 +567,13 @@ the request in the logs.
 
 | Status | Where |
 | --- | --- |
-| 400 | Run: target refused by the SSRF guard. Cancel: task already finished |
+| 400 | Run: target refused by the network target policy. Cancel: task already finished or canceled |
 | 403 | Run: tool refused the caller |
 | 404 | Unknown tool; task not found or not the caller's |
 | 408 | Synchronous run timed out |
 | 422 | Request body missing, not an object, or not matching the input schema |
 | 500 | Tool failed |
-| 503 | Asynchronous execution unavailable (Redis or task queue down) |
+| 503 | Asynchronous execution unavailable (Redis, the result backend or the task queue down) |
 
 ## Examples
 

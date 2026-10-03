@@ -19,6 +19,9 @@ credentials are placeholders.
 - [Cancel a run](#cancel-a-run)
 - [Reload playbooks](#reload-playbooks)
 - [List connectors](#list-connectors)
+- [Who a run acts for](#who-a-run-acts-for)
+- [Connector actions](#connector-actions)
+- [Configuration](#configuration)
 - [Health check](#health-check)
 - [Rate limits](#rate-limits)
 - [Errors](#errors)
@@ -74,6 +77,7 @@ Roles:
 - Only `owner` and `admin` can reload playbooks (`403` otherwise).
 - Runs belong to the team that started them. Another team's run answers `404`, the
   same as a run that does not exist.
+- A run acts for the user who started it; see [Who a run acts for](#who-a-run-acts-for).
 
 ---
 
@@ -84,7 +88,7 @@ Roles:
 | `GET` | `/api/v1/responder/playbooks` | `/v1/playbooks` | List loaded playbooks |
 | `POST` | `/api/v1/responder/playbooks/{playbook_id}/execute` | `/v1/playbooks/{playbook_id}/execute` | Start a run |
 | `GET` | `/api/v1/responder/runs/{run_id}` | `/v1/runs/{run_id}` | Read a run |
-| `DELETE` | `/api/v1/responder/runs/{run_id}` | `/v1/runs/{run_id}` | Mark a run canceled |
+| `DELETE` | `/api/v1/responder/runs/{run_id}` | `/v1/runs/{run_id}` | Cancel a run |
 | `POST` | `/api/v1/responder/playbooks/reload` | `/v1/playbooks/reload` | Reload playbooks from disk (owner/admin) |
 | `GET` | `/api/v1/responder/connectors` | `/v1/connectors` | List connectors and their actions |
 
@@ -107,11 +111,11 @@ curl -s --cacert "$CA" "$BASE/playbooks" \
   "playbooks": [
     {
       "playbook_id": "simple_notification",
-      "name": "Simple Notification Test",
-      "description": "A basic playbook that logs a message for testing the workflow engine",
+      "name": "Simple Logging Test",
+      "description": "A basic playbook that logs a message for testing the workflow engine; it sends no notification",
       "version": "1.0",
       "author": "Wildbox Security",
-      "tags": ["test", "notification"],
+      "tags": ["test", "log"],
       "steps_count": 3,
       "trigger_type": "api"
     }
@@ -121,8 +125,8 @@ curl -s --cacert "$CA" "$BASE/playbooks" \
 ```
 
 The response lists every playbook the service loaded. The repository ships
-`simple_notification`, `triage_ip`, `triage_url` and `all_star_e2e` in
-`open-security-responder/playbooks/`.
+`simple_notification`, `triage_ip`, `triage_url`, `hash_evidence` and
+`all_star_e2e` in `open-security-responder/playbooks/`.
 
 ---
 
@@ -147,17 +151,19 @@ curl -s --cacert "$CA" -X POST "$BASE/playbooks/simple_notification/execute" \
 {
   "run_id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
   "playbook_id": "simple_notification",
-  "playbook_name": "Simple Notification Test",
+  "playbook_name": "Simple Logging Test",
   "status": "accepted",
   "status_url": "/v1/runs/6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
-  "message": "Playbook 'Simple Notification Test' execution started"
+  "message": "Playbook 'Simple Logging Test' execution started"
 }
 ```
 
 `status_url` is the service path. Through the gateway, read the run at
 `/api/v1/responder/runs/{run_id}`.
 
-An unknown `playbook_id` answers `404`.
+An unknown `playbook_id` answers `404`. The run is recorded with the user the
+gateway authenticated (user, team and role), and its steps act for that user; see
+[Who a run acts for](#who-a-run-acts-for).
 
 ---
 
@@ -177,7 +183,7 @@ the first is shown in `step_results`, and the log list is shortened):
 {
   "run_id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
   "playbook_id": "simple_notification",
-  "playbook_name": "Simple Notification Test",
+  "playbook_name": "Simple Logging Test",
   "status": "completed",
   "start_time": "2026-10-03T09:15:02.118000",
   "end_time": "2026-10-03T09:15:04.461000",
@@ -205,7 +211,7 @@ the first is shown in `step_results`, and the log list is shortened):
     }
   },
   "logs": [
-    "[2026-10-03T09:15:02.120000] INFO: Playbook 'Simple Notification Test' queued for execution"
+    "[2026-10-03T09:15:02.120000] INFO: Playbook 'Simple Logging Test' queued for execution"
   ],
   "error": null,
   "duration_seconds": 2.343
@@ -217,15 +223,16 @@ The timestamps and IDs above are illustrative. The fields come from
 
 | Field | Description |
 | --- | --- |
-| `status` | `queued`, `pending`, `running`, `completed`, `failed` or `cancelled` |
+| `status` | `queued`, `pending`, `running`, `cancelling`, `completed`, `failed` or `cancelled` |
 | `step_results` | One entry per step that ran, with its own `status`, `output`, `error` and timing |
 | `context` | The run's template context: `trigger`, `run` and the outputs of finished steps under `steps` |
 | `logs` | Log lines recorded during the run |
 | `error` | The failure reason when `status` is `failed` |
 
-Run records are kept for 30 days by default, then expire. When the service starts,
-it marks as `failed` any run still recorded as `running` or `queued` whose worker
-has not updated it for 15 minutes.
+Run records are kept for `EXECUTION_RETENTION_DAYS` days (30 by default), then
+expire. When the service starts, it closes any run still recorded as `running`,
+`queued` or `cancelling` whose worker has not updated it for 15 minutes: a
+`cancelling` run is recorded as `cancelled`, the others as `failed`.
 
 ---
 
@@ -238,17 +245,34 @@ curl -s --cacert "$CA" -X DELETE "$BASE/runs/<run-id>" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
+The answer is the status the run is in afterward. **Response (202 Accepted)**,
+for a running run:
+
 ```json
 {
-  "message": "Execution '6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f' cancelled successfully",
-  "status": "cancelled"
+  "run_id": "6f1c2d3e-4b5a-4c7d-8e9f-0a1b2c3d4e5f",
+  "status": "cancelling",
+  "message": "Cancel requested. The step in progress runs to its end and is recorded as it ends; no further step will start. The run's status becomes 'cancelled' when the worker stops it."
 }
 ```
 
-A run that is already `completed`, `failed` or `cancelled` is left unchanged and
-the response reports its status. Canceling only marks the stored run record: it does
-not stop a worker that is already executing the run's steps, and that worker can
-still record its own final status afterward.
+| Run was | Status code | `status` |
+| --- | --- | --- |
+| `queued` or `pending` | `200` | `cancelled`: no step runs |
+| `running` | `202` | `cancelling`: the step in progress runs to its end, no further step starts, then the run reads `cancelled` |
+| `cancelling` | `202` | `cancelling`: the first request stands |
+| `completed`, `failed` or `cancelled` | `200` | Its status, unchanged |
+
+- **A step in progress is not interrupted.** Its call to another service has been
+  sent and may already have taken effect, so it is recorded as it ended in
+  `step_results`; the run's log names the steps that did not run.
+- **A cancelled run stays cancelled.** The worker's status writes are
+  compare-and-set against the run's status and its cancel request, so it cannot
+  write `completed` or `failed` over a cancel. A cancel that arrives after the run's
+  last write answers `200` with `completed` or `failed` and changes nothing.
+- **The request is durable.** It is stored in Redis with the run, and the worker
+  checks it before the run starts and before every step. A run another team owns
+  answers `404`, as an unknown run does.
 
 ---
 
@@ -272,24 +296,26 @@ Reloads the playbook files from disk and returns what was loaded:
 
 `GET /api/v1/responder/connectors`
 
-Lists the connectors registered in the service and the actions each one offers.
-Playbook steps call an action as `connector.action`.
+Lists the connectors registered in the service (`system`, `wildbox`, `data` and
+`api`) and the actions each one offers. Playbook steps call an action as
+`connector.action`.
 
 ```bash
 curl -s --cacert "$CA" "$BASE/connectors" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Response shape:
+Response, shortened to one connector:
 
 ```json
 {
   "connectors": {
-    "<connector-name>": {
-      "name": "<connector-name>",
-      "config": {},
+    "data": {
+      "name": "data",
+      "config": {"data_url": "http://open-security-data:8002"},
       "actions": {
-        "<action-name>": "<description>"
+        "search_indicators": "Search threat indicators by value, type and confidence",
+        "lookup_indicators": "Look up a list of indicators and report which are known"
       }
     }
   },
@@ -297,8 +323,106 @@ Response shape:
 }
 ```
 
-Connector configuration is not covered here: it is being reworked in
-[issue #616](https://github.com/fabriziosalmi/wildbox/issues/616).
+`config` shows the service URLs the connector calls (see
+[Configuration](#configuration)); the `system` connector has none.
+
+---
+
+## Who a run acts for
+
+A run acts for the user who started it. The execute endpoint records the user the
+gateway authenticated (user, team and role), the run is owned by that user's team,
+and every request a connector makes for the run carries that user's
+`X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and `X-Wildbox-Role` headers with
+`X-Gateway-Secret`: the headers the gateway itself puts on a request it forwards for
+that user (`open-security-responder/app/caller.py`).
+
+- **The services authorize each call for that user.** The tool tasks a run starts,
+  the AI analysis tasks it queues and the vulnerabilities it records belong to that
+  user and team, and a call the user may not make fails the step. Guardian lets
+  only owners and admins create a vulnerability, so `wildbox.create_vulnerability`
+  fails when a member runs the playbook. The responder has no identity of its own.
+- **A run without a complete caller fails before its first step**, and a connector
+  sends nothing when no caller is set or `GATEWAY_INTERNAL_SECRET` is missing.
+- **The identity is scoped to the run.** The worker sets it when the run starts and
+  resets it when the run ends, however it ends, so the next run in the same worker
+  thread does not inherit it.
+- **The connectors call the services directly** on the internal network, at the
+  `WILDBOX_*_URL` addresses, not through the gateway. Each request is sent once; a
+  refusal or an unreachable service fails the step with the service's status, and
+  the step's `on_failure` decides what happens next.
+- **API keys.** The gateway checks an API key's scopes on the execute request,
+  which needs `write`. A `write` key can already run tools and write data
+  directly, so a run does not do more than the key could.
+
+---
+
+## Connector actions
+
+The `api`, `wildbox` and `data` connectors call these routes on the services, as
+the run's caller. Their parameters are the arguments of the actions in
+`open-security-responder/app/connectors/`.
+
+| Action | Service | Route |
+| --- | --- | --- |
+| `api.run_tool`, `wildbox.run_tool` | tools | `POST /api/tools/{tool}`, body: the tool's input |
+| `api.run_tool` with `async_execution: true` | tools | `POST /api/tools/{tool}/async`; returns the task |
+| `api.get_execution_status`, `api.cancel_execution` | tools | `GET`, `DELETE /api/tasks/{task_id}` |
+| `api.list_tools`, `api.get_tool_info` | tools | `GET /api/tools`, `GET /api/tools/{tool}/info` |
+| `wildbox.analyze_ioc` | agents | `POST /v1/analyze` with `{"ioc": {"type", "value"}, "priority"}`; returns the task |
+| `wildbox.create_vulnerability` | guardian | `GET /api/v1/assets/assets/?search=`, then `POST /api/v1/vulnerabilities/` |
+| `wildbox.get_vulnerabilities` | guardian | `GET /api/v1/vulnerabilities/` |
+| `wildbox.get_asset_info` | guardian | `GET /api/v1/assets/assets/{id}/` |
+| `wildbox.query_threat_intel`, `data.search_indicators` | data | `GET /api/v1/indicators/search` |
+| `data.lookup_indicators` | data | `POST /api/v1/indicators/lookup` |
+
+The `system` connector calls no service. Its actions are `log`, `sleep`,
+`validate`, `extract`, `evaluate`, `create_report`, `notification`, `timestamp`
+and `uuid`.
+
+- **A tool's parameters** are the tool's input schema, sent as the body itself. A
+  tool name or a task ID that is not of the shape the tools service issues fails
+  the step before anything is sent.
+- **`wildbox.analyze_ioc` returns a task, not a verdict.** The agents service
+  analyzes in the background; the user who ran the playbook reads the report at the
+  task's `result_url`. A step cannot wait for it. `ioc_type` is one of `ipv4`,
+  `ipv6`, `domain`, `url`, `md5`, `sha1`, `sha256` or `email`.
+- **`wildbox.create_vulnerability`** records the vulnerability against the one
+  Guardian asset whose name or IP address is `asset_name`; with none, or more than
+  one, the step fails and nothing is created.
+- **`system.notification` delivers nothing.** It writes the message to the service
+  log, the step's input and output go to the run's record, and it answers `status: logged`, `delivered: false`, with the
+  `channel`, `message` and `priority` it was given. No e-mail, webhook or chat
+  message leaves the responder; to have an alert reach people, read it from the run.
+- **Removed actions.** There are no blacklist, endpoint isolation or ticket actions
+  (`add_to_blacklist`, `isolate_endpoint`, `create_ticket` and the data
+  connector's blacklist and IOC-writing actions): no service serves what they
+  called. A step that names one fails as an unknown action, before any request is
+  sent. There is no ticketing or chat connector.
+
+---
+
+## Configuration
+
+Environment variables of the responder API and of its playbook worker
+(`python -m dramatiq app.workflow_engine`, which makes the connector calls and runs
+in the same container as the API):
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `GATEWAY_INTERNAL_SECRET` | none | Checked on the requests the responder receives, and sent with the run's caller on the requests its connectors make. Required |
+| `WILDBOX_API_URL` | `http://open-security-tools:8000` | Tools service |
+| `WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service |
+| `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian |
+| `WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service |
+| `WILDBOX_SENSOR_URL` | `http://open-security-sensor:8004` | Accepted and unused: no connector calls the sensor |
+| `REDIS_URL` | `redis://localhost:6381/0` | Run state and the worker queue |
+| `PLAYBOOKS_DIRECTORY` | `./playbooks` | Where the playbook YAML files are loaded from |
+| `EXECUTION_RETENTION_DAYS` | `30` | How long run records are kept |
+
+The URL defaults are the services' addresses in `docker-compose.yml`, which also
+sets them. Each must be an absolute `http` or `https` URL with a host and no query,
+or the service does not start (`open-security-responder/app/config.py`).
 
 ---
 
@@ -314,12 +438,13 @@ exist). It returns `{"status": "healthy", "timestamp": "..."}`, or
 
 ## Rate limits
 
-The responder has no rate limit of its own. The gateway allows 10000 requests per
-hour per team, enforced in fixed 60-second windows of 166 requests;
-`X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` describe the
-current minute window, and `X-RateLimit-Policy` is `10000;w=3600`. A request over
-the limit gets `429`. The `RATE_LIMIT_PER_HOUR` variable is currently ignored
-([issue #627](https://github.com/fabriziosalmi/wildbox/issues/627)).
+The responder has no rate limit of its own. The gateway allows each team
+`RATE_LIMIT_PER_HOUR` requests per hour (10000 by default), enforced in fixed
+60-second windows of one sixtieth of that (166 by default); `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset` describe the current minute window,
+and `X-RateLimit-Policy` is `<per hour>;w=3600`. A request over the limit gets
+`429`. A `RATE_LIMIT_PER_HOUR` that is not a whole number from 1 to 1000000000
+stops the gateway at startup.
 
 ---
 
@@ -341,9 +466,9 @@ Responder errors use the shared Wildbox error format
 
 | Status | Meaning |
 | --- | --- |
-| `202` | Playbook run accepted |
+| `202` | Playbook run accepted, or a running run is being canceled |
 | `401` | No valid credential (answered by the gateway) |
-| `403` | Role or API key scope does not allow the request |
+| `403` | Role or API key scope does not allow the request, or the caller has no complete user and team identity |
 | `404` | Unknown playbook, or a run that does not exist or belongs to another team |
 | `422` | The request body is not valid |
 | `429` | Gateway rate limit exceeded |

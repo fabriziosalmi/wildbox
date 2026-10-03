@@ -36,12 +36,6 @@ To authenticate, log in with a form-encoded `POST /auth/jwt/login` (fields
 key) or `POST /api/v1/identity/teams/{team_id}/api-keys` (a team key). The
 [Quick Start](../guides/quickstart.md) shows the complete sequence.
 
-The agents routes (`/api/v1/agents/`) are the exception: they accept only an
-API key in `X-API-Key`, and answer `401` (`NO_API_KEY`) to a request that
-carries only a bearer token. Issue
-[#630](https://github.com/fabriziosalmi/wildbox/issues/630) tracks it; see the
-[agents reference](agents/endpoints.md#authentication).
-
 Login, tokens, logout and the failed-login lockout are described in the
 [Authentication and sessions guide](../guides/authentication.md). The
 [API reference page](../api-reference.html) is a one-page overview.
@@ -151,14 +145,16 @@ To contribute API documentation:
 ## FAQ
 
 **Q: What are the rate limits?**
-A: The gateway allows 10000 requests per hour per team, enforced in fixed
-60-second windows of 166 requests. Responses on routes the gateway
-authenticates carry `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
-`X-RateLimit-Reset` for the current minute, and `X-RateLimit-Policy:
-10000;w=3600`. `RATE_LIMIT_PER_HOUR` in `.env` is currently ignored
-([#627](https://github.com/fabriziosalmi/wildbox/issues/627)). The agents
-routes do not go through this limit (#630); the agents service limits
-analysis requests itself, to 5 per minute.
+A: The gateway allows `RATE_LIMIT_PER_HOUR` requests per hour per team
+(10000 unless `.env` sets it), enforced in fixed 60-second windows of one
+sixtieth of that figure, 166 with the default. The gateway refuses to start
+when the value is not a whole number from 1 to 1,000,000,000. Responses on
+routes the gateway authenticates carry `X-RateLimit-Limit`,
+`X-RateLimit-Remaining` and `X-RateLimit-Reset` for the current minute, and
+`X-RateLimit-Policy` with the hourly figure (`10000;w=3600` by default). Some
+services add their own limits: the agents service, for example, accepts 5
+analysis requests per minute per user by default
+([agents reference](agents/endpoints.md#rate-limiting)).
 
 **Q: How do I refresh my JWT token?**
 A: There is no refresh endpoint. When a token expires, log in again. The

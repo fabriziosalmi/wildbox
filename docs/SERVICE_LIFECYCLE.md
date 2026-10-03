@@ -56,10 +56,11 @@ These start only when their Compose profile is named, for example
 
 ### Not Routed by the Gateway
 
-- **Sensor**: the gateway has no upstream for it (commented out in
-  `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`). Its telemetry
-  does not reach the data service today; see
-  [issue #628](https://github.com/fabriziosalmi/wildbox/issues/628).
+- **Sensor**: the gateway has no upstream for its local API (commented out
+  in `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`). The sensor
+  is a client of the gateway instead: it sends its telemetry to
+  `/api/v1/data/ingest` with a team member's API key, and the data service
+  stores it per team.
 
 ### Optional Services
 

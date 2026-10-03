@@ -24,7 +24,6 @@ credentials are placeholders.
 - [Health check](#health-check)
 - [Rate limits](#rate-limits)
 - [Errors](#errors)
-- [Known issues](#known-issues)
 
 ---
 
@@ -72,7 +71,8 @@ caller's user, team and role to guardian in trusted headers. Use either credenti
   `POST /api/v1/identity/api-keys` (a user key) or
   `POST /api/v1/identity/teams/{team_id}/api-keys` (a team key). Send it as
   `X-API-Key: <key>`. See the [Identity Service API](../identity/endpoints.md).
-  Guardian has no API key endpoint of its own.
+  Guardian has no API keys of its own: the ones it had, and the model that stored
+  them, were removed (#633).
 
 ```bash
 TOKEN=$(curl -s --cacert "$CA" -X POST "https://<host>/auth/jwt/login" \
@@ -83,6 +83,26 @@ TOKEN=$(curl -s --cacert "$CA" -X POST "https://<host>/auth/jwt/login" \
 curl -s --cacert "$CA" "$BASE/assets/assets/" \
   -H "Authorization: Bearer $TOKEN"
 ```
+
+### Gateway only
+
+Guardian accepts a request under `/api/` only when it carries the gateway's
+`X-Wildbox-User-ID` and `X-Wildbox-Team-ID` headers together with
+`X-Gateway-Secret`, the `GATEWAY_INTERNAL_SECRET` proof of origin
+(`apps/core/gateway_middleware.py`). A request sent to guardian's own port is
+refused, whatever key it carries:
+
+- without the identity headers: `403` with
+  `"code": "GATEWAY_AUTH_REQUIRED"`;
+- with the identity headers but without the matching secret: `403` with
+  `"code": "GATEWAY_SECRET_REQUIRED"`;
+- when guardian itself has no `GATEWAY_INTERNAL_SECRET`: `503` with
+  `"code": "GATEWAY_SECRET_NOT_CONFIGURED"`.
+
+Django REST Framework authenticates with the gateway headers only
+(`GatewayHeaderAuthentication` in `guardian/settings.py`). Before #633 guardian
+also accepted its own API keys in `X-API-Key` on its port, as an administrator,
+beside the gateway.
 
 ### API key scopes
 
@@ -529,12 +549,14 @@ plus a `checks` object with the status of the database and Redis.
 
 Two limits apply to guardian requests:
 
-- **Gateway, per team.** The gateway allows 10000 requests per hour per team,
-  enforced in fixed 60-second windows of 166 requests. `X-RateLimit-Limit`,
-  `X-RateLimit-Remaining` and `X-RateLimit-Reset` describe the current minute
-  window, and `X-RateLimit-Policy` is `10000;w=3600`. The `RATE_LIMIT_PER_HOUR`
-  variable is currently ignored
-  ([issue #627](https://github.com/fabriziosalmi/wildbox/issues/627)).
+- **Gateway, per team.** The gateway allows `RATE_LIMIT_PER_HOUR` requests per
+  hour per team, 10000 unless the deployment sets it, enforced in fixed 60-second
+  windows of one sixtieth of that figure, rounded down and at least 1 (166 with
+  the default).
+  `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` describe
+  the current minute window, and `X-RateLimit-Policy` is the hourly figure, such
+  as `10000;w=3600`. The gateway validates the variable at startup and does not
+  start when it is not a whole number from 1 to 1,000,000,000.
 - **Guardian, per user.** Django REST Framework throttles authenticated users to
   1000 requests per hour and anonymous callers to 100 per hour
   (`DEFAULT_THROTTLE_RATES` in `guardian/settings.py`). Guardian reads an
@@ -554,17 +576,9 @@ Guardian answers errors in Django REST Framework's format:
 | --- | --- | --- |
 | `400` | Validation failed, or an unsupported action | Field errors (`{"name": ["This field is required."]}`), `{"detail": "..."}` or `{"error": "..."}` |
 | `401` | No valid credential (answered by the gateway) | Gateway JSON |
-| `403` | Role or API key scope does not allow the request | `{"detail": "..."}`, or the gateway's `insufficient_scope` body |
+| `403` | Role or API key scope does not allow the request; or a request that did not come through the gateway | `{"detail": "..."}`, the gateway's `insufficient_scope` body, or `{"code": "GATEWAY_AUTH_REQUIRED", ...}` |
 | `404` | Unknown ID or route | `{"detail": "..."}` |
 | `429` | Rate limit exceeded | See [Rate limits](#rate-limits) |
-
----
-
-## Known issues
-
-- Guardian still accepts a legacy direct `X-API-Key` path outside the gateway. It is
-  tracked in [issue #629](https://github.com/fabriziosalmi/wildbox/issues/629). Use
-  the gateway and identity-issued API keys as described above.
 
 ---
 

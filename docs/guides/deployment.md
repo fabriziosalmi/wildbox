@@ -410,7 +410,9 @@ certificate analyzers, `network_scanner`, `iot_security_scanner`,
 `container_security_scanner`) refuse internal targets: private, loopback,
 link-local, multicast, reserved and shared addresses, ranges that contain
 one, names that resolve to one, and the stack's own service names. A
-range holds at most 1024 addresses. Refusals answer 400.
+range holds at most 1024 addresses. A synchronous run that is refused
+answers 400 with the reason; an asynchronous run ends as a task with status
+`failed` and the reason in `error`.
 
 To scan an internal lab, list its ranges and hosts in `.env`, then
 recreate `api` and `tools-worker`:

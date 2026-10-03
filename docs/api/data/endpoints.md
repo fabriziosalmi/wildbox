@@ -19,7 +19,8 @@ queries over telemetry and sensors.
 
 Indicators and sources are team-scoped: a caller sees the global ones
 (collected from the public feeds, with no team) and those of its own team.
-Telemetry events and sensors carry no team; see [Telemetry](#telemetry).
+Telemetry events and sensors belong to one team only, with no global rows;
+see [Telemetry](#telemetry).
 
 ## Table of Contents
 
@@ -61,7 +62,9 @@ An API key (`POST /api/v1/identity/api-keys`, or
 `X-API-Key: <key>`. A key with scopes needs `read` for `GET` requests and
 `write` for `POST` requests on `/api/v1/data/...`, including the read-only
 `POST /indicators/lookup`; the gateway answers 403 `insufficient_scope`
-otherwise. A JWT is not limited by scopes. The
+otherwise. `POST /ingest` needs `data:ingest`, `data:write` or `write`; a
+key with `data:ingest` alone can call that route and nothing else, which is
+the key a sensor is given. A JWT is not limited by scopes. The
 [Authentication and sessions guide](../../guides/authentication.md) covers
 both credentials.
 
@@ -362,24 +365,31 @@ team and the global sources and indicators.
 
 ## Telemetry
 
-Telemetry events and sensor records have no team column, so the telemetry
-routes are not team-scoped: any authenticated caller sees every event and
-every sensor.
+Telemetry belongs to a team: the team of the credential it was sent with.
+Every telemetry route reads or writes the caller's team's events and sensors
+only; unlike indicators there are no global rows. Rows stored before
+telemetry had a team (`team_id` empty) are visible to no team;
+[UPGRADING.md](../../../UPGRADING.md) gives the SQL to count, assign or
+delete them.
 
 ### POST /api/v1/data/ingest
 
-Ingest a batch of telemetry events. A sensor that is not known yet is
-registered from its first event.
+Ingest a batch of telemetry events. The events and the sensor's record are
+stored under the caller's team; the body carries no team, and a team named
+in it is ignored. A sensor that the team does not know yet is registered
+from its first event. A sensor's `sensor_id` is unique within its team, so
+two teams can use the same name without touching each other's records.
 
-> **Sensor telemetry does not reach this endpoint today (#628).** The
-> sensor is configured to post to the data service directly
-> (`open-security-sensor/config.yaml`), without the gateway headers, and
-> the service refuses such requests. The endpoint itself works through the
-> gateway, as below.
+The sensor calls this route through the gateway with an identity API key of
+a team member, sent as `X-API-Key`, scoped to `data:ingest`
+(`SENSOR_DATA_LAKE_API_KEY`); the
+[sensor README](../../../open-security-sensor/README.md#sending-telemetry-to-wildbox)
+and the [deployment guide](../../guides/deployment.md) cover the setup. Any
+other credential that passes the gateway works too.
 
 ```bash
 curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/ingest \
-  -H "Authorization: Bearer $TOKEN" \
+  -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "batch_id": "batch-001",
@@ -423,14 +433,16 @@ curl -s --cacert "$CA" -X POST https://<host>/api/v1/data/ingest \
 ```
 
 An event that cannot be processed is reported in `errors` as
-`Event <index>: processing failed` and the rest are kept. If the batch
-cannot be saved, `events_ingested` is 0 and `errors` holds
-`Batch commit failed`. At most 1000 events: more answers 422, and 400 when
-`MAX_BATCH_SIZE` is set lower.
+`Event <index>: processing failed` and the rest are kept. If the database
+refuses the batch, nothing is stored and the service answers **503** with
+`Retry-After: 5`; send the batch again. At most 1000 events: more answers
+422, and 400 when `MAX_BATCH_SIZE` is set lower. Through the gateway, an
+invalid, expired or revoked key answers 401 and a key without an ingest
+scope 403 `insufficient_scope`.
 
 ### GET /api/v1/data/telemetry/events
 
-Events, newest first.
+The caller's team's events, newest first.
 
 | Query parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -460,12 +472,12 @@ Each event has the ingest fields plus `id`, `ingested_at`, `processed` and
 }
 ```
 
-`active_sensors` counts active sensors seen within the window, whatever
-`sensor_id` is.
+Counts cover the caller's team only. `active_sensors` counts the team's
+active sensors seen within the window, whatever `sensor_id` is.
 
 ### GET /api/v1/data/sensors
 
-Sensors, most recently seen first.
+The caller's team's sensors, most recently seen first.
 
 | Query parameter | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -477,8 +489,9 @@ Each sensor has `id`, `sensor_id`, `hostname`, `platform`,
 
 ### GET /api/v1/data/sensors/{sensor_id}
 
-One sensor by its `sensor_id`. **404** (`Sensor not found`) when there is
-none.
+One of the caller's team's sensors by its `sensor_id`. **404**
+(`Sensor not found`) when the team has none by that name, including when
+another team has one.
 
 ## Errors
 
@@ -514,18 +527,20 @@ The data service answers in the shape every Wildbox service uses:
 | 404 | Indicator, IP address, domain, hash or sensor not found (or not visible to the caller) |
 | 422 | Invalid parameter or body; `details` lists the errors |
 | 500 | Server error |
+| 503 | Telemetry batch not stored; send it again |
 
 ## Rate Limits
 
 The data service applies no rate limit of its own: its
 `RATE_LIMIT_ENABLED`, `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW`
-settings are read by nothing. The gateway limits each team to 10000
-requests per hour, enforced in fixed 60-second windows of 166 requests,
-and reports the current window in `X-RateLimit-Limit`,
-`X-RateLimit-Remaining` and `X-RateLimit-Reset`, with
-`X-RateLimit-Policy: 10000;w=3600`. Past the limit it answers 429 with
-`Retry-After`. The `RATE_LIMIT_PER_HOUR` variable is ignored today (#627).
-The gateway also limits each client IP to 100 requests per second with a
+settings are read by nothing. The gateway limits each team to
+`RATE_LIMIT_PER_HOUR` requests per hour (default 10000), enforced in fixed
+60-second windows of one sixtieth of that (166 by default), and reports the
+current window in `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+`X-RateLimit-Reset`, with `X-RateLimit-Policy: <per hour>;w=3600`. Past the
+limit it answers 429 with `Retry-After`. `RATE_LIMIT_PER_HOUR` must be a
+whole number from 1 to 1000000000; any other value stops the gateway at
+startup. The gateway also limits each client IP to 100 requests per second with a
 burst of 10.
 
 ## Examples

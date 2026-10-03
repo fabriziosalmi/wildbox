@@ -153,7 +153,7 @@
         <section id="authentication" class="mb-16">
             <h2 class="text-3xl font-bold mb-6">Authentication</h2>
             <div class="card p-6 rounded-lg space-y-4 text-gray-400">
-                <p>Every API is reached through the gateway over HTTPS. Log in with a form-encoded <code>POST /auth/jwt/login</code> (fields <code>username</code>, the email address, and <code>password</code>); the response carries <code>access_token</code>. Send it as <code>Authorization: Bearer &lt;token&gt;</code>. The gateway also accepts an API key in <code>X-API-Key</code>. The agents routes (<code>/api/v1/agents/&hellip;</code>) accept only an API key for now; a bearer token is refused there with 401 (<a href="https://github.com/fabriziosalmi/wildbox/issues/630" class="accent" target="_blank" rel="noopener noreferrer">#630</a>).</p>
+                <p>Every API is reached through the gateway over HTTPS. Log in with a form-encoded <code>POST /auth/jwt/login</code> (fields <code>username</code>, the email address, and <code>password</code>); the response carries <code>access_token</code>. Send it as <code>Authorization: Bearer &lt;token&gt;</code>. The gateway also accepts an API key in <code>X-API-Key</code>.</p>
                 <div class="code-block"><pre><code>TOKEN=$(curl -s --cacert open-security-gateway/ssl/wildbox.crt \
   -X POST https://localhost/auth/jwt/login \
   --data-urlencode "username=$ADMIN_EMAIL" \

@@ -1692,10 +1692,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   count (31, with sample-data Azure and GCP checks) is corrected to 22 AWS
   checks everywhere. The gateway route tables gain `/api/v1/tasks/`,
   `/auth/users/`, `/auth/forgot-password`, `/auth/reset-password` and
-  `/api/v1/identity/auth/`, and say that `/api/v1/agents/` takes only an API
-  key (#630). The tools, data, guardian, responder and agents endpoint pages
-  are rewritten from the real routes, with every example through the
-  gateway. The guides document `PASSWORD_CHANGE_REQUIRED`, the
+  `/api/v1/identity/auth/` and `/api/v1/agents/stats`. The tools, data,
+  guardian, responder and agents endpoint pages are rewritten from the real
+  routes, with every example through the gateway, and include this release's
+  changes to them: the network-target policy, per-team telemetry, guardian
+  behind the gateway only, agents and responder acting as the caller. The guides document `PASSWORD_CHANGE_REQUIRED`, the
   change-password route, Docker Engine 23.0 and Compose 2.24.4 as the
   minimums, guardian's `/health/` and the refused CSPM providers;
   `TROUBLESHOOTING.md` and the quick start drop statements about `make
