@@ -1,18 +1,35 @@
 # 🛡️ Open Security CSPM - Cloud Security Posture Manager
 
-A comprehensive, multi-cloud Security Posture Management service designed for the Wildbox Security Suite. This service provides automated security assessments, compliance monitoring, and detailed reporting across AWS, GCP, and Azure environments.
+A Cloud Security Posture Management service for the Wildbox Security Suite. It runs security checks against cloud accounts and reports their results and compliance. It scans AWS only; see [Providers](#providers).
 
 ## 🚀 Features
 
-### 🔍 **Multi-Cloud Coverage**
+### Providers
 
-- **AWS**: S3, EC2, IAM, RDS, VPC, CloudTrail, KMS, Lambda
-- **GCP**: Cloud Storage, IAM, Compute Engine, Identity & Access Management
-- **Azure**: Storage Accounts, Virtual Machines, Identity Management
+Only AWS is scanned. `GET /api/v1/providers` lists the providers cspm can
+scan, with the number of checks a scan of each runs:
 
-### 📊 **Comprehensive Security Checks**
+| Provider | Scans | Checks |
+| --- | --- | --- |
+| AWS | yes | S3, EC2, IAM, RDS, VPC, CloudTrail, KMS, Lambda, SNS, SQS |
+| GCP | no | none: no session and no checks |
+| Azure | no | none: no session and no checks |
 
-- **120+ Security Controls** across all major cloud providers
+A provider is supported when `app/providers.py` has a session factory for it
+(`SESSION_FACTORIES`) and the check runner loaded at least one enabled,
+implemented check for it (`app/checks/<provider>/`). The scan endpoints,
+`GET /api/v1/providers` and the dashboard's scan form all read that one
+registry. `POST /api/v1/scans` and `POST /api/v1/batch/scans` refuse any
+other provider with a 400 that names the supported ones, before they store
+credentials or queue anything; a batch that names one is refused whole.
+
+The GCP and Azure checks that used to ship returned the same invented
+resources on every run and could never run anyway, because no GCP or Azure
+session existed; they were removed (#612). To add a provider, add its
+session factory and its checks together.
+
+### 📊 **Security Checks**
+
 - **Compliance Framework Support**: CIS Benchmarks, NIST CSF, SOC 2, PCI DSS, GDPR, HIPAA
 - **Real-time Assessment** with detailed remediation guidance
 - **Risk-based Prioritization** with severity scoring
@@ -25,7 +42,7 @@ A comprehensive, multi-cloud Security Posture Management service designed for th
 
 ### ⚡ **Advanced Operations**
 
-- **Batch Scanning** across multiple accounts and providers
+- **Batch Scanning** across multiple accounts
 - **Asynchronous Processing** with Celery task queue
 - **Multi-region Support** with concurrent execution
 - **API-first Design** for seamless integration
@@ -50,7 +67,7 @@ A comprehensive, multi-cloud Security Posture Management service designed for th
                       │ Security Checks
 ┌─────────────────────▼───────────────────────────────────────┐
 │             Check Framework                                 │
-│   AWS Checks │ GCP Checks │ Azure Checks                  │
+│   AWS Checks                                                │
 └─────────────────────┬───────────────────────────────────────┘
                       │ Results Storage
 ┌─────────────────────▼───────────────────────────────────────┐
@@ -263,6 +280,34 @@ written, so it counts in the team's summaries and is read by id like any
 other scan. The team is always the caller's; a `team_id` in a scan's
 `metadata` is ignored.
 
+#### Supported Providers
+
+**GET** `/api/v1/providers`
+
+The providers a scan can be submitted for, from the registry described in
+[Providers](#providers); `checks` is the number of checks a scan runs when
+it names no `check_ids`. Through the gateway it is
+`/api/v1/cspm/providers`, with the same authentication as every other cspm
+route.
+
+```json
+{
+  "providers": [
+    { "provider": "aws", "name": "Amazon Web Services", "checks": 22 }
+  ]
+}
+```
+
+A scan, single or in a batch, that names another provider is refused:
+
+```json
+{
+  "error": "HTTPException",
+  "message": "Unsupported provider: gcp. Supported providers: aws.",
+  "details": { "status_code": 400 }
+}
+```
+
 ## 🔧 Configuration
 
 ### Environment Variables
@@ -332,10 +377,15 @@ A scan reads `queued` until a worker takes it, `running` while it runs, and
 then `completed`, with its report stored as described below, or `failed`.
 It fails when its credentials expired before a worker took it (five minutes
 after it was queued), when no session can be opened with them, or when it
-exceeds its time limit. Only AWS sessions are implemented: a GCP or Azure
-scan fails as soon as the worker takes it. AWS keys are only checked by the
-calls the checks make, so a scan with keys AWS rejects completes, with the
-rejected calls recorded by the checks.
+exceeds its time limit. The session factory refuses AWS credentials that
+cannot be valid, such as an access key id that is not 16 to 128 letters,
+digits or underscores, or `assume_role` without an IAM role ARN, before it
+creates any boto3 session, so such a scan fails without a request to AWS.
+Well-formed keys are only checked by the calls the checks make, so a scan
+with keys AWS rejects completes, with the rejected calls recorded by the
+checks. GCP and Azure scans are refused when they are submitted (see
+[Providers](#providers)); one queued by an earlier release fails when the
+worker takes it.
 
 **Time limit.** `CSPM_SCAN_TIMEOUT_SECONDS` in `.env` (default 3600, from
 120 to 86400) is passed to both services as `SCAN_TIMEOUT_SECONDS`. The
@@ -501,10 +551,7 @@ actions:
 
 - **Throughput**: 100+ concurrent scans
 - **Latency**: < 2s API response time
-- **Scan Duration**:
-  - AWS: 10-20 minutes (full account)
-  - GCP: 8-15 minutes (full project)
-  - Azure: 12-18 minutes (full subscription)
+- **Scan Duration**: AWS, 10-20 minutes (full account)
 
 ### Scaling Recommendations
 

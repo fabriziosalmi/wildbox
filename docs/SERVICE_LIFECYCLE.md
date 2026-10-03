@@ -45,7 +45,7 @@ Wildbox operates as a containerized microservices platform with the following co
 
 8. **CSPM** (FastAPI) - Port 8019
    - Cloud Security Posture Management
-   - 200+ cloud security checks (AWS, Azure, GCP)
+   - 22 cloud security checks, AWS only (GCP and Azure are not supported)
    - Compliance reporting
 
 9. **Sensor** (Rust) - Port 8004

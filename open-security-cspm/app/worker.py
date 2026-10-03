@@ -10,13 +10,11 @@ import json
 
 from celery import Celery, Task
 from celery.signals import worker_ready, worker_shutting_down
-import boto3
 import redis as redis_lib
-from google.auth import default as gcp_default
-from azure.identity import DefaultAzureCredential
 
 from .config import settings
 from .credential_crypto import decrypt_credentials
+from . import providers
 from .checks.runner import check_runner
 from .checks.framework import CloudProvider, ScanReport
 from . import schemas
@@ -114,59 +112,6 @@ def worker_shutting_down_handler(sender=None, **kwargs):
     logger.info("CSPM Worker is shutting down")
 
 
-class CloudSessionManager:
-    """Manages cloud provider session creation and authentication."""
-    
-    @staticmethod
-    def create_aws_session(credentials: Dict[str, Any]) -> boto3.Session:
-        """Create AWS session from credentials."""
-        auth_method = credentials.get("auth_method", "access_key")
-        
-        if auth_method == "access_key":
-            return boto3.Session(
-                aws_access_key_id=credentials["access_key_id"],
-                aws_secret_access_key=credentials["secret_access_key"],
-                region_name=credentials.get("region", "us-east-1")
-            )
-        elif auth_method == "assume_role":
-            # Create session with base credentials
-            base_session = boto3.Session(
-                aws_access_key_id=credentials["access_key_id"],
-                aws_secret_access_key=credentials["secret_access_key"]
-            )
-            
-            # Assume role
-            sts_client = base_session.client('sts')
-            assumed_role = sts_client.assume_role(
-                RoleArn=credentials["role_arn"],
-                RoleSessionName=f"wildbox-cspm-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
-            )
-            
-            assumed_credentials = assumed_role['Credentials']
-            return boto3.Session(
-                aws_access_key_id=assumed_credentials['AccessKeyId'],
-                aws_secret_access_key=assumed_credentials['SecretAccessKey'],
-                aws_session_token=assumed_credentials['SessionToken'],
-                region_name=credentials.get("region", "us-east-1")
-            )
-        else:
-            raise ValueError(f"Unsupported AWS auth method: {auth_method}")
-    
-    @staticmethod
-    def create_gcp_session(credentials: Dict[str, Any]):
-        """Create GCP session from credentials."""
-        # This would be implemented based on GCP SDK requirements
-        # For now, placeholder implementation
-        raise NotImplementedError("GCP session creation not yet implemented")
-    
-    @staticmethod
-    def create_azure_session(credentials: Dict[str, Any]):
-        """Create Azure session from credentials."""
-        # This would be implemented based on Azure SDK requirements
-        # For now, placeholder implementation
-        raise NotImplementedError("Azure session creation not yet implemented")
-
-
 @celery_app.task(bind=True, base=ScanTask, name="run_cspm_scan")
 def run_cspm_scan_task(
     self,
@@ -177,7 +122,7 @@ def run_cspm_scan_task(
     
     Args:
         scan_config: Dictionary containing scan configuration:
-            - provider: Cloud provider ('aws', 'gcp', 'azure')
+            - provider: Cloud provider (one of app.providers.supported_providers())
             - credentials: Provider-specific credentials
             - account_id: Cloud account identifier
             - account_name: Optional friendly name
@@ -299,15 +244,12 @@ def run_cspm_scan_task(
 
 
 def _create_cloud_session(provider: CloudProvider, credentials: Dict[str, Any]):
-    """Create a cloud provider session based on provider and credentials."""
-    if provider == CloudProvider.AWS:
-        return CloudSessionManager.create_aws_session(credentials)
-    elif provider == CloudProvider.GCP:
-        return CloudSessionManager.create_gcp_session(credentials)
-    elif provider == CloudProvider.AZURE:
-        return CloudSessionManager.create_azure_session(credentials)
-    else:
-        raise ValueError(f"Unsupported provider: {provider}")
+    """Create a cloud provider session, with the factory app.providers registers.
+
+    The API refuses scans of providers without one (#612); a scan queued
+    before that check existed fails here.
+    """
+    return providers.create_session(provider, credentials)
 
 
 @celery_app.task(name="get_available_checks")
@@ -336,7 +278,7 @@ def health_check_task() -> Dict[str, Any]:
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "worker_id": f"{celery_app.control.inspect().stats()}",
-        "available_providers": [p.value for p in CloudProvider]
+        "available_providers": providers.supported_provider_ids()
     }
 
 

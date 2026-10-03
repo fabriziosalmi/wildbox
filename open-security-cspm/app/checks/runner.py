@@ -7,6 +7,7 @@ import logging
 from typing import List, Dict, Any, Optional, Type
 from datetime import datetime
 import importlib
+import importlib.util
 import inspect
 import pkgutil
 
@@ -33,8 +34,14 @@ class CheckRunner:
     
     def _load_all_checks(self):
         """Dynamically load all security checks from provider modules."""
-        providers = ["aws", "gcp", "azure"]
-        
+        # Every provider with a check package (app/checks/<provider>). GCP
+        # and Azure have none: their checks returned invented resources and
+        # were removed (#612); app.providers lists what can be scanned.
+        providers = [
+            p.value for p in CloudProvider
+            if importlib.util.find_spec(f"app.checks.{p.value}") is not None
+        ]
+
         for provider in providers:
             try:
                 self._load_provider_checks(provider)

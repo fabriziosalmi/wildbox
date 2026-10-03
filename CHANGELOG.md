@@ -59,6 +59,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **cspm refuses scans of providers it cannot scan** (#612). The scan
+  API accepted `provider: gcp` and `provider: azure`, single and batch,
+  and answered with a scan id; the worker then failed every such scan,
+  because only the AWS session existed. `POST /api/v1/scans` and `POST
+  /api/v1/batch/scans` now answer 400, naming the supported providers,
+  before they store credentials or queue anything; a batch that names
+  one is refused whole. The supported providers come from a registry in
+  `app/providers.py`: a provider is supported when cspm has a session
+  factory for it and at least one implemented, enabled check. The new
+  `GET /api/v1/providers` (`/api/v1/cspm/providers` through the gateway,
+  authenticated like every cspm route) lists them with their check
+  counts, and the dashboard's scan form (`/cloud-security/scans`) offers
+  exactly those, or an error with a retry when the call fails, instead
+  of a hard-coded AWS, GCP and Azure list. The GCP and Azure check
+  modules were removed: nine checks that returned the same invented
+  buckets, instances and users on every run, and could not run without
+  a session, and two empty files. `/api/v1/checks` now lists AWS checks only. The AWS session
+  factory refuses credentials that cannot be valid (an access key id
+  that is not 16 to 128 letters, digits or underscores, a missing
+  secret, `assume_role` without an IAM role ARN) before it creates any
+  boto3 session, so such a scan fails without a request to AWS; the
+  integration tests of cspm-worker use that path to reach `failed`
+  instead of a GCP scan. `assume_role` now also passes `external_id` to
+  STS when one is given; it was accepted and ignored.
 - **cspm runs the scans it queues** (#601). `docker-compose.yml` had the
   cspm worker commented out and `docker-compose.prod.yml` declared none,
   so every scan stayed `queued` and the compliance pages, the cloud

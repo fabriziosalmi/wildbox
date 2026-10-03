@@ -237,27 +237,30 @@ class Queue:
 USER = {"user_id": "user-a", "team_id": "team-a"}
 
 
-def _gcp_request():
+def _malformed_aws_request():
+    # The scan the integration suite submits: an access key id AWS could
+    # never issue, refused by the session factory before any call to AWS
+    # (#612). GCP, which this used, is now refused at submit time.
     return schemas.ScanRequest(
-        provider="gcp",
-        account_id="ci-project",
+        provider="aws",
+        account_id="ci-account",
         credentials={
-            "auth_method": "service_account",
-            "project_id": "ci-project",
-            "service_account_key": {"type": "service_account", "note": "not a key"},
+            "auth_method": "access_key",
+            "access_key_id": "not-an-aws-key",
+            "secret_access_key": "not-a-secret",
         },
     )
 
 
 @pytest.fixture
 def queued(monkeypatch, fake_redis):
-    """A GCP scan queued by the API, and the config the worker receives."""
+    """An AWS scan queued by the API, and the config the worker receives."""
     queue = Queue()
     monkeypatch.setattr(main, "redis_client", fake_redis)
     monkeypatch.setattr(main, "run_cspm_scan_task", queue)
     monkeypatch.setattr(worker, "redis_client", fake_redis)
     monkeypatch.setattr(config.settings, "cspm_report_retention_days", 90)
-    scan_id = asyncio.run(main.start_scan(_gcp_request(), None, USER)).scan_id
+    scan_id = asyncio.run(main.start_scan(_malformed_aws_request(), None, USER)).scan_id
     return scan_id, queue.calls[0][1]
 
 
@@ -290,15 +293,15 @@ def test_a_scan_the_worker_cannot_run_ends_failed(monkeypatch, queued, fake_redi
     assert scan_config["credential_ref"] == f"scan:{scan_id}:creds"
     assert fake_redis.get(scan_config["credential_ref"])
 
-    # No GCP session can be created, as with the invalid credentials the
-    # integration suite submits: the task raises.
+    # No AWS session can be created with a malformed key, as with the
+    # credentials the integration suite submits: the task raises.
     result = worker.run_cspm_scan_task.apply(args=[scan_config], task_id=scan_id)
 
     assert result.failed()
     metadata = scan_store.load_metadata(fake_redis, scan_id)
     assert metadata["status"] == "failed"
     assert metadata["failed_at"] >= metadata["started_at"]
-    assert (metadata["provider"], metadata["account_id"]) == ("gcp", "ci-project")
+    assert (metadata["provider"], metadata["account_id"]) == ("aws", "ci-account")
     assert scan_store.load_report(fake_redis, scan_id) is None
     # The worker deletes the credentials as soon as it has read them.
     assert fake_redis.get(scan_config["credential_ref"]) is None
