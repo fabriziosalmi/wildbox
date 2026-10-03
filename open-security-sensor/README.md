@@ -1,41 +1,28 @@
 # Open Security Sensor
 
-A lightweight, high-performance, cross-platform endpoint agent for comprehensive security telemetry collection.
+An osquery-based endpoint agent that collects host telemetry and sends it,
+through the Wildbox gateway, to the data service of its team (see
+[Sending telemetry to Wildbox](#sending-telemetry-to-wildbox)).
 
 ## Overview
 
-The Open Security Sensor is a critical component of the Wildbox security suite that extends visibility from the network perimeter directly onto your endpoints. It provides real-time telemetry about host activity, acting as the nervous system for the entire security platform.
+The sensor runs as a single Python process (`main.py`) that starts these
+components (`sensor/core/agent.py`):
 
-## Key Features
-
-### 🔍 **Comprehensive Telemetry Collection**
-
-- **Process Execution & Ancestry**: Track all process creations with command-line arguments and parent-child relationships
-- **Network Connections**: Monitor all TCP/UDP connections with process association
-- **File Integrity Monitoring**: Monitor critical system files and directories for unauthorized changes
-- **User & Authentication Events**: Track logins, privilege escalations, and user activities
-- **System Inventory**: Maintain live asset inventory including OS, software, and hardware details
-- **Log Forwarding**: Forward system and application logs to central data lake
-
-### ⚡ **High Performance**
-
-- Built on osquery for efficient host telemetry collection
-- Minimal resource consumption with intelligent query scheduling
-- Data batching to reduce network overhead
-- Low memory footprint
-
-### 🌐 **Cross-Platform Support**
-
-- Linux (Ubuntu, CentOS, RHEL, Debian)
-- Windows (Windows 10, Windows Server 2016+)
-- macOS (10.14+)
-
-### 🔒 **Security & Reliability**
-
-- TLS/HTTPS encrypted data transmission
-- Certificate-based authentication
-- Robust error handling and retry mechanisms
-- Central configuration management
+- **osquery manager** (`sensor/collectors/osquery_manager.py`): runs the osquery
+  daemon with built-in query packs for process events, network connections, user
+  events and system inventory, and runs one-off queries through `osqueryi`.
+- **File monitor** (`sensor/collectors/file_monitor.py`): polls the configured
+  paths and reports created, modified and deleted files, with a SHA-256 hash for
+  files under 10 MB.
+- **Log forwarder** (`sensor/collectors/log_forwarder.py`): off by default
+  (`collection.log_forwarding: false`). Reads a fixed, per-platform set of log
+  sources.
+- **Data processor and forwarder** (`sensor/pipeline/`): normalize and enrich
+  events, then batch them and send them over HTTPS to the gateway's
+  `/api/v1/data/ingest` (`data_lake.endpoint`).
+- **Local API** (`sensor/api/local_api.py`): an HTTP management API, described
+  below.
 
 ## Architecture
 
@@ -60,98 +47,87 @@ The Open Security Sensor is a critical component of the Wildbox security suite t
                                                └─────────────────┘
 ```
 
-## Quick Start
+## Platform support
 
-### Installation
+The code has Linux, macOS and Windows branches (default configuration paths,
+osquery binary names, log sources). The only packaged and
+exercised deployment is the Linux Docker image built from this directory's
+`Dockerfile` (osquery 5.10.2, amd64 or arm64). There are no native installer
+packages.
 
-#### Linux (Ubuntu/Debian)
+## Running the sensor
 
-```bash
-# Download and install
-wget https://github.com/wildbox/open-security-sensor/releases/latest/download/sensor-linux-amd64.deb
-sudo dpkg -i sensor-linux-amd64.deb
+### With the full Wildbox stack
 
-# Configure
-sudo cp /etc/security-sensor/config.yaml.example /etc/security-sensor/config.yaml
-sudo nano /etc/security-sensor/config.yaml
-
-# Start service
-sudo systemctl enable security-sensor
-sudo systemctl start security-sensor
-```
-
-#### Windows
-
-```powershell
-# Download and install MSI package
-Invoke-WebRequest -Uri "https://github.com/wildbox/open-security-sensor/releases/latest/download/sensor-windows-amd64.msi" -OutFile "sensor.msi"
-Start-Process msiexec.exe -ArgumentList "/i sensor.msi /quiet" -Wait
-
-# Configure
-Copy-Item "C:\Program Files\SecuritySensor\config.yaml.example" "C:\Program Files\SecuritySensor\config.yaml"
-notepad "C:\Program Files\SecuritySensor\config.yaml"
-
-# Start service
-Start-Service SecuritySensor
-```
-
-#### macOS
+The root `docker-compose.yml` defines the `sensor` service. It mounts
+`config.yaml.example` as `/etc/security-sensor/config.yaml`, publishes the local
+API on `127.0.0.1:8004`, and requires `SENSOR_API_KEY` in `.env`:
 
 ```bash
-# Install via Homebrew
-brew tap wildbox/security-sensor
-brew install security-sensor
-
-# Configure
-sudo cp /usr/local/etc/security-sensor/config.yaml.example /usr/local/etc/security-sensor/config.yaml
-sudo nano /usr/local/etc/security-sensor/config.yaml
-
-# Start service
-sudo brew services start security-sensor
+docker compose up -d sensor
+curl http://127.0.0.1:8004/health
 ```
 
-#### Docker Compose (Recommended for Development & Testing)
+It sends telemetry to `https://open-security-gateway`, trusting the
+certificate the gateway publishes in the `gateway_cert` volume, once
+`SENSOR_DATA_LAKE_API_KEY` is set (see
+[In the Wildbox stack](#in-the-wildbox-stack)).
+
+The gateway does not route requests to the sensor: its `/api/v1/sensor/` block
+is commented out in `open-security-gateway/nginx/conf.d/wildbox_gateway.conf`.
+Use the local API on the host loopback address.
+
+### Standalone
+
+`docker-compose.yml` in this directory builds the same image, mounts the same
+`config.yaml.example`, publishes `127.0.0.1:8004`, and also starts a Redis
+container (the sensor code does not use it). It attaches to the external
+`security-suite` network, so create that network first:
 
 ```bash
-# Clone repository
-git clone https://github.com/wildbox/open-security-sensor.git
-cd open-security-sensor
-
-# Copy and configure
-cp config.docker.yaml config.yaml
-nano config.yaml  # Edit with your data lake endpoint and API key
-
-# Start with Docker Compose
-docker-compose up -d
-
-# View logs
-docker-compose logs -f sensor
-
-# Stop services
-docker-compose down
+docker network create security-suite
+SENSOR_API_KEY=<key> docker compose up -d
+curl http://127.0.0.1:8004/health
 ```
 
-For development with hot reload:
+The build reads `../open-security-shared` as an additional build context, so
+run it from a full repository checkout. This file starts no gateway: to send
+telemetry, point `SENSOR_DATA_LAKE_ENDPOINT` at a Wildbox gateway and set
+`SENSOR_DATA_LAKE_API_KEY` (and `SENSOR_DATA_LAKE_CA_BUNDLE` for a private
+CA).
+
+### Without Docker
 
 ```bash
-# Start development environment
-docker-compose -f docker-compose.dev.yml up -d
-
-# View development logs
-docker-compose -f docker-compose.dev.yml logs -f sensor-dev
+pip install -r requirements.txt
+pip install --no-deps ../open-security-shared
+python main.py --config config.yaml
 ```
 
-With monitoring stack (Prometheus + Grafana):
+Without `--config`, the sensor reads the first file that exists among
+`./config.yaml`, `./sensor-config.yaml`, `/etc/security-sensor/config.yaml`,
+`/usr/local/etc/security-sensor/config.yaml` and
+`~/.config/security-sensor/config.yaml` (on Windows,
+`%PROGRAMFILES%\SecuritySensor\config.yaml` and
+`%APPDATA%\SecuritySensor\config.yaml`).
 
-```bash
-# Start with monitoring
-docker-compose --profile monitoring up -d
+## Command-line options
 
-# Access Grafana at http://localhost:3000 (admin:admin123)
-# Access Prometheus at http://localhost:9090
-```
+`main.py` accepts:
 
-### Configuration
+| Option | Effect |
+| :--- | :--- |
+| `--config`, `-c` | Path to the configuration file |
+| `--validate-config` | Load and validate the configuration, then exit |
+| `--test-connection` | Posts an empty batch with the configured key and prints the gateway's answer |
+| `--status` | Prints a fixed "Running" message and exits; the sensor is not queried |
+| `--debug` | Enable debug logging |
+| `--version`, `-v` | Print the version and exit |
+
+`setup.py` declares a `security-sensor` console script (and a shorter alias),
+both pointing at `main:main`.
+
+## Configuration
 
 Edit the configuration file with your environment details. The
 `data_lake` section is described in
@@ -193,6 +169,41 @@ performance:
   max_memory_mb: 128
   max_cpu_percent: 5
 ```
+
+The `network` section configures the local API:
+
+```yaml
+network:
+  bind_address: "0.0.0.0"  # inside a container; 127.0.0.1 on a host
+  bind_port: 8004
+  enable_api: true
+  api_key: null            # set it, or use SENSOR_API_KEY
+```
+
+| File | Purpose |
+| :--- | :--- |
+| `config.yaml.example` | Mounted by both compose files; binds `0.0.0.0:8004` |
+| `config.yaml` | For running on a host; binds `127.0.0.1:8004` |
+| `config.docker.yaml` | Alternative container template; binds `0.0.0.0:8004` |
+
+### Environment variables
+
+These override the configuration file (`sensor/core/config.py`):
+
+| Variable | Configuration key |
+| :--- | :--- |
+| `SENSOR_DATA_LAKE_ENDPOINT` | `data_lake.endpoint` |
+| `SENSOR_DATA_LAKE_API_KEY` | `data_lake.api_key` |
+| `SENSOR_DATA_LAKE_TLS_VERIFY` | `data_lake.tls_verify` |
+| `SENSOR_DATA_LAKE_CA_BUNDLE` | `data_lake.ca_bundle` |
+| `SENSOR_DATA_LAKE_SENSOR_ID` | `data_lake.sensor_id` |
+| `SENSOR_LOGGING_LEVEL` | `logging.level` |
+| `SENSOR_LOGGING_FILE` | `logging.file` |
+| `SENSOR_PERFORMANCE_MAX_MEMORY` | `performance.max_memory_mb` |
+| `SENSOR_PERFORMANCE_MAX_CPU` | `performance.max_cpu_percent` |
+| `SENSOR_API_KEY` | `network.api_key` |
+
+`ENVIRONMENT=production` disables the HTML route list served at `/` and `/docs`.
 
 ## Sending telemetry to Wildbox
 
@@ -321,465 +332,60 @@ Revoke its key (**Settings > API keys**, or
 team. The gateway refuses the key on the sensor's next batch, with no cache
 delay.
 
-## Docker Deployment
+## Local API
 
-### Quick Start with Docker Compose
+Every route except `/health` requires the API key, sent as
+`Authorization: Bearer <key>` or `X-API-Key: <key>`. Without a configured key
+those routes answer `503`; with a wrong key, `403`.
 
-The easiest way to deploy the Open Security Sensor is using Docker Compose, which provides a complete containerized environment with all dependencies.
-
-#### Prerequisites
-
-- Docker Engine 20.10+
-- Docker Compose 2.0+
-- At least 512MB available memory
-- Network access to your security data platform
-
-#### Basic Deployment
-
-```bash
-# Clone the repository
-git clone https://github.com/wildbox/open-security-sensor.git
-cd open-security-sensor
-
-# Create configuration from template
-cp config.docker.yaml config.yaml
-
-# Edit configuration with your data lake details
-nano config.yaml
-```
-
-Point it at your Wildbox gateway, and give it the sensor's API key through
-the environment (see
-[Sending telemetry to Wildbox](#sending-telemetry-to-wildbox)):
-
-```yaml
-data_lake:
-  endpoint: "https://wildbox.example.com"
-  tls_verify: true
-  ca_bundle: ""  # the gateway's certificate, if no public CA signed it
-```
+| Method | Path | Behavior |
+| :--- | :--- | :--- |
+| `GET` | `/health` | Liveness; no authentication |
+| `GET` | `/status`, `/api/v1/status` | Agent status |
+| `GET` | `/api/v1/config` | Current configuration, without secrets |
+| `PUT` | `/api/v1/config` | Not implemented; returns `501` |
+| `POST` | `/api/v1/config/reload` | Not implemented; returns `501` |
+| `POST` | `/api/v1/config/validate` | Validate the loaded configuration |
+| `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}` |
+| `GET` | `/api/v1/queries` | Names of the loaded query packs and the query count |
+| `GET` | `/api/v1/components` | Status of each component |
+| `GET` | `/api/v1/stats` | Agent counters |
+| `GET` | `/api/v1/dashboard/metrics` | Summary metrics for this endpoint |
+| `POST` | `/api/v1/test-connection` | POST an empty test batch to `data_lake.endpoint` |
 
 ```bash
-export SENSOR_DATA_LAKE_API_KEY=wsk_...
+curl -H "X-API-Key: $SENSOR_API_KEY" http://127.0.0.1:8004/api/v1/status
+
+curl -X POST http://127.0.0.1:8004/api/v1/query \
+  -H "X-API-Key: $SENSOR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "SELECT pid, name FROM processes LIMIT 5;"}'
 ```
 
-```bash
-# Start the sensor stack
-docker-compose up -d
+## Security notes
 
-# Verify deployment
-docker-compose ps
-docker-compose logs sensor
-
-# Check sensor health
-curl http://localhost:8899/health
-```
-
-#### Development Environment
-
-For development with hot code reloading and debugging:
-
-```bash
-# Start development environment
-docker-compose -f docker-compose.dev.yml up -d
-
-# The sensor will wait for debugger connection on port 5678
-# Attach your IDE debugger to localhost:5678
-
-# View development logs
-docker-compose -f docker-compose.dev.yml logs -f sensor-dev
-```
-
-#### Production Deployment
-
-For production use with monitoring:
-
-```bash
-# Start with monitoring stack (Prometheus + Grafana)
-docker-compose --profile monitoring up -d
-
-# Access monitoring
-# Grafana: http://localhost:3000 (admin/admin123)
-# Prometheus: http://localhost:9090
-```
-
-### Docker Configuration
-
-#### Environment Variables
-
-| Variable | Description | Default |
-| ---------- | ------------- | --------- |
-| `SENSOR_LOGGING_LEVEL` | Logging level (DEBUG, INFO, WARNING, ERROR) | `INFO` |
-| `PYTHONPATH` | Python path | `/app` |
-| `DEVELOPMENT` | Enable development mode | `false` |
-
-#### Volume Mounts
-
-The sensor requires several host mounts for system monitoring:
-
-```yaml
-volumes:
-  # Configuration
-  - ./config.yaml:/etc/security-sensor/config.yaml:ro
-  
-  # Data persistence
-  - sensor_logs:/var/log/security-sensor
-  - sensor_data:/var/lib/security-sensor
-  
-  # Host system monitoring (read-only)
-  - /proc:/host/proc:ro
-  - /sys:/host/sys:ro
-  - /etc:/host/etc:ro
-  - /var/run/docker.sock:/var/run/docker.sock:ro
-```
-
-#### Security Configuration
-
-The sensor container runs with minimal privileges:
-
-```yaml
-security_opt:
-  - no-new-privileges:true
-
-cap_add:
-  - SYS_PTRACE      # Required for process monitoring
-  - DAC_READ_SEARCH # Required for file system access
-
-pid: host  # Required for host process monitoring
-```
-
-#### Network Configuration
-
-```yaml
-networks:
-  - sensor-network      # Internal communication
-  - security-suite      # Connect to other security components
-```
-
-### Container Management
-
-#### Scaling
-
-Scale the sensor for high-volume environments:
-
-```bash
-# Scale sensor instances
-docker-compose up -d --scale sensor=3
-
-# With load balancer
-docker-compose -f docker-compose.yml -f docker-compose.scale.yml up -d
-```
-
-#### Updates
-
-```bash
-# Pull latest images
-docker-compose pull
-
-# Restart with new images
-docker-compose up -d
-
-# Clean up old images
-docker image prune -f
-```
-
-#### Backup & Recovery
-
-```bash
-# Backup sensor data
-docker run --rm -v sensor_data:/data -v $(pwd):/backup alpine tar czf /backup/sensor-data-backup.tar.gz -C /data .
-
-# Restore sensor data
-docker run --rm -v sensor_data:/data -v $(pwd):/backup alpine tar xzf /backup/sensor-data-backup.tar.gz -C /data
-```
-
-### Troubleshooting Docker Deployment
-
-#### Common Issues
-
-**Container fails to start:**
-
-```bash
-# Check container logs
-docker-compose logs sensor
-
-# Check system resources
-docker stats
-
-# Verify configuration
-docker-compose config
-```
-
-**Permission denied errors:**
-
-```bash
-# Check file permissions
-ls -la config.yaml
-
-# Fix ownership
-sudo chown $USER:$USER config.yaml
-```
-
-**Host monitoring not working:**
-
-```bash
-# Verify host mounts
-docker-compose exec sensor ls -la /host/proc
-
-# Check capabilities
-docker-compose exec sensor capsh --print
-```
-
-**Network connectivity issues:**
-
-```bash
-# Test from container
-docker-compose exec sensor curl -I https://your-data-lake.com
-
-# Check DNS resolution
-docker-compose exec sensor nslookup your-data-lake.com
-```
-
-#### Performance Optimization
-
-**Resource limits:**
-
-```yaml
-services:
-  sensor:
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-```
-
-**Optimize for high-volume:**
-
-```yaml
-# In config.yaml
-performance:
-  max_queue_size: 5000
-  batch_size: 200
-  flush_interval: 15
-  worker_threads: 6
-```
+- The container runs as the non-root `sensor` user with
+  `no-new-privileges` and all capabilities dropped (`cap_drop: ALL`).
+- Host access is limited to read-only mounts of `/proc/stat`, `/proc/meminfo`,
+  the `/proc` load average file and `/sys/class/net`.
+- The local API is published on `127.0.0.1` only, because it can read host
+  telemetry and run osquery queries.
+- Telemetry goes to the gateway over HTTPS only, verified against the system
+  trust store or `data_lake.ca_bundle`; `data_lake.tls_verify: false` disables
+  verification and logs a warning. The ingest key is sent in `X-API-Key` only,
+  redirects are not followed and the key is never logged.
 
 ## Development
 
-### Building from Source
-
 ```bash
-# Clone repository
-git clone https://github.com/wildbox/open-security-sensor.git
-cd open-security-sensor
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Build for current platform
-python setup.py build
-
-# Run tests
-pytest tests/
-
-# Create distribution packages
-python setup.py sdist bdist_wheel
-```
-
-### Testing
-
-```bash
-# Run unit tests
 pytest tests/unit/
-
-# Run integration tests
-pytest tests/integration/
-
-# Run performance tests
-pytest tests/performance/
-
-# Generate coverage report
-pytest --cov=sensor --cov-report=html
 ```
 
-## Deployment
+The test suite is `tests/unit/`.
 
-### Fleet Management
+## Related documentation
 
-The sensor supports centralized fleet management through the Open Security Dashboard:
-
-- **Configuration Management**: Deploy configuration changes across entire fleet
-- **Health Monitoring**: Real-time status of all deployed sensors
-- **Query Deployment**: Push new detection queries to specific host groups
-- **Upgrade Management**: Coordinate sensor updates across the organization
-
-### Scaling
-
-For large deployments:
-
-- **Load Balancing**: Deploy multiple ingestion endpoints behind a load balancer
-- **Message Queuing**: Use Kafka or RabbitMQ for high-volume environments
-- **Regional Deployment**: Deploy regional collectors to reduce latency
-- **Batch Processing**: Configure appropriate batch sizes for your environment
-
-## Integration
-
-### With Open Security Data
-
-The sensor seamlessly integrates with the data lake platform, providing enriched telemetry that enhances:
-
-- Threat hunting capabilities
-- Historical analysis and forensics
-- Real-time alerting and detection
-- Compliance reporting and auditing
-
-### With Open Security Agents
-
-LLM agents gain access to endpoint context, enabling sophisticated correlation:
-
-- Process-to-network connection mapping
-- Behavioral analysis and anomaly detection
-- Automated threat classification
-- Context-aware response recommendations
-
-### With Open Security Responder
-
-Response playbooks can execute endpoint actions:
-
-- Process termination
-- Network isolation
-- File quarantine
-- Evidence collection
-
-## API Reference
-
-### Configuration API
-
-```bash
-# Get current configuration
-curl -X GET http://localhost:8899/api/v1/config
-
-# Update configuration
-curl -X PUT http://localhost:8899/api/v1/config \
-  -H "Content-Type: application/json" \
-  -d @new-config.json
-
-# Reload configuration
-curl -X POST http://localhost:8899/api/v1/config/reload
-```
-
-### Query API
-
-```bash
-# Execute custom query
-curl -X POST http://localhost:8899/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{"query": "SELECT * FROM processes WHERE name = '\''chrome'\'';"}'
-
-# Get query schedule
-curl -X GET http://localhost:8899/api/v1/queries
-
-# Add scheduled query
-curl -X POST http://localhost:8899/api/v1/queries \
-  -H "Content-Type: application/json" \
-  -d @query-pack.json
-```
-
-## Security Considerations
-
-### Data Protection
-
-- All data transmission is encrypted using TLS 1.3
-- API keys are stored securely using OS keychain/credential manager
-- Sensitive data is never logged or cached locally
-- Certificate pinning prevents man-in-the-middle attacks
-
-### Access Control
-
-- Sensor runs with minimal required privileges
-- File system access is restricted to monitored paths
-- Network access is limited to configured endpoints
-- Administrative functions require elevated privileges
-
-### Privacy
-
-- Personal data collection can be disabled via configuration
-- Data retention policies are enforced at the data lake level
-- GDPR and privacy compliance features available
-- Audit logging for all sensor activities
-
-## Troubleshooting
-
-### Common Issues
-
-**Sensor not starting**
-
-```bash
-# Check service status
-sudo systemctl status security-sensor
-
-# Check logs
-sudo journalctl -u security-sensor -f
-
-# Verify configuration
-security-sensor --validate-config
-```
-
-**High resource usage**
-
-```bash
-# Check current resource usage
-security-sensor --status
-
-# Adjust performance settings
-# Edit performance section in config.yaml
-
-# Restart sensor
-sudo systemctl restart security-sensor
-```
-
-**Connection issues**
-
-```bash
-# Post an empty batch with the configured key and show the answer
-python main.py --config /etc/security-sensor/config.yaml --test-connection
-
-# Check the gateway's certificate against the bundle the sensor trusts
-openssl s_client -connect wildbox.example.com:443 -CAfile /path/to/ca_bundle.pem
-
-# Check the key: 200 with an empty batch means it is valid and has data:ingest
-curl --cacert /path/to/ca_bundle.pem -X POST \
-  -H "X-API-Key: $SENSOR_DATA_LAKE_API_KEY" -H "Content-Type: application/json" \
-  -d '{"events": []}' https://wildbox.example.com/api/v1/data/ingest
-```
-
-The forwarder's log says why a batch was refused: 401, the key is invalid,
-expired or revoked; 403 `insufficient_scope`, it lacks `data:ingest`; a
-certificate error, the gateway's certificate is not trusted (set
-`data_lake.ca_bundle`).
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Run quality checks
-6. Submit a pull request
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Support
-
-- **Documentation**: [docs/](docs/)
-- **Docker Guide**: [DOCKER.md](DOCKER.md)
-- **Issues**: [GitHub Issues](https://github.com/wildbox/open-security-sensor/issues)
-- **Security**: security@wildbox.com
+- [Docker deployment](DOCKER.md)
+- [Contributing](../CONTRIBUTING.md)
+- [License](../LICENSE)
