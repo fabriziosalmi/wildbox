@@ -19,7 +19,43 @@ local CIRCUIT_BREAKER_TIMEOUT = 60
 -- never engaged and one team could consume the whole capacity within the per-IP
 -- ceiling (WILDBO-SCAL-03). 10,000/hour is roughly 2.8 req/s sustained per team,
 -- comfortable for interactive use and for the dashboard's polling.
-local RATE_LIMIT_PER_HOUR = tonumber(os.getenv("RATE_LIMIT_PER_HOUR")) or 10000
+local DEFAULT_RATE_LIMIT_PER_HOUR = 10000
+-- Far above any real budget; it keeps the value an exact integer, and a
+-- typo with extra digits is refused instead of turning the limit off.
+local MAX_RATE_LIMIT_PER_HOUR = 1000000000
+
+-- RATE_LIMIT_PER_HOUR (#627). Unset means the default above. Set, it must be
+-- a positive integer: anything else -- "0", "-5", "10k", "1.5", an empty
+-- string -- used to become the default through `tonumber(...) or 10000`,
+-- so a mistyped limit was replaced by another one without a word. It is now
+-- refused, and with it the configuration: the module is loaded by
+-- init_by_lua in nginx.conf, where an error stops nginx from starting.
+-- `nginx -t` does not run init_by_lua and does not catch a bad value.
+function _M.parse_rate_limit_per_hour(raw)
+    if raw == nil then
+        return DEFAULT_RATE_LIMIT_PER_HOUR
+    end
+    if type(raw) == "string" and raw:match("^[1-9]%d*$") and #raw <= 10 then
+        local value = tonumber(raw)
+        if value <= MAX_RATE_LIMIT_PER_HOUR then
+            return value
+        end
+    end
+    return nil, string.format(
+        "RATE_LIMIT_PER_HOUR must be a whole number of requests per hour between 1 and %d, got %q",
+        MAX_RATE_LIMIT_PER_HOUR, string.sub(tostring(raw), 1, 64))
+end
+
+-- Read where the module is loaded: init_by_lua, in the master process. The
+-- variable must still be declared with `env` in nginx.conf: nginx hands a
+-- process only the variables declared there, and the master is the one
+-- exception only until it is replaced (a binary upgrade starts the new
+-- master with the declared variables alone). scripts/check_gateway_config.py
+-- fails CI for any variable read here and not declared.
+local RATE_LIMIT_PER_HOUR, RATE_LIMIT_ERROR = _M.parse_rate_limit_per_hour(os.getenv("RATE_LIMIT_PER_HOUR"))
+if not RATE_LIMIT_PER_HOUR then
+    error(RATE_LIMIT_ERROR, 0)
+end
 
 -- Get gateway configuration from environment variables
 local function get_config()
@@ -607,16 +643,6 @@ local function refuse_pending_password_change(auth_data)
     ngx.exit(ngx.HTTP_FORBIDDEN)
 end
 
--- Exported for the regex locations that authenticate inline.
-_M.refuse_pending_password_change = refuse_pending_password_change
-
--- For the same locations, which authenticate API keys only (#593).
-function _M.refuse_revoked_api_key(auth_data)
-    if api_key_revoked("api_key", auth_data) then
-        refuse_revoked()
-    end
-end
-
 -- Set authentication data in cache with proper TTL
 local function set_cached_auth_data(cache_key, auth_data, config)
     local auth_cache = ngx.shared.auth_cache
@@ -810,10 +836,6 @@ local function enforce_scopes(auth_data)
     }))
     ngx.exit(ngx.HTTP_FORBIDDEN)
 end
-
--- Exported so regex locations that authenticate inline (e.g. /api/v1/agents/)
--- can reuse the same scope enforcement.
-_M.enforce_scopes = enforce_scopes
 
 -- Set authentication headers for backend services
 local function set_auth_headers(auth_data)

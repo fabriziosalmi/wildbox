@@ -9,9 +9,9 @@
 > All IDs, keys (such as `your-api-key`) and host names in the examples are
 > fictitious placeholders.
 
-**Gateway path**: `https://<host>/api/v1/agents/...` (proxied to the service's `/v1/...`)  
+**Gateway path**: `https://<host>/api/v1/agents/...` (proxied to the service's `/v1/...`; `/api/v1/agents/stats` to the service's `/stats`)  
 **Local port**: listed in [Service ports](../../guides/ports.md); the examples below call the service directly on `localhost`  
-**Authentication**: Bearer Token (JWT, JSON Web Token) required for analysis endpoints
+**Authentication**: through the gateway, a session token (JWT, JSON Web Token) or an API key, as on every other route
 
 ---
 
@@ -31,25 +31,32 @@ The Agents Service is an AI-powered threat intelligence and enrichment platform 
 
 ## Authentication
 
-### Bearer Token Authentication
-
-The analysis endpoints require JWT Bearer token authentication:
+Call the service through the gateway. The gateway authenticates the request
+and forwards the caller's user, team and role to the service; the service
+refuses a request that did not come through the gateway. Send either
+credential:
 
 ```bash
-curl -X POST http://localhost:8006/v1/analyze \
+# A session token, from the login
+curl -X POST https://<host>/api/v1/agents/analyze \
   -H "Authorization: Bearer your-jwt-token-here" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
+# An API key
+curl -X POST https://<host>/api/v1/agents/analyze \
+  -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
   -d '{...}'
 ```
 
-### Internal Service Authentication
-
-Inter-service calls use the `X-API-Key` header:
-
-```bash
-curl -X GET http://localhost:8006/health \
-  -H "X-API-Key: wildbox-internal-key"
-```
+The agents routes get what every gateway route gets: a revoked session or
+API key is refused at once, an account that must change its initial
+password gets 403 `PASSWORD_CHANGE_REQUIRED`, and the per-team rate limit
+applies (`RATE_LIMIT_PER_HOUR`). An API key needs the `tools:read` scope to
+read a task and `tools:execute` to submit or cancel one. Before #630 the
+agents routes accepted an API key only, and refused a session token with
+401 `NO_API_KEY`.
 
 ---
 
@@ -118,13 +125,14 @@ curl http://localhost:8006/health
 Service statistics and performance metrics.
 
 **Method**: `GET`
-**Endpoint**: `/stats`
-**Authentication**: Not required
+**Endpoint**: `/stats` (`/api/v1/agents/stats` through the gateway)
+**Authentication**: Required (session token or API key)
 
 **Request**:
 
 ```bash
-curl http://localhost:8006/stats
+curl https://<host>/api/v1/agents/stats \
+  -H "Authorization: Bearer your-jwt-token"
 ```
 
 **Response (200 OK)**:
@@ -152,8 +160,8 @@ Submit an indicator of compromise (IOC) for AI-powered threat analysis.
 
 **Method**: `POST`
 **Endpoint**: `/v1/analyze`
-**Authentication**: Required (Bearer Token)
-**Rate Limit**: 100 requests/minute per token
+**Authentication**: Required (session token or API key with `tools:execute`)
+**Rate Limit**: 5 submissions a minute, besides the gateway's per-team limit
 
 **Request Body**:
 
@@ -205,13 +213,12 @@ curl -X POST http://localhost:8006/v1/analyze \
 }
 ```
 
-**Error (401 Unauthorized)**:
+**Error (401 Unauthorized)**, from the gateway, without a credential:
 
 ```json
 {
-  "error": "Unauthorized",
-  "message": "Invalid or missing authorization token",
-  "status": "error"
+  "error": "authentication_required",
+  "message": "Valid authentication token required"
 }
 ```
 
@@ -223,7 +230,7 @@ Retrieve the status and results of a submitted analysis task.
 
 **Method**: `GET`
 **Endpoint**: `/v1/analyze/{task_id}`
-**Authentication**: Not required (status can be checked by task ID)
+**Authentication**: Required (session token or API key with `tools:read`); only the user who submitted the task can read it
 
 **Path Parameters**:
 
@@ -331,7 +338,7 @@ Cancel a pending or running analysis task.
 
 **Method**: `DELETE`
 **Endpoint**: `/v1/analyze/{task_id}`
-**Authentication**: Not required
+**Authentication**: Required (session token or API key with `tools:execute`)
 
 **Path Parameters**:
 
@@ -401,26 +408,23 @@ The Agents Service has access to 9 security analysis tools that are automaticall
 
 ## Rate Limiting
 
-The Agents Service enforces rate limits on analysis requests:
+Two limits apply:
 
-- **Analysis endpoint**: 100 requests/minute per authenticated token
-- **Health/stats endpoints**: 1,000 requests/minute
+- **The gateway's per-team limit**, on every agents route as on every other
+  route: `RATE_LIMIT_PER_HOUR` requests an hour per team (10000 unless the
+  deployment sets it), enforced per minute. Every response carries
+  `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset` and
+  `X-RateLimit-Policy`.
+- **The service's own limit on submissions**: 5 `POST /v1/analyze` a minute.
 
-Rate limit information is returned in response headers:
-
-```yaml
-X-RateLimit-Limit: 100
-X-RateLimit-Remaining: 95
-X-RateLimit-Reset: 1730963100
-```
-
-When rate limit is exceeded (429 error):
+Over the gateway's limit the answer is 429 with `Retry-After`:
 
 ```json
 {
-  "error": "Too Many Requests",
-  "message": "Rate limit exceeded. Try again after 60 seconds",
-  "status": "error"
+  "error": "rate_limit_exceeded",
+  "message": "Rate limit exceeded",
+  "limit_per_hour": 10000,
+  "retry_after_seconds": 42
 }
 ```
 
