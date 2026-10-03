@@ -14,8 +14,8 @@ class EmailHarvesterInput(BaseToolInput):
     # The engines main.py implements; anything else was skipped silently, and
     # null crashed the loop over them (#611).
     search_engines: List[SearchEngine] = Field(
-        default=["google", "bing"], min_length=1,
-        description="Search engines to use (google, bing, duckduckgo)"
+        default=["google", "bing"],
+        description="Search engines to use (google, bing, duckduckgo); none searches the domain itself only"
     )
     max_results: int = Field(default=100, description="Maximum results per search engine", ge=10, le=500)
     timeout: int = Field(default=10, description="Request timeout in seconds", ge=1, le=60)

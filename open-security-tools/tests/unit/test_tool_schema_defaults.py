@@ -280,21 +280,26 @@ def test_published_defaults_are_published_enum_values(tool):
 
 @pytest.fixture
 def no_network(monkeypatch):
-    """Refuse every connection and name lookup, and every subprocess.
+    """Make every target unreachable, and every binary missing.
 
-    The errors are the ones a real failure raises: a refused connection, a
-    name that does not resolve, a binary that is not installed. send() is
-    left alone, since the event loop wakes itself through a socket pair.
+    Names resolve, to a public address, so the SSRF guards that resolve a
+    target before a tool contacts it let it through; every connection is
+    then refused, as for a host that is down, and every subprocess fails as
+    for a binary that is not installed. send() is left alone, since the
+    event loop wakes itself through a socket pair.
     """
     import aiohttp.connector
     import aiohttp.resolver
+    import app.safe_http
     from app.utils.tool_utils import RateLimiter
 
     def refuse(*args, **kwargs):
         raise ConnectionRefusedError("network access in a unit test")
 
-    def no_name(*args, **kwargs):
-        raise socket.gaierror(socket.EAI_NONAME, "name lookup in a unit test")
+    public = "93.184.215.14"
+
+    def resolve(host, port=None, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (public, port or 0))]
 
     def no_binary(*args, **kwargs):
         raise FileNotFoundError("subprocess in a unit test")
@@ -308,12 +313,13 @@ def no_network(monkeypatch):
     for name in ("connect", "connect_ex", "sendto"):
         monkeypatch.setattr(socket.socket, name, refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
-    for name in ("getaddrinfo", "gethostbyname", "gethostbyname_ex"):
-        monkeypatch.setattr(socket, name, no_name)
+    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    monkeypatch.setattr(socket, "gethostbyname", lambda host: public)
+    monkeypatch.setattr(socket, "gethostbyname_ex", lambda host: (host, [], [public]))
     # aiohttp's default resolver, aiodns, resolves in C, past the patches.
-    monkeypatch.setattr(
-        aiohttp.connector, "DefaultResolver", aiohttp.resolver.ThreadedResolver
-    )
+    threaded = aiohttp.resolver.ThreadedResolver
+    monkeypatch.setattr(aiohttp.connector, "DefaultResolver", threaded)
+    monkeypatch.setattr(app.safe_http, "DefaultResolver", threaded)
     monkeypatch.setattr(subprocess, "run", no_binary)
     monkeypatch.setattr(subprocess, "Popen", no_binary)
     monkeypatch.setattr(subprocess, "check_output", no_binary)
