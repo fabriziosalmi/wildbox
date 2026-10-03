@@ -4,6 +4,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { storeSessionToken, useAuth } from '@/components/auth-provider'
 import { identityClient, getAuthPath, getIdentityPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  PASSWORD_RULE_HINT,
+  passwordPolicyProblem,
+} from '@/lib/password-policy'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
@@ -37,7 +43,6 @@ interface MyMembership {
 }
 
 // identity's minimum for a new password (PasswordChangeRequest).
-const MIN_PASSWORD_LENGTH = 12
 
 // Where the profile is saved, through the gateway. The page used to send
 // PUT /api/v1/users/me and PUT /api/v1/users/me/password, which the gateway
@@ -156,10 +161,12 @@ export default function ProfilePage() {
       return
     }
 
-    if (passwordForm.new_password.length < MIN_PASSWORD_LENGTH) {
+    // identity's password rule (#583); its reason is shown if it refuses one.
+    const passwordProblem = passwordPolicyProblem(passwordForm.new_password, user?.email)
+    if (passwordProblem) {
       toast({
         title: 'Error',
-        description: `Password must be at least ${MIN_PASSWORD_LENGTH} characters long`,
+        description: passwordProblem,
         variant: 'destructive',
       })
       return
@@ -409,6 +416,7 @@ export default function ProfilePage() {
                       placeholder="Enter new password"
                       required
                       minLength={MIN_PASSWORD_LENGTH}
+                      maxLength={MAX_PASSWORD_LENGTH}
                     />
                     <button
                       type="button"
@@ -422,6 +430,7 @@ export default function ProfilePage() {
                       )}
                     </button>
                   </div>
+                  <p className="mt-1 text-xs text-muted-foreground">{PASSWORD_RULE_HINT}</p>
                 </div>
 
                 <div>
@@ -442,6 +451,7 @@ export default function ProfilePage() {
                       placeholder="Confirm new password"
                       required
                       minLength={MIN_PASSWORD_LENGTH}
+                      maxLength={MAX_PASSWORD_LENGTH}
                     />
                     <button
                       type="button"

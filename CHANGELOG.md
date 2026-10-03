@@ -44,6 +44,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   endpoint takes is unchanged. The integration suite did not notice,
   because it accepts any status but 404 from that endpoint.
 
+- **The cloud security overview shows what cspm reports, and says when
+  it cannot** (#578). When cspm did not answer, `/cloud-security`
+  dropped the failure and showed "0 scans", "0%" compliance, "0 critical
+  findings" and "0 cloud accounts"; when it did answer, the page read
+  fields cspm never returns, so "Last Scan" was always "Never", the risk
+  level "Unknown" and the trend a `stable` the page supplied itself. And
+  cspm's `GET /api/v1/dashboard/summary` read a Redis key nothing writes,
+  so its findings and score were 0 even after a real scan, with the
+  severity counts fixed at 0. The summary now aggregates the newest
+  completed scan of each of the team's accounts, the reports
+  `/api/v1/compliance/summary` reads (#572), with each failed check's
+  severity taken from the check catalog; with no completed scan the
+  score is null ("Not assessed"), not 0%. The page shows the scan
+  count, that score, the critical findings, the accounts assessed, the
+  failed checks by severity and the last scan time, and an error with a
+  retry when the request fails. The security posture card (score, risk
+  level, trend) is gone: nothing computes it. The home dashboard's cloud
+  compliance card reads the same summary. See UPGRADING.md for the field
+  changes.
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could
@@ -433,6 +452,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **One password policy for every path that sets a password** (#583).
+  Registration and the reset-password flow accepted a one-character
+  password: fastapi-users' `BaseUserCreate` does not check it and its
+  `validate_password()` is a no-op, which identity did not override, so
+  only change-password asked for 12 characters. identity's
+  `UserManager.validate_password()` now refuses a password shorter than
+  12 or longer than 128 characters, containing the account's email
+  address or the part before the `@`, or among the 10,000 most common
+  passwords of that length (vendored from SecLists, MIT license; no
+  network access). There are no composition rules, as NIST SP 800-63B
+  advises. Registration, reset-password, change-password, an
+  administrator's reset of another account, the members a team
+  administrator creates (#573) and the first administrator
+  (`INITIAL_ADMIN_PASSWORD`, whose refusal now stops identity's start
+  with the reason instead of starting without an administrator) all go
+  through it. A refusal answers 400 with the reason as `error.message`;
+  fastapi-users' `{"code", "reason"}` detail used to reach clients as a
+  Python dict literal and is now in `error.details`. The dashboard's
+  signup, profile, change-password, add-member and user-creation forms
+  check the same length and email rules before submitting (signup and
+  user creation asked for only 8 characters) and show the server's
+  reason. Existing passwords are not
+  checked until they are next changed.
 - **Changing the password ends the account's other sessions** (#569).
   A password change updated the hash and nothing else, so every token
   already issued stayed valid until it expired and changing the password
@@ -995,6 +1037,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   because Pages cannot supply a real last-modified date.
 
 ### Removed
+
+- **cspm's executive summary and remediation roadmap** (#578).
+  `GET /api/v1/dashboard/executive-summary` and
+  `GET /api/v1/scans/{scan_id}/remediation-roadmap` read
+  `scan:{id}:results`, a Redis key nothing writes (scan reports live in
+  the Celery result backend), so the first answered zeros and an empty
+  trend after any scan and the second answered 404 for every completed
+  scan; the roadmap also gave every item a fixed "Medium" effort and
+  "High" priority. Both now answer 404. The dashboard summary reports
+  the figures the overview needs from the real reports, and
+  `/api/v1/compliance/findings` lists failed checks with their severity
+  and remediation.
+- **The scan status counts of cspm's dashboard summary** (#578).
+  `active_scans`, `completed_scans` and `failed_scans` came from the
+  status stored when a scan starts, which is never updated, so every
+  scan counted as active, forever. The Celery state that could replace
+  it cannot tell a queued scan from one whose result has expired, so the
+  fields are removed rather than estimated.
 
 - **`users.recent_logins` in identity's system statistics** (#573).
   `GET /api/v1/analytics/admin/system-stats` reported as "recent logins"

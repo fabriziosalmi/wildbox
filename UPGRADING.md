@@ -198,6 +198,25 @@ is at the top of the file.
   `framework`, `control_id` and `control_title`, and `severity` is null
   when the check is unknown. A script that read the old fields must move
   to the new ones.
+- cspm's `GET /api/v1/dashboard/executive-summary` and
+  `GET /api/v1/scans/{scan_id}/remediation-roadmap` are removed (#578) and
+  answer 404. They read `scan:{id}:results`, which nothing writes, so the
+  first reported zeros after any scan and the second was 404 for every
+  scan already. Read `GET /api/v1/dashboard/summary` for the figures and
+  `GET /api/v1/compliance/findings?status=failed` for the failed checks,
+  their severity and remediation.
+- cspm's `GET /api/v1/dashboard/summary` (#578) no longer has
+  `active_scans`, `completed_scans` or `failed_scans`: they came from a
+  status that never changed after a scan started, so every scan was
+  "active". Its findings, severity counts and `compliance_score` now come
+  from the newest completed scan of each account in the period (new
+  `days` query parameter, default 30, echoed as `summary_period_days`), as
+  `/api/v1/compliance/summary` computes them; they used to be 0 whatever
+  had been scanned. `compliance_score` is null when no scan completed in
+  the period. `accounts_assessed`, `info_findings` and
+  `unknown_severity_findings` are new. A script that read the removed
+  fields must stop, and one that reads `compliance_score` must accept
+  null.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -460,6 +479,39 @@ default of false, so no existing account is affected.
 - `GET /api/v1/identity/admin/me/activity` lists `team_memberships` oldest
   first. Superusers can now list, rename and remove the members of any
   team.
+
+### 23. New passwords must meet the password policy
+
+identity applies one password rule wherever a password is set (#583):
+registration, the reset-password flow, change-password, an
+administrator's reset through `PATCH /auth/users/{id}`, the accounts a
+team administrator creates (section 22) and the creation of the first
+administrator. A password must have 12 to 128 characters,
+must not contain the account's email address or the part before the `@`,
+and must not be one of the 10,000 most common passwords of that length.
+There are no composition rules. Rebuild identity (section 1 does).
+
+- **Existing accounts are not affected.** Their passwords keep working
+  and are not checked; the rule applies the next time the password is
+  set. Nothing is migrated.
+- **`INITIAL_ADMIN_PASSWORD` must comply on a fresh install.** identity
+  creates the first administrator only when the account does not exist
+  yet; if the password is refused, identity now stops at start with the
+  reason (it used to log the failure and run without an administrator).
+  `scripts/generate_secrets.py` generates a compliant 24-character value.
+  An existing administrator is not affected.
+- **Scripts that register accounts or set passwords** with short or
+  common values (`password1234`, `qwerty123456`) now get 400; registration
+  answers `REGISTER_INVALID_PASSWORD`, reset-password
+  `RESET_PASSWORD_INVALID_PASSWORD`, an administrator's reset
+  `UPDATE_USER_INVALID_PASSWORD`. Use long random values.
+- **The error body of these refusals changed.** fastapi-users' detail
+  `{"code", "reason"}` used to be stringified into `error.message` as a
+  Python dict literal. `error.message` is now the reason, readable as is,
+  and `error.details` holds `{"code", "reason"}`. A client that searched
+  `error.message` for the code must read `error.details.code`. This
+  applies to every service using `open_security_shared.errors`, for any
+  HTTP error whose detail is an object with a `reason`.
 
 ## Upgrading to 0.10.0
 
