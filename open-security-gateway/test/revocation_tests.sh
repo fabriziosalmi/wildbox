@@ -153,6 +153,17 @@ else
     fail "an unrelated session was refused"
 fi
 
+# 8. The purge answer is the JSON identity parses: it requires the count of
+#    revoked jtis, and a body that is not strict JSON fails every logout.
+answer=$(curl -s -X POST -H 'Content-Type: application/json' -H "X-Gateway-Secret: $SECRET" \
+    -d '{"jtis":["count-a","count-b"],"ttl":60}' \
+    "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")
+if printf '%s' "$answer" | python3 -c 'import json,sys; sys.exit(json.loads(sys.stdin.read())["revoked"] != 2)' 2>/dev/null; then
+    pass "purge answers strict JSON counting the revoked jtis"
+else
+    fail "purge answer is not what identity parses: $answer"
+fi
+
 # 7. The purge refuses a caller without the secret.
 code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
     -d '{"jtis":["x"]}' "$GATEWAY_INTERNAL_URL/internal/gateway/purge-auth-cache")
