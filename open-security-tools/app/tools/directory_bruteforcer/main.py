@@ -134,6 +134,7 @@ async def execute_tool(input_data: DirectoryBruteforcerInput) -> DirectoryBrutef
     duration = (datetime.now() - start_time).total_seconds()
     
     return DirectoryBruteforcerOutput(
+        success=True,
         target_url=input_data.target_url,
         timestamp=start_time,
         total_requests=len(paths_to_test),

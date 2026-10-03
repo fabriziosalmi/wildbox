@@ -18,7 +18,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
-from .schemas import HeaderAnalyzerInput, HeaderAnalyzerOutput
+from ...tool_errors import RUN_ERRORS, ToolRunError
+from .schemas import HeaderAnalysis, HeaderAnalyzerInput, HeaderAnalyzerOutput, SecurityHeaderInfo
 # Tool metadata
 TOOL_INFO = {
     "name": "header_analyzer",
@@ -137,11 +138,11 @@ class HeaderSecurityAnalyzer:
                     }
                     
         except asyncio.TimeoutError:
-            raise Exception(f"Request timeout for {url}")
+            raise ToolRunError(f"Request timeout for {url}")
         except aiohttp.ClientError as e:
-            raise Exception(f"Network error: {str(e)}")
+            raise ToolRunError(f"Network error: {str(e)}")
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            raise Exception(f"Analysis failed: {str(e)}")
+            raise ToolRunError(f"Analysis failed: {str(e)}")
     
     def _analyze_security_headers(self, headers: Dict[str, str]) -> Dict[str, Any]:
         """Analyze security headers"""
@@ -322,48 +323,80 @@ class HeaderSecurityAnalyzer:
 
 
 async def execute_tool(params: HeaderAnalyzerInput) -> HeaderAnalyzerOutput:
-    """Main entry point for the header analyzer tool"""
+    """Main entry point for the header analyzer tool.
+
+    The URL arrives as pydantic's HttpUrl, which urlparse cannot take, and the
+    output was built with fields HeaderAnalyzerOutput does not have, so every
+    run failed (#611). The analysis is now passed a string and reported in
+    the output's own fields.
+    """
     analyzer = HeaderSecurityAnalyzer()
-    
+    url = str(params.url)
+
     try:
-        # Perform header analysis
-        result = await analyzer.analyze_headers(
-            url=params.url,
-            follow_redirects=params.follow_redirects
-        )
-        
-        return HeaderAnalyzerOutput(
-            success=True,
-            url=result['url'],
-            status_code=result['status_code'],
-            headers=result['headers'],
-            security_score=result['security_score'],
-            missing_headers=list(result['analysis']['missing_headers'].keys()),
-            present_headers=list(result['analysis']['present_headers'].keys()),
-            security_issues=[
-                f"{header}: {', '.join(data['issues'])}"
-                for header, data in result['analysis']['present_headers'].items()
-                if data['issues']
-            ],
-            information_disclosure=result['analysis']['information_disclosure'],
-            recommendations=result['recommendations'],
-            error=None
-        )
-        
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        result = await analyzer.analyze_headers(url=url, follow_redirects=params.follow_redirects)
+    except RUN_ERRORS as e:
         return HeaderAnalyzerOutput(
             success=False,
-            url=params.url,
-            status_code=None,
-            headers={},
-            security_score=0,
-            missing_headers=[],
-            present_headers=[],
-            security_issues=[],
-            information_disclosure=[],
-            recommendations=[],
-            error=str(e)
+            target=url,
+            error=str(e),
+            error_message=str(e),
+            message="HTTP header analysis failed",
         )
+
+    analysis = result["analysis"]
+    present = [
+        SecurityHeaderInfo(
+            name=data["info"]["name"],
+            value=data["value"],
+            present=True,
+            recommendation="; ".join(data["issues"]) or None,
+            severity="medium" if data["issues"] else "low",
+            description=data["info"]["description"],
+        )
+        for data in analysis["present_headers"].values()
+    ]
+    missing = [
+        SecurityHeaderInfo(
+            name=info["name"],
+            present=False,
+            recommendation=f"Add the {info['name']} header",
+            severity="high" if info["critical"] else "medium",
+            description=info["description"],
+        )
+        for info in analysis["missing_headers"].values()
+    ]
+    vulnerabilities = (
+        [
+            {"type": f"Missing {h.name}", "severity": h.severity, "description": h.description}
+            for h in missing
+        ]
+        + [
+            {"type": f"Weak {h.name}", "severity": h.severity, "description": h.recommendation}
+            for h in present
+            if h.recommendation
+        ]
+        + [
+            {"type": "Information disclosure", "severity": "low", "description": str(item)}
+            for item in analysis.get("information_disclosure", [])
+        ]
+    )
+
+    return HeaderAnalyzerOutput(
+        success=True,
+        target=url,
+        results=HeaderAnalysis(
+            url=result["url"],
+            status_code=result["status_code"],
+            headers={str(k): str(v) for k, v in result["headers"].items()},
+            security_headers=present,
+            missing_headers=missing,
+            security_score=int(result["security_score"]),
+            vulnerabilities=vulnerabilities,
+            recommendations=result["recommendations"],
+        ),
+        message="HTTP header analysis completed",
+    )
 
 
 # For testing
@@ -378,9 +411,9 @@ if __name__ == "__main__":
         result = await execute_tool(test_input)
         print(f"Success: {result.success}")
         if result.success:
-            print(f"Security Score: {result.security_score}")
-            print(f"Missing Headers: {result.missing_headers}")
-            print(f"Recommendations: {len(result.recommendations)}")
+            print(f"Security Score: {result.results.security_score}")
+            print(f"Missing Headers: {[h.name for h in result.results.missing_headers]}")
+            print(f"Recommendations: {len(result.results.recommendations)}")
         else:
             print(f"Error: {result.error}")
     

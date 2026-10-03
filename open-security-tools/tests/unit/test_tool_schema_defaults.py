@@ -10,16 +10,23 @@ the same contract:
 * every default is a valid value of its own field (pydantic does not check
   defaults, so a default outside a Literal goes unnoticed until a run), and
   every published default is one of its field's published enum values;
-* for the tools that run offline, ``execute_tool`` succeeds with those
-  inputs, with the network blocked.
+* every tool builds its output with ``success``, which BaseToolOutput
+  requires: several did not, so every one of their runs failed validation;
+* with the network and subprocesses refused, every tool's ``execute_tool``
+  answers with a valid instance of its output model instead of raising, and
+  the tools that need neither succeed.
 """
 
+import ast
 import asyncio
 import inspect
 import json
 import os
 import socket
+import subprocess
 import sys
+import threading
+import time
 
 import pytest
 
@@ -117,25 +124,19 @@ MINIMAL_INPUTS = {
 # Tools whose run needs no network, a subprocess or credentials.
 OFFLINE_TOOLS = [
     "base64_tool",
+    "crypto_strength_analyzer",
     "email_security_analyzer",
+    "hash_cracker",
     "hash_generator",
+    "jwt_analyzer",
     "jwt_decoder",
     "metadata_extractor",
     "password_generator",
     "password_strength_analyzer",
     "saml_analyzer",
     "security_automation_orchestrator",
-]
-
-# Offline tools that build their output without the required ``success``
-# field, so every run raises. Not an input-schema problem; strict, so the
-# marker has to go when they are fixed.
-OUTPUT_MODEL_BROKEN = {
-    "crypto_strength_analyzer",
-    "hash_cracker",
-    "jwt_analyzer",
     "static_malware_analyzer",
-}
+]
 
 TOOLS = list_tool_names()
 
@@ -279,13 +280,49 @@ def test_published_defaults_are_published_enum_values(tool):
 
 @pytest.fixture
 def no_network(monkeypatch):
-    def refuse(*args, **kwargs):
-        raise ConnectionError("network access in a unit test")
+    """Refuse every connection and name lookup, and every subprocess.
 
-    monkeypatch.setattr(socket.socket, "connect", refuse)
-    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
-    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    The errors are the ones a real failure raises: a refused connection, a
+    name that does not resolve, a binary that is not installed. send() is
+    left alone, since the event loop wakes itself through a socket pair.
+    """
+    import aiohttp.connector
+    import aiohttp.resolver
+    from app.utils.tool_utils import RateLimiter
+
+    def refuse(*args, **kwargs):
+        raise ConnectionRefusedError("network access in a unit test")
+
+    def no_name(*args, **kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "name lookup in a unit test")
+
+    def no_binary(*args, **kwargs):
+        raise FileNotFoundError("subprocess in a unit test")
+
+    async def no_binary_async(*args, **kwargs):
+        no_binary()
+
+    async def no_wait(self):
+        return None
+
+    for name in ("connect", "connect_ex", "sendto"):
+        monkeypatch.setattr(socket.socket, name, refuse)
     monkeypatch.setattr(socket, "create_connection", refuse)
+    for name in ("getaddrinfo", "gethostbyname", "gethostbyname_ex"):
+        monkeypatch.setattr(socket, name, no_name)
+    # aiohttp's default resolver, aiodns, resolves in C, past the patches.
+    monkeypatch.setattr(
+        aiohttp.connector, "DefaultResolver", aiohttp.resolver.ThreadedResolver
+    )
+    monkeypatch.setattr(subprocess, "run", no_binary)
+    monkeypatch.setattr(subprocess, "Popen", no_binary)
+    monkeypatch.setattr(subprocess, "check_output", no_binary)
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", no_binary_async)
+    monkeypatch.setattr(asyncio, "create_subprocess_shell", no_binary_async)
+    # Rate limiting is not under test; directory_bruteforcer's would sleep
+    # for minutes, xss_scanner's for seconds.
+    monkeypatch.setattr(RateLimiter, "acquire", no_wait)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
 
 
 def _run(module, params):
@@ -298,25 +335,69 @@ def _run(module, params):
     return result
 
 
-@pytest.mark.parametrize(
-    "tool",
-    OFFLINE_TOOLS
-    + [
-        pytest.param(
-            tool,
-            marks=pytest.mark.xfail(
-                strict=True, reason="builds its output without success"
-            ),
-        )
-        for tool in sorted(OUTPUT_MODEL_BROKEN)
-    ],
-)
+def _run_with_deadline(module, params, seconds=60):
+    """_run in a thread, so a tool that hangs fails the test instead."""
+    outcome = {}
+
+    def work():
+        try:
+            outcome["result"] = _run(module, params)
+        except BaseException as exc:  # noqa: B902 - reported below
+            outcome["error"] = exc
+
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), f"no answer within {seconds}s"
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["result"]
+
+
+@pytest.mark.parametrize("tool", OFFLINE_TOOLS)
 def test_an_offline_tool_runs_with_its_defaults(tool, no_network):
     module, input_cls = _input_model(tool)
     result = _run(module, input_cls(**MINIMAL_INPUTS[tool]))
 
     error = getattr(result, "error", None) or getattr(result, "error_message", None)
     assert result.success is True, error
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_every_output_is_built_with_success(tool):
+    module = load_tool_module(tool)
+    _, output_cls = find_schema_classes(module.schemas)
+    names = {k for k, v in vars(module).items() if v is output_cls}
+    names.add(output_cls.__name__)
+
+    missing = []
+    for node in ast.walk(ast.parse(inspect.getsource(module))):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        called = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
+        keywords = {k.arg for k in node.keywords}
+        # None is a **mapping, which may carry it.
+        if called in names and "success" not in keywords and None not in keywords:
+            missing.append(node.lineno)
+
+    assert (
+        not missing
+    ), f"{output_cls.__name__}(...) without success= at lines {missing}"
+
+
+@pytest.mark.parametrize("tool", TOOLS)
+def test_a_run_without_network_answers_with_a_valid_output(tool, no_network):
+    module, input_cls = _input_model(tool)
+    _, output_cls = find_schema_classes(module.schemas)
+
+    result = _run_with_deadline(module, input_cls(**MINIMAL_INPUTS[tool]))
+
+    assert isinstance(result, output_cls)
+    # Built from its own fields again, so a field set after construction
+    # cannot hide an invalid output.
+    output_cls.model_validate(result.model_dump())
+    assert isinstance(result.success, bool)
 
 
 # Values each tool's main.py refused, ignored or crashed on at run time, now
@@ -469,3 +550,37 @@ def test_a_workflow_step_gets_the_tools_own_input_model():
         built.email_headers
         == MINIMAL_INPUTS["email_security_analyzer"]["email_headers"]
     )
+
+
+def test_port_scanner_reports_the_open_ports(no_network, monkeypatch):
+    # The output was built with a "results" field it does not have, so an
+    # open port was dropped even once success was passed.
+    module, input_cls = _input_model("port_scanner")
+
+    class _Writer:
+        def close(self):
+            pass
+
+        async def wait_closed(self):
+            pass
+
+    async def fake_open_connection(host, port, **kwargs):
+        if port == 22:
+            return object(), _Writer()
+        raise ConnectionRefusedError(port)
+
+    monkeypatch.setattr(asyncio, "open_connection", fake_open_connection)
+    result = _run(module, input_cls(target="192.0.2.10", ports=[22, 80]))
+
+    assert result.success is True
+    assert [(p.port, p.state) for p in result.open_ports] == [(22, "open")]
+    assert result.closed_ports == 1
+
+
+def test_a_malformed_indicator_is_a_failed_result(no_network):
+    module, input_cls = _input_model("threat_intelligence_aggregator")
+
+    result = _run(module, input_cls(indicator="not-an-ip", indicator_type="ip"))
+
+    assert result.success is False
+    assert "Invalid ip format" in result.error_message

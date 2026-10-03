@@ -229,6 +229,9 @@ def execute_tool(input_data: EmailHarvesterInput) -> EmailHarvesterOutput:
         statistics[source] = statistics.get(source, 0) + 1
     
     return EmailHarvesterOutput(
+        # Required by BaseToolOutput; its absence made every run fail
+        # validation before the output was returned.
+        success=True,
         domain=input_data.domain,
         timestamp=timestamp,
         total_emails=len(final_emails),

@@ -189,6 +189,7 @@ def execute_tool(input_data: HashCrackerInput) -> HashCrackerOutput:
         statistics[hash_type] = statistics.get(hash_type, 0) + 1
     
     return HashCrackerOutput(
+        success=True,
         timestamp=timestamp,
         total_hashes=len(results),
         successful_cracks=successful_cracks,

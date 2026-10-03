@@ -6,6 +6,7 @@ import requests
 from datetime import datetime
 from typing import List, Dict
 from urllib.parse import urlparse, parse_qs, urlencode
+from ...tool_errors import RUN_ERRORS
 from .schemas import SQLInjectionScannerInput, SQLInjectionScannerOutput, SQLInjectionResult
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ def test_sql_injection(url: str, method: str, param_name: str, param_value: str,
             response_time=response_time
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         response_time = time.time() - start_time
         return SQLInjectionResult(
             parameter=param_name,

@@ -28,6 +28,7 @@ from ...utils.tool_utils import (
 # Note: Using simplified config for demonstration
 # from ...tool_config import ToolConfig, SecurityConfig
 
+from ...tool_errors import RUN_ERRORS
 from .schemas import NetworkScannerInput, NetworkScannerOutput, HostInfo
 logger = logging.getLogger(__name__)
 
@@ -332,6 +333,40 @@ class NetworkScanner:
                 raise ValueError(f"Invalid network format: {network}")
 
 
+def _scan_output(
+    target_network: str,
+    timestamp: datetime,
+    execution_time: float,
+    hosts_discovered: List[HostInfo],
+    total_hosts_scanned: int,
+    alive_hosts: int,
+    success: bool,
+    scan_type: Optional[str] = None,
+    error: Optional[str] = None,
+    message: Optional[str] = None,
+) -> NetworkScannerOutput:
+    """The scan's result in NetworkScannerOutput's own fields.
+
+    execute_tool built the output with fields it does not have
+    (target_network, hosts_discovered, ...) and without the ones it requires,
+    so every run failed validation (#611).
+    """
+    return NetworkScannerOutput(
+        success=success,
+        target=target_network,
+        network=target_network,
+        timestamp=timestamp,
+        total_hosts=total_hosts_scanned,
+        alive_hosts=alive_hosts,
+        scan_duration=execution_time,
+        execution_time=execution_time,
+        hosts=hosts_discovered,
+        error_message=error,
+        summary=message,
+        metadata={"scan_type": scan_type} if scan_type else {},
+    )
+
+
 async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
     """Execute the network scanner tool with comprehensive error handling"""
     start_time = datetime.now()
@@ -363,7 +398,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
                 logger.info(f"Generated {len(ip_list)} IPs to scan")
             except ValueError as e:
                 metrics.counter("network_scanner.validation_error").increment()
-                return NetworkScannerOutput(
+                return _scan_output(
                     target_network=input_data.network,
                     scan_type=input_data.scan_type,
                     timestamp=start_time,
@@ -377,7 +412,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
             
             # Check if we have any IPs to scan
             if not ip_list:
-                return NetworkScannerOutput(
+                return _scan_output(
                     target_network=input_data.network,
                     scan_type=input_data.scan_type,
                     timestamp=start_time,
@@ -425,7 +460,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
             
             logger.info(f"Network scan completed: {alive_hosts}/{len(ip_list)} hosts alive in {execution_time:.2f}s")
             
-            return NetworkScannerOutput(
+            return _scan_output(
                 target_network=input_data.network,
                 scan_type=input_data.scan_type,
                 timestamp=start_time,
@@ -440,7 +475,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
             # Input validation errors
             metrics.counter("network_scanner.validation_error").increment()
             logger.warning(f"Validation error: {e}")
-            return NetworkScannerOutput(
+            return _scan_output(
                 target_network=input_data.network,
                 scan_type=input_data.scan_type,
                 timestamp=start_time,
@@ -456,7 +491,7 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
             # Timeout errors
             metrics.counter("network_scanner.timeout_error").increment()
             logger.error("Network scan timed out")
-            return NetworkScannerOutput(
+            return _scan_output(
                 target_network=input_data.network,
                 scan_type=input_data.scan_type,
                 timestamp=start_time,
@@ -468,13 +503,13 @@ async def execute_tool(input_data: NetworkScannerInput) -> NetworkScannerOutput:
                 error="Scan operation timed out"
             )
         
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+        except RUN_ERRORS as e:
             # Unexpected errors
             metrics.counter("network_scanner.error").increment()
             error_info = ToolExceptionHandler.handle_generic_error(e, "network_scanner")
             logger.error(f"Unexpected error: {e}", exc_info=True)
             
-            return NetworkScannerOutput(
+            return _scan_output(
                 target_network=input_data.network,
                 scan_type=input_data.scan_type,
                 timestamp=start_time,

@@ -189,6 +189,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         low_vulns = len([v for v in vulnerabilities if v.severity == "Low"])
         
         return APISecurityTesterOutput(
+            success=True,
             api_base_url=data.api_base_url,
             test_timestamp=datetime.utcnow().isoformat(),
             test_depth=data.test_depth,
@@ -212,6 +213,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         # Input validation errors - return error with clear message
         logger.error(f"Input validation error: {e}")
         return APISecurityTesterOutput(
+            success=False,
             api_base_url=data.api_base_url,
             test_timestamp=datetime.utcnow().isoformat(),
             test_depth=data.test_depth,
@@ -242,6 +244,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         # Infrastructure failures - report as infrastructure issue, NOT security finding
         logger.error(f"Infrastructure error during API testing: {e}")
         return APISecurityTesterOutput(
+            success=False,
             api_base_url=data.api_base_url,
             test_timestamp=datetime.utcnow().isoformat(),
             test_depth=data.test_depth,
@@ -277,6 +280,7 @@ async def execute_tool(data: APISecurityTesterInput) -> APISecurityTesterOutput:
         # Data structure errors - likely API response format issue
         logger.error(f"Data parsing error: {e}")
         return APISecurityTesterOutput(
+            success=False,
             api_base_url=data.api_base_url,
             test_timestamp=datetime.utcnow().isoformat(),
             test_depth=data.test_depth,

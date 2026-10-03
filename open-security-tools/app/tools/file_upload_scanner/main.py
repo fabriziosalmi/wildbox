@@ -4,6 +4,7 @@ import requests
 import io
 from datetime import datetime
 from typing import List, Dict, Tuple
+from ...tool_errors import RUN_ERRORS
 from .schemas import FileUploadScannerInput, FileUploadScannerOutput, FileUploadResult
 # Test file configurations
 TEST_FILES = {
@@ -183,7 +184,7 @@ def test_file_upload(url: str, file_param: str, test_name: str, test_file: Dict,
             risk_level=risk_level
         )
         
-    except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
+    except RUN_ERRORS as e:
         return FileUploadResult(
             test_type=test_name,
             filename=test_file["filename"],
@@ -260,6 +261,7 @@ def execute_tool(input_data: FileUploadScannerInput) -> FileUploadScannerOutput:
         recommendations.insert(1, "Review file upload validation and storage mechanisms")
     
     return FileUploadScannerOutput(
+        success=True,
         target_url=input_data.target_url,
         timestamp=timestamp,
         total_tests=len(results),

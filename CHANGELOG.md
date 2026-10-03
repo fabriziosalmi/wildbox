@@ -67,6 +67,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tool's fields. For five tools that list their classes in `TOOL_INFO`
   it answered 500. The endpoint, `/info` and the worker now share one
   lookup, and `/info` leaves classes out of the metadata.
+- **Every tool answers with its output model** (#611). Seventeen tools
+  built their output without `success`, which `BaseToolOutput`
+  requires, so every one of their runs failed validation:
+  api_security_analyzer, api_security_tester,
+  blockchain_security_analyzer, cloud_security_analyzer,
+  crypto_strength_analyzer, digital_footprint_analyzer,
+  directory_bruteforcer, dns_enumerator, email_harvester,
+  file_upload_scanner, hash_cracker, jwt_analyzer,
+  mobile_security_analyzer, static_malware_analyzer, subdomain_scanner,
+  threat_intelligence_aggregator, xss_scanner. port_scanner,
+  network_scanner and header_analyzer built theirs from fields their
+  schema does not have (header_analyzer also handed pydantic's `HttpUrl`
+  to `urlparse`, so it never ran), and ip_geolocation and
+  malware_hash_checker declared `Optional` fields without a default,
+  which pydantic treats as required. A target that could not be reached
+  also escaped many tools as an exception: they caught `ConnectionError`,
+  which a DNS failure, an aiohttp or requests error, a dnspython error
+  or the bare `Exception` some of them re-raised is not. They now catch
+  `app.tool_errors.RUN_ERRORS` and answer `success: false` with the
+  reason; a malformed threat indicator and a trivy binary that cannot
+  be started are reported the same way.
 - **A workflow step gets its tool's input model** (#611). The
   orchestrator took the first schema class whose name ends in "Input",
   which was the imported `BaseToolInput` for every tool.

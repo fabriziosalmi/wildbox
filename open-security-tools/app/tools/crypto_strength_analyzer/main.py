@@ -690,6 +690,7 @@ async def execute_tool(request: CryptoAnalysisRequest) -> CryptoStrengthResponse
     processing_time = int((time.time() - start_time) * 1000)
     
     return CryptoStrengthResponse(
+        success=True,
         analysis_type=request.analysis_type,
         overall_security_rating=overall_rating,
         security_score=security_score,

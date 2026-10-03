@@ -307,6 +307,7 @@ async def execute_tool(input_data: DNSEnumeratorInput) -> DNSEnumeratorOutput:
         duration = (end_time - start_time).total_seconds()
         
         return DNSEnumeratorOutput(
+            success=True,
             target_domain=domain,
             enumeration_mode=input_data.enumeration_mode.value,
             timestamp=start_time,
@@ -327,6 +328,7 @@ async def execute_tool(input_data: DNSEnumeratorInput) -> DNSEnumeratorOutput:
         duration = (end_time - start_time).total_seconds()
         
         return DNSEnumeratorOutput(
+            success=False,
             target_domain=input_data.target_domain,
             enumeration_mode=input_data.enumeration_mode.value,
             timestamp=start_time,
