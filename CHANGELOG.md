@@ -36,6 +36,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The agents service accepts analysis requests again** (#582).
+  `POST /v1/analyze` answered 500 to every call: its rate limiter finds
+  the request by the parameter named `request`, and that name belonged to
+  the body model, so slowapi raised before the handler ran. The starlette
+  request now has that name and the body is `analysis`; the JSON the
+  endpoint takes is unchanged. The integration suite did not notice,
+  because it accepts any status but 404 from that endpoint.
+
 - **Asynchronous tool tasks can be read, cancelled and listed** (#567).
   `POST /api/v1/tools/{name}/async` queued a task through the gateway,
   but the gateway routed none of the task endpoints, so its result could
@@ -755,6 +763,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
+
+- **Every test file runs in CI, and a new one cannot be left out**
+  (#582). Sixteen files named `test_*.py` sat where no workflow looked:
+  beside the services' `tests/unit/`, at a service's root, under
+  `scripts/`, or in the repository's `tests/` outside the suites CI runs.
+  None ran, several no longer matched the code (the agents' `test_basic.py`
+  asserted an attribute the client had lost), and most caught every error
+  and printed it. What still mattered moved into the unit suites,
+  rewritten against the current code: the agents' request schemas, the
+  caller identity from `/v1/analyze` through the worker to every agent
+  tool, and the gateway secret's source; the responder's step templates,
+  conditions and system actions; the tools' CIDR-bounded scanner, now with
+  `ping` replaced rather than sent to the runner's network. The rest was
+  removed, being duplicated by the integration suite or written against
+  endpoints that no longer exist. `scripts/check_test_collection.py`, run
+  by Code Quality, reads the workflows' pytest commands, works out what
+  they collect and fails on any test file outside it; deliberate
+  exceptions go in `scripts/test_collection_allowlist.txt` with a reason.
 
 - **The backend-dependent Playwright specs run on the real stack**
   (#103). `E2E Full-Stack` brings the stack up with
