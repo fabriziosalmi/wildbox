@@ -42,11 +42,24 @@ def _api_key_hash_secret() -> str:
     matching, and there is no key_version column or re-hash path to carry them
     across (WILDBO-SEC-01).
 
-    Falls back to the JWT secret when API_KEY_HASH_SECRET is unset, so existing
-    deployments keep working; set API_KEY_HASH_SECRET to decouple the two, then
-    the JWT key can be rotated without touching API keys.
+    API_KEY_HASH_SECRET is required when ENVIRONMENT=production: Settings
+    refuses to load without it (#648). Compose did not pass it to identity,
+    so this used to fall back to the JWT secret silently on every
+    deployment. Outside production an unset value still falls back, so a
+    development stack without it keeps working; startup logs a warning.
+
+    An existing deployment upgrades by setting API_KEY_HASH_SECRET to its
+    current JWT_SECRET_KEY (scripts/rotate_secrets.sh --secret
+    API_KEY_HASH_SECRET --init): the digests stored so far were keyed by
+    that value, so they keep matching, and the JWT key can then be rotated
+    on its own.
     """
     return settings.api_key_hash_secret or settings.jwt_secret_key
+
+
+def api_key_hash_secret_is_fallback() -> bool:
+    """Whether API-key digests are keyed by JWT_SECRET_KEY (no separate secret)."""
+    return not settings.api_key_hash_secret
 
 
 def hash_api_key(api_key: str) -> str:

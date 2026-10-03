@@ -751,6 +751,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **API-key digests no longer depend on `JWT_SECRET_KEY`** (#648).
+  `API_KEY_HASH_SECRET` was generated into `.env` and documented, but
+  compose never passed it to identity, which then keyed every stored
+  API-key digest with `JWT_SECRET_KEY` without a warning. Rotating the JWT
+  key, the routine rotation `SECURITY.md` recommends, invalidated every
+  API key with no way back, and the guard in `scripts/rotate_secrets.sh`
+  could not catch it: it checked `.env`, where the generator always writes
+  the variable. `docker-compose.yml` and the production overlay now pass
+  it to identity as a required variable, identity refuses to start
+  without it when `ENVIRONMENT=production` (a short, placeholder or
+  low-entropy value is refused too, and the error no longer echoes the
+  settings it validated), and outside production a missing value still
+  falls back to the JWT key with a warning at start-up. The rotation
+  guard now refuses `JWT_SECRET_KEY` unless `docker compose config` passes
+  the variable to identity and the running identity container, if any,
+  has it. `--init` (`make init-api-key-hash`) copies `JWT_SECRET_KEY` into
+  `API_KEY_HASH_SECRET` inside `.env` without printing either, does
+  nothing when they already match, and the script no longer passes a new
+  value on a command line, where `ps` could read it. An existing
+  deployment runs `--init` once before upgrading, so keys issued so far
+  keep working; see UPGRADING.md. Unit tests cover the production
+  refusal, the digest keyed by the hash secret, a JWT rotation that
+  leaves digests unchanged and a pre-upgrade key that still verifies
+  after seeding; script tests cover both compose files and the guard
+  against a stub `docker`.
+
 - **guardian accepts gateway-authenticated requests only** (#629). Its
   middleware accepted rows of guardian's own `APIKey` table from an
   `X-API-Key` header on a direct request, authenticated the caller as role

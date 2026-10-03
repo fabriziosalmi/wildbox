@@ -44,6 +44,9 @@ REQUIRED_SECRETS = [
     "CSPM_SECRET_KEY",
     "SENSOR_API_KEY",
     "DATA_SECRET_KEY",
+    # Keys the HMAC of stored API-key digests. identity refuses to start
+    # without it when ENVIRONMENT=production (#648).
+    "API_KEY_HASH_SECRET",
 ]
 
 # Optional secrets (warn if missing, but don't fail)
@@ -74,6 +77,7 @@ INSECURE_PATTERNS = [
 # Minimum lengths for different secret types
 MIN_LENGTHS = {
     "JWT_SECRET_KEY": 32,
+    "API_KEY_HASH_SECRET": 32,
     "POSTGRES_PASSWORD": 16,
     "GATEWAY_INTERNAL_SECRET": 32,
     "API_KEY": 40,  # wsk_xxxx. + 64 chars

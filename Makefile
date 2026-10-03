@@ -1,7 +1,7 @@
 # Wildbox Security Platform - Simplified Makefile
 # Use Docker Compose for orchestration - this is just a convenience wrapper
 
-.PHONY: help setup generate-secrets validate-secrets start start-prod stop restart logs health test clean backup restore-drill rotate-secrets lock lock-security
+.PHONY: help setup generate-secrets validate-secrets start start-prod stop restart logs health test clean backup restore-drill rotate-secrets init-api-key-hash lock lock-security
 
 # Colors
 BLUE := \033[0;34m
@@ -98,6 +98,12 @@ restore-drill:
 
 rotate-secrets:
 	@./scripts/rotate_secrets.sh --list
+
+# Once, on an existing deployment, before identity starts with this release:
+# copies the current JWT_SECRET_KEY into API_KEY_HASH_SECRET inside .env
+# without printing it, so stored API keys keep verifying (#648).
+init-api-key-hash:
+	@./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
 
 lock:
 	@echo "$(BLUE)Compiling hash-pinned lockfiles for every service...$(NC)"

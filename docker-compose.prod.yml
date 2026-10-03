@@ -129,6 +129,9 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS}
       - ENABLE_METRICS=true
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      # Required in production: identity refuses to start without it (#648).
+      # Repeated from the base file so the overlay states it on its own.
+      - API_KEY_HASH_SECRET=${API_KEY_HASH_SECRET:?API_KEY_HASH_SECRET is required; see UPGRADING.md before setting it on an existing deployment}
     deploy:
       resources:
         limits:
