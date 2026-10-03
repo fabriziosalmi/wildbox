@@ -4,14 +4,12 @@ import os
 import sys
 import time
 import importlib.util
-from pathlib import Path
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
 import time
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -24,8 +22,6 @@ from open_security_shared.errors import install_error_handlers
 from open_security_shared.observability import install_observability, metrics_response
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
 from app.api.async_router import router as async_router
-from app.web.router import router as web_router
-from app.web.router import DISCOVERED_TOOLS as web_discovered_tools
 from app.execution_manager import execution_manager
 from app.tool_loader import discover_tools as _discover_tools
 
@@ -110,8 +106,10 @@ def create_app() -> FastAPI:
         title="Wildbox Security Tools",
         description="A modular security tools platform with dynamic tool discovery",
         version="0.1.6",
-        docs_url=None,  # Disable default docs, using custom ones
-        redoc_url=None,  # Disable default redoc, using custom ones
+        # No Swagger UI or ReDoc pages: the standalone web UI that served
+        # them is gone (#581). The schema stays at /openapi.json.
+        docs_url=None,
+        redoc_url=None,
         openapi_url="/openapi.json",
         lifespan=lifespan
     )
@@ -146,10 +144,6 @@ def create_app() -> FastAPI:
     DISCOVERED_TOOLS.clear()
     DISCOVERED_TOOLS.update(discovered_tools)
     
-    # Update web router's tools dictionary
-    web_discovered_tools.clear()
-    web_discovered_tools.update(discovered_tools)
-    
     # Register dynamic endpoints for each tool
     for tool_name, tool_module in discovered_tools.items():
         register_tool_endpoint(app, tool_name, tool_module)
@@ -157,14 +151,6 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(api_router)
     app.include_router(async_router)  # Async execution endpoints
-    app.include_router(web_router)
-    
-    # Mount static files
-    static_path = Path(__file__).parent / "web" / "static"
-    if static_path.exists():
-        app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
-    else:
-        logger.warning("Static files directory not found")
     
     # Health check endpoint with more details
     @app.get("/health", tags=["System"])
@@ -343,7 +329,6 @@ def create_app() -> FastAPI:
         return {
             "message": "Wildbox Security Tools",
             "version": "1.0.0",
-            "docs": "/docs",
             "tools": f"/api/tools",
             "available_tools": list(discovered_tools.keys())
         }

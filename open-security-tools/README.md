@@ -9,8 +9,8 @@ A robust and extensible open security API platform built with Python and FastAPI
 
 - **Modular Architecture**: Dynamic discovery and loading of security tools
 - **RESTful API**: Well-defined API endpoints with automatic OpenAPI documentation
-- **Interactive Documentation**: Automatically generated Swagger UI and ReDoc
-- **Web Interface**: User-friendly web interface for tool interaction
+- **OpenAPI schema**: Generated at `/openapi.json`
+- **Dashboard catalog**: The dashboard's `/toolbox` page lists the tools
 - **Security**: API key-based authentication and security best practices
 - **Structured Logging**: JSON-formatted logging with configurable levels
 - **Configuration Management**: Environment-based configuration using Pydantic
@@ -86,7 +86,9 @@ make setup
 make dev
 ```
 
-Visit http://localhost:8000 to access the web interface.
+The service has no web interface of its own: the standalone UI it used to
+serve was removed in #581. Browse the tools on the dashboard's `/toolbox`
+page and run them through the gateway at `/api/v1/tools/<name>`.
 
 ### Alternative Quick Start
 
@@ -409,24 +411,11 @@ open-security-tools/
 │   │   ├── __init__.py
 │   │   └── router.py           # API routes and dynamic endpoint creation
 │   │
-│   ├── tools/
-│   │   └── sample_tool/        # Example security tool
-│   │       ├── __init__.py
-│   │       ├── main.py         # Tool implementation
-│   │       └── schemas.py      # Input/output schemas
-│   │
-│   └── web/
-│       ├── __init__.py
-│       ├── router.py           # Web interface routes
-│       ├── templates/          # Jinja2 templates
-│       │   ├── base.html
-│       │   ├── index.html
-│       │   └── tool.html
-│       └── static/             # CSS and JavaScript files
-│           ├── css/
-│           │   └── styles.css
-│           └── js/
-│               └── script.js
+│   └── tools/
+│       └── sample_tool/        # Example security tool
+│           ├── __init__.py
+│           ├── main.py         # Tool implementation
+│           └── schemas.py      # Input/output schemas
 │
 ├── Docker Configuration
 ├── Dockerfile                  # Production Docker image
@@ -501,12 +490,14 @@ uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-### 2. Access the Interfaces
+### 2. Check the Service
 
-- **Web Interface**: http://127.0.0.1:8000
-- **Swagger UI**: http://127.0.0.1:8000/docs
-- **ReDoc**: http://127.0.0.1:8000/redoc
 - **API Health Check**: http://127.0.0.1:8000/health
+- **OpenAPI schema**: http://127.0.0.1:8000/openapi.json
+
+The service serves no web pages (the standalone UI, with its Swagger UI and
+ReDoc pages, was removed in #581). The dashboard's `/toolbox` page lists the
+tools.
 
 ### 3. API Authentication
 
@@ -886,8 +877,9 @@ def perform_analysis(target: str):
 
 The new tool will be automatically discovered and available at:
 
-- API: `POST /api/tools/your_tool_name`
-- Web: `http://127.0.0.1:8000/tools/your_tool_name`
+- API: `POST /api/tools/your_tool_name` (`/api/v1/tools/your_tool_name`
+  through the gateway)
+- Dashboard: listed on the `/toolbox` page
 
 ## 🔒 Security Considerations
 
@@ -1151,7 +1143,7 @@ This project is open source. Please check the LICENSE file for details.
 For support and questions:
 
 - Check the troubleshooting section above
-- Review the API documentation at `/docs`
+- Review the API schema at `/openapi.json`
 - Check server logs for error details
 - Open an issue on the project repository
 
@@ -1159,9 +1151,8 @@ For support and questions:
 
 | Method | Endpoint | Description |
 | -------- | ---------- | ------------- |
-| GET | `/` | Web interface dashboard |
-| GET | `/tools/{tool_name}` | Tool interaction page |
 | GET | `/health` | Health check |
+| GET | `/openapi.json` | OpenAPI schema |
 | GET | `/api/tools` | List available tools |
 | GET | `/api/tools/{tool_name}/info` | Get tool information |
 | POST | `/api/tools/{tool_name}` | Execute specific tool |
@@ -1174,8 +1165,6 @@ These are the service's paths. Clients reach them through the gateway, which
 serves `/api/tools/...` as `/api/v1/tools/...` and `/api/tasks...` as
 `/api/v1/tasks...`; the service answers 401 to requests that do not come
 through it.
-| GET | `/docs` | Swagger UI documentation |
-| GET | `/redoc` | ReDoc documentation |
 
 ## 🔗 Quick Access URLs
 
@@ -1188,10 +1177,8 @@ make urls
 
 | Service | URL | Description |
 | --------- | ----- | ------------- |
-| Web Interface | http://localhost:8000 | Main dashboard |
-| API Documentation | http://localhost:8000/docs | Interactive API docs |
-| ReDoc | http://localhost:8000/redoc | Alternative API docs |
 | Health Check | http://localhost:8000/health | Service health status |
+| OpenAPI schema | http://localhost:8000/openapi.json | API schema |
 
 ## 🏷️ Docker Tags and Versioning
 

@@ -469,6 +469,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **An agents task never sends another task's caller identity** (#594).
+  The analysis task set the caller identity, a `ContextVar` the Wildbox
+  client forwards on every tool call, only when its caller had both a user
+  and a team id, and never reset it. A Celery worker runs one task after
+  another in the same context, so a task arriving with no caller, or a
+  partial one, would have made its tool calls as the previous task's user
+  and team. Each task now runs inside `caller_identity(caller)`, which
+  refuses a missing or incomplete caller with `CallerIdentityUnavailable`
+  before any work and restores the previous value when the task ends,
+  however it ends; the task is marked failed in Redis. `/v1/analyze`
+  refuses such a caller with 403 before writing any state or enqueuing
+  anything, `set_caller_identity()` returns the `ContextVar` token and
+  refuses a blank id, and the client refuses an identity without a user or
+  team id. The agent's tool calls run in asyncio tasks, several at once
+  through `asyncio.gather`, and a sync tool would run in LangChain's
+  thread pool under `copy_context()`; both inherit the task's context, and
+  the tests check the identity reaches the wire through each.
 - **One password policy for every path that sets a password** (#583).
   Registration and the reset-password flow accepted a one-character
   password: fastapi-users' `BaseUserCreate` does not check it and its
@@ -1081,6 +1098,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   counts only failures, and clears them on success), and nothing in
   the dashboard read the field, so it is removed rather than estimated.
 
+- **The tools service's standalone web UI** (#581). `app/web` served an
+  index of the tools, a page per tool with a form built from its input
+  schema, a settings page, a developer guide and Swagger UI / ReDoc pages,
+  which the gateway exposed under `/tools/`. Through the gateway it did
+  not work: its CSS and JavaScript were requested from `/static/`, which
+  the gateway sends to the dashboard, and its API calls carried a key
+  typed into the page rather than the session. The service no longer
+  serves `/`, `/tools/{name}`, `/settings`, `/guide`, `/docs`, `/redoc`
+  or `/static/`; `/openapi.json` stays. The gateway answers `/tools/` with
+  404 itself instead of proxying it, and no longer accepts the
+  `auth_token` cookie as a credential on safe methods, which it did only
+  for those page loads; the dashboard sends the session as a Bearer
+  token. The dashboard's `/toolbox` now lists the tools and the API route
+  that runs each one: its "Execute Tool" button only opened the removed
+  page. Running a tool from the dashboard is #585. `Jinja2` and `aiofiles`
+  leave the tools service's dependencies.
 - **The gateway's `/api/tools/` alias** (#567). It served the tools API
   beside the canonical `/api/v1/tools/`, with `Deprecation` and `Sunset`
   headers announcing its removal on 1 July 2026. Nothing in the

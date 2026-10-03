@@ -99,7 +99,7 @@ src/
 │   ├── auth/                    # Authentication pages
 │   ├── dashboard/               # Main dashboard
 │   ├── threat-intel/            # Threat intelligence features
-│   ├── toolbox/                 # Security tools execution
+│   ├── toolbox/                 # Security tools catalog
 │   ├── cloud-security/          # CSPM and compliance
 │   ├── endpoints/               # Endpoint management
 │   ├── vulnerabilities/         # Vulnerability management

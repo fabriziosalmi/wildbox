@@ -83,24 +83,11 @@ function _M.extract_auth_token()
         return api_key, "api_key"
     end
 
-    -- Fall back to the auth_token cookie, but ONLY for safe methods.
-    --
-    -- Browser navigations (the standalone tools UI at /tools/<name>) carry the
-    -- cookie the SPA sets at login and no Authorization header, so without this
-    -- those pages could not be authenticated at all -- which is why they were
-    -- previously served with no authentication whatsoever (WILDBO-AUTH-06).
-    --
-    -- Restricted to GET/HEAD/OPTIONS on purpose: accepting a cookie as proof of
-    -- identity on a state-changing request would make every mutating endpoint
-    -- CSRF-able, since a browser attaches cookies to cross-site form posts.
-    local method = ngx.req.get_method()
-    if method == "GET" or method == "HEAD" or method == "OPTIONS" then
-        local cookie_token = ngx.var.cookie_auth_token
-        if cookie_token and cookie_token ~= "" then
-            return cookie_token, "bearer"
-        end
-    end
-
+    -- No cookie fallback. The auth_token cookie was accepted on safe methods
+    -- for the standalone tools UI's page loads at /tools/ (WILDBO-AUTH-06),
+    -- which carried no Authorization header. That UI is removed (#581), and
+    -- the dashboard reads the cookie itself and sends it as a Bearer token,
+    -- so a cookie alone is not a credential here.
     return nil, "no_token"
 end
 

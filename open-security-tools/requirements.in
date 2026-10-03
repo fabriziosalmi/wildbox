@@ -22,8 +22,6 @@ uvicorn[standard]==0.32.1
 pydantic==2.10.3
 pydantic-settings==2.10.1
 python-dotenv==1.2.2
-Jinja2==3.1.6
-aiofiles==24.1.0
 dnspython==2.7.0
 aiodns==3.2.0
 python-whois==0.9.4
