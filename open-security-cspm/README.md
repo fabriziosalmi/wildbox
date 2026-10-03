@@ -19,10 +19,9 @@ A comprehensive, multi-cloud Security Posture Management service designed for th
 
 ### 🎯 **Executive Reporting**
 
-- **Executive Dashboard** with high-level security metrics
-- **Trending Analysis** to track security posture over time
-- **Compliance Scoring** per framework with gap analysis
-- **Remediation Roadmaps** with prioritized action items
+- **Dashboard Summary** with the scan count, failed checks by severity and
+  the compliance score of the newest completed scan of each account
+- **Compliance Scoring** per framework, from the same scan reports
 
 ### ⚡ **Advanced Operations**
 
@@ -201,32 +200,31 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 
 ### Advanced Endpoints
 
-#### Executive Summary
+#### Dashboard Summary
 
-**GET** `/api/v1/dashboard/executive-summary?provider=aws&days=30`
+**GET** `/api/v1/dashboard/summary?days=30`
+
+`total_scans` and `last_scan_at` count the scans the team started that are
+still kept (30 days). Every other figure comes from the newest completed scan
+of each of the team's accounts in the period, the reports
+`/api/v1/compliance/summary` reads; a failed check's severity is the one its
+check declares. With no completed scan the counts are 0 and
+`compliance_score` is `null`: nothing was assessed, which is not 0%.
 
 ```json
 {
+  "total_scans": 3,
+  "last_scan_at": "2026-10-03T08:12:44.120391",
   "summary_period_days": 30,
-  "provider_filter": "aws",
-  "security_posture": {
-    "total_resources_scanned": 245,
-    "security_score": 82.3,
-    "critical_findings": 5,
-    "high_findings": 12,
-    "compliance_frameworks": {
-      "CIS": {"compliance_percentage": 78.5},
-      "NIST": {"compliance_percentage": 85.2}
-    }
-  },
-  "trending_metrics": [
-    {
-      "date": "2025-06-24",
-      "security_score": 80.1,
-      "critical_findings": 7,
-      "total_findings": 45
-    }
-  ]
+  "accounts_assessed": 2,
+  "compliance_score": 71.4,
+  "total_findings": 6,
+  "critical_findings": 1,
+  "high_findings": 2,
+  "medium_findings": 2,
+  "low_findings": 1,
+  "info_findings": 0,
+  "unknown_severity_findings": 0
 }
 ```
 
@@ -251,31 +249,6 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
     }
   ],
   "parallel_execution_limit": 3
-}
-```
-
-#### Remediation Roadmap
-
-**GET** `/api/v1/scans/{scan_id}/remediation-roadmap`
-
-```json
-{
-  "scan_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
-  "total_remediation_items": 8,
-  "roadmap": [
-    {
-      "remediation": "Enable S3 bucket public access block",
-      "affected_resources": [
-        {"resource_id": "bucket-1", "resource_type": "S3Bucket"},
-        {"resource_id": "bucket-2", "resource_type": "S3Bucket"}
-      ],
-      "estimated_effort": "Low",
-      "priority": "Critical",
-      "compliance_impact": ["CIS", "NIST"],
-      "priority_score": 95,
-      "order": 1
-    }
-  ]
 }
 ```
 
@@ -367,7 +340,7 @@ const scanResult = await fetch('/api/cspm/scans', {
   body: JSON.stringify(scanConfig)
 });
 
-const executiveSummary = await fetch('/api/cspm/dashboard/executive-summary');
+const summary = await fetch('/api/v1/cspm/dashboard/summary');
 ```
 
 ### Guardian Integration
