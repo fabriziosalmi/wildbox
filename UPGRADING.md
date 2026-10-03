@@ -157,6 +157,15 @@ is at the top of the file.
   and answers 404. It returned "Invitation sent successfully" without
   storing or sending anything, so a script that called it never invited
   anyone; drop the call.
+- identity's admin analytics no longer report estimated request counts
+  (#570): `summary.api_requests_today` is gone from
+  `GET /api/v1/analytics/admin/usage-summary`, and
+  `api_usage.estimated_requests_today` and
+  `api_usage.estimated_requests_week` from
+  `GET /api/v1/analytics/admin/system-stats`. They were API keys used
+  times a constant, not counts. A script that reads them must stop; the
+  number of keys used in the last day is still there
+  (`summary.api_keys_active`, `api_usage.keys_used_today`).
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 

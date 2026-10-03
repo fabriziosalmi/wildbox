@@ -801,6 +801,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Estimated request counts in identity's admin analytics** (#570).
+  `GET /api/v1/analytics/admin/usage-summary` returned
+  `summary.api_requests_today` as the number of API keys used in the
+  last day times 75, and `GET /api/v1/analytics/admin/system-stats`
+  returned `api_usage.estimated_requests_today` and
+  `api_usage.estimated_requests_week` the same way (times 50 and 200).
+  identity does not see API requests, the gateway serves them, so it has
+  no count to report; the three fields are removed rather than replaced
+  by another estimate. The dashboard's unused `useSystemStats` hook,
+  which read the first one and invented user counts when identity did
+  not answer, is deleted.
 - **identity's `POST /api/v1/admin/teams/{team_id}/invite`** (#570). It
   answered "Invitation sent successfully" to a team owner or admin and
   did nothing: no invitation was stored or sent, and the request body was
