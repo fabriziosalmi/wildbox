@@ -315,7 +315,7 @@ async function testApiConnection() {
     testBtn.disabled = true;
     
     try {
-        const response = await fetch('/api/tools', {
+        const response = await fetch('/api/v1/tools', {
             headers: {
                 'Authorization': `Bearer ${apiKey}`
             }
@@ -349,7 +349,7 @@ async function checkApiKeyStatus() {
     }
     
     try {
-        const response = await fetch('/api/tools', {
+        const response = await fetch('/api/v1/tools', {
             headers: {
                 'Authorization': `Bearer ${apiKey}`
             }
@@ -388,7 +388,7 @@ async function loadSystemInfo() {
         // Try to load tools info
         const apiKey = sessionStorage.getItem('api_key') || window.API_KEY;
         if (apiKey) {
-            const response = await fetch('/api/tools', {
+            const response = await fetch('/api/v1/tools', {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`
                 }

@@ -115,6 +115,23 @@ request "tools:execute key POST allowed" 200 \
 request "tools:execute key GET allowed" 200 \
     -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/tools/echo"
 
+# 9a-9e. Asynchronous tool tasks (#567): routed to the service's /api/tasks,
+#        authenticated, read with tools:read and cancelled with tools:execute.
+request "task read without credentials rejected" 401 \
+    "$GATEWAY_URL/api/v1/tasks/1f0c4ea6-task"
+request "read-only key reads a task" 200 \
+    -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/tasks/1f0c4ea6-task"
+assert_json "task path mapped upstream" '.path' '/api/tasks/1f0c4ea6-task'
+request "read-only key lists tasks" 200 \
+    -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/tasks?limit=5"
+assert_json "task list path mapped upstream" '.path' '/api/tasks?limit=5'
+request "read-only key cannot cancel a task" 403 \
+    -X DELETE -H "X-API-Key: wsk_readonly_ci_fixture" "$GATEWAY_URL/api/v1/tasks/1f0c4ea6-task"
+assert_json "cancel needs tools:execute" '.required_scope' 'tools:execute'
+request "tools:execute key cancels a task" 200 \
+    -X DELETE -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/tasks/1f0c4ea6-task"
+assert_json "cancel reaches the service as DELETE" '.method' 'DELETE'
+
 # 10. Auth cache: the two valid-bearer requests above (tests 4 and 5) must
 #     have produced exactly ONE /internal/authorize call
 request "mock call counts readable" 200 "$MOCK_URL/__mock/counts"

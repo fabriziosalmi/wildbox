@@ -205,139 +205,138 @@ curl -X GET https://<host>/api/v1/tools/nessus-001/info \
 
 ## Tool Execution
 
-### POST /tools/{tool_id}/execute
+A tool runs synchronously, answering with its output, or asynchronously, as
+a task that its submitter reads, cancels and lists through the task
+endpoints. The request body is the tool's input, as `GET
+/api/v1/tools/{tool_name}/info` describes it (`input_schema`).
 
-Execute a security tool with specified parameters.
+### POST /tools/{tool_name}
+
+Run a tool and wait for its output.
 
 **Method**: `POST`
-**Endpoint**: `/tools/{tool_id}/execute`
-**Authentication**: Required (API Key)
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| tool_id | string | Tool identifier |
-
-**Request Body**:
-
-| Field | Type | Required | Description |
-| ------- | ------ | ---------- | ------------- |
-| parameters | object | Yes | Tool-specific parameters |
-| async_mode | boolean | No | Execute asynchronously (default: true) |
-| callback_url | string | No | Webhook URL for async completion |
-| priority | string | No | Execution priority: low, normal, high |
-| tags | array | No | Tags for organizing execution |
-
-**Request**:
+**Endpoint**: `/api/v1/tools/{tool_name}`
+**Authentication**: Required (`tools:execute` for a scoped API key)
 
 ```bash
-curl -X POST https://<host>/api/v1/tools/nessus-001/execute \
+curl -X POST https://<host>/api/v1/tools/hash_generator \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "parameters": {
-      "target": "192.168.1.0/24",
-      "scan_profile": "full"
-    },
-    "async_mode": true,
-    "priority": "high"
-  }'
+  -d '{"input_text": "wildbox", "hash_types": ["sha256"]}'
+```
+
+**Response (200 OK)**: the tool's output schema. A tool that acts for the
+caller and refuses them answers 403, a tool that runs out of time 408.
+
+---
+
+### POST /tools/{tool_name}/async
+
+Queue a tool execution and return at once with a task ID.
+
+**Method**: `POST`
+**Endpoint**: `/api/v1/tools/{tool_name}/async`
+**Authentication**: Required (`tools:execute` for a scoped API key)
+
+```bash
+curl -X POST https://<host>/api/v1/tools/hash_generator/async \
+  -H "X-API-Key: your-api-key" \
+  -H "Content-Type: application/json" \
+  -d '{"input_text": "wildbox", "hash_types": ["sha256"]}'
 ```
 
 **Response (202 Accepted)**:
 
 ```json
 {
-  "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
-  "tool_id": "nessus-001",
-  "status": "queued",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": null,
-  "estimated_completion": "2024-11-07T19:35:00Z",
-  "result_url": "/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000"
+  "task_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "status": "accepted",
+  "tool_name": "hash_generator",
+  "status_url": "/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "message": "Task submitted successfully. Use task_id to check status."
 }
 ```
 
+The service records who submitted the task before it queues it; answers
+503 when it cannot (Redis or the task queue unreachable).
+
 ---
 
-### GET /tools/{tool_id}/executions/{execution_id}
+### Task visibility
 
-Get the status and results of a tool execution.
+A task belongs to the user who submitted it. Only that user can read,
+cancel or list it. For anyone else, a teammate or an administrator
+included, it does not exist: reading or cancelling it answers 404, the same
+answer as for an unknown task ID, so the response does not confirm that a
+task exists, and it is not in their list. A task without an owner record,
+such as one submitted before owners were recorded, is not readable.
+
+Owner records expire after a day; a result is kept for an hour after the
+task finishes. The task endpoints have their own prefix, `/api/v1/tasks`,
+because under `/api/v1/tools/` the segment after the prefix is a tool
+name.
+
+---
+
+### GET /tasks/{task_id}
+
+Status, and result once finished, of one of the caller's tasks.
 
 **Method**: `GET`
-**Endpoint**: `/tools/{tool_id}/executions/{execution_id}`
-**Authentication**: Required (API Key)
-
-**Path Parameters**:
-
-| Name | Type | Description |
-|------|------|-------------|
-| tool_id | string | Tool identifier |
-| execution_id | string | Execution ID |
-
-**Request**:
+**Endpoint**: `/api/v1/tasks/{task_id}`
+**Authentication**: Required (`tools:read` for a scoped API key)
 
 ```bash
-curl -X GET https://<host>/api/v1/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X GET https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d3cca427 \
   -H "X-API-Key: your-api-key"
 ```
 
-**Response (200 OK) - Running**:
+**Response (200 OK) - Waiting or running**:
 
 ```json
 {
-  "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
-  "tool_id": "nessus-001",
-  "status": "running",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": "2024-11-07T18:35:05Z",
-  "progress_percent": 35,
-  "progress_message": "Scanning 192.168.1.50/32... (35% complete)",
-  "estimated_completion": "2024-11-07T19:35:00Z"
+  "task_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "state": "PENDING",
+  "tool_name": "hash_generator",
+  "submitted_at": 1790000000.0,
+  "status": "pending",
+  "message": "Task is waiting to be executed"
 }
 ```
 
-**Response (200 OK) - Completed**:
+**Response (200 OK) - Finished**:
 
 ```json
 {
-  "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
-  "tool_id": "nessus-001",
+  "task_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "state": "SUCCESS",
+  "tool_name": "hash_generator",
+  "submitted_at": 1790000000.0,
   "status": "completed",
-  "created_at": "2024-11-07T18:35:00Z",
-  "started_at": "2024-11-07T18:35:05Z",
-  "completed_at": "2024-11-07T19:35:22Z",
-  "execution_time_seconds": 3617,
-  "results": {
-    "vulnerabilities_found": 45,
-    "critical": 3,
-    "high": 12,
-    "medium": 30,
-    "hosts_scanned": 256,
-    "services_discovered": 1250,
-    "compliance_issues": 8,
-    "assets_discovered": 156
-  },
-  "report_url": "/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000/report",
-  "raw_output_url": "/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000/raw"
+  "error": null,
+  "result": {"success": true, "hash_results": ["..."]},
+  "duration": 0.012,
+  "completed_at": "2026-10-03T10:00:01.234567"
 }
 ```
+
+`status` is `pending`, `running`, `retrying`, `completed`, `failed`,
+`timeout`, `refused` (a tool that acts for the caller and does not
+authorize them) or `cancelled`; `state` is Celery's. **404** for a task the
+caller did not submit or that does not exist.
 
 ---
 
-### DELETE /tools/{tool_id}/executions/{execution_id}
+### DELETE /tasks/{task_id}
 
-Cancel a running or pending tool execution.
+Cancel one of the caller's pending or running tasks.
 
 **Method**: `DELETE`
-**Endpoint**: `/tools/{tool_id}/executions/{execution_id}`
-**Authentication**: Required (API Key)
-
-**Request**:
+**Endpoint**: `/api/v1/tasks/{task_id}`
+**Authentication**: Required (`tools:execute` for a scoped API key)
 
 ```bash
-curl -X DELETE https://<host>/api/v1/tools/nessus-001/executions/exec-550e8400-e29b-41d4-a716-446655440000 \
+curl -X DELETE https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d3cca427 \
   -H "X-API-Key: your-api-key"
 ```
 
@@ -345,9 +344,51 @@ curl -X DELETE https://<host>/api/v1/tools/nessus-001/executions/exec-550e8400-e
 
 ```json
 {
-  "message": "Execution cancelled successfully",
-  "execution_id": "exec-550e8400-e29b-41d4-a716-446655440000",
-  "status": "cancelled"
+  "task_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+  "status": "cancelled",
+  "message": "Task cancellation requested"
+}
+```
+
+**400** for a task that has finished; **404** for a task the caller did not
+submit or that does not exist.
+
+---
+
+### GET /tasks
+
+The caller's tasks of the last day, newest first.
+
+**Method**: `GET`
+**Endpoint**: `/api/v1/tasks`
+**Authentication**: Required (`tools:read` for a scoped API key)
+
+**Query Parameters**:
+
+| Name | Type | Required | Description |
+| ------ | ------ | ---------- | ------------- |
+| limit | integer | No | 1 to 100 (default: 50) |
+
+```bash
+curl -X GET "https://<host>/api/v1/tasks?limit=20" \
+  -H "X-API-Key: your-api-key"
+```
+
+**Response (200 OK)**:
+
+```json
+{
+  "tasks": [
+    {
+      "task_id": "1b4e28ba-2fa1-41d2-883f-0016d3cca427",
+      "tool_name": "hash_generator",
+      "submitted_at": 1790000000.0,
+      "state": "SUCCESS",
+      "status": "completed",
+      "status_url": "/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d3cca427"
+    }
+  ],
+  "count": 1
 }
 ```
 
@@ -511,8 +552,9 @@ Lynis, OpenSCAP, Compliance Checker
 | 202 | Accepted | Tool execution submitted asynchronously |
 | 400 | Bad Request | Invalid parameters or request body |
 | 401 | Unauthorized | Missing or invalid API key |
-| 404 | Not Found | Tool or execution not found |
+| 404 | Not Found | Tool not found; task not found or not the caller's |
 | 409 | Conflict | Tool not available or in error state |
+| 503 | Service Unavailable | Asynchronous execution unavailable (Redis or queue down) |
 | 429 | Too Many Requests | Rate limit exceeded |
 | 500 | Internal Server Error | Service error |
 
@@ -537,73 +579,44 @@ X-RateLimit-Reset: 1730963100
 
 ## Examples
 
-### Execute a Network Vulnerability Scan
+### Run a Tool Asynchronously and Wait for Its Result
 
 ```bash
-# Get Nessus scanner info
-curl -X GET https://<host>/api/v1/tools/nessus-001/info \
-  -H "X-API-Key: your-api-key" | jq '.'
-
-# Execute full vulnerability scan
-EXEC_ID=$(curl -s -X POST https://<host>/api/v1/tools/nessus-001/execute \
+TASK_ID=$(curl -s -X POST https://<host>/api/v1/tools/hash_generator/async \
   -H "X-API-Key: your-api-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "parameters": {
-      "target": "192.168.0.0/16",
-      "scan_profile": "full"
-    },
-    "async_mode": true,
-    "priority": "high"
-  }' | jq -r '.execution_id')
+  -d '{"input_text": "wildbox", "hash_types": ["sha256"]}' | jq -r '.task_id')
 
-echo "Execution started: $EXEC_ID"
+echo "Task submitted: $TASK_ID"
 
-# Monitor progress
 while true; do
-  STATUS=$(curl -s -X GET "https://<host>/api/v1/tools/nessus-001/executions/$EXEC_ID" \
-    -H "X-API-Key: your-api-key" | jq '.')
+  TASK=$(curl -s "https://<host>/api/v1/tasks/$TASK_ID" \
+    -H "X-API-Key: your-api-key")
+  STATUS=$(echo "$TASK" | jq -r '.status')
+  echo "Status: $STATUS"
 
-  STATE=$(echo "$STATUS" | jq -r '.status')
-  PROGRESS=$(echo "$STATUS" | jq -r '.progress_percent // "N/A"')
-
-  echo "Status: $STATE - Progress: $PROGRESS%"
-
-  if [ "$STATE" = "completed" ] || [ "$STATE" = "failed" ]; then
-    echo "$STATUS" | jq '.results'
+  if [ "$STATUS" != "pending" ] && [ "$STATUS" != "running" ] && [ "$STATUS" != "retrying" ]; then
+    echo "$TASK" | jq '.result'
     break
   fi
-
-  sleep 5
+  sleep 2
 done
 ```
 
-### Execute Multiple Tools in Sequence
+### Queue Several Lookups and List Them
 
 ```bash
 #!/bin/bash
 
-TOOLS=("nessus-001" "burpsuite-001" "metasploit-001")
-TARGET="192.168.1.1"
-
-for tool in "${TOOLS[@]}"; do
-  echo "Executing $tool on $TARGET"
-
-  EXEC=$(curl -s -X POST "https://<host>/api/v1/tools/$tool/execute" \
+for domain in example.com example.org; do
+  curl -s -X POST "https://<host>/api/v1/tools/whois_lookup/async" \
     -H "X-API-Key: your-api-key" \
     -H "Content-Type: application/json" \
-    -d "{
-      \"parameters\": {
-        \"target\": \"$TARGET\"
-      },
-      \"async_mode\": true
-    }")
-
-  EXEC_ID=$(echo "$EXEC" | jq -r '.execution_id')
-  echo "Execution ID: $EXEC_ID"
-
-  sleep 2
+    -d "{\"domain\": \"$domain\"}" | jq -r '.task_id'
 done
+
+curl -s "https://<host>/api/v1/tasks" -H "X-API-Key: your-api-key" \
+  | jq '.tasks[] | {task_id, tool_name, status}'
 ```
 
 ---

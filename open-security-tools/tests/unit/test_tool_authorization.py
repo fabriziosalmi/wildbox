@@ -440,7 +440,7 @@ def test_target_entries_match_url_targets(
 
 
 @pytest.fixture
-def async_client():
+def async_client(task_ownership):
     pytest.importorskip("celery")
     from app.api import async_router
     from app.auth import verify_api_key
@@ -461,12 +461,8 @@ def test_async_submission_carries_the_authenticated_caller(async_client, monkeyp
     client, async_router = async_client
     submitted = []
 
-    class FakeTask:
-        id = "task-1"
-
-    def fake_apply_async(kwargs):
+    def fake_apply_async(task_id=None, kwargs=None):
         submitted.append(kwargs)
-        return FakeTask()
 
     monkeypatch.setattr(
         async_router.execute_tool_async, "apply_async", fake_apply_async
@@ -478,8 +474,12 @@ def test_async_submission_carries_the_authenticated_caller(async_client, monkeyp
     assert submitted[0]["user_id"] == CALLER
 
 
-def test_async_status_reports_a_refused_task_as_refused(async_client, monkeypatch):
+def test_async_status_reports_a_refused_task_as_refused(
+    async_client, monkeypatch, task_ownership
+):
     client, async_router = async_client
+    # Only the task's owner can read it (#567).
+    task_ownership.record("task-1", user_id=CALLER, team_id=str(uuid.uuid4()), tool_name=TOOL)
 
     class FakeResult:
         state = "SUCCESS"

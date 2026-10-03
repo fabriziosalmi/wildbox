@@ -31,6 +31,18 @@ def set_caller_identity(user_id: str, team_id: str, role: str = "member") -> Non
     })
 
 
+class CallerIdentityUnavailable(RuntimeError):
+    """An internal call has no caller identity or no gateway secret to send.
+
+    The services the client calls accept gateway-authenticated requests only:
+    the caller's X-Wildbox-* identity with the GATEWAY_INTERNAL_SECRET proof
+    of origin. There is nothing else to send. The client used to fall back to
+    the static INTERNAL_API_KEY as X-API-Key, which the tools service has not
+    accepted since #566 (it answers 401), so the fallback only turned a
+    configuration error into an unexplained authentication failure (#567).
+    """
+
+
 class WildboxAPIClient:
     """Client for interacting with Wildbox microservices"""
     
@@ -51,12 +63,12 @@ class WildboxAPIClient:
         self.data_url = settings.wildbox_data_url
         self.guardian_url = settings.wildbox_guardian_url
         self.responder_url = settings.wildbox_responder_url
-        self.api_key = settings.internal_api_key
         self.gateway_secret = settings.gateway_internal_secret
-        if not self.api_key and not self.gateway_secret:
-            logger.warning(
-                "Neither INTERNAL_API_KEY nor GATEWAY_INTERNAL_SECRET is set — "
-                "internal tool calls will be unauthenticated and rejected."
+        if not self.gateway_secret:
+            logger.error(
+                "GATEWAY_INTERNAL_SECRET is not set: every internal tool call "
+                "will fail, because the services accept gateway-authenticated "
+                "requests only."
             )
 
         # HTTP client configuration
@@ -65,24 +77,34 @@ class WildboxAPIClient:
     def _request_headers(self) -> Dict[str, str]:
         """Build auth headers per call.
 
-        Preferred (#175): forward the caller's gateway identity (X-Wildbox-*)
-        plus the proof-of-origin secret, so downstream services apply the user's
-        real team scope and role. Fall back to the static (now non-privileged,
-        #175) service API key only when no caller identity / secret is available.
+        Forwards the caller's gateway identity (X-Wildbox-*) with the
+        proof-of-origin secret (#175), so downstream services apply the user's
+        real team scope and role. Without both there is no way to authenticate,
+        and the call fails here, saying which is missing, instead of reaching
+        the service and coming back 401.
+
+        Raises:
+            CallerIdentityUnavailable: no caller identity was set for this
+                task, or GATEWAY_INTERNAL_SECRET is not configured.
         """
-        headers = {
+        caller = _caller_identity.get()
+        missing = []
+        if not caller:
+            missing.append("no caller identity was set for this task (set_caller_identity)")
+        if not self.gateway_secret:
+            missing.append("GATEWAY_INTERNAL_SECRET is not set")
+        if missing:
+            message = "Cannot authenticate an internal call: " + "; ".join(missing)
+            logger.error(message)
+            raise CallerIdentityUnavailable(message)
+        return {
             "User-Agent": "Open-Security-Agents/1.0",
             "Content-Type": "application/json",
+            "X-Wildbox-User-ID": caller["user_id"],
+            "X-Wildbox-Team-ID": caller["team_id"],
+            "X-Wildbox-Role": caller["role"],
+            "X-Gateway-Secret": self.gateway_secret,
         }
-        caller = _caller_identity.get()
-        if caller and self.gateway_secret:
-            headers["X-Wildbox-User-ID"] = caller["user_id"]
-            headers["X-Wildbox-Team-ID"] = caller["team_id"]
-            headers["X-Wildbox-Role"] = caller["role"]
-            headers["X-Gateway-Secret"] = self.gateway_secret
-        else:
-            headers["X-API-Key"] = self.api_key
-        return headers
     
     async def run_tool(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -393,9 +415,11 @@ class WildboxAPIClient:
         for service_name, service_url in services.items():
             try:
                 async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
+                    # /health is public on every service, and a health check
+                    # runs outside any user's task, so it sends no identity.
                     response = await client.get(
                         f"{service_url}/health",
-                        headers=self._request_headers()
+                        headers={"User-Agent": "Open-Security-Agents/1.0"},
                     )
                     if response.status_code == 200:
                         health_status[service_name] = "healthy"
