@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from typing import Dict, Any, List
 from open_security_shared.gateway_auth import GatewayUser
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from app.auth import verify_api_key
 from app.execution_manager import ToolExecutionManager
-from app.input_validation import InputSanitizer
 from app.logging_config import get_logger
+from app.target_policy import TargetRefused, enforce_target_policy
 from app.tool_loader import find_schema_classes
 
 logger = get_logger(__name__)
@@ -175,12 +176,14 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
                 detail="Input validation failed"
             )
 
-        # SSRF guard: refuse to let a tool connect to private/internal/cloud-metadata
-        # targets, regardless of whether the individual tool validates its own input.
+        # Target policy: refuse to let a tool connect to private, internal or
+        # cloud-metadata targets, whether it fetches a URL (SSRF guard) or
+        # scans a host, address or range (#614), before the tool runs. It
+        # resolves names, so it runs off the event loop.
         try:
-            InputSanitizer.validate_request_urls(validated_input)
-        except ValueError as e:
-            logger.warning(f"Blocked SSRF target for {tool_name}: {e}")
+            await run_in_threadpool(enforce_target_policy, tool_name, validated_input)
+        except TargetRefused as e:
+            logger.warning(f"Refused target for {tool_name}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e)

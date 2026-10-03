@@ -26,6 +26,7 @@ services:
       - DEBUG=${DEBUG:-false}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - REDIS_URL=redis://redis:6379
+      - TOOLS_ALLOWED_INTERNAL_TARGETS=${TOOLS_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       - redis
     volumes:

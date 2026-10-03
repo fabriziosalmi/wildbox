@@ -14,13 +14,18 @@ def validate_target(target: str) -> str:
     if not target:
         raise ValueError("Target cannot be empty")
     
-    # Remove any potentially dangerous characters
+    # Allow only alphanumeric, dots, hyphens, and underscores. A target with
+    # anything else is refused, not stripped: stripping turned the value the
+    # network target policy checked into a different host ("::1" into "1",
+    # which resolves to 0.0.0.1), so the host scanned was not the host
+    # checked (#614).
     import re
-    # Allow only alphanumeric, dots, hyphens, and underscores
-    cleaned_target = re.sub(r'[^a-zA-Z0-9\.\-_]', '', target.strip())
-    
-    if not cleaned_target:
-        raise ValueError("Target contains no valid characters")
+    cleaned_target = target.strip()
+    if not re.fullmatch(r'[a-zA-Z0-9.\-_]+', cleaned_target):
+        raise ValueError(
+            "Target must be a host name or an IPv4 address (letters, digits, "
+            "dots, hyphens and underscores)"
+        )
     
     # Limit length
     if len(cleaned_target) > 253:  # Max domain name length

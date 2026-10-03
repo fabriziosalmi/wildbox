@@ -125,6 +125,9 @@ services:
       - RATE_LIMIT_REQUESTS=${RATE_LIMIT_REQUESTS:-500}
       - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      # Internal ranges and hosts the network tools may scan; empty refuses
+      # every internal target (#614). The worker must get the same value.
+      - TOOLS_ALLOWED_INTERNAL_TARGETS=${TOOLS_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       wildbox-redis:
         condition: service_healthy
@@ -176,6 +179,9 @@ services:
       - LOG_LEVEL=DEBUG
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - REDIS_URL=redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/2
+      # The same allowlist as the api service: asynchronous runs are checked
+      # here, in the worker (#614).
+      - TOOLS_ALLOWED_INTERNAL_TARGETS=${TOOLS_ALLOWED_INTERNAL_TARGETS:-}
     depends_on:
       wildbox-redis:
         condition: service_healthy

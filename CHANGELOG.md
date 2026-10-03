@@ -736,6 +736,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Network tools refuse internal targets unless the operator allows
+  them** (#614). The URL guard covered tools that fetch a URL; the tools
+  that take a host, an address, a range, a DNS server or an image
+  reference connected to whatever they were given, so any authenticated
+  user could scan the platform's own network (Redis, PostgreSQL, the
+  other services, cloud metadata) from inside it. One check,
+  `app/target_policy.py`, now runs before every tool on the synchronous
+  endpoint, in the Celery task and in each security_automation_orchestrator
+  step, together with the URL guard. It refuses private, loopback,
+  link-local, unspecified, multicast, reserved and shared
+  (`100.64.0.0/10`) addresses, IPv4 addresses embedded in IPv6 ones,
+  ranges with any such address, host names that resolve to one (every
+  answer is checked) or do not resolve, non-canonical spellings such as
+  `127.1`, and the deployment's own names (any name without a dot,
+  `localhost`, `*.local`, `*.internal`, metadata names). A range holds at
+  most 1024 addresses. The fields checked are declared per tool, with
+  their kind, in `NETWORK_TARGET_FIELDS`; a unit test fails when a tool
+  has a host-like field that is neither declared nor listed as reviewed
+  with a reason. Operators allow internal lab ranges and hosts with
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` (CIDR ranges, IP addresses and host
+  names; empty by default; a bad entry stops the service at start-up).
+  The authorization manager's `authorized_targets` (#564) is not reused:
+  it narrows which public targets a caller may attack and never lifts
+  the SSRF guard. dns_enumerator applies the policy to the name servers
+  it attempts a zone transfer from and connects to the checked address,
+  which also makes the transfers work: they passed a name dnspython does
+  not accept. port_scanner refuses a target with other characters
+  instead of removing them, which turned `::1` into `1` (0.0.0.1). A
+  host name is still resolved again by most tools when they connect, so
+  a name whose answer changes in between (DNS rebinding) is a remaining
+  window, documented in the module. See UPGRADING section 29.
+
 - **A member removed from a team loses the team at the gateway on the
   next request** (#613). A session is not bound to a team:
   `/internal/authorize` resolves the oldest membership on every request,

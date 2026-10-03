@@ -418,7 +418,8 @@ def test_orchestrated_step_aimed_at_an_internal_target_is_refused(dns, spy_tools
     out = asyncio.run(orch.execute_tool(_workflow(step)))
     result = out.workflow_execution.step_results[0]
     assert result.status == "failed"
-    assert "Blocked SSRF target" in result.error_message
+    assert "Blocked target" in result.error_message
+    assert "SSRF" in result.error_message
     assert spy_tools == []
 
 
