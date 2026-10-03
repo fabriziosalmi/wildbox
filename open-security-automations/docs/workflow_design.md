@@ -21,7 +21,7 @@ This guide outlines best practices and design patterns for creating effective wo
 
 Each workflow should have a clear, single purpose:
 
-- ✅ **Good**: "Support Ticket Triage"
+- ✅ **Good**: "Executive Security Dashboard"
 - ❌ **Bad**: "Support and Marketing and Analytics"
 
 ### 2. Modular Design
@@ -399,34 +399,21 @@ Each workflow must include:
 
 ```javascript
 /**
- * Workflow: Support Ticket Triage
- * Purpose: Automatically classify and route support emails
- * Trigger: IMAP email monitoring
- * 
- * Inputs:
- * - Email subject (string)
- * - Email body (string)
- * - Sender address (string)
- * 
+ * Workflow: Executive Security Dashboard Automation
+ * Purpose: Weekly summary of the CSPM figures, by e-mail and Slack
+ * Trigger: Schedule, Mondays 08:00
+ *
+ * Reads (through the gateway, X-API-Key):
+ * - GET /api/v1/cspm/dashboard/summary?days=30
+ * - GET /api/v1/cspm/compliance/summary?days=30
+ * - GET /api/v1/cspm/compliance/findings?status=failed&days=30&limit=1000
+ *
  * Outputs:
- * - Classification result
- * - Routing decision
- * - Confidence score
- * 
- * Dependencies:
- * - Wildbox Agents API
- * - Support database
- * - Discord webhook
- * 
- * Error Handling:
- * - Invalid email format → Archive as unprocessed
- * - API timeout → Retry 3 times
- * - Classification failure → Route to human review
- * 
- * Performance:
- * - Avg execution time: 5-10 seconds
- * - Max concurrent executions: 5
- * - Rate limit: 100 emails/hour
+ * - HTML e-mail to $EXECUTIVE_REPORT_EMAIL_TO
+ * - Text message to $SLACK_WEBHOOK_URL
+ *
+ * With no completed scan in the period: says there is nothing to report.
+ * On an API error: the execution fails; nothing is sent.
  */
 ```
 
@@ -435,21 +422,14 @@ Each workflow must include:
 Complex nodes should include comments:
 
 ```javascript
-// Node: Process and Categorize Articles
-// Purpose: Filter recent articles and group by security themes
-// Performance: Processes up to 1000 articles in ~2 seconds
+// Node: Build Executive Report
+// Purpose: Group the failed checks by check, most severe first
 
-const articles = $input.all().map(item => item.json);
-const currentTime = new Date();
-
-// Filter articles from last 24 hours
-const oneDayAgo = new Date(currentTime.getTime() - 24 * 60 * 60 * 1000);
-const recentArticles = articles.filter(article => {
-    const pubDate = new Date(article.pubDate);
-    return pubDate >= oneDayAgo;
-});
-
-// Categorization logic...
+const failed = $('Get Failed Findings').first().json;
+const byCheck = new Map();
+for (const finding of failed.findings || []) {
+  // One entry per check, counting the resources it fails on...
+}
 ```
 
 ### 3. **Change Log**
