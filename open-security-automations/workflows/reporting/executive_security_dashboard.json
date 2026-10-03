@@ -1,162 +1,222 @@
 {
+  "id": "wbxExecDashboard",
   "name": "Executive Security Dashboard Automation",
   "nodes": [
-    {
-      "parameters": {
-        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/dashboard/executive-summary",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
-        "options": {}
-      },
-      "name": "Get Dashboard Data",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [740, 240],
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "1",
-          "name": "Wildbox API Auth"
-        }
-      }
-    },
     {
       "parameters": {
         "rule": {
           "interval": [
             {
               "field": "cronExpression",
-              "cronExpression": "0 8 * * 1"
+              "expression": "0 8 * * 1"
             }
           ]
         }
       },
-      "name": "Schedule Trigger",
-      "type": "n8n-nodes-base.cronTrigger",
-      "typeVersion": 1,
-      "position": [540, 240]
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        300
+      ]
     },
     {
       "parameters": {
-        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/cspm/summary",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/v1/cspm/dashboard/summary",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "days",
+              "value": "30"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WILDBOX_API_KEY }}"
+            }
+          ]
+        },
         "options": {}
       },
-      "name": "Get CSPM Summary",
+      "name": "Get CSPM Dashboard Summary",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [940, 240],
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "1",
-          "name": "Wildbox API Auth"
-        }
-      }
+      "typeVersion": 4.2,
+      "position": [
+        460,
+        300
+      ]
     },
     {
       "parameters": {
-        "url": "={{$node[\"Schedule Trigger\"].json[\"webhook_url\"]}}/api/v1/sensors/summary",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "httpBasicAuth",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/v1/cspm/compliance/summary",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "days",
+              "value": "30"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WILDBOX_API_KEY }}"
+            }
+          ]
+        },
         "options": {}
       },
-      "name": "Get Sensor Summary",
+      "name": "Get Compliance Summary",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [1140, 240],
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "1",
-          "name": "Wildbox API Auth"
-        }
-      }
+      "typeVersion": 4.2,
+      "position": [
+        680,
+        300
+      ]
     },
     {
       "parameters": {
-        "functionCode": "// Executive Security Report Generator\nconst dashboardData = items[0].json;\nconst cspmData = items[1].json;\nconst sensorData = items[2].json;\n\n// Calculate security metrics\nconst totalIssues = cspmData.critical_findings + cspmData.high_findings + cspmData.medium_findings;\nconst criticalCount = cspmData.critical_findings || 0;\nconst riskScore = Math.round((criticalCount * 10 + cspmData.high_findings * 5 + cspmData.medium_findings * 2) / 10);\n\n// Generate executive summary\nconst executiveSummary = {\n  report_date: new Date().toISOString().split('T')[0],\n  security_posture_score: Math.max(0, 100 - riskScore),\n  total_findings: totalIssues,\n  critical_findings: criticalCount,\n  high_findings: cspmData.high_findings || 0,\n  medium_findings: cspmData.medium_findings || 0,\n  endpoints_monitored: sensorData.active_endpoints || 0,\n  compliance_score: cspmData.compliance_percentage || 85,\n  top_risks: [\n    \"Unencrypted data stores\",\n    \"Open security groups\",\n    \"Missing MFA enforcement\",\n    \"Outdated access keys\",\n    \"Unmonitored privileged accounts\"\n  ],\n  recommendations: [\n    \"Enable MFA for all privileged accounts\",\n    \"Implement data encryption at rest\",\n    \"Review and restrict security group rules\",\n    \"Rotate access keys older than 90 days\",\n    \"Enable detailed logging for critical resources\"\n  ],\n  trend_analysis: {\n    security_improvement: riskScore < 50 ? 'Improving' : 'Needs Attention',\n    compliance_trend: 'Stable',\n    threat_level: criticalCount > 5 ? 'High' : criticalCount > 0 ? 'Medium' : 'Low'\n  }\n};\n\nreturn [{json: executiveSummary}];"
-      },
-      "name": "Generate Executive Report",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [1340, 240]
-    },
-    {
-      "parameters": {
-        "to": "{{$node[\"Schedule Trigger\"].json[\"executive_email\"]}}",
-        "subject": "Weekly Security Posture Report - {{$node[\"Generate Executive Report\"].json[\"report_date\"]}}",
-        "html": "<h2>🛡️ Weekly Security Posture Report</h2>\n<h3>Executive Summary</h3>\n<table border=\"1\" style=\"border-collapse: collapse; width: 100%;\">\n  <tr><td><strong>Security Posture Score</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"security_posture_score\"]}}/100</td></tr>\n  <tr><td><strong>Total Findings</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"total_findings\"]}}</td></tr>\n  <tr><td><strong>Critical Issues</strong></td><td style=\"color: red;\">{{$node[\"Generate Executive Report\"].json[\"critical_findings\"]}}</td></tr>\n  <tr><td><strong>Compliance Score</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"compliance_score\"]}}%</td></tr>\n  <tr><td><strong>Endpoints Monitored</strong></td><td>{{$node[\"Generate Executive Report\"].json[\"endpoints_monitored\"]}}</td></tr>\n</table>\n\n<h3>🎯 Top Security Risks</h3>\n<ul>\n{{#each $node[\"Generate Executive Report\"].json.top_risks}}\n  <li>{{this}}</li>\n{{/each}}\n</ul>\n\n<h3>💡 Recommended Actions</h3>\n<ol>\n{{#each $node[\"Generate Executive Report\"].json.recommendations}}\n  <li>{{this}}</li>\n{{/each}}\n</ol>\n\n<p><em>Generated by Wildbox Security Platform</em></p>",
+        "url": "={{ $env.WILDBOX_API_GATEWAY_URL }}/api/v1/cspm/compliance/findings",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "status",
+              "value": "failed"
+            },
+            {
+              "name": "days",
+              "value": "30"
+            },
+            {
+              "name": "limit",
+              "value": "1000"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-API-Key",
+              "value": "={{ $env.WILDBOX_API_KEY }}"
+            }
+          ]
+        },
         "options": {}
+      },
+      "name": "Get Failed Findings",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Builds the weekly report from three CSPM responses. Every figure below is\n// read from them; nothing is estimated. Where the API has no data (no\n// completed scan in the period) the report says so instead of showing a number.\nconst summary = $('Get CSPM Dashboard Summary').first().json;\nconst compliance = $('Get Compliance Summary').first().json;\nconst failed = $('Get Failed Findings').first().json;\n\nconst SEVERITY_ORDER = ['critical', 'high', 'medium', 'low', 'info'];\nconst rank = (severity) => {\n  const index = SEVERITY_ORDER.indexOf(severity);\n  return index === -1 ? SEVERITY_ORDER.length : index;\n};\nconst escapeHtml = (value) =>\n  String(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;');\nconst percent = (value) => (value === null || value === undefined ? null : `${Number(value).toFixed(1)}%`);\n\n// Failed checks grouped by check: the checks that fail on most resources,\n// most severe first. Severity is the one the check declares; a check that is\n// no longer in the catalogue has none and sorts last.\nconst byCheck = new Map();\nfor (const finding of failed.findings || []) {\n  const entry = byCheck.get(finding.check_id) || {\n    check_id: finding.check_id,\n    title: finding.title,\n    severity: finding.severity || null,\n    remediation: finding.remediation || null,\n    resources: new Set(),\n  };\n  entry.resources.add(finding.resource_id);\n  byCheck.set(finding.check_id, entry);\n}\nconst topRisks = [...byCheck.values()]\n  .sort((a, b) => rank(a.severity) - rank(b.severity) || b.resources.size - a.resources.size)\n  .slice(0, 5)\n  .map((entry) => ({\n    check_id: entry.check_id,\n    title: entry.title,\n    severity: entry.severity,\n    resources_affected: entry.resources.size,\n    remediation: entry.remediation,\n  }));\n\nconst assessed = summary.accounts_assessed > 0;\nconst findingsShown = (failed.findings || []).length;\nconst report = {\n  report_date: new Date().toISOString().split('T')[0],\n  period_days: summary.summary_period_days,\n  assessed,\n  total_scans: summary.total_scans,\n  last_scan_at: summary.last_scan_at,\n  accounts_assessed: summary.accounts_assessed,\n  compliance_score: summary.compliance_score,\n  findings: {\n    total: summary.total_findings,\n    critical: summary.critical_findings,\n    high: summary.high_findings,\n    medium: summary.medium_findings,\n    low: summary.low_findings,\n    info: summary.info_findings,\n    unknown_severity: summary.unknown_severity_findings,\n  },\n  resources: {\n    total: compliance.total_resources,\n    compliant: compliance.compliant_resources,\n    non_compliant: compliance.non_compliant_resources,\n  },\n  frameworks: (compliance.frameworks || []).map((framework) => ({\n    name: framework.name,\n    compliance_percentage: framework.compliance_percentage,\n    passed_checks: framework.passed_checks,\n    total_checks: framework.total_checks,\n  })),\n  top_risks: topRisks,\n  // The findings endpoint pages at 1000; when there are more failed checks the\n  // grouping covers the first page only, and the report says so.\n  failed_findings_considered: findingsShown,\n  failed_findings_total: failed.total_count,\n};\n\nconst lines = [];\nlines.push(`Cloud security report, ${report.report_date} (last ${report.period_days} days)`);\nif (!assessed) {\n  lines.push('No completed CSPM scan in the period: there are no figures to report.');\n} else {\n  lines.push(`Accounts assessed: ${report.accounts_assessed}`);\n  lines.push(`Compliance score: ${percent(report.compliance_score) ?? 'not assessed'}`);\n  lines.push(\n    `Failed checks: ${report.findings.total} (critical ${report.findings.critical}, high ${report.findings.high}, ` +\n      `medium ${report.findings.medium}, low ${report.findings.low})`,\n  );\n}\nconst text = lines.join('\\n');\n\nconst rows = [\n  ['Accounts assessed', report.accounts_assessed],\n  ['Scans (retained)', report.total_scans],\n  ['Compliance score', percent(report.compliance_score) ?? 'Not assessed'],\n  ['Resources with a failed check', `${report.resources.non_compliant} of ${report.resources.total}`],\n  ['Failed checks', report.findings.total],\n  ['Critical', report.findings.critical],\n  ['High', report.findings.high],\n  ['Medium', report.findings.medium],\n  ['Low', report.findings.low],\n  ['Informational', report.findings.info],\n];\nif (report.findings.unknown_severity > 0) {\n  rows.push(['Severity unknown (check no longer in the catalogue)', report.findings.unknown_severity]);\n}\n\nlet html = `<h2>Cloud security report, ${escapeHtml(report.report_date)}</h2>`;\nhtml += `<p>Figures from the newest completed CSPM scan of each account in the last ${escapeHtml(report.period_days)} days.</p>`;\nif (!assessed) {\n  html += '<p><strong>No completed CSPM scan in the period: there are no figures to report.</strong></p>';\n} else {\n  html += '<table border=\"1\" cellpadding=\"4\" style=\"border-collapse: collapse;\">';\n  for (const [label, value] of rows) {\n    html += `<tr><td>${escapeHtml(label)}</td><td>${escapeHtml(value)}</td></tr>`;\n  }\n  html += '</table>';\n\n  if (report.frameworks.length) {\n    html += '<h3>Compliance by framework</h3><ul>';\n    for (const framework of report.frameworks) {\n      html +=\n        `<li>${escapeHtml(framework.name)}: ${escapeHtml(percent(framework.compliance_percentage))} ` +\n        `(${escapeHtml(framework.passed_checks)} of ${escapeHtml(framework.total_checks)} checks passed)</li>`;\n    }\n    html += '</ul>';\n  }\n\n  html += '<h3>Failing checks</h3>';\n  if (!report.top_risks.length) {\n    html += '<p>No check failed.</p>';\n  } else {\n    html += '<ol>';\n    for (const risk of report.top_risks) {\n      html +=\n        `<li><strong>${escapeHtml(risk.title)}</strong> (${escapeHtml(risk.severity || 'severity unknown')}, ` +\n        `${escapeHtml(risk.resources_affected)} resource(s))`;\n      if (risk.remediation) {\n        html += `<br>Remediation: ${escapeHtml(risk.remediation)}`;\n      }\n      html += '</li>';\n    }\n    html += '</ol>';\n    if (report.failed_findings_total > report.failed_findings_considered) {\n      html +=\n        `<p>Grouped from the first ${escapeHtml(report.failed_findings_considered)} of ` +\n        `${escapeHtml(report.failed_findings_total)} failed checks.</p>`;\n    }\n  }\n}\n\nreturn [{ json: { ...report, text, html } }];\n"
+      },
+      "name": "Build Executive Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{ $env.EXECUTIVE_REPORT_EMAIL_FROM }}",
+        "toEmail": "={{ $env.EXECUTIVE_REPORT_EMAIL_TO }}",
+        "subject": "=Cloud security report - {{ $json.report_date }}",
+        "emailFormat": "html",
+        "html": "={{ $json.html }}",
+        "options": {
+          "appendAttribution": false
+        }
       },
       "name": "Send Executive Email",
       "type": "n8n-nodes-base.emailSend",
-      "typeVersion": 1,
-      "position": [1540, 240]
+      "typeVersion": 2.1,
+      "position": [
+        1340,
+        200
+      ]
     },
     {
       "parameters": {
-        "url": "{{$node[\"Schedule Trigger\"].json[\"slack_webhook\"]}}",
-        "options": {},
-        "bodyParametersUi": {
-          "parameter": [
-            {
-              "name": "text",
-              "value": "📊 Weekly Security Report Generated\n\n🛡️ Security Score: {{$node[\"Generate Executive Report\"].json[\"security_posture_score\"]}}/100\n🚨 Critical Issues: {{$node[\"Generate Executive Report\"].json[\"critical_findings\"]}}\n📈 Compliance: {{$node[\"Generate Executive Report\"].json[\"compliance_score\"]}}%\n\nTrend: {{$node[\"Generate Executive Report\"].json.trend_analysis.security_improvement}}"
-            }
-          ]
-        }
+        "method": "POST",
+        "url": "={{ $env.SLACK_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.text }) }}",
+        "options": {}
       },
-      "name": "Slack Notification",
+      "name": "Post to Slack",
       "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 1,
-      "position": [1540, 440]
+      "typeVersion": 4.2,
+      "position": [
+        1340,
+        400
+      ]
     }
   ],
   "connections": {
-    "Schedule Trigger": {
+    "Weekly Schedule": {
       "main": [
         [
           {
-            "node": "Get Dashboard Data",
+            "node": "Get CSPM Dashboard Summary",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Dashboard Data": {
+    "Get CSPM Dashboard Summary": {
       "main": [
         [
           {
-            "node": "Get CSPM Summary",
+            "node": "Get Compliance Summary",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get CSPM Summary": {
+    "Get Compliance Summary": {
       "main": [
         [
           {
-            "node": "Get Sensor Summary",
+            "node": "Get Failed Findings",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Get Sensor Summary": {
+    "Get Failed Findings": {
       "main": [
         [
           {
-            "node": "Generate Executive Report",
+            "node": "Build Executive Report",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Generate Executive Report": {
+    "Build Executive Report": {
       "main": [
         [
           {
@@ -165,12 +225,16 @@
             "index": 0
           },
           {
-            "node": "Slack Notification",
+            "node": "Post to Slack",
             "type": "main",
             "index": 0
           }
         ]
       ]
     }
-  }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false
 }

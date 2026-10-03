@@ -36,6 +36,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A responder step condition on an undefined name is false** (#595).
+  Templates render with `StrictUndefined`, so a condition that checked
+  an optional field, such as `trigger.tag == 'urgent'` when the trigger
+  carried no `tag`, raised and failed the step instead of skipping it.
+  Such a condition now evaluates to false, the step is skipped, and the
+  run log records a warning naming the reference as written in the
+  condition, without any value from the context. A condition that is not
+  a valid expression or that the sandbox blocks still fails the step, and
+  an undefined name in a step's input is still an error. The semantics
+  are in the playbook reference (`open-security-responder/README.md`).
+- **A responder condition that reaches for Python internals fails the
+  step** (#595). A condition containing a blocked pattern such as
+  `__class__` evaluated to false, so the attempt was hidden behind a
+  skipped step. It now raises like a sandbox violation, and the step
+  fails according to its `on_failure` policy.
+- **The shipped responder playbooks' conditions are valid expressions**
+  (#595).
+  `triage_ip.yml`, `triage_url.yml` and `all_star_e2e.yml` wrote their
+  conditions as `"{{ ... }}"`. A condition is the body of an `{% if %}`,
+  so each was a syntax error and every conditional step failed. They are
+  now plain expressions, with `is defined` guards where the data is
+  optional, and `all_star_e2e.yml` reads the step result from `output`
+  instead of `result`, which never existed. A unit test compiles every
+  condition and every input template of every shipped playbook, so a
+  broken one fails CI.
 - **The agents service accepts analysis requests again** (#582).
   `POST /v1/analyze` answered 500 to every call: its rate limiter finds
   the request by the parameter named `request`, and that name belonged to
@@ -43,6 +68,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   request now has that name and the body is `analysis`; the JSON the
   endpoint takes is unchanged. The integration suite did not notice,
   because it accepts any status but 404 from that endpoint.
+
+- **The executive dashboard workflow reports cspm's figures, and only
+  those** (#592). The n8n workflow called
+  `/api/v1/dashboard/executive-summary`, removed in #578, and
+  `/api/v1/cspm/summary`, which never existed, under a base URL read from
+  a field its trigger does not produce. It then filled the report with
+  invented values: a compliance score of 85 when none came back, five
+  fixed "top risks", five fixed recommendations, a "Stable" compliance
+  trend, a posture score from weights of its own and an endpoint count
+  from a sensor API the gateway does not route. It now reads cspm's
+  `dashboard/summary`, `compliance/summary` and failed
+  `compliance/findings` through the gateway with a personal API key, and
+  reports what they return: accounts assessed, compliance score (or "not
+  assessed"), failed checks by severity, compliance by framework and the
+  failing checks most severe first, with their remediation text. With no
+  completed scan it says there is nothing to report. The e-mail body is
+  built in the workflow instead of with `{{#each}}`, which n8n does not
+  evaluate. Tested by importing it into n8n 1.74.0 and running it
+  against a stub of those three endpoints, with and without scan data.
+- **Workflows can be imported** (#592). `import_workflows.sh` and
+  `export_workflows.sh` used n8n's REST API with HTTP basic auth, which
+  n8n 1.x answers with 401, and the import covered four hard-coded
+  directories that did not include `reporting/`. Both now run the n8n
+  CLI in the container; the import takes every subdirectory, and a
+  workflow with a fixed id is updated in place when imported again.
+  `docker-compose.yml` passes the automations container the gateway URL,
+  the API key, the report recipients and the gateway's certificate
+  (not its key), so a workflow can reach the API over verified HTTPS.
+
 
 - **cspm keeps scan reports for 90 days, and batch scans count** (#591).
   The compliance summary and findings, the dashboard summary and the
@@ -885,6 +939,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   they collect and fails on any test file outside it; deliberate
   exceptions go in `scripts/test_collection_allowlist.txt` with a reason.
 
+- **A workflow that calls a missing route fails the build** (#592).
+  `scripts/check_automation_workflows.py`, run by Code Quality, resolves
+  the URL of every HTTP Request node in
+  `open-security-automations/workflows`, matches the path against the
+  gateway's HTTPS locations with nginx's precedence, maps it through
+  `proxy_pass` to the upstream service and looks the method and path up
+  in that service's routes, read from its source. It also fails on a
+  call that addresses a service directly, a base URL it cannot resolve,
+  an upstream it has no route table for, and a gateway call without an
+  `X-API-Key` or `Authorization: Bearer` header. Unit tests in
+  `tests/scripts` include a fixture that calls the removed executive
+  summary.
 - **The backend-dependent Playwright specs run on the real stack**
   (#103). `E2E Full-Stack` brings the stack up with
   `docker compose up --wait` and a generated `.env`, as Integration
@@ -1099,6 +1165,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **Nine n8n workflows that could not run** (#592): Security Compliance
+  Automation, Daily OSINT Report, Honeypot Alert Classifier, Threat
+  Intelligence Feed Aggregator, Vulnerability Sync and Enrichment, CSPM
+  Alert Processor, Security Incident Response Orchestrator, Support
+  Ticket Triage and Threat Intelligence Enrichment. Every one called
+  endpoints that do not exist on any service, or called services
+  directly, which they refuse since #566. UPGRADING.md lists each one
+  with its reason. The automations README now describes the one
+  workflow that remains instead of an inventory of planned ones.
 - **cspm's executive summary and remediation roadmap** (#578).
   `GET /api/v1/dashboard/executive-summary` and
   `GET /api/v1/scans/{scan_id}/remediation-roadmap` read
