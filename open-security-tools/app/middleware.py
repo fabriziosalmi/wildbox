@@ -65,8 +65,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             
         except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
             duration = time.time() - start_time
-            logger.error(
-                "HTTP request failed",
+            # The class and traceback go in the record: the formatter drops
+            # ``extra``, so this logged only "HTTP request failed", and a 500
+            # on the async task routes could not be traced from CI logs (#619).
+            logger.exception(
+                f"HTTP request failed: {type(e).__name__}",
                 extra={
                     "request_id": request_id,
                     "error": str(e),

@@ -8,8 +8,9 @@ import json
 import uuid
 import logging
 import asyncio
+from contextlib import ExitStack
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Mapping, Optional, List
 from jinja2 import (
     DictLoader, TemplateRuntimeError, TemplateSyntaxError, UndefinedError, nodes
 )
@@ -28,6 +29,7 @@ from .models import (
 from .config import settings
 from .playbook_parser import playbook_parser
 from .connectors import connector_registry
+from .caller import CallerIdentityUnavailable, require_caller, run_as
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -563,7 +565,12 @@ workflow_engine = WorkflowEngine()
 
 
 @dramatiq.actor(store_results=True, max_retries=0)
-def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str, Any]):
+def execute_playbook_actor(
+    run_id: str,
+    playbook_id: str,
+    trigger_data: Dict[str, Any],
+    caller: Optional[Dict[str, str]] = None,
+):
     """
     Dramatiq actor for executing playbooks asynchronously
     
@@ -571,11 +578,19 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         run_id: Unique identifier for this execution
         playbook_id: ID of the playbook to execute
         trigger_data: Data provided by the trigger
+        caller: The user who started the run, as recorded by start_execution
+            (user_id, team_id, role). Every call the run makes to another
+            service is made as this user (#616). A run without one fails
+            before its first step.
         
     Returns:
         Final execution result
     """
     start_time = datetime.utcnow()
+    # Holds the run's caller identity; closed in `finally`, so the identity
+    # is reset however the run ends and the next message this worker thread
+    # runs does not inherit it (#594, #616).
+    identity_scope = ExitStack()
     
     try:
         # Get the playbook - reload to ensure worker has fresh copy
@@ -623,6 +638,19 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         # Save updated state (QUEUED -> RUNNING transition)
         workflow_engine.save_execution_state(run_id, execution_result)
         workflow_engine.add_log(run_id, f"Starting execution of playbook '{playbook.name}'")
+
+        # Act for the user who started the run, or not at all. A run without
+        # a complete caller fails here, before any step, so no connector call
+        # is ever sent without an identity or under someone else's.
+        try:
+            identity = identity_scope.enter_context(run_as(caller))
+        except CallerIdentityUnavailable as e:
+            raise WorkflowExecutionError(f"Refusing to run: {e}") from e
+        workflow_engine.add_log(
+            run_id,
+            f"Acting for user {identity['user_id']} in team {identity['team_id']} "
+            f"(role {identity['role']})",
+        )
         
         # Execute each step
         for step in playbook.steps:
@@ -798,6 +826,7 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
         logger.error(f"Playbook execution {run_id} failed: {e}")
     
     finally:
+        identity_scope.close()
         # Final state save. A run that reaches this block has stopped, so it must
         # not be left saying RUNNING: if some future exception escapes both
         # handlers above, record it as FAILED rather than persisting a lie that
@@ -823,7 +852,7 @@ def execute_playbook_actor(run_id: str, playbook_id: str, trigger_data: Dict[str
 def start_execution(
     playbook_id: str,
     trigger_data: Dict[str, Any] = None,
-    team_id: Any = None,
+    caller: Optional[Mapping[str, Any]] = None,
 ) -> str:
     """
     Start a new playbook execution
@@ -831,13 +860,21 @@ def start_execution(
     Args:
         playbook_id: ID of the playbook to execute
         trigger_data: Data provided by the trigger
+        caller: The gateway-authenticated user starting the run (user_id,
+            team_id, role). The run is owned by their team and acts as them
+            in every call it makes (#616).
         
     Returns:
         Unique run ID for the execution
         
     Raises:
         WorkflowExecutionError: If playbook doesn't exist
+        CallerIdentityUnavailable: If ``caller`` is missing or incomplete;
+            nothing is persisted or queued then.
     """
+    # Who the run acts for, checked before anything is written or queued.
+    identity = require_caller(caller)
+
     # Validate playbook exists
     try:
         playbook = playbook_parser.get_playbook(playbook_id)
@@ -864,13 +901,14 @@ def start_execution(
     # a run executing with no owner key -- and because is_run_owner fails closed,
     # no team could read or cancel it while it performed its side effects
     # (WILDBO-DATA-06).
-    if team_id is not None:
-        workflow_engine.set_run_owner(run_id, team_id)
+    workflow_engine.set_run_owner(run_id, identity["team_id"])
 
     workflow_engine.add_log(run_id, f"Playbook '{playbook.name}' queued for execution")
     
     # Start execution
-    execute_playbook_actor.send(run_id, playbook_id, trigger_data or {})
+    # The caller travels with the message: the worker sets it for the run's
+    # duration and the connectors send it with every request (#616).
+    execute_playbook_actor.send(run_id, playbook_id, trigger_data or {}, identity)
     
     logger.info(f"Started execution {run_id} for playbook '{playbook_id}'")
     return run_id

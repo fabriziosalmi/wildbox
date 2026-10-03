@@ -791,7 +791,51 @@ gateway-authenticated requests only, as every other service does.
   `open-security-guardian/.env.example`. Nothing read them; remove them
   from your `.env` if you copied them.
 
-### 31. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
+### 31. Responder playbooks call the services as the user who ran them
+
+The responder's connectors now call the tools, data, guardian and agents
+services at their real routes, with the identity of the user who started the
+run and `GATEWAY_INTERNAL_SECRET` (#616). Before, every step that called one
+of them failed.
+
+- **New variables, optional.** `docker-compose.yml` sets the responder's
+  `WILDBOX_API_URL`, `WILDBOX_DATA_URL`, `WILDBOX_GUARDIAN_URL` and
+  `WILDBOX_AGENTS_URL` to the services' container addresses. Override them
+  with `RESPONDER_WILDBOX_API_URL` and its siblings. A deployment that runs
+  the responder elsewhere must set them, and `GATEWAY_INTERNAL_SECRET`, in
+  the environment of the process that runs the playbook worker
+  (`python -m dramatiq app.workflow_engine`); without the secret every
+  connector step fails.
+- **The URL defaults changed.** They named `localhost`, and Guardian's
+  port 8003, where Guardian does not listen; they are now the container
+  addresses of `docker-compose.yml`. A responder run outside the stack
+  must set the URLs. Each must be an absolute `http(s)` URL, or the
+  responder does not start.
+- **A run acts for its caller, with their role.** The services authorize
+  each call for that user and team: Guardian lets only owners and admins
+  create a vulnerability, so `all_star_e2e`'s `create_finding` fails, and
+  the run carries on, when a member runs it. A Guardian vulnerability needs
+  an asset Guardian knows by the address.
+- **Runs queued before the upgrade fail before their first step**: their
+  message records no caller. Start them again.
+- **Removed actions.** `data.add_to_blacklist`, `remove_from_blacklist`,
+  `check_blacklist`, `query_iocs`, `add_ioc`, `get_threat_feed`,
+  `update_reputation`, `get_asset_inventory`, `wildbox.add_to_blacklist`,
+  `isolate_endpoint` and `create_ticket` called routes no service serves.
+  A playbook of your own that uses one fails at that step as an unknown
+  action; use `data.search_indicators` or `data.lookup_indicators` to read
+  threat intelligence. `triage_url` no longer has a blacklist step.
+- **Changed actions.** `wildbox.analyze_ioc` takes `ioc_type`,
+  `ioc_value` and `priority` (no `context`) and returns the agents task.
+  `wildbox.query_threat_intel` takes `query`, `indicator_type` and `limit`.
+  `wildbox.create_vulnerability` requires `asset_name`, and
+  `wildbox.get_asset_info` reads a Guardian asset by its UUID.
+  `api.list_tools` returns `{"tools": [...]}`.
+- With the production overlay, the responder reaches these services on
+  `backend`, as before; `scripts/check_network_segmentation.py runtime`
+  checks it.
+
+### 32. `RATE_LIMIT_PER_HOUR` must be a whole number, or the gateway does not start
 
 The gateway reads the per-team budget from `RATE_LIMIT_PER_HOUR` (#627). A
 value that was not a number used to become the default, 10000, without a
@@ -800,7 +844,7 @@ word; the gateway now refuses to start with it and logs
 the line in `.env`: it must be a whole number from 1 to 1000000000, or be
 left out for the default. The compose file passes 10000 when it is empty.
 
-### 32. The agents routes accept a session token and count against the team's rate limit
+### 33. The agents routes accept a session token and count against the team's rate limit
 
 `/api/v1/agents/*` now authenticates like every other gateway route (#630).
 Rebuild the gateway (section 1 does).

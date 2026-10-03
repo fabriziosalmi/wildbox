@@ -9,7 +9,9 @@ are answered from the owner record taken at submission (app/task_ownership.py):
 any task the caller did not submit is "not found", whether it exists or not.
 """
 
+import re
 import uuid
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from celery.result import AsyncResult
@@ -91,6 +93,106 @@ def _status_of(state: str, result: Any) -> str:
         "FAILURE": "failed",
         "REVOKED": "cancelled",
     }.get(state, "unknown")
+
+
+# A state the stored result does not let us read.
+UNREADABLE = "UNKNOWN"
+
+# The progress fields execute_tool_async writes with update_state. STARTED
+# carries the worker's host name and pid, which are not the caller's business.
+PROGRESS_FIELDS = ("tool_name", "started_at", "status")
+
+# An exception class name, the only part of a failure a client is shown: the
+# message and traceback can carry internal paths, hosts and values.
+_EXCEPTION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_.]{0,127}")
+
+
+def _undecoded_meta(task_id: str) -> Dict[str, Any]:
+    """The stored meta without turning its result back into an exception.
+
+    Celery cannot rebuild an exception from a FAILURE or REVOKED result that
+    is not in its own format (a dict without ``exc_type``, as written by
+    ``update_state(state=FAILURE, meta={...})``) and raises ValueError, from
+    ``AsyncResult.state`` as well. The state itself is still in the record.
+    """
+    backend = celery_app.backend
+    try:
+        payload = backend.get(backend.get_key_for_task(task_id))
+        if payload is None:
+            return {"status": "PENDING", "result": None}
+        meta = backend.decode(payload)
+    except Exception as e:  # noqa: BLE001 -- anything here is an unreadable record
+        logger.warning(f"Unreadable result record for task {task_id}: {e!r}")
+        return {"status": UNREADABLE, "result": None}
+    if not isinstance(meta, dict):
+        return {"status": UNREADABLE, "result": None}
+    return meta
+
+
+def _task_meta(task_id: str) -> Dict[str, Any]:
+    """The task's state, result and completion time, read once.
+
+    One read, not ``AsyncResult.state`` followed by ``.info``: Celery caches a
+    result only once it is final, so each of those reads the backend again,
+    and a task cancelled in between was RUNNING for the first and REVOKED for
+    the second. The second then held a TaskRevokedError, which the response
+    could not serialize, and the read answered 500 (#619).
+    """
+    try:
+        meta = celery_app.backend.get_task_meta(task_id)
+    except (RedisError, OperationalError, OSError) as e:
+        raise _tracking_failed(e)
+    except Exception as e:  # noqa: BLE001 -- a record Celery cannot decode
+        logger.warning(f"Could not decode the result of task {task_id}: {e!r}")
+        meta = _undecoded_meta(task_id)
+    if not isinstance(meta, dict):
+        return {"status": UNREADABLE, "result": None}
+    return meta
+
+
+def _state_of(meta: Dict[str, Any]) -> str:
+    state = meta.get("status")
+    return state if isinstance(state, str) and state else UNREADABLE
+
+
+def _failure_name(result: Any) -> Optional[str]:
+    """The exception class behind a failed or retried task, if it is known."""
+    if isinstance(result, BaseException):
+        name = type(result).__name__
+    elif isinstance(result, dict):
+        name = result.get("exc_type")
+    else:
+        name = None
+    if isinstance(name, str) and _EXCEPTION_NAME.fullmatch(name):
+        return name
+    return None
+
+
+def _failure_message(result: Any) -> str:
+    name = _failure_name(result)
+    if name:
+        return f"Task execution failed ({name})"
+    return "Task execution failed"
+
+
+def _progress(info: Any) -> Optional[Dict[str, Any]]:
+    """The progress fields of a running task, JSON-serializable."""
+    if not isinstance(info, dict):
+        return None
+    progress = {
+        key: info[key]
+        for key in PROGRESS_FIELDS
+        if isinstance(info.get(key), (str, int, float, bool))
+    }
+    return progress or None
+
+
+def _completed_at(date_done: Any) -> Optional[str]:
+    if isinstance(date_done, datetime):
+        return date_done.isoformat()
+    if isinstance(date_done, str):
+        return date_done
+    return None
 
 
 @router.post("/tools/{tool_name}/async", status_code=status.HTTP_202_ACCEPTED)
@@ -185,8 +287,9 @@ def get_task_status(
         },
     )
 
-    task_result = AsyncResult(task_id, app=celery_app)
-    state = task_result.state
+    meta = _task_meta(task_id)
+    state = _state_of(meta)
+    result = meta.get("result")
 
     response = {
         "task_id": task_id,
@@ -202,11 +305,11 @@ def get_task_status(
 
     elif state in ("STARTED", "RUNNING"):
         response.update({"status": "running", "message": "Task is currently executing"})
-        if task_result.info:
-            response["info"] = task_result.info
+        progress = _progress(result)
+        if progress:
+            response["info"] = progress
 
     elif state == "SUCCESS":
-        result = task_result.result
         result = result if isinstance(result, dict) else {}
         response.update(
             {
@@ -215,9 +318,7 @@ def get_task_status(
                 "result": result.get("result"),
                 "duration": result.get("duration"),
                 "tool_name": result.get("tool_name", owner.get("tool_name")),
-                "completed_at": (
-                    task_result.date_done.isoformat() if task_result.date_done else None
-                ),
+                "completed_at": _completed_at(meta.get("date_done")),
             }
         )
 
@@ -225,8 +326,9 @@ def get_task_status(
         response.update(
             {
                 "status": "failed",
-                "error": str(task_result.info),
+                "error": _failure_message(result),
                 "message": "Task execution failed",
+                "completed_at": _completed_at(meta.get("date_done")),
             }
         )
 
@@ -235,16 +337,22 @@ def get_task_status(
             {
                 "status": "retrying",
                 "message": "Task is being retried after a failure",
-                "info": str(task_result.info),
+                "info": _failure_message(result),
             }
         )
 
     elif state == "REVOKED":
-        response.update({"status": "cancelled", "message": "Task was cancelled"})
+        response.update(
+            {
+                "status": "cancelled",
+                "message": "Task was cancelled",
+                "completed_at": _completed_at(meta.get("date_done")),
+            }
+        )
 
     else:
         response.update(
-            {"status": "unknown", "message": f"Unknown task state: {state}"}
+            {"status": "unknown", "message": "The task state cannot be read"}
         )
 
     return response
@@ -270,10 +378,10 @@ def cancel_task(
         },
     )
 
-    task_result = AsyncResult(task_id, app=celery_app)
+    state = _state_of(_task_meta(task_id))
 
-    if task_result.state in ["PENDING", "STARTED", "RUNNING", "RETRY"]:
-        task_result.revoke(terminate=True)
+    if state in ("PENDING", "STARTED", "RUNNING", "RETRY"):
+        AsyncResult(task_id, app=celery_app).revoke(terminate=True)
 
         return {
             "task_id": task_id,
@@ -282,7 +390,7 @@ def cancel_task(
         }
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
-        detail=f"Task cannot be cancelled (current state: {task_result.state})",
+        detail=f"Task cannot be cancelled (current state: {state})",
     )
 
 
@@ -304,9 +412,9 @@ def list_tasks(
 
     tasks = []
     for owner in owned:
-        task_result = AsyncResult(owner["task_id"], app=celery_app)
-        state = task_result.state
-        result: Optional[Any] = task_result.result if state == "SUCCESS" else None
+        meta = _task_meta(owner["task_id"])
+        state = _state_of(meta)
+        result = meta.get("result") if state == "SUCCESS" else None
         tasks.append(
             {
                 "task_id": owner["task_id"],

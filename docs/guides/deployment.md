@@ -365,6 +365,31 @@ reports `"celery": "healthy"` once a worker answers.
 - **Providers.** Only AWS scans run; GCP and Azure scans fail when the
   worker takes them.
 
+### The responder's playbooks
+
+A playbook run calls the tools, data, guardian and agents services as the
+user who started it: each request carries that user's gateway identity and
+`GATEWAY_INTERNAL_SECRET`, and the service authorizes it for that user and
+team. The playbook worker runs inside the `responder` container, so the
+container's environment is what it uses.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `RESPONDER_WILDBOX_API_URL` | `http://open-security-tools:8000` | Tools service, passed as `WILDBOX_API_URL` |
+| `RESPONDER_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL` |
+| `RESPONDER_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL` |
+| `RESPONDER_WILDBOX_AGENTS_URL` | `http://open-security-agents:8006` | Agents service, passed as `WILDBOX_AGENTS_URL` |
+
+The defaults are the services' addresses in both compose files. In the
+production overlay the responder reaches them on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
+- **Permissions follow the user.** A step the user may not take fails:
+  Guardian lets only owners and admins create a vulnerability, so
+  `all_star_e2e` records none when a member runs it.
+- **Results belong to the user.** A tool task or an AI analysis a run
+  queues is listed and readable by the user who ran it, and by nobody else.
+
 ### Internal targets of the network tools
 
 The network tools (port and vulnerability scanners, the TLS and
