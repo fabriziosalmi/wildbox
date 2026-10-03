@@ -49,6 +49,7 @@ os.environ.setdefault("GATEWAY_INTERNAL_SECRET", "y" * 40)
 
 import app.workflow_engine as engine_module  # noqa: E402
 import service_contracts as contracts  # noqa: E402
+from memory_redis import MemoryRedis  # noqa: E402
 from app.caller import CallerIdentityUnavailable  # noqa: E402
 from app.config import settings  # noqa: E402
 from app.connectors import connector_registry  # noqa: E402
@@ -358,47 +359,6 @@ class Services:
 # --- The engine, as production runs it --------------------------------------
 
 
-class FakeRedis:
-    """The part of redis-py the engine uses, in memory."""
-
-    def __init__(self):
-        self.hashes, self.lists, self.strings = {}, {}, {}
-
-    def hset(self, key, mapping):
-        # As redis-py encodes: a str (an ExecutionStatus too) by its value.
-        self.hashes.setdefault(key, {}).update(
-            {
-                k: (
-                    v
-                    if isinstance(v, bytes)
-                    else str.encode(v) if isinstance(v, str) else str(v).encode()
-                )
-                for k, v in mapping.items()
-            }
-        )
-
-    def hget(self, key, field):
-        return self.hashes.get(key, {}).get(field)
-
-    def expire(self, key, seconds):
-        pass
-
-    def rpush(self, key, value):
-        self.lists.setdefault(key, []).append(value)
-
-    def set(self, key, value, ex=None):
-        self.strings[key] = str(value).encode()
-
-    def get(self, key):
-        return self.strings.get(key)
-
-    def pipeline(self):
-        return self
-
-    def execute(self):
-        return []
-
-
 @pytest.fixture(scope="module")
 def playbooks():
     return PlaybookParser(playbooks_directory=str(PLAYBOOKS_DIR)).load_playbooks()
@@ -408,7 +368,7 @@ def playbooks():
 def run(monkeypatch, playbooks):
     """Run a shipped playbook end to end; return its persisted record."""
     engine = engine_module.workflow_engine
-    monkeypatch.setattr(engine, "redis_client", FakeRedis())
+    monkeypatch.setattr(engine, "redis_client", MemoryRedis())
     monkeypatch.setattr(engine_module.playbook_parser, "playbooks", playbooks)
     actor = engine_module.execute_playbook_actor
     monkeypatch.setattr(actor, "send", lambda *args: actor.fn(*args))
@@ -564,7 +524,7 @@ URL_STEPS = [
     "extract_domain",
     "domain_reputation",
     "threat_verdict",
-    "notify_security_team",
+    "log_security_alert",
 ]
 
 
@@ -600,7 +560,12 @@ def test_triage_url_alerts_on_a_malicious_url(run, playbooks):
         "indicator": "login.evil.example",
         "indicator_type": "domain",
     }
-    message = output(record, "notify_security_team")["message"]
+    alert = output(record, "log_security_alert")
+    # Logged, not sent: system.notification delivers nothing (#639).
+    assert alert["status"] == "logged"
+    assert alert["delivered"] is False
+    assert alert["channel"] == "security-alerts"
+    message = alert["message"]
     # The URL as submitted: input templates are not HTML-escaped.
     assert f"URL: {URL}" in message
     assert "Confidence: high" in message
@@ -618,8 +583,8 @@ def test_triage_url_alerts_on_two_of_three_signals(run, playbooks):
         "url_flagged",
         "url_reputation_bad",
     ]
-    assert outcomes(record)["notify_security_team"] == "ran"
-    assert "Confidence: medium" in output(record, "notify_security_team")["message"]
+    assert outcomes(record)["log_security_alert"] == "ran"
+    assert "Confidence: medium" in output(record, "log_security_alert")["message"]
 
 
 @pytest.mark.parametrize(
@@ -852,7 +817,7 @@ def test_a_run_is_not_started_without_a_complete_caller(run, caller):
 def test_a_run_without_a_caller_fails_before_any_call(monkeypatch, playbooks):
     """A message without a caller -- queued by an older version, say."""
     engine = engine_module.workflow_engine
-    monkeypatch.setattr(engine, "redis_client", FakeRedis())
+    monkeypatch.setattr(engine, "redis_client", MemoryRedis())
     monkeypatch.setattr(engine_module.playbook_parser, "playbooks", playbooks)
     services = ip_services([(22, "ssh")], 85)
     transport = httpx.MockTransport(services.handle)

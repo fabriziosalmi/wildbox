@@ -32,7 +32,7 @@ class SystemConnector(BaseConnector):
             "extract": "Extract data from input (domain from URL, etc.)",
             "evaluate": "Combine named boolean conditions (all, or at least min_true)",
             "create_report": "Generate a structured report",
-            "notification": "Send notifications (placeholder)",
+            "notification": "Record a notification in the run log; nothing is delivered",
             "timestamp": "Get current timestamp",
             "uuid": "Generate a UUID"
         }
@@ -276,26 +276,35 @@ class SystemConnector(BaseConnector):
     
     def notification(self, channel: str, message: str, priority: str = "medium") -> Dict[str, Any]:
         """
-        Send notifications (placeholder implementation)
-        
+        Record a notification; deliver nothing (#639).
+
+        No e-mail, webhook or chat message leaves the responder. The message
+        goes to the service log, and the step's input and output -- this
+        result -- go to the run's log and record, where whoever reads the run
+        sees it. The result says so: its status is "logged" and "delivered"
+        is false. It used to answer "sent", reporting a notification that
+        never happened.
+
         Args:
-            channel: Notification channel
-            message: Message to send
-            priority: Priority level
-            
+            channel: A label for the intended audience, recorded as given;
+                no channel is looked up or contacted
+            message: The message to record
+            priority: Priority level, recorded as given
+
         Returns:
-            Notification result
+            What was recorded, with status "logged"
         """
-        self.logger.info(f"NOTIFICATION [{priority.upper()}] {channel}: {message}")
-        
+        self.logger.info(f"NOTIFICATION (logged, not delivered) [{priority.upper()}] {channel}: {message}")
+
         return {
-            "status": "sent",
+            "status": "logged",
+            "delivered": False,
             "channel": channel,
             "message": message,
             "priority": priority,
             "timestamp": datetime.utcnow().isoformat()
         }
-    
+
     def timestamp(self, format: str = "iso") -> Dict[str, Any]:
         """
         Get current timestamp

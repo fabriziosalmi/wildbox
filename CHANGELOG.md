@@ -59,6 +59,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The responder's `system.notification` no longer claims to have sent
+  anything** (#639). It wrote a log line and answered `"status": "sent"`,
+  though no e-mail, webhook or chat message ever left the system, so
+  `triage_url` reported an alert that nobody received. It now answers
+  `"status": "logged"` and `"delivered": false`, and its description in
+  `GET /v1/connectors` says that nothing is delivered. `triage_url`'s
+  step `notify_security_team` is renamed `log_security_alert`, and
+  `simple_notification` is named "Simple Logging Test". The responder
+  README documents the action, and the connector example in
+  `docs/api/responder/endpoints.md`, which listed Jira and Slack
+  connectors that do not exist, shows the real response. Delivery is not
+  implemented.
+
+- **Cancelling a responder run stops it** (#653). `DELETE
+  /v1/runs/{run_id}` only rewrote the stored status: the worker never
+  read it again, so a cancelled run executed every remaining step, side
+  effects included, and then wrote `completed` over `cancelled`, and a
+  run cancelled while queued was set back to running and executed in
+  full. The cancel is now a request stored with the run, which the
+  worker checks before the run starts and before each step. A queued run
+  is cancelled at once and runs no step; a running run becomes the new
+  status `cancelling`, its step in progress runs to its end and is
+  recorded as it ended, no further step starts, and the run ends
+  `cancelled`. The worker's writes are compare-and-set (WATCH/MULTI)
+  against the run's status and the request, so a `cancelled` run is
+  never recorded as anything else and a race between completion and
+  cancel goes to whichever commits first. `DELETE` answers 200 with
+  `cancelled`, 202 with `cancelling`, or 200 with the status of a run
+  that had ended, and is checked against the run's team as before. A
+  run's `logs` also keep every line again: saving the worker's copy of
+  the record replaced the lines written since the run started.
+
 - **The agents routes accept a session token, and `/stats` is reachable**
   (#630). `/api/v1/agents/*` read `X-API-Key` only and answered a JWT
   with 401 `NO_API_KEY`, so a signed-in user could not submit or read an
@@ -104,6 +136,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result backend is a 503. The tools service now logs the class and
   traceback of a request that fails, and the integration workflow
   uploads every service's full log when it fails.
+
 
 - **Sensor telemetry reaches the data service, under the sensor's team**
   (#628). The sensor's forwarder posted to the data service's
