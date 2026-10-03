@@ -370,43 +370,6 @@ class HealthCheckResponse(BaseModel):
 
 # Enhanced response schemas for new endpoints
 
-class TrendingMetricSchema(BaseModel):
-    """Schema for trending security metrics."""
-    date: str
-    security_score: float
-    critical_findings: int
-    high_findings: int
-    total_findings: int
-
-
-class ExecutiveSummaryResponse(BaseModel):
-    """Executive summary response with high-level metrics."""
-    summary_period_days: int
-    provider_filter: Optional[str]
-    security_posture: Dict[str, Any]
-    trending_metrics: List[TrendingMetricSchema]
-    scan_coverage: Dict[str, Any]
-
-
-class RemediationItemSchema(BaseModel):
-    """Schema for a single remediation item."""
-    remediation: str
-    affected_resources: List[Dict[str, Any]]
-    estimated_effort: str
-    priority: str
-    compliance_impact: List[str]
-    priority_score: int
-    order: int
-
-
-class RemediationRoadmapResponse(BaseModel):
-    """Remediation roadmap response with prioritized actions."""
-    scan_id: str
-    generated_at: datetime
-    total_remediation_items: int
-    roadmap: List[RemediationItemSchema]
-
-
 class ResourceInventoryResponse(BaseModel):
     """Resource inventory response with detailed asset information."""
     scan_id: str
@@ -461,15 +424,26 @@ class BatchStatusResponse(BaseModel):
 
 
 class DashboardSummaryResponse(BaseModel):
-    """Dashboard summary response."""
-    total_scans: int = Field(..., description="Total number of scans")
-    active_scans: int = Field(..., description="Number of active scans")
-    failed_scans: int = Field(..., description="Number of failed scans")
-    completed_scans: int = Field(..., description="Number of completed scans")
-    total_findings: int = Field(..., description="Total security findings")
-    critical_findings: int = Field(..., description="Critical severity findings")
-    high_findings: int = Field(..., description="High severity findings")
-    medium_findings: int = Field(..., description="Medium severity findings")
-    low_findings: int = Field(..., description="Low severity findings")
-    compliance_score: float = Field(..., description="Overall compliance score")
-    last_scan_at: Optional[datetime] = Field(None, description="Last scan timestamp")
+    """The team's scan count and the figures of its newest completed scans.
+
+    The findings, severity and score figures cover the newest completed scan
+    of each account in the period, as GET /api/v1/compliance/summary does.
+    With no completed scan they are 0 and ``compliance_score`` is null:
+    nothing was assessed, which is not the same as 0% compliant.
+    """
+    total_scans: int = Field(..., description="Scans the team started that are still retained (30 days)")
+    last_scan_at: Optional[datetime] = Field(None, description="Start time of the team's newest scan")
+    summary_period_days: int = Field(..., description="Period the report figures cover, in days")
+    accounts_assessed: int = Field(..., description="Accounts with a completed scan in the period")
+    compliance_score: Optional[float] = Field(
+        None, description="Passed share of all check verdicts, or null when there are none"
+    )
+    total_findings: int = Field(..., description="Failed checks")
+    critical_findings: int = Field(..., description="Failed checks of critical severity")
+    high_findings: int = Field(..., description="Failed checks of high severity")
+    medium_findings: int = Field(..., description="Failed checks of medium severity")
+    low_findings: int = Field(..., description="Failed checks of low severity")
+    info_findings: int = Field(..., description="Failed checks of informational severity")
+    unknown_severity_findings: int = Field(
+        ..., description="Failed checks whose check is no longer in the catalog"
+    )

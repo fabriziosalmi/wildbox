@@ -50,7 +50,8 @@ interface ThreatIntelSummary {
 interface CloudSummary {
   total_scans: number
   total_findings: number
-  compliance_score: number
+  /** Null when no scan completed in the period: nothing was assessed. */
+  compliance_score: number | null
 }
 
 interface AssetCounts {
@@ -349,7 +350,7 @@ export default function DashboardPage() {
 
   const { threatIntel, cloud, assets, playbooks } = metrics
   const vulns = vulnStats.isPlaceholderData || vulnStats.isError ? null : (vulnStats.data ?? null)
-  const hasScans = cloud !== null && cloud.total_scans > 0
+  const cloudScore = cloud?.compliance_score ?? null
 
   return (
     <MainLayout>
@@ -401,11 +402,17 @@ export default function DashboardPage() {
             value={
               cloud === null
                 ? UNAVAILABLE
-                : hasScans
-                  ? `${Math.round(cloud.compliance_score)}%`
-                  : 'No scans'
+                : cloudScore !== null
+                  ? `${Math.round(cloudScore)}%`
+                  : cloud.total_scans > 0
+                    ? 'Not assessed'
+                    : 'No scans'
             }
-            description={hasScans ? 'Score across completed scans' : 'Run a scan to get a score'}
+            description={
+              cloudScore !== null
+                ? 'Newest completed scan of each account'
+                : 'Run a scan to get a score'
+            }
             icon={Activity}
             testId="metric-cloud-compliance"
           />
@@ -438,7 +445,7 @@ export default function DashboardPage() {
           <MetricCard
             title="Failed Cloud Checks"
             value={cloud ? cloud.total_findings : UNAVAILABLE}
-            description="Across all scans"
+            description="Newest completed scan of each account"
             icon={ListChecks}
             testId="metric-failed-checks"
           />
