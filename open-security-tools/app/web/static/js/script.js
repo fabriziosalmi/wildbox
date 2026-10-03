@@ -240,21 +240,21 @@ const API = {
      * Get list of available tools
      */
     getTools: async function() {
-        return await this.request('/api/tools');
+        return await this.request('/api/v1/tools');
     },
 
     /**
      * Get tool information
      */
     getToolInfo: async function(toolName) {
-        return await this.request(`/api/tools/${toolName}/info`);
+        return await this.request(`/api/v1/tools/${toolName}/info`);
     },
 
     /**
      * Execute a security tool
      */
     executeTool: async function(toolName, inputData) {
-        return await this.request(`/api/tools/${toolName}`, {
+        return await this.request(`/api/v1/tools/${toolName}`, {
             method: 'POST',
             body: JSON.stringify(inputData)
         });
@@ -544,7 +544,7 @@ const ApiKeyManager = {
         }
 
         try {
-            const response = await fetch('/api/tools', {
+            const response = await fetch('/api/v1/tools', {
                 headers: {
                     'Authorization': `Bearer ${keyToTest}`
                 }

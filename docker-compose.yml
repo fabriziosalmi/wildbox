@@ -922,11 +922,10 @@ services:
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
-      # Fallback key the agents client sends only when it has no caller
-      # identity to forward. Tool calls carry the caller's gateway identity
-      # (X-Wildbox-* + GATEWAY_INTERNAL_SECRET); the tools service no longer
-      # accepts this key directly (#565).
-      - INTERNAL_API_KEY=${API_KEY}
+      # Tool calls carry the caller's gateway identity (X-Wildbox-* with
+      # GATEWAY_INTERNAL_SECRET, above). INTERNAL_API_KEY, the fallback key the
+      # client sent without one, is gone: the tools service stopped accepting
+      # it in #566 (#567).
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
