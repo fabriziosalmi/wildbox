@@ -202,7 +202,9 @@ class TelemetryEventCreate(TelemetryEventBase):
 
 class TelemetryEvent(TelemetryEventBase):
     """Schema for telemetry event response"""
-    id: str = Field(..., description="Event ID")
+    # UUID, not str: the row's id is a UUID, and a str field refused it, so
+    # the listing answered 500 as soon as it had a row to list (#628).
+    id: UUID = Field(..., description="Event ID")
     ingested_at: datetime = Field(..., description="Ingestion timestamp")
     processed: bool = Field(..., description="Processing status")
     processed_at: Optional[datetime] = Field(None, description="Processing timestamp")
@@ -238,7 +240,7 @@ class SensorMetadataBase(BaseModel):
 
 class SensorMetadata(SensorMetadataBase):
     """Schema for sensor metadata response"""
-    id: str = Field(..., description="Metadata record ID")
+    id: UUID = Field(..., description="Metadata record ID")  # see TelemetryEvent.id
     first_seen: datetime = Field(..., description="First registration time")
     last_seen: datetime = Field(..., description="Last seen time")
     active: bool = Field(..., description="Sensor active status")
