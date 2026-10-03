@@ -446,6 +446,7 @@ FETCHING_TOOLS = [
     "static_malware_analyzer",
     "url_analyzer",
     "url_security_scanner",
+    "web_application_firewall_bypass",
     "web_vuln_scanner",
     "xss_scanner",
 ]
