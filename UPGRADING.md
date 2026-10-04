@@ -4,6 +4,24 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
+## Upgrading to 0.11.2
+
+From 0.11.1, nothing is required for a production deployment: the
+changes are in the development stack and in a script's output. If you run
+the default `docker-compose.yml` (the development stack), rebuild and
+recreate the dashboard, since its container now mounts only `src/` and
+`public/`:
+
+```bash
+git fetch --tags && git checkout v0.11.2
+docker compose up -d --build dashboard
+```
+
+After that, a change to `package.json` or to a root config file
+(`next.config.js`, `tsconfig.json`, `postcss.config.js`) also needs
+`docker compose up -d --build dashboard`. Coming from an earlier release,
+follow [Upgrading to 0.11.1](#upgrading-to-0111) first.
+
 ## Upgrading to 0.11.1
 
 From 0.11.0, rebuild the dashboard image and recreate it; nothing else

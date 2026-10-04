@@ -7,10 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-05
+
+Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on
+a Linux host, following UPGRADING.md's order of operations. The upgrade
+itself held: every migration applied at start, an API key issued under
+0.10.0 still authenticated, guardian's existing rows stayed hidden until
+`assign_guardian_team` and were visible to their team afterwards, and the
+integration suite passed against the upgraded stack (170 passed, 16
+skipped, 0 failed). No API, schema or production configuration change.
+
 ### Fixed
 
-- The dashboard in the default `docker-compose.yml` no longer
-  crash-loops on Linux when the checkout is not owned by uid 1001.
+- **The dashboard in the default `docker-compose.yml` no longer
+  crash-loops on Linux when the checkout is not owned by uid 1001.**
   `next dev` runs as uid 1001 and was denied permission to write
   `next-env.d.ts` into the mounted checkout. The service now mounts
   only `src/` and `public/`, so nothing is written into the checkout;
@@ -20,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   running stack.** Seeding is an upgrade step that runs before the new
   images exist, yet it ended with the generic rotation advice to run
   `docker compose up -d --force-recreate`, which applies nothing to the
-  old stack. It now points at the rest of the upgrade in UPGRADING.md.
-  Found by the 0.10.0 to 0.11.1 upgrade test.
+  old stack. It now points at the rest of the upgrade in UPGRADING.md
+  (#689).
 
 ## [0.11.1] - 2026-10-04
 
@@ -2861,7 +2871,8 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.2...HEAD
+[0.11.2]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.9.0...v0.10.0
