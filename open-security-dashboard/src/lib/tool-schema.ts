@@ -310,11 +310,42 @@ export function constraintHint(f: FieldSpec): string | undefined {
   return hints.length ? hints.join('; ') : undefined
 }
 
+/**
+ * The message for an integer zod's `.int()` rejects. Besides a fraction, it
+ * rejects a whole number outside the safe integer range, which JSON from
+ * JavaScript cannot carry exactly. That issue comes before the bound checks,
+ * so it names the schema's own bound when it has one, as the bound check
+ * would have.
+ */
+function wholeNumberError(spec: ItemSpec) {
+  const max = Number.MAX_SAFE_INTEGER
+  const min = Number.MIN_SAFE_INTEGER
+  return (issue: { code?: string }) => {
+    if (issue.code === 'too_big') {
+      if (spec.maximum !== undefined && spec.maximum <= max)
+        return `Must be at most ${spec.maximum}`
+      if (spec.exclusiveMaximum !== undefined && spec.exclusiveMaximum <= max)
+        return `Must be less than ${spec.exclusiveMaximum}`
+      return `Must be at most ${max}`
+    }
+    if (issue.code === 'too_small') {
+      if (spec.minimum !== undefined && spec.minimum >= min)
+        return `Must be at least ${spec.minimum}`
+      if (spec.exclusiveMinimum !== undefined && spec.exclusiveMinimum >= min)
+        return `Must be greater than ${spec.exclusiveMinimum}`
+      return `Must be at least ${min}`
+    }
+    return 'Enter a whole number'
+  }
+}
+
 /** zod schema for one typed scalar, carrying the JSON Schema's constraints. */
-function scalarValidator(spec: ItemSpec): z.ZodTypeAny {
+function scalarValidator(spec: ItemSpec): z.ZodType {
   if (spec.kind === 'integer' || spec.kind === 'number') {
-    let n = z.number({ invalid_type_error: 'Enter a number' }).finite('Enter a number')
-    if (spec.kind === 'integer') n = n.int('Enter a whole number')
+    // zod 4 rejects Infinity and NaN as an invalid type, so this message
+    // covers them too.
+    let n = z.number({ error: 'Enter a number' })
+    if (spec.kind === 'integer') n = n.int({ error: wholeNumberError(spec) })
     if (spec.minimum !== undefined) n = n.gte(spec.minimum, `Must be at least ${spec.minimum}`)
     if (spec.maximum !== undefined) n = n.lte(spec.maximum, `Must be at most ${spec.maximum}`)
     if (spec.exclusiveMinimum !== undefined)
