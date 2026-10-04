@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field's bound.
 - The dashboard builds with Tailwind CSS 4 and tailwind-merge 3; a v3
   compatibility layer keeps every page rendering as before.
+- The dashboard type-checks with TypeScript 6. `tsconfig.json` targets
+  ES2017 instead of ES5 and drops `baseUrl`, both deprecated in 6 and
+  removed in 7; SWC compiles the code, so the output does not change.
+  TypeScript 7 and eslint 10 are held back until typescript-eslint and
+  eslint-plugin-react support them (#682, #683).
 
 ## [0.11.0] - 2026-10-04
 
