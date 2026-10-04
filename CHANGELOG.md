@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.11.2] - 2026-10-04
+## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on
 a Linux host, following UPGRADING.md's order of operations. The upgrade
