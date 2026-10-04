@@ -32,10 +32,12 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - '3000:3000'
+    # src/ and public/ only, as in the root docker-compose.yml: with the
+    # whole directory mounted, next dev (uid 1001) cannot write
+    # next-env.d.ts unless the checkout is owned by uid 1001.
     volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/.next
+      - ./src:/app/src
+      - ./public:/app/public
     environment:
       - NODE_ENV=development
       - NEXT_PUBLIC_DEBUG=true

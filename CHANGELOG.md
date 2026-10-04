@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The dashboard in the default `docker-compose.yml` no longer
+  crash-loops on Linux when the checkout is not owned by uid 1001.
+  `next dev` runs as uid 1001 and was denied permission to write
+  `next-env.d.ts` into the mounted checkout. The service now mounts
+  only `src/` and `public/`, so nothing is written into the checkout;
+  changes to `package.json` or a root config file need
+  `docker compose up -d --build dashboard` (#690).
+
 ## [0.11.1] - 2026-10-04
 
 Dependency upgrades for the dashboard and two documentation corrections.

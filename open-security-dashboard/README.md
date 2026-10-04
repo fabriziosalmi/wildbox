@@ -145,9 +145,17 @@ section [The dashboard's browser settings](../docs/guides/deployment.md#the-dash
 ### With the full stack
 
 The root `docker-compose.yml` builds the `dashboard` service from
-`Dockerfile.dev` (the Next.js dev server, source mounted from this directory)
-and puts it behind the gateway. Start the stack as described in the root
-README, then open `https://localhost`.
+`Dockerfile.dev` (the Next.js dev server) and puts it behind the gateway.
+Start the stack as described in the root README, then open
+`https://localhost`.
+
+The container runs as the unprivileged `nextjs` user (uid 1001) and
+bind-mounts only `src/` and `public/` from this directory, so edits there
+reload live whatever user owns the checkout. Everything else comes from the
+image: after changing `package.json`, `next.config.js`, `tsconfig.json` or
+`postcss.config.js`, rebuild with `docker compose up -d --build dashboard`.
+The server writes `next-env.d.ts` and `.next/` inside the container, never
+into the checkout.
 
 ### Local development server
 
