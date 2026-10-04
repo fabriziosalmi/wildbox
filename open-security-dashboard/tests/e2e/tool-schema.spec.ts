@@ -283,6 +283,11 @@ test.describe('tool schema to form', () => {
     expect(errorsFor('1000001')).toBe('Must be at most 1000000')
     expect(errorsFor('2.5')).toBe('Enter a whole number')
     expect(errorsFor('abc')).toBe('Enter a number')
+    expect(errorsFor('Infinity')).toBe('Enter a number')
+    expect(errorsFor('1e400')).toBe('Enter a number')
+    // Past the safe integer range: the schema's bound, as below it.
+    expect(errorsFor('9007199254740993')).toBe('Must be at most 1000000')
+    expect(errorsFor('-9007199254740993')).toBe('Must be at least 1')
     expect(errorsFor('1')).toBeUndefined()
     expect(errorsFor('1000000')).toBeUndefined()
 

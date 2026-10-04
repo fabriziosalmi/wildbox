@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The dashboard uses zod 4; the tool form keeps its validation messages
+  and now rejects integers outside the safe integer range with the
+  field's bound.
+
 ## [0.11.0] - 2026-10-04
 
 This release makes the platform's security promises hold when they are
