@@ -25,7 +25,7 @@ function Scalar({ value }: { value: null | boolean | number | string }) {
   if (value === null) return <span className="text-muted-foreground">null</span>
   if (typeof value === 'string') {
     if (value === '') return <span className="text-muted-foreground">(empty string)</span>
-    return <span className="whitespace-pre-wrap break-all">{value}</span>
+    return <span className="break-all whitespace-pre-wrap">{value}</span>
   }
   return <span className="font-mono">{String(value)}</span>
 }
@@ -43,7 +43,7 @@ export function ValueView({ value, depth = 0 }: { value: unknown; depth?: number
   }
   if (depth >= MAX_DEPTH) {
     return (
-      <pre className="whitespace-pre-wrap break-all font-mono text-xs">
+      <pre className="font-mono text-xs break-all whitespace-pre-wrap">
         {JSON.stringify(v, null, 2)}
       </pre>
     )
@@ -85,7 +85,7 @@ export function ValueView({ value, depth = 0 }: { value: unknown; depth?: number
           <tr key={key} className="border-b border-border align-top last:border-b-0">
             <th
               scope="row"
-              className="w-1/4 whitespace-nowrap py-1 pr-3 text-left font-mono text-xs font-medium text-muted-foreground"
+              className="w-1/4 py-1 pr-3 text-left font-mono text-xs font-medium whitespace-nowrap text-muted-foreground"
             >
               {key}
             </th>
@@ -150,12 +150,12 @@ export function DownloadJsonButton({ value, filename }: { value: unknown; filena
 export function RawJson({ value, open = false }: { value: unknown; open?: boolean }) {
   return (
     <details open={open} className="rounded border border-border">
-      <summary className="cursor-pointer select-none px-3 py-2 text-sm font-medium">
+      <summary className="cursor-pointer px-3 py-2 text-sm font-medium select-none">
         Raw JSON
       </summary>
       <pre
         data-testid="result-raw"
-        className="max-h-[32rem] overflow-auto whitespace-pre-wrap break-all border-t border-border bg-muted/50 p-3 font-mono text-xs"
+        className="max-h-128 overflow-auto border-t border-border bg-muted/50 p-3 font-mono text-xs break-all whitespace-pre-wrap"
       >
         {JSON.stringify(value, null, 2)}
       </pre>

@@ -50,7 +50,7 @@ export default function SettingsPage() {
       <div className="mb-8 grid grid-cols-1 gap-6 md:grid-cols-3">
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-linear-to-br/srgb from-blue-500 to-purple-600">
               <User className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -64,7 +64,7 @@ export default function SettingsPage() {
 
         <Card className="p-6">
           <div className="flex items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-pink-600">
+            <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-linear-to-br/srgb from-purple-500 to-pink-600">
               <Users className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -86,7 +86,7 @@ export default function SettingsPage() {
             <Card key={card.title} className="p-6 transition-shadow hover:shadow-lg">
               <div className="mb-4 flex items-start justify-between">
                 <div
-                  className={`h-12 w-12 bg-gradient-to-br ${card.color} flex items-center justify-center rounded-lg`}
+                  className={`h-12 w-12 bg-linear-to-br/srgb ${card.color} flex items-center justify-center rounded-lg`}
                 >
                   <Icon className="h-6 w-6 text-white" />
                 </div>

@@ -182,7 +182,7 @@ function ExecutionDialog({
           </div>
 
           <div className="flex items-center gap-2 rounded-md bg-blue-50 p-3 text-sm text-muted-foreground dark:bg-blue-950">
-            <AlertCircle className="h-4 w-4 flex-shrink-0" />
+            <AlertCircle className="h-4 w-4 shrink-0" />
             <span>
               Execution will start asynchronously. You&apos;ll be redirected to the runs page to
               monitor progress.
@@ -313,7 +313,7 @@ export default function PlaybooksPage() {
       {/* Search and Filter */}
       <div className="flex flex-col gap-4 sm:flex-row">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+          <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
           <Input
             placeholder="Search playbooks..."
             value={searchTerm}

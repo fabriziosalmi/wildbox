@@ -87,7 +87,10 @@ export function TaskPanel({ taskId, toolName }: { taskId: string; toolName: stri
               ))}
             </dl>
             {task.data?.error && (
-              <p className="whitespace-pre-wrap break-words text-red-700" data-testid="task-error">
+              <p
+                className="wrap-break-word whitespace-pre-wrap text-red-700"
+                data-testid="task-error"
+              >
                 {task.data.error}
               </p>
             )}

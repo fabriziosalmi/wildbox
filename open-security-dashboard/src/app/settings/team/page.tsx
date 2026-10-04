@@ -324,7 +324,7 @@ export default function TeamPage() {
       {/* Team Overview */}
       <Card className="mb-6 p-6">
         <div className="mb-6 flex items-center gap-4">
-          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-600">
+          <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-linear-to-br/srgb from-purple-500 to-blue-600">
             <Users className="h-8 w-8 text-white" />
           </div>
           <div>
@@ -534,7 +534,7 @@ export default function TeamPage() {
                 className="flex items-center justify-between rounded-lg border border-border p-4"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-gray-500 to-gray-700">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-linear-to-br/srgb from-gray-500 to-gray-700">
                     <User className="h-5 w-5 text-white" />
                   </div>
                   <div>

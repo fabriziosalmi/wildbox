@@ -40,7 +40,7 @@ export default function LoginPage() {
   // Show loading while checking auth state
   if (authLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="flex min-h-screen items-center justify-center bg-linear-to-br/srgb from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
         <div className="text-center">
           <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Loading...</p>
@@ -70,11 +70,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4 dark:from-gray-900 dark:to-gray-800">
+    <div className="flex min-h-screen items-center justify-center bg-linear-to-br/srgb from-blue-50 to-indigo-100 p-4 dark:from-gray-900 dark:to-gray-800">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mb-4 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br/srgb from-blue-500 to-purple-600 shadow-lg">
               <Shield className="h-8 w-8 text-white" />
             </div>
           </div>
@@ -151,7 +151,7 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    className="absolute top-1/2 right-3 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -177,7 +177,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={isLoading || !email || !password}
-                className="h-11 w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                className="h-11 w-full bg-linear-to-r/srgb from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 {isLoading ? (
                   <>

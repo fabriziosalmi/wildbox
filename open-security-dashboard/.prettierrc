@@ -9,5 +9,6 @@
   "endOfLine": "lf",
   "bracketSpacing": true,
   "bracketSameLine": false,
-  "plugins": ["prettier-plugin-tailwindcss"]
+  "plugins": ["prettier-plugin-tailwindcss"],
+  "tailwindStylesheet": "./src/app/globals.css"
 }

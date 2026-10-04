@@ -120,7 +120,7 @@ export function RunError({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2 text-sm">
-        <p data-testid="run-error-message" className="whitespace-pre-wrap break-words">
+        <p data-testid="run-error-message" className="wrap-break-word whitespace-pre-wrap">
           {error.message}
         </p>
         {other.length > 0 && (

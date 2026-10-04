@@ -261,7 +261,7 @@ export default function ToolboxPage() {
             <div className="flex flex-col gap-4 md:flex-row">
               <div className="flex-1">
                 <div className="relative">
-                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+                  <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     placeholder="Search tools by name, description, or category..."
                     value={searchTerm}

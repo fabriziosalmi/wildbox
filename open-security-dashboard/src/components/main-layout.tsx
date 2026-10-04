@@ -222,7 +222,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           {/* Logo */}
           <div className="flex h-16 items-center border-b px-6">
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br/srgb from-blue-500 to-purple-600">
                 <Shield className="h-5 w-5 text-white" />
               </div>
               <div>
@@ -233,7 +233,7 @@ export function MainLayout({ children }: MainLayoutProps) {
           </div>
 
           {/* Navigation */}
-          <nav className="scrollbar-thin flex-1 space-y-2 overflow-y-auto px-4 py-6">
+          <nav className="flex-1 scrollbar-thin space-y-2 overflow-y-auto px-4 py-6">
             {navigation.map(item => (
               <div key={item.name}>
                 {item.children ? (
@@ -260,7 +260,7 @@ export function MainLayout({ children }: MainLayoutProps) {
                       />
                     </button>
                     {expandedItems.includes(item.name) && (
-                      <div className="ml-8 mt-2 space-y-1">
+                      <div className="mt-2 ml-8 space-y-1">
                         {item.children.map(child => (
                           <Link
                             key={child.href}

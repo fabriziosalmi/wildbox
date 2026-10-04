@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The dashboard uses zod 4; the tool form keeps its validation messages
   and now rejects integers outside the safe integer range with the
   field's bound.
+- The dashboard builds with Tailwind CSS 4 and tailwind-merge 3; a v3
+  compatibility layer keeps every page rendering as before.
 
 ## [0.11.0] - 2026-10-04
 

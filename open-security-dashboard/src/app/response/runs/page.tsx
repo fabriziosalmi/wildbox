@@ -85,7 +85,7 @@ function RunCard({ runId, label }: { runId: string; label?: string }) {
             <CardTitle className="truncate text-lg font-semibold">
               {data?.playbook_name ?? label ?? 'Playbook run'}
             </CardTitle>
-            <CardDescription className="break-all text-sm">Run ID: {runId}</CardDescription>
+            <CardDescription className="text-sm break-all">Run ID: {runId}</CardDescription>
           </div>
           {data && (
             <div className="flex shrink-0 items-center gap-2">

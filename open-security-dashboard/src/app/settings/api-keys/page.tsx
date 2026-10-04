@@ -400,7 +400,7 @@ export default function ApiKeysPage() {
             <Card key={apiKey.id} className="p-6" data-testid="api-key-card">
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-green-500 to-blue-600">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br/srgb from-green-500 to-blue-600">
                     <Key className="h-5 w-5 text-white" />
                   </div>
                   <div>
