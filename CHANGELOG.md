@@ -1047,6 +1047,14 @@ names the detailed entries below.
   `utils.http_request` ignored the caller's `timeout` because `request_uri()`
   does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+- **The dashboard no longer promises what the platform does not do.** The
+  cloud security, scans and compliance pages fetch from the CSPM service and
+  work, yet each opened with a "Coming in Future Release" banner that
+  promised AWS, Azure and GCP; the banner now says the service scans AWS
+  accounts only and refuses the others, and that compliance results are the
+  AWS checks grouped by framework, not a full assessment. The profile page
+  offered an "Enable" button for two-factor authentication, which identity
+  does not have; it now says so, with no button.
 
 ### Security
 
