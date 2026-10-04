@@ -219,6 +219,16 @@ else
 fi
 chmod 600 "$ENV_FILE"
 
+if [ "$SECRET" = "API_KEY_HASH_SECRET" ] && [ "$INIT" = true ]; then
+  # Seeding is an upgrade step: identity reads the variable only once the
+  # new images run, so there is nothing to restart yet.
+  echo "Seeded API_KEY_HASH_SECRET in $ENV_FILE"
+  echo ""
+  echo "NEXT: continue the upgrade (UPGRADING.md): build and start the new"
+  echo "images. Do not restart the running stack for this change."
+  exit 0
+fi
+
 echo "Rotated $SECRET in $ENV_FILE"
 echo ""
 echo "NEXT: restart the affected services. For GATEWAY_INTERNAL_SECRET this must"

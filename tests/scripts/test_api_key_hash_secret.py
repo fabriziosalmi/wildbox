@@ -257,6 +257,18 @@ def test_init_seeds_the_hash_secret_with_the_jwt_key_without_printing_it(harness
     _assert_no_secret_printed(result)
 
 
+def test_init_points_at_the_upgrade_not_at_a_restart(harness):
+    # Seeding runs while the old stack is up, before the new images exist:
+    # restarting the old stack would apply nothing, so the script must not
+    # tell the operator to do it.
+    harness.write_env(JWT_SECRET_KEY=JWT, API_KEY_HASH_SECRET=HASH)
+    result = harness.run("--secret", "API_KEY_HASH_SECRET", "--init")
+    assert result.returncode == 0, result.stderr
+    assert "Seeded API_KEY_HASH_SECRET" in result.stdout
+    assert "UPGRADING.md" in result.stdout
+    assert "force-recreate" not in result.stdout
+
+
 def test_init_is_a_no_op_once_seeded(harness):
     harness.write_env(JWT_SECRET_KEY=JWT, API_KEY_HASH_SECRET=JWT)
     result = harness.run("--secret", "API_KEY_HASH_SECRET", "--init")
