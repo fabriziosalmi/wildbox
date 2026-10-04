@@ -28,8 +28,9 @@ are user-facing — read [UPGRADING.md](UPGRADING.md) before deploying.**
 
 ### Upgrade notes
 
-Read [UPGRADING.md](UPGRADING.md); it has the commands, and the sections
-cited here are its sections for this release. In short:
+Read [UPGRADING.md](UPGRADING.md) and follow its order of operations, which
+puts the sections below in the order an existing deployment runs them; the
+sections cited here are its sections for this release. In short:
 
 - **Seed `API_KEY_HASH_SECRET` before starting the new images.** Run
   `make init-api-key-hash` once, while `.env` still holds the
@@ -78,7 +79,9 @@ cited here are its sections for this release. In short:
   internal lab (section 29); `RATE_LIMIT_PER_HOUR` must be a whole number
   (section 32); the production overlay needs Docker Compose 2.24.4
   (section 10); and each sensor needs an identity API key with the
-  `data:ingest` scope (section 35).
+  `data:ingest` scope (section 35). Production Redis no longer evicts keys
+  (section 42), and the agents service's per-user analysis limits are set
+  through a compose override (section 43).
 
 ### Changed
 
