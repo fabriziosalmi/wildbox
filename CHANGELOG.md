@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **`make init-api-key-hash` no longer tells the operator to restart the
+  running stack.** Seeding is an upgrade step that runs before the new
+  images exist, yet it ended with the generic rotation advice to run
+  `docker compose up -d --force-recreate`, which applies nothing to the
+  old stack. It now points at the rest of the upgrade in UPGRADING.md.
+  Found by the 0.10.0 to 0.11.1 upgrade test.
+
 ## [0.11.1] - 2026-10-04
 
 Dependency upgrades for the dashboard and two documentation corrections.
