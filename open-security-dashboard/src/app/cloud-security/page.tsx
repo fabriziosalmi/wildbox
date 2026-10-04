@@ -95,8 +95,9 @@ export default function CloudSecurityPage() {
                 Coming in Future Release
               </CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Security (CSPM) module is planned for post-v1.0 release. This feature will
-                include comprehensive cloud security posture management across AWS, Azure, and GCP.
+                Cloud Security (CSPM) module is planned for post-v1.0 release. It scans AWS accounts
+                only: Azure and Google Cloud are not supported, and the CSPM service refuses scans
+                of them.
               </CardDescription>
             </div>
           </div>
