@@ -13,9 +13,11 @@ RUN npm ci
 # Copy source code
 COPY . .
 
-# Pre-create the .next dir so the anonymous volume mounted there (see compose)
-# inherits nextjs ownership; otherwise Docker creates it root-owned and the dev
-# server hits EACCES writing /app/.next/package.json.
+# Pre-create the .next dir so that it, and any volume mounted there, is owned
+# by nextjs after the chown below; a root-owned .next makes the dev server hit
+# EACCES writing /app/.next/package.json. Compose bind-mounts only src/ and
+# public/ over this tree, so /app stays nextjs-owned and next dev can write
+# next-env.d.ts whatever uid owns the host checkout.
 RUN mkdir -p /app/.next
 
 # Run as non-root user

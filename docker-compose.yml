@@ -447,10 +447,18 @@ services:
       - no-new-privileges:true
     ports:
       - "127.0.0.1:3000:3000"
+    # Only the directories next dev watches are bind-mounted. The image runs
+    # as nextjs (uid 1001) and next dev writes next-env.d.ts into the project
+    # root at start-up; with the whole checkout mounted over /app that root
+    # belonged to the host user, so on Linux any checkout not owned by uid
+    # 1001 crash-looped on EACCES. /app itself, .next, node_modules and the
+    # config files now come from the image, owned by nextjs, and nothing is
+    # written into the checkout. Editing package.json or a root config file
+    # (next.config.js, tsconfig.json, postcss.config.js) therefore takes
+    # `docker compose up -d --build dashboard`.
     volumes:
-      - ./open-security-dashboard:/app
-      - /app/node_modules
-      - /app/.next
+      - ./open-security-dashboard/src:/app/src
+      - ./open-security-dashboard/public:/app/public
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       # This stack runs the Next.js dev server (Dockerfile.dev -> next dev),

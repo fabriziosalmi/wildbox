@@ -82,10 +82,9 @@ services:
       - NEXT_PUBLIC_AGENTS_API_URL=http://open-security-agents:8006
       - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:?NEXTAUTH_SECRET is required}
       - NEXTAUTH_URL=http://localhost:3000
-    volumes:
-      - ./open-security-dashboard:/app:cached
-      - /app/node_modules
-      - /app/.next
+    # No `volumes:` here: docker-compose.yml already bind-mounts src/ and
+    # public/. Mounting the whole checkout over /app made next dev fail with
+    # EACCES on next-env.d.ts unless the checkout was owned by uid 1001.
     networks:
       - wildbox
     depends_on:

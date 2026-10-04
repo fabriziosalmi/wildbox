@@ -68,11 +68,11 @@ jobs:
         uses: docker/setup-buildx-action@v4
 
       - name: Install dashboard dependencies
-        # Before the stack starts, not after: the compose dashboard bind-mounts
-        # this directory and puts an anonymous volume on node_modules, so once
-        # it is up Docker has created node_modules here as root and npm ci on
-        # the runner fails with EACCES. Installed first, the directory exists
-        # and the container's volume simply masks it.
+        # For Playwright on the runner. The compose dashboard no longer sees
+        # this node_modules: it bind-mounts only src/ and public/ and keeps
+        # the image's own dependencies. (It used to mount the whole directory
+        # with an anonymous volume on node_modules, which made Docker create
+        # node_modules here as root, so npm ci had to run first.)
         working-directory: open-security-dashboard
         run: npm ci
 
