@@ -5,7 +5,7 @@ This page replaces an earlier report that marked every audit finding "Fixed"
 and every check "PASS"; several of those claims did not hold when they were
 checked against the code.
 
-**Current release**: v0.11.0. Its changes, and those of every earlier
+**Current release**: v0.11.1. Its changes, and those of every earlier
 release, are listed in [CHANGELOG.md](https://github.com/fabriziosalmi/wildbox/blob/main/CHANGELOG.md).  
 **Checked against**: `main` on 4 October 2026. Each check below names how it
 was made, so it can be repeated.
@@ -26,7 +26,7 @@ do not open a public issue.
 | API-key scopes enforced at the gateway only | gateway, all backends | The gateway refuses a key that lacks the scope a route needs, but forwards only the user, team and role, so no backend can check scopes itself. This is not exploitable through the gateway, and the backends that require `X-Gateway-Secret` cannot be reached any other way; but a gateway route added without `authenticate()`, or a mistake in the scope map, would not be caught ([#637](https://github.com/fabriziosalmi/wildbox/issues/637)). One such mistake is open: `GET /api/v1/tools` requires the generic `read` scope, so a `tools:read` key is refused there and a `read` key can list the tools ([#647](https://github.com/fabriziosalmi/wildbox/issues/647)). |
 | Rate-limit settings that change nothing | tools, guardian | tools never enforces `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW` ([#646](https://github.com/fabriziosalmi/wildbox/issues/646)). `docker-compose.yml` does not pass `API_RATE_LIMIT` to guardian, which always runs at its built-in rates ([#645](https://github.com/fabriziosalmi/wildbox/issues/645)). The gateway's own limits apply in both cases. |
 | Unpinned pip in four images | cspm, guardian, responder, tools | These Dockerfiles run `pip install --upgrade pip` before the hash-checked install, so the installer itself is whatever PyPI serves at build time, without a hash ([#657](https://github.com/fabriziosalmi/wildbox/issues/657)). |
-| Advisory without a fix in the dashboard's build tooling | dashboard | `npm audit` reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (high, published 18 September 2026, no patched release) in `braces`, reached through `tailwindcss` and `eslint-config-next`. No issue is open for it yet. |
+| Advisory without a fix in the dashboard's build tooling | dashboard | `npm audit` reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (high, published 18 September 2026, no patched release) in `braces`, reached only through `eslint-config-next` since the move to Tailwind CSS 4 in v0.11.1. It is lint tooling and does not reach the built image. No issue is open for it yet. |
 
 ---
 

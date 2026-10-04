@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-04
+
+Dependency upgrades for the dashboard and two documentation corrections.
+No API, schema or configuration change: upgrading from 0.11.0 means
+rebuilding the dashboard image. **Tailwind CSS 4 raises the dashboard's
+browser baseline** to Safari 16.4, Chrome 111 and Firefox 128.
+
 ### Changed
 
 - The dashboard uses zod 4; the tool form keeps its validation messages
@@ -19,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed in 7; SWC compiles the code, so the output does not change.
   TypeScript 7 and eslint 10 are held back until typescript-eslint and
   eslint-plugin-react support them (#682, #683).
+- The dashboard uses date-fns 4 (#672), and the CI workflows use
+  `actions/setup-python` 7 (#673).
+
+### Documentation
+
+- The security policy no longer promises merchandise for critical
+  reports, and the architecture decision log no longer lists
+  `architecture@wildbox.dev`, an address that does not exist (#675).
 
 ## [0.11.0] - 2026-10-04
 
@@ -2830,7 +2845,8 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.8.0...v0.9.0
