@@ -153,8 +153,9 @@ export default function CompliancePage() {
                 Coming in Future Release
               </CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Compliance module is planned for post-v1.0 release. This feature will include
-                comprehensive compliance monitoring across multiple security frameworks.
+                Cloud Compliance module is planned for post-v1.0 release. Its results come from the
+                AWS checks only, grouped by the frameworks each check is tagged with; they are not a
+                full assessment against any framework.
               </CardDescription>
             </div>
           </div>

@@ -162,8 +162,9 @@ export default function CloudSecurityScansPage() {
                 Coming in Future Release
               </CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Security Scans module is planned for post-v1.0 release. This feature will
-                enable automated security scanning across AWS, Azure, and GCP environments.
+                Cloud Security Scans module is planned for post-v1.0 release. Scans run against AWS
+                accounts only: Azure and Google Cloud are not supported, and the form offers only
+                the providers the CSPM service lists.
               </CardDescription>
             </div>
           </div>
