@@ -4,6 +4,23 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
+## Upgrading to 0.11.1
+
+From 0.11.0, rebuild the dashboard image and recreate it; nothing else
+changes. Coming from an earlier release, follow
+[Upgrading to 0.11.0](#upgrading-to-0110) first.
+
+```bash
+git fetch --tags && git checkout v0.11.1
+docker compose build dashboard
+docker compose up -d dashboard
+```
+
+Use the same `-f` files, or `COMPOSE_FILE`, you start the stack with. The
+dashboard now builds with Tailwind CSS 4, which needs Safari 16.4, Chrome
+111 or Firefox 128 or later; older browsers can render the pages
+without parts of their styles.
+
 ## Upgrading to 0.11.0
 
 From 0.10.0: the changes an existing deployment has to act on. The numbered
