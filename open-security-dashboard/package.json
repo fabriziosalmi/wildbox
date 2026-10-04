@@ -51,7 +51,7 @@
     "axios": "^1.20.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
-    "date-fns": "^3.6.0",
+    "date-fns": "^4.4.0",
     "eslint-config-prettier": "^10.1.5",
     "js-cookie": "^3.0.8",
     "lucide-react": "^1.50.0",

@@ -48,6 +48,17 @@ updates:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
 
+      # eslint 10 is blocked by eslint-config-next 16.3.8, which pulls in
+      # eslint-plugin-react 7.37.5 (peer eslint up to ^9.7). Under eslint 10
+      # every react/* rule crashes with "contextOrFilename.getFilename is not
+      # a function" (#670). Upstream: jsx-eslint/eslint-plugin-react#3977 and
+      # vercel/next.js#89764; eslint-plugin-jsx-a11y 6.10.2 and
+      # eslint-plugin-import 2.32.0 also stop their peer range at ^9. Drop
+      # this rule once eslint-config-next ships plugins that support 10.
+      - dependency-name: "eslint"
+        versions:
+          - "10.x"
+
   - package-ecosystem: "docker"
     directories:
       - "/open-security-*"
