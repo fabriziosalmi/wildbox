@@ -42,8 +42,9 @@ Wildbox is pre-1.0. Interfaces can change between minor releases; read
 
 Every request from outside enters through the gateway. Backend services listen
 on `127.0.0.1` only, PostgreSQL and Redis publish no port at all, and each
-backend rejects requests that do not carry the gateway's proof-of-origin
-secret.
+backend except identity rejects requests that do not carry the gateway's
+proof-of-origin secret. Identity validates tokens itself, and the gateway
+sends the secret only on requests it has authenticated.
 
 ```mermaid
 flowchart LR
@@ -145,6 +146,12 @@ Change the initial password after the first login.
 | Rehearse a restore | `make restore-drill` |
 | List rotatable secrets | `make rotate-secrets` |
 | Stop | `docker compose down` |
+
+`make backup` and `make restore-drill` run on the host and need a database
+they can reach, which the default stack does not publish; the
+[deployment guide](https://www.wildbox.io/guides/deployment/#6-backups-and-restore)
+lists what they need. On a default stack, the `backup` profile runs the
+backups on the Compose network instead.
 
 Ports, service names and bindings are listed in one place:
 [ports reference](https://www.wildbox.io/guides/ports/). Production guidance is in the

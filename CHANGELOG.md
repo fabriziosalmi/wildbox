@@ -7,6 +7,147 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-04
+
+This release makes the platform's security promises hold when they are
+tested. Revocation now holds: logout, a password change, revoking an API key
+and removing a member from a team take effect at the gateway on the next
+request, and each is committed only once the gateway confirms that it refuses
+the credential; otherwise it answers 503 and changes nothing. Team isolation,
+which 0.8.0 brought to data, responder and CSPM, now covers guardian (#642),
+the data service's sensor telemetry (#641, #660) and the agents service's
+tasks and rate limit (#650, #651). SSRF is closed across the tools service:
+every network tool refuses internal targets, and the URL guard follows
+redirects, nested inputs and workflow steps. What the platform made up is
+gone: mock data in the dashboard, CSPM compliance figures that were
+constants, fallbacks that showed sample values when a service failed, and
+features that reported success while doing nothing. And the tests run: test
+files no workflow collected, Playwright specs that never reached a backend
+and a prose check that checked nothing now run and gate. **Several changes
+are user-facing — read [UPGRADING.md](UPGRADING.md) before deploying.**
+
+### Upgrade notes
+
+Read [UPGRADING.md](UPGRADING.md) and follow its order of operations, which
+puts the sections below in the order an existing deployment runs them; the
+sections cited here are its sections for this release. In short:
+
+- **Seed `API_KEY_HASH_SECRET` before starting the new images.** Run
+  `make init-api-key-hash` once, while `.env` still holds the
+  `JWT_SECRET_KEY` the running identity uses. Compose now passes the
+  variable to identity, which keyed every API-key digest with the JWT key
+  until now: started unseeded, identity rejects every existing API key, and
+  in production it refuses to start without the variable (#648, section 38).
+- **Rebuild every image.** `docker compose up -d` does not rebuild an image
+  that exists, and nearly every image changes (section 1). Use the `-f`
+  files you start the stack with.
+- **Run the migrations.** identity (`a6b7c8d9e0f1`, `b7c8d9e0f1a2`), data
+  (`0005_telemetry_team`) and guardian (`django_celery_beat.0019`,
+  `core.0002_remove_apikey` and the `*_team_id` migrations) apply theirs at
+  start; a data schema you migrate yourself needs `alembic upgrade head`
+  before the new data API starts (section 34). `core.0002_remove_apikey`
+  drops guardian's own API-key table (section 30).
+- **Deploy identity and the gateway together.** Logout, a password change,
+  revoking an API key, deactivating or deleting an account and removing a
+  member need the gateway to confirm on its internal port 8081, and answer
+  503 otherwise; a new gateway with an old identity refuses every API key
+  (sections 3, 18, 25 and 26).
+- **Assign guardian's existing rows to a team.** Rows written before 0.11.0
+  have no team and are hidden from every team until
+  `manage.py assign_guardian_team --team <uuid>` assigns them; run it with
+  `--list` and `--dry-run` first (section 39). Sensor telemetry stored
+  before the upgrade is hidden the same way, and section 34 has the SQL
+  that assigns it.
+- **The identity admin metrics need a superuser token.**
+  `GET /api/v1/identity/admin/metrics` answers 401 without a token and 403
+  to a token that is not a platform superuser's; `X-Gateway-Secret` no
+  longer opens it (section 40).
+- **The self-service API-key routes cover the caller's own keys only**, so
+  the dashboard's API keys page lists your own keys. A team owner or admin
+  manages other members' keys through
+  `/api/v1/identity/teams/{team_id}/api-keys` (section 41).
+- **New passwords follow a password policy**: 12 to 128 characters, not
+  containing the email address or its local part, and not one of the
+  10,000 most common passwords. Existing passwords keep working until they
+  are next changed; `INITIAL_ADMIN_PASSWORD` must comply on a fresh install
+  (section 23).
+- **Removed endpoints and features** answer 404, or 401 and 403 for direct
+  calls that bypassed the gateway; section 11 lists them with their
+  replacements, and Changed below summarizes them.
+- **Also**: leave `NEXT_PUBLIC_GATEWAY_URL` empty and rebuild the dashboard
+  (section 16); set `TOOLS_ALLOWED_INTERNAL_TARGETS` if you scan an
+  internal lab (section 29); `RATE_LIMIT_PER_HOUR` must be a whole number
+  (section 32); the production overlay needs Docker Compose 2.24.4
+  (section 10); and each sensor needs an identity API key with the
+  `data:ingest` scope (section 35). Production Redis no longer evicts keys
+  (section 42), and the agents service's per-user analysis limits are set
+  through a compose override (section 43).
+
+### Changed
+
+Behavior that existing clients, scripts and operators will notice. Each item
+names the detailed entries below.
+
+- **Revocation fails closed.** Logout (#571), a password change (#569),
+  revoking an API key and deactivating or deleting an account (#593), and
+  removing a team member (#613) answer 503 and change nothing unless the
+  gateway confirms. Repeating the request is safe.
+- **A password change ends the account's other sessions**, including the
+  token that made it; change-password answers with a new `access_token`
+  (#569). It does not revoke API keys.
+- **A password policy on every path that sets a password** (#583). A
+  refusal answers 400 with the reason in `error.message` and fastapi-users'
+  code in `error.details`.
+- **Account changes need the current password.** `PATCH /auth/users/me`
+  refuses `password` with 400 (#559); an email change needs
+  `current_password`, and a wrong one counts toward the login lockout
+  (#569). Login locks an account for 15 minutes after 5 failures, with 429
+  and `Retry-After` (#509).
+- **New 401 and 403 answers.** `PASSWORD_CHANGE_REQUIRED` for an account a
+  team administrator created, until its password changes (#573);
+  `team_membership_ended` for a removed member's session in that team
+  (#613); `GATEWAY_AUTH_REQUIRED` for a direct request to guardian (#629);
+  401 for a direct `X-API-Key` request to the tools service (#565); and
+  identity's admin metrics for anyone but a superuser (#664).
+- **New 404 answers that do not confirm what exists.** Another user's
+  asynchronous tool task, or an unknown task id (#567); another user's
+  agents task, which answered 403 (#650); another member's key on the
+  self-service API-key routes (#664); another team's guardian rows (#642)
+  and sensors (#641).
+- **New 400 and 422 refusals before any work starts.** Internal network
+  targets in the tools (#614, #610), tool input values a tool does not
+  implement (#611), GCP and Azure scans in cspm (#612), and guardian
+  schedules that cannot run (#548).
+- **Scoping.** guardian (#642), sensor telemetry (#641) and the threat-intel
+  dashboard metrics (#570) are per team; the self-service API-key routes
+  act on the caller's own keys (#664); asynchronous tool tasks belong to
+  the user who submitted them (#567); the agents analysis limit is counted
+  per user (#651).
+- **Removed endpoints and fields.** identity's team invitation (#570), its
+  estimated request counts (#570) and `users.recent_logins` (#573); cspm's
+  executive summary, remediation roadmap and scan status counts (#578),
+  and renamed compliance fields (#572); the gateway's `/api/tools/` alias
+  (#567) and the tools service's `/tools/` UI with the `auth_token` cookie
+  (#581); guardian's own API keys (#629); responder actions that called
+  routes no service has (#616). See Removed.
+- **Null where there is no data.** `trends_change` (#573), and cspm's
+  `compliance_score` and `overall_score` with no completed scan (#572,
+  #578).
+- **The tools verify TLS certificates** unless a scan sets
+  `verify_ssl: false` (#495); identity serves no API documentation in
+  production (#496).
+- **Responder.** A cancel of a running run answers 202 `cancelling`
+  (#653); `system.notification` answers `"status": "logged"` and
+  `triage_url`'s step is now `log_security_alert` (#639); a playbook with
+  an unknown key stops the responder at start (#417).
+- **Refusals at start-up.** identity in production without
+  `API_KEY_HASH_SECRET` (#648); the gateway with a `RATE_LIMIT_PER_HOUR`
+  that is not a whole number (#627); the tools with a bad
+  `TOOLS_ALLOWED_INTERNAL_TARGETS` entry (#614); cspm with
+  `CSPM_SCAN_TIMEOUT_SECONDS` or `CSPM_REPORT_RETENTION_DAYS` out of range
+  (#601, #591); identity with an `INITIAL_ADMIN_PASSWORD` the policy
+  refuses (#583).
+
 ### Added
 
 - **A team owner or admin can create accounts in the team** (#573).
@@ -170,12 +311,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway now publishes into a `gateway_cert` volume when it starts; in
   the production overlay the sensor moves from `backend` to `frontend`,
   reaching the gateway and no backend service
-  (`scripts/check_network_segmentation.py` asserts both). In the data
-  service, telemetry events and sensor records have a `team_id` (alembic
-  revision `0005_telemetry_team`); `GET /api/v1/telemetry/events`,
-  `/telemetry/stats`, `/sensors` and `/sensors/{id}` show the caller's
-  team's only, where they showed every team's; a sensor ID is unique per
-  team, where one team's sensor could update another's record. Three
+  (`scripts/check_network_segmentation.py` asserts both). The data
+  service stores the events and the sensor record under the key's team
+  and serves them to that team only (#641, under Security). Three
   defects on the same path that the refused credential had hidden are
   fixed with it: a batch of more than one event from a new sensor
   inserted its record twice and failed with 500, the events and sensors
@@ -198,8 +336,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a hard-coded AWS, GCP and Azure list. The GCP and Azure check
   modules were removed: nine checks that returned the same invented
   buckets, instances and users on every run, and could not run without
-  a session, and two empty files. `/api/v1/checks` now lists AWS checks only. The AWS session
-  factory refuses credentials that cannot be valid (an access key id
+  a session, and two empty files. `/api/v1/checks` now lists the 22 AWS
+  checks only. The AWS session factory refuses credentials that cannot be valid (an access key id
   that is not 16 to 128 letters, digits or underscores, a missing
   secret, `assume_role` without an IAM role ARN) before it creates any
   boto3 session, so such a scan fails without a request to AWS; the
@@ -235,7 +373,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   table (sha224, sha256, sha384, sha512, blake2b, blake2s), defaults to
   sha256 and sha512, and an unsupported algorithm is a 422 before the
   tool runs. `output_format` is an enum too, and a salted hash uses the
-  algorithm it is labelled with: sha224 and blake2 fell back to SHA-256.
+  algorithm it is labeled with: sha224 and blake2 fell back to SHA-256.
 - **Every tool's input schema describes what the tool accepts** (#611).
   An audit of all 52 tools found the same mismatch in many of them: a
   free-text field whose tool implements a fixed set of values, an
@@ -545,10 +683,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   record (submitted before the upgrade) and an unknown id all answer 404,
   so the answer does not confirm that a task exists. There is no admin
   override.
-- **The standalone tools UI calls the routed API** (#567). Its pages,
-  served by the gateway under `/tools/`, fetched `/api/tools`, which only
-  the deprecated gateway alias served (and the bare tool list not even
-  that). They now call `/api/v1/tools`.
 
 - **Cloud compliance reports the team's scans, not an invented account**
   (#572). cspm's `GET /api/v1/compliance/summary` and `/findings`
@@ -571,9 +705,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "No Vulnerabilities Found" while they are still loading, and their
   error card gains a retry.
 - **`/api-docs` no longer documents endpoints that do not exist** (#572).
-  Its hand-written catalogue listed routes no service serves (responder
+  Its hand-written catalog listed routes no service serves (responder
   `GET /v1/metrics`, identity `GET /api/v1/user/profile`), showed
-  "healthy" on every service without probing any, labelled endpoints
+  "healthy" on every service without probing any, labeled endpoints
   with Free / Business plans that nothing enforces, and gave an example
   response with invented indicator counts and an `api.wildbox.local` base
   URL. The services' OpenAPI pages are not routed through the gateway,
@@ -635,10 +769,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   does not route, and never loaded; it now uses identity's
   `/admin/me/activity` and `/admin/teams/{id}/members`, open to the
   team's members, and no longer offers an invite (identity's endpoint
-  pretends to send one) or role changes (identity has none). The profile
+  sent nothing and is removed, #570; owners and admins now add members
+  with the form of #573) or role changes (identity has none). The profile
   page saved nothing (`PUT /api/v1/users/me` hit the catch-all 404); the
-  email now goes to `PATCH /auth/users/me` and the password to the
-  change-password route. Search and the status filter on `/admin` now
+  email now goes to `PATCH /auth/users/me`, with the current password
+  (#569), and the password to the change-password route. Search and the status filter on `/admin` now
   reach identity as `email_filter` and `is_active`, debounced.
 - **System Health shows real status** (#559). The gateway routes
   `/api/v1/identity/health` to identity's `/health`, which it used to map
@@ -672,8 +807,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   login, signup and logout pages inherited the gateway's API
   Content-Security-Policy on top of the dashboard's own, which blocks
   the dev runtime; and `next dev`'s hot-reload socket got a 404. The
-  default is now `https://localhost`, static assets have their own
-  limit, every dashboard page location sends the dashboard's headers
+  API calls now go to the dashboard's own origin, where the gateway
+  serves the API (`NEXT_PUBLIC_GATEWAY_URL` is empty by default since
+  #559; this fix first set it to `https://localhost`), static assets have
+  their own limit, every dashboard page location sends the dashboard's headers
   only, and the socket is proxied.
 - **Admin and IOC lookup pages** (#103). Loading or reloading `/admin`
   sent an admin to `/dashboard` whenever `/users/me` was slower than
@@ -893,10 +1030,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which the engine never reads, so each step ran with an empty input; steps
   referred to each other by `id` while the engine keyed them by `name`; and
   `on_failure: continue` was read by nothing. The engine now keys steps by id
-  (name when there is none) and honours `on_failure: continue`; the playbook
+  (name when there is none) and honors `on_failure: continue`; the playbook
   models reject unknown keys, so a playbook with a key the engine ignores
   stops the responder at start-up with the file and key named. `retry_count`,
-  never honoured, is removed from the model.
+  never honored, is removed from the model.
 - **The sensor's Linux service inventory is collected** (#417). Its osquery
   query asked `systemd_units` for columns the table does not have, so every
   collection cycle failed with "no such column: name". The query now uses the
@@ -910,6 +1047,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `utils.http_request` ignored the caller's `timeout` because `request_uri()`
   does not read one, so `auth_handler`'s `TIMEOUT_SECONDS = 5` never applied.
   Found by the rewritten chaos suite: 10.0 s per request before, 5.01 s after.
+- **The dashboard no longer promises what the platform does not do.** The
+  cloud security, scans and compliance pages fetch from the CSPM service and
+  work, yet each opened with a "Coming in Future Release" banner that
+  promised AWS, Azure and GCP; the banner now says the service scans AWS
+  accounts only and refuses the others, and that compliance results are the
+  AWS checks grouped by framework, not a full assessment. The profile page
+  offered an "Enable" button for two-factor authentication, which identity
+  does not have; it now says so, with no button.
 
 ### Security
 
@@ -981,7 +1126,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/telemetry/stats`, `/sensors` and `/sensors/{sensor_id}` return the
   caller's team's rows only, and another team's sensor answers 404.
   Rows written before the upgrade have no team and are shown to no
-  team; UPGRADING section 32 gives the SQL to assign them. Unit tests
+  team; UPGRADING section 34 gives the SQL to assign them. Unit tests
   run the scenario of the issue (team B lists nothing of team A's,
   gets 404 for A's sensor, and a batch of B's under A's sensor ID
   leaves A's record unchanged); removing the team predicate from any
@@ -1064,10 +1209,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could not catch it: it checked `.env`, where the generator always writes
   the variable. `docker-compose.yml` and the production overlay now pass
   it to identity as a required variable, identity refuses to start
-  without it when `ENVIRONMENT=production` (a short, placeholder or
-  low-entropy value is refused too, and the error no longer echoes the
-  settings it validated), and outside production a missing value still
-  falls back to the JWT key with a warning at start-up. The rotation
+  without it when `ENVIRONMENT=production`, a short, placeholder or
+  low-entropy value is refused in any environment (and the error no
+  longer echoes the settings it validated), and outside production a
+  missing value still falls back to the JWT key with a warning at
+  start-up. `make validate-secrets` requires it. The rotation
   guard now refuses `JWT_SECRET_KEY` unless `docker compose config` passes
   the variable to identity and the running identity container, if any,
   has it. `--init` (`make init-api-key-hash`) copies `JWT_SECRET_KEY` into
@@ -1120,7 +1266,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a reason. Operators allow internal lab ranges and hosts with
   `TOOLS_ALLOWED_INTERNAL_TARGETS` (CIDR ranges, IP addresses and host
   names; empty by default; a bad entry stops the service at start-up).
-  The authorization manager's `authorized_targets` (#564) is not reused:
+  The authorization manager's `authorized_targets` (#563) is not reused:
   it narrows which public targets a caller may attack and never lifts
   the SSRF guard. dns_enumerator applies the policy to the name servers
   it attempts a zone transfer from and connects to the checked address,
@@ -1243,8 +1389,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     most tools), checked by the SSRF guard, and a tool that acts on behalf
     of a caller is refused as a step.
 
-  Host, IP and CIDR targets of the network scanners are out of scope and
-  tracked in #614.
+  Host, IP and CIDR targets of the network scanners are covered by the
+  network target policy of #614, above.
 
 - **An agents task never sends another task's caller identity** (#594).
   The analysis task set the caller identity, a `ContextVar` the Wildbox
@@ -1284,7 +1430,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a request in flight across the revocation is refused too.
   Deactivating or deleting an account also ends its sessions there, with
   the per-user cutoff a password change uses (#569), and stores it in
-  `users.tokens_valid_after`. A password change still does not revoke API
+  `users.tokens_valid_after`. A password change does not revoke API
   keys.
 - **An API key with an expiry works until it expires, and not after**
   (#593). `/internal/authorize` compared the key's `expires_at`, read back
@@ -1340,7 +1486,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now require `current_password` for an email change, and the dashboard's
   profile form asks for it. Password-reset tokens carry the email they
   were issued for and stop working once it changes.
-- **Current-password checks count towards the login lockout** (#569).
+- **Current-password checks count toward the login lockout** (#569).
   A wrong current password on change-password, account deletion or an
   email change answered 400 and counted nothing, so a session could be
   used to guess the password without limit. It now counts as a failed
@@ -1374,15 +1520,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every attempt. The gateway now keeps a revocation marker per `jti`
   in a dictionary shared by its workers, checks it on every request,
   cached decision or not, and after every fresh authorization, and a
-  purge also discards any decision that was in flight across it, which
-  covers the full flush that follows a user or API key deactivation.
+  purge also discards any decision that was in flight across it.
   Logout fails closed: it answers 2xx only once the gateway has
   confirmed the marker and the blacklist is written, retries the
   gateway twice, and otherwise answers 503, which the client can
   retry. A Redis error while blacklisting used to be logged and
-  ignored, so logout reported success with nothing revoked.
-  `app.logout.revoke_jtis()` revokes sessions by `jti` without their
-  raw tokens, for invalidating a user's other sessions.
+  ignored, so logout reported success with nothing revoked. The same
+  confirmed revocation now backs a password change (#569), a disabled
+  API key or account (#593) and a member's removal (#613); the
+  best-effort full flush that deactivating a user used to trigger is
+  gone with #593.
 - **The tools service validates target URLs by parsing them** (#561).
   `SecurityValidator.validate_url` ran the free-text injection patterns
   over the whole URL, so it refused `http://` targets, any query string,
@@ -1612,9 +1759,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **cspm drops the cloud SDKs it never imported, and protobuf with them**
   (#415). requirements.in pinned 23 `google-*` packages besides google-auth
-  and seven `azure-mgmt-*` packages; the service imports only `google.auth`
-  and `azure.identity` (in `app/worker.py`), and every GCP and Azure check
-  runs on sample data, naming its SDK only in a comment. The 2023
+  and seven `azure-mgmt-*` packages; the service imported only
+  `google.auth` and `azure.identity` (in `app/worker.py`), and every GCP
+  and Azure check ran on sample data, naming its SDK only in a comment
+  (those checks and imports are gone since #612; google-auth and
+  azure-identity stay pinned). The 2023
   google-cloud releases require `protobuf<5`, which held protobuf at 4.25.9
   (PYSEC-2026-1805, fixed in 5.29.6). With them gone protobuf, grpcio and
   google-api-core leave the lock entirely: 128 packages become 73, and
@@ -1639,12 +1788,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The dashboard image runs node 24 LTS** (#462), from node 18, out of
   support since April 2025. The image stays pinned by digest; CI moves from
   node 20 to 24 as well.
-
-- **The tools service's search no longer injects HTML** (#464). It built its
-  results with `innerHTML` from the typed query and from tool names and
-  descriptions read back with `textContent`, which undoes the template's
-  escaping, so markup in either was executed (CodeQL `js/xss-through-dom`).
-  Every piece is now escaped and only the `<mark>` highlights are markup.
 
 ### CI
 
@@ -1866,7 +2009,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the Redoc pages get canonical URLs, the remaining standalone pages link
   `security.txt` in their footers, and `api-reference.html` loses a stale
   "Last Updated" stamp.
-- **Stale and placeholder notes are labelled.** `DOCUMENTATION_QUALITY_AUDIT.md`
+- **Stale and placeholder notes are labeled.** `DOCUMENTATION_QUALITY_AUDIT.md`
   (a November 2025 snapshot, unpublished) is marked archived, and the
   gateway authentication guide, linked from the published tools audit, says
   that its keys and hosts are fictitious.
@@ -1876,7 +2019,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ships, and gave the gateway as port 8080 and Postgres credentials that do
   not match. Both are rewritten from `docker-compose.yml`, the gateway routes
   and the integration tests' login flow, agree with each other, state no
-  version, and count only what is real: 52 loadable tools, 31 CSPM checks.
+  version, and count only what is real: 52 loadable tools and 22 CSPM
+  checks, AWS only.
   The homepage's structured data loses the same claims and its stale
   `softwareVersion`.
 - **The `/learn/` and `/tools/` hubs say how small they are.** Each holds one
@@ -2021,10 +2165,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   404 itself instead of proxying it, and no longer accepts the
   `auth_token` cookie as a credential on safe methods, which it did only
   for those page loads; the dashboard sends the session as a Bearer
-  token. The dashboard's `/toolbox` now lists the tools and the API route
-  that runs each one: its "Execute Tool" button only opened the removed
-  page. Running a tool from the dashboard is #585. `Jinja2` and `aiofiles`
-  leave the tools service's dependencies.
+  token. The dashboard's `/toolbox` "Execute Tool" button only opened the
+  removed page; each tool's "Run" button now opens the dashboard's own
+  form for it (#585, under Added). `Jinja2` and `aiofiles` leave the tools
+  service's dependencies. Two fixes made earlier in this release to those
+  pages go with them: their API calls had moved from the removed
+  `/api/tools` alias to `/api/v1/tools` (#567), and their search, which
+  built results with `innerHTML` from the typed query and from tool names
+  read back with `textContent`, had been escaped (#464, CodeQL
+  `js/xss-through-dom`).
 - **The gateway's `/api/tools/` alias** (#567). It served the tools API
   beside the canonical `/api/v1/tools/`, with `Deprecation` and `Sunset`
   headers announcing its removal on 1 July 2026. Nothing in the
@@ -2053,9 +2202,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   answered "Invitation sent successfully" to a team owner or admin and
   did nothing: no invitation was stored or sent, and the request body was
   not read. Nothing in the stack called it since the dashboard dropped
-  its invite form (#559). The path now answers 404. identity still has
-  no way to add a user to an existing team: registering creates a team
-  of its own.
+  its invite form (#559). The path now answers 404. A team owner or
+  admin now adds a member by creating the account in the team,
+  `POST /api/v1/admin/teams/{team_id}/members` (#573, under Added).
 - **Direct `X-API-Key` authentication on the tools service** (#565). A
   request that sent the service's static `API_KEY` straight to port 8000 as
   `X-API-Key` was answered with a `GatewayUser` built on the nil UUID,
@@ -2668,7 +2817,8 @@ Security hardening, first-run honesty, and a documentation/site overhaul. Some c
 - Docker Compose orchestration
 - Dashboard UI with Next.js
 
-[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/fabriziosalmi/wildbox/compare/v0.11.0...HEAD
+[0.11.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.9.0...v0.10.0
 [0.9.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/fabriziosalmi/wildbox/compare/v0.7.1...v0.8.0

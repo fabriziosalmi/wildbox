@@ -288,7 +288,7 @@ The dispatcher in the last row runs the schedules users create:
 | Schedule | Defined by | Runs | What can be scheduled |
 | --- | --- | --- | --- |
 | Asset discovery rule (`/api/v1/guardian/assets/discovery-rules/`) | `schedule`: five crontab fields, in `CELERY_TIMEZONE` (UTC unless set), with the same syntax as the variables above | the rule's network scan, on the `scanning` queue | `network_scan` rules only. Cloud API and CMDB discovery are placeholders and agent reports and DNS zone transfers have no code, so the API refuses those types |
-| Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` (or `DEFAULT_NOTIFICATION_RECIPIENTS`) when it is ready | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
+| Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` when it is ready; a schedule without recipients sends no e-mail (see the note on `DEFAULT_NOTIFICATION_RECIPIENTS` under Alert rules) | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
 | Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so creating, changing, triggering or enabling one answers 400. Existing ones can still be listed, disabled and deleted |
 
 - Each due time runs once. The dispatcher claims a run by moving `next_run`
@@ -331,9 +331,11 @@ For example, "more than 5 unresolved critical vulnerabilities":
   default 86400, or `off` for no reminders). A day, because a condition still
   true after a day is a backlog to be reminded of, like the SLA check's daily
   reminder, and not news every 15 minutes.
-- Notifications are e-mailed to `notification_config.recipients`, or to
-  `DEFAULT_NOTIFICATION_RECIPIENTS` when the rule names none. Each one is
-  recorded, delivered or not, and
+- Notifications are e-mailed to `notification_config.recipients`. A rule
+  that names none sends no e-mail: the code falls back to
+  `DEFAULT_NOTIFICATION_RECIPIENTS`, but `guardian/settings.py` does not
+  define that setting and `docker-compose.yml` does not pass it, so the
+  fallback is always empty. Each notification is recorded, delivered or not, and
   `GET /api/v1/guardian/reports/alerts/{id}/notifications/` lists them.
 - The rule shows its `state` (`ok` or `firing`), `firing_since`,
   `last_value` and `last_evaluated_at`. `trigger_count` counts the times it
@@ -506,10 +508,13 @@ docker compose --profile backup up -d backup
 docker compose logs backup
 ```
 
-`make backup` and `make restore-drill` run the same scripts from the host.
-They connect to `POSTGRES_HOST` (default `wildbox-postgres`), which the
-default Compose file does not publish to the host, so run them from a machine
-or container that can reach the database.
+`make backup` and `make restore-drill` run the same scripts from the host,
+and do not work there on a default stack. They connect to `POSTGRES_HOST`
+(default `wildbox-postgres`), which the default Compose file does not publish
+to the host; they need `POSTGRES_PASSWORD` in the environment, since the
+Makefile does not read `.env`; and they call `pg_dump` and `psql`, so the
+PostgreSQL client tools must be installed. Run them from a machine or
+container that can reach the database, with those set.
 
 Copy the archives off the server: a backup on the same disk is not a backup.
 Run the restore drill on a schedule; a restore that has never been tested is

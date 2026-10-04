@@ -24,7 +24,7 @@ import {
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { getErrorMessage } from '@/lib/utils'
-import { AlertTriangle, Info, Plus, Construction, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Info, Plus, RefreshCw } from 'lucide-react'
 
 /**
  * GET /api/v1/cspm/providers: the providers the CSPM service can scan, from
@@ -156,14 +156,12 @@ export default function CloudSecurityScansPage() {
       <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Construction className="h-6 w-6 text-amber-600" />
+            <Info className="h-6 w-6 text-amber-600" />
             <div>
-              <CardTitle className="text-amber-900 dark:text-amber-100">
-                Coming in Future Release
-              </CardTitle>
+              <CardTitle className="text-amber-900 dark:text-amber-100">AWS only</CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Security Scans module is planned for post-v1.0 release. This feature will
-                enable automated security scanning across AWS, Azure, and GCP environments.
+                Scans run against AWS accounts only. Azure and Google Cloud are not supported, and
+                the form offers only the providers the CSPM service lists.
               </CardDescription>
             </div>
           </div>

@@ -430,6 +430,5 @@ The audit challenged our microservices approach as "over-engineering." We're eva
 **Questions or concerns about architecture decisions?**
 
 - Open GitHub Discussion: [Architecture Review](https://github.com/fabriziosalmi/wildbox/discussions)
-- Email: architecture@wildbox.dev
 
 **Next ADR Review:** Q2 2026 (or when user base reaches 1000 deployments)

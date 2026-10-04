@@ -6,16 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
-import {
-  Cloud,
-  Shield,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  Construction,
-  Info,
-  RefreshCw,
-} from 'lucide-react'
+import { Cloud, Shield, AlertTriangle, CheckCircle2, Clock, Info, RefreshCw } from 'lucide-react'
 
 /**
  * GET /api/v1/cspm/dashboard/summary, field for field. The scan count is
@@ -89,14 +80,12 @@ export default function CloudSecurityPage() {
       <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Construction className="h-6 w-6 text-amber-600" />
+            <Info className="h-6 w-6 text-amber-600" />
             <div>
-              <CardTitle className="text-amber-900 dark:text-amber-100">
-                Coming in Future Release
-              </CardTitle>
+              <CardTitle className="text-amber-900 dark:text-amber-100">AWS only</CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Security (CSPM) module is planned for post-v1.0 release. This feature will
-                include comprehensive cloud security posture management across AWS, Azure, and GCP.
+                The CSPM service scans AWS accounts only. Azure and Google Cloud are not supported,
+                and the service refuses scans of them.
               </CardDescription>
             </div>
           </div>
