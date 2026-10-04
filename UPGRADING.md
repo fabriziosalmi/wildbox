@@ -4,10 +4,232 @@ This file records changes that an **existing deployment** has to act on. A fresh
 install needs none of it: `make generate-secrets` and the
 [Quick Start](https://www.wildbox.io/guides/quickstart/) cover everything here.
 
-## Upgrading to the next release
+## Upgrading to 0.11.0
 
-Changes on `main` since 0.10.0 that an existing deployment has to know about.
-Back up first (`make backup`), then work through the list.
+From 0.10.0: the changes an existing deployment has to act on. The numbered
+sections below follow the order in which the changes were merged, not the
+order in which to apply them. Apply them in the order of the checklist that
+follows; each step names the sections it comes from.
+
+### Order of operations
+
+Every step is marked **required** or **conditional**, with its condition.
+Run the commands from the repository root. Steps 1 to 7 run while the 0.10.0
+stack is still up: no section needs it stopped, and step 9 recreates the
+containers. The commands assume the production overlay; if you start the
+stack with other files, name those in `COMPOSE_FILE` instead, and keep them
+the same in every step (section 1).
+
+1. **Point Compose at your files (required).** `docker compose` then uses
+   the same files in every step, and so does the rotation guard of
+   `scripts/rotate_secrets.sh` (section 38). The production overlay needs
+   Docker Compose 2.24.4 or later (section 10).
+
+   ```bash
+   export COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+   docker compose version
+   ```
+
+2. **Back up the databases and `.env` (required).** guardian's own API keys
+   are dropped in step 9 (section 30), and the migrations of step 9 cannot
+   be undone without a backup. `make backup` runs
+   `scripts/backup_postgres.sh` from the host, which reaches PostgreSQL
+   only where `POSTGRES_HOST` resolves; on a default stack, dump the three
+   databases through the container (use your `POSTGRES_USER`):
+
+   ```bash
+   umask 077
+   cp -p .env .env.pre-0.11.0
+   for db in identity data guardian; do
+     docker compose exec -T postgres pg_dump -U postgres -Fc "$db" > "wildbox-pre-0.11.0-$db.dump"
+   done
+   ```
+
+   Keep these files private and copy them off the server: they hold every
+   secret and every password hash.
+
+3. **Check out 0.11.0 (required).** Nothing runs the new code yet.
+
+   ```bash
+   git fetch --tags && git checkout v0.11.0
+   ```
+
+4. **Seed `API_KEY_HASH_SECRET` (required, before any new image starts).**
+   Without it every existing API key answers 401 (section 38). Run it once,
+   while `.env` still holds the `JWT_SECRET_KEY` the running identity uses:
+
+   ```bash
+   make init-api-key-hash
+   ```
+
+5. **Edit `.env` (required review; each change as marked).**
+   - Required check: `RATE_LIMIT_PER_HOUR` is a whole number from 1 to
+     1000000000, or empty (section 32).
+   - Required with the production overlay: `NEXT_PUBLIC_GATEWAY_URL=`
+     (empty) unless the dashboard is served from another origin than the
+     gateway (section 16).
+   - Required with the production overlay: `CORS_ORIGINS` lists the
+     origins you serve; identity now receives it (section 10).
+   - Conditional, production Redis: size `REDIS_MAXMEMORY` and
+     `REDIS_MEMORY_LIMIT` (at least twice as much) for the host
+     (sections 24 and 42).
+   - Conditional, optional settings: `CSPM_REPORT_RETENTION_DAYS`
+     (section 24), `CSPM_SCAN_TIMEOUT_SECONDS` (section 27),
+     `TOOLS_ALLOWED_INTERNAL_TARGETS` if you scan an internal lab
+     (section 29), `GUARDIAN_SCHEDULE_*` set to `off` to hold back the
+     first runs (section 13), `GUARDIAN_SCHEDULE_USER_SCHEDULES`
+     (section 15), `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (section 14),
+     `GUARDIAN_BASE_URL` (section 13), `RESPONDER_WILDBOX_API_URL` and its
+     siblings (section 31), `IDENTITY_REDIS_URL` (section 2),
+     `GATEWAY_INTERNAL_URL` (section 3). `ANALYZE_RATE_LIMIT` and
+     `ANALYZE_TEAM_RATE_LIMIT` need a Compose override, not `.env`
+     (section 43).
+   - Keep `API_KEY` and `GATEWAY_INTERNAL_SECRET` (sections 11 and 31).
+   - Remove if present, since nothing reads them: `INTERNAL_API_KEY`,
+     `GUARDIAN_API_KEY`, `API_KEY_HEADER`, `ENCRYPTION_KEY`,
+     `NEXT_PUBLIC_API_BASE_URL`, the `NEXT_PUBLIC_*_API_URL` variables and
+     the `REDIS_URL` line meant for identity (sections 2, 11, 16 and 30).
+     `DEFAULT_NOTIFICATION_RECIPIENTS` has no effect either (section 14).
+   - `SENSOR_DATA_LAKE_API_KEY` comes later, in step 12: the key is
+     created in the upgraded identity.
+
+   Then check the result:
+
+   ```bash
+   make validate-secrets
+   docker compose config -q
+   ```
+
+6. **Prepare guardian and the responder (conditional, with the old stack
+   up).**
+   - If you wrote your own responder playbooks: they must use only known
+     keys (section 8), no removed action (section 31), and test for
+     `logged` instead of `sent` (section 37).
+   - If you defined guardian alert rules, report schedules, discovery rules
+     or scan schedules: check the rules' `data_source` (section 14), pause
+     the schedules and rules you do not want run at once, and delete or
+     disable scan schedules (section 15).
+   - If you added a periodic task for `generate_vulnerability_reports` in
+     the Django admin: delete it (section 11).
+
+7. **Drop guardian's queued backlog (conditional: if the tasks queued
+   since guardian was deployed should not run).** Run it with the old
+   stack still up (section 12):
+
+   ```bash
+   docker compose exec guardian celery -A guardian purge -f
+   ```
+
+8. **Rebuild every image (required).** `docker compose up -d` does not
+   rebuild an image that exists, and the dashboard compiles the
+   `NEXT_PUBLIC_*` values of step 5 into its image (sections 1 and 16):
+
+   ```bash
+   docker compose build
+   ```
+
+9. **Start the new stack (required).** One `up -d` recreates identity and
+   the gateway together, which sections 3, 18, 22, 25, 26, 33 and 40 need,
+   and starts the new `guardian-worker`, `guardian-beat` and `cspm-worker`
+   (sections 12, 13 and 27). The migrations run at start:
+   - identity: `alembic upgrade head` in `scripts/init.sh`, revisions
+     `a6b7c8d9e0f1` and `b7c8d9e0f1a2` (sections 18 and 22);
+   - data: `alembic upgrade head` when the data API starts, revision
+     `0005_telemetry_team` (section 34), unless
+     `RUN_MIGRATIONS_ON_STARTUP=false` (below);
+   - guardian: `python manage.py migrate` in the image's entrypoint, run by
+     `guardian`, `guardian-worker` and `guardian-beat`:
+     `django_celery_beat.0019`, `reporting.0002_alert_rule_state`,
+     `core.0002_remove_apikey`, `core.0003_team_membership_and_tasks` and
+     the `team_id` migrations (sections 7, 14, 30 and 39).
+
+   No other service has a schema to migrate.
+
+   ```bash
+   docker compose up -d
+   docker compose logs -f identity data guardian
+   ```
+
+   Conditional, with `RUN_MIGRATIONS_ON_STARTUP=false`: migrate the data
+   database before the data API starts (section 34), then start the rest:
+
+   ```bash
+   docker compose run --rm --no-deps data alembic upgrade head
+   docker compose up -d
+   ```
+
+10. **Give guardian's existing rows to their team (required when guardian
+    holds data).** Until then no team sees them (section 39):
+
+    ```bash
+    docker compose exec guardian python manage.py assign_guardian_team --list
+    docker compose exec guardian python manage.py assign_guardian_team --team <team UUID> --dry-run
+    docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>
+    ```
+
+    Section 39 shows how to find the team's UUID, and what a deployment
+    with several teams does instead.
+
+11. **Give legacy sensor telemetry to a team (conditional: the data
+    database holds telemetry rows with no team).** Count them, then assign
+    or delete them, with the SQL of section 34.
+
+12. **Reconnect the sensor (conditional: you run it).** Create a
+    `data:ingest` key for it, set `SENSOR_DATA_LAKE_API_KEY` in `.env` and
+    recreate it (section 35):
+
+    ```bash
+    docker compose up -d sensor
+    ```
+
+13. **Verify (required).** Follow
+    [Verifying the upgrade](#verifying-the-upgrade). In particular, check
+    that an API key issued before the upgrade still works (section 38) and
+    that logout answers 2xx (section 3).
+
+14. **Tell API clients what changed (required when anything but the
+    dashboard calls the API).**
+    - Removed, now 404: identity's team `invite`, the gateway's
+      `/api/tools/` alias and `/tools/` pages, cspm's executive summary and
+      remediation roadmap (section 11).
+    - Removed or changed fields: cspm's dashboard and compliance summaries
+      and identity's estimated request counts (section 11),
+      `users.recent_logins` (section 21); `trends_change` can be null
+      (section 20), and the threat-intel figures are per team
+      (section 45).
+    - Direct calls to a service with `X-API-Key` stop working: go through
+      the gateway with a session token or an identity API key (sections 11
+      and 30). The gateway no longer takes the `auth_token` cookie in place
+      of an `Authorization` header (section 11).
+    - New 503 answers, safe to repeat: logout, password change, key
+      revocation, account deactivation or deletion, member removal
+      (sections 3, 18, 25 and 26).
+    - New 403 answers: `PASSWORD_CHANGE_REQUIRED` (section 22),
+      `team_membership_ended` (section 26), `GATEWAY_AUTH_REQUIRED` on a
+      direct guardian request (section 30), `insufficient_scope` for a
+      `data:ingest` key (section 35), the admin metrics without a
+      superuser (section 40).
+    - New 404 answers: another user's tools task or agents task
+      (sections 19 and 43), another member's key on the self-service
+      API-key routes (section 41).
+    - New 400 answers: a `password` on `PATCH /auth/users/me` and an email
+      change without `current_password` (sections 17 and 18), a password
+      outside the policy (section 23), GCP and Azure scans (section 28),
+      internal scan targets and URLs (sections 29 and 44).
+    - New 429 answers: failed logins and wrong current passwords lock the
+      account for 15 minutes (sections 5 and 18); agents analysis requests
+      are limited per user (section 43).
+    - Sessions: tokens issued before the upgrade cannot be logged out
+      (section 4); a password change replaces the caller's token, and
+      password-reset tokens issued before the upgrade no longer work
+      (section 18).
+    - API keys: the self-service routes list and revoke the caller's own
+      keys only; owners and admins use the team routes (section 41).
+    - Changed routes and bodies: tools tasks at `/api/v1/tasks`
+      (section 19), error bodies with `error.details` (section 23),
+      responder cancel and notification results (sections 36 and 37),
+      playbook actions (section 31), agents routes that accept a session
+      token (section 33).
 
 ### 1. Rebuild every image (required)
 
@@ -23,7 +245,8 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build
 make start-prod
 ```
 
-Use the same `-f` files you start the stack with.
+Use the same `-f` files you start the stack with. Steps 4, 8 and 9 of the
+order of operations above place these commands among the others.
 
 ### 2. identity now reaches Redis with the password (check overrides)
 
@@ -51,7 +274,13 @@ be reached, or still runs an older image that does not report revoked
 sessions, logout answers 503 and the token stays valid. Rebuild and restart
 the gateway together with identity (step 1 does), and with more than one
 gateway replica note that identity reaches only the one its URL resolves to.
-Deactivating a user or an API key still flushes the cache best effort.
+The best-effort flush of the whole cache that deactivating a user used to
+send is gone (#593). Every change that disables a credential now goes
+through this listener and waits for the gateway to confirm it, like logout:
+a password change (section 18), revoking an API key, deactivating or
+deleting an account (section 25) and removing a member from a team
+(section 26). Without the confirmation the request answers 503 and changes
+nothing.
 
 ### 4. Sessions issued before the upgrade cannot be revoked one by one
 
@@ -110,8 +339,8 @@ but a scan run with it reports content from whoever answered the connection.
 ### 10. The production overlay segments the networks (Compose 2.24.4+)
 
 `docker-compose.prod.yml` now replaces each service's networks instead of
-adding to the flat `wildbox` network: only the gateway and the dashboard share
-`frontend`, PostgreSQL and Redis sit on the internal `data` network with the
+adding to the flat `wildbox` network: only the gateway, the dashboard and the
+sensor share `frontend` (the sensor since section 35), PostgreSQL and Redis sit on the internal `data` network with the
 services that use them, and the dashboard can no longer reach them. The map
 is at the top of the file.
 
@@ -119,9 +348,12 @@ is at the top of the file.
   versions refuse the file. `make start-prod` now calls `docker compose`.
 - A service you added in your own overlay on the `wildbox` network no longer
   shares it with the production services; attach it to the network it needs.
-- identity no longer receives `CORS_ORIGINS` under the production overlay
-  (the comma-separated value made it exit at start-up); it keeps its built-in
-  origins, and browsers reach it through the gateway.
+- identity receives `CORS_ORIGINS` under the production overlay, like the
+  other services, and now reads the comma-separated form (#531); it used to
+  read a JSON list only and exited at start-up on that value. An empty
+  value allows no cross-origin requests, which is fine when browsers reach
+  identity through the gateway on the dashboard's own origin. Check that
+  the value in `.env` lists exactly the origins you serve.
 - To check a host: `python3 scripts/check_network_segmentation.py config`.
 
 ### 11. Files and settings that are gone
@@ -160,16 +392,18 @@ is at the top of the file.
   created in the identity service; a direct request without the gateway's
   headers is answered with 401. Keep `API_KEY` in `.env`: the service still
   requires it at start-up.
-- identity's `POST /api/v1/admin/teams/{team_id}/invite` is removed (#570)
-  and answers 404. It returned "Invitation sent successfully" without
+- identity's `POST /api/v1/admin/teams/{team_id}/invite`
+  (`/api/v1/identity/admin/teams/{team_id}/invite` through the gateway) is
+  removed (#570) and answers 404. It returned "Invitation sent successfully" without
   storing or sending anything, so a script that called it never invited
   anyone; drop the call.
 - identity's admin analytics no longer report estimated request counts
   (#570): `summary.api_requests_today` is gone from
-  `GET /api/v1/analytics/admin/usage-summary`, and
+  `GET /api/v1/identity/analytics/admin/usage-summary`, and
   `api_usage.estimated_requests_today` and
   `api_usage.estimated_requests_week` from
-  `GET /api/v1/analytics/admin/system-stats`. They were API keys used
+  `GET /api/v1/identity/analytics/admin/system-stats` (identity's
+  `/api/v1/analytics/admin/...` on its own port). They were API keys used
   times a constant, not counts. A script that reads them must stop; the
   number of keys used in the last day is still there
   (`summary.api_keys_active`, `api_usage.keys_used_today`).
@@ -254,6 +488,15 @@ is at the top of the file.
   `EXECUTIVE_REPORT_EMAIL_TO`). The import and export scripts now use the
   n8n CLI in the container instead of the REST API with basic auth, which
   n8n 1.x refuses.
+- The tools service's credential manager and `ENCRYPTION_KEY` are removed
+  (#540): no service reads the variable, so remove it from `.env`. With
+  them gone, `SECURITY_CONTROLS_ENABLED=true` in the tools service now
+  loads its security layer; it used to fail on a missing import and switch
+  the layer off.
+- `make clean` no longer runs `docker system prune -f --volumes`, which
+  deleted every unused volume and image on the host. It clears local
+  caches only; reset the stack's data with `docker compose down -v` when
+  you mean to.
 
 ### 12. guardian has a Celery worker (`guardian-worker`)
 
@@ -323,8 +566,11 @@ and a notification log; `guardian` applies it when it starts.
 - **Expect one notification per firing rule.** On the first sweep after the
   upgrade (within 15 minutes) every rule whose condition holds starts firing
   and notifies once. The e-mail template was missing, so no alert e-mail was
-  ever actually sent before; set `notification_config.recipients` on a rule,
-  or `DEFAULT_NOTIFICATION_RECIPIENTS`, for them to reach someone.
+  ever actually sent before; set `notification_config.recipients` on each
+  rule for them to reach someone. The code falls back to a
+  `DEFAULT_NOTIFICATION_RECIPIENTS` setting, but guardian's settings do not
+  define it and Compose does not pass it, so that fallback is empty: setting
+  the variable in `.env` has no effect.
 - `GUARDIAN_ALERT_RENOTIFY_INTERVAL` (optional, `guardian-worker`): seconds
   between reminders while a rule keeps firing, default 86400, or `off`.
   Anything else stops the container at start-up.
@@ -359,7 +605,8 @@ describes what can be scheduled.
   downloads. Reports generated before the upgrade were never completed, so
   there is nothing to move.
 - Scheduled reports are e-mailed to the schedule's `recipients` when they
-  are ready, or to `DEFAULT_NOTIFICATION_RECIPIENTS` if it has none.
+  are ready. A schedule without recipients e-mails nobody (the
+  `DEFAULT_NOTIFICATION_RECIPIENTS` fallback is empty, as in section 14).
 - A network scan now finds a host by TCP connection on ports 80, 443, 22 and
   3389 (a refused connection counts as up), not by ping, which was not
   installed in the image. A host that answers only ICMP is not found.
@@ -475,14 +722,16 @@ service, its worker and the gateway together (section 1 does).
 
 ### 20. `trends_change` can be null
 
-`GET /api/v1/dashboard/threat-intel` (data) answers `trends_change: null`
+`GET /api/v1/data/dashboard/threat-intel` (the data service's
+`/api/v1/dashboard/threat-intel`) answers `trends_change: null`
 when the previous 24 hours had no indicators; it used to report 100.0 (or
 0.0 when both periods were empty). A client that reads the field must
 accept null. Every other value is unchanged.
 
 ### 21. `users.recent_logins` is gone from identity's system statistics
 
-`GET /api/v1/analytics/admin/system-stats` no longer returns
+`GET /api/v1/identity/analytics/admin/system-stats` (identity's
+`/api/v1/analytics/admin/system-stats`) no longer returns
 `users.recent_logins`. It counted users whose record changed in the last
 day, not logins, and identity has no login count to put in its place. A
 script that reads it must stop; the dashboard never did.
@@ -504,7 +753,8 @@ default of false, so no existing account is affected.
 - **Accounts created this way must change the initial password** before
   anything else. Until they do, identity answers 403
   `PASSWORD_CHANGE_REQUIRED` to every route except `GET /auth/users/me`,
-  change-password and logout, and the gateway answers 403
+  change-password (`POST /api/v1/identity/admin/me/change-password` or
+  `PUT /api/v1/identity/admin/me/password`) and logout, and the gateway answers 403
   `{"error": "PASSWORD_CHANGE_REQUIRED"}` for every other service. A
   script that uses such an account must first call
   `POST /api/v1/identity/admin/me/change-password` and continue with the
@@ -524,7 +774,8 @@ registration, the reset-password flow, change-password, an
 administrator's reset through `PATCH /auth/users/{id}`, the accounts a
 team administrator creates (section 22) and the creation of the first
 administrator. A password must have 12 to 128 characters,
-must not contain the account's email address or the part before the `@`,
+must not contain the account's email address or, when it has at least 4
+characters, the part before the `@`,
 and must not be one of the 10,000 most common passwords of that length.
 There are no composition rules. Rebuild identity (section 1 does).
 
@@ -1017,7 +1268,7 @@ one: started as is, identity would reject every API key issued so far.
 Before you start the new images, while `.env` still has the
 `JWT_SECRET_KEY` the running identity uses, copy that value into
 `API_KEY_HASH_SECRET`. The command edits `.env` in place, backs it up
-first and prints neither value:
+first (`.env.bak.<date>_<time>`) and prints neither value:
 
 ```bash
 make init-api-key-hash
@@ -1035,17 +1286,20 @@ working, and `JWT_SECRET_KEY` can from now on be rotated on its own.
   your `-f` files): the old keys work again, but keys created in between
   must be created again. Do not rotate `JWT_SECRET_KEY` before this, or
   the old keys cannot be recovered.
-- **Production refuses to start without it.** With
-  `ENVIRONMENT=production`, identity exits at start-up naming
-  `API_KEY_HASH_SECRET` when it is unset, empty, shorter than 32
-  characters, a placeholder from `.env.example` or has too few distinct
-  characters. `docker compose config` fails without it in any
-  environment, and `make validate-secrets` now requires it.
-- **The JWT rotation guard checks identity, not `.env`.**
+- **identity refuses a weak or missing value.** In every environment,
+  identity exits at start-up naming `API_KEY_HASH_SECRET` when the value
+  is shorter than 32 characters, a placeholder from `.env.example` or has
+  fewer than 10 distinct characters. With `ENVIRONMENT=production` it also
+  exits when the value is unset or empty; elsewhere it then falls back to
+  `JWT_SECRET_KEY` with a warning. `docker compose config` fails without
+  it in any environment, and `make validate-secrets` now requires it.
+- **The JWT rotation guard checks identity, not only `.env`.**
   `./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY` refuses unless
-  `docker compose config` passes `API_KEY_HASH_SECRET` to identity and a
-  running identity container has it. If you start the stack with an
-  overlay, set `COMPOSE_FILE`, for example
+  `.env` sets `API_KEY_HASH_SECRET`, `docker` is available,
+  `docker compose config` passes the variable to identity and, when an
+  identity container is running, that container has it (with identity
+  stopped, it checks the configuration only). If you start the stack with
+  an overlay, set `COMPOSE_FILE`, for example
   `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
 - **A fresh install needs nothing:** `make generate-secrets` draws the
   two values independently.
@@ -1146,6 +1400,85 @@ does).
 - **A script that revoked another member's key** through
   `/api/v1/identity/api-keys/{key_prefix}` now gets 404, and the key keeps
   working. Use the team route above with an owner's or admin's token.
+
+### 42. Production Redis refuses writes when full instead of evicting
+
+`docker-compose.prod.yml` ran Redis with `--maxmemory-policy allkeys-lru`
+at 512 MB, so under memory pressure Redis deleted revoked-token entries,
+lockout counters, queued tasks and results (#530). The overlay now keeps
+the base file's command: `noeviction`, with `REDIS_MAXMEMORY` (default
+`1gb`), and a container memory limit of `REDIS_MEMORY_LIMIT` (default
+`2g`).
+
+- **Check the host's memory.** Redis may now use up to `REDIS_MAXMEMORY`
+  for data and the container up to `REDIS_MEMORY_LIMIT`. Keep the limit at
+  least twice `REDIS_MAXMEMORY`: an append-only-file rewrite can double the
+  resident memory, and the kernel would kill Redis first.
+- **A full Redis refuses writes for every service** instead of dropping
+  keys. Watch the memory in use, and size it for cspm's stored reports
+  (section 24).
+- Check the rendered configuration before you start, and the running Redis
+  after:
+
+  ```bash
+  python3 scripts/check_redis_config.py config
+  python3 scripts/check_redis_config.py runtime
+  ```
+
+### 43. The agents service limits analysis requests per user and hides other users' tasks
+
+`POST /api/v1/agents/analyze` was limited by client address, which is the
+gateway's for every request, so the whole platform shared one budget of
+five analysis requests a minute (#651). Reading or cancelling a task also
+trusted a missing owner record (#650). Rebuild the agents service (section 1 does).
+
+- **Each user has their own budget**, `5/minute` by default. A user over
+  it gets 429, and the body names the user or the team limit.
+- **Two new settings, optional.** `ANALYZE_RATE_LIMIT` (per user, in the
+  `limits` notation, for example `5/minute;50/day`) and
+  `ANALYZE_TEAM_RATE_LIMIT` (a ceiling for a whole team, empty for none).
+  `docker-compose.yml` does not pass them: add them to the agents
+  service's `environment` in an override file of your own. A value that
+  cannot be parsed, or an empty `ANALYZE_RATE_LIMIT`, stops the service at
+  start-up.
+- **Another user's task answers 404.** `GET` and `DELETE
+  /api/v1/agents/analyze/{task_id}` answer 404 `Task not found` for a task
+  of another user, or one whose owner record is gone; `GET` used to answer
+  403 for another user's task. A client that told the two apart must
+  treat both as 404.
+
+### 44. The tools service checks every URL a tool fetches
+
+The tools service validated target URLs with free-text patterns and
+checked only top-level URL fields (#561, #610). It now parses every URL in
+a tool's input, nested ones and URL-typed fields included, and checks
+every connection a tool makes, redirects included. Rebuild the tools
+service and its worker (section 1 does).
+
+- **Accepted now:** `http://` targets, query strings, `&` in a path and
+  host names such as `shop.example.com`, which the patterns refused.
+- **Refused with 400 now:** user info (`user:pass@host`), whitespace or
+  control characters, a port outside 1 to 65535, numeric host spellings
+  (`2130706433`, `0x7f000001`, `127.1`), `localhost` and `*.localhost`,
+  any address that is not globally routable (`100.64.0.0/10` included),
+  a scheme other than `http` or `https` in a URL field, and input nested
+  deeper than 16 levels. `TOOLS_ALLOWED_INTERNAL_TARGETS` (section 29)
+  does not lift these checks for URLs.
+- **Redirects** are followed to public hosts only, at most 5 hops; a
+  redirect to an internal address fails the run. `whois_lookup` follows a
+  referral only to a public host name.
+- **Workflow steps** of security_automation_orchestrator are validated by
+  the step's tool input model and checked by the same guard, and a tool
+  that acts on behalf of a caller is refused as a step.
+
+### 45. The threat-intel dashboard figures cover the caller's team
+
+`GET /api/v1/data/dashboard/threat-intel` counted the sources and
+indicators of every team (#570). Its figures now cover the caller's team
+and the global feeds, as `/api/v1/data/indicators/search` does, so they
+can be lower than before. `last_updated` is the end of the last completed
+collection run of a visible feed, and null when there is none; it used to
+fall back to an hour ago. A client that reads it must accept null.
 
 ## Upgrading to 0.10.0
 
@@ -1259,12 +1592,51 @@ docker compose up -d
 `GET /metrics` on the identity service now returns the Prometheus text
 exposition, like every other service. The privileged JSON counts it used to
 return -- `users_total`, `teams_total`, `api_keys_active`, still gated on
-`X-Gateway-Secret` -- are at `GET /api/v1/admin/metrics`.
+`X-Gateway-Secret` in 0.10.0 -- are at `GET /api/v1/admin/metrics`. From
+0.11.0 that route takes a platform superuser's bearer token instead (see
+section 40 of "Upgrading to 0.11.0").
 
 ## Verifying the upgrade
 
+After any upgrade, with `COMPOSE_FILE` naming the files you start the stack
+with:
+
 ```bash
 make validate-secrets     # every required secret present, .env is 0600
+docker compose config -q  # compose files resolve
+docker compose ps         # every service up, and healthy where it has a check
+make health
 make restore-drill        # backup -> restore -> row-by-row comparison
-docker compose config -q  # compose file resolves
 ```
+
+`make restore-drill`, like `make backup`, runs from the host and connects to
+`POSTGRES_HOST` (default `wildbox-postgres`), which the default Compose file
+does not publish: run it from a machine or container that reaches the
+database.
+
+With the production overlay, also check the network segmentation and Redis:
+
+```bash
+python3 scripts/check_network_segmentation.py config
+python3 scripts/check_network_segmentation.py runtime
+python3 scripts/check_redis_config.py runtime
+```
+
+After the upgrade to 0.11.0, also check:
+
+- **An API key issued before the upgrade still works** (section 38). Through
+  the gateway, a request with it answers 200, not 401:
+
+  ```bash
+  curl -sS -o /dev/null -w '%{http_code}\n' \
+    -H "X-API-Key: <existing key>" https://<host>/api/v1/guardian/assets/assets/
+  ```
+
+- **Logging out answers 2xx** and the token is refused afterwards
+  (sections 3 and 18); a 503 means identity cannot reach the gateway on
+  port 8081.
+- **guardian's data is visible** to the team you assigned it to
+  (section 39), and `docker compose logs guardian-beat guardian-worker`
+  shows the scheduled tasks running (sections 12 and 13).
+- **`cspm-worker` takes scans**: cspm's `/health` reports `healthy`
+  (section 27).
