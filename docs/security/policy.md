@@ -295,7 +295,7 @@ If you discover a security vulnerability, follow
 
 We value security researchers. Valid vulnerability reports receive:
 
-- **Critical**: Recognition + merchandise
+- **Critical**: Recognition
 - **High**: Recognition
 - **Medium**: Recognition
 - **Low**: Acknowledgment
