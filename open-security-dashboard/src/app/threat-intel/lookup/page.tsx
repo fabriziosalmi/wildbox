@@ -464,7 +464,7 @@ export default function ThreatIntelLookupPage() {
                     <button
                       type="button"
                       onClick={handleClear}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       <X className="h-4 w-4" />
                     </button>

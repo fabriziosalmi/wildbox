@@ -237,7 +237,7 @@ export default function ProfilePage() {
           {/* Account Overview */}
           <Card className="p-6">
             <div className="mb-6 flex items-center gap-4">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-linear-to-br/srgb from-blue-500 to-purple-600">
                 <User className="h-8 w-8 text-white" />
               </div>
               <div>
@@ -296,7 +296,7 @@ export default function ProfilePage() {
                   Email Address
                 </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+                  <Mail className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
@@ -331,7 +331,7 @@ export default function ProfilePage() {
                       type="button"
                       aria-label={showEmailPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowEmailPassword(prev => !prev)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 transform"
+                      className="absolute top-1/2 right-3 -translate-y-1/2 transform"
                     >
                       {showEmailPassword ? (
                         <EyeOff className="h-4 w-4" />
@@ -387,7 +387,7 @@ export default function ProfilePage() {
                       onClick={() =>
                         setShowPasswords(prev => ({ ...prev, current: !prev.current }))
                       }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 transform"
+                      className="absolute top-1/2 right-3 -translate-y-1/2 transform"
                     >
                       {showPasswords.current ? (
                         <EyeOff className="h-4 w-4" />
@@ -421,7 +421,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => setShowPasswords(prev => ({ ...prev, new: !prev.new }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 transform"
+                      className="absolute top-1/2 right-3 -translate-y-1/2 transform"
                     >
                       {showPasswords.new ? (
                         <EyeOff className="h-4 w-4" />
@@ -458,7 +458,7 @@ export default function ProfilePage() {
                       onClick={() =>
                         setShowPasswords(prev => ({ ...prev, confirm: !prev.confirm }))
                       }
-                      className="absolute right-3 top-1/2 -translate-y-1/2 transform"
+                      className="absolute top-1/2 right-3 -translate-y-1/2 transform"
                     >
                       {showPasswords.confirm ? (
                         <EyeOff className="h-4 w-4" />

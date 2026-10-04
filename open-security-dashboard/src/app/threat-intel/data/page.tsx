@@ -315,7 +315,7 @@ export default function ThreatIntelligenceData() {
                       {getIndicatorIcon(type)}
                     </div>
                     <div className="text-lg font-semibold">{count.toLocaleString()}</div>
-                    <div className="text-xs capitalize text-muted-foreground">
+                    <div className="text-xs text-muted-foreground capitalize">
                       {type.replace('_', ' ')}
                     </div>
                   </div>
@@ -336,7 +336,7 @@ export default function ThreatIntelligenceData() {
           <CardContent className="space-y-4">
             {/* Search Input */}
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+              <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
               <Input
                 placeholder="Search indicators (IP, domain, hash, email, etc.)"
                 value={searchTerm}

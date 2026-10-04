@@ -701,7 +701,7 @@ export default function AdminPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-red-500 to-red-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-linear-to-br/srgb from-red-500 to-red-600">
               <Crown className="h-6 w-6 text-white" />
             </div>
             <div>
@@ -993,7 +993,7 @@ export default function AdminPage() {
                   Email Address *
                 </label>
                 <div className="relative">
-                  <AtSign className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+                  <AtSign className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     id="email"
                     type="email"
@@ -1011,7 +1011,7 @@ export default function AdminPage() {
                   Password *
                 </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
+                  <Lock className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 transform text-muted-foreground" />
                   <Input
                     id="password"
                     type="password"
