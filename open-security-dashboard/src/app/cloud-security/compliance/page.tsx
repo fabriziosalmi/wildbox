@@ -15,16 +15,7 @@ import {
 } from '@/components/ui/select'
 import { cspmClient, getCSPMPath } from '@/lib/api-client'
 import { getErrorMessage } from '@/lib/utils'
-import {
-  Shield,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Search,
-  RefreshCw,
-  Info,
-  Construction,
-} from 'lucide-react'
+import { Shield, CheckCircle2, XCircle, AlertTriangle, Search, RefreshCw, Info } from 'lucide-react'
 
 /*
  * Every figure on this page comes from the CSPM service, which aggregates the
@@ -147,15 +138,12 @@ export default function CompliancePage() {
       <Card className="border-amber-500 bg-amber-50 dark:bg-amber-900/20">
         <CardHeader>
           <div className="flex items-center gap-3">
-            <Construction className="h-6 w-6 text-amber-600" />
+            <Info className="h-6 w-6 text-amber-600" />
             <div>
-              <CardTitle className="text-amber-900 dark:text-amber-100">
-                Coming in Future Release
-              </CardTitle>
+              <CardTitle className="text-amber-900 dark:text-amber-100">AWS only</CardTitle>
               <CardDescription className="text-amber-700 dark:text-amber-200">
-                Cloud Compliance module is planned for post-v1.0 release. Its results come from the
-                AWS checks only, grouped by the frameworks each check is tagged with; they are not a
-                full assessment against any framework.
+                Results come from the AWS checks only, grouped by the frameworks each check is
+                tagged with; they are not a full assessment against any framework.
               </CardDescription>
             </div>
           </div>
