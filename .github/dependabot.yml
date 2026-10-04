@@ -37,6 +37,16 @@ updates:
       - dependency-name: "@types/node"
         update-types:
           - "version-update:semver-major"
+      # TypeScript 7 is the native compiler and its npm package no longer
+      # exposes the JS compiler API. typescript-eslint 8.71 (pulled in by
+      # eslint-config-next 16.3) declares typescript ">=4.8.4 <6.1.0" and
+      # exits with "typescript-eslint does not support TS 7.0", so
+      # `npm run lint` cannot run (#668). Upstream tracking issue:
+      # https://github.com/typescript-eslint/typescript-eslint/issues/10940
+      # Revisit when a typescript-eslint release accepts typescript 7 in
+      # its peer range. TypeScript 6.x is still allowed through.
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
 
   - package-ecosystem: "docker"
     directories:
