@@ -490,25 +490,14 @@ export default function ProfilePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">Two-Factor Authentication</div>
-                  <div className="text-muted-foreground">Add an extra layer of security</div>
+                  <div className="text-muted-foreground">
+                    The identity service has no second factor
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="border-red-600 text-red-600">
-                    Disabled
+                    Not available
                   </Badge>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      toast({
-                        title: '2FA Setup',
-                        description:
-                          'Two-factor authentication setup will be available in the next release. This feature is currently in development.',
-                      })
-                    }}
-                  >
-                    Enable
-                  </Button>
                 </div>
               </div>
 

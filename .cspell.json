@@ -780,7 +780,9 @@
     "zwitch",
     "aiodns",
     "getaddrinfo",
-    "pycares"
+    "pycares",
+    "logspout",
+    "unrouted"
   ],
   "ignoreWords": [
     "APIKEY",
