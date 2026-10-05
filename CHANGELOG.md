@@ -518,6 +518,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by a stand-in, and the PowerShell text was run in PowerShell 7 on
   Linux with a stand-in for `Get-WinEvent`; the sensor README lists what
   that leaves unchecked.
+- **The sensor's `GET /api/v1/stats` reports what the sensor did**
+  (#725). `events_collected`, `events_processed` and `events_forwarded`
+  were three zeros nothing incremented, `uptime_seconds` was up to a
+  minute old and `last_activity` was the time of the last refresh. The
+  counters are now read from the components that count: the collectors'
+  queue, the processor and the sender. The answer also has
+  `events_filtered`, `events_dropped` and `events_in_pipeline`, `errors`
+  counts the processor's and the sender's errors, and `last_activity` is
+  when the last event was collected. `GET /api/v1/dashboard/metrics`
+  answers from the same counters and no longer reports a hostname and
+  operating system of `unknown`, zeros for `cpu_usage`, `memory_usage`,
+  `disk_usage`, `network_connections` and `process_count`, a constant
+  `agent_version` and a `trends_change` it never computed: what the
+  sensor does not measure is not in the answer.
 
 ### Changed
 

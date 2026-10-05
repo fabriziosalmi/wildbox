@@ -24,6 +24,25 @@ from sensor.utils.resource_monitor import ResourceMonitor
 
 logger = logging.getLogger(__name__)
 
+
+class CountingQueue(asyncio.Queue):
+    """A queue that counts what is put on it, and when the last item was.
+
+    The collectors put their events on one of these: its count is the
+    number of events collected, whatever becomes of them afterwards.
+    """
+
+    def _init(self, maxsize):
+        super()._init(maxsize)
+        self.total = 0
+        self.last_put: Optional[datetime] = None
+
+    def _put(self, item):
+        super()._put(item)
+        self.total += 1
+        self.last_put = datetime.now(timezone.utc)
+
+
 class SecuritySensorAgent:
     """
     Main sensor agent that coordinates all sensor components.
@@ -51,18 +70,13 @@ class SecuritySensorAgent:
         self.local_api = None
         self.resource_monitor = None
         
-        # Statistics
-        self.stats = {
-            'events_collected': 0,
-            'events_processed': 0,
-            'events_forwarded': 0,
-            'errors': 0,
-            'last_activity': None,
-            'uptime_seconds': 0
-        }
-        
+        # What the resource monitor measures (memory_mb, cpu_percent,
+        # throttled). The event counters are not kept here: get_stats()
+        # reads them from the components that do the counting.
+        self.resources: Dict[str, Any] = {}
+
         # Event queues for inter-component communication
-        self.event_queue = asyncio.Queue(maxsize=self.config.performance.max_queue_size)
+        self.event_queue = CountingQueue(maxsize=self.config.performance.max_queue_size)
         self.processed_queue = asyncio.Queue(maxsize=self.config.performance.max_queue_size)
     
     async def start(self):
@@ -86,7 +100,7 @@ class SecuritySensorAgent:
             # Initialize resource monitor
             self.resource_monitor = ResourceMonitor(
                 config=self.config,
-                stats=self.stats
+                stats=self.resources
             )
             
             # Initialize collectors based on configuration
@@ -125,8 +139,7 @@ class SecuritySensorAgent:
             self.running = True
             logger.info("Security Sensor Agent started successfully")
             
-            # Start monitoring and statistics tasks
-            asyncio.create_task(self._update_statistics())
+            # Start the monitoring task
             asyncio.create_task(self._monitor_health())
             
         except Exception as e:
@@ -209,26 +222,50 @@ class SecuritySensorAgent:
         if self.log_forwarder:
             self.log_forwarder.save_positions()
 
-    async def _update_statistics(self):
-        """Update agent statistics periodically"""
-        while self.running:
-            try:
-                if self.start_time:
-                    self.stats['uptime_seconds'] = int(
-                        (datetime.now(timezone.utc) - self.start_time).total_seconds()
-                    )
-                
-                self.stats['last_activity'] = datetime.now(timezone.utc).isoformat()
-                
-                await asyncio.sleep(60)  # Update every minute
-                
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error updating statistics: {e}")
-                self.stats['errors'] += 1
-                await asyncio.sleep(60)
-    
+    def get_stats(self) -> Dict[str, Any]:
+        """The sensor's counters, read where they are counted.
+
+        They used to be a dictionary of zeros that nothing incremented.
+
+        * events_collected: events the collectors put on the queue.
+        * events_processed / events_filtered: what the processor passed on
+          or filtered out.
+        * events_forwarded: events the gateway accepted.
+        * events_dropped: events that left the sensor unsent (the reasons
+          are under data_forwarder in /api/v1/components).
+        * events_in_pipeline: events waiting in the two queues and in the
+          sender's buffer.
+        * errors: errors of the processor and of the sender (network errors
+          and error answers of the gateway).
+        * last_activity: when the last event was collected, or null.
+        """
+        processor = self.data_processor.stats if self.data_processor else {}
+        forwarder = self.data_forwarder.stats if self.data_forwarder else {}
+        buffered = len(self.data_forwarder.buffer) if self.data_forwarder else 0
+        last_put = self.event_queue.last_put
+        uptime = 0
+        if self.start_time:
+            uptime = int((datetime.now(timezone.utc) - self.start_time).total_seconds())
+        stats = {
+            'events_collected': self.event_queue.total,
+            'events_processed': processor.get('events_processed', 0),
+            'events_filtered': processor.get('events_filtered', 0),
+            'events_forwarded': forwarder.get('events_forwarded', 0),
+            'events_dropped': forwarder.get('events_dropped', 0),
+            'events_in_pipeline': (
+                self.event_queue.qsize() + self.processed_queue.qsize() + buffered
+            ),
+            'errors': (
+                processor.get('errors', 0)
+                + forwarder.get('network_errors', 0)
+                + forwarder.get('api_errors', 0)
+            ),
+            'last_activity': last_put.isoformat() if last_put else None,
+            'uptime_seconds': uptime,
+        }
+        stats.update(self.resources)
+        return stats
+
     async def _monitor_health(self):
         """Monitor agent health and perform maintenance tasks"""
         while self.running:
@@ -267,7 +304,7 @@ class SecuritySensorAgent:
         status = {
             'running': self.running,
             'start_time': self.start_time.isoformat() if self.start_time else None,
-            'stats': self.stats.copy(),
+            'stats': self.get_stats(),
             'config': {
                 'data_lake_endpoint': self.config.data_lake.endpoint,
                 'collection_enabled': {
@@ -322,9 +359,3 @@ class SecuritySensorAgent:
         
         return await self.osquery_manager.execute_query(query)
     
-    def increment_stat(self, stat_name: str, amount: int = 1):
-        """Increment a statistics counter"""
-        if stat_name in self.stats:
-            self.stats[stat_name] += amount
-        else:
-            self.stats[stat_name] = amount

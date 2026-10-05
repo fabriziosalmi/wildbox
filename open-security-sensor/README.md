@@ -723,8 +723,8 @@ those routes answer `503`; with a wrong key, `403`.
 | `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}` |
 | `GET` | `/api/v1/queries` | Names of the loaded query packs and the query count |
 | `GET` | `/api/v1/components` | Status of each component |
-| `GET` | `/api/v1/stats` | Agent counters |
-| `GET` | `/api/v1/dashboard/metrics` | Summary metrics for this endpoint |
+| `GET` | `/api/v1/stats` | The sensor's counters; see [Statistics](#statistics) |
+| `GET` | `/api/v1/dashboard/metrics` | A summary of this endpoint, from the same counters |
 | `POST` | `/api/v1/test-connection` | POST an empty test batch to `data_lake.endpoint` |
 
 ```bash
@@ -735,6 +735,37 @@ curl -X POST http://127.0.0.1:8004/api/v1/query \
   -H "Content-Type: application/json" \
   -d '{"query": "SELECT pid, name FROM processes LIMIT 5;"}'
 ```
+
+### Statistics
+
+`GET /api/v1/stats` reads its counters from the components that count them,
+since the sensor started:
+
+| Field | Meaning |
+| :--- | :--- |
+| `events_collected` | Events the collectors produced |
+| `events_processed` | Events the processor passed on to the sender |
+| `events_filtered` | Events the processor filtered out (no data, noisy system processes) |
+| `events_forwarded` | Events the gateway accepted |
+| `events_dropped` | Events that left the sensor unsent; the reasons are counted under `data_forwarder` in `GET /api/v1/components` |
+| `events_in_pipeline` | Events waiting in the queues and in the sender's buffer |
+| `errors` | Errors of the processor and of the sender (network errors, error answers of the gateway) |
+| `last_activity` | When the last event was collected; `null` before the first |
+| `uptime_seconds` | Seconds since the sensor started |
+| `memory_mb`, `cpu_percent`, `throttled` | The sensor's own process, as measured every 5 seconds; absent until the first measurement |
+| `timestamp` | When the answer was made |
+
+`events_collected` equals `events_forwarded` + `events_dropped` +
+`events_filtered` + `events_in_pipeline`, give or take the few events a
+worker is handling at that instant.
+
+`GET /api/v1/dashboard/metrics` answers `online_endpoints`, `alerts` (1 for
+errors, 1 more while the sensor is over its resource limits), `last_activity`
+and, under `endpoint_details`, the host name, the operating system, the
+uptime, `cpu_percent`, `memory_mb` and the three event counters. It no
+longer answers `disk_usage`, `network_connections`, `process_count`,
+`cpu_usage`, `memory_usage`, `agent_version` or `trends_change`: the sensor
+never measured them, and they were always zero or a constant.
 
 ## Security notes
 
