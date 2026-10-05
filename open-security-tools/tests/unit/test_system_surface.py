@@ -114,14 +114,20 @@ def test_health_says_how_the_service_is_and_nothing_about_the_deployment(client)
 
 
 @pytest.mark.parametrize("path", ["/health", "/api"])
-def test_no_open_route_names_the_environment_or_a_tool(client, path):
+@pytest.mark.parametrize("environment", ["development", "staging", "production"])
+def test_no_open_route_names_the_environment_or_a_tool(
+    client, monkeypatch, path, environment
+):
     from app.config import settings
+
+    # Whatever the deployment is, and not only the value the tests run with.
+    monkeypatch.setattr(settings, "environment", environment)
 
     response = client.get(path)
 
     assert response.status_code == 200
     assert "environment" not in response.json()
-    assert settings.environment not in response.text
+    assert environment not in response.text
     assert [name for name in DISCOVERED_TOOLS if name in response.text] == []
 
 

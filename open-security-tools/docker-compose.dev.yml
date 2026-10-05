@@ -17,6 +17,9 @@ services:
       - API_KEY=${API_KEY:-dev-api-key-change-this}
       - HOST=0.0.0.0
       - PORT=8000
+      # /openapi.json is served in development only, and an environment
+      # that is not declared is not development (#722).
+      - ENVIRONMENT=development
       - DEBUG=true
       - LOG_LEVEL=DEBUG
       - REDIS_URL=redis://redis:6379

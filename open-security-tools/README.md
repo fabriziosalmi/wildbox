@@ -379,7 +379,7 @@ root stack, `docker-compose.yml` sets them for each container.
 | `API_KEY`                 | none (required)         | See below                                                    |
 | `GATEWAY_INTERNAL_SECRET` | none                    | Must match the gateway's; without it every route returns `503` |
 | `REDIS_URL`               | none                    | Celery broker and backend, task ownership records            |
-| `ENVIRONMENT`             | `development`           | `development`, `staging` or `production`; `/openapi.json` is served only in `development` |
+| `ENVIRONMENT`             | none                    | `development`, `staging` or `production`; `/openapi.json` is served only in `development`, and not when the variable is unset |
 | `DEBUG`                   | `false`                 |                                                              |
 | `LOG_LEVEL`               | `INFO`                  |                                                              |
 | `CORS_ORIGINS`            | `http://localhost:3000` | Comma-separated                                              |
