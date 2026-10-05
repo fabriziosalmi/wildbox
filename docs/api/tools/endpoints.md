@@ -473,21 +473,24 @@ curl -s http://127.0.0.1:8000/health
 {
   "status": "healthy",
   "service": "tools",
-  "version": "1.0.0",
+  "version": "0.1.6",
   "timestamp": 1790000000.0,
-  "response_time_ms": 0.01,
-  "environment": "development",
   "tools_count": 52,
-  "available_tools": ["api_security_analyzer", "..."],
-  "active_executions": 0,
-  "max_concurrent_tools": 10,
-  "default_timeout": 300
+  "active_executions": 0
 }
 ```
 
-`status` is `degraded` (with `error`) when the service cannot read its
-execution state. The gateway's own `https://<host>/health` reports on the
-gateway, not on this service.
+`status` is `degraded` (with `error`, and without the two counts) when the
+service cannot read its execution state. `version` is the service's one
+version, the same the `X-API-Version` response header and the OpenAPI
+schema carry. `tools_count` is the number of tools loaded and
+`active_executions` the synchronous runs in progress.
+
+The answer names neither the environment, nor the concurrency and timeout
+settings, nor the tools: the route answers anyone who reaches the service
+port, and a health check needs the status
+([#721](https://github.com/fabriziosalmi/wildbox/issues/721)). The gateway's
+own `https://<host>/health` reports on the gateway, not on this service.
 
 ### Other Internal Endpoints
 
@@ -495,7 +498,7 @@ gateway, not on this service.
 | --- | --- |
 | `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`), synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`) and the [asynchronous run metrics](#asynchronous-run-metrics). `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
-| `/api` | Service name, version and tool names |
+| `/api` | Service name, version and the path of the tool list (`/api/tools`, which asks for the gateway's identity) |
 
 None of them is part of the public API, and `/health` and these three are
 the only routes that answer without the gateway's identity: every other
@@ -546,7 +549,7 @@ for one of them answers 404. What they reported is available elsewhere:
 | Was in | Now |
 | --- | --- |
 | `info`: tool names | `GET /api/v1/tools`, through the gateway |
-| `info`: environment, concurrency and timeout settings | `GET /health`, above |
+| `info`: environment, concurrency and timeout settings | Not served: they are the deployment's own settings (`ENVIRONMENT`, `MAX_CONCURRENT_TOOLS`, `TOOL_TIMEOUT`), and no route that answers without authentication reports them |
 | `metrics`, `operational-metrics`: counters of synchronous executions (which stayed at zero) | `wildbox_tool_executions_total` in `/metrics` |
 | `health-aggregate`: the health of the other services (it reported a healthy stack as `degraded`) | Each service's own health check (`docker compose ps`), and the `up` series Prometheus records for every service it scrapes |
 

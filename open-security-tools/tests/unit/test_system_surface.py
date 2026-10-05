@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import uuid
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,6 +17,8 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
+from app import __version__ as SERVICE_VERSION  # noqa: E402
+from app.api.router import DISCOVERED_TOOLS  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 
@@ -82,10 +85,97 @@ def test_health_answers_what_the_probes_read(client):
     body = response.json()
     assert body["status"] == "healthy"
     assert body["service"] == "tools"
-    assert body["tools_count"] == len(body["available_tools"]) > 0
+    assert body["tools_count"] == len(DISCOVERED_TOOLS) > 10
     # The fields of the handler that never ran are not part of the answer.
     assert "uptime_seconds" not in body
     assert "tools_loaded" not in body
+
+
+# --- what /health and /api tell a caller nobody authenticated (#721) ---------
+
+
+def test_health_says_how_the_service_is_and_nothing_about_the_deployment(client):
+    """Anyone who reaches the service port can ask: it answers a probe.
+
+    It named the environment, the concurrency ceiling, the default timeout
+    and every loaded tool. A health check reads the status; an operator has
+    the settings already, and the tool list is an authenticated route.
+    """
+    body = client.get("/health").json()
+
+    assert set(body) == {
+        "status",
+        "service",
+        "version",
+        "timestamp",
+        "tools_count",
+        "active_executions",
+    }
+
+
+@pytest.mark.parametrize("path", ["/health", "/api"])
+def test_no_open_route_names_the_environment_or_a_tool(client, path):
+    from app.config import settings
+
+    response = client.get(path)
+
+    assert response.status_code == 200
+    assert "environment" not in response.json()
+    assert settings.environment not in response.text
+    assert [name for name in DISCOVERED_TOOLS if name in response.text] == []
+
+
+def test_the_banner_points_at_the_tool_list_and_does_not_hold_it(client):
+    body = client.get("/api").json()
+
+    assert body == {
+        "message": "Wildbox Security Tools",
+        "version": SERVICE_VERSION,
+        "tools": "/api/tools",
+    }
+    # The list itself asks for the gateway's identity.
+    assert client.get(body["tools"]).status_code == 401
+
+
+def test_the_service_has_one_version(app, client):
+    """/health and /api said 1.0.0; the schema and the response header 0.1.6."""
+    health = client.get("/health")
+
+    assert re.fullmatch(r"\d+\.\d+\.\d+", SERVICE_VERSION)
+    assert app.version == SERVICE_VERSION
+    assert health.json()["version"] == SERVICE_VERSION
+    assert health.headers["X-API-Version"] == SERVICE_VERSION
+    assert client.get("/api").json()["version"] == SERVICE_VERSION
+
+
+def test_the_version_is_written_in_one_place():
+    service = Path(__file__).resolve().parents[2] / "app"
+    written = {
+        name: re.findall(
+            r"""["'](\d+\.\d+\.\d+)["']""",
+            (service / name).read_text(encoding="utf-8"),
+        )
+        for name in ("__init__.py", "main.py")
+    }
+
+    assert written == {"__init__.py": [SERVICE_VERSION], "main.py": []}
+
+
+def test_a_degraded_answer_carries_the_same_version(client, monkeypatch):
+    from app import main as main_module
+
+    def unreadable():
+        raise ValueError("the registry cannot be read")
+
+    monkeypatch.setattr(
+        main_module.execution_manager, "get_active_executions", unreadable
+    )
+
+    body = client.get("/health").json()
+
+    assert body["status"] == "degraded"
+    assert body["version"] == SERVICE_VERSION
+    assert set(body) == {"status", "service", "version", "timestamp", "error"}
 
 
 def test_health_counts_a_run_in_progress(app, client):

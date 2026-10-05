@@ -142,17 +142,22 @@ stack, from the host on `127.0.0.1:8000`:
 
 | Path            | Content                                                         |
 | --------------- | --------------------------------------------------------------- |
-| `/health`       | Status, environment, tool count and names, active executions    |
+| `/health`       | Status, service, version, number of loaded tools, active executions |
 | `/metrics`      | Prometheus exposition format; `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | OpenAPI schema, only when `ENVIRONMENT` is `development` (there is no Swagger UI or ReDoc page) |
-| `/api`          | Service name and the list of loaded tools                       |
+| `/api`          | Service name, version and the path of the tool list             |
 
 ```bash
 curl -s http://127.0.0.1:8000/health
 ```
 
 `/health` is the route the image's and the compose file's health checks
-probe. `/metrics` carries the request counters,
+probe. It and `/api` answer anyone who reaches the service port, so they
+say how the service is and which version answered, and nothing about the
+deployment: not the environment, not its settings, not the names of the
+loaded tools (`GET /api/v1/tools`, through the gateway, lists those). The
+version is the one in `app/__init__.py`, which the OpenAPI schema and the
+`X-API-Version` response header carry too. `/metrics` carries the request counters,
 `wildbox_tool_executions_total` (the synchronous executions by tool and
 outcome) and the asynchronous ones. Those execute in the worker, which
 Prometheus cannot scrape: the worker counts in Redis how each task ended,

@@ -205,6 +205,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   against a Redis server: a second interpreter is refused what the first
   one used, and six processes asking at once for the same callers are
   granted exactly the limit.
+- **tools: `/health` and `/api` no longer describe the deployment to a
+  caller nobody authenticated** (#721). Both answer anyone who reaches
+  the service port: every container on the development network, and
+  the host on `127.0.0.1:8000`. `/health` named the environment, the
+  concurrency ceiling, the default timeout and every loaded tool, and
+  `/api` listed the tools again. `/health` now answers `status`,
+  `service`, `version`, `timestamp`, `tools_count` and
+  `active_executions`; `/api` answers the service name, the version and
+  the path of the tool list, which asks for the gateway's identity. The
+  health checks read the status and are unaffected. A client that read
+  `environment`, `available_tools`, `max_concurrent_tools`,
+  `default_timeout` or `response_time_ms` from `/health` no longer finds
+  them.
 
 ### Removed
 
@@ -263,6 +276,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools reports one version.** `/health` and `/api` said `1.0.0` while
+  the OpenAPI schema and the `X-API-Version` header of the same
+  responses said `0.1.6`. All four now read the version written once in
+  `app/__init__.py` (#721).
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
