@@ -30,6 +30,7 @@ from .serializers import (
     VulnerabilityTrendSerializer
 )
 from .filters import VulnerabilityFilter
+from .trends import open_by_day
 from .tasks import (
     update_vulnerability_risk_scores, notify_vulnerability_assignment,
 )
@@ -425,7 +426,8 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         )
         return Response(serializer.data)
     
-    #: The longest window ``trends`` computes: it runs four queries per day.
+    #: The longest window ``trends`` computes: it runs two queries per day,
+    #: and guardian keeps a year of the history the open count is read from.
     MAX_TREND_DAYS = 366
 
     @action(detail=False, methods=['get'])
@@ -448,41 +450,37 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # caller's team's findings (#642) and, for a member, those assigned
         # to or created by them (get_queryset).
         vulnerabilities = self.get_queryset()
+        # Open at the end of each day, and their risk then, read from the
+        # history of changes: not the vulnerabilities that are open today
+        # (#724; apps/vulnerabilities/trends.py).
+        open_then = iter(open_by_day(vulnerabilities, start_date, end_date))
         trends = []
         current_date = start_date
-        
+
         while current_date <= end_date:
             day_start = timezone.make_aware(datetime.combine(current_date, datetime.min.time()))
             day_end = timezone.make_aware(datetime.combine(current_date, datetime.max.time()))
-            
+
             discovered_count = vulnerabilities.filter(
                 first_discovered__range=(day_start, day_end)
             ).count()
-            
+
             resolved_count = vulnerabilities.filter(
                 resolved_at__range=(day_start, day_end)
             ).count()
-            
-            total_open = vulnerabilities.filter(
-                first_discovered__lte=day_end,
-                status='open'
-            ).count()
-            
-            avg_risk = vulnerabilities.filter(
-                first_discovered__lte=day_end,
-                status='open'
-            ).aggregate(avg_risk=Avg('risk_score'))['avg_risk'] or 0
-            
+
+            total_open, avg_risk = next(open_then)
+
             trends.append({
                 'date': current_date,
                 'discovered_count': discovered_count,
                 'resolved_count': resolved_count,
                 'total_open': total_open,
-                'avg_risk_score': round(avg_risk, 2)
+                'avg_risk_score': avg_risk
             })
-            
+
             current_date += timedelta(days=1)
-        
+
         serializer = VulnerabilityTrendSerializer(
             trends, many=True, context=self.get_serializer_context()
         )

@@ -406,11 +406,17 @@ Before #644, `reopen` and `untag` were accepted and answered
 `trends/` counts the vulnerabilities the list would show the caller: the team's,
 and for a `member` only those assigned to or created by them. It takes `days` and
 none of the list's filters. Each day has `discovered_count` and `resolved_count`
-(vulnerabilities first discovered, and resolved, on that day), and `total_open`
-and `avg_risk_score`, which describe the vulnerabilities discovered by the end of
-that day whose status is `open` now: guardian keeps no daily snapshot, so a
-vulnerability that was open on a past day and has been resolved since is not
-counted as open on that day.
+(vulnerabilities first discovered, and resolved, on that day), `total_open`, the
+vulnerabilities whose status was `open` when that day ended, and
+`avg_risk_score`, the average of the risk score those had then.
+
+The last two are read from the vulnerabilities' history, which records every
+change of status and of risk score. Before #724 they described the vulnerabilities
+whose status is `open` now, so one resolved yesterday was open on no earlier day.
+What the history cannot say: a vulnerability deleted since is not counted on the
+days it existed, and a status changed without a history entry (by a direct write
+to the database) shows from the day the figure is asked for. Guardian keeps a
+year of history, which is also the longest window.
 
 ```bash
 curl -s --cacert "$CA" "$BASE/vulnerabilities/?severity=critical&status=open" \

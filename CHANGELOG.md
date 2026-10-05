@@ -503,6 +503,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
+- **guardian: `total_open` in `vulnerabilities/trends/` is the number
+  open on that day** (#724). For a past day it was the vulnerabilities
+  discovered by then whose status is open now, so one open for a month
+  and resolved yesterday was open on no day of that month. It is now
+  read from the history of status changes guardian keeps: the
+  vulnerabilities whose status was `open` when the day ended. In the
+  same way `avg_risk_score` is the average of the score those had on
+  that day. The whole window costs two queries instead of two a day.
 - **Every Python image holds what the shared package requires of it**
   (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
   PyJWT and prometheus-client as dependencies of the whole package, and
