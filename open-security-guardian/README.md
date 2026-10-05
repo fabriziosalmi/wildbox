@@ -394,11 +394,28 @@ docker compose logs -f guardian guardian-worker guardian-beat
 ## Development
 
 Run the unit tests from this directory; `pytest.ini` selects
-`guardian.settings_test`:
+`guardian.settings_test`, which uses an in-memory SQLite database unless
+`DATABASE_URL` is set:
 
 ```bash
 pytest
 ```
+
+Guardian is deployed on PostgreSQL, and the suite runs there too. A few
+tests need it (JSON containment, which SQLite lacks, is skipped there), and
+CI runs the whole suite on both (the `Guardian Unit Tests (PostgreSQL)` job
+of `.github/workflows/test.yml`). Against a throwaway server of your own:
+
+```bash
+docker run -d --rm --name guardian-test-postgres -e POSTGRES_PASSWORD \
+  -e POSTGRES_DB=guardian -p 127.0.0.1:55432:5432 postgres:15
+DATABASE_URL="postgres://postgres:${POSTGRES_PASSWORD}@127.0.0.1:55432/guardian" pytest
+docker rm -f guardian-test-postgres
+```
+
+`POSTGRES_PASSWORD` is a value of your choosing, exported in the shell
+first. Django creates and drops its own `test_guardian` database on that
+server.
 
 Django management commands run in the container:
 

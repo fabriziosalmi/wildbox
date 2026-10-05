@@ -58,6 +58,23 @@ _schedulers = []
 
 
 @pytest.fixture(autouse=True)
+def _the_scheduler_leaves_the_tests_connection_open(monkeypatch):
+    """DatabaseScheduler closes connections it takes for stale (#724).
+
+    It calls ``close_old_connections()`` before it reads the schedule and
+    after it writes it: right for beat, a process of its own that runs for
+    weeks. Here it runs inside the test, on the test's one connection, in the
+    test's transaction; Django counts a connection in a transaction as
+    unusable and closes it. In-memory SQLite ignores a close, so the tests
+    passed there; on PostgreSQL the next query failed with "connection
+    already closed". The connection is the test's to close.
+    """
+    monkeypatch.setattr(
+        "django_celery_beat.schedulers.close_old_connections", lambda: None
+    )
+
+
+@pytest.fixture(autouse=True)
 def _no_sync_at_exit():
     # Each scheduler registers a sync() to run at interpreter exit, when the
     # test database is gone; drop it once the test is over.

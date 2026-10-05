@@ -1129,6 +1129,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **guardian's unit tests run on PostgreSQL too** (#724). They ran on
+  in-memory SQLite only, and two modules could run nowhere else:
+  `test_gateway_only_auth.py` created a table in SQLite's dialect, and
+  `test_celery_schedule.py` passed because SQLite ignores the
+  connection the beat scheduler closes. Both are portable now, and a
+  new job, Guardian Unit Tests (PostgreSQL), runs the whole suite on the
+  PostgreSQL version of the stack; a test fails if that run is not on
+  PostgreSQL.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`
