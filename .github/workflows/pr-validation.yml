@@ -113,6 +113,23 @@ jobs:
         # (WILDBO-DEP-04/DEP-05).
         run: ./scripts/compile_requirements.sh --check
 
+      - name: Locks provide what the shared modules each service imports need
+        # open-security-shared declared five dependencies for the whole
+        # package and every image installed it with --no-deps: `pip check`
+        # failed in seven images of eight, and nothing ran it (#722). The
+        # package now has one extra per group of modules, and each Dockerfile
+        # installs it with the extras of the modules its service imports,
+        # resolved offline against the lock, then runs `pip check`: the image
+        # build (Docker Build Validation) fails when the environment does not
+        # satisfy them. This step keeps that arrangement true without
+        # building: extras equal to what the service imports, no --no-deps,
+        # `pip check` present, every requirement of those extras pinned in
+        # the lock at a version the package accepts, and every module of the
+        # package importing only what its extras require.
+        run: >-
+          uv run --no-project --python 3.11 --with packaging --with pyyaml
+          python scripts/check_shared_dependencies.py
+
   # Python linting and type checking
   python-quality:
     name: Python Code Quality

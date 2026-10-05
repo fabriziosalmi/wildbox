@@ -63,6 +63,9 @@ jobs:
           cd open-security-${{ matrix.service }}
           # Python services import open_security_shared; install it so unit
           # tests that touch service code can import it (harmless otherwise).
+          # The package has no dependency of its own (#722): what its modules
+          # need comes from the service's lock on the next line, as in the
+          # image, so a module the lock does not provide for fails here too.
           pip install ../open-security-shared || true
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
@@ -123,9 +126,12 @@ jobs:
       - name: Install
         timeout-minutes: 5
         run: |
-          pip install ./open-security-shared
+          # The extras of the modules tests/shared imports: the package
+          # itself requires nothing (#722).
+          pip install "./open-security-shared[fastapi,auth,metrics]"
           # pyyaml: tests/scripts reads the workflows (check_test_collection).
-          pip install pytest pytest-asyncio httpx pyyaml
+          # packaging: check_shared_dependencies compares pins and floors.
+          pip install pytest pytest-asyncio httpx pyyaml packaging
 
       - name: Run shared package tests
         # open_security_shared holds gateway_auth and tenancy -- the trust and
