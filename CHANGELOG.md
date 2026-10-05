@@ -40,6 +40,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now says `<field>: <message>`. The route's own reduction of a
   validation error is gone: it uses `field_errors()` of the shared
   package, as every service does.
+- **A missing `ENVIRONMENT` never means development, and the start-up
+  checks for secrets apply to everything that is not development**
+  (#736). `docker-compose.yml` passed
+  `ENVIRONMENT=${ENVIRONMENT:-development}` to eighteen services: a `.env`
+  without the line, written by hand or older than the variable, started
+  the whole stack as a development one, silently, with the API schemas
+  published. The production overlay set `production` itself on five
+  services and left thirteen to `.env`. Compose now requires the variable
+  (`${ENVIRONMENT:?}`) and refuses to start without it, before it touches
+  a container; `docker-compose.prod.yml` sets `production` on all
+  eighteen; `scripts/validate_secrets.py` requires the line, with
+  `production`, `staging` or `development`. The checks the services make
+  at start-up applied to the exact value `production`: identity required
+  `API_KEY_HASH_SECRET`, data `SECRET_KEY`, `DATABASE_URL` and `DEBUG`
+  off, tools a real API key, so `staging`, a `.env` that said
+  `Production` (data and tools compared case-sensitively) or no
+  `ENVIRONMENT` at all ran without them. They now follow one rule,
+  `open_security_shared.environment`: only an environment that says
+  `development` is a development one, and every other is held to the
+  checks. The rule for the API documentation (#679) is the same one,
+  read the other way.
+- **The sensor in the root `docker-compose.yml` drops all capabilities**
+  (#725). Its README and `DOCKER.md` said the container runs with
+  `cap_drop: ALL`, which only the standalone compose file did; in the
+  default stack the sensor kept Docker's default bounding set. It runs
+  as uid 999 with `no-new-privileges`, so it had no effective
+  capability either way, and none of its collectors needs one: in the
+  built image osquery's tables, `osqueryd`, the file monitor, the log
+  forwarder and the data volume behave the same with and without. A
+  unit test now reads the three compose files and fails if the sensor
+  loses `cap_drop: ALL` or `no-new-privileges`, or gains a capability,
+  `privileged`, the host's PID namespace or the root user.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:
@@ -335,6 +367,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **tools: the hourly limit of the tools that act for a caller is one
+  count per caller** (#721). "One destructive test per caller per hour"
+  was counted in the memory of the process that checked: the API process
+  and each of the worker's four child processes allowed one, and a
+  restart forgot them all. The count is now in the service's Redis, a
+  sorted set per caller and operation
+  (`wildbox:tools:operation-limit:<user>:<operation>`) that one Lua
+  script checks and records in a single step, so two requests for the
+  last allowance cannot both take it. The rule is unchanged: at most the
+  limit in any hour. When Redis cannot be reached the tool is not run:
+  the API answers 503 `Rate limiting temporarily unavailable`, as the
+  agents service does for its analysis limit, and an asynchronous task
+  fails after its retries. The standalone
+  `open-security-tools/docker-compose.yml` now runs its Redis with
+  `noeviction`, so a full instance cannot delete a count. Tests run
+  against a Redis server: a second interpreter is refused what the first
+  one used, and six processes asking at once for the same callers are
+  granted exactly the limit.
+- **tools: `/health` and `/api` no longer describe the deployment to a
+  caller nobody authenticated** (#721). Both answer anyone who reaches
+  the service port: every container on the development network, and
+  the host on `127.0.0.1:8000`. `/health` named the environment, the
+  concurrency ceiling, the default timeout and every loaded tool, and
+  `/api` listed the tools again. `/health` now answers `status`,
+  `service`, `version`, `timestamp`, `tools_count` and
+  `active_executions`; `/api` answers the service name, the version and
+  the path of the tool list, which asks for the gateway's identity. The
+  health checks read the status and are unaffected. A client that read
+  `environment`, `available_tools`, `max_concurrent_tools`,
+  `default_timeout` or `response_time_ms` from `/health` no longer finds
+  them.
 - **guardian no longer stores the credentials of scanners and external
   systems, which it kept in plain text and never used** (#728). A
   scanner's `api_key` and `password` (the help text of the second said
@@ -390,6 +453,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   same thing would have refused nothing. The lines are gone from
   `docker-compose.yml` and both `.env.example` files; in the Compose
   stack, leftover lines in `.env` are ignored (#646).
+- **tools: `WORKERS` and `ENABLE_METRICS` in `docker-compose.prod.yml`,
+  which nothing read** (#721). The production overlay set `WORKERS=4`
+  for the tools API, and the image starts one uvicorn process whatever
+  it says. It is removed, not honored: the API's execution manager (the
+  `MAX_CONCURRENT_TOOLS` ceiling, the runs `/health` counts and shutdown
+  cancels) and its Prometheus registry are one per process, so four
+  processes would have allowed four times the ceiling and answered each
+  scrape with one process's counters. Runs that need more capacity are
+  the asynchronous ones, and `tools-worker` scales. `ENABLE_METRICS=true`
+  on the same service changed nothing either: `/metrics` is always
+  served. `docker-compose.dev.yml` no longer passes the tools API the
+  addresses of four other services, which only the health-aggregate
+  route removed in #646 read. A tools test now fails on any variable a
+  root Compose file sets for the tools containers that neither the
+  settings nor the code reads.
 - **tools: `GET /api/system/metrics`, which answered 500 to every
   request.** It imported a name that `app/middleware.py` never defined.
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
@@ -482,6 +560,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **tools reports one version.** `/health` and `/api` said `1.0.0` while
+  the OpenAPI schema and the `X-API-Version` header of the same
+  responses said `0.1.6`. All four now read the version written once in
+  `app/__init__.py` (#721).
+- **The gateway integration test no longer takes `/api/v1/tools/health`
+  for a health route** (#721). Under `/api/v1/tools/` the next path
+  segment is a tool's name, so that path is "the tool called health",
+  which does not exist: the tools service answers 404. The test listed
+  it, and `/api/v1/agents/health`, among "health endpoints" and passed
+  because it accepted any answer but 502; it also sent no credential,
+  so the gateway answered 401 itself and no backend was reached. It was
+  named "Circuit Breaker with Recovery" and exercised none. The gateway
+  keeps no health location for tools: nothing reads one, and a fixed
+  name there would take a name from the tools, which is why the task
+  routes have a prefix of their own. The test now asks each backend,
+  with a credential, for a route it serves (the tool list, the data
+  health probe, the agents statistics) and expects 200, and expects the
+  tools service's own 404 for the mistaken path.
 - **identity answers 404, 500 and 503 in the body every service
   answers** (#722). It installed the shared error handlers and then
   registered two of its own by status code, which run first. Every 404
@@ -740,6 +836,237 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guardian were checked: the gateway sends the header, and identity's
   membership notice goes to a route Guardian exempts from the redirect;
   a unit test keeps both true.
+- **The sensor's log forwarder reads the sources listed under
+  `log_sources`** (#638). The section was ignored: the configuration had
+  no such field, and the forwarder read a fixed list per platform (on
+  Linux `/var/log/syslog`, `/var/log/auth.log` and the systemd journal)
+  whatever the file said, so the web-attack-detection use case, which
+  points `log_sources` at an nginx access log, forwarded none of it. A
+  source is now a `name`, a `type` (`file`, `journald`, `windows_event`,
+  `unified_log`), for a file an absolute `path` or pattern and a `format`
+  (`syslog`, `nginx`, `apache`, `raw`), an `enabled` flag and `read_from`
+  (`end` or `beginning`). With the section, the forwarder reads exactly
+  what it lists; without it, the same per-platform defaults as before. A
+  section the sensor cannot understand (an unknown key, type or format, a
+  relative path, a repeated name, the key with no value) stops it at
+  start-up with a message naming each entry, as an unusable `data_lake`
+  does; a file that does not exist yet or cannot be read is a warning
+  naming the source, logged once, and the file is read when it can be.
+  The sources and their problems are in `GET /api/v1/components`, the
+  configured list in `GET /api/v1/config`. A source is confined to the
+  directory its path names: the forwarder reads regular files only and
+  follows no link out of that directory, so a link placed in a log
+  directory is reported and not sent. In the container no host log is
+  mounted; the sensor README and `DOCKER.md` list what the container can
+  read and how to mount a log directory. The use case's configuration
+  and quick start no longer set `logging.format: json`, which made the
+  sensor print the word `json` for every log record, or a `filters` key
+  that never existed.
+- **The sensor's log forwarder follows a file through rotation and does
+  not split, repeat or hold lines** (#638). It reopened the path every
+  second and read from a remembered size, so the lines written to a file
+  just before `logrotate` renamed it were lost, a new file longer than
+  the old position was read from the middle, a line whose end was not
+  written yet was sent as two events, and a file that had grown by a
+  gigabyte was read into memory at once. It now keeps the file open and
+  reads it to its end before opening the one that replaced it, notices a
+  file truncated in place by its size or its first bytes, reads a file
+  that appears later from its beginning, sends a line when its newline
+  is written, sends a line longer than 16 KiB once, cut and marked
+  `truncated`, turns bytes that are not UTF-8 into U+FFFD, and reads
+  64 KiB at a time, waiting for the event queue to take each line: when
+  Wildbox is unreachable it stops reading and the file is the buffer.
+  Stopping the sensor now ends a forwarder that is waiting on a full
+  queue.
+- **A batch the gateway refuses no longer blocks the sensor's later
+  batches.** The sender put a refused batch (401, 403, or a 413 or 422
+  for one it found too large or malformed) back in its buffer, so it
+  was sent again with every flush and refused again, and the events
+  collected meanwhile went out with it and were lost: one batch the
+  gateway would not take stopped all forwarding until a restart. A
+  refused batch is now dropped and counted; a batch that failed for a
+  reason that may pass (a network error, 429, 5xx) is kept and retried.
+- **The sensor keeps its events while the gateway takes none** (#725).
+  A batch that failed for a reason that may pass (a network error, 429,
+  5xx) came back as its first 100 events, and after that one more event
+  was lost with every attempt: 300 events collected during an outage
+  left 100. The batch now stays in the sender's buffer, whole and in its
+  place, and is sent again after `data_lake.retry_delay` seconds, then
+  twice as long after each failure up to the new
+  `data_lake.retry_max_delay` (300), for as long as it takes; a 429's
+  `Retry-After` is honored. The buffer is bounded by the new
+  `data_lake.buffer_max_events` (5,000) and `data_lake.buffer_max_bytes`
+  (16 MiB of serialized events), and a batch by 8 MiB as well as by
+  `batch_size`, under the gateway's request limit. The sensor drops
+  nothing to make room: when the buffer is full it stops taking events
+  and the collectors wait, which it logs and reports as
+  `data_forwarder.buffer.full`. What it does drop is counted by reason
+  in `events_dropped_*` under `data_forwarder` in
+  `GET /api/v1/components` and logged: the events of a batch the gateway
+  refuses with a 4xx, an event JSON cannot carry (it used to fail its
+  batch at every attempt) or larger than a batch may be, everything
+  while no API key is set, and what is still buffered when the sensor
+  stops, after up to 10 seconds spent sending it. Stopping no longer
+  cancels a request the gateway is answering, which would have sent its
+  batch twice. `events_failed` and `current_batch_size` are gone from
+  that status, and `data_lake.retry_attempts` is no longer read: no
+  number of attempts gives a batch up.
+- **The sensor notices a log file rewritten with the same beginning**
+  (#725). A file truncated and written past the position already read
+  was recognized by its first 256 bytes only, so a file that always
+  starts with the same header was read on from the old position: the
+  first lines of the new content were skipped and the rest of one was
+  sent as a line. The forwarder now also compares the 64 bytes before
+  that position with what it read there. A rewrite that keeps both, and
+  is at least as long as before, still cannot be told from an append;
+  the sensor README says so.
+- **A restarted sensor goes on reading each log where the data service
+  stopped** (#725). Read positions lived in memory: after a restart a
+  `read_from: end` source skipped what was written while the sensor was
+  down, and a `read_from: beginning` source sent every file again. With
+  the new `data_dir` setting (`SENSOR_DATA_DIR`; the container
+  configurations set it to the `sensor_data` volume) the forwarder keeps,
+  per source and per file, the offset after the last line whose batch
+  the gateway answered for, in `log-positions.json`. The offset moves
+  when a line is accepted, or dropped for good and counted, not when it
+  is read: lines still in the sensor when it stops or is killed are read
+  again, so an outage that outlasts the sensor loses nothing. The file
+  is written at most once a second and at stop, to a temporary file that
+  is flushed and renamed; a killed sensor sends again what was accepted
+  since the last write. A position is used only for the file it was
+  taken from (device and inode, length, and digests of its first bytes
+  and of the bytes before the offset); a log rotated, truncated or
+  rewritten meanwhile is read from its beginning. The saved file is
+  validated value by value and ignored whole, with a warning, if it is a
+  link, another user's, too large or holds anything the sensor would not
+  write. `read_from` now applies only the first time a source is seen.
+  Without `data_dir` the sensor says at start-up that positions are in
+  memory only. The sender reports the events a log source will read
+  again as `events_returned_to_source`, not as dropped, and the agent
+  stops its collectors before its sender so that the last batches are
+  the last events. `log_forwarder` in `GET /api/v1/components` shows,
+  per file, how far it was read and accepted. An integration test
+  restarts the pipeline inside the sensor container and checks through
+  the gateway that a line written in between is stored, and none twice.
+- **The sensor finishes stopping before its process ends** (#725). On
+  SIGTERM the daemon created a task to stop the agent and returned as
+  soon as its main loop noticed, within a second; the event loop closed
+  and the task was cancelled wherever it had got to, so the sender's
+  last batches and the log positions written after them were usually
+  lost to an orderly `docker stop`. Found in the built image, where a
+  line the gateway had accepted was sent again after a restart. The
+  daemon now stops the agent itself and returns when that is done, and
+  a signal wakes it at once instead of at the next tick of a one-second
+  sleep. When it stops, the agent gives the events already collected up
+  to two seconds to reach the sender before it stops the pipeline, which
+  used to be stopped under them, and logs how many were still in its
+  queues, dropped or left for their log source to read again. Both
+  compose files give the sensor a `stop_grace_period` of 30 seconds: its
+  stop can take the 10 seconds the sender spends on what it still holds.
+- **The sensor's journal and unified-log readers survive a long entry,
+  read the command's standard error and start the command again**
+  (#725). They read `journalctl -f` and `log stream` line by line with
+  a 64 KiB limit: the first longer entry raised, the reader logged an
+  error and ended, and the source stayed silent until the sensor was
+  restarted. Nothing read the command's standard error, so a command
+  that wrote enough of it blocked, and a command that ended was never
+  started again. An entry up to 256 KiB is now forwarded whole and a
+  longer one once, as its first 16 KiB of text marked `truncated`, with
+  the rest discarded as it arrives; standard error is drained and its
+  last 512 bytes kept for the log and the status; a command that ends
+  is started again after 1 second, doubling up to 5 minutes. The journal
+  is followed from now on at the first start instead of from
+  `journalctl`'s last ten entries, which were sent again at every
+  start, and from the cursor of the last entry read when the command is
+  started again; with `data_dir` the cursor of the last accepted entry
+  is saved and a restarted sensor goes on from it. The unified-log
+  reader asked `log stream` for `--style json`, one array printed over
+  many lines of which none is an entry, so it never forwarded anything:
+  it now asks for `ndjson`, and its events have the type `log.<name>`
+  like every other source's, not `log.unified`. Each such source
+  reports its `state`, `restarts`, `last_exit`, `last_error` and entry
+  counters under `log_forwarder` in `GET /api/v1/components`. Checked
+  against `journalctl` 257 on journal files written for the purpose, and
+  against `log stream` on macOS 26; not against a live
+  `systemd-journald`.
+- **The sensor's Windows event reader forwards each event once and no
+  longer stops the event loop** (#725). Every 30 seconds it asked
+  PowerShell for the ten newest events of a log and forwarded all ten,
+  so the same events were sent over and over, and anything beyond ten
+  in 30 seconds never was; the call blocked the event loop, and with it
+  every other collector and the sender, for as long as PowerShell ran.
+  It now asks for the events after the last record id read, oldest
+  first, 50 at a time and again at once while a query returns 50, from a
+  worker thread with a 30-second limit. The log is followed from its
+  newest event on the first time; with `data_dir` the record id of the
+  last accepted event is saved. A log whose newest record id went back
+  was cleared and is read from its beginning, with a warning. A query
+  that fails, or prints anything but what it is written to print,
+  forwards nothing and is reported once (`state: failing`,
+  `last_error`). The events' type is `log.<name>`, not
+  `log.windows.<log>`, and their `log_source` is the source's name.
+  **Not run on Windows**: the logic is tested with the query replaced
+  by a stand-in, and the PowerShell text was run in PowerShell 7 on
+  Linux with a stand-in for `Get-WinEvent`; the sensor README lists what
+  that leaves unchecked.
+- **The sensor's `GET /api/v1/stats` reports what the sensor did**
+  (#725). `events_collected`, `events_processed` and `events_forwarded`
+  were three zeros nothing incremented, `uptime_seconds` was up to a
+  minute old and `last_activity` was the time of the last refresh. The
+  counters are now read from the components that count: the collectors'
+  queue, the processor and the sender. The answer also has
+  `events_filtered`, `events_dropped` and `events_in_pipeline`, `errors`
+  counts the processor's and the sender's errors, and `last_activity` is
+  when the last event was collected. `GET /api/v1/dashboard/metrics`
+  answers from the same counters and no longer reports a hostname and
+  operating system of `unknown`, zeros for `cpu_usage`, `memory_usage`,
+  `disk_usage`, `network_connections` and `process_count`, a constant
+  `agent_version` and a `trends_change` it never computed: what the
+  sensor does not measure is not in the answer.
+- **The sensor checks its logging settings when it starts, and no
+  longer enriches or drops a log line because of its source's name**
+  (#725). `logging.format` and `logging.level` went to Python's logging
+  module unchecked: a format it refuses (`json`) stopped the sensor with
+  a traceback, one naming a field no record has made every log call
+  fail, so the sensor ran and logged nothing, and `level: disable` was
+  taken for a level. They are now validated with the rest of the
+  configuration, the format by applying it to a record, and the sensor
+  stops with a message naming the setting; `max_size`, `backup_count`
+  and `file` are checked too. The processor chose what to add to an
+  event by whether its type contained `network`, `socket`, `process` or
+  `file`; a log source's type is `log.<name>`, so a line of a source
+  named `network_devices` got a `connection_category`, and a line of a
+  source named `process_audit` that named `systemd` was dropped as a
+  noisy process. The choice is now the collector's exact type: osquery's
+  `network.*` and `process_events.*` packs and the file monitor's three
+  event types. A side effect: the rows of `network.process_open_sockets`
+  are no longer filtered as processes, so sockets held by `systemd` or
+  `dbus` processes are reported.
+- **The sensor's file monitor says when it watches nothing** (#725).
+  The container configuration lists `/host/etc`, `/host/bin`,
+  `/host/usr/bin` and `/host/opt`, which no compose file mounts, so
+  file-integrity monitoring in the container watched nothing while it
+  logged "started successfully" and reported `running: true`. The
+  monitor now names each configured path that does not exist in a
+  warning when it starts, says in so many words when none exists, and
+  reports `watching`, `configured_paths`, `missing_paths` and
+  `unhashed_files` under `file_monitor` in `GET /api/v1/components`. A
+  path that appears later is watched from then on, with what it holds as
+  its baseline; a watched path that goes is reported once. `fim.paths`
+  must be a list of absolute paths: a plain string used to be watched
+  one character at a time. The host directories are still not mounted
+  by default, on purpose; the sensor README and `DOCKER.md` show the
+  read-only mount to add and what uid 999 can and cannot hash.
+  `config.yaml`, the configuration for a host, listed the container's
+  `/host/...` paths too and now lists `/etc`, `/bin`, `/usr/bin` and
+  `/opt`.
+- **The web-attack-detection quick start runs with Docker Compose v2**
+  (#725). `quick-start.sh` stopped with "docker-compose is not
+  installed" on a machine that has only the `docker compose` plugin,
+  which is all a current Docker installs and what every other script of
+  the repository uses. It now checks `docker compose version` and calls
+  `docker compose`; the use case's README and testing guide show the
+  same commands.
 - **guardian's e-mail notifications have an address to go to** (#705).
   guardian mirrors identity's users by id, with no address, so the SLA
   and assignment e-mails addressed to the assignee reached nobody;
@@ -836,6 +1163,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **tools no longer logs a configuration error for two variables it does
+  not read** (#736). With `ENVIRONMENT=production`, `app/tool_config.py`
+  required `API_KEY_SECRET` and `DATABASE_URL` and logged
+  `Configuration validation failed` on every start: the service reads
+  neither, and Compose passes it neither. The check is removed.
+- **`make start` no longer leaves `data-scheduler` crash-looping**
+  (#736). The development overlay turns `DEBUG` on for it and left its
+  `ENVIRONMENT` to `.env`, which `make generate-secrets` sets to
+  `production`; the scheduler loads the data service's configuration,
+  which refuses `DEBUG` outside development. The overlay now sets
+  `development` for it, as it did for `data`.
+- **The standalone Compose file of identity says it is a development
+  stack** (#736): it sets `ENVIRONMENT=development`, the only environment
+  in which identity starts without `API_KEY_HASH_SECRET`.
 - **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
   version the other services already locked, up from 0.19.0. The six
   services that call `install_observability` name
@@ -961,6 +1302,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever the secret. It now prints the services that receive the
   rotated secret, read from `docker compose config`, and the command
   that recreates only those (#649).
+- **Rotating `REDIS_PASSWORD` changes the running Redis and every Redis
+  URL in `.env`, or neither** (#723). `scripts/rotate_secrets.sh`
+  rewrote the `REDIS_PASSWORD=` line and nothing else: a Redis URL that
+  `.env` overrides (`IDENTITY_REDIS_URL`, `GUARDIAN_CELERY_BROKER_URL`
+  and the like) kept the old password, the running server was never told
+  the new one, and the script reported success with the stack stopped.
+  The rotation now follows the PostgreSQL one. It refuses unless
+  `wildbox-redis` is running, accepts the password in `.env`, receives it
+  from the compose configuration and is writing its append-only file. It
+  rewrites the variable and every `redis://` URL in `.env` that points
+  at the stack's Redis as the default user, and lists the ones it leaves
+  alone. It sets the password in the running server with
+  `CONFIG SET requirepass`, asks the server over TCP that the new one is
+  accepted and the old one refused, and restores `.env` and the server if
+  a step fails or the script is interrupted. Both passwords reach
+  `redis-cli` over standard input; Redis keeps `CONFIG` out of `MONITOR`
+  and redacts the value in its slow log.
+- **After a Redis rotation the Redis container is recreated too, and the
+  script says why** (#723). Redis keeps no password of its own: it
+  starts with `--requirepass` from the command line its container was
+  created with, so the change in the running server lasts until that
+  container restarts, and a restart before the recreation brings the old
+  password back. The command the script prints names `wildbox-redis`
+  first and then the services that hold the password. Recreating Redis
+  keeps its data volume, and the append-only file brings back queues,
+  scan and run state, revoked tokens and lockouts.
+- **The rotation script no longer names a profile's service in the
+  command it prints** (#723). For `POSTGRES_PASSWORD` and
+  `REDIS_PASSWORD` the command included `backup`, and
+  `docker compose up` starts a profile's service when it is named, so
+  following the script started a backup container on a stack that never
+  enabled the profile. Services behind a profile that is not active are
+  now listed separately.
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
@@ -986,6 +1360,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **The restore drill compares the restore with one snapshot of the
+  source** (#723). It counted the live tables before and after the backup
+  and accepted any restored count in between, to tolerate writes during
+  the drill. That was wrong in both directions: a table that grew and
+  shrank while the drill ran failed it (`restored 15 rows, source had 10
+  before and 10 after the backup`), and a restore that lost a row of a
+  table that grew passed it. For each database the drill now opens one
+  read-only `REPEATABLE READ` transaction, exports its snapshot, counts
+  every table inside it, and has the backup dumped from that snapshot;
+  the restored counts must be equal to the row. It fails if a snapshot
+  cannot be opened or is gone before the dump. `backup_postgres.sh` takes
+  `--snapshot DATABASE=ID` for this.
+- **A restore over live data needs an explicit flag** (#723).
+  `scripts/restore_postgres.sh` without `--into-suffix` restored over the
+  live databases with no confirmation: the destructive form was the
+  default, one forgotten option away from the harmless one. It now
+  refuses, with exit status 2 and nothing changed, unless
+  `--overwrite-live-databases` is given, and the refusal names each
+  database and the archive it would have been restored from.
+  `--into-suffix` and `--dry-run` need no flag. `scripts/restore_redis.sh`
+  replaced the Redis data volume whenever Redis was stopped; it now needs
+  `--replace-redis-data` and otherwise names the volume and the snapshot.
+  Neither script prompts, so both still run unattended.
+- **`restore_postgres.sh` finds every archive before it restores a
+  database** (#723). With one archive missing it restored the databases
+  before it in the list and then failed. A missing archive now stops the
+  run with nothing restored.
 - **guardian sends e-mail by SMTP or not at all, and checks its mail
   settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
   Without `EMAIL_HOST` there is no mail server and every notification is
@@ -1044,6 +1445,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **Asynchronous tool runs are counted, and three alerts read the
+  counts** (#721). A run submitted to `/api/v1/tools/{tool}/async`
+  executes in `tools-worker`, which Prometheus cannot scrape (it serves
+  no HTTP, and in production it is on other networks), so nothing said
+  that those runs failed or that the worker had stopped. The worker now
+  counts in Redis how each task ended, and the tools API, which is
+  scraped, exports `wildbox_tool_async_executions_total{tool, outcome}`,
+  `wildbox_tool_async_queue_length`,
+  `wildbox_tool_async_tasks_consumed_total` and
+  `wildbox_tool_async_metrics_up`. A task is counted once, when Celery
+  settles its state and by the process that settles it: the child that
+  ran it when it returned or raised, the worker's main process when it
+  was killed at the hard time limit or canceled, which the child never
+  sees. A retry is not counted, nor is a task whose process died and
+  that Celery put back on the queue, until it ends. The counters live as
+  long as the Redis data, not as long as a process. The rule file gains
+  `WildboxAsyncToolFailureRate` (over a quarter of the asynchronous runs
+  failed, for 15 minutes; it is separate from the synchronous alert so
+  that a worker failing every task is not hidden by synchronous runs
+  that succeed), `WildboxAsyncToolTasksNotConsumed` (tasks have been
+  queued for 15 minutes and no worker took any; a backlog that a busy
+  worker is working through does not fire it) and
+  `WildboxAsyncToolMetricsUnreadable` (the API cannot read the counts,
+  so the other two cannot fire). A task that ended before its tool
+  started (input that does not validate, a refused target, an unknown
+  tool) is counted as `refused`, not `failed`, as the synchronous path
+  answers those with a 4xx before a run exists; an unknown tool name is
+  the label `unknown`. Tests start the service's Celery app as a worker
+  with a pool of child processes against a Redis server, with a child
+  replaced after every task, and end tasks in each way, a kill at the
+  hard time limit included.
+  `scripts/check_monitoring_config.py` now also refuses `tools-worker`
+  as a scrape target, a rule on a tools metric while the tools API is
+  not scraped, and an alert without a unit test in which it stays
+  silent.
 - **identity tells guardian's worker who may be e-mailed about a team**
   (#705). `POST /internal/team-contacts` answers the active members of
   one team that the caller selects, by user id or by role, with their
@@ -1065,6 +1501,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **Path-filtered workflows follow what they build and run** (#736).
+  Docker Build Validation was triggered by `open-security-*/app/**`, the
+  lock, the Dockerfile, `pyproject.toml` and `manage.py`: a change to
+  guardian's code (`apps/`, `guardian/`), to the dashboard's (`src/`,
+  `package-lock.json`), to the gateway's nginx configuration or to an
+  entrypoint script changed an image and built none. Its filter is now
+  the whole directory of each service and of the shared package, less
+  documentation and tests. Production Stack is also triggered by
+  `scripts/validate_secrets.py` and `tests/integration/**`, which it
+  runs, and Documentation Quality by `.markdown-link-check.json`, on
+  push as on pull requests. `tests/scripts/test_workflow_path_filters.py`
+  derives both rules from the workflows and fails when a file a workflow
+  builds or runs would not start it.
+- **The unit-test job no longer masks a shared package that does not
+  install** (#736): `pip install ../open-security-shared || true` lost
+  its `|| true`, and a test refuses a masked install in any workflow.
+- **The gateway's mock identity answers errors as identity does**
+  (#736). `open-security-gateway/test/mock_identity.py` answered
+  `{"detail": "..."}` for 400, 401 and 403; it now answers the canonical
+  body, with the request id the gateway sent and identity's own words,
+  and 422 for a body that is not JSON. The gateway reads only the
+  status, so no gateway test changes; a test compares the mock's
+  answers with what `open_security_shared.errors` builds.
+- **No script test can be skipped in CI** (#723). The backup, restore
+  and rotation tests start a throwaway PostgreSQL or Redis and skip
+  where Docker is missing. The step that runs `tests/scripts` already
+  set `WILDBOX_REQUIRE_DOCKER_TESTS=1`, and both test files failed
+  instead of skipping when Docker was missing, each with its own copy
+  of the check. Nothing kept it that way: a test with a skip of its
+  own, or a step that lost the variable, would have left those scripts
+  untested behind a green job. With the variable set,
+  `tests/scripts/conftest.py` now fails every test of the directory
+  that would be skipped, whatever skipped it, the Docker check is one
+  fixture, and a test fails when a workflow runs `tests/scripts`
+  without the variable.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`
@@ -1142,58 +1613,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks each `wildbox_*` selector against what `/metrics` really
   serves, and the production-stack job starts the profile and checks
   that every target is up and every metric a rule reads is exported.
-- **The sensor's log forwarder reads the sources listed under
-  `log_sources`** (#638). The section was ignored: the configuration had
-  no such field, and the forwarder read a fixed list per platform (on
-  Linux `/var/log/syslog`, `/var/log/auth.log` and the systemd journal)
-  whatever the file said, so the web-attack-detection use case, which
-  points `log_sources` at an nginx access log, forwarded none of it. A
-  source is now a `name`, a `type` (`file`, `journald`, `windows_event`,
-  `unified_log`), for a file an absolute `path` or pattern and a `format`
-  (`syslog`, `nginx`, `apache`, `raw`), an `enabled` flag and `read_from`
-  (`end` or `beginning`). With the section, the forwarder reads exactly
-  what it lists; without it, the same per-platform defaults as before. A
-  section the sensor cannot understand (an unknown key, type or format, a
-  relative path, a repeated name, the key with no value) stops it at
-  start-up with a message naming each entry, as an unusable `data_lake`
-  does; a file that does not exist yet or cannot be read is a warning
-  naming the source, logged once, and the file is read when it can be.
-  The sources and their problems are in `GET /api/v1/components`, the
-  configured list in `GET /api/v1/config`. A source is confined to the
-  directory its path names: the forwarder reads regular files only and
-  follows no link out of that directory, so a link placed in a log
-  directory is reported and not sent. In the container no host log is
-  mounted; the sensor README and `DOCKER.md` list what the container can
-  read and how to mount a log directory. The use case's configuration
-  and quick start no longer set `logging.format: json`, which made the
-  sensor print the word `json` for every log record, or a `filters` key
-  that never existed.
-- **The sensor's log forwarder follows a file through rotation and does
-  not split, repeat or hold lines** (#638). It reopened the path every
-  second and read from a remembered size, so the lines written to a file
-  just before `logrotate` renamed it were lost, a new file longer than
-  the old position was read from the middle, a line whose end was not
-  written yet was sent as two events, and a file that had grown by a
-  gigabyte was read into memory at once. It now keeps the file open and
-  reads it to its end before opening the one that replaced it, notices a
-  file truncated in place by its size or its first bytes, reads a file
-  that appears later from its beginning, sends a line when its newline
-  is written, sends a line longer than 16 KiB once, cut and marked
-  `truncated`, turns bytes that are not UTF-8 into U+FFFD, and reads
-  64 KiB at a time, waiting for the event queue to take each line: when
-  Wildbox is unreachable it stops reading and the file is the buffer.
-  Stopping the sensor now ends a forwarder that is waiting on a full
-  queue. Positions are still kept in memory only: after a restart the
-  forwarder continues from each file's end.
-- **A batch the gateway refuses no longer blocks the sensor's later
-  batches.** The sender put a refused batch (401, 403, or a 413 or 422
-  for one it found too large or malformed) back in its buffer, so it
-  was sent again with every flush and refused again, and the events
-  collected meanwhile went out with it and were lost: one batch the
-  gateway would not take stopped all forwarding until a restart. A
-  refused batch is now dropped and counted in `events_failed`; a batch
-  that failed for a reason that may pass (a network error, 429, 5xx) is
-  still kept and retried.
 
 ## [0.11.2] - 2026-10-05
 

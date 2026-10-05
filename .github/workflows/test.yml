@@ -66,10 +66,39 @@ jobs:
           # The package has no dependency of its own (#722): what its modules
           # need comes from the service's lock on the next line, as in the
           # image, so a module the lock does not provide for fails here too.
-          pip install ../open-security-shared || true
+          # No `|| true`: a shared package that does not install is the
+          # failure, here, and not an ImportError in whichever test reaches
+          # it first, or nothing at all in a service that imports none of it
+          # (#736).
+          pip install ../open-security-shared
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
-      
+
+      # The tools service keeps in Redis what its processes must share: each
+      # caller's hourly operation count and the outcomes of asynchronous runs
+      # (#721). Those tests ask from several processes, and kill a task at
+      # its time limit in a real prefork worker, so they need a server, the
+      # version docker-compose.yml runs. With TOOLS_TEST_REDIS_URL set, a
+      # server that does not answer fails the tests instead of skipping them
+      # (open-security-tools/tests/unit/conftest.py).
+      - name: Start Redis for the tools tests
+        if: matrix.service == 'tools'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          image="$(awk '/^  wildbox-redis:/{found=1} found && $1 == "image:"{print $2; exit}' docker-compose.yml)"
+          test -n "$image"
+          docker run -d --name tools-unit-redis -p 127.0.0.1:6379:6379 "$image"
+          for _ in $(seq 1 30); do
+            if docker exec tools-unit-redis redis-cli ping | grep -q PONG; then
+              echo "TOOLS_TEST_REDIS_URL=redis://127.0.0.1:6379/15" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs tools-unit-redis
+          exit 1
+
       - name: Run unit tests
         # The agents suite starts a throwaway Redis with the runner's Docker
         # and a real Celery worker, to hit the task time limits (#727). It
@@ -145,9 +174,13 @@ jobs:
         # tripped the tools service's weak-pattern check and killed it at
         # start-up. tests/scripts had no CI step at all; this is where it runs.
         #
-        # test_backup_restore.py also starts a throwaway PostgreSQL and Redis
-        # with the runner's Docker, under its own Compose project name, and
-        # skips those tests where Docker is missing. Here they must run.
+        # The backup, restore and rotation tests also start a throwaway
+        # PostgreSQL and Redis with the runner's Docker, under their own
+        # Compose project names, and skip where Docker is missing. Here they
+        # must run: with this variable tests/scripts/conftest.py fails every
+        # test of the directory that would be skipped, whatever skipped it
+        # (#723). tests/scripts/test_docker_tests_must_run.py fails if this
+        # step loses the variable.
         env:
           WILDBOX_REQUIRE_DOCKER_TESTS: "1"
         run: pytest tests/scripts -v -p no:cacheprovider -o addopts=""

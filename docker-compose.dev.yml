@@ -20,14 +20,9 @@ services:
       # Enable CORS for development (comma-separated string)
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
       - CORS_ALLOW_CREDENTIALS=true
-      # Service URLs for health aggregation (v1.0 services only)
-      - IDENTITY_SERVICE_URL=http://open-security-identity:8001
-      # EXCLUDED v1.0: - DATA_SERVICE_URL=http://open-security-data:8002
-      - GUARDIAN_SERVICE_URL=http://open-security-guardian:8013
-      # EXCLUDED v1.0: - SENSOR_SERVICE_URL=http://open-security-sensor:8004
-      - RESPONDER_SERVICE_URL=http://open-security-responder:8018
-      - AGENTS_SERVICE_URL=http://open-security-agents:8006
-      # EXCLUDED v1.0: - CSPM_SERVICE_URL=http://open-security-cspm:8019
+      # No addresses of other services: they were for the health-aggregate
+      # route, removed in #646, and the tools service reads none of them
+      # (#721).
       # Development settings
       - DEBUG=true
       - LOG_LEVEL=DEBUG
@@ -44,7 +39,7 @@ services:
       - CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,https://wildbox.local
       # This overlay is a development stack, so say so: .env from
       # generate_secrets.py sets ENVIRONMENT=production, and data refuses
-      # DEBUG=true in production ("DEBUG must be False in production"), so
+      # DEBUG=true outside development ("DEBUG must be False"), so
       # `make start` left it crash-looping.
       - ENVIRONMENT=development
       - DEBUG=true
@@ -56,6 +51,11 @@ services:
 
   data-scheduler:
     environment:
+      # As for data above: this overlay turns DEBUG on, and the scheduler
+      # loads the same configuration, which refuses DEBUG anywhere but in
+      # development. Without this line `make start` left it crash-looping
+      # with the generated .env (#736).
+      - ENVIRONMENT=development
       # CRITICAL: Align with Data service and .env password
       - DATABASE_URL=${DATA_DATABASE_URL:?DATA_DATABASE_URL is required}
       - DEBUG=true

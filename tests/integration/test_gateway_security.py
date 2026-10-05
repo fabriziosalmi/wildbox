@@ -1,6 +1,6 @@
 """
 Gateway Security Test Module
-Tests routing, security headers, rate limiting, circuit breaker
+Tests routing, security headers, rate limiting, backend routes
 """
 
 import os
@@ -295,41 +295,84 @@ class TestGatewaySecurity:
             self.log_test_result("Rate Limiting with Burst Protection", False, f"Error: {str(e)}")
             raise
             
-    async def test_circuit_breaker(self) -> None:
-        """Test circuit breaker with recovery"""
+    async def test_backend_routes_through_the_gateway(self) -> None:
+        """An authenticated request reaches each backend, on a route it serves.
+
+        This was "Circuit Breaker with Recovery". It sent three GETs without
+        a credential and passed if any of them answered something other than
+        502. The gateway answers a request without a credential itself, with
+        401, so no backend was ever reached and no circuit breaker was
+        exercised (the gateway's breaker guards its calls to identity, not
+        the backends). Two of the three paths were not routes either:
+        /api/v1/tools/health maps to /api/tools/health and
+        /api/v1/agents/health to /v1/health, which neither service has
+        (#721).
+
+        The tools service has no health route through the gateway, and that
+        is the decision, not an omission: under /api/v1/tools/ the next path
+        segment is a tool's name, so `health` there is the tool called
+        health. Its health is its container's health check, on the service
+        port; a client that wants to know that tools answers lists the
+        tools. So this asks each backend for something it serves, as a
+        caller the gateway authenticated, and pins that the mistaken path is
+        not a health route.
+        """
+        test_name = "Backend routes through the gateway"
         try:
-            # Test circuit breaker by making requests to potentially failing endpoints
-            # Since we can't easily trigger backend failures, we test behavior
-            
-            test_endpoints = [
-                "/api/v1/tools/health",
-                "/api/v1/data/health", 
-                "/api/v1/agents/health"
+            headers = {"X-API-Key": os.getenv("TEST_API_KEY", "")}
+            routes = [
+                ("tools", "/api/v1/tools"),
+                ("data", "/api/v1/data/health"),
+                ("agents", "/api/v1/agents/stats"),
             ]
-            
-            working_endpoints = 0
-            for endpoint in test_endpoints:
-                try:
-                    response = requests.get(f"{self.base_url}{endpoint}", timeout=5)
-                    # Any response (even 404) shows gateway is trying to route
-                    if response.status_code != 502:  # 502 would indicate backend down
-                        working_endpoints += 1
-                except Exception:
-                    pass
-            
-            # Circuit breaker is working if gateway handles backend failures gracefully
-            passed = working_endpoints >= 1  # At least some services reachable
-            
-            if passed:
-                details = f"Circuit breaker handling: {working_endpoints}/{len(test_endpoints)} services reachable"
-            else:
-                details = "Circuit breaker may not be working - all services unreachable"
-                
-            self.log_test_result("Circuit Breaker with Recovery", passed, details)
+
+            problems = []
+            for service, path in routes:
+                response = requests.get(
+                    f"{self.base_url}{path}", headers=headers, timeout=10
+                )
+                if response.status_code != 200:
+                    problems.append(
+                        f"{service}: GET {path} answered {response.status_code} "
+                        f"({response.text[:120]!r})"
+                    )
+
+            # No route of the tools service is called `health`: the service
+            # answers 404 in its own error shape. A 200 here would be a tool
+            # named health, or a health route nobody decided to publish.
+            mistaken = requests.get(
+                f"{self.base_url}/api/v1/tools/health", headers=headers, timeout=10
+            )
+            try:
+                answered_by_tools = mistaken.json()["error"]["code"] == 404
+            except (ValueError, KeyError, TypeError):
+                answered_by_tools = False
+            if mistaken.status_code != 404 or not answered_by_tools:
+                problems.append(
+                    "GET /api/v1/tools/health should be the tools service's 404 "
+                    f"(no tool is named health), got {mistaken.status_code} "
+                    f"({mistaken.text[:120]!r})"
+                )
+
+            # And without a credential none of them reaches a backend.
+            refused = requests.get(f"{self.base_url}/api/v1/tools", timeout=10)
+            if refused.status_code != 401:
+                problems.append(
+                    "GET /api/v1/tools without a credential answered "
+                    f"{refused.status_code}, expected the gateway's 401"
+                )
+
+            passed = not problems
+            details = (
+                f"{len(routes)} backends answered on routes they serve"
+                if passed
+                else "; ".join(problems)
+            )
+            self.log_test_result(test_name, passed, details)
             assert passed, details
-            
+
         except Exception as e:
-            self.log_test_result("Circuit Breaker with Recovery", False, f"Error: {str(e)}")
+            self.log_test_result(test_name, False, f"Error: {str(e)}")
             raise
 
 
@@ -345,7 +388,7 @@ async def run_tests() -> Dict[str, Any]:
         tester.test_http_method_restrictions,
         tester.test_passthrough_headers,
         tester.test_rate_limiting,
-        tester.test_circuit_breaker
+        tester.test_backend_routes_through_the_gateway
     ]
     
     success_count = 0

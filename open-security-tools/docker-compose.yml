@@ -51,7 +51,11 @@ services:
       - "127.0.0.1:6379:6379"
     volumes:
       - redis-data:/data
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16
+    # noeviction, as in the root stack: this Redis is not a cache. It holds
+    # the task owner records and each caller's hourly operation count
+    # (#721); under allkeys-lru a full instance would delete them, and a
+    # deleted count is an allowance handed back.
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction --databases 16
     restart: unless-stopped
     networks:
       - wildbox-network

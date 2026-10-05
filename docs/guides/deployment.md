@@ -70,7 +70,10 @@ than secrets:
   dashboard and the API share the gateway's origin, as they do in this
   stack: an empty value allows no cross-origin requests, and same-origin
   requests need none
-- `ENVIRONMENT=production` (the template default)
+- `ENVIRONMENT=production` (the template default). Required: Compose refuses
+  to start without it, and `docker-compose.prod.yml` sets `production` on
+  every service whatever `.env` says. Only `development` serves the API
+  schemas and skips the start-up checks for secrets
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the
   origin it was loaded from. See [The dashboard's browser
@@ -808,22 +811,42 @@ row count with the source, and drops the scratch databases. The live
 databases are only read. Run it on a schedule: a restore that has never been
 tested is not one.
 
+The comparison is exact, also on a stack that is in use. For each database
+the drill opens one read-only transaction, counts every table inside it, and
+has the backup dumped from that transaction's snapshot
+(`backup_postgres.sh --snapshot`). The restored copy has to hold the same
+tables with the same row counts, to the row; what the services write while
+the drill runs is on neither side of the comparison. The drill fails if a
+count differs, if it cannot open a snapshot, or if the backup cannot be taken
+from it.
+
 To restore for real, stop the services first, then:
 
 ```bash
 docker compose stop
 docker compose start postgres
-./scripts/restore_postgres.sh --timestamp 20261005_120000   # or --latest
-./scripts/restore_redis.sh --timestamp 20261005_120000
+./scripts/restore_postgres.sh --timestamp 20261005_120000 --overwrite-live-databases   # or --latest
+./scripts/restore_redis.sh --timestamp 20261005_120000 --replace-redis-data
 docker compose up -d
 ```
 
-`restore_postgres.sh` restores over the live databases; `--into-suffix
-_check` restores into `<db>_check` instead, and `--dry-run` only reads the
-archives. `restore_redis.sh` replaces the Redis data volume and refuses to
-run while Redis is running. It exists because Redis runs with the
-append-only file enabled and then ignores a `dump.rdb` at start: copying the
-snapshot into the volume by hand gives an empty Redis.
+Both restores destroy everything written since the backup, so each runs only
+with its flag. `--overwrite-live-databases` restores over the databases the
+services use, and `--replace-redis-data` replaces the Redis data volume.
+Without the flag the script changes nothing, exits with status 2, and says
+what it would have overwritten: each database with the archive it would be
+restored from, or the Redis volume with the snapshot. Neither script asks a
+question, so both still run from a script of your own.
+
+`restore_postgres.sh` has two targets that need no flag: `--into-suffix
+_check` restores into `<db>_check` next to the live databases, and
+`--dry-run` only reads the archives. It looks up every archive before it
+touches a database, so a missing one stops the run with nothing restored.
+
+`restore_redis.sh` also refuses to run while Redis is running. It exists
+because Redis runs with the append-only file enabled and then ignores a
+`dump.rdb` at start: copying the snapshot into the volume by hand gives an
+empty Redis.
 
 ---
 
@@ -870,12 +893,24 @@ configured.
 | --- | --- | --- |
 | `WildboxServiceDown` | Prometheus cannot scrape `/metrics` on identity, tools, data, responder, CSPM or agents for 2 minutes | guardian, the gateway, the dashboard, the workers, PostgreSQL and Redis are not scraped |
 | `WildboxHighErrorRate` | more than 5% of the HTTP requests one of those services handled ended in a 5xx, for 10 minutes | requests the gateway refused or could not forward: each service counts its own |
-| `WildboxSyncToolFailureRate` | more than 25% of the synchronous tool runs (`POST /api/v1/tools/{tool}`) raised an error the tool does not handle, for 15 minutes | asynchronous runs (`.../async`): they execute in `tools-worker`, which exports no metrics. Timeouts, refused runs and a failure the tool reports in its result (`success: false`) are not counted as failures |
+| `WildboxSyncToolFailureRate` | more than 25% of the synchronous tool runs (`POST /api/v1/tools/{tool}`) raised an error the tool does not handle, for 15 minutes | asynchronous runs (`.../async`), which the next alert measures. Timeouts, refused runs and a failure the tool reports in its result (`success: false`) are not counted as failures |
+| `WildboxAsyncToolFailureRate` | more than 25% of the asynchronous tool runs (`POST /api/v1/tools/{tool}/async`) failed, for 15 minutes: the tool raised an error it does not handle, or the task failed in the worker after its retries | synchronous runs. Timeouts (a task killed at the hard time limit included), canceled tasks, tasks that ended before the tool started (input that does not validate, a refused target or caller) and a failure the tool reports in its result are not counted as failures. A count the worker could not write to Redis is lost |
+| `WildboxAsyncToolTasksNotConsumed` | asynchronous tool tasks have been in the queue for 15 minutes and no worker took any task in that time: `tools-worker` is stopped, restarting or cannot reach Redis | a backlog that a busy worker is working through, and tasks a worker had already taken when it was killed: the broker returns those to the queue only after its visibility timeout, an hour |
+| `WildboxAsyncToolMetricsUnreadable` | the tools API has not been able to read the asynchronous counters from Redis for 10 minutes | nothing else: while it fires, the two alerts above cannot |
 | `WildboxAlertmanagerDown` | Prometheus cannot scrape Alertmanager for 5 minutes | it cannot be delivered: it is shown on the Prometheus alerts page only |
 | `WildboxAlertNotificationsFailing` | Alertmanager failed to send a notification in the last 15 minutes | if the failing receiver is the only one it cannot be delivered either: it is shown in both UIs |
 
-There is no alert on asynchronous tool runs, on the threat-feed collection,
-on scans or on backups: none of them exports a metric Prometheus can read.
+`tools-worker`, which executes the asynchronous runs, is not scraped: it
+serves no HTTP, and on the production networks Prometheus cannot reach it.
+It counts in Redis how each task ended, and the tools API, which is
+scraped, exports the counts (`wildbox_tool_async_executions_total`), the
+length of the task queue (`wildbox_tool_async_queue_length`) and how many
+tasks the worker has taken (`wildbox_tool_async_tasks_consumed_total`).
+The counts live as long as the Redis data, so a restart of the API or the
+worker does not reset them.
+
+There is no alert on the threat-feed collection, on scans or on backups:
+none of them exports a metric Prometheus can read.
 
 ### Being notified
 

@@ -134,13 +134,13 @@ class ToolConfig:
         issues = []
         warnings = []
         
-        # Check required environment variables for production
-        if os.getenv('ENVIRONMENT') == 'production':
-            required_vars = ['API_KEY_SECRET', 'DATABASE_URL']
-            for var in required_vars:
-                if not os.getenv(var):
-                    issues.append(f"Missing required environment variable: {var}")
-        
+        # There was a check here, for ENVIRONMENT=production, that
+        # API_KEY_SECRET and DATABASE_URL were set. The service reads neither
+        # and Compose passes it neither, so every production start logged
+        # "Configuration validation failed" for a requirement that did not
+        # exist (#736). The checks the service does make at start-up are in
+        # app/config.py (the API key) and app/main.py.
+
         # Check API keys
         api_services = ['virustotal', 'shodan', 'censys']
         missing_keys = []

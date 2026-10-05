@@ -42,10 +42,10 @@ def _api_key_hash_secret() -> str:
     matching, and there is no key_version column or re-hash path to carry them
     across (WILDBO-SEC-01).
 
-    API_KEY_HASH_SECRET is required when ENVIRONMENT=production: Settings
-    refuses to load without it (#648). Compose did not pass it to identity,
-    so this used to fall back to the JWT secret silently on every
-    deployment. Outside production an unset value still falls back, so a
+    API_KEY_HASH_SECRET is required unless ENVIRONMENT=development: Settings
+    refuses to load without it (#648, #736). Compose did not pass it to
+    identity, so this used to fall back to the JWT secret silently on every
+    deployment. In development an unset value still falls back, so a
     development stack without it keeps working; startup logs a warning.
 
     An existing deployment upgrades by setting API_KEY_HASH_SECRET to its

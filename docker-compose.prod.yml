@@ -74,6 +74,7 @@ services:
   postgres:
     restart: always
     environment:
+      - ENVIRONMENT=production
       # Production connection limits
       - POSTGRES_MAX_CONNECTIONS=200
       - POSTGRES_SHARED_BUFFERS=256MB
@@ -171,8 +172,13 @@ services:
       - LOG_LEVEL=INFO
       - DEBUG=false
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - ENABLE_METRICS=true
-      - WORKERS=4
+      # No WORKERS and no ENABLE_METRICS: nothing read either (#721). The
+      # image starts one uvicorn process on purpose: the execution manager
+      # (the MAX_CONCURRENT_TOOLS ceiling, the runs /health counts and
+      # shutdown cancels) and the Prometheus registry are one per process,
+      # so a second process would double the ceiling and make /metrics
+      # answer for whichever one the scrape reached. /metrics is always
+      # served. Long or many runs belong on tools-worker, which scales.
     deploy:
       resources:
         limits:
@@ -194,6 +200,7 @@ services:
       - backend
       - data
     environment:
+      - ENVIRONMENT=production
       # No DJANGO_SETTINGS_MODULE: this used to name
       # config.settings.production, a module that does not exist, so gunicorn
       # failed to import the app. guardian.settings reads every production
@@ -347,6 +354,7 @@ services:
         - NEXT_PUBLIC_USE_GATEWAY=${NEXT_PUBLIC_USE_GATEWAY:-true}
         - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-}
     environment:
+      - ENVIRONMENT=production
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
     deploy:
@@ -364,8 +372,11 @@ services:
         max-file: "3"
 
   # ---------------------------------------------------------------------------
-  # Services with no other production settings: networks only (see the map at
-  # the top of this file).
+  # Services with no other production settings: networks (see the map at the
+  # top of this file) and ENVIRONMENT. Every service the base file passes
+  # ENVIRONMENT to gets production here, whatever .env says: five did, and
+  # the rest ran this overlay with the value of .env, or as development when
+  # .env had none (#736).
   # ---------------------------------------------------------------------------
   tools-worker:
     networks: !override
@@ -373,11 +384,15 @@ services:
         aliases:
           - open-security-tools-worker
       egress: {}
+    environment:
+      - ENVIRONMENT=production
 
   tools-flower:
     networks: !override
       - data
       - egress
+    environment:
+      - ENVIRONMENT=production
 
   # The broker and the database are on data; egress for what the tasks
   # reach outside the stack: port scans of asset addresses, threat-intel
@@ -391,6 +406,7 @@ services:
       - data
       - egress
     environment:
+      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -407,6 +423,7 @@ services:
     networks: !override
       - data
     environment:
+      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -422,11 +439,15 @@ services:
           # The gateway's data_service upstream and prometheus.
           - open-security-data
       data: {}
+    environment:
+      - ENVIRONMENT=production
 
   data-scheduler:
     networks: !override
       - data
       - egress
+    environment:
+      - ENVIRONMENT=production
 
   cspm:
     networks: !override
@@ -435,6 +456,8 @@ services:
           # The gateway's cspm_service upstream and prometheus.
           - open-security-cspm
       data: {}
+    environment:
+      - ENVIRONMENT=production
 
   # The broker is on data; egress for the cloud provider APIs the scans
   # call (AWS, GCP, Azure). Nothing looks the worker up by name (#601).
@@ -444,6 +467,7 @@ services:
       - data
       - egress
     environment:
+      - ENVIRONMENT=production
       - DEBUG=false
       - LOG_LEVEL=INFO
     logging:
@@ -457,10 +481,14 @@ services:
   sensor:
     networks: !override
       - frontend
+    environment:
+      - ENVIRONMENT=production
 
   automations:
     networks: !override
       - backend
+    environment:
+      - ENVIRONMENT=production
 
   backup:
     networks: !override

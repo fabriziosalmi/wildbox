@@ -10,11 +10,15 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Environment detection. Empty when ENVIRONMENT is not declared, which is
-# neither "development" (API schema and documentation pages, the reloader)
-# nor "production" (the checks in AppConfig.__post_init__). The default was
+from open_security_shared.environment import production_checks_apply
+
+# Environment detection. Empty when ENVIRONMENT is not declared. Only
+# "development" is a development environment (API schema and documentation
+# pages, the reloader); every other value, an undeclared one included, is
+# held to the checks in AppConfig.__post_init__. The default was
 # "development", so a service started without the variable, a bare
-# `docker run` for instance, published its route map (#722).
+# `docker run` for instance, published its route map (#722), and the checks
+# were for the exact value "production" only (#736).
 ENV = os.getenv("ENVIRONMENT", "")
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
@@ -181,15 +185,17 @@ class AppConfig:
         self.storage.file_storage_path.mkdir(parents=True, exist_ok=True)
         self.logging.file_path.parent.mkdir(parents=True, exist_ok=True)
         
-        # Validate critical settings in production
-        if self.environment == "production":
+        # Validate critical settings everywhere but in development. The test
+        # was for the exact value "production": "staging", "Production" or
+        # no ENVIRONMENT at all started without them (#736).
+        if production_checks_apply(self.environment):
             if not self.security.secret_key:
-                raise ValueError("SECRET_KEY must be set in production")
+                raise ValueError("SECRET_KEY must be set unless ENVIRONMENT=development")
             if not self.database.url:
-                raise ValueError("DATABASE_URL must be set in production")
-            
+                raise ValueError("DATABASE_URL must be set unless ENVIRONMENT=development")
+
             if self.debug:
-                raise ValueError("DEBUG must be False in production")
+                raise ValueError("DEBUG must be False unless ENVIRONMENT=development")
 
 # Global configuration instance
 config = AppConfig()
