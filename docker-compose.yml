@@ -582,11 +582,25 @@ services:
       - wildbox_redis_data:/data
     networks:
       - wildbox
+    environment:
+      # The password for redis-cli inside this container: the health check
+      # below, and `docker compose exec wildbox-redis redis-cli ...`. In the
+      # environment it is in no argument list; the check used to pass it
+      # with -a, where it showed in the container's process list (#740).
+      - REDISCLI_AUTH=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
+      # The reply has to be PONG. redis-cli exits 0 when the server answers
+      # with an error, so `redis-cli ping` alone was healthy on NOAUTH and
+      # WRONGPASS: a server whose password no longer matched stayed healthy
+      # (#740). A Redis that is still loading its data is not healthy yet,
+      # so the services that wait for it start once it can serve them; the
+      # start period gives a large append-only file the time to load before
+      # a failed check counts.
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
 
   # Guardian Service (Security Monitoring)

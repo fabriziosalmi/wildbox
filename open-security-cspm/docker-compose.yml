@@ -120,8 +120,13 @@ services:
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --databases 16 --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
     networks:
       - wildbox-network
+    environment:
+      # For the health check: redis-cli reads the password from here, so it
+      # is in no argument list (#740).
+      - REDISCLI_AUTH=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      # redis-cli exits 0 on an error reply: the reply has to be PONG (#740).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 10s
       timeout: 5s
       retries: 5

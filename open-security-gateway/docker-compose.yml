@@ -54,8 +54,13 @@ services:
       - redis_data:/data
     networks:
       - wildbox-net
+    environment:
+      # For the health check: redis-cli reads the password from here, so it
+      # is in no argument list (#740).
+      - REDISCLI_AUTH=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}", "ping"]
+      # redis-cli exits 0 on an error reply: the reply has to be PONG (#740).
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
       interval: 30s
       timeout: 5s
       retries: 3

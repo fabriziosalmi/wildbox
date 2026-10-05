@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **The Redis health check no longer carries the password on its command
+  line, and fails when the password is wrong** (#740). Every compose file
+  checked Redis with `redis-cli -a <password> ping`, or with
+  `redis-cli ping` and no password. The password was an argument of a
+  process that runs every 30 seconds, visible in the container's process
+  list. `redis-cli` also exits 0 when the server answers with an error,
+  so the check passed on `NOAUTH` and `WRONGPASS`: a Redis whose password
+  no longer matched stayed `healthy`, and in `open-security-data` the
+  check sent a literal `${REDIS_PASSWORD...}` as the password and was
+  healthy all the same. The check is now
+  `redis-cli ping | grep -qx PONG` in `docker-compose.yml` and in the
+  nine per-service compose files that have one, and each Redis that
+  requires a password receives it as `REDISCLI_AUTH` in its environment.
+  A Redis that is still loading its data is not healthy yet. After a
+  `REDIS_PASSWORD` rotation the container reports `unhealthy` until it is
+  recreated, which the rotation asks for.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:
