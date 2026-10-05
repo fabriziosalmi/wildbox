@@ -43,12 +43,22 @@ removed from, the way identity resolves a session's team; POST
 The team is resolved before the ``delay_ms`` pause, so an authorization held
 in flight across a removal still answers with the team that was left, as
 identity's would when its query ran before the commit.
+
+Scopes (#647). ``wsk_scoped~<key id>~<scopes>`` is a key holding exactly the
+comma-separated scopes named (none at all when the list is empty), in a team
+of its own, so a test can ask for any scope set without a fixture for each.
+
+Ports. ``MOCK_PORTS`` (comma-separated, default ``8001``) are the ports the
+mock listens on. The route-scope tests run the production configuration,
+whose upstreams are one service and one port each; the mock answers on all
+of them, under the services' names.
 """
 
 import base64
 import hmac
 import json
 import os
+import threading
 import time
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -131,6 +141,18 @@ def dynamic_api_key(token):
         return None
 
 
+def scoped_api_key(token):
+    """A key holding exactly the scopes it names (#647), or None.
+
+    ``wsk_scoped~<key id>~<scope>,<scope>,...``: the key id names the key and
+    its team, so two keys never share a rate-limit budget.
+    """
+    parts = token.split("~")
+    if len(parts) != 3 or parts[0] != "wsk_scoped" or not parts[1]:
+        return None
+    return parts[1], [scope for scope in parts[2].split(",") if scope]
+
+
 def jwt_claims(token):
     """The payload of a JWT-shaped token, or None. Unsigned: test fixture."""
     parts = token.split(".")
@@ -153,7 +175,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        if self.command != "HEAD":
+            self.wfile.write(body)
 
     def _echo(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -211,6 +234,16 @@ class Handler(BaseHTTPRequestHandler):
                 "scopes": ["*"],
                 "api_key_id": key_id,
                 "credential_expires_at": expires_at or None,
+            }
+        scoped = scoped_api_key(token) if auth is None else None
+        if scoped is not None:
+            key_id, scopes = scoped
+            auth = {
+                "user_id": "user-" + key_id,
+                "team_id": "team-" + key_id,
+                "role": "user",
+                "scopes": scopes,
+                "api_key_id": key_id,
             }
         if auth is None and token.startswith("drop-once-"):
             auth = {
@@ -289,7 +322,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self._reply(200, {"status": "ok"})
+            # Also what a request the gateway maps to a service's /health
+            # lands on: say which request it was, as the echo does.
+            self._reply(200, {"status": "ok", "method": self.command, "path": self.path})
         elif self.path == "/__mock/counts":
             self._reply(200, dict(authorize_calls))
         else:
@@ -297,10 +332,16 @@ class Handler(BaseHTTPRequestHandler):
 
     do_PUT = do_GET
     do_DELETE = do_GET
+    do_PATCH = do_POST
+    do_HEAD = do_GET
 
     def log_message(self, fmt, *args):  # keep container logs readable
         print("mock-identity: " + fmt % args, flush=True)
 
 
 if __name__ == "__main__":
-    ThreadingHTTPServer(("0.0.0.0", 8001), Handler).serve_forever()
+    ports = [int(port) for port in os.environ.get("MOCK_PORTS", "8001").split(",")]
+    servers = [ThreadingHTTPServer(("0.0.0.0", port), Handler) for port in ports]
+    for server in servers[1:]:
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+    servers[0].serve_forever()
