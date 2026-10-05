@@ -45,6 +45,7 @@ from sensor.pipeline import data_forwarder  # noqa: E402
 from sensor.pipeline.data_forwarder import RETRY, SENT, DataForwarder  # noqa: E402
 from sensor.pipeline.data_processor import DataProcessor  # noqa: E402
 from sensor.pipeline.delivery import take_delivery  # noqa: E402
+from sensor.utils import state_file  # noqa: E402
 
 API_KEY = "wsk_t3st.0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
@@ -721,17 +722,17 @@ async def test_a_save_that_fails_is_reported_once_and_tried_again(
     _append(log, "one\n")
     await run.read()
     run.accept()
-    real_mkstemp = position_store.tempfile.mkstemp
+    real_mkstemp = state_file.tempfile.mkstemp
 
     def disk_full(*args, **kwargs):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(position_store.tempfile, "mkstemp", disk_full)
+    monkeypatch.setattr(state_file.tempfile, "mkstemp", disk_full)
     with caplog.at_level(logging.INFO, logger=position_store.__name__):
         assert run.forwarder.save_positions() is False
         assert run.forwarder.save_positions() is False
         status = run.forwarder.get_status()["positions"]
-        monkeypatch.setattr(position_store.tempfile, "mkstemp", real_mkstemp)
+        monkeypatch.setattr(state_file.tempfile, "mkstemp", real_mkstemp)
         assert run.forwarder.save_positions() is True
 
     errors = [r.getMessage() for r in caplog.records if r.levelno == logging.ERROR]
