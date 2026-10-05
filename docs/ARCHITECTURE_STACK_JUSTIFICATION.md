@@ -214,8 +214,8 @@ redis_client.set('guardian:vuln:456', data)
 **Outcome**:
 
 - **Automations**: done differently. n8n is now in the `automations` Compose
-  profile, off by default, and the gateway resolves it at request time on
-  `/api/v1/automations/`.
+  profile, off by default, and the gateway does not route to it; its editor
+  is on the host's loopback port 5678.
 - **CSPM**: not done. CSPM starts by default and no `ENABLE_CSPM` setting
   exists.
 

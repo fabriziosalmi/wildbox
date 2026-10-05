@@ -20,6 +20,7 @@ const BACKEND_FILES = [
   /toolbox\.spec\.ts/,
   /toolbox-run\.spec\.ts/,
   /team-members\.spec\.ts/,
+  /ai-analysis\.spec\.ts/,
 ]
 
 /**

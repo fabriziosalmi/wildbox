@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **gateway: n8n is no longer reachable through the gateway** (#714).
+  `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
+  REST API and its webhooks, for whoever the gateway authenticated:
+  every registered session of every team, whatever its role, and any API
+  key holding `tools:admin`. n8n is a single-tenant tool with accounts
+  of its own and knows nothing of Wildbox's teams, and an instance whose
+  owner account has not been created yet lets the first caller create
+  it, with no credential (`POST /rest/owner/setup`, measured on 1.74.0).
+  The owner writes workflows, which run code in a container that reaches
+  the gateway and the services. Withholding headers (#711, below) does
+  not make that safe, so the location is removed, with its row in the
+  scope map: the path answers 404 with or without a credential. Nothing
+  shipped needs an inbound path: the workflows in
+  `open-security-automations/workflows` start on a schedule and call the
+  API outbound with an API key. n8n's editor stays on the port Compose
+  publishes on the loopback interface, `127.0.0.1:5678`, and its README
+  now tells the operator to create the owner account right after the
+  first start and how to check that one exists; n8n 1.74 has no way to
+  create it ahead of time. `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`
+  and `N8N_BASIC_AUTH_PASSWORD` are gone from both Compose files, both
+  `.env.example` files, `generate_secrets.py`, `validate_secrets.py` and
+  `security_validation_v2.sh`: n8n 1.x has no basic auth and ignored
+  them, so they read like a lock on the editor and were none. The
+  Traefik labels in `open-security-automations/docker-compose.yml`,
+  which would have let a Traefik on the same host publish n8n, are
+  removed too. `tools:admin` stays a valid scope; no route requires it.
+  The harness asks the production image for nine n8n paths as a session,
+  with a `tools:admin`, an `admin` and an unlimited key and with no
+  credential, and expects the gateway's own 404 each time;
+  `tests/scripts` fails for a location that proxies to anything but a
+  Wildbox service or the dashboard, for an n8n port published off the
+  loopback interface, and for a file that sets the variables again.
+
+- **gateway: nothing outside Wildbox's services receives the gateway's
+  secret, the caller's identity or the session cookie** (#711). The
+  automations location proxied to n8n with the same settings as a
+  Wildbox service, so n8n was sent `X-Gateway-Secret` and the caller's
+  user, team and role on every request, and from a browser the session
+  JWT in the `auth_token` cookie. The secret is what the services accept
+  as proof that the identity headers came from the gateway: whoever
+  holds it can state any user, team and role to all of them, a workflow
+  started by a webhook reads the headers of the request that started it,
+  and n8n reaches every service on the internal network. That location
+  is removed (#714, above); rotate the secret if n8n ever ran behind it.
+  The same audit of every other upstream: the `auth_token` cookie is
+  removed on every authenticated route, so the backends, from which
+  `Authorization` was already withheld, no longer get the same token in
+  a cookie; and a client's `X-API-Key` no longer reaches the dashboard
+  or identity's own routes, which do not read it. The gateway also
+  stops adding `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`. A new `test/upstream_header_tests.sh` runs
+  the production image and configuration, fails for a proxying location
+  it has no classification for, and checks what each upstream receives
+  of a request that carries a session token, an API key, the session
+  cookie and forged copies of the gateway's own headers.
+
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
   and forwarded the user, the team and the role alone, so no service
@@ -37,6 +93,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway's check stands alone for reading tools and tasks and for the
   agents, responder and CSPM services.
 
+- **A validation error no longer returns what was sent** (#722). The
+  field errors of a 422 carried FastAPI's `input`, the value that was
+  refused, and for a missing field that is the whole object the field is
+  missing from: a JSON body posted without its email came back with the
+  password in it, and a new password shorter than 12 characters came
+  back as it was typed, to be kept by whatever logs the errors a client
+  receives. tools already left it out for tool input; the handler every
+  FastAPI service shares did not. Each item of `error.details` is now
+  `{"type", "loc", "msg"}` and nothing else, in identity, tools, data,
+  responder, agents and cspm: no `input`, no `ctx`, no `url`. The same
+  holds for a model an endpoint builds from its own data, whose `input`
+  was the server's. `msg` is the validator's sentence, unchanged, except
+  pydantic's message for an unknown tag of a discriminated union, which
+  quoted the tag and now names only the accepted ones. The dashboard
+  reads `loc` and `msg` and is unaffected; a client that read `input` or
+  `ctx` from a 422 no longer finds them.
+- **A service started without `ENVIRONMENT` no longer takes itself for
+  a development one** (#722). identity, tools, data, responder, agents
+  and cspm read a missing `ENVIRONMENT` as `development`, so a bare
+  `docker run` of an image, or any deployment that left the variable
+  out, served `/openapi.json`, `/docs` and `/redoc`: the route map of
+  the service, admin and internal routes included. The default is now
+  empty, which is neither `development` nor `production`; the three
+  paths answer 404 unless `ENVIRONMENT` says `development`. tools still
+  refuses to start on a value that is set and is not `development`,
+  `staging` or `production`. The sensor's local API served its HTML
+  route list at `/` and `/docs`, without authentication, unless
+  `ENVIRONMENT` was `production`, and its Compose files set none; it now
+  follows the same rule. The root Compose file passes
+  `ENVIRONMENT=${ENVIRONMENT:-development}` and is unchanged, as are the
+  start-up checks that apply to `production` only. The development
+  Compose files of tools and the sensor now set
+  `ENVIRONMENT=development` themselves.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as
@@ -245,6 +334,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
+  client that was its only reader.** `WildboxAPIClient.health_check()`
+  had no caller, and no tool of the agent calls the responder. The
+  method and the setting are gone, with the lines in the service's own
+  `docker-compose.yml` and `.env.example`; the root `docker-compose.yml`
+  never set the variable. In the environment it is ignored. In a `.env`
+  file in the service's directory, which only a run outside the Compose
+  stack reads, it now stops the service at start, as every key the
+  settings do not know does: remove the line (#727).
+- **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
+  answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
+  with the `automations` profile started; from another machine, through
+  an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
+  leftover lines in `.env` are ignored, and `validate_secrets.py` no
+  longer asks for `N8N_BASIC_AUTH_PASSWORD`.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,
@@ -347,6 +451,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **identity answers 404, 500 and 503 in the body every service
+  answers** (#722). It installed the shared error handlers and then
+  registered two of its own by status code, which run first. Every 404
+  answered `{"detail": "Endpoint not found"}`, the ones a route raised
+  with its own message included: asking about a user, a team or an API
+  key that does not exist said the endpoint did not exist. Every 500
+  answered `{"detail": "Internal server error"}`, without the request id
+  that ties a reported failure to the log. The database middleware
+  answered `{"detail": "Database temporarily unavailable"}` for a lost
+  connection. All three now have the canonical body:
+  `error.message` is the route's own message (`User not found`), `Not
+  Found` for a path that does not exist, `An internal error occurred`
+  for an unhandled error, and `error.request_id` is always there. The
+  gateway reads only the status of identity's answers, and the dashboard
+  reads `error.message` before `detail`, so neither changes; a client
+  that read `detail` from an identity 404, 500 or 503 must read
+  `error.message`.
 - **Every Python image holds what the shared package requires of it**
   (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
   PyJWT and prometheus-client as dependencies of the whole package, and
@@ -378,6 +499,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still cannot be imported with a current OpenTelemetry SDK, because it
   uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
   installs the extra.
+- **gateway: a dashboard on another origin can call the API: a CORS
+  preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
+  The production configuration answered 405 to every `OPTIONS` request
+  before any location ran, so no preflight was ever answered: a page on
+  another origin, the dashboard's own development server on
+  `http://localhost:3000` included, could log in and do nothing else.
+  The harness did not see it, because its CORS cases ran against a test
+  configuration without that rule. Besides, the allowlist was a map
+  written into `nginx.conf`, not `CORS_ORIGINS`, and only identity's
+  routes carried the headers. CORS is now decided in one place
+  (`lua/cors.lua`, `includes/cors.conf`, included by both
+  configurations): a preflight from a listed origin is answered 204 by
+  the gateway, before authentication; a response to a listed origin
+  names it and allows credentials, the gateway's own 401, 403, 404 and
+  429 included; a response to any other origin names nobody; what a
+  service sets is replaced, so no header is doubled; the API's responses
+  carry `Vary: Origin`. Any other `OPTIONS` request is still 405.
+  `test/cors_tests.sh` runs against the production image and
+  configuration.
+- **gateway: a container run from the image alone is healthy, and its
+  port 80 is the gateway's** (#713). The image kept the base image's
+  `/etc/nginx/conf.d/default.conf`, a server for `localhost` on port 80
+  with a welcome page. It was loaded beside `wildbox_gateway.conf`, so
+  the image's own `HEALTHCHECK` (`curl http://localhost:80/health`) got
+  404 and Docker reported the container unhealthy, and port 80 served
+  the welcome page instead of the redirect to HTTPS. The Compose stack
+  did not show it: it mounts `open-security-gateway/nginx` over
+  `/etc/nginx`. The Dockerfile removes the file, and
+  `test/production_image_tests.sh` checks the image as built.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
@@ -597,6 +747,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
   not a template, so the placeholder was never filled. The line is
   gone; the target is in the user turn, where it always was.
+- **An AI analysis killed at its time limit, or with its process, is
+  recorded and counted** (#727). At the hard time limit Celery kills the
+  process a task runs in, and a process can die under a task (out of
+  memory), so nothing in the task could record either: the task read
+  `failed` with `Analysis failed. Please retry or contact support.`, no
+  cause was recorded and `failed_today` did not count it. The worker's
+  main process now records both, on Celery's `task_failure` signal:
+  `The analysis did not finish within its time limit.` for the hard
+  limit, and a new reason, `The analysis was interrupted before it
+  finished. No verdict was produced.`, for a lost process. A failed task
+  nobody recorded is recorded by `GET /api/v1/agents/analyze/{task_id}`
+  from the exception Celery holds for it. The record is written once
+  (`SET NX`), and whoever writes it counts the task, so the task, the
+  worker and the API together count a failure once. A task still
+  `running` more than a minute past the hard limit has lost its whole
+  worker and reads `failed`, interrupted; it read `running` until it
+  expired. The soft limit, 30 seconds before `TASK_TIMEOUT`, stays the
+  task's chance to record its own timeout: reached while the report is
+  generated, it is no longer recorded as a report that could not be
+  generated, and the service refuses to start with a `TASK_TIMEOUT`
+  under 60 seconds, which left no time to run. A unit test starts a real
+  Celery worker and a Redis container and hits both limits.
+- **A canceled AI analysis reads `revoked`, and a task's times are its
+  own** (#727). `GET /api/v1/agents/analyze/{task_id}` answered
+  `pending` forever for a task canceled with `DELETE`, and `started_at`
+  and `completed_at` were the time of the request. `started_at` is now
+  when the worker started the task, and `completed_at` when Celery
+  recorded its end.
+- **The agents service's OpenAPI schema has its examples** (#727). The
+  four models declared them with `class Config: schema_extra`, the
+  pydantic v1 key, which pydantic v2 ignores: no example reached the
+  schema, and the analysis result was not in it at all, since the read
+  declared no response model. They are now `json_schema_extra` in
+  `model_config`, the read declares both of its answers, and a unit test
+  validates each example against its own model: the task example had an
+  ID the route refuses and tool names no tool has. The other v1 forms in
+  the service are gone too (`@validator`, `Field(env=...)` in the
+  settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
+  warnings, so nothing else changes for a client or an operator.
 
 ### Changed
 
@@ -611,6 +800,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tracing`. `events` requires `sqlalchemy[asyncio]`, which its modules
   import, and no longer httpx, which none of them imports.
 
+- **gateway: the CORS allowlist is `CORS_ORIGINS`, and only that**
+  (#712). The gateway used to allow `localhost` and `127.0.0.1` on any
+  port, in every deployment, and read no setting. It now reads
+  `CORS_ORIGINS`, which `docker-compose.yml` defaults to
+  `http://localhost:3000` and the production overlay passes as set, and
+  allows nothing else. Each entry must be an origin (scheme, host,
+  optional port): with a wildcard, a path or a bare host name the
+  gateway does not start, and says which entry. The `$cors_allow_origin`
+  map in `nginx.conf` and `includes/cors_params.conf` are gone.
 - **`make health` only reads.** On every run it created the `data`
   database if it was missing and restarted the gateway if its log had
   ever contained `host not found in upstream`. Those repairs now run
@@ -821,6 +1019,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
+  the sidebar, submits an indicator to the agents service and follows
+  the task: queued, running with the worker's progress, failed with the
+  service's reason and no report, canceled, or completed with the
+  verdict, the confidence, the evidence, the recommended actions and
+  the full report. The dashboard had a client for the agents service
+  that no page used. The service lists no tasks and keeps each for a
+  limited time, so the page shows the tasks submitted from this
+  browser by the signed-in account, kept in the browser under the
+  account's own key, and says when one has expired. `GET
+  /api/v1/agents/stats` gains `model_configured`, and the page says
+  before a submission that an analysis cannot run when no model API key
+  is set. The route is behind the sign-in guard, which listed a path,
+  `/ai-analyst`, that no page had.
 - **`scripts/restore_redis.sh` restores the Redis snapshot a backup
   takes.** Redis runs with the append-only file enabled and then ignores
   `dump.rdb` at start, so copying the snapshot into the data volume gave

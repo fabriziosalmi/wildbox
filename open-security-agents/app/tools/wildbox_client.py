@@ -285,7 +285,6 @@ class WildboxAPIClient:
         self.api_url = settings.wildbox_api_url
         self.data_url = settings.wildbox_data_url
         self.guardian_url = settings.wildbox_guardian_url
-        self.responder_url = settings.wildbox_responder_url
         self.gateway_secret = settings.gateway_internal_secret
         if not self.gateway_secret:
             logger.error(
@@ -674,41 +673,6 @@ class WildboxAPIClient:
             Geolocation data
         """
         return await self.run_tool("geolocation_lookup", {"ip_address": ip_address})
-
-    async def health_check(self) -> Dict[str, str]:
-        """
-        Check health of all Wildbox services
-
-        Returns:
-            Health status of each service
-        """
-        services = {
-            "api": self.api_url,
-            "data": self.data_url,
-            "guardian": self.guardian_url,
-            "responder": self.responder_url
-        }
-
-        health_status = {}
-
-        for service_name, service_url in services.items():
-            try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(5.0)) as client:
-                    # /health is public on every service, and a health check
-                    # runs outside any user's task, so it sends no identity.
-                    response = await client.get(
-                        f"{service_url}/health",
-                        headers={"User-Agent": "Open-Security-Agents/1.0"},
-                    )
-                    if response.status_code == 200:
-                        health_status[service_name] = "healthy"
-                    else:
-                        health_status[service_name] = f"unhealthy ({response.status_code})"
-
-            except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                health_status[service_name] = f"error ({str(e)})"
-
-        return health_status
 
 
 # Global client instance

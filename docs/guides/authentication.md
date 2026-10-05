@@ -33,7 +33,7 @@ session (a JWT) has no scopes and is not limited by them.
 | Scope | What it allows |
 | --- | --- |
 | `read`, `write` | Reading, and changing, the data, CSPM and responder services. `write` includes `read` |
-| `tools:read`, `tools:execute`, `tools:admin` | Listing and reading tools, agent analyses and tasks; running and cancelling them; the automations service |
+| `tools:read`, `tools:execute`, `tools:admin` | Listing and reading tools, agent analyses and tasks; running and cancelling them. No route requires `tools:admin`: it grants what the other two do |
 | `data:read`, `data:write`, `data:delete` | Reading, changing and deleting in guardian. A delete needs `data:delete` itself |
 | `data:ingest` | Posting sensor telemetry to `/api/v1/data/ingest`, and nothing else |
 | `admin`, `*` | Everything |

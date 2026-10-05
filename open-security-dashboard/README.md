@@ -18,6 +18,7 @@ The routes under `src/app/`:
 | `/threat-intel/feeds`                                                    | Threat-intel sources and feed statistics                                        |
 | `/threat-intel/data`                                                     | Data service statistics, sources and an indicator search                        |
 | `/toolbox`, `/toolbox/<name>`                                            | The tools service catalog, and a form to run one tool                           |
+| `/ai-analysis`                                                           | Submit an indicator to the agents service and follow its AI analysis            |
 | `/vulnerabilities`                                                       | Vulnerabilities held by guardian                                                |
 | `/response`, `/response/playbooks`, `/response/runs`                     | Responder playbooks: list and start them, then follow a run's status            |
 | `/cloud-security`, `/cloud-security/scans`, `/cloud-security/compliance` | CSPM summary, scan form and compliance findings (not in the sidebar, see below) |
@@ -34,9 +35,14 @@ Notes:
 - **Response runs**: the responder has no endpoint that lists runs, so
   `/response/runs` shows the runs started from this browser and a run named
   in the URL, each with the status the responder reports.
-- There is no endpoint (sensor) page and no AI analysis page. The route guard
-  in `src/proxy.ts` still lists `/endpoints` and `/ai-analyst`, but no page
-  exists for either.
+- **AI analysis**: the agents service has no endpoint that lists analyses
+  and keeps each one for a limited time (an hour by default), so
+  `/ai-analysis` shows the analyses submitted from this browser by the
+  signed-in account, each with the status, the failure reason or the report
+  the service answers for it. It says so when the service reports that no
+  model API key is set, in which case every analysis fails.
+- There is no endpoint (sensor) page. The route guard in `src/proxy.ts` still
+  lists `/endpoints`, but no page exists for it.
 
 ### Security Toolbox
 
@@ -172,8 +178,10 @@ npm run dev
 
 Then open `http://localhost:3000`. The browser has to trust the gateway's
 certificate (or you accept it once at `https://localhost`), otherwise every
-API call fails. The gateway's CORS allowlist accepts `localhost` and
-`127.0.0.1` origins on any port.
+API call fails. The gateway accepts cross-origin calls from the origins in
+`CORS_ORIGINS` only; `docker-compose.yml` defaults it to
+`http://localhost:3000`, this server's origin. For another port or host,
+set `CORS_ORIGINS` in `.env` and recreate the gateway.
 
 ### Production image
 

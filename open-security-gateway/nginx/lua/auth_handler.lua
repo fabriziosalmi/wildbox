@@ -765,8 +765,9 @@ local ROUTE_SCOPES = {
     { path = "/api/v1/tools", read = "tools:read", write = "tools:execute" },
     { path = "/api/v1/agents", read = "tools:read", write = "tools:execute" },
     { path = "/api/v1/tasks", read = "tools:read", write = "tools:execute" },
-    -- Automation (n8n) workflow management is administrative.
-    { path = "/api/v1/automations", read = "tools:admin", write = "tools:admin" },
+    -- No row for /api/v1/automations: the gateway does not route to n8n
+    -- any more (#714), and no route requires tools:admin, which a key may
+    -- still hold and which satisfies tools:read and tools:execute.
     -- Guardian: vulnerability, asset and compliance data.
     { path = "/api/v1/guardian", read = "data:read", write = "data:write", delete = "data:delete" },
     -- Sensor telemetry ingest (#628): its own scope, so that a sensor's key
@@ -814,10 +815,12 @@ end
 --
 -- ngx.var.uri is not that path once the location has rewritten it, and
 -- rewrite directives run before access_by_lua. The automations location
--- strips its prefix that way, so the map saw "/rest/workflows" instead of
+-- stripped its prefix that way, so the map saw "/rest/workflows" instead of
 -- "/api/v1/automations/rest/workflows": it required the generic "read" or
 -- "write" where tools:admin was meant, and mapped whatever followed the
--- prefix as a path of its own. The server block copies $uri into
+-- prefix as a path of its own. That location is gone (#714); a location
+-- that rewrites is still mapped by the path it was chosen for, not by the
+-- one it rewrites to. The server block copies $uri into
 -- $wildbox_route_uri before any location runs; a configuration that does
 -- not declare it leaves every path unmapped, which fails closed.
 local function route_uri()
@@ -1017,7 +1020,16 @@ local function service_unavailable(retry_after)
     ngx.exit(ngx.HTTP_SERVICE_UNAVAILABLE)
 end
 
--- Main authentication handler
+-- Main authentication handler.
+--
+-- Only for a location whose upstream is a Wildbox service: a request let
+-- through is sent on with X-Gateway-Secret and the caller's identity, which
+-- such a service checks and trusts. Whoever else holds the secret can state
+-- any user, team and role to every service, so nothing that is not Wildbox's
+-- may sit behind a location that calls this. n8n did (#711), and is not
+-- routed to any more (#714); tests/scripts and the harness
+-- (test/upstream_header_tests.sh) fail for a location that proxies anywhere
+-- else.
 function _M.authenticate()
     local request_start = ngx.now()
 
