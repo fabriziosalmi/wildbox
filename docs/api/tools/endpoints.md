@@ -332,6 +332,15 @@ A queued run is stopped after 9 minutes (Celery soft limit 540 seconds,
 hard limit 600 seconds in `open-security-tools/app/celery_app.py`) and then
 reports status `timeout`.
 
+A task whose worker process dies while it runs (killed for memory, a crash
+in native code) is put back on the queue and started again. That happens at
+most three times: when three starts of a task have ended with the process
+gone, the next delivery ends it with status `failed` and the error
+`The worker process running this task was lost 3 times; the task was not
+started again`
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). Such a task
+used to come back without end.
+
 ### Task Visibility
 
 A task belongs to the user who submitted it. Only that user can read,
@@ -539,7 +548,7 @@ this service reads the counts on every scrape:
 | Outcome | The task |
 | --- | --- |
 | `completed` | ran its tool, which returned (a result with `success: false` included) |
-| `failed` | ran its tool, which raised; or failed in the worker after its retries |
+| `failed` | ran its tool, which raised; or failed in the worker after its retries; or was given up after its worker process died three times while running it |
 | `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
 | `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
 | `refused` | ended before its tool was started: the caller may not run the tool, or what the submission accepted is refused when the task runs (the target now resolves to an address that is not allowed, the worker does not have the tool) |

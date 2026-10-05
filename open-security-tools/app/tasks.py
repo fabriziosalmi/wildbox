@@ -120,6 +120,34 @@ def _count_cancelled_task(sender=None, request=None, terminated=None, **_):
     )
 
 
+# How many starts of one task may end with its process gone. A process can be
+# killed once for a reason that has nothing to do with the task (the kernel
+# under memory pressure, a worker stopped hard), and the task deserves another
+# go. A tool that takes its process down every time must not come back for
+# ever: after this many starts that left no result, the next delivery fails
+# the task (#743).
+MAX_LOST_STARTS = 3
+
+
+def _starts_lost(task_id: Optional[str], retries: int) -> int:
+    """Count this start; return how many earlier ones left no result.
+
+    Every start is counted in Redis (app/task_ownership.py). A task has one
+    start, plus one for each retry Celery scheduled, and each of those ends
+    with a state. Any start beyond that number is a redelivery: the process
+    that ran an earlier one died, or its whole worker was killed and the
+    broker gave the task to another. As for a cancellation, a Redis that
+    does not answer is raised.
+    """
+    if not task_id:
+        return 0
+    try:
+        ownership = get_task_ownership()
+    except TaskOwnershipUnavailable:
+        return 0
+    return max(0, ownership.count_start(task_id) - 1 - int(retries or 0))
+
+
 def _cancelled_by_its_owner(task_id: Optional[str]) -> bool:
     """Whether the task's owner cancelled it (app/task_ownership.py, #743).
 
@@ -188,6 +216,26 @@ def execute_tool_async(
         async_metrics.record_outcome(task_id, tool_name, async_metrics.CANCELLED)
         # Nothing more to store and nothing to retry: acknowledge and stop.
         raise Ignore()
+
+    # A task that keeps taking its process down is not started again.
+    lost = _starts_lost(task_id, self.request.retries)
+    if lost >= MAX_LOST_STARTS:
+        error_msg = (
+            f"The worker process running this task was lost {lost} times; "
+            "the task was not started again"
+        )
+        logger.error(
+            f"Async tool execution abandoned: {tool_name}",
+            extra={"tool_name": tool_name, "task_id": task_id, "lost_starts": lost},
+        )
+        settled(async_metrics.FAILED)
+        return {
+            'status': 'failed',
+            'error': error_msg,
+            'duration': time.time() - start_time,
+            'tool_name': tool_name,
+            'task_id': task_id
+        }
     
     logger.info(
         f"Starting async tool execution: {tool_name}",

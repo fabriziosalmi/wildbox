@@ -30,6 +30,18 @@ be: the task reads it first when it starts and does not run
 (``app.tasks``), and the API reads it to answer ``cancelled`` at once. Only
 the owner's ``DELETE`` writes it, after the same ownership check as every
 other request about the task.
+
+And how often a task was started (#743):
+
+* ``wildbox:tools:task-starts:<task_id>`` counts the starts of the task.
+
+A task whose worker process dies while it runs is put back on the queue
+(``task_acks_late`` with ``task_reject_on_worker_lost``), which is right for
+a process that was killed once and wrong for a tool that takes its process
+down every time: that task came back without end. Nothing in the message
+says how often it was delivered (the Redis transport keeps no such count),
+so the task counts its own starts here and gives up after too many that
+left no result (``app.tasks``).
 """
 
 import json
@@ -46,6 +58,7 @@ OWNER_TTL_SECONDS = 24 * 60 * 60
 _OWNER_KEY = "wildbox:tools:task-owner:{task_id}"
 _USER_INDEX_KEY = "wildbox:tools:user-tasks:{user_id}"
 _CANCELLED_KEY = "wildbox:tools:task-cancelled:{task_id}"
+_STARTS_KEY = "wildbox:tools:task-starts:{task_id}"
 
 
 class TaskOwnershipUnavailable(RuntimeError):
@@ -152,6 +165,14 @@ class TaskOwnership:
             [_CANCELLED_KEY.format(task_id=task_id) for task_id in task_ids]
         )
         return {task_id for task_id, marker in zip(task_ids, markers) if marker}
+
+    def count_start(self, task_id: str) -> int:
+        """Count one more start of the task; return how many there were."""
+        key = _STARTS_KEY.format(task_id=task_id)
+        pipe = self._redis.pipeline()
+        pipe.incr(key)
+        pipe.expire(key, OWNER_TTL_SECONDS)
+        return int(pipe.execute()[0])
 
     @staticmethod
     def _load(raw) -> Optional[Dict[str, Any]]:

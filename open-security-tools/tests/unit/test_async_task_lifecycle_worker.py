@@ -86,3 +86,42 @@ def test_a_task_nobody_cancelled_runs_on_a_worker_that_starts_later(stack, tmp_p
         stack.settled(before, {(PROBE, "completed"): 1})
     finally:
         worker.stop()
+
+
+# --- a task that keeps killing its process is not redelivered for ever ---------------
+
+
+def test_a_task_whose_process_dies_every_time_is_failed_after_three_starts(
+    stack, tmp_path
+):
+    """The defect: Celery put it back on the queue each time, without end.
+
+    The probe kills its own process on every start, as a tool does that
+    runs out of memory or crashes in native code. It is started three times
+    and then failed, and the worker goes on to the next task.
+    """
+    starts = tmp_path / "starts"
+    before = stack.outcomes()
+    consumed = stack.consumed()
+    mark = stack.mark()
+
+    result = stack.send(input_data={"behaviour": "die", "marker": str(starts)})
+    meta = stack.state(result, FINAL, seconds=90)
+
+    assert starts.read_text(encoding="utf-8").count("started") == 3
+    assert meta["status"] == "SUCCESS", meta  # it ended, and reports how
+    assert meta["result"]["status"] == "failed"
+    assert meta["result"]["error"] == (
+        "The worker process running this task was lost 3 times; "
+        "the task was not started again"
+    )
+    # Three starts that died and the delivery that gave up: one failure.
+    stack.settled(before, {(PROBE, "failed"): 1})
+    assert stack.consumed() == consumed + 4
+    assert stack.queued() == 0
+    assert stack.log_since(mark).count("exited with 'signal 9 (SIGKILL)'") == 3
+
+    # The worker is not harmed: the next task runs.
+    after = stack.probe("return")
+    assert stack.state(after, FINAL)["status"] == "SUCCESS"
+    stack.settled(before, {(PROBE, "failed"): 1, (PROBE, "completed"): 1})

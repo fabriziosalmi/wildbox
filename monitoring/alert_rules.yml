@@ -108,7 +108,9 @@ groups:
       # task when Celery settles its state:
       #
       #   failed     the tool raised, or the task failed in the worker after
-      #              its retries (a task that is retried is counted once);
+      #              its retries (a task that is retried is counted once), or
+      #              the task was given up after its worker process died
+      #              three times while running it;
       #   completed  the tool returned, `success: false` included;
       #   timeout    stopped at the soft time limit or killed at the hard one;
       #   cancelled  revoked, while it waited or while it ran;

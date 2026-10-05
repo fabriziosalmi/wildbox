@@ -193,6 +193,10 @@ class FakeRedis:
         self.ttl[key] = seconds
         return True
 
+    def incr(self, key):
+        self.kv[key] = str(int(self.kv.get(key, 0)) + 1)
+        return int(self.kv[key])
+
     def zadd(self, key, mapping):
         self.zsets.setdefault(key, {}).update(mapping)
         return len(mapping)

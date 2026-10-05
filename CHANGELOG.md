@@ -497,6 +497,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A tool task whose worker process keeps dying is failed, not put
+  back on the queue without end** (#743). When the process running a task
+  dies, Celery returns the task to the queue, which is right for a
+  process killed once and wrong for a tool that takes its process down
+  on every start (out of memory, a crash in native code): the task came
+  back every time, read `running` indefinitely and killed a worker process
+  on each round. A task now counts its starts in Redis, and when three
+  of them have ended with the process gone the next delivery ends it as
+  `failed` with the reason,
+  `The worker process running this task was lost 3 times; the task was
+  not started again`. It is counted once as a failure in
+  `wildbox_tool_async_executions_total`. A retry is not a lost start.
 - **A canceled tool task never runs, and reads `cancelled` at once**
   (#743). `DELETE /api/v1/tasks/{id}` asked Celery to revoke the task,
   which is a broadcast the workers running at that moment keep in
