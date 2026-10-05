@@ -1041,10 +1041,35 @@ services:
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}
       - WILDBOX_API_URL=${WILDBOX_API_URL:-http://api:8000}  # Tools service endpoint
+      # The services the agent's threat-intelligence and vulnerability tools
+      # call, directly on the internal network as the responder's connectors
+      # do. Neither was set, so both tools targeted localhost inside this
+      # container (#652). Guardian is addressed by its container name, which
+      # is in its ALLOWED_HOSTS. The two tools are given to the model only
+      # when AGENT_TEAM_DATA_TOOLS, below, names them.
+      - WILDBOX_DATA_URL=${AGENTS_WILDBOX_DATA_URL:-http://open-security-data:8002}
+      - WILDBOX_GUARDIAN_URL=${AGENTS_WILDBOX_GUARDIAN_URL:-http://open-security-guardian:8013}
       # Tool calls carry the caller's gateway identity (X-Wildbox-* with
       # GATEWAY_INTERNAL_SECRET, above). INTERNAL_API_KEY, the fallback key the
       # client sent without one, is gone: the tools service stopped accepting
       # it in #566 (#567).
+      #
+      # Analysis submissions each user may make, and an optional ceiling for
+      # a whole team (empty: none), in the `limits` notation. They were not
+      # passed, so setting them in .env did nothing (#652). The service
+      # refuses to start on a value it cannot parse. The counters are kept
+      # in REDIS_URL below.
+      - ANALYZE_RATE_LIMIT=${ANALYZE_RATE_LIMIT:-5/minute}
+      - ANALYZE_TEAM_RATE_LIMIT=${ANALYZE_TEAM_RATE_LIMIT:-}
+      # The team-data tools the model is given, comma-separated:
+      # threat_intel_query_tool, vulnerability_search_tool. Empty, the
+      # default, gives it neither, and the analysis runs on lookups of the
+      # IOC alone. Opting in sends what the tool returns (the team's
+      # indicators; the vulnerabilities Guardian records on its assets) to
+      # the model provider, and puts it in the model's context beside text
+      # fetched from the internet; see docs/guides/deployment.md before
+      # setting it. Any other name stops the service at start.
+      - AGENT_TEAM_DATA_TOOLS=${AGENT_TEAM_DATA_TOOLS:-}
       - REDIS_URL=${AGENTS_REDIS_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_BROKER_URL=${AGENTS_CELERY_BROKER_URL:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}
       - CELERY_RESULT_BACKEND=${AGENTS_CELERY_RESULT_BACKEND:-redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@wildbox-redis:6379/4}

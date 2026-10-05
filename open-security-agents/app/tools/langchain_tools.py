@@ -3,13 +3,29 @@ LangChain tools for the Threat Enrichment Agent
 
 These tools provide the AI agent with access to security analysis capabilities.
 Each tool has a clear description that helps the AI understand when and how to use it.
+
+A description is the only thing the model knows about a tool, so each one
+says what the service behind it really does, and nothing more. The model was
+offered tools that could only fail: the threat-intelligence and vulnerability
+tools called routes that do not exist, at an address inside the agents'
+own container, and four tools sent the tools service fields it refuses
+(#652). Every tool here calls a route that exists with the input it
+validates (tests/unit/test_tool_contracts.py), as the user who submitted
+the analysis. A tool that cannot be made to do that is taken out of
+ALL_TOOLS, not left for the model to call.
+
+The last two tools return data Wildbox holds for the caller's team. The
+model is given them only when the operator names them in
+AGENT_TEAM_DATA_TOOLS (enabled_tools below); by default it has the seven
+lookup tools.
 """
 
 import json
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Iterable, List
 from langchain_core.tools import tool
 
+from ..config import TEAM_DATA_TOOLS
 from .wildbox_client import wildbox_client
 
 logger = logging.getLogger(__name__)
@@ -18,14 +34,14 @@ logger = logging.getLogger(__name__)
 @tool
 async def port_scan_tool(ip_address: str) -> str:
     """
-    Runs a network port scan against the provided IP address to identify open ports and running services.
-    Use this to understand the attack surface of a host and identify potentially vulnerable services.
-    
+    Runs a TCP port scan (ports 1-1000) against an IP address or hostname to identify open ports and services.
+    Use this to understand the attack surface of a host. Internal and private addresses are refused.
+
     Args:
-        ip_address: The IP address to scan (e.g., "192.168.1.1")
-    
+        ip_address: The IP address or hostname to scan (e.g., "203.0.113.10")
+
     Returns:
-        JSON string containing open ports, services, and service versions
+        JSON string containing open ports and detected services, or an error
     """
     try:
         result = await wildbox_client.port_scan(ip_address)
@@ -38,15 +54,15 @@ async def port_scan_tool(ip_address: str) -> str:
 @tool
 async def whois_lookup_tool(target: str) -> str:
     """
-    Performs a WHOIS lookup on a domain or IP address to find registration details,
-    such as the owner, creation date, expiration date, and registrar information.
-    Useful for assessing the legitimacy and age of a domain or identifying the owner of an IP block.
-    
+    Performs a WHOIS lookup on a domain name to find registration details,
+    such as the registrant, creation date, expiration date, and registrar.
+    Useful for assessing the age and legitimacy of a domain.
+
     Args:
-        target: Domain name or IP address (e.g., "example.com" or "8.8.8.8")
-    
+        target: Domain name (e.g., "example.com")
+
     Returns:
-        JSON string containing WHOIS registration data
+        JSON string containing WHOIS registration data, or an error
     """
     try:
         result = await wildbox_client.whois_lookup(target)
@@ -57,21 +73,20 @@ async def whois_lookup_tool(target: str) -> str:
 
 
 @tool
-async def reputation_check_tool(ioc_value: str, sources: str = "virustotal,abuseipdb,urlvoid") -> str:
+async def reputation_check_tool(ioc_value: str, ioc_type: str) -> str:
     """
-    Checks the reputation of an IOC (IP, domain, URL, or hash) across multiple threat intelligence sources.
-    This is essential for determining if an indicator is known to be malicious.
-    
+    Checks an IOC against the threat intelligence sources the tools service aggregates.
+    Use this to find out whether an indicator is known to be malicious.
+
     Args:
-        ioc_value: The indicator to check (IP, domain, URL, or file hash)
-        sources: Comma-separated list of sources to check (default: "virustotal,abuseipdb,urlvoid")
-    
+        ioc_value: The indicator to check (IP, domain, URL, file hash or email)
+        ioc_type: The indicator's type: "ip", "domain", "url", "hash" or "email"
+
     Returns:
-        JSON string containing reputation scores and detections from each source
+        JSON string containing the aggregated threat score and what each source reported, or an error
     """
     try:
-        source_list = [s.strip() for s in sources.split(",")]
-        result = await wildbox_client.get_reputation(ioc_value, source_list)
+        result = await wildbox_client.get_reputation(ioc_value, ioc_type)
         return json.dumps(result, indent=2)
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Reputation check tool error: {e}")
@@ -81,15 +96,15 @@ async def reputation_check_tool(ioc_value: str, sources: str = "virustotal,abuse
 @tool
 async def dns_lookup_tool(domain: str, record_type: str = "A") -> str:
     """
-    Performs DNS lookups to resolve domain names and analyze DNS records.
-    Use this to find IP addresses, mail servers, text records, and other DNS information.
-    
+    Resolves the DNS records of one type for a domain name.
+    Use this to find IP addresses, mail servers, name servers and text records.
+
     Args:
-        domain: Domain name to lookup (e.g., "example.com")
-        record_type: DNS record type to query (A, AAAA, MX, TXT, NS, CNAME, etc.)
-    
+        domain: Domain name to look up (e.g., "example.com")
+        record_type: One DNS record type: A, AAAA, CNAME, MX, NS, TXT, SOA, PTR or SRV
+
     Returns:
-        JSON string containing DNS resolution results
+        JSON string containing the DNS records found, or an error
     """
     try:
         result = await wildbox_client.dns_lookup(domain, record_type)
@@ -100,21 +115,20 @@ async def dns_lookup_tool(domain: str, record_type: str = "A") -> str:
 
 
 @tool
-async def url_analysis_tool(url: str, take_screenshot: str = "true") -> str:
+async def url_analysis_tool(url: str) -> str:
     """
-    Analyzes a URL by visiting it and checking for malicious content, redirects, and suspicious behavior.
-    Can also take screenshots to identify phishing pages or malicious content.
-    
+    Follows a URL's redirect chain and reports each hop, the final destination and
+    the phishing or malware indicators found along it. It does not render the page
+    and takes no screenshot. Internal and private addresses are refused.
+
     Args:
-        url: The URL to analyze (must include protocol, e.g., "https://example.com")
-        take_screenshot: Whether to take a screenshot ("true" or "false")
-    
+        url: The URL to analyze (must include the scheme, e.g., "https://example.com/path")
+
     Returns:
-        JSON string containing URL analysis results, redirects, and screenshot data
+        JSON string containing the redirect chain, the final URL and the security analysis, or an error
     """
     try:
-        screenshot = take_screenshot.lower() == "true"
-        result = await wildbox_client.url_analysis(url, screenshot)
+        result = await wildbox_client.url_analysis(url)
         return json.dumps(result, indent=2)
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"URL analysis tool error: {e}")
@@ -124,14 +138,14 @@ async def url_analysis_tool(url: str, take_screenshot: str = "true") -> str:
 @tool
 async def hash_lookup_tool(hash_value: str) -> str:
     """
-    Looks up file hash reputation in threat intelligence databases to determine if a file is malicious.
-    Supports MD5, SHA1, and SHA256 hashes.
-    
+    Looks a file hash up in the malware hash sources of the tools service to determine if a file is known malware.
+    Supports MD5, SHA1, SHA256 and SHA512 hashes.
+
     Args:
-        hash_value: File hash to lookup (MD5, SHA1, or SHA256)
-    
+        hash_value: File hash to look up
+
     Returns:
-        JSON string containing hash reputation and malware family information
+        JSON string containing what each source reported about the hash, or an error
     """
     try:
         result = await wildbox_client.hash_lookup(hash_value)
@@ -146,12 +160,12 @@ async def geolocation_lookup_tool(ip_address: str) -> str:
     """
     Gets geolocation information for an IP address, including country, city, ISP, and organization.
     Useful for understanding the origin of network traffic and identifying suspicious locations.
-    
+
     Args:
         ip_address: IP address to geolocate (e.g., "8.8.8.8")
-    
+
     Returns:
-        JSON string containing geolocation data including country, city, ISP, and coordinates
+        JSON string containing geolocation data including country, city, ISP, and coordinates, or an error
     """
     try:
         result = await wildbox_client.geolocation_lookup(ip_address)
@@ -164,18 +178,22 @@ async def geolocation_lookup_tool(ip_address: str) -> str:
 @tool
 async def threat_intel_query_tool(ioc_value: str, ioc_type: str = "") -> str:
     """
-    Queries the internal threat intelligence data lake for historical data about an IOC.
-    This can reveal past incidents, related indicators, and context from previous investigations.
-    
+    Searches the threat indicators Wildbox has collected: the organization's own indicators
+    and the threat feeds it ingests. The search matches the text anywhere in an indicator's
+    value or description, so results can include related indicators (for example URLs on a
+    domain); each result says whether it is an exact match. No result means only that
+    Wildbox holds no indicator matching the text, not that the IOC is safe.
+
     Args:
-        ioc_value: The indicator to search for
-        ioc_type: Optional IOC type filter (ip, domain, url, hash, email)
-    
+        ioc_value: The indicator, or part of one, to search for
+        ioc_type: Optional type to restrict the search to: "ip", "domain", "url", "hash" or "email"
+
     Returns:
-        JSON string containing historical threat intelligence data
+        JSON string with the total number of matches and up to 25 indicators
+        (type, value, threat types, confidence, severity 1-10, first and last seen), or an error
     """
     try:
-        result = await wildbox_client.query_data_lake(ioc_value, ioc_type if ioc_type else None)
+        result = await wildbox_client.search_threat_intel(ioc_value, ioc_type if ioc_type else None)
         return json.dumps(result, indent=2)
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Threat intel query tool error: {e}")
@@ -185,24 +203,30 @@ async def threat_intel_query_tool(ioc_value: str, ioc_type: str = "") -> str:
 @tool
 async def vulnerability_search_tool(query: str) -> str:
     """
-    Searches vulnerability databases for CVEs, security advisories, and exploit information.
-    Use this when analyzing services or software versions found during reconnaissance.
-    
+    Searches the vulnerabilities the organization tracks in Guardian, its vulnerability
+    management service: findings recorded against the organization's own assets. The text is
+    matched against a finding's title, description, CVE ID and asset name. Use it to check
+    whether a host or a CVE under investigation is already a known finding. It is not a
+    public CVE or exploit database: no result means only that nothing matching is recorded.
+
     Args:
-        query: Search query (CVE ID, software name, version, etc.)
-    
+        query: Text to search for: a CVE ID, a product name or an asset name
+
     Returns:
-        JSON string containing vulnerability information and severity scores
+        JSON string with the total number of matches and up to 25 findings
+        (title, CVE ID, severity, status, risk score, asset), or an error
     """
     try:
-        result = await wildbox_client.check_vulnerability_db(query)
+        result = await wildbox_client.search_vulnerabilities(query)
         return json.dumps(result, indent=2)
     except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
         logger.error(f"Vulnerability search tool error: {e}")
         return json.dumps({"error": str(e), "success": False})
 
 
-# Export all tools for the agent
+# Every tool the service has, whether or not the model is given it: the
+# contract tests check each one. What the model is given is enabled_tools(),
+# never this list.
 ALL_TOOLS = [
     port_scan_tool,
     whois_lookup_tool,
@@ -214,3 +238,31 @@ ALL_TOOLS = [
     threat_intel_query_tool,
     vulnerability_search_tool
 ]
+
+
+def enabled_tools(team_data: Iterable[str] = ()) -> List[Any]:
+    """The tools the agent gives its model.
+
+    The seven tools that look the IOC up outside, always. A team-data tool
+    (app/config.py TEAM_DATA_TOOLS) only when ``team_data`` names it, which
+    is the operator's AGENT_TEAM_DATA_TOOLS: by default neither. A tool that
+    is not in the result is not bound to the model, so the model cannot call
+    it, whatever it is told to do by something it read.
+
+    Raises:
+        ValueError: a name in ``team_data`` is not a team-data tool. The
+            settings refuse it at start; this is the same rule for any
+            other caller.
+    """
+    wanted = set(team_data)
+    unknown = sorted(wanted - set(TEAM_DATA_TOOLS))
+    if unknown:
+        raise ValueError(
+            f"Not a team-data tool: {', '.join(unknown)}. "
+            f"The team-data tools are: {', '.join(TEAM_DATA_TOOLS)}"
+        )
+    return [
+        tool
+        for tool in ALL_TOOLS
+        if tool.name not in TEAM_DATA_TOOLS or tool.name in wanted
+    ]

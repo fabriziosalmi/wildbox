@@ -122,24 +122,67 @@ Task records and results expire after one hour (`task_result_expires`).
 
 ## Tools
 
-The agent has nine LangChain tools (`app/tools/langchain_tools.py`):
+The service has nine LangChain tools (`app/tools/langchain_tools.py`). The
+model is always given the seven that look the IOC up outside:
 
-| Tool | Calls |
-| --- | --- |
-| `port_scan_tool` | tools service, `network_port_scanner` |
-| `whois_lookup_tool` | tools service, `whois_lookup` |
-| `reputation_check_tool` | tools service, `threat_intelligence_aggregator` |
-| `dns_lookup_tool` | tools service, `dns_enumerator` |
-| `url_analysis_tool` | tools service, `url_analyzer` |
-| `hash_lookup_tool` | tools service, `malware_hash_checker` |
-| `geolocation_lookup_tool` | tools service, `ip_geolocation` |
-| `threat_intel_query_tool` | data service, `/api/v1/threat-intel/query` |
-| `vulnerability_search_tool` | guardian, `/api/v1/vulnerabilities/search` |
+| Tool | Calls | What the model gets |
+| --- | --- | --- |
+| `port_scan_tool` | tools service, `network_port_scanner` | Open TCP ports (1-1000) and services |
+| `whois_lookup_tool` | tools service, `whois_lookup` | A domain's registration |
+| `reputation_check_tool` | tools service, `threat_intelligence_aggregator` | The aggregated threat score of an IOC of a given type |
+| `dns_lookup_tool` | tools service, `dns_enumerator` | The records of one DNS type |
+| `url_analysis_tool` | tools service, `url_analyzer` | A URL's redirect chain and where it ends (no screenshot) |
+| `hash_lookup_tool` | tools service, `malware_hash_checker` | What the malware sources report on a file hash |
+| `geolocation_lookup_tool` | tools service, `ip_geolocation` | Country, city, ISP of an address |
 
 Tools-service calls go to `{WILDBOX_API_URL}/api/tools/{tool}` and only to
 the tools in the fixed `TOOL_ENDPOINT_MAP` of `app/tools/wildbox_client.py`.
-The data and guardian endpoints the last two tools call do not exist on
-those services at present, so those tools return an error to the agent.
+
+### Team-data tools (off by default)
+
+Two tools read data Wildbox holds for the user's team. The model is given
+one only when `AGENT_TEAM_DATA_TOOLS` names it; by default it has neither,
+the prompt does not mention them, and no request goes to the data service
+or to Guardian.
+
+| Tool | Calls | What the model gets, for each search it makes |
+| --- | --- | --- |
+| `threat_intel_query_tool` | data service, `GET /api/v1/indicators/search` | The number of matches and up to 25 indicators of the team and of the shared feeds: type, value, threat types, confidence, severity, description, tags, dates |
+| `vulnerability_search_tool` | guardian, `GET /api/v1/vulnerabilities/` | The number of matches and up to 25 vulnerabilities Guardian records for the team: title, CVE ID, severity, status, priority, scores, asset name and type, due date |
+
+```bash
+# .env: give the model both (either name alone gives that one)
+AGENT_TEAM_DATA_TOOLS=threat_intel_query_tool,vulnerability_search_tool
+```
+
+Any other value stops the service at start. Before you set it:
+
+- **It sends that data to the model provider.** Every tool output is part
+  of the conversation, so what these tools return goes to Anthropic. The
+  model writes the search text and can search several times per analysis.
+- **It opens an injection path.** The data then sits in the model's context
+  beside text the lookup tools fetched from the internet (WHOIS records,
+  DNS answers, the redirects and headers of the URL under analysis), and
+  the model holds tools that reach outside with arguments it chooses. Text
+  written to instruct the model can ask it to search the team's records
+  and pass them out in such an argument. The prompt tells the model not
+  to; that is a request, not a control.
+
+### How every tool behaves
+
+Every tool calls its service directly, as the user who submitted the
+analysis: the request carries that user's gateway identity
+(`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`) with
+`GATEWAY_INTERNAL_SECRET`, so the service answers for that user and team
+and the agents service has no key that sees more. A call that fails returns
+`{"success": false, "error": ...}` to the model, with the service's status
+and without its address; it is never turned into an empty result.
+
+A tool's description is all the model knows about it, so it says what the
+service does and no more. When you add a tool or change what one sends, add
+it to `TOOLS` in `tests/unit/test_tool_contracts.py`: the test checks the
+request against the route, the query parameters and the input model in the
+target service's source, and fails for a tool that is not in the table.
 
 ## Configuration
 
@@ -154,23 +197,38 @@ Settings are read from the environment (`app/config.py`):
 | `GATEWAY_INTERNAL_SECRET` | none | Required. Verifies incoming gateway requests and authenticates tool calls |
 | `REDIS_URL` | `redis://localhost:6379/0` | Task state |
 | `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | `redis://localhost:6379/0` | Celery |
-| `WILDBOX_API_URL` | `http://localhost:8000` | Tools service |
-| `WILDBOX_DATA_URL` | `http://localhost:8001` | Data service (the data service listens on 8002; set this explicitly) |
-| `WILDBOX_GUARDIAN_URL` | `http://localhost:8013` | Guardian |
+| `WILDBOX_API_URL` | `http://api:8000` | Tools service |
+| `WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, for `threat_intel_query_tool` |
+| `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, for `vulnerability_search_tool`; the host must be in Guardian's `ALLOWED_HOSTS` |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `DEBUG` | `false` | Debug flag |
 | `ENVIRONMENT` | `development` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development` |
 | `CORS_ORIGINS` | empty | Comma-separated allowed origins |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
 | `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together |
+| `AGENT_TEAM_DATA_TOOLS` | empty (neither) | The team-data tools the model is given: `threat_intel_query_tool`, `vulnerability_search_tool` or both; see [Team-data tools](#team-data-tools-off-by-default) |
+| `ANALYZE_RATE_LIMIT_STORAGE_URI` | empty (`REDIS_URL`) | Where the limit counters are kept: empty for the service's Redis, `memory://` for the API process (the unit tests use it) |
+
+The service URLs default to the services' addresses in the root
+`docker-compose.yml`; each must be an absolute `http` or `https` URL with a
+host, or the service does not start.
 
 The analysis limits are counted per user as identified by the gateway, not
 per client address (#659). The service refuses to start when either value
-cannot be parsed; a request over a limit answers `429`.
+cannot be parsed; a request over a limit answers `429`. The counters are in
+Redis, so a restart does not reset them; when Redis cannot be reached a
+submission answers `503`.
+
+`GET /stats` reports `completed_today` and `failed_today` for the current
+UTC date (`app/stats.py`): one Redis counter per date, expiring after two
+days.
 
 The root `docker-compose.yml` sets `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 (default `claude-opus-4-8`), `GATEWAY_INTERNAL_SECRET`, `WILDBOX_API_URL`
-(`http://api:8000`) and the Redis URLs.
+(`http://api:8000`), `WILDBOX_DATA_URL` and `WILDBOX_GUARDIAN_URL` (from
+`AGENTS_WILDBOX_DATA_URL` and `AGENTS_WILDBOX_GUARDIAN_URL` in `.env`),
+`ANALYZE_RATE_LIMIT`, `ANALYZE_TEAM_RATE_LIMIT`, `AGENT_TEAM_DATA_TOOLS`
+(empty) and the Redis URLs.
 
 ## Development
 

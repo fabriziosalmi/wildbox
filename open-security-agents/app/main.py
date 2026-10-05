@@ -23,6 +23,9 @@ from starlette.responses import Response
 import redis
 from celery.result import AsyncResult
 from kombu.exceptions import OperationalError as KombuOperationalError
+from limits.errors import StorageError as RateLimitStorageError
+from open_security_shared.errors import error_response as _error_response
+from open_security_shared.errors import get_request_id as _get_request_id
 from redis.exceptions import RedisError
 
 from .schemas import (
@@ -33,6 +36,8 @@ from .config import settings
 from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
 from .rate_limit import limit_analysis, limiter, rate_limited_caller
+from .stats import COMPLETED, FAILED, LEGACY_KEYS, read_today
+from .tools.langchain_tools import enabled_tools
 from .tools.wildbox_client import CallerIdentityUnavailable, require_caller_identity
 from open_security_shared.api_docs import api_docs_urls
 
@@ -62,7 +67,23 @@ async def lifespan(app: FastAPI):
         redis_client = redis.from_url(settings.redis_url)
         redis_client.ping()
         logger.info("Redis connection established")
-        
+
+        # The daily counters that were never reset; replaced by one key per
+        # UTC date (app/stats.py). Nothing reads these any more.
+        redis_client.delete(*LEGACY_KEYS)
+
+        # What the model is given, said once at start: the lookup tools, and
+        # the team-data tools AGENT_TEAM_DATA_TOOLS names (none by default).
+        # The setting was validated when the settings were built.
+        team_data = sorted(settings.team_data_tool_names())
+        offered = enabled_tools(team_data)
+        logger.info(f"Tools given to the model: {', '.join(t.name for t in offered)}")
+        if team_data:
+            logger.warning(
+                "AGENT_TEAM_DATA_TOOLS gives the model team data: what "
+                f"{', '.join(team_data)} return is sent to the model provider"
+            )
+
         # Test Anthropic API key
         if not settings.anthropic_api_key or settings.anthropic_api_key == "your_anthropic_api_key_here":
             logger.warning("Anthropic API key not configured - AI analysis will fail")
@@ -121,6 +142,22 @@ _install_observability(app, service_name="agents", service_version="0.1.6")
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+@app.exception_handler(RateLimitStorageError)
+async def _rate_limit_storage_unavailable(request: Request, exc: RateLimitStorageError):
+    """The limiter could not count the request: refuse it, with a 503.
+
+    The counters are in Redis (app/rate_limit.py). A submission that cannot
+    be counted is not accepted uncounted, and it is not a server fault to
+    report as 500: the caller can retry.
+    """
+    logger.error(f"Rate limit storage unavailable: {exc}")
+    return _error_response(
+        status.HTTP_503_SERVICE_UNAVAILABLE,
+        "Rate limiting temporarily unavailable",
+        request_id=_get_request_id(request),
+    )
 
 
 # Add Security Headers Middleware
@@ -212,11 +249,13 @@ async def get_stats(user: GatewayUser = Depends(get_current_user)):
         # Calculate uptime
         uptime = (datetime.now(timezone.utc) - app_start_time).total_seconds()
         
-        # Get basic stats from Redis (could be enhanced with more detailed tracking)
+        # total_analyses counts since the Redis data was last cleared. The
+        # two daily counters are those of the current UTC date (app/stats.py);
+        # they were single keys that nothing reset.
         total_analyses = redis_client.get("stats:total_analyses") or 0
-        completed_today = redis_client.get("stats:completed_today") or 0
-        failed_today = redis_client.get("stats:failed_today") or 0
-        
+        completed_today = read_today(redis_client, COMPLETED)
+        failed_today = read_today(redis_client, FAILED)
+
         return StatsResponse(
             total_analyses=int(total_analyses),
             pending_tasks=pending_count,
