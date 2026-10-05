@@ -24,7 +24,7 @@ from .serializers import (
 )
 from .tasks import discover_assets, scan_asset_ports, update_asset_inventory
 from .filters import AssetFilter
-from .networks import SCAN_TYPES, NetworkRefused, scan_network
+from .networks import SCAN_TYPES, check_network
 from apps.core.permissions import IsAssetManager, IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin, record_team_task
 
@@ -133,11 +133,10 @@ class AssetViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # Checked before anything is queued (#724): a value that is not a
         # network was only found out by the worker, after its retries, and a
         # range of any size was accepted.
-        try:
-            network = scan_network(request.data.get('network_range'))
-        except NetworkRefused as refused:
+        network, refusal = check_network(request.data.get('network_range'))
+        if refusal is not None:
             return Response(
-                {'network_range': [str(refused)]},
+                {'network_range': [refusal]},
                 status=status.HTTP_400_BAD_REQUEST
             )
         scan_type = request.data.get('scan_type', 'basic')

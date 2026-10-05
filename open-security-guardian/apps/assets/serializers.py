@@ -16,7 +16,7 @@ from django.contrib.auth.models import User
 from apps.core.schedules import InvalidSchedule, schedule_timezone, validate_cron
 
 from .networks import (
-    MAX_RULE_NETWORKS, SCAN_TYPES, NetworkRefused, scan_network,
+    MAX_RULE_NETWORKS, SCAN_TYPES, check_network,
 )
 from .models import (
     Asset, Environment, BusinessFunction, AssetGroup,
@@ -181,10 +181,9 @@ class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
             for network in networks:
                 # What discover_assets would refuse on each run: not a
                 # network, or more addresses than one discovery sweeps (#724).
-                try:
-                    scan_network(network)
-                except NetworkRefused as refused:
-                    raise serializers.ValidationError(str(refused))
+                _, refusal = check_network(network)
+                if refusal is not None:
+                    raise serializers.ValidationError(refusal)
             scan_type = value.get('scan_type', 'basic')
             if scan_type not in SCAN_TYPES:
                 raise serializers.ValidationError(
