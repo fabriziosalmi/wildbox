@@ -210,6 +210,16 @@ def jwt_claims(token):
     return claims if isinstance(claims, dict) and claims.get("jti") else None
 
 
+# What a service with CORS middleware of its own might answer, by the name a
+# test asks for in X-Mock-Service-Cors (test/cors_tests.sh). "listed" is the
+# origin the harness lists in the gateways' CORS_ORIGINS.
+SERVICE_CORS_ORIGINS = {
+    "wildcard": "*",
+    "unlisted": "https://evil.example",
+    "listed": "https://dashboard.example.test",
+}
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -218,9 +228,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         # A service with CORS middleware of its own (#712): the mock answers
-        # with the Access-Control-Allow-Origin a test asks it for, so the
-        # test can see that the gateway's word replaces it.
-        said = self.headers.get("X-Mock-Allow-Origin")
+        # with an Access-Control-Allow-Origin of its own, so the test can see
+        # that the gateway's word replaces it. The test names which one; the
+        # value comes from SERVICE_CORS_ORIGINS, never from the request, so
+        # nothing a client sends is written into a response header.
+        said = SERVICE_CORS_ORIGINS.get(self.headers.get("X-Mock-Service-Cors"))
         if said:
             self.send_header("Access-Control-Allow-Origin", said)
             self.send_header("Access-Control-Allow-Credentials", "true")

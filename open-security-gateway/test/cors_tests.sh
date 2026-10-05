@@ -33,6 +33,7 @@ set -u
 
 GATEWAY_PROD_URL="${GATEWAY_PROD_URL:-https://localhost:8443}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8080}"
+MOCK_URL="${MOCK_URL:-http://localhost:8001}"
 
 LISTED="https://dashboard.example.test"
 LISTED_DEV="http://localhost:3000"
@@ -215,12 +216,40 @@ fi
 
 # --- One authority: what the service behind says about CORS is replaced ------
 echo "== A service with CORS headers of its own =="
-# The mock answers with the Access-Control-Allow-Origin it is asked for in
-# X-Mock-Allow-Origin, as a service with its own CORS middleware would.
-for said in "*" "https://evil.example" "$LISTED"; do
+# The mock answers with an Access-Control-Allow-Origin of its own, as a
+# service with its own CORS middleware would: the one X-Mock-Service-Cors
+# names in the mock's own table (SERVICE_CORS_ORIGINS in mock_identity.py:
+# "*", https://evil.example, and the listed origin).
+# said_by_the_mock <name> <expected>: asked directly, the mock does answer
+# with that Access-Control-Allow-Origin. Without this the cases below would
+# pass against a service that says nothing about CORS at all.
+said_by_the_mock() {
+    send -H "X-Mock-Service-Cors: $1" "$MOCK_URL/api/v1/tools/whois"
+    if [ "$STATUS" = 200 ] && [ "$(header access-control-allow-origin)" = "$2" ] \
+            && [ "$(lines access-control-allow-origin)" = 1 ]; then
+        pass "the mock itself answers '$1' with Access-Control-Allow-Origin: $2"
+    else
+        fail "the mock, asked for '$1': HTTP $STATUS, Access-Control-Allow-Origin '$(header access-control-allow-origin)', expected '$2'"
+    fi
+}
+said_by_the_mock wildcard "*"
+said_by_the_mock unlisted "https://evil.example"
+said_by_the_mock listed "$LISTED"
+# A name the mock does not know, or a value in place of a name, gets no
+# header: nothing a request carries is copied into the response.
+for unknown in "https://attacker.example" "*" "listed, wildcard"; do
+    send -H "X-Mock-Service-Cors: $unknown" "$MOCK_URL/api/v1/tools/whois"
+    if [ "$STATUS" = 200 ] && [ "$(cors_headers)" = 0 ]; then
+        pass "the mock writes nothing of '$unknown' into its response headers"
+    else
+        fail "the mock, asked for '$unknown': HTTP $STATUS, $(cors_headers) CORS headers — $(grep -i '^access-control-' "$WORK/headers" | tr '\n' ';')"
+    fi
+done
+
+for said in wildcard unlisted listed; do
     ORIGIN="$LISTED"
     send -H "Origin: $LISTED" -H "Authorization: Bearer prod-harness-session-token" \
-        -H "X-Mock-Allow-Origin: $said" "$GATEWAY_PROD_URL/api/v1/tools/whois"
+        -H "X-Mock-Service-Cors: $said" "$GATEWAY_PROD_URL/api/v1/tools/whois"
     labelled "the service says '$said', listed origin" 200
     if grep -i '^vary:' "$WORK/headers" | grep -qiw 'accept-encoding'; then
         pass "the service's own Vary is kept beside Origin"
@@ -228,7 +257,7 @@ for said in "*" "https://evil.example" "$LISTED"; do
         fail "the service's Vary was lost: '$(grep -i '^vary:' "$WORK/headers" | tr '\n' ';')'"
     fi
     send -H "Origin: https://evil.example" -H "Authorization: Bearer prod-harness-session-token" \
-        -H "X-Mock-Allow-Origin: $said" "$GATEWAY_PROD_URL/api/v1/tools/whois"
+        -H "X-Mock-Service-Cors: $said" "$GATEWAY_PROD_URL/api/v1/tools/whois"
     unlabelled "the service says '$said', unlisted origin" 200
 done
 
@@ -249,7 +278,7 @@ labelled "POST /auth/logout" 200
 echo "== Wildcard =="
 for origin in "$LISTED" "https://evil.example" "*"; do
     send -H "Origin: $origin" -H "Authorization: Bearer prod-harness-session-token" \
-        -H "X-Mock-Allow-Origin: *" "$GATEWAY_PROD_URL/api/v1/tools/whois"
+        -H "X-Mock-Service-Cors: wildcard" "$GATEWAY_PROD_URL/api/v1/tools/whois"
     if [ "$(header access-control-allow-origin)" = "*" ]; then
         fail "Origin '$origin': the response allows every origin"
     else
