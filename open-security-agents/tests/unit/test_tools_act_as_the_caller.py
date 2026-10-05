@@ -19,7 +19,6 @@ import sys
 
 import httpx
 import pytest
-from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -39,6 +38,7 @@ from app.tools.wildbox_client import (  # noqa: E402
     _caller_identity,
     caller_identity,
 )
+from scripted_model import ScriptedModel  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not services_module.sources_available(),
@@ -464,11 +464,8 @@ def test_a_rate_limited_tool_is_retried_then_reported(services, monkeypatch):
 # --- Through the production agent, with a scripted model ---------------------
 
 
-class ToolCallingFakeModel(FakeMessagesListChatModel):
-    """A scripted chat model the tool-calling agent can bind tools to."""
-
-    def bind_tools(self, tools, **kwargs):
-        return self
+# A scripted chat model the tool-calling agent can bind tools to.
+ToolCallingFakeModel = ScriptedModel
 
 
 class FakeRedis:
