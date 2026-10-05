@@ -6,7 +6,9 @@
 #   * unauthenticated / invalid-token rejection
 #   * X-Wildbox-* header injection stripping (anti-spoofing)
 #   * Authorization / X-API-Key stripping before proxying upstream
-#   * API-key scope enforcement (tools:read / tools:execute mapping + hierarchy)
+#   * API-key scope enforcement (tools:read / tools:execute mapping + hierarchy;
+#     a route without a row in the scope map requires admin, #647). The scope
+#     of each production route is pinned in route_scope_tests.sh
 #   * X-Gateway-Secret proof-of-origin propagation (wrong secret -> 403)
 #   * auth-cache short-circuit (one /internal/authorize call for N requests)
 #   * the removed standalone tools UI (/tools/ answers 404, #581)
@@ -161,6 +163,39 @@ assert_json "cancel needs tools:execute" '.required_scope' 'tools:execute'
 request "tools:execute key cancels a task" 200 \
     -X DELETE -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/tasks/1f0c4ea6-task"
 assert_json "cancel reaches the service as DELETE" '.method' 'DELETE'
+
+# 9f-9k. A route the scope map has no row for (#647) is closed to
+#        scope-limited keys: it requires "admin", not the generic read or
+#        write an unmapped path used to fall back to. /api/v1/auth/ is such a
+#        route here (production has none: route_scope_tests.sh pins every
+#        location of wildbox_gateway.conf). Sessions are not scope-limited.
+UNMAPPED="$GATEWAY_URL/api/v1/auth/me"
+request "unmapped route refuses a key with every lesser scope" 403 \
+    -H "X-API-Key: wsk_scoped~unmapped-lesser~read,write,tools:admin,data:delete" "$UNMAPPED"
+assert_json "unmapped route error code" '.error' 'insufficient_scope'
+assert_json "unmapped route requires admin" '.required_scope' 'admin'
+assert_strict_json "unmapped route error body"
+request "unmapped route refuses a write, too" 403 -X POST \
+    -H "X-API-Key: wsk_scoped~unmapped-lesser~read,write,tools:admin,data:delete" "$UNMAPPED"
+assert_json "unmapped write requires admin" '.required_scope' 'admin'
+request "unmapped route serves an admin key" 200 \
+    -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$UNMAPPED"
+request "unmapped route serves an unrestricted key" 200 \
+    -H "X-API-Key: wsk_scoped~unmapped-star~*" "$UNMAPPED"
+# The map reads the path from $wildbox_route_uri, which the server block
+# fills in. Where it is empty the path is unknown, and unknown is unmapped:
+# this location empties it and is otherwise a tools route. Its $uri is under
+# /api/v1/tools, so a map that fell back to $uri would let these keys by.
+UNROUTED="$GATEWAY_URL/api/v1/tools/unrouted/echo"
+request "a route whose path the map cannot read is unmapped" 403 \
+    -H "X-API-Key: wsk_toolsexec_ci_fixture" "$UNROUTED"
+assert_json "unreadable path requires admin" '.required_scope' 'admin'
+request "an unreadable path is not mapped by its \$uri" 403 -X POST \
+    -H "X-API-Key: wsk_scoped~unmapped-lesser~read,write,tools:admin,data:delete" "$UNROUTED"
+assert_json "unreadable path requires admin to write" '.required_scope' 'admin'
+request "an unreadable path serves an admin key" 200 \
+    -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$UNROUTED"
+assert_json "unreadable path still proxied where the location says" '.path' '/api/v1/tools/echo'
 
 # 10. Auth cache: the two valid-bearer requests above (tests 4 and 5) must
 #     have produced exactly ONE /internal/authorize call

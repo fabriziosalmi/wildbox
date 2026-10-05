@@ -110,6 +110,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   upstream publishes (Trivy's checksum file; the osquery packages on
   pkg.osquery.io and on the GitHub release; the lua-resty-http files at
   the commit the tag names).
+- **gateway: the automations route requires `tools:admin`, as
+  documented, and an authenticated route with no scope of its own
+  requires `admin`** (#647). The scope map read `$uri`, and the
+  automations location rewrites it before `authenticate()` runs: the map
+  saw `/rest/workflows` where the client had asked for
+  `/api/v1/automations/rest/workflows`, required the generic `read` or
+  `write`, and mapped whatever followed the prefix as a path of its own.
+  A key scoped `read` could read n8n and one scoped `write` could manage
+  its workflows, with the basic-auth credentials the gateway injects,
+  while a `tools:admin` key was refused. The map now reads the path
+  nginx chose the location for, which the server block keeps in
+  `$wildbox_route_uri`. It is a table, `ROUTE_SCOPES`, with one row for
+  each authenticated route; a path with no row requires `admin` instead
+  of falling back to `read` or `write`. A new
+  `test/route_scope_tests.sh` runs the production image and
+  configuration against the mock, fails for a location that calls
+  `authenticate()` without a pinned scope, and checks every pin per
+  method, with a key that has no scope and with one holding exactly the
+  scope. `scripts/check_gateway_config.py` fails for a configuration
+  that authenticates without declaring `$wildbox_route_uri`.
 
 - **A user who left a team is no longer one of its users in guardian**
   (#676). guardian recorded a membership the first time the gateway
@@ -298,6 +318,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validator raised `ValueError`, the field errors could not be rendered
   as JSON and the request ended in an internal error: an IOC value of
   the wrong format sent to `POST /api/v1/agents/analyze`, for one.
+- **gateway: `GET /api/v1/tools` requires `tools:read`** (#647). The
+  scope map matched the tools routes with a trailing slash, so the list
+  of tools, the first call a client makes, fell through to the generic
+  `read`: a key scoped `tools:read` or `tools:execute` got 403
+  `insufficient_scope` there, and `POST` needed `write` instead of
+  `tools:execute`. A row of the map now covers its path and everything
+  under it, for every route.
+- **gateway: an API path ending in an asset extension reaches its
+  service** (#647). The static-asset location is a regular expression,
+  which outranks the prefix locations, and it matched any path ending in
+  `.js`, `.css`, or an image or font extension:
+  `/api/v1/data/report.png` or a tool called `x.js` went to the
+  dashboard, unauthenticated, and the service never saw the request.
+  The location no longer matches under `/api/`.
 - **guardian: the rate limit is configurable, checked at start and counted
   per user; the health check is no longer throttled** (#645).
   `API_RATE_LIMIT` was documented as guardian's rate limit, but
