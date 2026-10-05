@@ -34,6 +34,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 # What an exception says when a query meets a schema it did not expect.
 INTERNALS = 'relation "billing_secrets" does not exist at db-7.internal:5432'
+REQUEST_ID = "req-735-identity"
 
 ANALYTICS = [
     "/api/v1/analytics/admin/system-stats",
@@ -121,17 +122,36 @@ def identity(monkeypatch):
     token = asyncio.run(user_manager.get_jwt_strategy().write_token(admin))
     yield SimpleNamespace(
         client=TestClient(app, raise_server_exceptions=False),
-        headers={"Authorization": f"Bearer {token}"},
+        headers={"Authorization": f"Bearer {token}", "X-Request-ID": REQUEST_ID},
         session=session,
     )
     app.dependency_overrides.clear()
 
 
-def says_nothing(response):
+def says_nothing(response, caplog):
+    """The canonical 500, with nothing of the cause; the cause in the log."""
     assert response.status_code == 500, response.text
-    assert INTERNALS not in response.text
+    assert response.json() == {
+        "error": {
+            "code": 500,
+            "message": "An internal error occurred",
+            "type": "InternalServerError",
+            "request_id": REQUEST_ID,
+        }
+    }
     for fragment in ("billing_secrets", "db-7.internal", "Failed to", "ValueError"):
         assert fragment not in response.text, fragment
+    # Logged once by the shared handler, with the exception and the id that
+    # the client was given.
+    logged = [
+        record
+        for record in caplog.records
+        if record.name == "open_security_shared.errors" and record.levelname == "ERROR"
+    ]
+    assert len(logged) == 1
+    assert INTERNALS in logged[0].getMessage()
+    assert logged[0].request_id == REQUEST_ID
+    assert logged[0].exc_info is not None
 
 
 @pytest.mark.parametrize("path", ANALYTICS)
@@ -141,17 +161,19 @@ def test_an_analytics_route_that_fails_does_not_say_how(identity, caplog, path):
     with caplog.at_level("ERROR"):
         response = identity.client.get(path, headers=identity.headers)
 
-    says_nothing(response)
+    says_nothing(response, caplog)
 
 
-def test_a_deletion_that_fails_does_not_say_how_and_is_rolled_back(identity):
+def test_a_deletion_that_fails_does_not_say_how_and_is_rolled_back(identity, caplog):
     identity.session.commit_failure = ValueError(INTERNALS)
 
-    response = identity.client.delete(
-        f"/api/v1/admin/users/{identity.session.victim.id}", headers=identity.headers
-    )
+    with caplog.at_level("ERROR"):
+        response = identity.client.delete(
+            f"/api/v1/admin/users/{identity.session.victim.id}",
+            headers=identity.headers,
+        )
 
-    says_nothing(response)
+    says_nothing(response, caplog)
     assert identity.session.rollbacks == 1
 
 

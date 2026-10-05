@@ -30,6 +30,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validation message was `Invalid format for <type> IOC: '<value>'`, and
   a validator's message is returned as written; it now stops at the
   type.
+- **tools no longer logs, or reports from a workflow, the tool input it
+  refuses** (#735). A tool input that failed validation left the
+  response without its values (#585) and went to the log entire: the
+  route logged `str()` of the validation error, which quotes every value
+  refused, a credential among them if a field held one. The log now has
+  the fields and the messages. The orchestrator reported an invalid
+  parameter of a workflow step the same way, in the workflow result; it
+  now says `<field>: <message>`. The route's own reduction of a
+  validation error is gone: it uses `field_errors()` of the shared
+  package, as every service does.
 - **gateway: n8n is no longer reachable through the gateway** (#714).
   `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
   REST API and its webhooks, for whoever the gateway authenticated:

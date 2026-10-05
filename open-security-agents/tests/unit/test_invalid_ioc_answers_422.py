@@ -54,4 +54,6 @@ def test_a_malformed_ioc_value_is_a_field_error(client, ioc):
     # The message names the type and stops there: it used to end with the
     # value it refused, quoted.
     assert item["msg"] == f"Value error, Invalid format for {ioc['type']} IOC"
-    assert ioc["value"] not in item["msg"]
+    # Nor anywhere else in the answer: the shared handler leaves the refused
+    # input out, and the message no longer puts it back.
+    assert ioc["value"] not in response.text

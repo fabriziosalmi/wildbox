@@ -202,11 +202,14 @@ def test_a_lost_connection_is_a_503_and_one_dispatch(identity):
     )
 
     assert response.status_code == 503
-    assert "Database temporarily unavailable" in response.text
+    error = response.json()["error"]
+    assert error["message"] == "Database temporarily unavailable"
+    assert error["code"] == 503 and error["request_id"]
     assert "connection refused" not in response.text
     assert identity.revocations == [[identity.session.key.id]]
-    # Answered inside the application now, so it carries the correlation id.
-    assert response.headers.get("X-Request-ID")
+    # Answered inside the application now, so the response carries the
+    # correlation id as a header too, the same one as in the body.
+    assert response.headers.get("X-Request-ID") == error["request_id"]
 
 
 def test_a_request_that_succeeds_is_unchanged(identity):

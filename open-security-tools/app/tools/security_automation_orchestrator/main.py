@@ -8,6 +8,8 @@ import os
 from datetime import datetime
 
 from fastapi import HTTPException
+from open_security_shared.errors import field_errors
+from pydantic import ValidationError
 
 from ...execution_manager import tool_acts_for_caller
 from ...target_policy import TargetRefused, enforce_target_policy
@@ -380,8 +382,22 @@ class SecurityAutomationOrchestrator:
             raise HTTPException(status_code=422, detail=f"Tool '{tool_name}' has no input schema")
         try:
             return input_class(**parameters)
-        except (ValueError, TypeError) as e:
-            raise HTTPException(status_code=422, detail=f"Invalid parameters for '{tool_name}': {e}")
+        except ValidationError as e:
+            # Which parameters and why, as the API says it for a tool's
+            # input: the field and the validator's message. str() of the
+            # error, which this used to send, quotes every value that was
+            # refused (#735).
+            problems = "; ".join(
+                f"{'.'.join(str(part) for part in item.get('loc', []))}: {item.get('msg', '')}"
+                for item in field_errors(e.errors())
+            )
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid parameters for '{tool_name}': {problems}",
+            )
+        except (ValueError, TypeError):
+            logger.exception("Workflow step: the input of tool %s could not be built", tool_name)
+            raise HTTPException(status_code=422, detail=f"Invalid parameters for '{tool_name}'")
 
     def _remove_mock_output_method(self):
         """This method replaces the old mock output generation"""

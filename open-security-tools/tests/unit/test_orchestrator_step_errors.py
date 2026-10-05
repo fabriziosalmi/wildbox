@@ -20,8 +20,8 @@ os.environ.setdefault("API_KEY", "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import app.tools.security_automation_orchestrator.main as orchestrator  # noqa: E402
 from app.tools.network_port_scanner import main as scanner  # noqa: E402
-from app.tools.security_automation_orchestrator import main as orchestrator  # noqa: E402
 from app.tools.security_automation_orchestrator.schemas import (  # noqa: E402
     AutomationWorkflowInput,
 )
@@ -97,10 +97,24 @@ def test_what_the_caller_got_wrong_is_still_said(monkeypatch):
     step = run_step(monkeypatch, parameters={"target": "example.com", "ports": 7})
 
     assert step.status == "failed"
-    assert step.error_message.startswith(
-        "Invalid parameters for 'network_port_scanner'"
+    assert step.error_message == (
+        "Invalid parameters for 'network_port_scanner': "
+        "ports: Input should be a valid string"
     )
-    assert "ports" in step.error_message
+
+
+def test_a_refused_parameter_is_named_and_not_quoted(monkeypatch):
+    # str() of pydantic's error, which the step used to report, quotes every
+    # value it refused: a parameter can be a credential.
+    refused = {"nested": "token-9f3a-not-for-the-result"}
+    step = run_step(monkeypatch, parameters={"target": "example.com", "ports": refused})
+
+    assert step.status == "failed"
+    assert step.error_message.startswith(
+        "Invalid parameters for 'network_port_scanner': ports:"
+    )
+    assert "token-9f3a" not in step.error_message
+    assert "input_value" not in step.error_message
 
 
 def test_a_step_that_succeeds_is_unchanged(monkeypatch):
