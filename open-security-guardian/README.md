@@ -61,6 +61,14 @@ headers and forwards trusted ones (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
 the matching secret (403) and answers 503 when `GATEWAY_INTERNAL_SECRET` is
 unset. A request without gateway identity headers, whatever other header it
 carries, answers 403 `GATEWAY_AUTH_REQUIRED`, as the other services do.
+The gateway also forwards the credential's type and an API key's scopes
+(`X-Wildbox-Auth-Type`, `X-Wildbox-Scopes`), and the middleware requires the
+scope the gateway requires, again: `data:read` to read, `data:write` to
+change, `data:delete` to delete. A key without it answers 403
+`INSUFFICIENT_SCOPE`; a request that does not state its auth type, which a
+gateway older than guardian does not, answers 403
+`GATEWAY_AUTH_TYPE_REQUIRED`. Views get the credential as `request.auth`
+(#637).
 Guardian has no API keys of its own: the `APIKey` model was removed (#629,
 migration `core.0002`), and DRF authenticates only with
 `GatewayHeaderAuthentication`.

@@ -11,6 +11,25 @@ shared `GATEWAY_INTERNAL_SECRET` proof-of-origin.
 from open_security_shared.gateway_auth import get_user_from_gateway_headers, GatewayUser, require_role
 ```
 
+The gateway also forwards what the credential is (`X-Wildbox-Auth-Type`)
+and an API key's scopes (`X-Wildbox-Scopes`). `GatewayUser` carries them as
+`auth_type` and `scopes`, and `require_scope` is the dependency a route
+uses to check again a scope the gateway already checked:
+
+```python
+from open_security_shared.gateway_auth import require_scope
+
+@app.post("/api/v1/ingest")
+async def ingest(user: GatewayUser = Depends(require_scope("data:ingest"))):
+    ...
+```
+
+`open_security_shared.scopes` holds the rules (parsing the two headers, the
+scope hierarchy) and imports nothing outside the standard library, so
+guardian's Django middleware uses it too. The
+[Gateway authentication guide](../docs/GATEWAY_AUTHENTICATION_GUIDE.md#credential-headers)
+describes the headers and what fails closed.
+
 `open_security_shared.errors` is the error contract of the FastAPI services:
 `install_error_handlers(app)` makes every error leave in one body,
 

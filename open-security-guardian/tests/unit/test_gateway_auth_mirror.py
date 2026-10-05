@@ -32,6 +32,7 @@ def _gateway_request(role="admin", user_id=None):
     req.META["HTTP_X_WILDBOX_TEAM_ID"] = str(uuid.uuid4())
     req.META["HTTP_X_WILDBOX_ROLE"] = role
     req.META["HTTP_X_GATEWAY_SECRET"] = _GW_SECRET
+    req.META["HTTP_X_WILDBOX_AUTH_TYPE"] = "session"
     assert GatewayAuthMiddleware(lambda r: None).process_request(req) is None
     return req
 

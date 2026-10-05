@@ -1,0 +1,235 @@
+# Does a set of API-key scopes satisfy the scope a request requires?
+#
+# One line for each pair: <granted> <required> <allow|deny>. <granted> is a
+# comma-separated set of scopes, or "-" for a key that holds none.
+#
+# The gateway decides (scopes_satisfy in nginx/lua/auth_handler.lua) and the
+# services check again on the scopes the gateway forwards (scope_satisfied
+# in open-security-shared/scopes.py, #637). The two must agree: a service
+# stricter than the gateway refuses a key the gateway let through, and a
+# looser one is no second check. Both are tested against this table: the
+# gateway on the wire by test/scope_vector_tests.sh, the shared package by
+# tests/shared/test_scopes.py. Change the hierarchy in both, and here.
+#
+# Every scope identity grants (VALID_API_KEY_SCOPES), "*" and four sets,
+# against every scope a route requires.
+
+- read deny
+- write deny
+- admin deny
+- tools:read deny
+- tools:execute deny
+- tools:admin deny
+- data:read deny
+- data:write deny
+- data:delete deny
+- data:ingest deny
+
+* read allow
+* write allow
+* admin allow
+* tools:read allow
+* tools:execute allow
+* tools:admin allow
+* data:read allow
+* data:write allow
+* data:delete allow
+* data:ingest allow
+
+admin read allow
+admin write allow
+admin admin allow
+admin tools:read allow
+admin tools:execute allow
+admin tools:admin allow
+admin data:read allow
+admin data:write allow
+admin data:delete allow
+admin data:ingest allow
+
+read read allow
+read write deny
+read admin deny
+read tools:read allow
+read tools:execute deny
+read tools:admin deny
+read data:read allow
+read data:write deny
+read data:delete deny
+read data:ingest deny
+
+write read allow
+write write allow
+write admin deny
+write tools:read allow
+write tools:execute allow
+write tools:admin deny
+write data:read allow
+write data:write allow
+write data:delete deny
+write data:ingest allow
+
+tools:read read deny
+tools:read write deny
+tools:read admin deny
+tools:read tools:read allow
+tools:read tools:execute deny
+tools:read tools:admin deny
+tools:read data:read deny
+tools:read data:write deny
+tools:read data:delete deny
+tools:read data:ingest deny
+
+tools:execute read deny
+tools:execute write deny
+tools:execute admin deny
+tools:execute tools:read allow
+tools:execute tools:execute allow
+tools:execute tools:admin deny
+tools:execute data:read deny
+tools:execute data:write deny
+tools:execute data:delete deny
+tools:execute data:ingest deny
+
+tools:admin read deny
+tools:admin write deny
+tools:admin admin deny
+tools:admin tools:read allow
+tools:admin tools:execute allow
+tools:admin tools:admin allow
+tools:admin data:read deny
+tools:admin data:write deny
+tools:admin data:delete deny
+tools:admin data:ingest deny
+
+data:read read deny
+data:read write deny
+data:read admin deny
+data:read tools:read deny
+data:read tools:execute deny
+data:read tools:admin deny
+data:read data:read allow
+data:read data:write deny
+data:read data:delete deny
+data:read data:ingest deny
+
+data:write read deny
+data:write write deny
+data:write admin deny
+data:write tools:read deny
+data:write tools:execute deny
+data:write tools:admin deny
+data:write data:read allow
+data:write data:write allow
+data:write data:delete deny
+data:write data:ingest allow
+
+data:delete read deny
+data:delete write deny
+data:delete admin deny
+data:delete tools:read deny
+data:delete tools:execute deny
+data:delete tools:admin deny
+data:delete data:read deny
+data:delete data:write deny
+data:delete data:delete allow
+data:delete data:ingest deny
+
+data:ingest read deny
+data:ingest write deny
+data:ingest admin deny
+data:ingest tools:read deny
+data:ingest tools:execute deny
+data:ingest tools:admin deny
+data:ingest data:read deny
+data:ingest data:write deny
+data:ingest data:delete deny
+data:ingest data:ingest allow
+
+reports:read read deny
+reports:read write deny
+reports:read admin deny
+reports:read tools:read deny
+reports:read tools:execute deny
+reports:read tools:admin deny
+reports:read data:read deny
+reports:read data:write deny
+reports:read data:delete deny
+reports:read data:ingest deny
+
+reports:write read deny
+reports:write write deny
+reports:write admin deny
+reports:write tools:read deny
+reports:write tools:execute deny
+reports:write tools:admin deny
+reports:write data:read deny
+reports:write data:write deny
+reports:write data:delete deny
+reports:write data:ingest deny
+
+team:read read deny
+team:read write deny
+team:read admin deny
+team:read tools:read deny
+team:read tools:execute deny
+team:read tools:admin deny
+team:read data:read deny
+team:read data:write deny
+team:read data:delete deny
+team:read data:ingest deny
+
+team:manage read deny
+team:manage write deny
+team:manage admin deny
+team:manage tools:read deny
+team:manage tools:execute deny
+team:manage tools:admin deny
+team:manage data:read deny
+team:manage data:write deny
+team:manage data:delete deny
+team:manage data:ingest deny
+
+data:ingest,tools:read read deny
+data:ingest,tools:read write deny
+data:ingest,tools:read admin deny
+data:ingest,tools:read tools:read allow
+data:ingest,tools:read tools:execute deny
+data:ingest,tools:read tools:admin deny
+data:ingest,tools:read data:read deny
+data:ingest,tools:read data:write deny
+data:ingest,tools:read data:delete deny
+data:ingest,tools:read data:ingest allow
+
+data:write,data:delete read deny
+data:write,data:delete write deny
+data:write,data:delete admin deny
+data:write,data:delete tools:read deny
+data:write,data:delete tools:execute deny
+data:write,data:delete tools:admin deny
+data:write,data:delete data:read allow
+data:write,data:delete data:write allow
+data:write,data:delete data:delete allow
+data:write,data:delete data:ingest allow
+
+read,data:delete read allow
+read,data:delete write deny
+read,data:delete admin deny
+read,data:delete tools:read allow
+read,data:delete tools:execute deny
+read,data:delete tools:admin deny
+read,data:delete data:read allow
+read,data:delete data:write deny
+read,data:delete data:delete allow
+read,data:delete data:ingest deny
+
+tools:read,data:read,reports:read,team:read read deny
+tools:read,data:read,reports:read,team:read write deny
+tools:read,data:read,reports:read,team:read admin deny
+tools:read,data:read,reports:read,team:read tools:read allow
+tools:read,data:read,reports:read,team:read tools:execute deny
+tools:read,data:read,reports:read,team:read tools:admin deny
+tools:read,data:read,reports:read,team:read data:read allow
+tools:read,data:read,reports:read,team:read data:write deny
+tools:read,data:read,reports:read,team:read data:delete deny
+tools:read,data:read,reports:read,team:read data:ingest deny

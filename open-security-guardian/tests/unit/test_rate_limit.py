@@ -211,6 +211,7 @@ def _as(user_id, team_id, **extra):
         "HTTP_X_WILDBOX_TEAM_ID": str(team_id),
         "HTTP_X_WILDBOX_ROLE": "admin",
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
     headers.update(extra)
     return headers

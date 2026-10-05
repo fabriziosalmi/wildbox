@@ -6,7 +6,7 @@ from open_security_shared.gateway_auth import GatewayUser
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from app.auth import verify_api_key
+from app.auth import require_tools_execute, verify_api_key
 from app.execution_manager import execution_manager
 from app.logging_config import get_logger
 from app.target_policy import TargetRefused, enforce_target_policy
@@ -153,7 +153,8 @@ def register_tool_endpoint(app, tool_name: str, tool_module: Any):
     async def tool_endpoint(
         request: Request,
         input_data: dict = Body(...),
-        caller: GatewayUser = Depends(verify_api_key)
+        # Running a tool: tools:execute, checked here as at the gateway (#637).
+        caller: GatewayUser = Depends(require_tools_execute)
     ):
         """Dynamically created endpoint for the security tool."""
         

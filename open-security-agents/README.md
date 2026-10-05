@@ -57,7 +57,12 @@ Every analysis runs as the user who submitted it:
   reuses the identity of the previous task on the same worker (#596).
 - Every tool call sends that identity as `X-Wildbox-*` headers together with
   `GATEWAY_INTERNAL_SECRET`, so downstream services apply the caller's team
-  scope. Without `GATEWAY_INTERNAL_SECRET` every tool call fails.
+  scope. Without `GATEWAY_INTERNAL_SECRET` every tool call fails. The call
+  states `X-Wildbox-Auth-Type: service`: the tools service checks an API
+  key's `tools:execute` scope itself and refuses a request that does not
+  say what its credential is. The scopes of the key that started the
+  analysis do not travel with the call; the gateway checked `tools:execute`
+  when the analysis was submitted (#637).
 - Only the owner can read or cancel a task. A task that belongs to another
   user, or whose owner record is missing, answers `404`, so task ids cannot be
   probed (#659).

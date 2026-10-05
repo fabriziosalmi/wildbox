@@ -121,6 +121,15 @@ every check.
 
 A key without the required scope gets `403` with `"error": "insufficient_scope"`.
 
+guardian checks the same scope again on what the gateway forwards about the
+credential (`X-Wildbox-Auth-Type` and `X-Wildbox-Scopes`), in
+`GatewayAuthMiddleware`. A request the gateway should not have let through
+answers `403` with `"code": "INSUFFICIENT_SCOPE"` and the `required_scope`;
+one that carries the gateway's secret without `X-Wildbox-Auth-Type` answers
+`403` with `"code": "GATEWAY_AUTH_TYPE_REQUIRED"`. In a view, `request.auth`
+is the caller as the gateway described it, with `auth_type`, `scopes` and
+`has_scope("data:delete")`.
+
 ### Roles
 
 Guardian applies the team role it receives from the gateway
