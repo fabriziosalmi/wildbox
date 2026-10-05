@@ -123,9 +123,29 @@ Without `--config`, the sensor reads the first file that exists among
 | `--config`, `-c` | Path to the configuration file |
 | `--validate-config` | Load and validate the configuration, then exit |
 | `--test-connection` | Posts an empty batch with the configured key and prints the gateway's answer |
-| `--status` | Prints a fixed "Running" message and exits; the sensor is not queried |
+| `--status` | Asks the running sensor's local API and prints what it answers; see below |
 | `--debug` | Enable debug logging |
 | `--version`, `-v` | Print the version and exit |
+
+`--status` asks the local API of the sensor this configuration describes
+(`network.bind_address`, or the loopback address when that is every
+address, and `network.bind_port`): `GET /health`, then, with
+`network.api_key` set, `GET /api/v1/stats` for what it has collected,
+delivered and dropped and whether it is delivering. Its exit status is the
+answer:
+
+| Exit status | Meaning |
+| :--- | :--- |
+| `0` | A sensor answers and is running. That it is `NOT delivering to the data service`, and since when, is printed, not signaled |
+| `1` | No sensor answers, the one that answers is starting or stopping, or the configuration does not load |
+| `2` | It cannot be told: the local API is off (`network.enable_api: false`), or what answers is not a sensor |
+
+```bash
+docker compose exec sensor python main.py --config /etc/security-sensor/config.yaml --status
+```
+
+The two requests go to that address only: no proxy from the environment is
+used and no redirect is followed, and the key is not printed.
 
 `setup.py` declares a `security-sensor` console script (and a shorter alias),
 both pointing at `main:main`.

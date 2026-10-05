@@ -158,7 +158,8 @@ def main():
     parser.add_argument(
         "--status",
         action="store_true",
-        help="Show sensor status and exit"
+        help="Ask the running sensor's local API for its status and exit: "
+             "0 running, 1 not running, 2 cannot be told"
     )
     
     parser.add_argument(
@@ -205,13 +206,18 @@ def main():
         return 1
     
     if args.status:
+        # Asks the running sensor's local API. This used to print
+        # "Security Sensor Status: Running" without looking.
         try:
-            # Status check logic would go here
-            print("Security Sensor Status: Running")
-            return 0
+            config = load_config(args.config)
         except Exception as e:
-            print(f"Status check failed: {e}")
+            print(f"✗ Configuration error: {e}")
             return 1
+        from sensor.api.status_client import check
+
+        code, lines = check(config)
+        print("\n".join(lines))
+        return code
     
     # Start the daemon
     daemon = SensorDaemon(args.config)

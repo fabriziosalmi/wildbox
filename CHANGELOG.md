@@ -1174,6 +1174,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that could not be listed were reported deleted; stopping the sensor
   did not end a monitor that was waiting for room in the queue; and
   `fim.exclude_patterns` given as a string excluded every file.
+- **`main.py --status` asks the sensor** (#745). It printed `Security
+  Sensor Status: Running` and exited 0 without looking, with no sensor
+  running as with one. It now asks the local API of the configured
+  sensor (`/health`, and `/api/v1/stats` when `network.api_key` is set)
+  and prints what it answers: running or not, its counters, whether it is
+  delivering. It exits 0 when a sensor is running, 1 when none answers or
+  it is starting or stopping, 2 when it cannot be told. The key is sent
+  to the local API only, past any proxy of the environment and without
+  following a redirect.
 
 ### Changed
 
