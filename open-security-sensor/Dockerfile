@@ -20,7 +20,9 @@ LABEL org.opencontainers.image.revision=$GIT_SHA \
 WORKDIR /app
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y \
+# --no-install-recommends: only what is named here, not what these packages
+# recommend (#726).
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
     gnupg \
@@ -33,6 +35,11 @@ RUN apt-get update && apt-get install -y \
 # those of the 5.10.2 release; pkg.osquery.io and the GitHub release
 # (github.com/osquery/osquery/releases/tag/5.10.2) serve the same files.
 # Change them together with the version.
+#
+# Plain `dpkg -i`, no `|| apt-get install -f -y` behind it: the package
+# depends on libc6 and zlib1g, which the base image has, and the fallback
+# could not have repaired anything, because the layer above has already
+# removed the package lists it would need (#726).
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
         OSQUERY_SHA256=5a7e6a8bb5dd666a22afff092bd8b9e25a92a37f62e9f3cb6991ea3ea93efb08; \
@@ -43,7 +50,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
     fi && \
     curl -fsSL "https://pkg.osquery.io/deb/osquery_5.10.2-1.linux_${ARCH}.deb" -o osquery.deb && \
     echo "${OSQUERY_SHA256}  osquery.deb" | sha256sum -c - && \
-    { dpkg -i osquery.deb || apt-get install -f -y; } && \
+    dpkg -i osquery.deb && \
     rm osquery.deb && \
     # Create symlinks to make osqueryd available in PATH
     if [ -f /opt/osquery/bin/osqueryd ]; then \

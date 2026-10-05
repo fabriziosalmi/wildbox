@@ -527,7 +527,7 @@ def test_the_upgrade_before_the_hashed_install_is_refused():
 @pytest.mark.parametrize(
     "run",
     [
-        "apt-get update && pip install --upgrade pip && rm -rf /tmp/x",
+        "apt-get update && pip install --upgrade pip && rm -rf /var/lib/apt/lists/*",
         "set -eux; pip install --upgrade pip; echo done",
         "if [ -f requirements.txt ]; then pip install --upgrade pip; fi",
         "PIP_NO_CACHE_DIR=1 pip install --upgrade pip",
@@ -616,6 +616,157 @@ def test_an_unlocked_npm_install_is_refused(run, says):
     found = docker_findings(f"RUN {run}\n")
     assert [f.rule for f in found] == ["npm"], found
     assert says in found[0].message
+
+
+# --- Dockerfiles: OS packages -------------------------------------------------
+
+CLEAN = "rm -rf /var/lib/apt/lists/*"
+
+
+@pytest.mark.parametrize(
+    "install, subject",
+    [
+        ("apt-get install -y gcc curl", "apt-get install -y gcc curl"),
+        ("apt install -y gcc", "apt install -y gcc"),
+        ("apt-get -y install gcc", "apt-get -y install gcc"),
+        ("apt-get -o Acquire::Retries=3 install -y gcc", None),
+        ("DEBIAN_FRONTEND=noninteractive apt-get install -y gcc", None),
+        ("apt-get install -y --no-install-suggests gcc", None),
+        ("apt-get -o APT::Install-Recommends=true install -y gcc", None),
+        ("apt-get build-dep -y python3", None),
+        ("apt-get dist-upgrade -y", None),
+        ('sh -c "apt-get install -y gcc"', "apt-get install -y gcc"),
+    ],
+)
+def test_an_apt_install_with_recommends_is_refused(install, subject):
+    found = docker_findings(f"RUN apt-get update && {install} && {CLEAN}\n")
+    assert [f.rule for f in found] == ["os-packages"], found
+    assert "--no-install-recommends" in found[0].message
+    if subject:
+        assert found[0].subject == subject
+
+
+@pytest.mark.parametrize(
+    "install",
+    [
+        "apt-get install -y --no-install-recommends gcc curl",
+        "apt-get install --no-install-recommends -y gcc",
+        "apt-get -y --no-install-recommends install gcc",
+        "apt-get -o APT::Install-Recommends=false install -y gcc",
+        "apt-get -o APT::Install-Recommends=0 install -y gcc",
+        "apt-get install -y -o 'APT::Install-Recommends=\"no\"' gcc",
+    ],
+)
+def test_an_apt_install_without_recommends_passes(install):
+    assert docker_rules(f"RUN apt-get update && {install} && {CLEAN}\n") == []
+
+
+def test_apt_commands_that_install_nothing_are_not_installs():
+    assert docker_rules(f"RUN apt-get update && apt-get clean && {CLEAN}\n") == []
+    assert docker_rules("RUN apt-get remove -y gcc && apt-get autoremove -y\n") == []
+    assert docker_rules("RUN apt-cache policy install\n") == []
+
+
+def test_the_installs_issue_726_named():
+    # open-security-agents/Dockerfile:21 as it stood, and the same instruction
+    # in data, identity, sensor and the tools development image.
+    found = docker_findings("""\
+        WORKDIR /app
+        RUN apt-get update && apt-get install -y \\
+            gcc \\
+            curl \\
+            && rm -rf /var/lib/apt/lists/*
+        """)
+    assert [(f.rule, f.subject, f.line) for f in found] == [
+        ("os-packages", "apt-get install -y gcc curl", 3)
+    ]
+
+
+def test_the_fallback_after_dpkg_is_an_install_too():
+    # open-security-sensor/Dockerfile:46 as it stood.
+    run = "RUN curl -f http://localhost/o.deb -o o.deb && { dpkg -i o.deb || apt-get install -f -y; }\n"
+    found = docker_findings(run)
+    assert [(f.rule, f.subject) for f in found] == [
+        ("os-packages", "apt-get install -f -y")
+    ]
+
+
+INSTALL = "apt-get install -y --no-install-recommends gcc"
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        f"RUN apt-get update && {INSTALL}\n",
+        f"RUN apt-get update && {INSTALL}\nRUN {CLEAN}\n",
+        f"RUN {CLEAN} && apt-get update && {INSTALL}\n",
+        f"RUN apt-get update && {INSTALL} && apt-get clean\n",
+        f"RUN apt-get update && {INSTALL} && rm -rf /var/cache/apt/*\n",
+        f"RUN apt-get update && {INSTALL} && rm -f /var/lib/apt/lists/*\n",
+        f"RUN apt-get update && {INSTALL} && rm -rf /var/lib/apt/lists/partial\n",
+        f"RUN apt-get update && {INSTALL} && {CLEAN} && apt-get update\n",
+        "RUN apt update\n",
+    ],
+)
+def test_package_lists_left_in_the_layer_are_refused(run):
+    found = docker_findings(run)
+    assert [f.rule for f in found] == ["os-packages"], found
+    assert "package lists" in found[0].message
+    assert found[0].subject in ("apt-get update", "apt update")
+
+
+@pytest.mark.parametrize(
+    "tail",
+    [
+        "rm -rf /var/lib/apt/lists/*",
+        "rm -rf /var/lib/apt/lists",
+        "rm -fr /var/lib/apt/lists/",
+        "rm --recursive --force /var/lib/apt/lists/*",
+        "rm -rf /tmp/build /var/lib/apt/lists/*",
+        "apt-get clean && rm -rf /var/lib/apt",
+    ],
+)
+def test_package_lists_removed_in_the_same_run_pass(tail):
+    assert docker_rules(f"RUN apt-get update && {INSTALL} && {tail}\n") == []
+
+
+def test_a_cache_mount_keeps_the_lists_out_of_the_layer():
+    mounted = (
+        "RUN --mount=type=cache,target=/var/lib/apt/lists,sharing=locked "
+        f"apt-get update && {INSTALL}\n"
+    )
+    assert docker_rules(mounted) == []
+    parent = f"RUN --mount=type=cache,target=/var/lib/apt apt-get update && {INSTALL}\n"
+    assert docker_rules(parent) == []
+    elsewhere = (
+        f"RUN --mount=type=cache,target=/root/.cache apt-get update && {INSTALL}\n"
+    )
+    assert docker_rules(elsewhere) == ["os-packages"]
+    bind = f"RUN --mount=type=bind,target=/var/lib/apt/lists apt-get update && {INSTALL}\n"
+    assert docker_rules(bind) == ["os-packages"]
+
+
+@pytest.mark.parametrize(
+    "run",
+    ["apk add curl", "apk update && apk add --no-cache curl", "apk upgrade"],
+)
+def test_an_apk_index_left_in_the_layer_is_refused(run):
+    found = docker_findings(f"RUN {run}\n")
+    assert [f.rule for f in found] == ["os-packages"], found
+    assert "--no-cache" in found[0].message
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "apk add --no-cache curl wget",
+        "apk --no-cache add curl",
+        "apk add curl && rm -rf /var/cache/apk/*",
+        "apk del build-deps",
+    ],
+)
+def test_an_apk_install_without_an_index_passes(run):
+    assert docker_rules(f"RUN {run}\n") == []
 
 
 # --- Dockerfiles: downloads -------------------------------------------------
@@ -719,7 +870,7 @@ def test_a_download_can_be_allowlisted_but_pip_cannot():
     )
     assert errors == []
     assert cch.apply_allowlist(found, allowlist) == ([], [])
-    for rule in ("pip", "npm", "pipe-to-shell", "base-image"):
+    for rule in ("pip", "npm", "pipe-to-shell", "base-image", "os-packages"):
         _, errors = cch.read_allowlist(f"{rule}  svc/Dockerfile  x  # because\n")
         assert len(errors) == 1 and "not a rule" in errors[0], rule
 
@@ -949,6 +1100,34 @@ def test_every_python_image_installs_the_same_way():
         assert len(lockfile) == 1 and lockfile[0].endswith("-r requirements.txt"), path
         for run in runs:
             assert "--upgrade" not in run and " -U" not in run, (path, run)
+
+
+def test_every_image_installs_only_the_packages_it_names():
+    # #726: agents, data, identity, sensor and the tools development image
+    # ran `apt-get install -y` and took every recommended package with it.
+    installs = []
+    for path in sorted(REPO.glob("open-security-*/Dockerfile*")):
+        text = path.read_text(encoding="utf-8")
+        name = str(path.relative_to(REPO))
+        found = [f for f in cch.check_dockerfile(name, text) if f.rule == "os-packages"]
+        assert found == [], [finding.render() for finding in found]
+        for instruction in cch.parse_dockerfile(text):
+            if instruction.keyword != "RUN":
+                continue
+            for command in cch.shell_commands(cch.run_script(instruction.value)):
+                if command[:2] == ["apt-get", "install"]:
+                    installs.append((name, command))
+                    assert "--no-install-recommends" in command, (name, command)
+                    assert "rm -rf /var/lib/apt/lists/*" in instruction.value, name
+                    # The C library headers are a recommendation of gcc: left
+                    # out, the compiler is installed and compiles nothing.
+                    if "gcc" in command:
+                        assert {"libc6-dev", "g++", "build-essential"} & set(
+                            command
+                        ), (name, "gcc without the C library headers")
+    # One per Debian-based image, two in the two-stage cspm image. A count
+    # that drops means the loop above stopped seeing them.
+    assert len(installs) == 10, [name for name, _ in installs]
 
 
 def test_no_dockerfile_exception_is_allowlisted():

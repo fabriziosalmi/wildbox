@@ -48,6 +48,13 @@ download       ``curl``, ``wget`` or ``ADD <url>`` with nothing in the same
                instruction that checks the result (``sha256sum -c``,
                ``gpg --verify``, ``cosign verify``, ``ADD --checksum=``).
 
+os-packages    ``apt-get install`` without ``--no-install-recommends``, which
+               also installs every package the named ones recommend; an
+               ``apt-get update`` whose package lists are not removed in the
+               same ``RUN`` (``rm -rf /var/lib/apt/lists/*``), since a later
+               instruction cannot take them out of the layer; ``apk add``
+               without ``--no-cache``, for the same reason (#726).
+
 Not checked: ``apt-get install`` and ``apk add`` without versions. A pinned
 OS package stops receiving security fixes and breaks the build when the
 distribution drops it; the digest-pinned base image fixes the snapshot they
@@ -57,8 +64,8 @@ A deliberate exception goes in scripts/container_hygiene_allowlist.txt as
 ``rule  file  subject  # reason``, where the subject is what the finding
 prints in brackets. An entry without a reason, or one that no longer matches
 a finding, is an error, so the list cannot go stale. The Compose rules and
-``download`` can be allow-listed; ``base-image``, ``pip``, ``npm`` and
-``pipe-to-shell`` cannot.
+``download`` can be allow-listed; ``base-image``, ``pip``, ``npm``,
+``pipe-to-shell`` and ``os-packages`` cannot.
 
 Usage: python scripts/check_container_hygiene.py [--root DIR] [--allowlist FILE]
 """
@@ -634,6 +641,116 @@ def npm_problem(command: Sequence[str]) -> str | None:
     return "resolves versions at build time; use `npm ci` (or --frozen-lockfile)"
 
 
+_APT = frozenset({"apt-get", "apt", "aptitude"})
+# apt options that take a value, so the value is not the subcommand.
+_APT_VALUE_OPTIONS = frozenset({"-o", "--option", "-c", "--config-file", "-t"})
+_APT_INSTALLS = frozenset({"install", "build-dep", "dist-upgrade", "full-upgrade"})
+_NO_RECOMMENDS = re.compile(r"APT::Install-Recommends=[\"']?(0|false|no)\b", re.I)
+_APT_LISTS = "/var/lib/apt/lists"
+_APK_CACHE = "/var/cache/apk"
+_CACHE_MOUNT = re.compile(r"--mount=(\S*type=cache\S*)")
+
+
+def _subcommand(words: Sequence[str], value_options: frozenset[str]) -> str:
+    """The first word of a command's arguments that is not an option."""
+    rest = list(words)
+    while rest:
+        word = rest.pop(0)
+        if not word.startswith("-"):
+            return word
+        if word in value_options and rest:
+            rest.pop(0)
+    return ""
+
+
+def _removes(command: Sequence[str], directory: str) -> bool:
+    """Whether the command is an ``rm -r`` of ``directory`` or its contents."""
+    if os.path.basename(command[0]) != "rm":
+        return False
+    recursive = any(
+        word in ("--recursive", "-R") or re.match(r"^-[A-Za-z]*[rR]", word)
+        for word in command[1:]
+        if word.startswith("-")
+    )
+    targets = [word.rstrip("/*") for word in command[1:] if not word.startswith("-")]
+    return recursive and any(
+        directory == target or directory.startswith(target + "/") for target in targets
+    )
+
+
+def _cache_mounted(value: str, directory: str) -> bool:
+    """Whether a ``RUN --mount=type=cache`` keeps ``directory`` out of the layer."""
+    for mount in _CACHE_MOUNT.findall(value):
+        for field in mount.split(","):
+            key, _, target = field.partition("=")
+            if key in ("target", "dst", "destination"):
+                target = target.rstrip("/")
+                if directory == target or directory.startswith(target + "/"):
+                    return True
+    return False
+
+
+def package_problems(
+    commands: Sequence[Sequence[str]], value: str
+) -> list[tuple[str, str]]:
+    """(command, problem) for the apt and apk commands of one RUN script.
+
+    ``apt-get install`` pulls in every package its targets recommend unless
+    it is told not to, so an image ships compilers' documentation, mail
+    agents and X libraries nobody asked for, each with its own advisories.
+    ``apt-get update`` writes the package lists, some tens of megabytes that
+    are stale the day after: removed in a later instruction they are still
+    in the layer that made them.
+    """
+    problems: list[tuple[str, str]] = []
+    last = {"apt": -1, "apk": -1}  # the last command that wrote an index
+    shown = {"apt": "", "apk": ""}
+    cleaned = {"apt": -1, "apk": -1}
+    for position, command in enumerate(commands):
+        program = os.path.basename(command[0])
+        text = " ".join(command)
+        if program in _APT:
+            action = _subcommand(command[1:], _APT_VALUE_OPTIONS)
+            if (
+                action in _APT_INSTALLS
+                and "--no-install-recommends" not in command
+                and not _NO_RECOMMENDS.search(text)
+            ):
+                problems.append(
+                    (
+                        text,
+                        f"{program} {action} without --no-install-recommends "
+                        "also installs every package the named ones recommend",
+                    )
+                )
+            if action == "update":
+                last["apt"], shown["apt"] = position, text
+        elif program == "apk":
+            action = _subcommand(command[1:], frozenset({"-X", "--repository"}))
+            if action in ("add", "update", "upgrade") and "--no-cache" not in command:
+                last["apk"], shown["apk"] = position, text
+        if _removes(command, _APT_LISTS):
+            cleaned["apt"] = position
+        if _removes(command, _APK_CACHE):
+            cleaned["apk"] = position
+    if last["apt"] > cleaned["apt"] and not _cache_mounted(value, _APT_LISTS):
+        problems.append(
+            (
+                shown["apt"],
+                f"leaves the package lists in the layer; end the same RUN with "
+                f"`rm -rf {_APT_LISTS}/*`",
+            )
+        )
+    if last["apk"] > cleaned["apk"] and not _cache_mounted(value, _APK_CACHE):
+        problems.append(
+            (
+                shown["apk"],
+                "leaves the package index in the layer; use `apk add --no-cache`",
+            )
+        )
+    return problems
+
+
 _URL = re.compile(r"https?://[^\s\"'\\)<>|;&]+")
 _LOCAL_URL = re.compile(r"https?://(localhost|127\.\d+\.\d+\.\d+|\[::1\])([:/]|$)")
 _INTERPRETERS = r"(?:(?:ba|z|da|a|k)?sh|python[\d.]*|perl|ruby|node)"
@@ -737,7 +854,10 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                     "its SHA-256 first",
                 )
             verified = bool(_VERIFIED.search(script))
-            for command in shell_commands(script):
+            commands = shell_commands(script)
+            for shown, problem in package_problems(commands, value):
+                add("os-packages", instruction, shown, problem)
+            for command in commands:
                 shown = " ".join(command)
                 pip = pip_arguments(command)
                 if pip is not None:
