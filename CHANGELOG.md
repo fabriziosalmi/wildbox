@@ -707,6 +707,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **A restore over live data needs an explicit flag** (#723).
+  `scripts/restore_postgres.sh` without `--into-suffix` restored over the
+  live databases with no confirmation: the destructive form was the
+  default, one forgotten option away from the harmless one. It now
+  refuses, with exit status 2 and nothing changed, unless
+  `--overwrite-live-databases` is given, and the refusal names each
+  database and the archive it would have been restored from.
+  `--into-suffix` and `--dry-run` need no flag. `scripts/restore_redis.sh`
+  replaced the Redis data volume whenever Redis was stopped; it now needs
+  `--replace-redis-data` and otherwise names the volume and the snapshot.
+  Neither script prompts, so both still run unattended.
+- **`restore_postgres.sh` finds every archive before it restores a
+  database** (#723). With one archive missing it restored the databases
+  before it in the list and then failed. A missing archive now stops the
+  run with nothing restored.
 
 ### Added
 

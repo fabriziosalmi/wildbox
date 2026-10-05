@@ -741,17 +741,28 @@ To restore for real, stop the services first, then:
 ```bash
 docker compose stop
 docker compose start postgres
-./scripts/restore_postgres.sh --timestamp 20261005_120000   # or --latest
-./scripts/restore_redis.sh --timestamp 20261005_120000
+./scripts/restore_postgres.sh --timestamp 20261005_120000 --overwrite-live-databases   # or --latest
+./scripts/restore_redis.sh --timestamp 20261005_120000 --replace-redis-data
 docker compose up -d
 ```
 
-`restore_postgres.sh` restores over the live databases; `--into-suffix
-_check` restores into `<db>_check` instead, and `--dry-run` only reads the
-archives. `restore_redis.sh` replaces the Redis data volume and refuses to
-run while Redis is running. It exists because Redis runs with the
-append-only file enabled and then ignores a `dump.rdb` at start: copying the
-snapshot into the volume by hand gives an empty Redis.
+Both restores destroy everything written since the backup, so each runs only
+with its flag. `--overwrite-live-databases` restores over the databases the
+services use, and `--replace-redis-data` replaces the Redis data volume.
+Without the flag the script changes nothing, exits with status 2, and says
+what it would have overwritten: each database with the archive it would be
+restored from, or the Redis volume with the snapshot. Neither script asks a
+question, so both still run from a script of your own.
+
+`restore_postgres.sh` has two targets that need no flag: `--into-suffix
+_check` restores into `<db>_check` next to the live databases, and
+`--dry-run` only reads the archives. It looks up every archive before it
+touches a database, so a missing one stops the run with nothing restored.
+
+`restore_redis.sh` also refuses to run while Redis is running. It exists
+because Redis runs with the append-only file enabled and then ignores a
+`dump.rdb` at start: copying the snapshot into the volume by hand gives an
+empty Redis.
 
 ---
 

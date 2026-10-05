@@ -21,7 +21,9 @@ No test reads a real .env: every run gets ENV_FILE, COMPOSE_FILE and
 BACKUP_DIR in a temporary directory, and the passwords are made up here.
 """
 
+import gzip
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -587,10 +589,182 @@ def test_the_drill_fails_when_the_backup_fails(harness):
 def test_redis_restore_refuses_a_running_redis(harness):
     harness.backups.mkdir()
     (harness.backups / "redis_20260101_000000.rdb.gz").write_bytes(b"")
-    result = harness.run(RESTORE_REDIS, "--latest")
-    assert result.returncode != 0
-    assert "service is running" in result.stderr
+    for flags in ([], ["--replace-redis-data"]):
+        result = harness.run(RESTORE_REDIS, "--latest", *flags)
+        assert result.returncode != 0
+        assert "service is running" in result.stderr
     assert " run " not in harness.docker_log()
+
+
+# --- restoring over live data is a decision (#723) ---------------------------
+
+STAMP = "20260101_000000"
+
+
+def _archives(harness, databases=DATABASES, stamp=STAMP):
+    """Backup files as the backup script names them, with stub contents."""
+    harness.backups.mkdir(exist_ok=True)
+    for db in databases:
+        with gzip.open(harness.backups / f"{db}_{stamp}.sql.gz", "wb") as archive:
+            archive.write(f"PGDMP-fake-archive-of-{db}".encode())
+    with gzip.open(harness.backups / f"redis_{stamp}.rdb.gz", "wb") as snapshot:
+        snapshot.write(b"REDIS0011-fake")
+
+
+def _restored(harness):
+    """The databases the stub server was asked to restore into."""
+    return sorted(p.name[len("restored_") :] for p in harness.state.glob("restored_*"))
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [["--timestamp", STAMP], ["--latest"], ["--latest", "--databases", "data"]],
+    ids=["timestamp", "latest", "one-database"],
+)
+def test_restore_over_the_live_databases_is_refused_without_the_flag(
+    harness, selector
+):
+    """It used to be what the script did when --into-suffix was left out."""
+    _archives(harness)
+    result = harness.run(RESTORE, *selector)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "REFUSING to restore over the live databases" in result.stderr
+    assert "Nothing was changed" in result.stderr
+    # What would have been overwritten, and from what.
+    named = DATABASES if "--databases" not in selector else ("data",)
+    for db in DATABASES:
+        line = re.search(rf"^    {db} +from {db}_{STAMP}\.sql\.gz$", result.stderr, re.M)
+        assert bool(line) == (db in named), db
+    for option in ("--overwrite-live-databases", "--into-suffix", "--dry-run"):
+        assert option in result.stderr
+    # Nothing reached the server, not even a read.
+    assert harness.docker_log() == ""
+    assert _restored(harness) == []
+    assert "Restore complete" not in result.stdout
+
+
+def test_restore_over_the_live_databases_runs_with_the_flag_and_no_prompt(harness):
+    _archives(harness)
+    # No terminal and nothing on stdin: a deliberate operator's script.
+    result = harness.run(RESTORE, "--timestamp", STAMP, "--overwrite-live-databases")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Target:     the LIVE databases (--overwrite-live-databases)" in result.stdout
+    assert _restored(harness) == sorted(DATABASES)
+    for db in DATABASES:
+        restored = (harness.state / f"restored_{db}").read_text()
+        assert restored == f"PGDMP-fake-archive-of-{db}"
+
+
+def test_the_harmless_targets_need_no_flag(harness):
+    _archives(harness)
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored(harness) == sorted(f"{db}_check" for db in DATABASES)
+
+    for path in harness.state.glob("restored_*"):
+        path.unlink()
+    result = harness.run(RESTORE, "--latest", "--dry-run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "dry run: would restore into 'identity'" in result.stdout
+    assert _restored(harness) == []
+
+
+def test_a_dry_run_with_the_flag_still_writes_nothing(harness):
+    _archives(harness)
+    result = harness.run(RESTORE, "--latest", "--dry-run", "--overwrite-live-databases")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored(harness) == []
+
+
+def test_the_two_targets_cannot_be_named_together(harness):
+    _archives(harness)
+    result = harness.run(
+        RESTORE, "--latest", "--into-suffix", "_check", "--overwrite-live-databases"
+    )
+    assert result.returncode == 2
+    assert "two different targets" in result.stderr
+    assert harness.docker_log() == ""
+
+
+def test_a_flag_that_is_only_close_is_not_the_flag(harness):
+    _archives(harness)
+    for near in ("--overwrite", "--overwrite-live", "--force", "--yes", "-y"):
+        result = harness.run(RESTORE, "--latest", near)
+        assert result.returncode == 2, near
+        assert f"Unknown argument: {near}" in result.stderr
+    assert harness.docker_log() == ""
+
+
+def test_a_missing_archive_stops_the_restore_before_any_database_is_touched(harness):
+    """It used to overwrite identity and data, then fail on guardian."""
+    _archives(harness, databases=("identity", "data"))
+    result = harness.run(RESTORE, "--latest", "--overwrite-live-databases")
+    assert result.returncode == 1
+    assert "no backup found for 'guardian'" in result.stderr
+    assert _restored(harness) == []
+    assert harness.docker_log() == ""
+
+
+def test_redis_restore_is_refused_without_the_flag(harness):
+    _archives(harness)
+    result = harness.run(RESTORE_REDIS, "--latest", FAKE_RUNNING="postgres")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "REFUSING to replace the Redis data" in result.stderr
+    assert "data volume of the 'wildbox-redis'" in result.stderr
+    assert f"redis_{STAMP}.rdb.gz" in result.stderr
+    assert "Nothing was changed" in result.stderr
+    assert "--replace-redis-data" in result.stderr
+    # No container was started on the volume.
+    assert " run " not in harness.docker_log()
+    assert "Redis restore complete" not in result.stdout
+
+
+def test_redis_restore_runs_with_the_flag_and_no_prompt(harness):
+    _archives(harness)
+    result = harness.run(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", FAKE_RUNNING="postgres"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert " run --rm -T --no-deps --entrypoint sh wildbox-redis " in (
+        harness.docker_log()
+    )
+    assert "Redis restore complete" in result.stdout
+
+
+def test_no_make_target_and_no_other_script_restores_over_live_data():
+    """The flags are for an operator's own command line."""
+    flags = ("--overwrite-live-databases", "--replace-redis-data")
+    callers = [REPO_ROOT / "Makefile", DRILL, BACKUP, REPO_ROOT / "docker-compose.yml"]
+    for path in callers:
+        # What runs, not what a comment says about it.
+        code = "\n".join(
+            line
+            for line in path.read_text().splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        for flag in flags:
+            assert flag not in code, f"{path.name} passes {flag}"
+    # And no make target runs a restore script at all, with or without one.
+    makefile = (REPO_ROOT / "Makefile").read_text()
+    recipes = [line for line in makefile.splitlines() if line.startswith("\t")]
+    assert not [line for line in recipes if "restore_" in line]
+    # The drill names its own target, a scratch suffix that is never empty.
+    drill = DRILL.read_text()
+    assert 'restore_postgres.sh" --latest --into-suffix "$SUFFIX"' in drill
+    assert 'SUFFIX="_restore_drill"' in drill
+
+
+def test_the_help_texts_end_where_the_headers_end():
+    for script, last in (
+        (RESTORE, "# scripts/restore_redis.sh."),
+        (RESTORE_REDIS, "# GPG_RECIPIENT are decrypted with the local gpg key."),
+    ):
+        result = subprocess.run(
+            ["bash", str(script), "--help"], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0
+        assert result.stdout.splitlines()[-1] == last
+        assert "set -euo pipefail" not in result.stdout
 
 
 # --- a real PostgreSQL and Redis --------------------------------------------
@@ -810,6 +984,41 @@ def test_real_drill_replaces_a_stale_scratch_database(stack):
     assert "identity_restore_drill" not in stack.databases()
 
 
+def test_real_restore_over_the_live_databases_happens_only_with_the_flag(
+    stack, tmp_path
+):
+    backups = tmp_path / "backups"
+    result = stack.script(BACKUP, BACKUP_DIR=str(backups), SKIP_REDIS="true")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Written after the backup: what a restore over the live database loses.
+    marker = "written after the backup"
+    stack.psql("identity", f"INSERT INTO widgets (name) VALUES ('{marker}')")
+    count = "SELECT count(*) FROM widgets"
+    assert stack.psql("identity", count) == "11"
+    try:
+        selection = ("--latest", "--databases", "identity")
+        refused = stack.script(RESTORE, *selection, BACKUP_DIR=str(backups))
+        assert refused.returncode == 2, refused.stdout + refused.stderr
+        assert "REFUSING to restore over the live databases" in refused.stderr
+        assert re.search(
+            r"^    identity +from identity_\d+_\d+\.sql\.gz$", refused.stderr, re.M
+        )
+        # The live database still holds the row.
+        assert stack.psql("identity", count) == "11"
+
+        restored = stack.script(
+            RESTORE, *selection, "--overwrite-live-databases", BACKUP_DIR=str(backups)
+        )
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        stack.no_secret_in(restored.stdout, restored.stderr)
+        # As it was when the backup was taken; the other databases untouched.
+        assert stack.psql("identity", count) == "10"
+        assert stack.psql("data", count) == "30"
+    finally:
+        stack.psql("identity", f"DELETE FROM widgets WHERE name = '{marker}'")
+
+
 def test_real_backup_of_a_missing_database_fails_and_keeps_nothing(stack, tmp_path):
     backups = tmp_path / "backups"
     result = stack.script(
@@ -841,13 +1050,22 @@ def test_real_redis_snapshot_can_be_restored(stack, tmp_path):
     stack.redis("DEL", "cspm:scan:1")
     stack.redis("SET", "written:after:backup", "yes")
 
-    refused = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+    refused = stack.script(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", BACKUP_DIR=str(backups)
+    )
     assert refused.returncode != 0
     assert "service is running" in refused.stderr
 
     stack.compose("stop", "wildbox-redis")
     try:
-        restored = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+        # Stopped is not yet a decision to replace its data (#723).
+        refused = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+        assert refused.returncode == 2
+        assert "REFUSING to replace the Redis data" in refused.stderr
+
+        restored = stack.script(
+            RESTORE_REDIS, "--latest", "--replace-redis-data", BACKUP_DIR=str(backups)
+        )
         assert restored.returncode == 0, restored.stdout + restored.stderr
         stack.no_secret_in(restored.stdout, restored.stderr)
     finally:
