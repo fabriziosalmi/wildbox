@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **guardian: pagination links no longer name the internal host, and a
+  client can follow them** (#643). A list of more than one page answered
+  `next` and `previous` links such as
+  `https://open-security-guardian/api/v1/assets/assets/?page=2`: the Host
+  the gateway presents guardian, without the gateway's `/guardian`
+  segment. No client could follow them, and they disclosed an internal
+  container name, the leak the gateway already rewrote out of `Location`
+  headers. The links are now relative references under the gateway's
+  path, `/api/v1/guardian/assets/assets/?page=2`, with no scheme and no
+  host, to be resolved against the requested URL like a redirect. They
+  are not absolute on purpose: the only host guardian could write is
+  `X-Forwarded-Host`, which is the `Host` the client sent a gateway that
+  answers for any name, and `USE_X_FORWARDED_HOST` would tie
+  `ALLOWED_HOSTS` back to every public name. The gateway states its path
+  in `X-Forwarded-Prefix`, a literal in the guardian location that
+  replaces a client's own; guardian reads it only on a request the
+  gateway authenticated and only as a plain path. The dashboard pages by
+  number and is unaffected. An integration test stores 51 assets and
+  walks the list through the gateway with `next` and `previous`, with and
+  without forged `X-Forwarded-*`, `Forwarded`, `SCRIPT_NAME` and `Host`
+  headers; a unit test fails when the header, the location and guardian's
+  API root stop agreeing. Reverting to the stock paginator, or dropping
+  the header from the gateway, fails both.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

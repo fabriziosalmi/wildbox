@@ -75,6 +75,24 @@ check passes. The dashboard calls Guardian through `guardianClient` in
 `open-security-dashboard/src/lib/api-client.ts`, whose base URL is the gateway
 plus `/api/v1/guardian`.
 
+### Pagination links
+
+Lists are paginated 50 rows to a page (`apps/core/pagination.py`). The `next`
+and `previous` links are relative references under the gateway's path, such
+as `/api/v1/guardian/assets/assets/?page=2`, with no scheme and no host: a
+client resolves them against the URL it requested. They used to be absolute
+URLs on `open-security-guardian`, the Host the gateway presents, without the
+`/guardian` segment (#643).
+
+Guardian learns the gateway's path from `X-Forwarded-Prefix`, a literal in
+the guardian location of `wildbox_gateway.conf` that replaces any value a
+client sends. It reads the header only on a request the gateway
+authenticated, and only when it is a plain path; without it the links are
+Guardian's own `/api/v1/...` paths. It never reads `X-Forwarded-Host` for a
+link: that is the `Host` the client sent, and `USE_X_FORWARDED_HOST` stays
+off. `tests/unit/test_gateway_links.py` fails when the header, the location
+and Guardian's API root stop agreeing.
+
 ### Team isolation
 
 Every request acts for the team the gateway names in `X-Wildbox-Team-ID`,

@@ -45,9 +45,11 @@ The gateway strips `/api/v1/guardian/` and forwards the rest to guardian under
   redirected `POST` as a `GET`. Always write the slash.
 - **Guardian sees its own host name.** The gateway sends `Host: open-security-guardian`
   (the caller's host travels as `X-Forwarded-Host`), because Django checks `Host`
-  against `ALLOWED_HOSTS`. One visible effect: the `next` and `previous` links in a
-  paginated response point at guardian's internal address, not at the gateway. Build
-  the next page URL yourself with `?page=N` (see [Pagination](#pagination)).
+  against `ALLOWED_HOSTS`. Guardian puts neither name in its answers: the `next` and
+  `previous` links of a paginated response are relative references under
+  `/api/v1/guardian/` (see [Pagination](#pagination)). The gateway tells guardian
+  that path in `X-Forwarded-Prefix`, which it sets itself on every request, replacing
+  any value a client sends.
 - Paths in the tables below are relative to `https://<host>/api/v1/guardian/`.
 
 Set up a shell for the examples:
@@ -166,11 +168,37 @@ page size cannot be changed per request.
 ```json
 {
   "count": 120,
-  "next": "<link to page 2, with guardian's internal host>",
+  "next": "/api/v1/guardian/assets/assets/?page=2",
   "previous": null,
   "results": []
 }
 ```
+
+`next` and `previous` are relative references: the path and query of the neighboring
+page, without scheme or host, or `null` when there is none. They keep the other
+query parameters of the request (`search`, `ordering`, filters); `previous` for page
+2 is the list without `page`. Resolve a link against the URL you requested, as you
+would a redirect:
+
+```python
+import requests
+from urllib.parse import urljoin
+
+url = "https://<host>/api/v1/guardian/assets/assets/?ordering=name"
+while url:
+    response = requests.get(url, headers={"X-API-Key": "<key>"}, timeout=30)
+    response.raise_for_status()
+    page = response.json()
+    for asset in page["results"]:
+        print(asset["name"])
+    url = urljoin(response.url, page["next"]) if page["next"] else None
+```
+
+In JavaScript, `new URL(page.next, response.url)` does the same. Before #643 the
+links were absolute URLs on `open-security-guardian`, the Host the gateway presents
+guardian, and without the `/guardian` segment: no client could follow them. The
+links contain no host on purpose: the only host guardian could write is the one the
+client sent the gateway.
 
 Custom actions that return a set of records (for example a vulnerability's
 `history/`, or `compliance/exceptions/pending/`) answer a plain JSON array, not a

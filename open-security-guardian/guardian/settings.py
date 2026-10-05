@@ -238,7 +238,9 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    # next/previous as relative references under the gateway's path, not
+    # absolute URLs on the Host the gateway presents guardian (#643).
+    'DEFAULT_PAGINATION_CLASS': 'apps.core.pagination.GatewayPageNumberPagination',
     'PAGE_SIZE': 50,
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend',
