@@ -371,6 +371,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The health scripts now read one table,
   `scripts/lib/health_endpoints.sh`, which a test keeps equal to
   `docker-compose.yml` and to the Service ports guide (#656).
+- **A playbook's Guardian actions are served, not redirected** (#707).
+  `wildbox.get_vulnerabilities`, `wildbox.get_asset_info` and
+  `wildbox.create_vulnerability` were answered `301 Moved Permanently`
+  on the shipped stack, so `all_star_e2e` could never record its
+  finding. The responder's connectors call Guardian over plain HTTP on
+  the internal network, and Guardian, with `DEBUG` off, redirects such a
+  request to `https://` unless it carries `X-Forwarded-Proto: https`,
+  which the gateway sends and the connectors did not. They send it now.
+  The connector tests' stand-in for Guardian did not know the redirect,
+  which is why no test failed: it now reads it from Guardian's settings
+  and answers it, so twelve existing tests fail without the header. A
+  new shipped playbook, `asset_vulnerabilities`, reads an asset and the
+  vulnerabilities recorded on it from Guardian as the user who runs it,
+  and an integration test runs it through the gateway and requires
+  Guardian's own records in the result. The other internal callers of
+  Guardian were checked: the gateway sends the header, and identity's
+  membership notice goes to a route Guardian exempts from the redirect;
+  a unit test keeps both true.
 
 ### Changed
 
