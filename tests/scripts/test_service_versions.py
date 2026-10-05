@@ -29,12 +29,10 @@ APPLICATIONS = {
     "cspm": "open-security-cspm/app/main.py",
 }
 
-# Found by this test and left for the cross-service cleanup (#665): the
-# literal each of these still passes. An entry that no longer applies fails
-# the test, so the list cannot outlive the defect.
-KNOWN_LITERALS = {
-    ("responder", "install_observability"): "0.1.6",
-}
+# The literal a service still passes where the others pass a name. Empty:
+# the responder's was the last (#743). An entry that no longer applies fails
+# the test, so the list cannot outlive a defect.
+KNOWN_LITERALS = {}
 
 
 def version_arguments(path):
@@ -86,9 +84,6 @@ def test_no_service_passes_a_version_literal():
 @pytest.mark.parametrize("service", sorted(APPLICATIONS))
 def test_both_are_given_the_same_name(service):
     arguments = version_arguments(APPLICATIONS[service])
-    if (service, "install_observability") in KNOWN_LITERALS:
-        pytest.skip(f"{service} still passes a literal; see KNOWN_LITERALS")
-
     assert ast.dump(arguments["FastAPI"]) == ast.dump(
         arguments["install_observability"]
     ), service
