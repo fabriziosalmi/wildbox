@@ -256,8 +256,14 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
         'rest_framework.renderers.BrowsableAPIRenderer',
     ],
+    # ``?format=`` chooses nothing: DRF reads it as the renderer to answer
+    # with, so ``reports/reports/?format=pdf``, the list's filter on a
+    # report's format, answered 404 "Not found" for want of a "pdf"
+    # renderer (#724). The Accept header chooses the representation.
+    'URL_FORMAT_OVERRIDE': None,
     # next/previous as relative references under the gateway's path, not
     # absolute URLs on the Host the gateway presents guardian (#643).
+    # ?page_size=N, up to the class's maximum (#724).
     'DEFAULT_PAGINATION_CLASS': 'apps.core.pagination.GatewayPageNumberPagination',
     'PAGE_SIZE': 50,
     'DEFAULT_FILTER_BACKENDS': [

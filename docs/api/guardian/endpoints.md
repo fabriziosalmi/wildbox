@@ -181,8 +181,11 @@ operator assigns them, for example with
 
 ### Pagination
 
-List routes use page-number pagination with 50 items per page. Pass `?page=N`; the
-page size cannot be changed per request.
+List routes use page-number pagination with 50 items per page. Pass `?page=N` for
+another page and `?page_size=N` for another size, from 1 to 200: a larger value is
+served 200 items, and a value that is not a positive whole number is served the
+default 50. To read only how many records a list has, ask for `?page_size=1` and
+read `count`. Before #724 `page_size` was ignored.
 
 ```json
 {
@@ -195,8 +198,8 @@ page size cannot be changed per request.
 
 `next` and `previous` are relative references: the path and query of the neighboring
 page, without scheme or host, or `null` when there is none. They keep the other
-query parameters of the request (`search`, `ordering`, filters); `previous` for page
-2 is the list without `page`. Resolve a link against the URL you requested, as you
+query parameters of the request (`page_size`, `search`, `ordering`, filters);
+`previous` for page 2 is the list without `page`. Resolve a link against the URL you requested, as you
 would a redirect:
 
 ```python
@@ -228,12 +231,25 @@ page. The one paginated custom action is `reports/alerts/{id}/notifications/`.
 Most list routes accept:
 
 - `?search=<text>`: searches the fields the view declares (for example asset
-  `name`, `hostname`, `fqdn`, `ip_address` and `description`).
+  `name`, `hostname`, `fqdn`, `ip_address` and `description`), without regard to
+  case. Every word of the text must be found, each in any of the fields.
 - `?ordering=<field>` or `?ordering=-<field>`: sorts by one of the view's ordering
-  fields.
+  fields. A field the view does not order by is ignored.
 - Field filters from the view's filter set, for example `?status=active` or
   `?criticality=high` on assets, and `?severity=critical` or `?status=open` on
-  vulnerabilities.
+  vulnerabilities. The filters of the asset and vulnerability lists are in their
+  sections below.
+
+Several filters together select the records that match all of them. A value a
+filter does not accept (a severity that does not exist, the id of a record of
+another team) answers `400` with the filter's name; a parameter the list does not
+have is ignored. A true/false filter takes `true` or `false`: `true` selects the
+records that are so, `false` the others.
+
+`?format=` does not choose the representation of the answer, which is JSON; on
+`reports/reports/` it is the filter on a report's format. Before #724 it was read
+as the name of a renderer on every route, so `reports/reports/?format=pdf`
+answered `404`.
 
 ### IDs and methods
 
@@ -304,6 +320,19 @@ Custom actions:
 | `GET` | `assets/software/inventory/` | Software inventory across assets |
 | `GET` | `assets/ports/summary/` | Port summary across assets |
 
+Filters of `assets/assets/`:
+
+| Parameter | Selects |
+| --- | --- |
+| `asset_type`, `criticality`, `status` | The value given; repeat the parameter for any of several (`?status=active&status=maintenance`) |
+| `environment`, `business_function` | Assets whose environment or business function has a name that contains the text |
+| `owner` | Assets whose owner's user name contains the text |
+| `tags` | Assets that have every tag of a comma-separated list |
+| `ip_range` | Assets whose `ip_address` is in a network (`10.20.0.0/16`) or is the address given. An IPv4 network of any size; an IPv6 network of at most 256 addresses (`/120`), `400` for a larger one. A value that is not a network is the start of an address: `?ip_range=10.20.` |
+| `discovered_after`, `discovered_before` | `first_discovered` on or after, on or before, a date and time (ISO 8601) |
+| `last_seen_after`, `last_seen_before` | The same for `last_seen` |
+| `has_vulnerabilities`, `has_software`, `has_open_ports` | `true` or `false` |
+
 Asset fields accepted on create include `name` (required), `description`,
 `asset_type` (`server`, `workstation`, `network_device`, `mobile_device`,
 `iot_device`, `cloud_instance`, `container`, `application`, `database`, `other`),
@@ -347,13 +376,44 @@ Custom actions:
 | `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array |
 | `GET` | `vulnerabilities/{id}/attachments/` | Attachments, as a plain array |
 | `POST` | `vulnerabilities/bulk_action/` | See below |
-| `GET` | `vulnerabilities/stats/` | Counts by severity and status |
+| `GET` | `vulnerabilities/stats/` | Counts by severity and status of the vulnerabilities the list's filters select |
 | `GET` | `vulnerabilities/trends/` | Daily counts for today and the `?days=N` days before it (default 30, from 0 to 366; `400` otherwise). See below |
 
 A vulnerability needs `title`, `description` and `asset` (an asset ID). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
 one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.
+
+Filters of `vulnerabilities/`, which `vulnerabilities/stats/` takes too:
+
+| Parameter | Selects |
+| --- | --- |
+| `severity`, `status`, `priority`, `threat_level` | The value given; repeat the parameter for any of several (`?severity=critical&severity=high`). `threat_level` is one of `imminent`, `active`, `emerging`, `possible`, `unknown` |
+| `risk_score_min`, `risk_score_max` | `risk_score` at least, at most, a number |
+| `cvss_min`, `cvss_max` | `cvss_v3_score` at least, at most, a number |
+| `asset_id` | Vulnerabilities of one asset |
+| `asset_name` | The asset's name contains the text |
+| `asset_type`, `asset_criticality` | The asset's type or criticality, without regard to case |
+| `asset_environment` | The name of the asset's environment, without regard to case |
+| `assigned_to` | The user ID of the assignee |
+| `assignee_group` | The group contains the text |
+| `unassigned` | `true`: neither a user nor a group is assigned. `false`: one of them is |
+| `discovered_after`, `discovered_before` | `first_discovered` on or after, on or before, a date and time (ISO 8601) |
+| `due_date_from`, `due_date_to` | `due_date` on or after, on or before, a date and time |
+| `overdue`, `due_today`, `due_this_week` | `true`: status `open` and due before now, today, or within the next seven days. `false`: the others |
+| `cve_id`, `scanner`, `service` | The field contains the text |
+| `has_tag` | Vulnerabilities that have the tag |
+| `port`, `protocol` | The port number; the protocol, without regard to case |
+
+`?search=` reads `title`, `description`, `cve_id`, the asset's `name` and
+`ip_address`, `scanner` and `service`.
+
+Before #724 the four filters of the first row matched no record, so
+`?severity=medium` and `?status=open` answered an empty list (and `stats/`
+zeros); `asset_environment` answered `500`; `unassigned=true` matched no record;
+`false` on a true/false filter was ignored; and a search had to match in `title`,
+`description`, `cve_id` or the asset's name even when it also matched the
+address, the scanner or the service.
 
 `bulk_action/` takes `vulnerability_ids` (1 to 100 UUIDs) and `action`, one of:
 
