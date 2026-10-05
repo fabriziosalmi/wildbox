@@ -43,6 +43,7 @@ def api(settings, monkeypatch):
             "HTTP_X_WILDBOX_USER_ID": user_id or str(uuid.uuid4()),
             "HTTP_X_WILDBOX_TEAM_ID": str(team),
             "HTTP_X_WILDBOX_ROLE": role,
+            "HTTP_X_WILDBOX_AUTH_TYPE": "session",
             "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
         }
         if data is not None:

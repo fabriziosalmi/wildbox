@@ -570,6 +570,7 @@ def api(settings, monkeypatch, tmp_path):
             "HTTP_X_WILDBOX_USER_ID": caller,
             "HTTP_X_WILDBOX_TEAM_ID": str(team),
             "HTTP_X_WILDBOX_ROLE": role,
+            "HTTP_X_WILDBOX_AUTH_TYPE": "session",
             "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
         }
         if data is not None:
