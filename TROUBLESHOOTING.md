@@ -23,12 +23,14 @@ and the service names in `docker-compose.yml`; the
 docker compose ps                       # which services are unhealthy or restarting
 docker compose logs --tail=100 <service>
 curl -s http://localhost/health         # the gateway
-make health                             # scripts/shell-scripts/comprehensive_health_check.sh
+make health                             # every health URL; non-zero exit when one is unhealthy
 ```
 
-Each backend answers `/health` on its own port, bound to `127.0.0.1`; the loop
-on the [Service ports](https://www.wildbox.io/guides/ports/#checking-the-stack)
-page checks all of them.
+Each backend answers its health URL on its own port, bound to `127.0.0.1`:
+`/health`, except guardian, whose route is `/health/` (`/health` answers a
+redirect, which is not healthy). `make health` checks all of them, and the
+[Service ports](https://www.wildbox.io/guides/ports/#checking-the-stack)
+page lists them.
 
 ---
 
