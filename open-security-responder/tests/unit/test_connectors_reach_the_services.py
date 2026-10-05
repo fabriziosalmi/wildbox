@@ -193,6 +193,10 @@ def test_each_action_calls_a_route_its_service_serves_as_the_caller(recorder, ke
         assert request.headers["X-Wildbox-Team-ID"] == CALLER["team_id"]
         assert request.headers["X-Wildbox-Role"] == CALLER["role"]
         assert request.headers["X-Gateway-Secret"] == settings.gateway_internal_secret
+        # A service acting for the caller, said so: tools, data and guardian
+        # refuse a request that needs a scope and does not state it (#637).
+        assert request.headers["X-Wildbox-Auth-Type"] == "service"
+        assert "X-Wildbox-Scopes" not in request.headers
 
 
 # --- The bodies and queries are the services' own ---------------------------

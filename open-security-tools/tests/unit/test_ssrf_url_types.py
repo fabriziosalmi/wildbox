@@ -271,7 +271,7 @@ def client(monkeypatch, probe_tool):
     app = FastAPI()
     app.include_router(router_module.router)
     app.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member"
+        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member", auth_type="session"
     )
     yield TestClient(app), path
     router_module.router.routes[:] = routes

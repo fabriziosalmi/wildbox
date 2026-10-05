@@ -196,6 +196,7 @@ def test_an_undelivered_alert_is_visible_to_its_team(teams, monkeypatch):
         HTTP_X_WILDBOX_TEAM_ID=str(team_a),
         HTTP_X_WILDBOX_ROLE="member",
         HTTP_X_GATEWAY_SECRET="test-gateway-secret",
+        HTTP_X_WILDBOX_AUTH_TYPE="session",
     )
 
     assert response.status_code == 200, response.content[:300]
@@ -346,6 +347,7 @@ def test_the_sla_history_is_what_the_team_reads(teams, monkeypatch):
         HTTP_X_WILDBOX_TEAM_ID=str(team_a),
         HTTP_X_WILDBOX_ROLE="admin",
         HTTP_X_GATEWAY_SECRET="test-gateway-secret",
+        HTTP_X_WILDBOX_AUTH_TYPE="session",
     )
 
     assert response.status_code == 200, response.content[:300]
