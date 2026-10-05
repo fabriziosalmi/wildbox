@@ -210,7 +210,7 @@ service `degraded`: login keeps working, but revocation and lockout stop
 working until it is back.
 
 `/docs`, `/redoc` and `/openapi.json` are served only when `ENVIRONMENT` is
-not `production`.
+`development`.
 
 ## Security details
 

@@ -77,8 +77,9 @@ Paths are given as the gateway exposes them (prefix
 
 `task_id` must be a UUID. `/health` is not routed by the gateway; it is
 reachable on `127.0.0.1:8006` on the host. The
-interactive API documentation (`/docs`) is served on port 8006 unless
-`ENVIRONMENT=production`.
+interactive API documentation (`/docs`, `/redoc`) and the schema
+(`/openapi.json`) are served on port 8006 only when `ENVIRONMENT` is
+`development`.
 
 ### Submit an analysis
 
@@ -158,7 +159,7 @@ Settings are read from the environment (`app/config.py`):
 | `WILDBOX_GUARDIAN_URL` | `http://localhost:8013` | Guardian |
 | `LOG_LEVEL` | `INFO` | Log level |
 | `DEBUG` | `false` | Debug flag |
-| `ENVIRONMENT` | `development` | `production` disables `/docs`, `/redoc` and `/openapi.json` |
+| `ENVIRONMENT` | `development` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development` |
 | `CORS_ORIGINS` | empty | Comma-separated allowed origins |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
 | `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together |

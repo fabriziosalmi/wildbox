@@ -147,6 +147,44 @@ def test_every_registered_tool_and_field_exists():
             assert isinstance(kind, TargetKind)
 
 
+def _suggested_values(field_info):
+    """What the schema itself offers for a field: its examples and its default."""
+    extra = field_info.json_schema_extra
+    values = list(field_info.examples or [])
+    if isinstance(extra, dict) and "example" in extra:
+        values.append(extra["example"])
+    if not field_info.is_required() and field_info.default is not None:
+        values.append(field_info.default)
+    # A list field (dns_enumerator's dns_servers) suggests each of its items.
+    return [
+        item
+        for value in values
+        for item in (value if isinstance(value, list) else [value])
+    ]
+
+
+def test_the_values_a_schema_suggests_pass_the_default_policy(resolver):
+    # The dashboard shows a field's example as the input's placeholder.
+    # network_scanner suggested 192.168.1.0/24 and port_scanner 127.0.0.1,
+    # which the service refuses unless the operator allows them (#646).
+    refused = {}
+    suggested = 0
+    for tool, fields in NETWORK_TARGET_FIELDS.items():
+        model_fields = _input_class(tool).model_fields
+        for field, kind in fields.items():
+            for value in _suggested_values(model_fields[field]):
+                suggested += 1
+                try:
+                    check_value(kind, value, NO_ALLOWLIST)
+                except TargetRefused as error:
+                    refused[f"{tool}.{field}={value!r}"] = str(error)
+
+    assert refused == {}
+    # network_scanner, port_scanner and ssl_analyzer give an example, and
+    # dns_enumerator two default servers.
+    assert suggested >= 5
+
+
 def test_every_reviewed_field_exists():
     for (tool, field), reason in REVIEWED_NON_TARGET_FIELDS.items():
         assert reason.strip()
@@ -519,6 +557,18 @@ def test_a_range_beyond_the_limit_is_refused_without_expanding_it(value):
 def test_the_limit_is_a_slash_22():
     assert MAX_TARGET_ADDRESSES == 1024
     assert ipaddress.ip_network("8.8.8.0/22").num_addresses == MAX_TARGET_ADDRESSES
+
+
+def test_the_limit_covers_what_network_scanner_sweeps():
+    # The comment on MAX_TARGET_ADDRESSES promises that no range a tool would
+    # scan is lost to the policy, and used to give network_scanner's limit as
+    # 1000 hosts. It is 1024, the same /22 (#646).
+    from app.tools.network_scanner import main as network_scanner
+    from app.tools.network_scanner import secure_scan
+
+    assert network_scanner.MAX_HOSTS == 1024
+    assert network_scanner.MAX_HOSTS <= MAX_TARGET_ADDRESSES
+    assert secure_scan.MAX_HOSTS_TO_SCAN <= MAX_TARGET_ADDRESSES
 
 
 @pytest.mark.parametrize(

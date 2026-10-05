@@ -34,21 +34,28 @@ class Settings(BaseSettings):
     cors_origins: Union[List[str], str] = Field(default=["http://localhost:3000"], description="Allowed CORS origins")
     cors_allow_credentials: bool = Field(default=True, description="Allow CORS credentials")
     
-    # Rate limiting
+    # Execution history
     execution_history_limit: int = Field(
         default=1000,
         ge=1,
         description="Executions retained in the in-process history ring buffer",
     )
-    # NOTE: docker-compose.yml supplies RATE_LIMIT_REQUESTS and its value wins,
-    # so the effective limit was 500 while this line said 100 -- two defaults for
-    # one key, in two files, with no way to print the effective configuration
-    # (WILDBO-CONF-03). This default now matches the compose value; change both
-    # together, or drop this one and make the variable required.
-    rate_limit_requests: int = Field(default=500, description="Requests per minute per IP")
-    rate_limit_window: int = Field(default=60, description="Rate limit window in seconds")
-    enable_rate_limiting: bool = Field(default=True, description="Enable rate limiting")
-    
+    # NOTE: there is deliberately no rate-limit setting. RATE_LIMIT_REQUESTS,
+    # RATE_LIMIT_WINDOW and ENABLE_RATE_LIMITING used to be declared here, and
+    # docker-compose.yml set the first two, but no code ever enforced them:
+    # operators tuned values that changed nothing (#646). They are removed,
+    # not enforced, because the limit they describe (requests per caller per
+    # window) is the gateway's: every request reaches this service through
+    # it, already counted against the caller's team (RATE_LIMIT_PER_HOUR,
+    # auth_handler.lua). At the defaults the gateway stops a team at 166
+    # requests a minute, long before the 500 these settings named, so a
+    # second counter here would have refused nothing.
+    #
+    # What the gateway cannot limit is the cost of a single call, and that
+    # is limited here by other means: MAX_CONCURRENT_TOOLS and TOOL_TIMEOUT
+    # below, and the per-caller hourly limits of the tools that act for a
+    # caller (app/security/authorization.py).
+
     # Tool execution settings
     tool_timeout: int = Field(default=300, ge=1, le=3600, description="Default tool execution timeout in seconds")
     max_concurrent_tools: int = Field(default=10, ge=1, le=100, description="Maximum concurrent tool executions")
@@ -69,15 +76,6 @@ class Settings(BaseSettings):
     tools_directory: str = Field(default="app/tools", description="Directory containing security tools")
     auto_reload_tools: bool = Field(default=True, description="Auto-reload tools on changes")
     
-    # Service URLs for health aggregation
-    identity_service_url: Optional[str] = Field(default=None, description="Identity service URL")
-    data_service_url: Optional[str] = Field(default=None, description="Data service URL") 
-    guardian_service_url: Optional[str] = Field(default=None, description="Guardian service URL")
-    sensor_service_url: Optional[str] = Field(default=None, description="Sensor service URL")
-    responder_service_url: Optional[str] = Field(default=None, description="Responder service URL")
-    agents_service_url: Optional[str] = Field(default=None, description="Agents service URL")
-    cspm_service_url: Optional[str] = Field(default=None, description="CSPM service URL")
-
     # Internal targets the network tools may scan (#614): comma-separated CIDR
     # ranges, IP addresses and host names. Empty by default, so private,
     # loopback, link-local and other internal targets are refused. Parsed

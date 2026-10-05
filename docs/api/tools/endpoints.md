@@ -493,15 +493,26 @@ gateway, not on this service.
 
 | Path | Content |
 | --- | --- |
-| `/metrics` | Prometheus exposition format |
-| `/openapi.json` | The service's OpenAPI document |
+| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`; asynchronous runs happen in the worker, which is not scraped). `monitoring/prometheus.yml` scrapes it |
+| `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
 | `/api` | Service name, version and tool names |
-| `/api/system/info` | Tool count and names, concurrency and timeout settings |
-| `/api/system/operational-metrics` | Execution counters as JSON |
-| `/api/system/health-aggregate` | Calls `/health` on the other services and summarizes the answers |
-| `/api/system/metrics` | Answers 500 on main: it imports a `metrics_middleware` that `app/middleware.py` does not define |
 
-None of them is part of the public API.
+None of them is part of the public API, and `/health` and these three are
+the only routes that answer without the gateway's identity: every other
+route under `/api/` answers 401 to a request that does not carry it.
+
+The service has no `/api/system/` routes. `info`, `metrics`,
+`operational-metrics` and `health-aggregate` existed there, without
+authentication, until they were removed
+([#646](https://github.com/fabriziosalmi/wildbox/issues/646)); a request
+for one of them answers 404. What they reported is available elsewhere:
+
+| Was in | Now |
+| --- | --- |
+| `info`: tool names | `GET /api/v1/tools`, through the gateway |
+| `info`: environment, concurrency and timeout settings | `GET /health`, above |
+| `metrics`, `operational-metrics`: counters of synchronous executions (which stayed at zero) | `wildbox_tool_executions_total` in `/metrics` |
+| `health-aggregate`: the health of the other services (it reported a healthy stack as `degraded`) | Each service's own health check (`docker compose ps`), and the `up` series Prometheus records for every service it scrapes |
 
 ## Rate Limits
 
@@ -522,10 +533,16 @@ The gateway applies two limits to tools and task requests:
 - **Per client IP**: the server-wide nginx `limit_req` zone `global`,
   100 requests per second with a burst of 10, answered with 429.
 
-The tools service reads `RATE_LIMIT_REQUESTS` (500) and `RATE_LIMIT_WINDOW`
-(60 seconds) from `docker-compose.yml` and reports them in
-`/api/system/info`, but no code on main enforces them: the service applies
-no rate limit of its own.
+The tools service applies no request rate limit of its own: every request
+reaches it through the gateway, already counted against the caller's team.
+`RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW`, which the service read and
+never enforced, no longer exist
+([#646](https://github.com/fabriziosalmi/wildbox/issues/646)); setting them
+in `.env` has no effect. What the service does limit is the cost of a call:
+`MAX_CONCURRENT_TOOLS` synchronous runs at a time (10), `TOOL_TIMEOUT`
+seconds per run (300), and, for the tools that act for a caller, a number
+of runs per caller per hour (one for a destructive test), counted in each
+process's memory.
 
 ## Errors
 
