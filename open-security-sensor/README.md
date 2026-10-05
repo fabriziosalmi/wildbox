@@ -176,6 +176,22 @@ performance:
   max_cpu_percent: 5
 ```
 
+The `logging` section configures the sensor's own log:
+
+```yaml
+logging:
+  level: "INFO"      # DEBUG, INFO, WARNING, ERROR or CRITICAL
+  file: null         # also write it to this file, rotated
+  max_size: 10485760 # bytes before the file is rotated
+  backup_count: 5    # rotated files kept
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+```
+
+`format` is a %-style format of Python's `logging` module and must contain
+`%(message)s`. The sensor checks these settings when it starts, by applying
+the format to a record, and stops with a message naming the one at fault:
+`format: json`, a field no log record has, or a level such as `VERBOSE`.
+
 The `network` section configures the local API:
 
 ```yaml
@@ -698,6 +714,15 @@ team the same way. Each event keeps what the sensor collected in
 (`process_event`, `network_connection`, `file_change`, `user_event`,
 `system_inventory`, `security_event` for logs and anything else), and the
 collector's own type, such as `log.nginx_access`, is its first tag.
+
+Before it sends an event the sensor adds to `data`, by the event's type and
+nothing else: a `connection_category` and address information to the rows of
+osquery's `network.*` queries; a `process_category`, `risk_indicators` and
+the parsed command line to the rows of its `process_events.*` queries, from
+which it also removes kernel threads and `systemd`, `dbus` and similar
+processes; a `file_category` and `risk_level` to the file monitor's
+`file_created`, `file_modified` and `file_deleted` events. A log line is
+never changed, whatever its source is named.
 
 ### Revoking a sensor
 

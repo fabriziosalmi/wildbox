@@ -441,6 +441,10 @@ class PerformanceConfig:
     max_queue_size: int = 1000
     worker_threads: int = 4
 
+
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
+
 @dataclass
 class LoggingConfig:
     """Logging configuration"""
@@ -449,6 +453,59 @@ class LoggingConfig:
     max_size: int = 10485760  # 10MB
     backup_count: int = 5
     format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    def validate(self) -> List[str]:
+        """Errors in the logging settings.
+
+        They were handed to the logging module unchecked. A format it
+        refuses ("json") stopped the sensor with a traceback; one it
+        accepts and cannot apply (a field no record has) made every log
+        call fail, so the sensor ran and logged nothing.
+        """
+        errors = []
+        if not isinstance(self.level, str) or self.level.upper() not in LOG_LEVELS:
+            errors.append(
+                f"logging.level must be one of {', '.join(LOG_LEVELS)}, got "
+                f"{self.level!r}"
+            )
+        errors.extend(self._format_errors())
+        for name in ("max_size", "backup_count"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                errors.append(
+                    f"logging.{name} must be a whole number, 0 or more, got "
+                    f"{value!r}"
+                )
+        if self.file is not None and (not isinstance(self.file, str) or not self.file):
+            errors.append(f"logging.file must be a path or null, got {self.file!r}")
+        return errors
+
+    def _format_errors(self) -> List[str]:
+        example = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        # Empty, the logging module would use a format of its own.
+        if not isinstance(self.format, str) or not self.format.strip():
+            return [
+                f"logging.format must be a logging format such as {example!r}, "
+                f"got {self.format!r}"
+            ]
+        marker = "a record of the sensor"
+        record = logging.LogRecord("sensor", logging.INFO, __file__, 1, marker, None, None)
+        try:
+            # The format is applied to a record, as it will be to every one.
+            line = logging.Formatter(self.format).format(record)
+        except (ValueError, KeyError, TypeError) as e:
+            return [
+                f"logging.format {self.format!r} is not a format the logging "
+                f"module can apply ({type(e).__name__}: {e}); it is a "
+                f"%-style format such as {example!r}"
+            ]
+        if marker not in line:
+            return [
+                f"logging.format {self.format!r} has no %(message)s: the "
+                f"sensor would log lines without their message"
+            ]
+        return []
+
 
 @dataclass
 class NetworkConfig:
@@ -484,6 +541,9 @@ class SensorConfig:
 
         # Validate data lake configuration
         errors.extend(self.data_lake.validate())
+
+        # So do logging settings the logging module cannot use.
+        errors.extend(self.logging.validate())
 
         # A log source that cannot be understood stops the sensor, as a
         # destination that cannot work does: reading something other than

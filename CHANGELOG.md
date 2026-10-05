@@ -532,6 +532,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `disk_usage`, `network_connections` and `process_count`, a constant
   `agent_version` and a `trends_change` it never computed: what the
   sensor does not measure is not in the answer.
+- **The sensor checks its logging settings when it starts, and no
+  longer enriches or drops a log line because of its source's name**
+  (#725). `logging.format` and `logging.level` went to Python's logging
+  module unchecked: a format it refuses (`json`) stopped the sensor with
+  a traceback, one naming a field no record has made every log call
+  fail, so the sensor ran and logged nothing, and `level: disable` was
+  taken for a level. They are now validated with the rest of the
+  configuration, the format by applying it to a record, and the sensor
+  stops with a message naming the setting; `max_size`, `backup_count`
+  and `file` are checked too. The processor chose what to add to an
+  event by whether its type contained `network`, `socket`, `process` or
+  `file`; a log source's type is `log.<name>`, so a line of a source
+  named `network_devices` got a `connection_category`, and a line of a
+  source named `process_audit` that named `systemd` was dropped as a
+  noisy process. The choice is now the collector's exact type: osquery's
+  `network.*` and `process_events.*` packs and the file monitor's three
+  event types. A side effect: the rows of `network.process_open_sockets`
+  are no longer filtered as processes, so sockets held by `systemd` or
+  `dbus` processes are reported.
 
 ### Changed
 

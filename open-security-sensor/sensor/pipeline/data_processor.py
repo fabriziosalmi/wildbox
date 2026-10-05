@@ -23,6 +23,27 @@ from sensor.utils.platform import get_platform_info
 
 logger = logging.getLogger(__name__)
 
+# What an event is, from the type its collector gives it and from nothing
+# else: the file monitor's three types, and osquery's "<pack>.<query>" for
+# two of its packs. It used to be whether the type contained "file",
+# "process", "network" or "socket", so a log line of a source named
+# network_devices was enriched as a connection, and one of a source named
+# process_audit that mentioned systemd was dropped as a noisy process.
+FILE_EVENT_TYPES = frozenset({"file_created", "file_modified", "file_deleted"})
+_PACK_KINDS = {"process_events": "process", "network": "network"}
+
+
+def event_kind(event_type: Any) -> Optional[str]:
+    """The kind of an event: "file", "process" or "network"; None for any
+    other event, a log line among them."""
+    if not isinstance(event_type, str):
+        return None
+    if event_type in FILE_EVENT_TYPES:
+        return "file"
+    pack, dot, query = event_type.partition(".")
+    return _PACK_KINDS.get(pack) if dot and query else None
+
+
 class DataProcessor:
     """Process and enrich telemetry data"""
     
@@ -148,7 +169,7 @@ class DataProcessor:
         data = event.get('data', {})
         
         # Filter noisy process events
-        if 'process' in event_type.lower():
+        if event_kind(event_type) == 'process':
             if isinstance(data, list):
                 # Filter entire list if all processes are noisy
                 filtered_data = []
@@ -193,16 +214,19 @@ class DataProcessor:
         event_type = event.get('type', '')
         data = event.get('data', {})
         
+        # By what the event is, not by what its type happens to contain.
+        kind = event_kind(event_type)
+
         # Enrich network events
-        if 'network' in event_type.lower() or 'socket' in event_type.lower():
+        if kind == 'network':
             event = await self._enrich_network_event(event)
-        
+
         # Enrich process events
-        elif 'process' in event_type.lower():
+        elif kind == 'process':
             event = self._enrich_process_event(event)
-        
+
         # Enrich file events
-        elif 'file' in event_type.lower():
+        elif kind == 'file':
             event = self._enrich_file_event(event)
         
         # Add common enrichments
