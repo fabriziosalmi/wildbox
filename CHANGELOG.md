@@ -435,6 +435,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batch twice. `events_failed` and `current_batch_size` are gone from
   that status, and `data_lake.retry_attempts` is no longer read: no
   number of attempts gives a batch up.
+- **The sensor notices a log file rewritten with the same beginning**
+  (#725). A file truncated and written past the position already read
+  was recognized by its first 256 bytes only, so a file that always
+  starts with the same header was read on from the old position: the
+  first lines of the new content were skipped and the rest of one was
+  sent as a line. The forwarder now also compares the 64 bytes before
+  that position with what it read there. A rewrite that keeps both, and
+  is at least as long as before, still cannot be told from an append;
+  the sensor README says so.
 
 ### Changed
 

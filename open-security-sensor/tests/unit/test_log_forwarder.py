@@ -27,6 +27,8 @@ sys.path.insert(0, str(SERVICE_ROOT))
 
 from sensor.collectors import log_forwarder  # noqa: E402
 from sensor.collectors.log_forwarder import (  # noqa: E402
+    CHECK_BYTES,
+    HEAD_BYTES,
     MAX_FILES_PER_SOURCE,
     MAX_LINE_BYTES,
     READ_CHUNK,
@@ -383,6 +385,10 @@ async def test_truncation_in_place_is_read_again_from_the_beginning(tmp_path):
 
     assert _lines(await _look(forwarder, state)) == ["after"]
 
+    # And it is followed from there like any other file.
+    _append(log, "and later\n")
+    assert _lines(await _look(forwarder, state)) == ["and later"]
+
 
 @pytest.mark.asyncio
 async def test_a_file_truncated_and_written_past_the_old_position_is_noticed(
@@ -407,6 +413,119 @@ async def test_a_file_truncated_and_written_past_the_old_position_is_noticed(
 
     _append(log, "appended\n")
     assert _lines(await _look(forwarder, state)) == ["appended"]
+
+
+BANNER = "# written by app 1.0 " + "=" * (HEAD_BYTES + 40) + "\n"
+
+
+@pytest.mark.parametrize("read_from", ["beginning", "end"])
+@pytest.mark.asyncio
+async def test_a_file_rewritten_with_the_same_beginning_is_noticed(tmp_path, read_from):
+    # The file starts with the same banner after it is rewritten, so its
+    # first bytes say nothing; it is longer than before, so its size says
+    # nothing either. What was read just before the position is no longer
+    # there (#725). main went on from the old position: it lost the new
+    # file's first lines.
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "old one\nold two\n")
+    forwarder, state = _follow(log, read_from=read_from)
+    before = _lines(await _look(forwarder, state))
+    assert before == (
+        [BANNER.strip(), "old one", "old two"] if read_from == "beginning" else []
+    )
+
+    rewritten = [f"new line {index}" for index in range(6)]
+    with open(log, "w") as handle:
+        handle.write(BANNER + "\n".join(rewritten) + "\n")
+
+    assert _lines(await _look(forwarder, state)) == [BANNER.strip()] + rewritten
+
+    _append(log, "appended\n")
+    assert _lines(await _look(forwarder, state)) == ["appended"]
+
+
+@pytest.mark.asyncio
+async def test_a_file_rewritten_to_its_old_length_is_noticed_when_it_grows(tmp_path):
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "old one\nold two\n")
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "new one\nnew two\n")
+    # As long as before: nothing says it changed, and nothing is read.
+    assert await _look(forwarder, state) == []
+    _append(log, "new three\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        BANNER.strip(),
+        "new one",
+        "new two",
+        "new three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_bytes_compared_span_several_short_reads(tmp_path):
+    # The last read brought four bytes. What is compared is still the
+    # CHECK_BYTES before the position, most of them read earlier.
+    log = tmp_path / "report.log"
+    log.write_text(BANNER + "an earlier line that will change\n")
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+    _append(log, "two\n")
+    assert _lines(await _look(forwarder, state)) == ["two"]
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "AN EARLIER LINE THAT HAS CHANGED\ntwo\nthree\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        BANNER.strip(),
+        "AN EARLIER LINE THAT HAS CHANGED",
+        "two",
+        "three",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_with_another_beginning_is_noticed_whatever_follows(
+    tmp_path,
+):
+    # The other half of the check: the same bytes before the position, but
+    # the file does not begin as it did.
+    log = tmp_path / "report.log"
+    body = "the same line in both files " + "y" * CHECK_BYTES + "\n"
+    log.write_text("header of the first file\n" + body)
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write("HEADER OF THE OTHER FILE\n" + body + "after\n")
+
+    assert _lines(await _look(forwarder, state)) == [
+        "HEADER OF THE OTHER FILE",
+        body.strip(),
+        "after",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_rewrite_that_keeps_the_bytes_before_the_position_is_not_noticed(
+    tmp_path,
+):
+    # The limit of the check, pinned so that the documentation stays true:
+    # same first HEAD_BYTES bytes, same CHECK_BYTES bytes before the old
+    # position, at least as long. It reads on from the old position.
+    log = tmp_path / "report.log"
+    same_end = "x" * CHECK_BYTES + "\n"
+    log.write_text(BANNER + "old middle\n" + same_end)
+    forwarder, state = _follow(log, read_from="beginning")
+    await _look(forwarder, state)
+
+    with open(log, "w") as handle:
+        handle.write(BANNER + "NEW MIDDLE\n" + same_end + "after\n")
+
+    assert _lines(await _look(forwarder, state)) == ["after"]
 
 
 @pytest.mark.asyncio

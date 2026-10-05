@@ -305,8 +305,12 @@ The sources, the files each one is reading and its current problems are in
   newline, and then the new one from its beginning. If the pattern also
   matches the rotated name (`access.log*`), the file is followed under its
   new name and not sent again. A file truncated in place (`copytruncate`) is
-  read again from its beginning; the sensor notices by its size or, when it
-  has already grown past the old position, by its first 256 bytes.
+  read again from its beginning. The sensor notices by its size or, when it
+  has already grown past the old position, by its content: its first 256
+  bytes, or the 64 bytes before that position, are no longer what was read.
+  A file rewritten to at least its old length with both unchanged (the same
+  header, and the same 64 bytes at the same offset) cannot be told from one
+  that was appended to: the sensor reads on from the old position.
 - **Lines.** A line is forwarded when its newline is written, never in two
   parts. A line longer than 16 KiB is forwarded once, cut to 16 KiB, with
   `metadata.truncated: true`. Bytes that are not UTF-8, and NUL bytes, become

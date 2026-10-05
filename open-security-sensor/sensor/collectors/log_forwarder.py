@@ -18,9 +18,11 @@ A file source is tailed with these rules:
   beginning with ``read_from: beginning``). A file that appears later is read
   from its beginning. Positions are kept in memory only.
 * A rotated file (renamed or removed, another one in its place) is read to its
-  end before the new one is opened; a file truncated in place, which shows by
-  its size or by its first ``HEAD_BYTES`` bytes, is read again from its
-  beginning.
+  end before the new one is opened; a file truncated in place is read again
+  from its beginning. Truncation shows by the file's size, by its first
+  ``HEAD_BYTES`` bytes or by the ``CHECK_BYTES`` bytes before the position
+  reached: a file rewritten to at least its old length with all of those
+  unchanged cannot be told from one that was appended to.
 * A line is forwarded when its newline has been written, never in two halves.
   A line longer than ``MAX_LINE_BYTES`` is forwarded once, cut to that
   length and marked ``truncated``.
@@ -70,6 +72,9 @@ MAX_LINE_BYTES = 16 * 1024
 REPLACEMENT = chr(0xFFFD)
 # Bytes of a file's beginning remembered to notice that it was rewritten.
 HEAD_BYTES = 256
+# Bytes before the position reached, remembered for the same reason: a file
+# rewritten with the same beginning (a banner, a header line) differs there.
+CHECK_BYTES = 64
 # Files one source reads at once; a pattern's further matches are reported.
 MAX_FILES_PER_SOURCE = 64
 # Rotated-and-compressed logs a pattern such as "access.log*" also matches.
@@ -131,6 +136,7 @@ class _Tail:
         "key",
         "position",
         "head",
+        "carry",
         "partial",
         "discarding",
         "rotated",
@@ -144,6 +150,10 @@ class _Tail:
         # The first bytes that were read. If the file no longer begins with
         # them it was rewritten, even when it is not shorter than before.
         self.head = b""
+        # The last bytes read, those just before ``position``. If the file
+        # no longer holds them there it was rewritten, even when it begins
+        # as before.
+        self.carry = b""
         self.partial = b""  # the bytes of a line whose newline is not written yet
         self.discarding = False  # inside a line that is not to be forwarded
         self.rotated = False  # the path now names another file, or none
@@ -460,6 +470,8 @@ class LogForwarder:
         tail.discarding = discarding
         if position:
             tail.head = self._read_at(fd, min(HEAD_BYTES, position), 0)
+            kept = min(CHECK_BYTES, position)
+            tail.carry = self._read_at(fd, kept, position - kept)
         state.tails[path] = tail
         self._resolved(state, path)
         logger.info(
@@ -537,11 +549,11 @@ class LogForwarder:
         while budget > 0:
             size = os.fstat(tail.fd).st_size
             # Shorter than what was read: truncated. Longer, but not
-            # beginning as it did: truncated and written past that point
-            # before this look, which the size alone does not show.
+            # beginning as it did, or not holding before the position what
+            # was read there: truncated and written past that point before
+            # this look, which the size alone does not show.
             if size < tail.position or (
-                size > tail.position
-                and self._read_at(tail.fd, len(tail.head), 0) != tail.head
+                size > tail.position and self._rewritten(tail)
             ):
                 logger.info(
                     "Log source %r: %s was truncated; reading it from its "
@@ -551,6 +563,7 @@ class LogForwarder:
                 )
                 tail.position = 0
                 tail.head = b""
+                tail.carry = b""
                 tail.partial = b""
                 tail.discarding = False
             if size == tail.position:
@@ -563,6 +576,10 @@ class LogForwarder:
                 break
             if tail.position < HEAD_BYTES:
                 tail.head = (tail.head[: tail.position] + chunk)[:HEAD_BYTES]
+            if len(chunk) >= CHECK_BYTES:
+                tail.carry = chunk[-CHECK_BYTES:]
+            else:
+                tail.carry = (tail.carry + chunk)[-CHECK_BYTES:]
             tail.position += len(chunk)
             budget -= len(chunk)
             progressed = True
@@ -583,6 +600,16 @@ class LogForwarder:
             # Look again at once: the file that replaced it is waiting.
             return True
         return progressed
+
+    def _rewritten(self, tail: _Tail) -> bool:
+        """Does the file no longer hold what was read from it?
+
+        Two short reads, at its beginning and just before the position.
+        """
+        if self._read_at(tail.fd, len(tail.head), 0) != tail.head:
+            return True
+        start = tail.position - len(tail.carry)
+        return self._read_at(tail.fd, len(tail.carry), start) != tail.carry
 
     async def _consume(self, source: LogSourceConfig, tail: _Tail, chunk: bytes):
         """Forward the lines a chunk completes; keep the unfinished one."""
