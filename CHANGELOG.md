@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A guardian webhook endpoint path is unique per team, not across
+  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
+  left unique across every team: a team could not use a path another team
+  had taken, such as the conventional `/webhooks/jira`, and the `400` it
+  got told it that the path existed in a team it cannot see. The path is
+  a stored record, not a routing key: guardian serves no inbound webhook
+  route and nothing looks a request up by it, so it does not need to be
+  generated. The database now keeps it unique within the external system
+  the endpoint belongs to, and the API refuses a path that any endpoint of
+  the caller's own team already uses, looking at that team's rows only. A
+  path another team uses is answered exactly as a free one. Migration
+  `integrations.0003` replaces the constraint; existing rows already
+  satisfy the new one. Unit tests cover both teams, a second system of the
+  same team, updates and the database constraint; six mutations of the
+  fix each fail a test.
+
 ### Security
 
 - **guardian has no platform-wide notification recipient** (#678).

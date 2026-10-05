@@ -144,7 +144,9 @@ reports in `X-Wildbox-Team-ID` (`apps/core/tenancy.py`):
 - Compliance frameworks, their controls and vulnerability templates without a
   team are shared reference data: every team reads them and none changes them.
 - Names are unique within a team (environments, asset groups, discovery
-  rules, frameworks, vulnerability templates), and a user can be assigned
+  rules, frameworks, vulnerability templates, webhook endpoint paths): a
+  name another team uses is free, and the answer to a duplicate never says
+  what another team has. A user can be assigned
   or named only once they have made a request as a member of the team.
 - `/api/v1/guardian/tasks/<uuid>/` answers only for tasks the team
   dispatched; any other id answers `404`.
@@ -440,7 +442,7 @@ actions below contacts the external system yet.
 | External systems | `integrations/systems/` | Standard routes; filters `system_type`, `status`, `auth_type` |
 | Field mappings | `integrations/mappings/` | Standard routes |
 | Sync records | `integrations/sync-records/` | Standard routes |
-| Webhook endpoints | `integrations/webhooks/` | Standard routes |
+| Webhook endpoints | `integrations/webhooks/` | Standard routes. `endpoint_url` is a record of the path the team chose, unique within the team (`400` on `endpoint_url` for a path one of the team's endpoints already uses); guardian does not receive webhooks on it |
 | Integration logs | `integrations/logs/` | Read-only (list and retrieve) |
 | Notification channels | `integrations/notifications/` | Standard routes |
 

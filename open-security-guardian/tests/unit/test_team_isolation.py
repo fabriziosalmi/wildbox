@@ -531,6 +531,163 @@ def _asset_model():
     return Asset
 
 
+# --- webhook endpoint paths (#677) --------------------------------------------------
+
+WEBHOOKS = "/api/v1/integrations/webhooks/"
+
+
+def _webhook_model():
+    from apps.integrations.models import WebhookEndpoint
+
+    return WebhookEndpoint
+
+
+def _webhook(api, team, system, path, name="jira events"):
+    return api(
+        "post",
+        WEBHOOKS,
+        team,
+        data={"system": str(system.pk), "name": name, "endpoint_url": path},
+    )
+
+
+def test_a_webhook_path_is_not_unique_across_guardian():
+    # endpoint_url was unique=True: one namespace for every team (#677).
+    field = _webhook_model()._meta.get_field("endpoint_url")
+    assert field.unique is False
+    assert ("system", "endpoint_url") in {
+        tuple(constraint.fields) for constraint in _webhook_model()._meta.constraints
+    }
+
+
+@pytest.mark.django_db
+def test_a_webhook_path_is_unique_per_team_not_across_teams(api, teams):
+    team_a, team_b = teams
+    jira_a = team_fixtures.external_system(team_a)
+    snow_a = team_fixtures.external_system(team_a)
+    jira_b = team_fixtures.external_system(team_b)
+
+    first = _webhook(api, team_a, jira_a, "/webhooks/jira")
+    assert first.status_code == 201, first.content[:300]
+    # Another team picks the same conventional path: it is theirs to pick.
+    theirs = _webhook(api, team_b, jira_b, "/webhooks/jira")
+    assert theirs.status_code == 201, theirs.content[:300]
+
+    # Within the team it is taken, on the same system and on another one.
+    for system in (jira_a, snow_a):
+        again = _webhook(api, team_a, system, "/webhooks/jira")
+        assert again.status_code == 400, again.content[:300]
+        assert "endpoint_url" in again.json(), again.json()
+    other = _webhook(api, team_a, snow_a, "/webhooks/servicenow")
+    assert other.status_code == 201, other.content[:300]
+
+    paths = _webhook_model().objects.values_list("system__team_id", "endpoint_url")
+    assert sorted((str(team), path) for team, path in paths) == sorted(
+        [
+            (str(team_a), "/webhooks/jira"),
+            (str(team_a), "/webhooks/servicenow"),
+            (str(team_b), "/webhooks/jira"),
+        ]
+    )
+
+
+@pytest.mark.django_db
+def test_a_webhook_path_taken_in_another_team_is_not_revealed(api, teams):
+    """B is answered alike for a path A holds and for one nobody holds."""
+    team_a, team_b = teams
+    system_a = team_fixtures.external_system(team_a)
+    system_b = team_fixtures.external_system(team_b)
+    assert _webhook(api, team_a, system_a, "/webhooks/taken").status_code == 201
+
+    taken = _webhook(api, team_b, system_b, "/webhooks/taken")
+    free = _webhook(api, team_b, system_b, "/webhooks/free")
+
+    assert (taken.status_code, free.status_code) == (201, 201), taken.content[:300]
+
+    def shape(response, path):
+        body = response.json()
+        body.pop("id"), body.pop("created_at"), body.pop("updated_at")
+        assert body.pop("endpoint_url") == path
+        return body
+
+    assert shape(taken, "/webhooks/taken") == shape(free, "/webhooks/free")
+    # And B's own duplicate is refused in B's terms: nothing names A.
+    mine = _webhook(api, team_b, system_b, "/webhooks/taken")
+    assert mine.status_code == 400, mine.content[:300]
+    assert str(team_a) not in mine.content.decode()
+    assert str(system_a.pk) not in mine.content.decode()
+
+
+@pytest.mark.django_db
+def test_a_webhook_cannot_be_moved_onto_a_path_its_team_uses(api, teams):
+    team_a, team_b = teams
+    system_a = team_fixtures.external_system(team_a)
+    other_a = team_fixtures.external_system(team_a)
+    system_b = team_fixtures.external_system(team_b)
+    held = _webhook(api, team_a, system_a, "/webhooks/held").json()
+    moved = _webhook(api, team_a, other_a, "/webhooks/moved").json()
+    assert _webhook(api, team_b, system_b, "/webhooks/theirs").status_code == 201
+
+    clash = api(
+        "patch",
+        f"{WEBHOOKS}{moved['id']}/",
+        team_a,
+        data={"endpoint_url": "/webhooks/held"},
+    )
+    assert clash.status_code == 400, clash.content[:300]
+    assert "endpoint_url" in clash.json()
+
+    # Saving a webhook with the path it already has is not a clash with
+    # itself, and a path another team uses is free here.
+    same = api(
+        "patch",
+        f"{WEBHOOKS}{held['id']}/",
+        team_a,
+        data={"endpoint_url": "/webhooks/held"},
+    )
+    assert same.status_code == 200, same.content[:300]
+    free = api(
+        "patch",
+        f"{WEBHOOKS}{moved['id']}/",
+        team_a,
+        data={"endpoint_url": "/webhooks/theirs"},
+    )
+    assert free.status_code == 200, free.content[:300]
+    assert free.json()["endpoint_url"] == "/webhooks/theirs"
+
+
+@pytest.mark.django_db
+def test_a_webhook_path_is_not_judged_free_without_a_team(teams):
+    """No request and no team: the check refuses, it does not look everywhere."""
+    from apps.integrations.serializers import WebhookEndpointSerializer
+
+    team_a, _ = teams
+    system = team_fixtures.external_system(team_a)
+    serializer = WebhookEndpointSerializer(
+        data={"system": str(system.pk), "name": "n", "endpoint_url": "/webhooks/x"},
+        context={},
+    )
+
+    assert serializer.is_valid() is False
+    assert "No team" in str(serializer.errors["endpoint_url"])
+
+
+@pytest.mark.django_db
+def test_the_database_keeps_a_webhook_path_unique_within_its_system(teams):
+    from django.db import IntegrityError, transaction
+
+    team_a, team_b = teams
+    system_a = team_fixtures.external_system(team_a)
+    system_b = team_fixtures.external_system(team_b)
+    model = _webhook_model()
+    model.objects.create(system=system_a, name="one", endpoint_url="/hooks/in")
+    # Another team's system: no constraint spans two teams.
+    model.objects.create(system=system_b, name="two", endpoint_url="/hooks/in")
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        model.objects.create(system=system_a, name="three", endpoint_url="/hooks/in")
+
+
 # --- shared reference data --------------------------------------------------------
 
 
