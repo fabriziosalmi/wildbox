@@ -582,7 +582,7 @@ def pip_problem(arguments: Sequence[str]) -> str | None:
         return (
             "installs a local path without --no-index: pip still downloads the "
             "build backend (setuptools) and any missing dependency, unhashed; add "
-            "--no-index --no-deps --no-build-isolation"
+            "--no-index --no-build-isolation"
         )
     return (
         "is not hash-checked; use --require-hashes --no-build-isolation -r "

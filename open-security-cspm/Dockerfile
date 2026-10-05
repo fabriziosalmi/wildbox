@@ -65,14 +65,23 @@ RUN apt-get update \
 COPY --from=builder /install /usr/local
 
 # Install the shared package, provided via the `shared` additional build
-# context (see docker-compose.yml / CI). --no-deps: its deps already come from
-# this service's requirements.txt. --no-index --no-build-isolation: build it
-# with the setuptools already in the image (the digest-pinned base image's,
-# or the one a lockfile pins by hash). Without them pip made an isolated
-# build environment and downloaded the latest setuptools from PyPI, unhashed,
-# at every build (#657).
+# context (see docker-compose.yml / CI), with the extras of the modules this
+# service imports (scripts/check_shared_dependencies.py keeps the two equal).
+# No --no-deps: pip resolves what those extras require, and with --no-index
+# it can only resolve it against what the hash-checked install above put in
+# the image, so the build fails when requirements.txt does not provide a
+# package or pins it below the floor the shared package declares. `pip check`
+# then fails the build for any other requirement the environment does not
+# meet. With --no-deps nothing looked: seven images of eight lacked a
+# declared dependency of the package (#722).
+# --no-index --no-build-isolation: build it with the setuptools already in
+# the image (the digest-pinned base image's, or the one a lockfile pins by
+# hash). Without them pip made an isolated build environment and downloaded
+# the latest setuptools from PyPI, unhashed, at every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-build-isolation \
+        "/tmp/open-security-shared[fastapi,metrics]" \
+    && pip check
 
 # Copy project
 COPY . .
