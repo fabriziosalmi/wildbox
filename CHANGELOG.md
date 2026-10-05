@@ -295,6 +295,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the OpenAPI schema and the `X-API-Version` header of the same
   responses said `0.1.6`. All four now read the version written once in
   `app/__init__.py` (#721).
+- **The gateway integration test no longer takes `/api/v1/tools/health`
+  for a health route** (#721). Under `/api/v1/tools/` the next path
+  segment is a tool's name, so that path is "the tool called health",
+  which does not exist: the tools service answers 404. The test listed
+  it, and `/api/v1/agents/health`, among "health endpoints" and passed
+  because it accepted any answer but 502; it also sent no credential,
+  so the gateway answered 401 itself and no backend was reached. It was
+  named "Circuit Breaker with Recovery" and exercised none. The gateway
+  keeps no health location for tools: nothing reads one, and a fixed
+  name there would take a name from the tools, which is why the task
+  routes have a prefix of their own. The test now asks each backend,
+  with a credential, for a route it serves (the tool list, the data
+  health probe, the agents statistics) and expects 200, and expects the
+  tools service's own 404 for the mistaken path.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
