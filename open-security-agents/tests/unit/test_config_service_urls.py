@@ -195,14 +195,71 @@ def test_a_trailing_slash_is_dropped(monkeypatch):
     )
 
 
-def test_an_env_file_that_still_sets_the_responder_url_loads(tmp_path, no_overrides):
-    """The service's own .env.example sets it; no tool calls the responder."""
+# --- No responder URL (#727) -------------------------------------------------
+#
+# WILDBOX_RESPONDER_URL was read for one use, a health check of the client
+# that nothing called. Both are gone, from the code, the service's compose
+# file and its .env.example. The test that stood here kept an env file which
+# set it loading; it now loads only without the line, and says so.
+
+
+def test_there_is_no_responder_url_and_no_client_health_check():
+    from app.tools.wildbox_client import WildboxAPIClient
+
+    assert "wildbox_responder_url" not in Settings.model_fields
+    assert not hasattr(WildboxAPIClient, "health_check")
+    assert not hasattr(WildboxAPIClient(), "responder_url")
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env.example",
+        "docker-compose.yml",
+        "README.md",
+        "app/config.py",
+        "app/tools/wildbox_client.py",
+    ],
+)
+def test_nothing_of_the_service_sets_or_reads_a_responder_url(path):
+    text = (SERVICE_ROOT / path).read_text()
+    for line in text.splitlines():
+        if "RESPONDER_URL" in line.upper():
+            # The one place left says that it is gone.
+            assert path == "app/config.py" and line.lstrip().startswith("#"), line
+
+
+def test_every_key_of_the_services_env_example_is_a_setting(no_overrides):
+    """An operator copies it to .env, and the settings refuse a key they do
+    not know: an example with a retired key would stop the service."""
+    example = SERVICE_ROOT / ".env.example"
+    keys = {
+        line.split("=", 1)[0].strip().lower()
+        for line in example.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert keys and keys <= set(Settings.model_fields), keys - set(Settings.model_fields)
+    Settings(_env_file=str(example))
+
+
+def test_an_env_file_that_still_sets_the_responder_url_is_refused_by_name(
+    tmp_path, no_overrides
+):
+    """Refused like any key the settings do not know, naming the key, so
+    that the line to remove is not a guess. The variable in the environment
+    is ignored, as every unknown variable is: docker-compose.yml passes the
+    environment, never a .env file (.dockerignore keeps it out of the image)."""
     env_file = tmp_path / ".env"
     env_file.write_text("WILDBOX_RESPONDER_URL=http://localhost:8018\n")
-    assert (
-        Settings(_env_file=str(env_file)).wildbox_responder_url
-        == "http://localhost:8018"
-    )
+
+    with pytest.raises(ValidationError, match="wildbox_responder_url"):
+        Settings(_env_file=str(env_file))
+
+
+def test_the_responder_url_in_the_environment_is_ignored(monkeypatch):
+    monkeypatch.setenv("WILDBOX_RESPONDER_URL", "http://localhost:8018")
+    assert not hasattr(Settings(_env_file=None), "wildbox_responder_url")
 
 
 # --- The analysis rate limits ------------------------------------------------

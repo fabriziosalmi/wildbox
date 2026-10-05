@@ -17,15 +17,26 @@ database. Two kinds of test:
   without touching the live databases, and the Redis snapshot can be put
   back.
 
+The drill compares a restore with the source as one snapshot saw it (#723):
+it counts inside a transaction whose snapshot the backup is dumped from. The
+stub tests check that plumbing; the real ones write to the database between
+the drill's own steps, where the old before-and-after comparison failed a
+correct restore and passed a lossy one.
+
 No test reads a real .env: every run gets ENV_FILE, COMPOSE_FILE and
 BACKUP_DIR in a temporary directory, and the passwords are made up here.
 """
 
+import gzip
 import os
+import re
 import shutil
+import signal
 import stat
 import subprocess
+import time
 import uuid
+import zlib
 from pathlib import Path
 
 import pytest
@@ -66,6 +77,8 @@ FAKE_DOCKER = r'''#!/usr/bin/env python3
 """Stub for `docker compose ...` as the backup scripts call it."""
 import os
 import sys
+import time
+import zlib
 
 state = os.environ["FAKE_STATE"]
 with open(os.path.join(state, "docker.log"), "a") as log:
@@ -91,6 +104,48 @@ def counted(name):
     return count
 
 
+def snapshot_id(database):
+    """What pg_export_snapshot() returns in the stub: one per database."""
+    return "%08X-0000001B-1" % zlib.crc32(database.encode())
+
+
+def session(database):
+    """psql fed on stdin: it answers as it reads and stays until stdin ends.
+
+    That is the drill's snapshot session. Its transaction, and so the
+    snapshot it exported, lasts as long as this process.
+    """
+    ended = os.path.join(state, "session_" + database)
+    if os.path.exists(ended):
+        os.remove(ended)
+    dumped = os.path.join(state, "dumped_" + database)
+    if os.path.exists(dumped):
+        os.remove(dumped)
+    if database in os.environ.get("FAKE_FAIL_SESSION", "").split():
+        sys.stderr.write("psql: error: stub failure\n")
+        sys.exit(2)
+    statement = ""
+    for line in sys.stdin:
+        statement += line
+        if not line.rstrip().endswith(";"):
+            continue
+        if "pg_export_snapshot" in statement:
+            print("snapshot:" + snapshot_id(database), flush=True)
+        elif "query_to_xml" in statement:
+            counts = os.path.join(os.environ["FAKE_COUNTS"], database)
+            sys.stdout.write(open(counts).read())
+            sys.stdout.flush()
+        elif "counted:all" in statement:
+            print("counted:all", flush=True)
+            if database in os.environ.get("FAKE_SESSION_ENDS_EARLY", "").split():
+                break
+        statement = ""
+    # Whether the dump had been taken by the time the snapshot was let go.
+    with open(ended, "w") as record:
+        record.write("after the dump" if os.path.exists(dumped) else "before the dump")
+    sys.exit(0)
+
+
 if command == "ps":
     if args[-1] in os.environ.get("FAKE_RUNNING", "").split():
         print("0123456789ab")
@@ -113,6 +168,19 @@ if command == "exec":
         if database in os.environ.get("FAKE_FAIL_DUMP", "").split():
             sys.stderr.write("pg_dump: error: stub failure\n")
             sys.exit(1)
+        for argument in tool_args:
+            # As the server does: a snapshot can be adopted only while the
+            # transaction that exported it is still running.
+            if argument.startswith("--snapshot=") and (
+                argument != "--snapshot=" + snapshot_id(database)
+                or os.path.exists(os.path.join(state, "session_" + database))
+            ):
+                sys.stderr.write("pg_dump: error: invalid snapshot identifier\n")
+                sys.exit(1)
+        if os.environ.get("FAKE_SLOW_DUMP"):
+            open(os.path.join(state, "dumping_" + database), "w").close()
+            time.sleep(float(os.environ["FAKE_SLOW_DUMP"]))
+        open(os.path.join(state, "dumped_" + database), "w").close()
         sys.stdout.write("PGDMP-fake-archive-of-" + database)
     elif tool == "pg_restore":
         data = sys.stdin.read()
@@ -121,8 +189,16 @@ if command == "exec":
             print("1; 1259 16385 TABLE public widgets owner")
         else:
             open(os.path.join(state, "restored_" + database), "w").write(data)
+            # Whether any snapshot session was still open when the restore
+            # began: every session that has ended left a session_* file.
+            opened = [n for n in os.listdir(state) if n.startswith("dumped_")]
+            closed = [n for n in os.listdir(state) if n.startswith("session_")]
+            with open(os.path.join(state, "sessions_at_restore"), "a") as record:
+                record.write("held\n" if len(closed) < len(opened) else "released\n")
     elif tool == "psql":
         sql = option("-c", tool_args)
+        if sql is None:
+            session(database)
         if "query_to_xml" in sql:
             base = os.path.join(os.environ["FAKE_COUNTS"], database)
             nth = base + "." + str(counted(database))
@@ -155,7 +231,7 @@ class Harness:
     def stub_docker(self):
         _executable(self.bin / "docker", FAKE_DOCKER)
 
-    def run(self, script, *args, path=None, **overrides):
+    def env(self, path=None, **overrides):
         env = {
             "PATH": path or f"{self.bin}{os.pathsep}{os.environ['PATH']}",
             "HOME": str(self.tmp),
@@ -171,10 +247,13 @@ class Harness:
                 env.pop(name, None)
             else:
                 env[name] = value
+        return env
+
+    def run(self, script, *args, path=None, **overrides):
         # Not the repository: nothing here may resolve a relative .env.
         return subprocess.run(
             ["bash", str(script), *args],
-            env=env,
+            env=self.env(path=path, **overrides),
             cwd=self.tmp,
             capture_output=True,
             text=True,
@@ -508,6 +587,17 @@ def _drill(harness, **overrides):
     return harness.run(DRILL, DATABASES="identity", **overrides)
 
 
+def _snapshot_id(database):
+    """The identifier the stub's pg_export_snapshot() gives a database."""
+    return "%08X-0000001B-1" % zlib.crc32(database.encode())
+
+
+def _session_ended(harness, database):
+    """When the drill let a database's snapshot go; None if it never did."""
+    ended = harness.state / f"session_{database}"
+    return ended.read_text() if ended.exists() else None
+
+
 def test_the_drill_passes_when_the_restored_counts_match(harness):
     _counts(harness, "identity", users=12, teams=3)
     _counts(harness, "identity_restore_drill", users=12, teams=3)
@@ -517,13 +607,60 @@ def test_the_drill_passes_when_the_restored_counts_match(harness):
     assert "Restore drill PASSED" in result.stdout
 
 
-def test_the_drill_fails_when_rows_are_missing_from_the_restore(harness):
+def test_the_drill_dumps_each_database_from_the_snapshot_it_counted_in(harness):
+    """The two sides of the comparison are one snapshot (#723)."""
+    for index, db in enumerate(DATABASES):
+        _counts(harness, db, widgets=10 + index)
+        _counts(harness, f"{db}_restore_drill", widgets=10 + index)
+    result = harness.run(DRILL)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    log = harness.docker_log()
+    for db in DATABASES:
+        # One session per database: psql fed on stdin, which exports the
+        # snapshot of a read-only REPEATABLE READ transaction and counts in it.
+        assert f"sh psql -d {db} -v ON_ERROR_STOP=1 -X -q -tA\n" in log
+        # The dump adopts that snapshot, and the session outlives the dump.
+        assert (
+            f"sh pg_dump -d {db} --format=custom --compress=9 --no-owner "
+            f"--no-privileges --snapshot={_snapshot_id(db)}\n"
+        ) in log
+        assert _session_ended(harness, db) == "after the dump"
+    # And not longer than the backup: the transactions on the live databases
+    # were over before the first scratch database was restored.
+    at_restore = (harness.state / "sessions_at_restore").read_text().split()
+    assert at_restore == ["released"] * len(DATABASES)
+    # The live databases were counted once, in the session; every other
+    # count is of a scratch database.
+    counted = [line for line in log.splitlines() if "query_to_xml" in line]
+    assert len(counted) == len(DATABASES)
+    assert all("_restore_drill" in line for line in counted)
+    script = DRILL.read_text()
+    assert "BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;" in script
+    assert "pg_export_snapshot()" in script
+
+
+@pytest.mark.parametrize("restored", [0, 11, 13], ids=["none", "one-less", "one-more"])
+def test_the_drill_fails_on_any_difference_in_a_row_count(harness, restored):
+    """No tolerance: one row less is a lossy restore, one more is not ours."""
     _counts(harness, "identity", users=12, teams=3)
-    _counts(harness, "identity_restore_drill", users=0, teams=3)
+    _counts(harness, "identity_restore_drill", users=restored, teams=3)
     result = _drill(harness)
     assert result.returncode == 1
-    assert "public.users: restored 0 rows, source had 12" in result.stderr
+    assert (
+        f"public.users: restored {restored} rows, the source had 12 in the snapshot"
+        in result.stderr
+    )
     assert "Restore drill FAILED" in result.stderr
+    assert "PASSED" not in result.stdout
+
+
+def test_the_drill_fails_when_the_restore_has_a_table_the_source_does_not(harness):
+    _counts(harness, "identity", users=12)
+    _counts(harness, "identity_restore_drill", users=12, strangers=1)
+    result = _drill(harness)
+    assert result.returncode == 1
+    assert "not in the source: public.strangers" in result.stderr
 
 
 def test_the_drill_fails_when_a_table_is_missing_from_the_restore(harness):
@@ -542,19 +679,139 @@ def test_the_drill_fails_when_the_restore_is_empty(harness):
     assert "no tables in the restored database" in result.stderr
 
 
-def test_the_drill_tolerates_rows_written_while_it_ran(harness):
-    """Before 12, after 14: a snapshot holding 13 is a correct restore."""
-    _counts(harness, "identity.1", users=12)
-    _counts(harness, "identity.2", users=14)
-    _counts(harness, "identity_restore_drill", users=13)
-    result = _drill(harness)
-    assert result.returncode == 0, result.stderr
-    assert "1 table(s) changed during the drill" in result.stdout
+def test_the_drill_fails_when_a_snapshot_cannot_be_opened(harness):
+    _counts(harness, "identity", users=12)
+    _counts(harness, "identity_restore_drill", users=12)
+    result = _drill(harness, FAKE_FAIL_SESSION="identity")
+    assert result.returncode == 1
+    assert "could not count 'identity' in a snapshot" in result.stderr
+    assert "psql: error: stub failure" in result.stderr
+    # Nothing was dumped or restored on the strength of a count it lacks.
+    assert "pg_dump" not in harness.docker_log()
+    assert not (harness.state / "restored_identity_restore_drill").exists()
+    assert list(harness.scratch.iterdir()) == []
 
-    for name in ("calls_identity", "calls_identity_restore_drill"):
-        (harness.state / name).unlink()
-    _counts(harness, "identity_restore_drill", users=11)
-    assert _drill(harness).returncode == 1
+
+def test_the_drill_fails_when_a_snapshot_is_gone_before_the_dump(harness):
+    """A dump from another snapshot would be compared with these counts."""
+    _counts(harness, "identity", users=12)
+    _counts(harness, "identity_restore_drill", users=12)
+    result = _drill(harness, FAKE_SESSION_ENDS_EARLY="identity")
+    assert result.returncode == 1
+    assert "invalid snapshot identifier" in result.stderr
+    assert "the backup did not complete" in result.stderr
+    assert not (harness.state / "restored_identity_restore_drill").exists()
+
+
+@pytest.mark.parametrize(
+    "overrides, status",
+    [
+        ({}, 0),
+        ({"FAKE_FAIL_DUMP": "identity"}, 1),
+        ({"FAKE_FAIL_SESSION": "data"}, 1),
+    ],
+    ids=["passed", "backup-failed", "another-session-failed"],
+)
+def test_the_drill_has_let_its_snapshots_go_by_the_time_it_returns(
+    harness, overrides, status
+):
+    """A session left behind holds a transaction open on a live database.
+
+    The drill writes to files here, not to pipes: a pipe would make this test
+    wait for whatever the drill left running, and hide exactly that.
+    """
+    for db in ("identity", "data"):
+        _counts(harness, db, users=12)
+        _counts(harness, f"{db}_restore_drill", users=12)
+    with (harness.tmp / "drill.out").open("w") as out:
+        drill = subprocess.Popen(
+            ["bash", str(DRILL)],
+            env=harness.env(DATABASES="identity,data", **overrides),
+            cwd=harness.tmp,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+        assert drill.wait(timeout=120) == status, (harness.tmp / "drill.out").read_text()
+    # At this moment, not a second later.
+    assert _session_ended(harness, "identity") is not None
+    if "FAKE_FAIL_SESSION" not in overrides:
+        assert _session_ended(harness, "data") is not None
+    assert list(harness.scratch.iterdir()) == []
+
+
+def test_a_killed_drill_does_not_leave_its_snapshot_open(harness):
+    """SIGKILL runs no trap: the session has to notice that the drill is gone."""
+    _counts(harness, "identity", users=12)
+    drill = subprocess.Popen(
+        ["bash", str(DRILL)],
+        env=harness.env(DATABASES="identity", FAKE_SLOW_DUMP="60"),
+        cwd=harness.tmp,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        deadline = time.time() + 60
+        while not (harness.state / "dumping_identity").exists():
+            assert drill.poll() is None and time.time() < deadline
+            time.sleep(0.05)
+        # The dump is running, and the snapshot it adopted is still held.
+        assert _session_ended(harness, "identity") is None
+        drill.kill()
+        drill.wait(timeout=30)
+        deadline = time.time() + 15
+        while _session_ended(harness, "identity") is None:
+            assert time.time() < deadline, "the session outlived the drill"
+            time.sleep(0.1)
+    finally:
+        # Whatever the drill started: the stub's slow dump, and its callers.
+        try:
+            os.killpg(drill.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def test_the_backup_dumps_a_database_from_the_snapshot_it_is_given(harness):
+    result = harness.run(
+        BACKUP, "--snapshot", f"data={_snapshot_id('data')}", SKIP_REDIS="true"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    log = harness.docker_log()
+    assert (
+        "sh pg_dump -d data --format=custom --compress=9 --no-owner "
+        f"--no-privileges --snapshot={_snapshot_id('data')}\n"
+    ) in log
+    # Only that database: the others are dumped as pg_dump sees them.
+    assert log.count("--snapshot=") == 1
+    assert f"from the exported snapshot {_snapshot_id('data')}" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "value, reason",
+    [
+        ("identity", "--snapshot takes DATABASE=SNAPSHOT_ID"),
+        ("identity=", "--snapshot takes DATABASE=SNAPSHOT_ID"),
+        ("identity=0003-1B-1 --schema=public", "--snapshot takes DATABASE=SNAPSHOT_ID"),
+        ("identity=0003-1B-1;id", "--snapshot takes DATABASE=SNAPSHOT_ID"),
+        ("reporting=00000003-0000001B-1", "not one of the databases to back up"),
+    ],
+    ids=["no-id", "empty-id", "extra-option", "shell", "another-database"],
+)
+def test_a_snapshot_option_that_is_not_a_snapshot_is_refused(harness, value, reason):
+    """It reaches pg_dump's command line."""
+    result = harness.run(BACKUP, "--snapshot", value)
+    assert result.returncode != 0
+    assert reason in result.stderr
+    assert harness.docker_log() == ""
+    assert harness.kept() == []
+
+
+def test_a_backup_from_a_snapshot_that_is_gone_fails_and_keeps_nothing(harness):
+    result = harness.run(BACKUP, "--snapshot", "data=00000003-0000001B-1")
+    assert result.returncode != 0
+    assert "invalid snapshot identifier" in result.stderr
+    assert "BACKUP FAILED" in result.stderr
+    assert harness.kept() == []
 
 
 def test_the_drill_only_creates_and_drops_scratch_databases(harness):
@@ -582,15 +839,190 @@ def test_the_drill_fails_when_the_backup_fails(harness):
     assert result.returncode == 1
     assert "the backup did not complete" in result.stderr
     assert not (harness.state / "restored_identity_restore_drill").exists()
+    assert _session_ended(harness, "identity") == "before the dump"
 
 
 def test_redis_restore_refuses_a_running_redis(harness):
     harness.backups.mkdir()
     (harness.backups / "redis_20260101_000000.rdb.gz").write_bytes(b"")
-    result = harness.run(RESTORE_REDIS, "--latest")
-    assert result.returncode != 0
-    assert "service is running" in result.stderr
+    for flags in ([], ["--replace-redis-data"]):
+        result = harness.run(RESTORE_REDIS, "--latest", *flags)
+        assert result.returncode != 0
+        assert "service is running" in result.stderr
     assert " run " not in harness.docker_log()
+
+
+# --- restoring over live data is a decision (#723) ---------------------------
+
+STAMP = "20260101_000000"
+
+
+def _archives(harness, databases=DATABASES, stamp=STAMP):
+    """Backup files as the backup script names them, with stub contents."""
+    harness.backups.mkdir(exist_ok=True)
+    for db in databases:
+        with gzip.open(harness.backups / f"{db}_{stamp}.sql.gz", "wb") as archive:
+            archive.write(f"PGDMP-fake-archive-of-{db}".encode())
+    with gzip.open(harness.backups / f"redis_{stamp}.rdb.gz", "wb") as snapshot:
+        snapshot.write(b"REDIS0011-fake")
+
+
+def _restored(harness):
+    """The databases the stub server was asked to restore into."""
+    return sorted(p.name[len("restored_") :] for p in harness.state.glob("restored_*"))
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [["--timestamp", STAMP], ["--latest"], ["--latest", "--databases", "data"]],
+    ids=["timestamp", "latest", "one-database"],
+)
+def test_restore_over_the_live_databases_is_refused_without_the_flag(
+    harness, selector
+):
+    """It used to be what the script did when --into-suffix was left out."""
+    _archives(harness)
+    result = harness.run(RESTORE, *selector)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "REFUSING to restore over the live databases" in result.stderr
+    assert "Nothing was changed" in result.stderr
+    # What would have been overwritten, and from what.
+    named = DATABASES if "--databases" not in selector else ("data",)
+    for db in DATABASES:
+        line = re.search(rf"^    {db} +from {db}_{STAMP}\.sql\.gz$", result.stderr, re.M)
+        assert bool(line) == (db in named), db
+    for option in ("--overwrite-live-databases", "--into-suffix", "--dry-run"):
+        assert option in result.stderr
+    # Nothing reached the server, not even a read.
+    assert harness.docker_log() == ""
+    assert _restored(harness) == []
+    assert "Restore complete" not in result.stdout
+
+
+def test_restore_over_the_live_databases_runs_with_the_flag_and_no_prompt(harness):
+    _archives(harness)
+    # No terminal and nothing on stdin: a deliberate operator's script.
+    result = harness.run(RESTORE, "--timestamp", STAMP, "--overwrite-live-databases")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Target:     the LIVE databases (--overwrite-live-databases)" in result.stdout
+    assert _restored(harness) == sorted(DATABASES)
+    for db in DATABASES:
+        restored = (harness.state / f"restored_{db}").read_text()
+        assert restored == f"PGDMP-fake-archive-of-{db}"
+
+
+def test_the_harmless_targets_need_no_flag(harness):
+    _archives(harness)
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored(harness) == sorted(f"{db}_check" for db in DATABASES)
+
+    for path in harness.state.glob("restored_*"):
+        path.unlink()
+    result = harness.run(RESTORE, "--latest", "--dry-run")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "dry run: would restore into 'identity'" in result.stdout
+    assert _restored(harness) == []
+
+
+def test_a_dry_run_with_the_flag_still_writes_nothing(harness):
+    _archives(harness)
+    result = harness.run(RESTORE, "--latest", "--dry-run", "--overwrite-live-databases")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored(harness) == []
+
+
+def test_the_two_targets_cannot_be_named_together(harness):
+    _archives(harness)
+    result = harness.run(
+        RESTORE, "--latest", "--into-suffix", "_check", "--overwrite-live-databases"
+    )
+    assert result.returncode == 2
+    assert "two different targets" in result.stderr
+    assert harness.docker_log() == ""
+
+
+def test_a_flag_that_is_only_close_is_not_the_flag(harness):
+    _archives(harness)
+    for near in ("--overwrite", "--overwrite-live", "--force", "--yes", "-y"):
+        result = harness.run(RESTORE, "--latest", near)
+        assert result.returncode == 2, near
+        assert f"Unknown argument: {near}" in result.stderr
+    assert harness.docker_log() == ""
+
+
+def test_a_missing_archive_stops_the_restore_before_any_database_is_touched(harness):
+    """It used to overwrite identity and data, then fail on guardian."""
+    _archives(harness, databases=("identity", "data"))
+    result = harness.run(RESTORE, "--latest", "--overwrite-live-databases")
+    assert result.returncode == 1
+    assert "no backup found for 'guardian'" in result.stderr
+    assert _restored(harness) == []
+    assert harness.docker_log() == ""
+
+
+def test_redis_restore_is_refused_without_the_flag(harness):
+    _archives(harness)
+    result = harness.run(RESTORE_REDIS, "--latest", FAKE_RUNNING="postgres")
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "REFUSING to replace the Redis data" in result.stderr
+    assert "data volume of the 'wildbox-redis'" in result.stderr
+    assert f"redis_{STAMP}.rdb.gz" in result.stderr
+    assert "Nothing was changed" in result.stderr
+    assert "--replace-redis-data" in result.stderr
+    # No container was started on the volume.
+    assert " run " not in harness.docker_log()
+    assert "Redis restore complete" not in result.stdout
+
+
+def test_redis_restore_runs_with_the_flag_and_no_prompt(harness):
+    _archives(harness)
+    result = harness.run(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", FAKE_RUNNING="postgres"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert " run --rm -T --no-deps --entrypoint sh wildbox-redis " in (
+        harness.docker_log()
+    )
+    assert "Redis restore complete" in result.stdout
+
+
+def test_no_make_target_and_no_other_script_restores_over_live_data():
+    """The flags are for an operator's own command line."""
+    flags = ("--overwrite-live-databases", "--replace-redis-data")
+    callers = [REPO_ROOT / "Makefile", DRILL, BACKUP, REPO_ROOT / "docker-compose.yml"]
+    for path in callers:
+        # What runs, not what a comment says about it.
+        code = "\n".join(
+            line
+            for line in path.read_text().splitlines()
+            if not line.lstrip().startswith("#")
+        )
+        for flag in flags:
+            assert flag not in code, f"{path.name} passes {flag}"
+    # And no make target runs a restore script at all, with or without one.
+    makefile = (REPO_ROOT / "Makefile").read_text()
+    recipes = [line for line in makefile.splitlines() if line.startswith("\t")]
+    assert not [line for line in recipes if "restore_" in line]
+    # The drill names its own target, a scratch suffix that is never empty.
+    drill = DRILL.read_text()
+    assert 'restore_postgres.sh" --latest --into-suffix "$SUFFIX"' in drill
+    assert 'SUFFIX="_restore_drill"' in drill
+
+
+def test_the_help_texts_end_where_the_headers_end():
+    for script, last in (
+        (RESTORE, "# scripts/restore_redis.sh."),
+        (RESTORE_REDIS, "# GPG_RECIPIENT are decrypted with the local gpg key."),
+        (BACKUP, "# written."),
+        (DRILL, "# that snapshot means replacing the running Redis data."),
+    ):
+        result = subprocess.run(
+            ["bash", str(script), "--help"], capture_output=True, text=True, timeout=30
+        )
+        assert result.returncode == 0
+        assert result.stdout.splitlines()[-1] == last
+        assert "set -euo pipefail" not in result.stdout
 
 
 # --- a real PostgreSQL and Redis --------------------------------------------
@@ -628,20 +1060,6 @@ services:
 volumes:
   redis_data:
 """
-
-
-def _docker_available():
-    if not shutil.which("docker"):
-        return False
-    probe = subprocess.run(
-        ["docker", "compose", "version"], capture_output=True, timeout=30
-    )
-    if probe.returncode != 0:
-        return False
-    return (
-        subprocess.run(["docker", "info"], capture_output=True, timeout=30).returncode
-        == 0
-    )
 
 
 class Stack:
@@ -744,11 +1162,7 @@ class Stack:
 
 
 @pytest.fixture(scope="module")
-def stack(tmp_path_factory):
-    if not _docker_available():
-        if os.environ.get("WILDBOX_REQUIRE_DOCKER_TESTS") == "1":
-            pytest.fail("docker is required for these tests and is not available")
-        pytest.skip("docker is not available")
+def stack(docker, tmp_path_factory):
     s = Stack(tmp_path_factory.mktemp("stack681"))
     try:
         s.compose("up", "-d", "--wait")
@@ -819,6 +1233,130 @@ def test_real_drill_passes_and_leaves_the_live_databases_alone(stack):
     assert list(stack.scratch.iterdir()) == []
 
 
+# The real docker, with writes slipped in around the drill's own steps:
+#
+#   just before pg_dump of `identity` starts   five rows are inserted
+#   SHIM_MODE=shrink, after that pg_dump ends  the five rows are deleted
+#   SHIM_MODE=lose, after pg_restore into the scratch database
+#                                              one restored row is deleted
+#
+# Each write leaves a file in SHIM_DIR, so a test can tell that it happened.
+WRITING_DOCKER = r"""#!/usr/bin/env python3
+import os
+import subprocess
+import sys
+
+real = os.environ["REAL_DOCKER"]
+args = sys.argv[1:]
+if "exec" not in args:
+    os.execv(real, [real, *args])
+
+
+def sql(database, statement, done):
+    subprocess.run(
+        [real, *args[: args.index("exec")], "exec", "-T", "postgres", "sh", "-c",
+         'psql -U "$POSTGRES_USER" -d "$1" -v ON_ERROR_STOP=1 -X -q -c "$2"',
+         "sh", database, statement],
+        check=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+    )
+    open(os.path.join(os.environ["SHIM_DIR"], done), "w").close()
+
+
+mode = os.environ["SHIM_MODE"]
+dump = "pg_dump" in args and "identity" in args
+restore = (
+    "pg_restore" in args and "identity_restore_drill" in args and "--list" not in args
+)
+if dump:
+    sql(
+        "identity",
+        "INSERT INTO widgets (name) "
+        "SELECT 'written during the drill' FROM generate_series(1, 5)",
+        "inserted",
+    )
+status = subprocess.run([real, *args]).returncode
+if dump and mode == "shrink":
+    sql("identity", "DELETE FROM widgets WHERE name = 'written during the drill'", "deleted")
+if restore and mode == "lose" and status == 0:
+    sql(
+        "identity_restore_drill",
+        "DELETE FROM widgets WHERE id = (SELECT min(id) FROM widgets)",
+        "lost",
+    )
+sys.exit(status)
+"""
+
+
+def _drill_with_writes(stack, tmp_path, mode):
+    shim = tmp_path / "bin"
+    shim.mkdir()
+    _executable(shim / "docker", WRITING_DOCKER)
+    result = stack.script(
+        DRILL,
+        PATH=f"{shim}{os.pathsep}{os.environ['PATH']}",
+        REAL_DOCKER=shutil.which("docker"),
+        SHIM_DIR=str(tmp_path),
+        SHIM_MODE=mode,
+        DATABASES="identity",
+    )
+    return result
+
+
+def test_real_drill_passes_when_a_table_grows_and_shrinks_while_it_runs(
+    stack, tmp_path
+):
+    """#723: 10 rows before, 15 in the dump, 10 after. That failed the drill."""
+    count = "SELECT count(*) FROM widgets"
+    assert stack.psql("identity", count) == "10"
+    try:
+        result = _drill_with_writes(stack, tmp_path, "shrink")
+        assert (tmp_path / "inserted").exists() and (tmp_path / "deleted").exists()
+        assert result.returncode == 0, result.stdout + result.stderr
+        # The rows written after the snapshot are on neither side.
+        assert "identity: OK (2 tables, 10 rows" in result.stdout
+        assert "Restore drill PASSED" in result.stdout
+    finally:
+        stack.psql("identity", "DELETE FROM widgets WHERE name = 'written during the drill'")
+    assert stack.psql("identity", count) == "10"
+    assert "identity_restore_drill" not in stack.databases()
+
+
+def test_real_drill_fails_when_the_restore_loses_a_row_of_a_table_that_grew(
+    stack, tmp_path
+):
+    """#723: 10 rows before and 15 after made 14 restored rows acceptable."""
+    count = "SELECT count(*) FROM widgets"
+    assert stack.psql("identity", count) == "10"
+    try:
+        result = _drill_with_writes(stack, tmp_path, "lose")
+        assert (tmp_path / "inserted").exists() and (tmp_path / "lost").exists()
+        # The source really grew while the drill ran.
+        assert stack.psql("identity", count) == "15"
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert (
+            "public.widgets: restored 9 rows, the source had 10 in the snapshot"
+            in result.stderr
+        )
+        assert "Restore drill FAILED" in result.stderr
+        assert "PASSED" not in result.stdout
+    finally:
+        stack.psql("identity", "DELETE FROM widgets WHERE name = 'written during the drill'")
+    assert stack.psql("identity", count) == "10"
+    assert "identity_restore_drill" not in stack.databases()
+
+
+def test_real_drill_leaves_no_session_on_the_live_databases(stack):
+    result = stack.script(DRILL)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Its snapshot sessions are gone: nothing sits in a transaction.
+    idle = stack.psql(
+        "postgres",
+        "SELECT count(*) FROM pg_stat_activity "
+        "WHERE state LIKE 'idle in transaction%' AND pid <> pg_backend_pid()",
+    )
+    assert idle == "0"
+
+
 def test_real_drill_replaces_a_stale_scratch_database(stack):
     """One left by --keep must not be compared in place of this restore."""
     stack.psql("postgres", 'CREATE DATABASE "identity_restore_drill"')
@@ -826,6 +1364,41 @@ def test_real_drill_replaces_a_stale_scratch_database(stack):
     result = stack.script(DRILL, DATABASES="identity")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "identity_restore_drill" not in stack.databases()
+
+
+def test_real_restore_over_the_live_databases_happens_only_with_the_flag(
+    stack, tmp_path
+):
+    backups = tmp_path / "backups"
+    result = stack.script(BACKUP, BACKUP_DIR=str(backups), SKIP_REDIS="true")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Written after the backup: what a restore over the live database loses.
+    marker = "written after the backup"
+    stack.psql("identity", f"INSERT INTO widgets (name) VALUES ('{marker}')")
+    count = "SELECT count(*) FROM widgets"
+    assert stack.psql("identity", count) == "11"
+    try:
+        selection = ("--latest", "--databases", "identity")
+        refused = stack.script(RESTORE, *selection, BACKUP_DIR=str(backups))
+        assert refused.returncode == 2, refused.stdout + refused.stderr
+        assert "REFUSING to restore over the live databases" in refused.stderr
+        assert re.search(
+            r"^    identity +from identity_\d+_\d+\.sql\.gz$", refused.stderr, re.M
+        )
+        # The live database still holds the row.
+        assert stack.psql("identity", count) == "11"
+
+        restored = stack.script(
+            RESTORE, *selection, "--overwrite-live-databases", BACKUP_DIR=str(backups)
+        )
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        stack.no_secret_in(restored.stdout, restored.stderr)
+        # As it was when the backup was taken; the other databases untouched.
+        assert stack.psql("identity", count) == "10"
+        assert stack.psql("data", count) == "30"
+    finally:
+        stack.psql("identity", f"DELETE FROM widgets WHERE name = '{marker}'")
 
 
 def test_real_backup_of_a_missing_database_fails_and_keeps_nothing(stack, tmp_path):
@@ -859,13 +1432,22 @@ def test_real_redis_snapshot_can_be_restored(stack, tmp_path):
     stack.redis("DEL", "cspm:scan:1")
     stack.redis("SET", "written:after:backup", "yes")
 
-    refused = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+    refused = stack.script(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", BACKUP_DIR=str(backups)
+    )
     assert refused.returncode != 0
     assert "service is running" in refused.stderr
 
     stack.compose("stop", "wildbox-redis")
     try:
-        restored = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+        # Stopped is not yet a decision to replace its data (#723).
+        refused = stack.script(RESTORE_REDIS, "--latest", BACKUP_DIR=str(backups))
+        assert refused.returncode == 2
+        assert "REFUSING to replace the Redis data" in refused.stderr
+
+        restored = stack.script(
+            RESTORE_REDIS, "--latest", "--replace-redis-data", BACKUP_DIR=str(backups)
+        )
         assert restored.returncode == 0, restored.stdout + restored.stderr
         stack.no_secret_in(restored.stdout, restored.stderr)
     finally:

@@ -22,33 +22,43 @@
 # `make init-api-key-hash`). The digests stored so far were keyed by that
 # value, so they keep matching.
 #
-# POSTGRES_PASSWORD is the one secret that lives in two places: in the
-# running PostgreSQL server, and in .env, where every service's connection
-# string embeds it. Rotating it changes both or neither (#649): the script
-# needs the stack running, sets the new password in the server, rewrites
-# POSTGRES_PASSWORD and every connection string in .env that points at the
-# stack's postgres service, and checks that the server accepts the new
-# password. If a step fails it restores .env and the server's old password.
+# POSTGRES_PASSWORD and REDIS_PASSWORD are the two secrets that live in two
+# places: in a running server, and in .env, where the services' connection
+# strings embed them. Rotating one changes both places or neither (#649,
+# #723): the script needs the stack running, rewrites the variable and every
+# URL in .env that points at the stack's server, sets the new password in the
+# server, and asks the server over the network whether it accepts it. If a
+# step fails it restores .env and the server's old password.
+#
+# Redis differs from PostgreSQL in one way that decides what comes next: it
+# keeps no password of its own. It takes --requirepass from the command line
+# its container was created with, so the change made in the running server
+# lasts until that container restarts. The rotation therefore ends with
+# recreating the Redis container too, on its data volume, together with the
+# services that use it; the script prints that command.
 #
 # Usage:
 #   ./scripts/rotate_secrets.sh --list
 #   ./scripts/rotate_secrets.sh --secret GATEWAY_INTERNAL_SECRET
 #   ./scripts/rotate_secrets.sh --secret JWT_SECRET_KEY
 #   ./scripts/rotate_secrets.sh --secret POSTGRES_PASSWORD
+#   ./scripts/rotate_secrets.sh --secret REDIS_PASSWORD
 #   ./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET --init
 #
 # The compose checks use the files docker compose would use by default; set
 # COMPOSE_FILE to match how you start the stack, for example
 # COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml. ENV_FILE names the
-# env file (default .env); POSTGRES_SERVICE the compose service that runs
-# PostgreSQL (default postgres). No secret value is ever printed, and none is
-# passed in an argument list.
+# env file (default .env); POSTGRES_SERVICE and REDIS_SERVICE the compose
+# services that run PostgreSQL and Redis (default postgres and
+# wildbox-redis). No secret value is ever printed, and none is passed in an
+# argument list.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ENV_FILE="${ENV_FILE:-.env}"
 PG_SERVICE="${POSTGRES_SERVICE:-postgres}"
+REDIS_SERVICE="${REDIS_SERVICE:-wildbox-redis}"
 SECRET=""
 INIT=false
 LIST=false
@@ -59,7 +69,7 @@ while [ $# -gt 0 ]; do
     --secret=*) SECRET="${1#*=}"; shift ;;
     --init) INIT=true; shift ;;
     --list) LIST=true; shift ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,54p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -90,9 +100,10 @@ Rotatable secrets, what reads each one, and what rotating it costs:
   CSPM_CREDENTIAL_KEY      cspm and cspm-worker encrypt the cloud credentials
                            of pending scans with it. Scans in flight can no
                            longer be decrypted and must be submitted again.
-  REDIS_PASSWORD           Redis and every service that uses it are recreated
-                           together; the data survives. A Redis URL you
-                           override in .env is not rewritten.
+  REDIS_PASSWORD           Changed in the running Redis and in every Redis
+                           URL in .env, together. Needs the stack running.
+                           Redis and every service that uses it are then
+                           recreated together; the data survives.
   POSTGRES_PASSWORD        Changed in the running server and in every
                            connection string in .env, together. Needs the
                            stack running. Services keep their open
@@ -214,23 +225,50 @@ PY
   fi
 fi
 
-# --- PostgreSQL --------------------------------------------------------------
+# --- the two passwords that also live in a running server --------------------
 
-refuse_postgres_rotation() {
+# POSTGRES_PASSWORD and REDIS_PASSWORD go through one procedure: refuse
+# unless the server can be changed, rewrite .env, change the server, ask it
+# over the network, and put both back if a step fails. SERVER is empty for a
+# secret that lives in .env only.
+SERVER=""
+SERVER_SERVICE=""
+SERVICE_VARIABLE=""
+case "$SECRET" in
+  POSTGRES_PASSWORD)
+    SERVER=PostgreSQL; SERVER_SERVICE="$PG_SERVICE"; SERVICE_VARIABLE=POSTGRES_SERVICE ;;
+  REDIS_PASSWORD)
+    SERVER=Redis; SERVER_SERVICE="$REDIS_SERVICE"; SERVICE_VARIABLE=REDIS_SERVICE ;;
+esac
+
+refuse_rotation() {
   cat >&2 <<MSG
-REFUSING to rotate POSTGRES_PASSWORD: $1
+REFUSING to rotate $SECRET: $1
 
-The password lives in the running PostgreSQL server and in the connection
+The password lives in the running $SERVER server and in the connection
 strings in $ENV_FILE. Changing only one of them locks every service out at
-its next restart (#649), so this rotation changes both or neither, and it
-needs the '$PG_SERVICE' service running. Nothing was changed.
+its next restart (#649, #723), so this rotation changes both or neither, and
+it needs the '$SERVER_SERVICE' service running. Nothing was changed.
 
-Start the stack and run this again. Set COMPOSE_FILE (and
+Run this again with the stack running. Set COMPOSE_FILE (and
 COMPOSE_PROJECT_NAME, if you use one) the way you start the stack, and
-POSTGRES_SERVICE if PostgreSQL runs under another service name.
+$SERVICE_VARIABLE if $SERVER runs under another service name.
 MSG
   exit 1
 }
+
+# What both need before anything is touched: Docker, and the server's
+# container running in this Compose project.
+server_preflight() {
+  command -v docker >/dev/null 2>&1 \
+    || refuse_rotation "docker is not available."
+  local id
+  id=$(compose ps --status running -q "$SERVER_SERVICE" 2>/dev/null || true)
+  [ -n "$id" ] \
+    || refuse_rotation "the '$SERVER_SERVICE' service is not running in this Compose project."
+}
+
+# --- PostgreSQL --------------------------------------------------------------
 
 # SQL on stdin, run as the postgres container's own superuser over its local
 # socket. psql reads the statements from stdin, so they are in no argument
@@ -282,33 +320,162 @@ print(f"ALTER ROLE \"{role}\" PASSWORD {literal};")
 PG_ROLE=""
 OLD_VERIFIER=""
 postgres_preflight() {
-  command -v docker >/dev/null 2>&1 \
-    || refuse_postgres_rotation "docker is not available."
-  local id
-  id=$(compose ps --status running -q "$PG_SERVICE" 2>/dev/null || true)
-  [ -n "$id" ] \
-    || refuse_postgres_rotation "the '$PG_SERVICE' service is not running in this Compose project."
+  server_preflight
 
   PG_ROLE=$(sed -n 's/^POSTGRES_USER=//p' "$ENV_FILE" | tail -n 1)
   PG_ROLE="${PG_ROLE:-postgres}"
   [[ "$PG_ROLE" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] \
-    || refuse_postgres_rotation "POSTGRES_USER in $ENV_FILE is not a plain role name."
+    || refuse_rotation "POSTGRES_USER in $ENV_FILE is not a plain role name."
 
   # What the server holds now, to put back if a later step fails. It is a
   # verifier, not a password, and it stays in this variable.
   local current
   current=$(printf "SELECT 'role:' || coalesce(rolpassword, '') FROM pg_authid WHERE rolname = '%s';\n" "$PG_ROLE" \
     | pg_sql 2>/dev/null) \
-    || refuse_postgres_rotation "could not query PostgreSQL in the '$PG_SERVICE' container."
+    || refuse_rotation "could not query PostgreSQL in the '$PG_SERVICE' container."
   case "$current" in
     role:*) OLD_VERIFIER="${current#role:}" ;;
-    *) refuse_postgres_rotation "the role '$PG_ROLE' (POSTGRES_USER in $ENV_FILE) does not exist in the server." ;;
+    *) refuse_rotation "the role '$PG_ROLE' (POSTGRES_USER in $ENV_FILE) does not exist in the server." ;;
   esac
 }
 
-if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
-  postgres_preflight
-fi
+# --- Redis -------------------------------------------------------------------
+
+# The value Compose reads for the variable $1 from the env file: the last
+# assignment, without a trailing carriage return or surrounding quotes.
+env_value() {
+  local value
+  value=$(sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1)
+  value="${value%$'\r'}"
+  case "$value" in
+    \"*\") value="${value#\"}"; value="${value%\"}" ;;
+    \'*\') value="${value#\'}"; value="${value%\'}" ;;
+  esac
+  printf '%s' "$value"
+}
+
+# Exit 0 when the rendered configuration of the compose service $1 carries
+# the value in VALUE somewhere: for Redis, as the --requirepass argument of
+# its command. Read by python from the rendered config; nothing is printed.
+compose_service_holds() {
+  compose config --format json 2>/dev/null \
+    | SERVICE="$1" python3 -c '
+import json, os, sys
+
+def strings(node):
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for item in node.values():
+            yield from strings(item)
+    elif isinstance(node, list):
+        for item in node:
+            yield from strings(item)
+
+try:
+    service = json.load(sys.stdin)["services"][os.environ["SERVICE"]]
+except (ValueError, KeyError, TypeError):
+    sys.exit(1)
+value = os.environ["VALUE"]
+# Compose writes a literal dollar sign as two in its rendered output.
+needles = {value, value.replace("$", "$$")}
+sys.exit(0 if any(n in s for s in strings(service) for n in needles) else 1)
+'
+}
+
+# redis-cli inside the Redis container, connected over TCP to the
+# container's own network address, the way a service reaches it. The first
+# line of stdin is the password it authenticates with: it becomes
+# REDISCLI_AUTH inside the container, so it is in no argument list. The rest
+# of stdin is the commands, one per line. Replies and errors on stdout.
+redis_cli() {
+  # shellcheck disable=SC2016
+  compose exec -T "$REDIS_SERVICE" sh -c '
+    IFS= read -r REDISCLI_AUTH
+    export REDISCLI_AUTH
+    exec redis-cli -h "$(hostname -i | cut -d" " -f1)"
+  ' 2>&1
+}
+
+# What the server answers a client that presents the password $1:
+#   accepted  it authenticated the client and answered PING
+#   refused   it answered the AUTH with WRONGPASS
+#   unknown   anything else: it could not be asked
+# redis-cli exits 0 either way, so the answer is read, not the status.
+redis_password_state() {
+  local reply
+  reply=$(printf '%s\nPING\n' "$1" | redis_cli) || reply=""
+  reply="${reply//$'\r'/}"
+  case "$reply" in
+    PONG) echo accepted ;;
+    *WRONGPASS*) echo refused ;;
+    *) echo unknown ;;
+  esac
+}
+
+# "CONFIG SET requirepass <password>" on stdout, for the password in VALUE.
+# Every byte is written as \xHH inside double quotes, so no character of a
+# password can end the argument or the line. The command reaches redis-cli
+# on stdin, not in an argument list; the server keeps CONFIG out of MONITOR
+# and records the value as "(redacted)" in its slow log.
+requirepass_command() {
+  # shellcheck disable=SC2016
+  python3 -c '
+import os
+
+escaped = "".join("\\x%02x" % byte for byte in os.environ["VALUE"].encode())
+print("CONFIG SET requirepass \"" + escaped + "\"")
+'
+}
+
+# Set the server's password to $2, authenticating with $1. Exit 0 only when
+# Redis answers OK.
+redis_set_password() {
+  local reply
+  reply=$({ printf '%s\n' "$1"; VALUE="$2" requirepass_command; } | redis_cli) \
+    || return 1
+  [ "${reply//$'\r'/}" = "OK" ]
+}
+
+OLD_REDIS=""
+redis_preflight() {
+  server_preflight
+
+  OLD_REDIS=$(env_value REDIS_PASSWORD)
+  [ -n "$OLD_REDIS" ] \
+    || refuse_rotation "REDIS_PASSWORD is not set in $ENV_FILE, so there is no current password to authenticate with."
+
+  # Redis keeps no password of its own: it starts with the one on its
+  # command line. Unless Compose builds that command line from this env
+  # file, the rotated password would be gone at the next restart.
+  VALUE="$OLD_REDIS" compose_service_holds "$REDIS_SERVICE" \
+    || refuse_rotation "the compose configuration does not pass the REDIS_PASSWORD in $ENV_FILE to the '$REDIS_SERVICE' service, so recreating it would not give it the new password."
+
+  case "$(redis_password_state "$OLD_REDIS")" in
+    accepted) ;;
+    refused)
+      refuse_rotation "the running Redis refuses the REDIS_PASSWORD in $ENV_FILE: the two already disagree. Redis starts with the password on its command line, so recreate it from this file (docker compose up -d --no-deps $REDIS_SERVICE), check the services, and rotate then." ;;
+    *)
+      refuse_rotation "could not ask Redis in the '$REDIS_SERVICE' container whether it accepts the current password." ;;
+  esac
+
+  # The rotation ends with recreating the Redis container, and Redis holds
+  # the only copy of scan and run state, queues, revoked tokens and
+  # lockouts. They come back from the append-only file, so it has to be on
+  # and its last write must have succeeded.
+  local persistence
+  persistence=$(printf '%s\nINFO persistence\n' "$OLD_REDIS" | redis_cli) || persistence=""
+  persistence="${persistence//$'\r'/}"
+  if ! grep -qx 'aof_enabled:1' <<< "$persistence" \
+    || ! grep -qx 'aof_last_write_status:ok' <<< "$persistence"; then
+    refuse_rotation "Redis is not writing its append-only file (appendonly is off, or its last write failed). The rotation ends with recreating the Redis container, and without that file the state Redis holds would not come back."
+  fi
+}
+
+case "$SECRET" in
+  POSTGRES_PASSWORD) postgres_preflight ;;
+  REDIS_PASSWORD) redis_preflight ;;
+esac
 
 # --- new value ---------------------------------------------------------------
 
@@ -354,21 +521,36 @@ fi
 
 # --- write .env --------------------------------------------------------------
 
-# Replace NAME= in the env file, or append it. For POSTGRES_PASSWORD, also
-# replace the password component of every connection string that points at
-# the stack's PostgreSQL with the same user; nothing else in them changes.
-# Prints "updated NAME" / "skipped NAME: reason" lines, never a value. The
-# values travel in the environment, not in argv, where any local user could
-# read them with ps. The file is replaced in one step, with mode 600.
+# Replace NAME= in the env file, or append it. For POSTGRES_PASSWORD and
+# REDIS_PASSWORD, also replace the password component of every URL that
+# points at the stack's server with the user the password belongs to;
+# nothing else in them changes. Prints "updated NAME" / "skipped NAME:
+# reason" lines, never a value. The values travel in the environment, not in
+# argv, where any local user could read them with ps. The file is replaced
+# in one step, with mode 600.
 write_env() {
+  local hosts=""
+  case "$SECRET" in
+    POSTGRES_PASSWORD) hosts="$PG_SERVICE wildbox-postgres" ;;
+    REDIS_PASSWORD) hosts="$REDIS_SERVICE wildbox-redis" ;;
+  esac
   ENV_FILE="$ENV_FILE" NAME="$SECRET" VALUE="$NEW" PG_ROLE="$PG_ROLE" \
-    PG_HOSTS="$PG_SERVICE wildbox-postgres" python3 - <<'PY'
+    URL_HOSTS="$hosts" python3 - <<'PY'
 import os, re
 from urllib.parse import quote, unquote
 
 path, name, value = os.environ["ENV_FILE"], os.environ["NAME"], os.environ["VALUE"]
-role, hosts = os.environ["PG_ROLE"], os.environ["PG_HOSTS"].split()
-dsn = re.compile(r"^(postgres(?:ql)?(?:\+[a-z0-9]+)?://)([^/?#]*)@([^/?#@]*)(.*)$", re.I)
+hosts = os.environ["URL_HOSTS"].split()
+# The URLs that carry this password: their scheme, the users it belongs to,
+# and what to call the server. requirepass is the password of the Redis user
+# "default", which a URL names or leaves empty.
+if name == "POSTGRES_PASSWORD":
+    scheme, users, server = r"postgres(?:ql)?(?:\+[a-z0-9]+)?", {os.environ["PG_ROLE"]}, "PostgreSQL"
+elif name == "REDIS_PASSWORD":
+    scheme, users, server = r"rediss?", {"", "default"}, "Redis"
+else:
+    scheme, users, server = None, set(), ""
+url_re = scheme and re.compile(rf"^({scheme}://)(?:([^/?#]*)@)?([^/?#@]*)(.*)$", re.I)
 
 lines = open(path, encoding="utf-8").read().split("\n")
 out, seen = [], False
@@ -387,21 +569,28 @@ for line in lines:
         continue
     quote_char = raw[:1] if len(raw) >= 2 and raw[:1] in "\"'" and raw[-1:] == raw[:1] else ""
     body = raw[1:-1] if quote_char else raw
-    url = dsn.match(body) if name == "POSTGRES_PASSWORD" else None
-    if not url or ":" not in url.group(2):
+    url = url_re.match(body) if url_re else None
+    if not url:
         out.append(line)
         continue
-    scheme, userinfo, hostport, rest = url.groups()
-    user = userinfo.split(":", 1)[0]
+    prefix, userinfo, hostport, rest = url.groups()
     host = hostport.rsplit(":", 1)[0] if not hostport.startswith("[") else hostport
-    if host not in hosts:
-        print(f"skipped {key}: host '{host}' is not this stack's PostgreSQL service")
+    if userinfo is None or ":" not in userinfo:
+        # No password in it, so nothing to rotate. A Redis URL without one
+        # cannot log in to this stack's Redis at all, which is worth saying.
+        if name == "REDIS_PASSWORD" and host in hosts:
+            print(f"skipped {key}: it carries no password in the :password@ form")
         out.append(line)
-    elif unquote(user) != role:
+        continue
+    user = userinfo.split(":", 1)[0]
+    if host not in hosts:
+        print(f"skipped {key}: host '{host}' is not this stack's {server} service")
+        out.append(line)
+    elif unquote(user) not in users:
         print(f"skipped {key}: it connects as another user")
         out.append(line)
     else:
-        out.append(f"{key}={quote_char}{scheme}{user}:{quote(value, safe='')}@{hostport}{rest}{quote_char}")
+        out.append(f"{key}={quote_char}{prefix}{user}:{quote(value, safe='')}@{hostport}{rest}{quote_char}")
         print(f"updated {key}")
 if not seen:
     if out and out[-1] == "":
@@ -421,9 +610,27 @@ PY
 ENV_CHANGED=false
 SERVER_CHANGED=false
 
+# Put the server's previous password back. Exit 0 only when the server is
+# known to hold it again.
+restore_server_password() {
+  if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
+    OLD_VERIFIER="$OLD_VERIFIER" alter_role_sql "$PG_ROLE" old | pg_sql >/dev/null 2>&1 \
+      || return 1
+    echo "Restored the previous password of '$PG_ROLE' in the server." >&2
+    return 0
+  fi
+  # Redis holds the new password if the change took and the old one if it
+  # did not. Setting the old one back authenticates with the new one, so it
+  # can only succeed in the first case; what counts in both is that the
+  # server accepts the old password afterwards.
+  redis_set_password "$NEW" "$OLD_REDIS" >/dev/null 2>&1 || true
+  [ "$(redis_password_state "$OLD_REDIS")" = "accepted" ] || return 1
+  echo "The running Redis accepts the previous password." >&2
+}
+
 # Put .env and the server back the way they were, and say which of the two
-# could be confirmed. Called when a step of the PostgreSQL rotation fails.
-rollback_postgres() {
+# could be confirmed. Called when a step of a server rotation fails.
+rollback_rotation() {
   trap - INT TERM
   echo "" >&2
   echo "ROTATION FAILED: $1" >&2
@@ -433,16 +640,27 @@ rollback_postgres() {
     echo "Restored $ENV_FILE from $backup." >&2
   fi
   local server_ok=true
-  if [ "$SERVER_CHANGED" = true ]; then
-    if OLD_VERIFIER="$OLD_VERIFIER" alter_role_sql "$PG_ROLE" old | pg_sql >/dev/null 2>&1; then
-      echo "Restored the previous password of '$PG_ROLE' in the server." >&2
-    else
-      server_ok=false
-    fi
+  if [ "$SERVER_CHANGED" = true ] && ! restore_server_password; then
+    server_ok=false
   fi
   if [ "$server_ok" = true ]; then
     echo "$ENV_FILE and the server hold the old password again: nothing was rotated." >&2
     exit 1
+  fi
+  if [ "$SECRET" = "REDIS_PASSWORD" ]; then
+    cat >&2 <<MSG
+
+INCONSISTENT: $ENV_FILE holds the old password again, but Redis did not
+confirm that it accepts it, so the running server may hold either. Redis
+starts with the password on its command line, so recreate it from
+$ENV_FILE; its data is in the append-only file on its volume and comes
+back with it. Then check the services:
+
+    docker compose up -d --no-deps --force-recreate $REDIS_SERVICE
+
+The backup $backup holds the same old password.
+MSG
+    exit 3
   fi
   cat >&2 <<MSG
 
@@ -458,17 +676,26 @@ MSG
   exit 3
 }
 
-if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
-  trap 'rollback_postgres "interrupted."' INT TERM
+if [ -n "$SERVER" ]; then
+  trap 'rollback_rotation "interrupted."' INT TERM
   ENV_CHANGED=true
-  REPORT=$(write_env) || rollback_postgres "could not rewrite $ENV_FILE."
+  REPORT=$(write_env) || rollback_rotation "could not rewrite $ENV_FILE."
   # From here the server may hold the new password even if the command that
   # set it reports a failure, so every failure puts the old one back.
   SERVER_CHANGED=true
-  VALUE="$NEW" alter_role_sql "$PG_ROLE" new | pg_sql >/dev/null 2>&1 \
-    || rollback_postgres "PostgreSQL did not accept the password change."
-  printf '%s\n' "$NEW" | pg_accepts_password "$PG_ROLE" \
-    || rollback_postgres "the server does not accept the new password after the change."
+  if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
+    VALUE="$NEW" alter_role_sql "$PG_ROLE" new | pg_sql >/dev/null 2>&1 \
+      || rollback_rotation "PostgreSQL did not accept the password change."
+    printf '%s\n' "$NEW" | pg_accepts_password "$PG_ROLE" \
+      || rollback_rotation "the server does not accept the new password after the change."
+  else
+    redis_set_password "$OLD_REDIS" "$NEW" \
+      || rollback_rotation "Redis did not accept the password change."
+    [ "$(redis_password_state "$NEW")" = "accepted" ] \
+      || rollback_rotation "the server does not accept the new password after the change."
+    [ "$(redis_password_state "$OLD_REDIS")" = "refused" ] \
+      || rollback_rotation "the server does not refuse the old password after the change."
+  fi
   trap - INT TERM
 else
   REPORT=$(write_env)
@@ -487,12 +714,13 @@ fi
 # --- what to do next ---------------------------------------------------------
 
 # The services whose rendered compose configuration carries the new value:
-# exactly the containers that have to be recreated. Names only.
+# exactly the containers that have to be recreated. Names only, the service
+# named by FIRST in front and the one named by SKIP left out. Arguments go to
+# `docker compose` ahead of `config`.
 services_holding_new_value() {
   command -v docker >/dev/null 2>&1 || return 0
-  { compose --profile '*' config --format json 2>/dev/null \
-      || compose config --format json 2>/dev/null || true; } \
-    | VALUE="$NEW" SKIP="$1" python3 -c '
+  { compose "$@" config --format json 2>/dev/null || true; } \
+    | VALUE="$NEW" SKIP="${SKIP:-}" FIRST="${FIRST:-}" python3 -c '
 import json, os, sys
 from urllib.parse import quote
 try:
@@ -506,14 +734,37 @@ names = [
     if name != os.environ["SKIP"]
     and any(needle in json.dumps(service) for needle in needles)
 ]
+names.sort(key=lambda name: name != os.environ["FIRST"])
 print(" ".join(names))
 '
 }
 
+# SERVICES: what the stack runs as it is configured here, the list for the
+# command below. PROFILE_SERVICES: services that hold the value too but sit
+# behind a Compose profile that is not active here (backup, monitoring).
+# They are named apart, because `docker compose up` starts a profile's
+# service when it is named, whether the operator runs that profile or not.
+list_services() {
+  SERVICES=$(services_holding_new_value)
+  PROFILE_SERVICES=""
+  local name
+  for name in $(services_holding_new_value --profile '*'); do
+    case " $SERVICES " in
+      *" $name "*) ;;
+      *) PROFILE_SERVICES="${PROFILE_SERVICES:+$PROFILE_SERVICES }$name" ;;
+    esac
+  done
+}
+
 echo "Rotated $SECRET in $ENV_FILE"
-if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
-  echo "The role '$PG_ROLE' in the running server has the new password, and the"
-  echo "server accepted it."
+if [ -n "$SERVER" ]; then
+  if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
+    echo "The role '$PG_ROLE' in the running server has the new password, and the"
+    echo "server accepted it."
+  else
+    echo "The running Redis has the new password: asked over the network, it"
+    echo "accepted the new one and refused the old one."
+  fi
   echo ""
   echo "Changed in $ENV_FILE:"
   printf '%s\n' "$REPORT" | sed -n 's/^updated /    /p'
@@ -521,10 +772,14 @@ if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
     echo "NOT changed (update these by hand if they use this server and user):"
     printf '%s\n' "$REPORT" | sed -n 's/^skipped /    /p'
   fi
-  SERVICES=$(services_holding_new_value "$PG_SERVICE")
-else
-  SERVICES=$(services_holding_new_value "")
 fi
+case "$SECRET" in
+  # PostgreSQL keeps its password in its data directory: its container is
+  # not recreated. Redis is, and first: the others wait for it.
+  POSTGRES_PASSWORD) SKIP="$PG_SERVICE" list_services ;;
+  REDIS_PASSWORD) FIRST="$REDIS_SERVICE" list_services ;;
+  *) list_services ;;
+esac
 
 echo ""
 case "$SECRET" in
@@ -555,9 +810,14 @@ case "$SECRET" in
     echo "can no longer be decrypted and must be submitted again:"
     ;;
   REDIS_PASSWORD)
-    echo "NEXT: recreate Redis and every service that uses it, together. The"
-    echo "data survives. A Redis URL overridden in $ENV_FILE (variables like"
-    echo "IDENTITY_REDIS_URL) was not rewritten: edit it by hand first:"
+    echo "NEXT: recreate Redis and the services below, with one command, now."
+    echo "  - The Redis container was created with the OLD password on its"
+    echo "    command line, and the change above is in the running server"
+    echo "    only. If that container restarts before it is recreated, Redis"
+    echo "    comes back with the old password."
+    echo "  - The other services hold the old password in their environment."
+    echo "    They keep their open connections, and every new connection"
+    echo "    fails until they are recreated:"
     ;;
   NEXTAUTH_SECRET)
     echo "NEXT: nothing depends on it. The dashboard container receives the"
@@ -577,8 +837,24 @@ fi
 echo ""
 if [ "$SECRET" = "POSTGRES_PASSWORD" ]; then
   echo "The '$PG_SERVICE' container itself keeps running: PostgreSQL reads"
-  echo "POSTGRES_PASSWORD only when it creates an empty data directory. If you"
-  echo "run the backup profile, recreate that container too."
+  echo "POSTGRES_PASSWORD only when it creates an empty data directory."
+  echo ""
+fi
+if [ "$SECRET" = "REDIS_PASSWORD" ]; then
+  echo "Recreating Redis replaces its container and keeps its data volume."
+  echo "Redis writes the append-only file before it stops and reads it back"
+  echo "when it starts, so queues, scan and run state, revoked tokens and"
+  echo "lockouts are still there. Compose starts Redis before the services"
+  echo "that depend on it; they are without Redis for those seconds, and work"
+  echo "running in a worker is interrupted, as at any restart of that worker."
+  echo ""
+fi
+if [ -n "$PROFILE_SERVICES" ]; then
+  echo "Behind a Compose profile that is not active here, these hold it too."
+  echo "Recreate the ones you run, with their profile; naming one in the"
+  echo "command above would start it:"
+  echo ""
+  echo "    $PROFILE_SERVICES"
   echo ""
 fi
 echo "Use the compose files you start the stack with. Then verify:  make health"

@@ -51,6 +51,13 @@ class FakeRedis:
         self.store[key] = value
         self.ttl[key] = ttl
 
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        self.ttl[key] = ex
+        return True
+
     def incr(self, key):
         self.store[key] = int(self.store.get(key, 0)) + 1
 
@@ -181,6 +188,34 @@ def test_stats_reports_todays_counters_not_the_ones_never_reset(monkeypatch):
     assert body["completed_today"] == 2
     assert body["failed_today"] == 1
     assert body["total_analyses"] == 5000
+
+
+@pytest.mark.parametrize(
+    "key, configured",
+    [
+        ("a-model-key", True),
+        (None, False),
+        ("", False),
+        ("   ", False),
+        ("your_anthropic_api_key_here", False),
+    ],
+)
+def test_stats_says_whether_a_model_key_is_set(monkeypatch, key, configured):
+    """The dashboard reads it to say that an analysis cannot run (#727).
+    It is the worker's own test of the key, so the two cannot disagree."""
+    monkeypatch.setattr(main.settings, "anthropic_api_key", key)
+    monkeypatch.setenv("GATEWAY_INTERNAL_SECRET", SECRET)
+    monkeypatch.setattr(main, "redis_client", FakeRedis())
+    inspect = SimpleNamespace(active=lambda: {}, scheduled=lambda: {})
+    monkeypatch.setattr(main.celery_app.control, "inspect", lambda: inspect)
+
+    response = TestClient(main.app).get("/stats", headers=CALLER)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["model_configured"] is configured
+    assert main.model_configured() is configured
+    # The key itself is nowhere in the answer.
+    assert not key or key.strip() == "" or key not in response.text
 
 
 def test_the_api_deletes_the_old_counters_when_it_starts(monkeypatch):

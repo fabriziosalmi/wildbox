@@ -365,6 +365,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
+  client that was its only reader.** `WildboxAPIClient.health_check()`
+  had no caller, and no tool of the agent calls the responder. The
+  method and the setting are gone, with the lines in the service's own
+  `docker-compose.yml` and `.env.example`; the root `docker-compose.yml`
+  never set the variable. In the environment it is ignored. In a `.env`
+  file in the service's directory, which only a run outside the Compose
+  stack reads, it now stops the service at start, as every key the
+  settings do not know does: remove the line (#727).
 - **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
   answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
   with the `automations` profile started; from another machine, through
@@ -802,6 +811,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
   not a template, so the placeholder was never filled. The line is
   gone; the target is in the user turn, where it always was.
+- **An AI analysis killed at its time limit, or with its process, is
+  recorded and counted** (#727). At the hard time limit Celery kills the
+  process a task runs in, and a process can die under a task (out of
+  memory), so nothing in the task could record either: the task read
+  `failed` with `Analysis failed. Please retry or contact support.`, no
+  cause was recorded and `failed_today` did not count it. The worker's
+  main process now records both, on Celery's `task_failure` signal:
+  `The analysis did not finish within its time limit.` for the hard
+  limit, and a new reason, `The analysis was interrupted before it
+  finished. No verdict was produced.`, for a lost process. A failed task
+  nobody recorded is recorded by `GET /api/v1/agents/analyze/{task_id}`
+  from the exception Celery holds for it. The record is written once
+  (`SET NX`), and whoever writes it counts the task, so the task, the
+  worker and the API together count a failure once. A task still
+  `running` more than a minute past the hard limit has lost its whole
+  worker and reads `failed`, interrupted; it read `running` until it
+  expired. The soft limit, 30 seconds before `TASK_TIMEOUT`, stays the
+  task's chance to record its own timeout: reached while the report is
+  generated, it is no longer recorded as a report that could not be
+  generated, and the service refuses to start with a `TASK_TIMEOUT`
+  under 60 seconds, which left no time to run. A unit test starts a real
+  Celery worker and a Redis container and hits both limits.
+- **A canceled AI analysis reads `revoked`, and a task's times are its
+  own** (#727). `GET /api/v1/agents/analyze/{task_id}` answered
+  `pending` forever for a task canceled with `DELETE`, and `started_at`
+  and `completed_at` were the time of the request. `started_at` is now
+  when the worker started the task, and `completed_at` when Celery
+  recorded its end.
+- **The agents service's OpenAPI schema has its examples** (#727). The
+  four models declared them with `class Config: schema_extra`, the
+  pydantic v1 key, which pydantic v2 ignores: no example reached the
+  schema, and the analysis result was not in it at all, since the read
+  declared no response model. They are now `json_schema_extra` in
+  `model_config`, the read declares both of its answers, and a unit test
+  validates each example against its own model: the task example had an
+  ID the route refuses and tool names no tool has. The other v1 forms in
+  the service are gone too (`@validator`, `Field(env=...)` in the
+  settings, `.dict()`, `Path(regex=...)`); they worked, with deprecation
+  warnings, so nothing else changes for a client or an operator.
 
 ### Changed
 
@@ -930,6 +978,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever the secret. It now prints the services that receive the
   rotated secret, read from `docker compose config`, and the command
   that recreates only those (#649).
+- **Rotating `REDIS_PASSWORD` changes the running Redis and every Redis
+  URL in `.env`, or neither** (#723). `scripts/rotate_secrets.sh`
+  rewrote the `REDIS_PASSWORD=` line and nothing else: a Redis URL that
+  `.env` overrides (`IDENTITY_REDIS_URL`, `GUARDIAN_CELERY_BROKER_URL`
+  and the like) kept the old password, the running server was never told
+  the new one, and the script reported success with the stack stopped.
+  The rotation now follows the PostgreSQL one. It refuses unless
+  `wildbox-redis` is running, accepts the password in `.env`, receives it
+  from the compose configuration and is writing its append-only file. It
+  rewrites the variable and every `redis://` URL in `.env` that points
+  at the stack's Redis as the default user, and lists the ones it leaves
+  alone. It sets the password in the running server with
+  `CONFIG SET requirepass`, asks the server over TCP that the new one is
+  accepted and the old one refused, and restores `.env` and the server if
+  a step fails or the script is interrupted. Both passwords reach
+  `redis-cli` over standard input; Redis keeps `CONFIG` out of `MONITOR`
+  and redacts the value in its slow log.
+- **After a Redis rotation the Redis container is recreated too, and the
+  script says why** (#723). Redis keeps no password of its own: it
+  starts with `--requirepass` from the command line its container was
+  created with, so the change in the running server lasts until that
+  container restarts, and a restart before the recreation brings the old
+  password back. The command the script prints names `wildbox-redis`
+  first and then the services that hold the password. Recreating Redis
+  keeps its data volume, and the append-only file brings back queues,
+  scan and run state, revoked tokens and lockouts.
+- **The rotation script no longer names a profile's service in the
+  command it prints** (#723). For `POSTGRES_PASSWORD` and
+  `REDIS_PASSWORD` the command included `backup`, and
+  `docker compose up` starts a profile's service when it is named, so
+  following the script started a backup container on a stack that never
+  enabled the profile. Services behind a profile that is not active are
+  now listed separately.
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
@@ -955,6 +1036,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **The restore drill compares the restore with one snapshot of the
+  source** (#723). It counted the live tables before and after the backup
+  and accepted any restored count in between, to tolerate writes during
+  the drill. That was wrong in both directions: a table that grew and
+  shrank while the drill ran failed it (`restored 15 rows, source had 10
+  before and 10 after the backup`), and a restore that lost a row of a
+  table that grew passed it. For each database the drill now opens one
+  read-only `REPEATABLE READ` transaction, exports its snapshot, counts
+  every table inside it, and has the backup dumped from that snapshot;
+  the restored counts must be equal to the row. It fails if a snapshot
+  cannot be opened or is gone before the dump. `backup_postgres.sh` takes
+  `--snapshot DATABASE=ID` for this.
+- **A restore over live data needs an explicit flag** (#723).
+  `scripts/restore_postgres.sh` without `--into-suffix` restored over the
+  live databases with no confirmation: the destructive form was the
+  default, one forgotten option away from the harmless one. It now
+  refuses, with exit status 2 and nothing changed, unless
+  `--overwrite-live-databases` is given, and the refusal names each
+  database and the archive it would have been restored from.
+  `--into-suffix` and `--dry-run` need no flag. `scripts/restore_redis.sh`
+  replaced the Redis data volume whenever Redis was stopped; it now needs
+  `--replace-redis-data` and otherwise names the volume and the snapshot.
+  Neither script prompts, so both still run unattended.
+- **`restore_postgres.sh` finds every archive before it restores a
+  database** (#723). With one archive missing it restored the databases
+  before it in the list and then failed. A missing archive now stops the
+  run with nothing restored.
 - **guardian sends e-mail by SMTP or not at all, and checks its mail
   settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
   Without `EMAIL_HOST` there is no mail server and every notification is
@@ -975,6 +1083,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The dashboard has an AI analysis page** (#727). `/ai-analysis`, in
+  the sidebar, submits an indicator to the agents service and follows
+  the task: queued, running with the worker's progress, failed with the
+  service's reason and no report, canceled, or completed with the
+  verdict, the confidence, the evidence, the recommended actions and
+  the full report. The dashboard had a client for the agents service
+  that no page used. The service lists no tasks and keeps each for a
+  limited time, so the page shows the tasks submitted from this
+  browser by the signed-in account, kept in the browser under the
+  account's own key, and says when one has expired. `GET
+  /api/v1/agents/stats` gains `model_configured`, and the page says
+  before a submission that an analysis cannot run when no model API key
+  is set. The route is behind the sign-in guard, which listed a path,
+  `/ai-analyst`, that no page had.
 - **`scripts/restore_redis.sh` restores the Redis snapshot a backup
   takes.** Redis runs with the append-only file enabled and then ignores
   `dump.rdb` at start, so copying the snapshot into the data volume gave
@@ -1055,6 +1177,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **No script test can be skipped in CI** (#723). The backup, restore
+  and rotation tests start a throwaway PostgreSQL or Redis and skip
+  where Docker is missing. The step that runs `tests/scripts` already
+  set `WILDBOX_REQUIRE_DOCKER_TESTS=1`, and both test files failed
+  instead of skipping when Docker was missing, each with its own copy
+  of the check. Nothing kept it that way: a test with a skip of its
+  own, or a step that lost the variable, would have left those scripts
+  untested behind a green job. With the variable set,
+  `tests/scripts/conftest.py` now fails every test of the directory
+  that would be skipped, whatever skipped it, the Docker check is one
+  fixture, and a test fails when a workflow runs `tests/scripts`
+  without the variable.
 - **An image whose environment does not satisfy the shared package does
   not build, and Dependency Integrity says so first** (#722). The
   offline install of the shared package with extras and the `pip check`

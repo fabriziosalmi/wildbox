@@ -9,6 +9,7 @@ import {
   Shield,
   Wrench,
   Bug,
+  Bot,
   Zap,
   Settings,
   Menu,
@@ -54,6 +55,12 @@ const baseNavigation: NavigationItem[] = [
     href: '/toolbox',
     icon: Wrench,
     description: 'Security tools execution',
+  },
+  {
+    name: 'AI Analysis',
+    href: '/ai-analysis',
+    icon: Bot,
+    description: 'Indicator investigations',
   },
   // REMOVED FOR v1.0 - Cloud Security (CSPM) - Roadmap Future
   // {

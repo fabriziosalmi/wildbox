@@ -10,7 +10,7 @@ const protectedRoutes = [
   '/endpoints',
   '/vulnerabilities',
   '/response',
-  '/ai-analyst',
+  '/ai-analysis',
   '/settings',
   '/api-docs',
   // Where an account with an initial password is sent first (#573).
@@ -47,7 +47,7 @@ export const config = {
     '/endpoints/:path*',
     '/vulnerabilities/:path*',
     '/response/:path*',
-    '/ai-analyst/:path*',
+    '/ai-analysis/:path*',
     '/settings/:path*',
     '/api-docs/:path*',
     '/admin/:path*',
