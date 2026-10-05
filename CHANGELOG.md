@@ -511,6 +511,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   runs), the model unreachable or refusing, a timeout, a report that
   could not be generated, or an internal error. Only the model's
   structured report produces a verdict, a confidence or evidence.
+- **The AI analysis's system prompt no longer sends the model the
+  literal text `{input}` as its target** (#718). The prompt ended with
+  `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
+  not a template, so the placeholder was never filled. The line is
+  gone; the target is in the user turn, where it always was.
 
 ### Added
 

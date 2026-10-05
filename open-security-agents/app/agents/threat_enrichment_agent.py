@@ -171,9 +171,13 @@ __TEAM_DATA_RULE__- Look for patterns and correlations in the data
 
 Your final assessment should be one of: Malicious, Suspicious, Benign, or Informational.
 
-CURRENT INVESTIGATION TARGET: {input}
-
 Begin your investigation by thinking through your approach, then systematically use the available tools."""
+        # The target is in the human turn, below, and only there. This
+        # prompt used to end with "CURRENT INVESTIGATION TARGET: {input}",
+        # but it is passed as a SystemMessage, which is not a template: the
+        # model was sent the literal text "{input}" as its target in every
+        # analysis (#718). Text a user submits does not belong in the system
+        # prompt in any case.
         system_prompt = system_prompt.replace("__GUIDELINES__", self._guidelines())
         system_prompt = system_prompt.replace("__TEAM_DATA_RULE__", self._team_data_rule())
 
