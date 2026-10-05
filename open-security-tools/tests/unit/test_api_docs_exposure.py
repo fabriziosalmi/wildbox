@@ -52,8 +52,15 @@ print({MARKER!r} + json.dumps(statuses))
 
 
 def statuses(environment, **overrides):
-    """The status of each documentation path under ENVIRONMENT=environment."""
-    env = {**os.environ, **SETTINGS, "ENVIRONMENT": environment, **overrides}
+    """The status of each documentation path under ENVIRONMENT=environment.
+
+    ``None`` starts the service without the variable.
+    """
+    env = {**os.environ, **SETTINGS, **overrides}
+    # None: the variable is absent, as in a bare `docker run`.
+    env.pop("ENVIRONMENT", None)
+    if environment is not None:
+        env["ENVIRONMENT"] = environment
     result = subprocess.run(
         [sys.executable, "-c", PROBE, APP, DOCS, REDOC, SCHEMA],
         cwd=SERVICE_ROOT,
@@ -80,3 +87,28 @@ def statuses(environment, **overrides):
 )
 def test_schema_is_served_in_development_only_and_docs_never(environment, expected):
     assert statuses(environment) == expected
+
+
+def test_an_environment_that_is_not_declared_is_not_development():
+    # A service started without ENVIRONMENT (a bare `docker run`) took the
+    # missing value for "development" and published its schema (#722).
+    assert statuses(None) == OUTSIDE_DEVELOPMENT
+
+
+@pytest.mark.parametrize("environment", ["", "  ", "prod", "dev"])
+def test_an_environment_that_is_set_must_be_a_known_name(environment):
+    # tools is the one service that names its environments: a value that is
+    # set and is not development, staging or production stops it at start-up,
+    # the empty string Compose renders for an undefined variable included.
+    # Declaring nothing must not have become a way around that.
+    env = {**os.environ, **SETTINGS, "ENVIRONMENT": environment}
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.main"],
+        cwd=SERVICE_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert result.returncode != 0
+    assert "environment must be one of" in result.stderr

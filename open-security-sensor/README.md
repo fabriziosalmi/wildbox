@@ -205,7 +205,10 @@ These override the configuration file (`sensor/core/config.py`):
 | `SENSOR_PERFORMANCE_MAX_CPU` | `performance.max_cpu_percent` |
 | `SENSOR_API_KEY` | `network.api_key` |
 
-`ENVIRONMENT=production` disables the HTML route list served at `/` and `/docs`.
+The HTML route list at `/` and `/docs` is served only when
+`ENVIRONMENT=development`. `docker-compose.yml` and `docker-compose.scale.yml`
+in this directory set no `ENVIRONMENT`, so the two paths answer 404 there;
+`docker-compose.dev.yml` sets `development`.
 
 No environment variable sets `collection.log_forwarding` or `log_sources`:
 what the sensor reads from the host is the configuration file's to say.

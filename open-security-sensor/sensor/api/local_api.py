@@ -127,8 +127,13 @@ class LocalAPI:
         # Control endpoints
         self.app.router.add_post('/api/v1/test-connection', self._require_auth(self._test_connection_handler))
         
-        # Static documentation (only in development)
-        if os.getenv("ENVIRONMENT", "development") != "production":
+        # Static documentation, in development only. The rule is the one of
+        # the platform's services (open-security-shared/api_docs.py): the
+        # environment must say "development". It used to be "anything but
+        # production", a missing ENVIRONMENT included, and the sensor's
+        # Compose files set none, so the route map of the local API was
+        # served without authentication wherever the sensor ran (#722).
+        if os.getenv("ENVIRONMENT", "").strip().lower() == "development":
             self.app.router.add_get('/', self._api_docs_handler)
             self.app.router.add_get('/docs', self._api_docs_handler)
     
