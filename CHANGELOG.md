@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+
+- **tools: `GET /api/system/metrics`, which answered 500 to every
+  request.** It imported a name that `app/middleware.py` never defined.
+  The service's metrics endpoint is the Prometheus one, `GET /metrics`,
+  which `monitoring/prometheus.yml` scrapes; it is now registered by the
+  shared package, as in the other services (#646).
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

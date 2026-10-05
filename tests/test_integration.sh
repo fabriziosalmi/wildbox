@@ -80,8 +80,8 @@ test_api_json "$API_BASE/api/system/health-aggregate" "System Health Aggregation
 # Test new threat intel dashboard endpoint
 test_api_json "$DATA_BASE/api/v1/dashboard/threat-intel" "Threat Intel Dashboard Metrics" "active_feeds"
 
-# Test existing system metrics
-test_api_json "$API_BASE/api/system/metrics" "System Metrics" "uptime"
+# Test the Prometheus endpoint of the tools service
+test_endpoint "$API_BASE/metrics" "Tools Prometheus Metrics"
 
 # Test existing data stats
 test_api_json "$DATA_BASE/api/v1/stats" "Data Statistics" "total_indicators"
@@ -92,7 +92,7 @@ echo "-------------------------------------------"
 
 # Test preflight OPTIONS request
 echo -n "Testing CORS preflight (OPTIONS)... "
-cors_response=$(curl -s -X OPTIONS -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: GET" -w "%{http_code}" -o /dev/null "$API_BASE/api/system/metrics" --max-time 10)
+cors_response=$(curl -s -X OPTIONS -H "Origin: http://localhost:3000" -H "Access-Control-Request-Method: GET" -w "%{http_code}" -o /dev/null "$API_BASE/api/tools" --max-time 10)
 
 if [ "$cors_response" -eq 204 ] || [ "$cors_response" -eq 200 ]; then
     echo -e "${GREEN}✅ PASS${NC} (HTTP $cors_response)"
@@ -147,7 +147,7 @@ echo -e "${YELLOW}# Test Threat Intel Metrics:${NC}"
 echo "curl -s '$DATA_BASE/api/v1/dashboard/threat-intel' | jq"
 echo ""
 echo -e "${YELLOW}# Test CORS with browser dev tools:${NC}"
-echo "fetch('$API_BASE/api/system/metrics')"
+echo "fetch('$API_BASE/health')"
 echo "  .then(r => r.json())"
 echo "  .then(console.log)"
 echo ""

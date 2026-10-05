@@ -19,7 +19,7 @@ from app.config import settings
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, CacheControlMiddleware
 from open_security_shared.errors import install_error_handlers
-from open_security_shared.observability import install_observability, metrics_response
+from open_security_shared.observability import install_observability
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
 from app.api.async_router import router as async_router
 from app.execution_manager import execution_manager
@@ -133,9 +133,11 @@ def create_app() -> FastAPI:
     # local app.exceptions module now delegates to it.
     install_error_handlers(app)
 
-    # Correlation id (X-Request-ID, propagated from the gateway) + Prometheus
-    # metrics at /metrics in exposition format.
-    install_observability(app, service_name="tools", service_version="0.1.6", metrics_path=None)
+    # Correlation id (X-Request-ID, propagated from the gateway) and the
+    # Prometheus endpoint: GET /metrics, registered by the shared package as
+    # in every other service and scraped by monitoring/prometheus.yml. It is
+    # the service's only metrics endpoint (#646).
+    install_observability(app, service_name="tools", service_version="0.1.6")
     
     # Discover and register tools
     discovered_tools = discover_tools()
@@ -186,18 +188,6 @@ def create_app() -> FastAPI:
                 "error": "An internal error occurred"
             }
     
-    # Metrics endpoint for observability
-    @app.get("/metrics", include_in_schema=False)
-    async def prometheus_metrics():
-        """
-        Prometheus exposition format.
-
-        This endpoint used to return hand-built JSON that no scraper could parse
-        (WILDBO-OBS-03). The JSON view an operator or the dashboard may still
-        want is unchanged and lives at /api/system/metrics.
-        """
-        return metrics_response()
-
     @app.get("/api/system/operational-metrics", tags=["System"])
     async def get_metrics():
         """
@@ -278,33 +268,6 @@ def create_app() -> FastAPI:
             }
         }
     
-    @app.get("/api/system/metrics", tags=["System"])
-    async def system_metrics():
-        """Get system performance metrics."""
-        from app.middleware import metrics_middleware
-        
-        base_metrics = {
-            "uptime": time.time() - startup_time,
-            "tools": {
-                "total": len(discovered_tools),
-                "statistics": {}
-            },
-            "execution": {
-                "active": len(execution_manager.get_active_executions()),
-                "total_completed": len(execution_manager.get_execution_history())
-            }
-        }
-        
-        # Add tool-specific statistics
-        for tool_name in discovered_tools.keys():
-            base_metrics["tools"]["statistics"][tool_name] = execution_manager.get_tool_statistics(tool_name)
-        
-        # Add HTTP metrics if available
-        if metrics_middleware:
-            base_metrics["http"] = metrics_middleware.get_metrics()
-        
-        return base_metrics
-
     # Store startup time for uptime calculation
     global startup_time
     startup_time = time.time()

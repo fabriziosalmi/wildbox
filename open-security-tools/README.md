@@ -147,7 +147,6 @@ stack, from the host on `127.0.0.1:8000`:
 | `/api`                              | Service name and the list of loaded tools               |
 | `/api/system/info`                  | Environment, tool list, execution and rate-limit settings |
 | `/api/system/operational-metrics`   | Execution counters as JSON                              |
-| `/api/system/metrics`               | Currently answers `500` (imports a name `app.middleware` lacks) |
 | `/api/system/health-aggregate`      | Calls `/health` on the other Wildbox services           |
 
 ```bash

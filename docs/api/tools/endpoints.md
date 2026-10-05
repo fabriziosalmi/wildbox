@@ -493,15 +493,16 @@ gateway, not on this service.
 
 | Path | Content |
 | --- | --- |
-| `/metrics` | Prometheus exposition format |
+| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and tool executions by outcome (`wildbox_tool_executions_total`). `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | The service's OpenAPI document |
 | `/api` | Service name, version and tool names |
 | `/api/system/info` | Tool count and names, concurrency and timeout settings |
 | `/api/system/operational-metrics` | Execution counters as JSON |
 | `/api/system/health-aggregate` | Calls `/health` on the other services and summarizes the answers |
-| `/api/system/metrics` | Answers 500 on main: it imports a `metrics_middleware` that `app/middleware.py` does not define |
 
-None of them is part of the public API.
+None of them is part of the public API. `/metrics` is the service's only
+metrics endpoint: `/api/system/metrics`, a JSON route that answered 500 to
+every request, was removed.
 
 ## Rate Limits
 
