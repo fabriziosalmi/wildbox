@@ -213,12 +213,14 @@ curl --cacert "$CA" -X POST https://<host>/api/v1/agents/analyze \
   "completed_at": null,
   "progress": null,
   "error": null,
-  "result_url": "/v1/analyze/550e8400-e29b-41d4-a716-446655440000"
+  "result_url": "/api/v1/agents/analyze/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 
-`result_url` is the service-side path. Through the gateway, read the result at
-`/api/v1/agents/analyze/{task_id}`.
+`result_url` is where to read the task: its path on the gateway, without scheme
+or host, to resolve against the address you called (`https://<host>` +
+`result_url`). It is always `/api/v1/agents/analyze/{task_id}`; no request
+header changes it.
 
 ---
 
@@ -250,7 +252,7 @@ curl --cacert "$CA" https://<host>/api/v1/agents/analyze/550e8400-e29b-41d4-a716
   "completed_at": null,
   "progress": "Running AI analysis...",
   "error": null,
-  "result_url": "/v1/analyze/550e8400-e29b-41d4-a716-446655440000"
+  "result_url": "/api/v1/agents/analyze/550e8400-e29b-41d4-a716-446655440000"
 }
 ```
 

@@ -49,6 +49,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Where a client reads a task back: the gateway path, the only one a client
+# can reach. The service accepts gateway-authenticated requests only, and the
+# gateway publishes /v1/<x> as /api/v1/agents/<x>
+# (open-security-gateway/nginx/conf.d/wildbox_gateway.conf). It was the
+# service's own /v1/analyze/{id}, which on the gateway is not the task
+# (#716).
+#
+# A constant, as the tools service's TASK_STATUS_PATH and the responder's
+# RUN_STATUS_PATH are, and a path without scheme or host: nothing in it
+# comes from the request, so no Host or X-Forwarded-* header a client sends
+# can change where it points, and a client resolves it against the address
+# it called. tests/unit/test_result_url.py keeps it equal to the gateway's
+# route.
+RESULT_PATH = "/api/v1/agents/analyze/{task_id}"
+
+
 # Global state
 app_start_time = datetime.now(timezone.utc)
 redis_client = None
@@ -415,7 +431,7 @@ async def analyze_ioc(
             task_id=task_id,
             status=TaskStatus.PENDING,
             created_at=datetime.now(timezone.utc),
-            result_url=f"/v1/analyze/{task_id}"
+            result_url=RESULT_PATH.format(task_id=task_id)
         )
         
     except (KombuOperationalError, RedisError, ConnectionError, TimeoutError) as e:
@@ -540,7 +556,7 @@ async def get_analysis_result(
             completed_at=datetime.now(timezone.utc) if status_value in [TaskStatus.COMPLETED, TaskStatus.FAILED] else None,
             progress=celery_task.info.get("progress") if isinstance(celery_task.info, dict) else None,
             error=error_message,
-            result_url=f"/v1/analyze/{task_id}"
+            result_url=RESULT_PATH.format(task_id=task_id)
         )
         
     except HTTPException:

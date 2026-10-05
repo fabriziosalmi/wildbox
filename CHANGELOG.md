@@ -487,6 +487,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **The agents service's `result_url` is a path a client can follow**
+  (#716). `POST /api/v1/agents/analyze` and the task read answered
+  `"result_url": "/v1/analyze/{task_id}"`, the service's own path, which
+  on the gateway is not the task; the responder passed it on to whoever
+  ran `all_star_e2e`. It is now the task's path on the gateway,
+  `/api/v1/agents/analyze/{task_id}`: a constant without scheme or host,
+  like the tools service's and the responder's `status_url`, so no
+  request header can change it. A unit test follows it through the
+  rewrite in the gateway's configuration to the task.
 
 ### Added
 

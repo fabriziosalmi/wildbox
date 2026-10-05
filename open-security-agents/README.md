@@ -95,7 +95,7 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
   "task_id": "0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6",
   "status": "pending",
   "created_at": "2026-10-03T10:00:00Z",
-  "result_url": "/v1/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
+  "result_url": "/api/v1/agents/analyze/0d1e2f3a-4b5c-4d6e-8f70-8192a3b4c5d6"
 }
 ```
 
