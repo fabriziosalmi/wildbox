@@ -34,10 +34,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip \
-    # --require-hashes: refuse an artefact whose hash does not match the lockfile
-    # (WILDBO-DEP-04).
-    && pip install --no-cache-dir --require-hashes --prefix=/install -r requirements.txt
+# --require-hashes: refuse an artefact whose hash does not match the lockfile
+# (WILDBO-DEP-04).
+# pip is the one in the digest-pinned base image (24.0): no `--upgrade pip`,
+# which installed whatever PyPI served that day, unhashed, and then ran it
+# (#657). --no-build-isolation: a source distribution in the lockfile is built
+# with the base image's setuptools instead of one downloaded for the build,
+# so nothing is fetched that the lockfile does not name with a hash.
+RUN pip install --no-cache-dir --require-hashes --no-build-isolation --prefix=/install -r requirements.txt
 
 # Runtime stage: minimal image without build tools
 # Base image pinned by digest: a floating tag is republished upstream, so the
@@ -62,9 +66,13 @@ COPY --from=builder /install /usr/local
 
 # Install the shared package, provided via the `shared` additional build
 # context (see docker-compose.yml / CI). --no-deps: its deps already come from
-# this service's requirements.txt.
+# this service's requirements.txt. --no-index --no-build-isolation: build it
+# with the setuptools already in the image (the digest-pinned base image's,
+# or the one a lockfile pins by hash). Without them pip made an isolated
+# build environment and downloaded the latest setuptools from PyPI, unhashed,
+# at every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-deps /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 
 # Copy project
 COPY . .

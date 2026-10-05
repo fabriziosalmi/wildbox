@@ -1,10 +1,13 @@
 # Development Dockerfile with hot reload support
+# Python 3.11 and the same digest as Dockerfile: this image was still 3.12,
+# while requirements.txt is compiled for 3.11 and the production image and CI
+# run 3.11 (WILDBO-BLD-04).
 # Base image pinned by digest: a floating tag is republished upstream, so the
 # same commit built a month apart produced a different interpreter patch level,
 # a different OpenSSL and a different set of OS CVEs, with nothing recording
 # which one shipped (WILDBO-BLD-01). Dependabot's docker ecosystem proposes
 # digest bumps as reviewable PRs.
-FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
+FROM python:3.11-slim@sha256:9534e5a8e315485d4061ed659af0fd78a284c015f9b73661b41d6bab25604534
 # Set working directory
 WORKDIR /app
 
@@ -23,13 +26,30 @@ RUN apt-get update && apt-get install -y \
     vim \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies, as Dockerfile does.
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# --require-hashes: refuse to install an artefact whose hash does not match the
+# lockfile (WILDBO-DEP-04). It was implied here by the hashes in the lockfile;
+# now it is stated, so a lockfile without hashes fails instead of installing.
+# pip is the one in the digest-pinned base image (24.0): no `--upgrade pip`,
+# which installed whatever PyPI served that day, unhashed, and then ran it
+# (#657). --no-build-isolation: a source distribution in the lockfile is built
+# with the base image's setuptools instead of one downloaded for the build,
+# so nothing is fetched that the lockfile does not name with a hash.
+RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
 
-# Install development dependencies
-RUN pip install --no-cache-dir watchdog
+# No separate reloader package: `uvicorn --reload` watches files with
+# watchfiles, which uvicorn[standard] pins in the lockfile. The unpinned
+# `pip install watchdog` that stood here installed a package nothing imports.
+
+# Install the shared package, provided via the `shared` additional build
+# context (see docker-compose.dev.yml). app/main.py imports it; without it the
+# container exited at start with ModuleNotFoundError. --no-deps: its deps
+# already come from this service's requirements.txt. --no-index
+# --no-build-isolation: build it with the setuptools already in the image
+# instead of one downloaded from PyPI, unhashed, at every build (#657).
+COPY --from=shared . /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 
 # Create app directory
 RUN mkdir -p /app/logs
