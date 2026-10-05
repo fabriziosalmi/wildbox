@@ -521,6 +521,18 @@ def test_the_limit_is_a_slash_22():
     assert ipaddress.ip_network("8.8.8.0/22").num_addresses == MAX_TARGET_ADDRESSES
 
 
+def test_the_limit_covers_what_network_scanner_sweeps():
+    # The comment on MAX_TARGET_ADDRESSES promises that no range a tool would
+    # scan is lost to the policy, and used to give network_scanner's limit as
+    # 1000 hosts. It is 1024, the same /22 (#646).
+    from app.tools.network_scanner import main as network_scanner
+    from app.tools.network_scanner import secure_scan
+
+    assert network_scanner.MAX_HOSTS == 1024
+    assert network_scanner.MAX_HOSTS <= MAX_TARGET_ADDRESSES
+    assert secure_scan.MAX_HOSTS_TO_SCAN <= MAX_TARGET_ADDRESSES
+
+
 @pytest.mark.parametrize(
     "value", ["example.com", "10.0.0.0/33", "10.0.0.0/24 ", "1.2.3"]
 )
