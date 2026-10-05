@@ -37,6 +37,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway's check stands alone for reading tools and tasks and for the
   agents, responder and CSPM services.
 
+- **A service started without `ENVIRONMENT` no longer takes itself for
+  a development one** (#722). identity, tools, data, responder, agents
+  and cspm read a missing `ENVIRONMENT` as `development`, so a bare
+  `docker run` of an image, or any deployment that left the variable
+  out, served `/openapi.json`, `/docs` and `/redoc`: the route map of
+  the service, admin and internal routes included. The default is now
+  empty, which is neither `development` nor `production`; the three
+  paths answer 404 unless `ENVIRONMENT` says `development`. tools still
+  refuses to start on a value that is set and is not `development`,
+  `staging` or `production`. The sensor's local API served its HTML
+  route list at `/` and `/docs`, without authentication, unless
+  `ENVIRONMENT` was `production`, and its Compose files set none; it now
+  follows the same rule. The root Compose file passes
+  `ENVIRONMENT=${ENVIRONMENT:-development}` and is unchanged, as are the
+  start-up checks that apply to `production` only. The development
+  Compose files of tools and the sensor now set
+  `ENVIRONMENT=development` themselves.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as

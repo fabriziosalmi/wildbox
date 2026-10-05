@@ -16,6 +16,12 @@ The test is for `development`, not against `production`: an environment the
 rule does not know is closed, not open.
 
     app = FastAPI(title=..., **api_docs_urls(settings.environment))
+
+The value a service passes must be the one it was given. Every service used
+to default a missing `ENVIRONMENT` to `development` before it got here, so
+one started without the variable, a bare `docker run` for instance, published
+its schema (#722). An environment that is not declared reaches this rule as
+an empty string or None, and both are closed.
 """
 
 from typing import Dict, Optional

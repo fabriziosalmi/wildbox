@@ -131,8 +131,10 @@ async def lifespan(app: FastAPI):
 # /docs, /redoc and /openapi.json are served in development only, by the rule
 # every service shares. They used to be turned off for the exact value
 # "production", so any other environment, "staging" included, published the
-# schema (#679).
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+# schema (#679). A missing ENVIRONMENT was read as "development", so a
+# service started without the variable published it too (#722): an
+# environment that is not declared is not development.
+ENVIRONMENT = os.getenv("ENVIRONMENT", "")
 
 # One version, in one place. The FastAPI constructor said 0.1.6 while the root
 # endpoint reported 1.0.0, so the two things a caller can ask disagreed

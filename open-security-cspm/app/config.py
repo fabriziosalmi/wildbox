@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     # App configuration
     app_name: str = "Open Security CSPM"
     app_version: str = "0.1.6"
-    environment: str = Field(default="development", env="ENVIRONMENT")
+    # Empty when ENVIRONMENT is not declared: the API schema and documentation
+    # pages are for "development" only, and the default used to be that
+    # value, so a service started without the variable published them (#722).
+    environment: str = Field(default="", env="ENVIRONMENT")
     debug: bool = Field(default=False, env="DEBUG")
     
     # Server configuration

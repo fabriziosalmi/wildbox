@@ -351,7 +351,7 @@ Settings are read from the environment (`app/config.py`); the root
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed origins, as a JSON list |
 | `DEBUG` | `false` | Auto-reload and a single worker when the module is run directly (`python -m app.main`) |
 | `LOG_LEVEL` | `INFO` | Log level |
-| `ENVIRONMENT` | `development` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development` |
+| `ENVIRONMENT` | none | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development`; unset or empty is not |
 
 The `docker-compose.yml` in this directory is for standalone development.
 It does not set `GATEWAY_INTERNAL_SECRET` or `CSPM_CREDENTIAL_KEY`, so use

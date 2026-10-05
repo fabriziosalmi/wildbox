@@ -10,8 +10,12 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Environment detection
-ENV = os.getenv("ENVIRONMENT", "development")
+# Environment detection. Empty when ENVIRONMENT is not declared, which is
+# neither "development" (API schema and documentation pages, the reloader)
+# nor "production" (the checks in AppConfig.__post_init__). The default was
+# "development", so a service started without the variable, a bare
+# `docker run` for instance, published its route map (#722).
+ENV = os.getenv("ENVIRONMENT", "")
 DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # Base directories
