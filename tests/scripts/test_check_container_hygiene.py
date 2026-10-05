@@ -1462,6 +1462,40 @@ def test_dependabot_reads_every_directory_with_a_dockerfile():
         ), directory
 
 
+def test_every_image_is_built_on_a_pull_request():
+    # #726: the sensor's image was in no build matrix, so nothing ran its
+    # Dockerfile before a merge (#722 added it). Every service directory with
+    # a Dockerfile must be a leg of Docker Build Validation.
+    workflow = yaml.safe_load(
+        (REPO / ".github" / "workflows" / "docker-build-validation.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    job = workflow["jobs"]["build"]
+    matrix = set(job["strategy"]["matrix"]["service"])
+    services = {
+        path.parent.name[len("open-security-") :]
+        for path in REPO.glob("open-security-*/Dockerfile")
+    }
+    assert len(services) >= 10 and "sensor" in services
+    assert matrix == services
+    build = [
+        step for step in job["steps"] if "build-push-action" in step.get("uses", "")
+    ]
+    assert len(build) == 1
+    assert build[0]["with"]["context"] == "./open-security-${{ matrix.service }}"
+    assert build[0]["with"]["push"] is False
+    # A change to a Dockerfile, to what it copies or to the shared package
+    # starts the workflow. PyYAML reads the key `on` as the boolean True.
+    paths = workflow[True]["pull_request"]["paths"]
+    for pattern in (
+        "open-security-*/Dockerfile",
+        "open-security-*/sensor/**",
+        "open-security-shared/**",
+    ):
+        assert pattern in paths, pattern
+
+
 def test_no_compose_file_runs_a_log_shipper():
     # #680 took the logspout service out of the gateway's development file;
     # #726 removed the file, which could not start. No Compose file may bring
