@@ -38,7 +38,10 @@ qualysapi==8.1.0
 python-libnmap==0.7.3
 atlassian-python-api==3.41.14
 servicenow-api==0.20.68
-prometheus-client==0.19.0
+# Guardian serves its own /metrics (apps/core/views.py) and does not use the
+# shared package's `metrics` extra; the range is the one the other services
+# lock, so the platform runs one prometheus-client (#722).
+prometheus-client>=0.20,<1.0.0
 structlog==23.2.0
 sentry-sdk==1.45.1
 psutil==6.1.1

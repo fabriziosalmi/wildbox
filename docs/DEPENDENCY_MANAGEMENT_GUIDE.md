@@ -28,10 +28,37 @@ package that the lock holds only as a source distribution; it is built with
 the base image's setuptools. A package whose build needs anything else fails
 the build, and needs a wheel or a different pin.
 
-The shared package and other local paths are installed with
-`pip install --no-index --no-deps --no-build-isolation <path>`: with
-`--no-index` pip cannot reach PyPI, neither for a dependency nor for the build
-backend.
+Local paths are installed with `pip install --no-index --no-build-isolation
+<path>`: with `--no-index` pip cannot reach PyPI, neither for a dependency nor
+for the build backend.
+
+## The Shared Package
+
+`open-security-shared` has no dependency of its own. Its
+`pyproject.toml` defines one extra per group of modules (`fastapi`, `auth`,
+`metrics`, `events`, `tracing`) and a table, `[tool.wildbox.module-extras]`,
+that says which module needs which. A service's Dockerfile installs the
+package after the lock, with the extras of the modules the service imports and
+without `--no-deps`:
+
+```dockerfile
+RUN pip install --no-cache-dir --no-index --no-build-isolation \
+        "/tmp/open-security-shared[fastapi,metrics]" \
+    && pip check
+```
+
+pip resolves the requirements of those extras, and offline it can only find
+them in what `requirements.txt` installed. The build fails when the lock
+lacks one of them or pins it below the floor the shared package declares, and
+`pip check` fails it for any other requirement the environment does not meet.
+The six FastAPI services install `fastapi` and `metrics`; Guardian and the
+sensor install the package without an extra.
+
+When a service starts importing a shared module that needs another extra, add
+the extra to that line, add the packages it requires to the service's
+`requirements.in`, and run `make lock`. When a floor in `pyproject.toml`
+rises, raise the range in the `requirements.in` of every service that uses the
+extra and compile with `--upgrade`.
 
 `scripts/check_container_hygiene.py`, run by the Code Quality job, fails on a
 `pip install` in a Dockerfile that has neither form. It also fails on a base
@@ -85,7 +112,17 @@ its pull requests could never pass the Dependency Integrity check (#420).
 
 - **Dependency Integrity** (`.github/workflows/pr-validation.yml`) runs
   `./scripts/compile_requirements.sh --check` on every pull request, so a
-  `requirements.in` change without a recompiled lock fails.
+  `requirements.in` change without a recompiled lock fails. The same job runs
+  `scripts/check_shared_dependencies.py`: it fails when a Dockerfile installs
+  the shared package with other extras than the modules its service imports
+  need, with `--no-deps` or without `pip check`, when a lock does not pin a
+  requirement of those extras at a version the package accepts, and when a
+  shared module imports something its extras do not require.
+- **Docker Build Validation**
+  (`.github/workflows/docker-build-validation.yml`) builds every image on a
+  pull request that touches one. The build runs the offline install and
+  `pip check` described above, so it fails when an image's environment does
+  not satisfy what is installed in it.
 - **Security Scanning** (`.github/workflows/test.yml`) fails a pull request
   that introduces a critical advisory with a released fix
   (`scripts/critical_advisories.sh new`). Advisories already on `main` are
