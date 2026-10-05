@@ -7,15 +7,18 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from app.auth import verify_api_key
-from app.execution_manager import ToolExecutionManager
+from app.execution_manager import execution_manager
 from app.logging_config import get_logger
 from app.target_policy import TargetRefused, enforce_target_policy
 from app.tool_loader import find_schema_classes
 
 logger = get_logger(__name__)
 
-# Initialize the execution manager
-execution_manager = ToolExecutionManager()
+# The process's one execution manager (app.execution_manager), the same
+# object app.main reads for /health and cancels at shutdown. This module used
+# to build a second ToolExecutionManager of its own, so every tool ran
+# through a manager that /health never looked at: active_executions was
+# always 0, and shutdown cancelled nothing (#646).
 
 # Create the main API router
 router = APIRouter(prefix="/api", tags=["Security Tools"])
