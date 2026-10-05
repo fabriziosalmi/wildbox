@@ -4,7 +4,7 @@
 #
 # backup_postgres.sh writes pg_dump --format=custom archives, which only
 # pg_restore can read -- and pg_restore appeared nowhere in the repository. The
-# backup script's "Verifying backup integrity" step runs `gzip -t`, which proves
+# backup script's "Verifying backup integrity" step ran `gzip -t`, which proves
 # the gzip container is intact and proves nothing about whether the dump inside
 # it can be loaded into a working database. Nobody had ever demonstrated that
 # these backups could produce a running system, and the first attempt would have
@@ -16,19 +16,27 @@
 #   ./restore_postgres.sh --timestamp 20260908_120000 --into-suffix _verify
 #   ./restore_postgres.sh --latest --databases identity --dry-run
 #
-# --into-suffix restores into "<db><suffix>" instead of over the live database,
-# which is how the drill in scripts/verify_restore.sh exercises this path
-# without touching production data.
+# Without --into-suffix this restores OVER the live databases: stop the
+# services that use them first. --into-suffix restores into "<db><suffix>"
+# instead, which is how the drill in scripts/verify_restore.sh exercises this
+# path without touching live data.
 #
-# Environment variables: as backup_postgres.sh (POSTGRES_HOST, POSTGRES_PORT,
-# POSTGRES_USER, POSTGRES_PASSWORD, BACKUP_DIR, GPG_RECIPIENT).
+# Like the backup, it runs pg_restore and psql inside the stack's postgres
+# container by default (compose mode) and connects directly with
+# BACKUP_MODE=host; see scripts/lib/db_access.sh and backup_postgres.sh for
+# the variables (BACKUP_MODE, BACKUP_DIR, DATABASES, POSTGRES_*, ENV_FILE).
+# Archives encrypted with GPG_RECIPIENT are decrypted with the local gpg key.
+#
+# Redis is restored by hand from the redis_<timestamp>.rdb.gz snapshot; the
+# deployment guide has the steps.
 
 set -euo pipefail
+umask 077
 
-POSTGRES_HOST="${POSTGRES_HOST:-wildbox-postgres}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-POSTGRES_USER="${POSTGRES_USER:-postgres}"
-BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/db_access.sh
+. "$SCRIPT_DIR/lib/db_access.sh"
+
 DATABASES="${DATABASES:-identity,data,guardian}"
 TIMESTAMP=""
 INTO_SUFFIX=""
@@ -45,46 +53,77 @@ while [ $# -gt 0 ]; do
     --into-suffix=*) INTO_SUFFIX="${1#*=}"; shift ;;
     --latest) USE_LATEST=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
-    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,32p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-  echo "ERROR: POSTGRES_PASSWORD environment variable is required" >&2
-  exit 1
-fi
 if [ -z "$TIMESTAMP" ] && [ "$USE_LATEST" != true ]; then
   echo "ERROR: pass --timestamp <stamp> or --latest" >&2
   exit 2
 fi
+if [ -n "$TIMESTAMP" ] && ! [[ "$TIMESTAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+  echo "ERROR: --timestamp looks like 20260908_120000, got: $TIMESTAMP" >&2
+  exit 2
+fi
+if [ -n "$INTO_SUFFIX" ] && ! [[ "$INTO_SUFFIX" =~ ^[A-Za-z0-9_]+$ ]]; then
+  echo "ERROR: --into-suffix takes letters, digits and underscores, got: $INTO_SUFFIX" >&2
+  exit 2
+fi
 
-PGPASS_FILE=$(mktemp)
-chmod 600 "$PGPASS_FILE"
-echo "${POSTGRES_HOST}:${POSTGRES_PORT}:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > "$PGPASS_FILE"
-export PGPASSFILE="$PGPASS_FILE"
+wb_init_mode
+
+if [ "$BACKUP_MODE" = compose ]; then
+  BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
+else
+  BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
+fi
+[ -d "$BACKUP_DIR" ] || wb_die "backup directory not found: $BACKUP_DIR"
+BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
+
+DB_ARRAY=()
+IFS=',' read -ra RAW_DBS <<< "$DATABASES"
+for db in "${RAW_DBS[@]}"; do
+  db="${db//[[:space:]]/}"
+  [ -n "$db" ] || continue
+  wb_valid_db_name "$db" || wb_die "not a database name: '$db'"
+  DB_ARRAY+=("$db")
+done
+[ "${#DB_ARRAY[@]}" -gt 0 ] || wb_die "no database to restore (DATABASES is empty)."
+
+if [ "$BACKUP_MODE" = compose ]; then
+  cd "$SCRIPT_DIR/.."
+fi
+
 WORKDIR=$(mktemp -d)
-trap 'rm -f "$PGPASS_FILE"; rm -rf "$WORKDIR"' EXIT
+trap 'rm -rf "$WORKDIR"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 echo "=== Wildbox PostgreSQL Restore ==="
-echo "Host:      $POSTGRES_HOST:$POSTGRES_PORT"
-echo "Backup dir:$BACKUP_DIR"
-echo "Databases: $DATABASES"
-[ -n "$INTO_SUFFIX" ] && echo "Target:    <database>${INTO_SUFFIX} (not the live database)"
-[ "$DRY_RUN" = true ] && echo "MODE:      dry run, nothing will be written"
+echo "Mode:       $WB_MODE_LABEL"
+echo "Backup dir: $BACKUP_DIR"
+echo "Databases:  ${DB_ARRAY[*]}"
+if [ -n "$INTO_SUFFIX" ]; then
+  echo "Target:     <database>${INTO_SUFFIX} (not the live database)"
+else
+  echo "Target:     the LIVE databases"
+fi
+[ "$DRY_RUN" = true ] && echo "MODE:       dry run, nothing will be written"
 echo ""
 
-IFS=',' read -ra DB_ARRAY <<< "$DATABASES"
-for db in "${DB_ARRAY[@]}"; do
-  db=$(echo "$db" | xargs)
+wb_require_postgres
 
+for db in "${DB_ARRAY[@]}"; do
   if [ "$USE_LATEST" = true ]; then
-    ARCHIVE=$(ls -t "${BACKUP_DIR}/${db}_"*.sql.gz* 2>/dev/null | head -1 || true)
+    # shellcheck disable=SC2012
+    ARCHIVE=$(ls -t "${BACKUP_DIR}/${db}_"[0-9]*.sql.gz* 2>/dev/null | head -1 || true)
   else
+    # shellcheck disable=SC2012
     ARCHIVE=$(ls "${BACKUP_DIR}/${db}_${TIMESTAMP}.sql.gz"* 2>/dev/null | head -1 || true)
   fi
   if [ -z "$ARCHIVE" ]; then
-    echo "ERROR: no backup found for '$db'" >&2
+    echo "ERROR: no backup found for '$db' in $BACKUP_DIR" >&2
     exit 1
   fi
   echo "Restoring $db from $(basename "$ARCHIVE")"
@@ -99,12 +138,12 @@ for db in "${DB_ARRAY[@]}"; do
 
   # Prove the archive is a readable pg_dump before touching any database. This
   # is the check `gzip -t` could not make.
-  if ! pg_restore --list "$STAGED" > "$WORKDIR/${db}.toc" 2>"$WORKDIR/${db}.err"; then
+  if ! wb_pg_stdin pg_restore --list < "$STAGED" > "$WORKDIR/${db}.toc" 2>"$WORKDIR/${db}.err"; then
     echo "  FAILED: archive is not a readable pg_dump custom archive" >&2
     cat "$WORKDIR/${db}.err" >&2
     exit 1
   fi
-  echo "  archive readable: $(grep -c . "$WORKDIR/${db}.toc") objects"
+  echo "  archive readable: $(grep -c '^[0-9]' "$WORKDIR/${db}.toc" || true) objects"
 
   TARGET_DB="${db}${INTO_SUFFIX}"
   if [ "$DRY_RUN" = true ]; then
@@ -112,18 +151,19 @@ for db in "${DB_ARRAY[@]}"; do
     continue
   fi
 
-  psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d postgres \
-    -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$TARGET_DB\"" 2>/dev/null \
-    || echo "  database '$TARGET_DB' already exists, restoring into it"
+  exists=$(wb_psql postgres "SELECT 1 FROM pg_database WHERE datname = '${TARGET_DB}'")
+  if [ "$exists" = "1" ]; then
+    echo "  database '$TARGET_DB' already exists, restoring into it"
+  else
+    wb_psql postgres "CREATE DATABASE \"${TARGET_DB}\""
+  fi
 
-  pg_restore \
-    -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" \
-    -d "$TARGET_DB" \
+  wb_pg_stdin pg_restore -d "$TARGET_DB" \
     --no-owner --no-privileges --clean --if-exists \
-    "$STAGED"
+    < "$STAGED"
 
-  COUNT=$(psql -h "$POSTGRES_HOST" -p "$POSTGRES_PORT" -U "$POSTGRES_USER" -d "$TARGET_DB" \
-    -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+  COUNT=$(wb_psql "$TARGET_DB" \
+    "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
   echo "  restored into '$TARGET_DB': $COUNT tables"
 done
 

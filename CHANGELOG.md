@@ -215,6 +215,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfy the new one. Unit tests cover both teams, a second system of the
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
+- **`make backup` and `make restore-drill` work on the default stack.**
+  They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
+  environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
+  client tools installed, none of which the default stack provides. They
+  now run the tools inside the stack's own containers with
+  `docker compose exec`, honoring `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`
+  and `ENV_FILE`; a host mode (`BACKUP_MODE=host`, or setting
+  `POSTGRES_HOST`) remains for an external database. `make backup` writes
+  to `./backups` (#681).
+- **A backup that is missing a part now fails.** The script printed a
+  warning, skipped Redis and exited 0 when `redis-cli` or `REDIS_PASSWORD`
+  was missing. Redis holds state that exists nowhere else (CSPM scans,
+  playbook runs, revoked tokens, queued work), so it is part of every
+  backup unless `SKIP_REDIS=true` says otherwise. If any database or Redis
+  fails, the run exits non-zero and removes the files it wrote, so a
+  timestamp in the backup directory is always a complete set; retention
+  runs only after a complete backup (#681).
+- **Backup files are written with mode `600`** in a mode `700` directory,
+  no password file is written, and the Redis password is no longer passed
+  to `redis-cli` on its command line (#681).
+- **The restore drill compares exact row counts and only reads the live
+  databases.** It used estimated counts and ran `ANALYZE` on the live
+  databases, and it left its archives in `/tmp`. It now restores into
+  `<db>_restore_drill`, compares every table with the source, and removes
+  its archives (#681).
+
+### Added
+
+- **`scripts/restore_redis.sh` restores the Redis snapshot a backup
+  takes.** Redis runs with the append-only file enabled and then ignores
+  `dump.rdb` at start, so copying the snapshot into the data volume gave
+  an empty Redis. The script loads the snapshot in a one-off container
+  and writes the append-only file; it refuses to run while Redis is
+  running (#681).
 
 ### CI
 
