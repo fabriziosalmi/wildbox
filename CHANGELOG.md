@@ -472,6 +472,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per file, how far it was read and accepted. An integration test
   restarts the pipeline inside the sensor container and checks through
   the gateway that a line written in between is stored, and none twice.
+- **The sensor finishes stopping before its process ends** (#725). On
+  SIGTERM the daemon created a task to stop the agent and returned as
+  soon as its main loop noticed, within a second; the event loop closed
+  and the task was cancelled wherever it had got to, so the sender's
+  last batches and the log positions written after them were usually
+  lost to an orderly `docker stop`. Found in the built image, where a
+  line the gateway had accepted was sent again after a restart. The
+  daemon now stops the agent itself and returns when that is done, and
+  a signal wakes it at once instead of at the next tick of a one-second
+  sleep. When it stops, the agent gives the events already collected up
+  to two seconds to reach the sender before it stops the pipeline, which
+  used to be stopped under them, and logs how many were still in its
+  queues, dropped or left for their log source to read again. Both
+  compose files give the sensor a `stop_grace_period` of 30 seconds: its
+  stop can take the 10 seconds the sender spends on what it still holds.
 - **The sensor's journal and unified-log readers survive a long entry,
   read the command's standard error and start the command again**
   (#725). They read `journalctl -f` and `log stream` line by line with

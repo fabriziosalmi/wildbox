@@ -1029,6 +1029,111 @@ async def test_the_agent_saves_what_its_last_batches_delivered(
     assert _saved_offset(data_dir) == len("one\ntwo\nthree\n")
 
 
+def _stand_in_gateway(monkeypatch, answer):
+    """The sender of every agent answers ``answer()``; the lines accepted."""
+    accepted = []
+
+    class Session:
+        closed = False
+
+        async def close(self):
+            self.closed = True
+
+    async def session(self):
+        self.session = Session()
+
+    async def send(self, body):
+        outcome = answer()
+        if outcome == SENT:
+            accepted.extend(
+                event["event_data"]["data"]["raw_message"]
+                for event in json.loads(body)["events"]
+            )
+        return outcome
+
+    monkeypatch.setattr(DataForwarder, "_init_session", session)
+    monkeypatch.setattr(DataForwarder, "_send", send)
+    monkeypatch.setattr(log_forwarder, "POLL_INTERVAL", 0.01)
+    return accepted
+
+
+def _collected(message):
+    """An event as a collector that cannot read it again would queue it."""
+    return {"type": "file_created", "source": "fim", "data": {"raw_message": message}}
+
+
+@pytest.mark.asyncio
+async def test_what_was_collected_just_before_the_stop_still_reaches_the_gateway(
+    data_dir, log, monkeypatch
+):
+    # Stopping the pipeline under the events still in its queues dropped
+    # them without a word.
+    log.write_text("")
+    accepted = _stand_in_gateway(monkeypatch, lambda: SENT)
+    agent = SecuritySensorAgent(
+        _config(data_dir, _source(log), api_key=API_KEY, batch_size=100)
+    )
+    process = DataProcessor._process_single_event
+
+    async def slowly(self, event):
+        # Long enough for the collectors to have stopped meanwhile: the
+        # events are in the queue, and then in the workers' hands.
+        await asyncio.sleep(0.3)
+        return await process(self, event)
+
+    monkeypatch.setattr(DataProcessor, "_process_single_event", slowly)
+
+    await agent.start()
+    for index in range(9):
+        agent.event_queue.put_nowait(_collected(f"event {index}"))
+    await agent.stop()
+
+    assert sorted(accepted) == [f"event {index}" for index in range(9)]
+    assert agent.data_forwarder.stats["events_forwarded"] == 9
+    assert agent.data_processor.in_flight == 0
+    assert agent.event_queue.empty() and agent.processed_queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_what_cannot_reach_the_sender_at_the_stop_is_counted_and_said(
+    data_dir, log, monkeypatch, caplog
+):
+    from sensor.core import agent as agent_module
+
+    log.write_text("")
+    _stand_in_gateway(monkeypatch, lambda: RETRY)
+    monkeypatch.setattr(agent_module, "QUEUE_DRAIN_SECONDS", 0.1)
+    monkeypatch.setattr(data_forwarder, "STOP_FLUSH_SECONDS", 0.5)
+    agent = SecuritySensorAgent(
+        _config(
+            data_dir, _source(log), api_key=API_KEY, batch_size=2, buffer_max_events=2
+        )
+    )
+
+    from sensor.pipeline.delivery import DELIVERY_KEY, Delivery
+
+    await agent.start()
+    agent.data_forwarder.min_request_interval = 0.002
+    for index in range(7):
+        agent.event_queue.put_nowait(_collected(f"event {index}"))
+    # The sender holds two and has a third in hand; the rest waits behind.
+    await _until(lambda: agent.data_forwarder.get_status()["buffer"]["full"])
+    # And one more, from a log file whose position is kept.
+    line = _collected("a line of a log")
+    line[DELIVERY_KEY] = Delivery(lambda: None, replayable=True)
+    agent.event_queue.put_nowait(line)
+    with caplog.at_level(logging.WARNING):
+        await agent.stop()
+
+    stats = agent.data_forwarder.stats
+    assert stats["events_dropped_shutdown"] == 3
+    assert (
+        "Stopped with 5 events still on their way to the sender: 4 are "
+        "dropped, 1 will be read again from their log source after the restart"
+    ) in caplog.text
+    assert agent.event_queue.empty() and agent.processed_queue.empty()
+
+
 @pytest.mark.asyncio
 async def test_an_event_the_processor_filters_is_settled_and_carries_no_handle(
     data_dir, log

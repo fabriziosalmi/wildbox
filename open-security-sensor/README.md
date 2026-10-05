@@ -372,6 +372,13 @@ data_dir: /var/lib/security-sensor   # or SENSOR_DATA_DIR
   second while it moves, and when the sensor stops. A sensor that is killed
   therefore sends again the lines accepted since the last write: delivery is
   at least once, and after an orderly stop exactly once.
+- An orderly stop is SIGTERM or SIGINT. The sensor then stops its
+  collectors, gives what they had collected up to 2 seconds to reach the
+  sender, spends up to 10 seconds sending what its buffer holds, writes the
+  positions and only then exits. The compose files give it 30 seconds
+  (`stop_grace_period`); under Docker's default of 10 it can be killed
+  before it has finished, which costs a second sending of the last lines,
+  never a line.
 - The file holds, for each log file, its device and inode, the offset, and
   SHA-256 digests of its first 256 bytes and of the 64 bytes before the
   offset; no log content. It is written to a temporary file, flushed, and
@@ -738,7 +745,7 @@ An event leaves the sensor unsent, and is counted, in these cases only:
 | `events_dropped_oversize` | Serialized, it is larger than a batch may be (8 MiB, or `buffer_max_bytes` if that is less) |
 | `events_dropped_unserializable` | JSON cannot carry it (a value that is not text, a number, a list or a mapping; NaN) |
 | `events_dropped_unconfigured` | No API key is set: everything collected is discarded |
-| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds |
+| `events_dropped_shutdown` | It was still in the buffer when the sensor stopped. The sensor first spends up to 10 seconds sending what it holds. Events that had not reached the buffer by then (a full buffer kept them in the queues) are in no counter: the sensor's last log lines say how many there were |
 
 `events_dropped` is their sum, and `events_received` equals
 `events_forwarded` plus `events_dropped` plus the events in the buffer. The

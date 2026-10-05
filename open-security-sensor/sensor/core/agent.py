@@ -21,8 +21,13 @@ from sensor.pipeline.data_forwarder import DataForwarder
 from sensor.core.config import SensorConfig
 from sensor.api.local_api import LocalAPI
 from sensor.utils.resource_monitor import ResourceMonitor
+from sensor.pipeline.delivery import take_delivery
 
 logger = logging.getLogger(__name__)
+
+# Seconds the events already collected get to reach the sender when the
+# sensor stops, before the pipeline is stopped under them.
+QUEUE_DRAIN_SECONDS = 2.0
 
 
 class CountingQueue(asyncio.Queue):
@@ -187,12 +192,14 @@ class SecuritySensorAgent:
     async def _stop_components(self):
         """Stop all components gracefully.
 
-        In this order: what produces events, then what carries them, so that
-        the forwarder's last batches are not followed by new events; then
-        the log positions once more, for what those last batches delivered.
+        In this order: what produces events; then, once the events already
+        collected have reached the sender or QUEUE_DRAIN_SECONDS have
+        passed, what carries them, so that the sender's last batches are the
+        last events; then the log positions once more, for what those
+        batches delivered.
         """
         collectors = [
-            component.stop()
+            component
             for component in (
                 self.local_api,
                 self.log_forwarder,
@@ -203,24 +210,75 @@ class SecuritySensorAgent:
             if component
         ]
         pipeline = [
-            component.stop()
+            component
             for component in (self.data_processor, self.data_forwarder)
             if component
         ]
 
-        for stop_tasks in (collectors, pipeline):
-            if not stop_tasks:
-                continue
-            try:
-                await asyncio.wait_for(
-                    asyncio.gather(*stop_tasks, return_exceptions=True),
-                    timeout=15
-                )
-            except asyncio.TimeoutError:
-                logger.warning("Some components did not stop within timeout")
+        await self._stop_all(collectors)
+        if self.data_processor and self.data_forwarder:
+            await self._drain_queues()
+        await self._stop_all(pipeline)
+        self._report_left_in_queues()
 
         if self.log_forwarder:
             self.log_forwarder.save_positions()
+
+    @staticmethod
+    async def _stop_all(components):
+        if not components:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(component.stop() for component in components),
+                    return_exceptions=True,
+                ),
+                timeout=15
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Some components did not stop within timeout")
+
+    async def _drain_queues(self):
+        """Give the events already collected the time to reach the sender.
+
+        Nothing new is collected at this point. When the sender takes no
+        more (its buffer is full), waiting would not help: it gives up after
+        QUEUE_DRAIN_SECONDS.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + QUEUE_DRAIN_SECONDS
+        while (
+            self.event_queue.qsize()
+            or self.data_processor.in_flight
+            or self.processed_queue.qsize()
+        ):
+            if loop.time() >= deadline:
+                break
+            await asyncio.sleep(0.02)
+
+    def _report_left_in_queues(self):
+        """Say what the queues still held when the pipeline stopped: those
+        events never reached the sender, which counts only its own."""
+        left = []
+        for queue in (self.event_queue, self.processed_queue):
+            while not queue.empty():
+                left.append(queue.get_nowait())
+        if not left:
+            return
+        returned = 0
+        for event in left:
+            delivery = take_delivery(event)
+            if delivery is not None and delivery.replayable:
+                returned += 1
+        logger.warning(
+            "Stopped with %d events still on their way to the sender: %d are "
+            "dropped, %d will be read again from their log source after the "
+            "restart",
+            len(left),
+            len(left) - returned,
+            returned,
+        )
 
     def get_stats(self) -> Dict[str, Any]:
         """The sensor's counters, read where they are counted.

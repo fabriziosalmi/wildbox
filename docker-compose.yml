@@ -1103,6 +1103,10 @@ services:
         shared: ./open-security-shared
     container_name: open-security-sensor
     restart: unless-stopped
+    # Stopping takes time: the collectors are stopped, the sender spends up
+    # to 10 seconds on what it still holds, and the log positions are
+    # written. Docker's default, 10 seconds, would kill it in the middle.
+    stop_grace_period: 30s
     security_opt:
       - no-new-privileges:true
     ports:

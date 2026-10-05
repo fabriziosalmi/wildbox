@@ -52,7 +52,10 @@ class DataProcessor:
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.running = False
-        
+        # Events a worker has taken from the input queue and not yet passed
+        # on or filtered: in neither queue for that moment.
+        self.in_flight = 0
+
         # Processor statistics
         self.stats = {
             'events_processed': 0,
@@ -101,20 +104,24 @@ class DataProcessor:
                 event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
                 
                 # Process the event
-                # What the collector wants to be told about this event; it
-                # is not part of the event (sensor.pipeline.delivery).
-                delivery = take_delivery(event)
-                processed_event = await self._process_single_event(event)
-                
-                if processed_event:
-                    # Forward to output queue
-                    attach_delivery(processed_event, delivery)
-                    await self.output_queue.put(processed_event)
-                    self.stats['events_processed'] += 1
-                else:
-                    # It goes no further: the sensor has finished with it.
-                    self.stats['events_filtered'] += 1
-                    settle(delivery)
+                self.in_flight += 1
+                try:
+                    # What the collector wants to be told about this event;
+                    # it is not part of the event (sensor.pipeline.delivery).
+                    delivery = take_delivery(event)
+                    processed_event = await self._process_single_event(event)
+
+                    if processed_event:
+                        # Forward to output queue
+                        attach_delivery(processed_event, delivery)
+                        await self.output_queue.put(processed_event)
+                        self.stats['events_processed'] += 1
+                    else:
+                        # It goes no further: the sensor has finished with it.
+                        self.stats['events_filtered'] += 1
+                        settle(delivery)
+                finally:
+                    self.in_flight -= 1
                 
             except asyncio.TimeoutError:
                 # No events available, continue
