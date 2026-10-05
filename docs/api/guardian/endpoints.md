@@ -179,6 +179,15 @@ operator assigns them, for example with
 
 ## Conventions
 
+### Representation
+
+Every answer is JSON, errors included. A request whose `Accept` header admits only
+something else (`Accept: text/html`) answers `406`; a browser, which also sends
+`*/*`, gets the JSON. Django REST framework's browsable API, the HTML pages with a
+form for each route, is served only when guardian runs with `DEBUG=true`, like the
+schema and its UIs. Before #724 it was on in every environment, and in the image
+every request for `text/html` answered `500`.
+
 ### Pagination
 
 List routes use page-number pagination with 50 items per page. Pass `?page=N`; the

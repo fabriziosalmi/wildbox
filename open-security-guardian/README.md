@@ -278,6 +278,9 @@ one answers 400 on that field.
 
 The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
 when `DEBUG` is true, and only on the service port, not through the gateway.
+So does Django REST framework's browsable API: with `DEBUG` false the API has
+one renderer, JSON, and a request that accepts only `text/html` answers 406
+(#724).
 
 ## Data model
 

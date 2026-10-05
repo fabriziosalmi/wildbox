@@ -528,6 +528,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not show it: it mounts `open-security-gateway/nginx` over
   `/etc/nginx`. The Dockerfile removes the file, and
   `test/production_image_tests.sh` checks the image as built.
+- **guardian answers JSON, and serves the browsable API only in
+  development** (#724). Django REST framework's HTML renderer was on in
+  every environment, and in the image any request that asked for
+  `text/html` answered 500, "Missing staticfiles manifest entry": the
+  pages link static files, and the image never runs `collectstatic`.
+  With `DEBUG` false the only renderer is JSON; a request that accepts
+  nothing else answers 406. With `DEBUG=true` the pages are served and
+  work.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
