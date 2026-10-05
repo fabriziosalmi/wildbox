@@ -2,8 +2,6 @@
 FastAPI application for Open Security Identity service.
 """
 
-import os
-
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -23,21 +21,22 @@ from .user_manager import (
     require_password_changed,
 )
 from .schemas import UserRead, UserCreate, UserUpdate
-
-# Interactive API documentation and the OpenAPI schema are served in
-# development only, as agents, responder and cspm already do. identity served
-# /docs and /redoc unconditionally, publishing its full route map, including
-# admin and internal endpoints, in production (#496).
-DISABLE_DOCS = os.getenv("ENVIRONMENT", "development") == "production"
+from open_security_shared.api_docs import api_docs_urls
 
 # Create FastAPI application
+#
+# Interactive API documentation and the OpenAPI schema are served in
+# development only, by the rule every service shares. identity served /docs
+# and /redoc unconditionally, publishing its full route map, including admin
+# and internal endpoints, in production (#496); then it turned them off for
+# the exact value "production" only, so "staging" still published them
+# (#679). settings.environment is the value the production checks in
+# app/config.py read.
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Identity, authentication, and authorization service for Wildbox Security Suite",
-    docs_url=None if DISABLE_DOCS else "/docs",
-    redoc_url=None if DISABLE_DOCS else "/redoc",
-    openapi_url=None if DISABLE_DOCS else "/openapi.json",
+    **api_docs_urls(settings.environment),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.

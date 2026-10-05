@@ -47,6 +47,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when any service was unreachable. The real counters are in
   `GET /metrics` (`wildbox_tool_executions_total`); for the health of
   the other services use their own health checks or Prometheus (#646).
+- **No service serves its OpenAPI schema outside development** (#679).
+  data turned `/docs` and `/redoc` off outside development but still
+  answered `/openapi.json`; tools served its schema in every environment;
+  identity, agents and responder turned the three paths off only for
+  `ENVIRONMENT=production`, so `staging` published them; and cspm served
+  them whenever `DEBUG` was true, in production too. The six services now
+  take the three URLs from one rule, `open_security_shared.api_docs`:
+  served when `ENVIRONMENT` is `development`, 404 for any other value.
+  cspm no longer follows `DEBUG`. None of these paths was, or is,
+  reachable through the gateway.
 
 ### Removed
 

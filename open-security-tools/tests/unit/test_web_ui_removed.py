@@ -44,7 +44,10 @@ def test_web_ui_paths_are_not_served(app, path):
 
 
 def test_the_schema_lists_the_api_and_no_web_page(app):
-    paths = TestClient(app).get("/openapi.json").json()["paths"]
+    # The generated schema, not GET /openapi.json: that URL exists in
+    # development only (test_api_docs_exposure.py), and this test is about
+    # what the schema lists, whatever ENVIRONMENT the suite runs under.
+    paths = app.openapi()["paths"]
 
     assert "/api/tools" in paths
     assert "/api/tools/{tool_name}/info" in paths
