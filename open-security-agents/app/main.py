@@ -72,11 +72,17 @@ async def lifespan(app: FastAPI):
         # UTC date (app/stats.py). Nothing reads these any more.
         redis_client.delete(*LEGACY_KEYS)
 
-        # AGENT_DISABLED_TOOLS decides what the model may read. A name in it
-        # that is not a tool raises here and the service does not start,
-        # rather than run with the tool the operator meant to withhold.
-        offered = enabled_tools(settings.disabled_tool_names())
-        logger.info(f"Tools offered to the model: {', '.join(t.name for t in offered) or 'none'}")
+        # What the model is given, said once at start: the lookup tools, and
+        # the team-data tools AGENT_TEAM_DATA_TOOLS names (none by default).
+        # The setting was validated when the settings were built.
+        team_data = sorted(settings.team_data_tool_names())
+        offered = enabled_tools(team_data)
+        logger.info(f"Tools given to the model: {', '.join(t.name for t in offered)}")
+        if team_data:
+            logger.warning(
+                "AGENT_TEAM_DATA_TOOLS gives the model team data: what "
+                f"{', '.join(team_data)} return is sent to the model provider"
+            )
 
         # Test Anthropic API key
         if not settings.anthropic_api_key or settings.anthropic_api_key == "your_anthropic_api_key_here":

@@ -141,7 +141,7 @@ Set in `docker-compose.yml` for the `agents` service:
 | `WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, for `vulnerability_search_tool`. Set it in `.env` as `AGENTS_WILDBOX_GUARDIAN_URL`. The host must be in Guardian's `ALLOWED_HOSTS`. |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analysis submissions each user may make, in the `limits` notation; several limits are separated by `;`, for example `5/minute;50/day`. Must not be empty. |
 | `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together, in the same notation. |
-| `AGENT_DISABLED_TOOLS` | empty (every tool offered) | Comma-separated names of [analysis tools](#analysis-tools) to withhold from the model. A name that is not a tool stops the service at start. |
+| `AGENT_TEAM_DATA_TOOLS` | empty (neither) | The [team-data tools](#team-data-tools) the model is given: `threat_intel_query_tool`, `vulnerability_search_tool`, or both, comma-separated. Read that section before setting it. Any other value stops the service at start. |
 | `REDIS_URL`, `CELERY_BROKER_URL`, `CELERY_RESULT_BACKEND` | Redis database 4, with `REDIS_PASSWORD` | Task state, the Celery queue and the rate limit counters. |
 
 The service refuses to start when a service URL is not an absolute `http` or
@@ -360,10 +360,16 @@ cannot be reached.
 
 ## Analysis Tools
 
-The agent has nine tools (`ALL_TOOLS` in
-`open-security-agents/app/tools/langchain_tools.py`), all offered to the model
-unless `AGENT_DISABLED_TOOLS` withholds some. The model chooses which ones to
-call for each IOC; the system prompt suggests a set per IOC type.
+The service has nine tools (`ALL_TOOLS` in
+`open-security-agents/app/tools/langchain_tools.py`). The model is given the
+seven that look the IOC up outside; the two that read data Wildbox holds for
+the team are given to it only when the operator opts in
+([Team-data tools](#team-data-tools)). The model chooses which tools to call
+for each IOC; the system prompt suggests a set per IOC type.
+
+### Lookup tools
+
+Always given to the model.
 
 | Tool | What it calls | What it sends |
 | --- | --- | --- |
@@ -374,36 +380,75 @@ call for each IOC; the system prompt suggests a set per IOC type.
 | `url_analysis_tool` | tools service `url_analyzer` | `shortened_url`, `follow_redirects` |
 | `hash_lookup_tool` | tools service `malware_hash_checker` | `hash_value` |
 | `geolocation_lookup_tool` | tools service `ip_geolocation` | `ip_address` |
-| `threat_intel_query_tool` | data service `GET /api/v1/indicators/search` at `WILDBOX_DATA_URL` | `q`, `limit` (25), optional `indicator_type` |
-| `vulnerability_search_tool` | guardian `GET /api/v1/vulnerabilities/` at `WILDBOX_GUARDIAN_URL` | `search` |
 
 Tool calls to the tools service go to `POST {WILDBOX_API_URL}/api/tools/<name>`
 and only to the names in this table: any other tool name is refused before a
-request is made.
+request is made. `url_analysis_tool` follows the URL's redirects; it takes no
+screenshot.
+
+### Team-data tools
+
+**Off by default.** The model is given one only when `AGENT_TEAM_DATA_TOOLS`
+names it. With the setting empty, neither tool is in the model's tool list,
+the prompt does not mention them, and the service makes no request to the data
+service or to Guardian.
+
+| Tool | What it calls | What it sends |
+| --- | --- | --- |
+| `threat_intel_query_tool` | data service `GET /api/v1/indicators/search` at `WILDBOX_DATA_URL` | `q`, `limit` (25), optional `indicator_type` |
+| `vulnerability_search_tool` | guardian `GET /api/v1/vulnerabilities/` at `WILDBOX_GUARDIAN_URL` | `search` |
+
+To give the model both, set in `.env` and recreate the agents container:
+
+```bash
+AGENT_TEAM_DATA_TOOLS=threat_intel_query_tool,vulnerability_search_tool
+```
+
+Either name alone gives the model that tool only. Any other value stops the
+service at start.
+
+**What turning one on sends to the model provider.** Every tool output is part
+of the conversation with Claude, so it is sent to Anthropic. The model writes
+the search text itself and can search several times in one analysis. For each
+search:
+
+- `threat_intel_query_tool`: the number of matches and up to 25 indicators of
+  the user's team and of the feeds shared by every team, whose value or
+  description contains the text. For each: type, value, threat types,
+  confidence, severity, description, tags, first and last seen, whether it is
+  active, and whether its value is exactly the text searched.
+- `vulnerability_search_tool`: the number of matches and up to 25
+  vulnerabilities Guardian records for the user's team, whose title,
+  description, CVE ID or asset name contains the text. For each: title, CVE ID,
+  severity, status, priority, risk score, CVSS score, **asset name** and type,
+  due date, whether it is overdue, and creation date. A member gets those
+  assigned to or created by them; an owner or admin, all of the team's. It is
+  not a public CVE database.
+
+Row IDs, source IDs, indicator metadata and Guardian's page links are not
+returned to the model.
+
+**The injection risk.** With a team-data tool on, the team's data sits in the
+model's context beside text the lookup tools fetched from the internet: WHOIS
+records, DNS answers, redirect chains and response headers of the URL under
+analysis. Whoever controls that text can write it as instructions to the model,
+and the model holds tools that reach outside (`url_analysis_tool`,
+`dns_lookup_tool`, `whois_lookup_tool`), whose arguments it chooses. A page
+written for the purpose can ask the model to search the team's vulnerabilities
+and pass what it finds out in such an argument. The system prompt tells the
+model that tool output is data and not to put the team's records in another
+tool's arguments; that is a request to the model, not a control. Turn a
+team-data tool on only if the indicators your users submit, and the data the
+tool returns, make that acceptable.
+
+### How every tool behaves
 
 - **Every call is made as the user who submitted the analysis.** The agents
-  service calls the three services directly on the internal network, and each
-  request carries that user's `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and
+  service calls the services directly on the internal network, and each request
+  carries that user's `X-Wildbox-User-ID`, `X-Wildbox-Team-ID` and
   `X-Wildbox-Role` with `X-Gateway-Secret`, the headers the gateway puts on a
   request it forwards. The service has no key of its own and sees nothing the
   user would not see through the gateway.
-- **`threat_intel_query_tool`** returns the indicators of the caller's team and
-  of the feeds shared by every team whose value or description contains the
-  text: the total, and up to 25 of them with their type, value, threat types,
-  confidence, severity and dates. Each is marked `exact_match` when its value is
-  the text itself.
-- **`vulnerability_search_tool`** returns the vulnerabilities Guardian records
-  for the caller's team whose title, description, CVE ID or asset name contains
-  the text; a member gets those assigned to or created by them. It is not a
-  public CVE database.
-- **`url_analysis_tool`** follows the URL's redirects; it takes no screenshot.
-- **What a tool returns is sent to the model provider.** Every tool output is
-  part of the conversation with Claude. `threat_intel_query_tool` and
-  `vulnerability_search_tool` return data Wildbox holds for the caller's team,
-  not only what a lookup of the IOC finds outside, and it stays in the model's
-  context beside text the other tools read from the internet. To keep that data
-  in the stack, set `AGENT_DISABLED_TOOLS=threat_intel_query_tool,vulnerability_search_tool`
-  in `.env`: a withheld tool is not offered to the model and makes no request.
 - **A tool that fails returns an error to the model, never data:**
   `{"success": false, "error": "..."}` with the status the service answered. An
   unreachable service, an answer that is not the expected JSON and an IOC or DNS

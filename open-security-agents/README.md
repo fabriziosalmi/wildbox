@@ -122,7 +122,8 @@ Task records and results expire after one hour (`task_result_expires`).
 
 ## Tools
 
-The agent has nine LangChain tools (`app/tools/langchain_tools.py`):
+The service has nine LangChain tools (`app/tools/langchain_tools.py`). The
+model is always given the seven that look the IOC up outside:
 
 | Tool | Calls | What the model gets |
 | --- | --- | --- |
@@ -133,11 +134,41 @@ The agent has nine LangChain tools (`app/tools/langchain_tools.py`):
 | `url_analysis_tool` | tools service, `url_analyzer` | A URL's redirect chain and where it ends (no screenshot) |
 | `hash_lookup_tool` | tools service, `malware_hash_checker` | What the malware sources report on a file hash |
 | `geolocation_lookup_tool` | tools service, `ip_geolocation` | Country, city, ISP of an address |
-| `threat_intel_query_tool` | data service, `GET /api/v1/indicators/search` | The caller's team's indicators and the shared feeds matching a text |
-| `vulnerability_search_tool` | guardian, `GET /api/v1/vulnerabilities/` | The vulnerabilities Guardian records for the caller's team matching a text |
 
 Tools-service calls go to `{WILDBOX_API_URL}/api/tools/{tool}` and only to
 the tools in the fixed `TOOL_ENDPOINT_MAP` of `app/tools/wildbox_client.py`.
+
+### Team-data tools (off by default)
+
+Two tools read data Wildbox holds for the user's team. The model is given
+one only when `AGENT_TEAM_DATA_TOOLS` names it; by default it has neither,
+the prompt does not mention them, and no request goes to the data service
+or to Guardian.
+
+| Tool | Calls | What the model gets, for each search it makes |
+| --- | --- | --- |
+| `threat_intel_query_tool` | data service, `GET /api/v1/indicators/search` | The number of matches and up to 25 indicators of the team and of the shared feeds: type, value, threat types, confidence, severity, description, tags, dates |
+| `vulnerability_search_tool` | guardian, `GET /api/v1/vulnerabilities/` | The number of matches and up to 25 vulnerabilities Guardian records for the team: title, CVE ID, severity, status, priority, scores, asset name and type, due date |
+
+```bash
+# .env: give the model both (either name alone gives that one)
+AGENT_TEAM_DATA_TOOLS=threat_intel_query_tool,vulnerability_search_tool
+```
+
+Any other value stops the service at start. Before you set it:
+
+- **It sends that data to the model provider.** Every tool output is part
+  of the conversation, so what these tools return goes to Anthropic. The
+  model writes the search text and can search several times per analysis.
+- **It opens an injection path.** The data then sits in the model's context
+  beside text the lookup tools fetched from the internet (WHOIS records,
+  DNS answers, the redirects and headers of the URL under analysis), and
+  the model holds tools that reach outside with arguments it chooses. Text
+  written to instruct the model can ask it to search the team's records
+  and pass them out in such an argument. The prompt tells the model not
+  to; that is a request, not a control.
+
+### How every tool behaves
 
 Every tool calls its service directly, as the user who submitted the
 analysis: the request carries that user's gateway identity
@@ -146,14 +177,6 @@ analysis: the request carries that user's gateway identity
 and the agents service has no key that sees more. A call that fails returns
 `{"success": false, "error": ...}` to the model, with the service's status
 and without its address; it is never turned into an empty result.
-
-Whatever a tool returns is sent to the model provider with the rest of the
-conversation. The last two tools return data Wildbox holds for the caller's
-team, which then sits in the model's context beside text the other tools
-read from the internet. `AGENT_DISABLED_TOOLS` (comma-separated tool names)
-withholds tools from the model: a withheld tool is not bound to it, is not
-mentioned in the prompt and makes no request. A name that is not a tool
-stops the service at start.
 
 A tool's description is all the model knows about it, so it says what the
 service does and no more. When you add a tool or change what one sends, add
@@ -183,7 +206,7 @@ Settings are read from the environment (`app/config.py`):
 | `CORS_ORIGINS` | empty | Comma-separated allowed origins |
 | `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
 | `ANALYZE_TEAM_RATE_LIMIT` | empty (no ceiling) | Optional ceiling for all users of one team together |
-| `AGENT_DISABLED_TOOLS` | empty (every tool offered) | Comma-separated names of tools to withhold from the model |
+| `AGENT_TEAM_DATA_TOOLS` | empty (neither) | The team-data tools the model is given: `threat_intel_query_tool`, `vulnerability_search_tool` or both; see [Team-data tools](#team-data-tools-off-by-default) |
 | `ANALYZE_RATE_LIMIT_STORAGE_URI` | empty (`REDIS_URL`) | Where the limit counters are kept: empty for the service's Redis, `memory://` for the API process (the unit tests use it) |
 
 The service URLs default to the services' addresses in the root
@@ -204,8 +227,8 @@ The root `docker-compose.yml` sets `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`
 (default `claude-opus-4-8`), `GATEWAY_INTERNAL_SECRET`, `WILDBOX_API_URL`
 (`http://api:8000`), `WILDBOX_DATA_URL` and `WILDBOX_GUARDIAN_URL` (from
 `AGENTS_WILDBOX_DATA_URL` and `AGENTS_WILDBOX_GUARDIAN_URL` in `.env`),
-`ANALYZE_RATE_LIMIT`, `ANALYZE_TEAM_RATE_LIMIT`, `AGENT_DISABLED_TOOLS` and
-the Redis URLs.
+`ANALYZE_RATE_LIMIT`, `ANALYZE_TEAM_RATE_LIMIT`, `AGENT_TEAM_DATA_TOOLS`
+(empty) and the Redis URLs.
 
 ## Development
 

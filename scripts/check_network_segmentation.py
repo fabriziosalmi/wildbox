@@ -107,7 +107,9 @@ MUST_CONNECT = [
     ("cspm-worker", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "api", 8000, "WILDBOX_API_URL"),
-    # The agent's tools call these as the analysis's caller (#652).
+    # The agent's team-data tools call these as the analysis's caller, when
+    # AGENT_TEAM_DATA_TOOLS enables them (#652). The path must exist either
+    # way: enabling a tool must not also need a network change.
     ("agents", "open-security-data", 8002, "WILDBOX_DATA_URL"),
     ("agents", "open-security-guardian", 8013, "WILDBOX_GUARDIAN_URL"),
     ("sensor", "open-security-gateway", 443, "telemetry ingest via the gateway"),

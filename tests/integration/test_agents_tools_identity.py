@@ -20,6 +20,12 @@ sees there:
   gives that caller; with direct database access (DATA_DB_DSN) a team's own
   indicator is found by the tool as that team and not as the other.
 
+The model is given these two tools only when the operator names them in
+AGENT_TEAM_DATA_TOOLS; by default it has neither. The CI stack is started
+with both (integration-tests.yml), and the same variable is passed to this
+suite: with it set, a tool missing from the container fails the test; on a
+stack started without it the tests are skipped, saying how to enable them.
+
 Each request is sent once; nothing is polled.
 """
 
@@ -44,45 +50,68 @@ ASSETS = f"{GUARDIAN_API}/assets/assets/"
 VULNERABILITIES = f"{GUARDIAN_API}/vulnerabilities/"
 INDICATOR_SEARCH = f"{GATEWAY_URL}/api/v1/data/indicators/search"
 
-# Runs in the agents container: one tool, as the caller given on stdin.
+# The team-data tools the stack under test was started with: what the CI
+# workflow passes to `docker compose up` and to this suite. They are off by
+# default, so a stack started without the variable does not have them.
+EXPECTED_TEAM_DATA_TOOLS = {
+    name.strip()
+    for name in os.getenv("AGENT_TEAM_DATA_TOOLS", "").split(",")
+    if name.strip()
+}
+
+# Runs in the agents container: one of the tools the service gives its model
+# there, as the caller given on stdin. The tool is taken from the list the
+# agent itself builds, with the container's own settings, so a tool the
+# operator did not enable is not run here either.
 RUN_TOOL = """
 import asyncio, json, sys
-from app.tools import langchain_tools
+from app.config import settings
+from app.tools.langchain_tools import enabled_tools
 from app.tools.wildbox_client import caller_identity
 
 caller = json.loads(sys.stdin.read())
-tool = getattr(langchain_tools, sys.argv[1])
+given = {tool.name: tool for tool in enabled_tools(settings.team_data_tool_names())}
+if sys.argv[1] not in given:
+    print(json.dumps({"not_given_to_the_model": sys.argv[1], "given": sorted(given)}))
+    sys.exit(0)
 with caller_identity(caller):
-    print(asyncio.run(tool.ainvoke(json.loads(sys.argv[2]))))
+    print(asyncio.run(given[sys.argv[1]].ainvoke(json.loads(sys.argv[2]))))
 """
 
 
-def run_tool(caller, tool, **args):
-    """What ``tool`` returns to the model when it runs for ``caller``."""
+def in_agents(script, *args, stdin=""):
     if shutil.which("docker") is None:
         pytest.skip("docker is not available to run the tool in its container")
     result = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            AGENTS_CONTAINER,
-            "python",
-            "-c",
-            RUN_TOOL,
-            tool,
-            json.dumps(args),
-        ],
-        input=json.dumps(caller),
+        ["docker", "exec", "-i", AGENTS_CONTAINER, "python", "-c", script, *args],
+        input=stdin,
         capture_output=True,
         text=True,
         timeout=90,
     )
     if result.returncode != 0 and "No such container" in result.stderr:
         pytest.skip(f"{AGENTS_CONTAINER} is not running")
+    return result
+
+
+def run_tool(caller, tool, **args):
+    """What ``tool`` returns to the model when it runs for ``caller``."""
+    result = in_agents(RUN_TOOL, tool, json.dumps(args), stdin=json.dumps(caller))
     assert result.returncode == 0, result.stderr[-800:]
     # The tool's JSON is the last thing printed; log lines may precede it.
-    return json.loads(result.stdout[result.stdout.index("{") :])
+    output = json.loads(result.stdout[result.stdout.index("{") :])
+    if "not_given_to_the_model" in output:
+        # A stack that was started with the tool must have it: a skip here
+        # would hide the tool silently missing from the CI stack.
+        assert tool not in EXPECTED_TEAM_DATA_TOOLS, (
+            f"the stack was started with AGENT_TEAM_DATA_TOOLS naming {tool}, "
+            f"but the agents container gives its model only {output['given']}"
+        )
+        pytest.skip(
+            f"{tool} is not given to the model in this stack: start it with "
+            f"AGENT_TEAM_DATA_TOOLS={tool} (and set the same for this suite)"
+        )
+    return output
 
 
 def new_owner():
@@ -281,27 +310,40 @@ def test_the_threat_intel_tool_finds_a_teams_indicator_only_as_that_team(owners)
 
 def test_a_tool_without_a_caller_is_refused_in_the_container():
     """No caller, no request: the tool does not fall back to an identity of
-    the service's own."""
-    if shutil.which("docker") is None:
-        pytest.skip("docker is not available to run the tool in its container")
-    result = subprocess.run(
-        [
-            "docker",
-            "exec",
-            "-i",
-            AGENTS_CONTAINER,
-            "python",
-            "-c",
-            RUN_TOOL,
-            "vulnerability_search_tool",
-            json.dumps({"query": "CVE-2024-6387"}),
-        ],
-        input=json.dumps({"user_id": "", "team_id": ""}),
-        capture_output=True,
-        text=True,
-        timeout=90,
+    the service's own. A lookup tool, which the model is always given."""
+    result = in_agents(
+        RUN_TOOL,
+        "whois_lookup_tool",
+        json.dumps({"target": "example.com"}),
+        stdin=json.dumps({"user_id": "", "team_id": ""}),
     )
-    if result.returncode != 0 and "No such container" in result.stderr:
-        pytest.skip(f"{AGENTS_CONTAINER} is not running")
     assert result.returncode != 0
     assert "CallerIdentityUnavailable" in result.stderr
+
+
+# Runs in the agents container: the names of the tools it gives its model.
+GIVEN_TOOLS = """
+import json
+from app.config import TEAM_DATA_TOOLS, settings
+from app.tools.langchain_tools import enabled_tools
+given = [tool.name for tool in enabled_tools(settings.team_data_tool_names())]
+print(json.dumps({"given": given, "team_data": list(TEAM_DATA_TOOLS)}))
+"""
+
+
+def test_the_model_is_given_the_team_data_tools_the_stack_was_started_with():
+    """Neither by default; exactly those AGENT_TEAM_DATA_TOOLS names
+    otherwise. The CI stack is started with both, so the tests above run."""
+    result = in_agents(GIVEN_TOOLS)
+    assert result.returncode == 0, result.stderr[-800:]
+    answer = json.loads(result.stdout[result.stdout.index("{") :])
+    given_team_data = set(answer["given"]) & set(answer["team_data"])
+
+    # The seven lookups are there whatever the setting.
+    assert len(set(answer["given"]) - set(answer["team_data"])) == 7
+    if os.getenv("AGENT_TEAM_DATA_TOOLS") is None:
+        pytest.skip(
+            "AGENT_TEAM_DATA_TOOLS is not set for this suite, so what the "
+            f"stack was started with is unknown; it gives {sorted(given_team_data)}"
+        )
+    assert given_team_data == EXPECTED_TEAM_DATA_TOOLS

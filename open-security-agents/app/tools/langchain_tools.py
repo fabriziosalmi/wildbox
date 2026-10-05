@@ -13,6 +13,11 @@ own container, and four tools sent the tools service fields it refuses
 validates (tests/unit/test_tool_contracts.py), as the user who submitted
 the analysis. A tool that cannot be made to do that is taken out of
 ALL_TOOLS, not left for the model to call.
+
+The last two tools return data Wildbox holds for the caller's team. The
+model is given them only when the operator names them in
+AGENT_TEAM_DATA_TOOLS (enabled_tools below); by default it has the seven
+lookup tools.
 """
 
 import json
@@ -20,6 +25,7 @@ import logging
 from typing import Any, Dict, Iterable, List
 from langchain_core.tools import tool
 
+from ..config import TEAM_DATA_TOOLS
 from .wildbox_client import wildbox_client
 
 logger = logging.getLogger(__name__)
@@ -218,7 +224,9 @@ async def vulnerability_search_tool(query: str) -> str:
         return json.dumps({"error": str(e), "success": False})
 
 
-# Export all tools for the agent
+# Every tool the service has, whether or not the model is given it: the
+# contract tests check each one. What the model is given is enabled_tools(),
+# never this list.
 ALL_TOOLS = [
     port_scan_tool,
     whois_lookup_tool,
@@ -231,29 +239,30 @@ ALL_TOOLS = [
     vulnerability_search_tool
 ]
 
-# The tools that return data Wildbox holds for the caller's team, as opposed
-# to what a lookup of the IOC finds outside. What they return goes to the
-# model provider like every tool output, and is in the model's context for
-# the rest of the analysis, next to text it read from the internet.
-INTERNAL_DATA_TOOLS = ("threat_intel_query_tool", "vulnerability_search_tool")
 
+def enabled_tools(team_data: Iterable[str] = ()) -> List[Any]:
+    """The tools the agent gives its model.
 
-def enabled_tools(disabled: Iterable[str] = ()) -> List[Any]:
-    """The tools the agent offers its model: ALL_TOOLS but ``disabled``.
-
-    ``disabled`` is the operator's AGENT_DISABLED_TOOLS. A tool that is left
-    out is not bound to the model, so the model cannot call it.
+    The seven tools that look the IOC up outside, always. A team-data tool
+    (app/config.py TEAM_DATA_TOOLS) only when ``team_data`` names it, which
+    is the operator's AGENT_TEAM_DATA_TOOLS: by default neither. A tool that
+    is not in the result is not bound to the model, so the model cannot call
+    it, whatever it is told to do by something it read.
 
     Raises:
-        ValueError: a name in ``disabled`` is not a tool. Withholding a tool
-            is a decision about what the model may read; a typo must not
-            leave it offered.
+        ValueError: a name in ``team_data`` is not a team-data tool. The
+            settings refuse it at start; this is the same rule for any
+            other caller.
     """
-    names = [tool.name for tool in ALL_TOOLS]
-    unknown = sorted(set(disabled) - set(names))
+    wanted = set(team_data)
+    unknown = sorted(wanted - set(TEAM_DATA_TOOLS))
     if unknown:
         raise ValueError(
-            f"AGENT_DISABLED_TOOLS names no tool of the agent: {', '.join(unknown)}. "
-            f"The tools are: {', '.join(names)}"
+            f"Not a team-data tool: {', '.join(unknown)}. "
+            f"The team-data tools are: {', '.join(TEAM_DATA_TOOLS)}"
         )
-    return [tool for tool in ALL_TOOLS if tool.name not in set(disabled)]
+    return [
+        tool
+        for tool in ALL_TOOLS
+        if tool.name not in TEAM_DATA_TOOLS or tool.name in wanted
+    ]

@@ -12,6 +12,14 @@ from limits import parse_many
 from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings
 
+# The tools that return data Wildbox holds for the caller's team, as opposed
+# to what a lookup of the IOC finds outside: the team's threat indicators in
+# the data service, and the vulnerabilities Guardian records on its assets.
+# The model is given one only when AGENT_TEAM_DATA_TOOLS names it (see
+# Settings.agent_team_data_tools). Defined here, not with the tools, because
+# the settings are validated before anything else is imported.
+TEAM_DATA_TOOLS = ("threat_intel_query_tool", "vulnerability_search_tool")
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -80,19 +88,45 @@ class Settings(BaseSettings):
     # tool calls fail.
     gateway_internal_secret: str = Field(default="", env="GATEWAY_INTERNAL_SECRET")
     
-    # Tools withheld from the model: a comma-separated list of tool names
-    # (app/tools/langchain_tools.py ALL_TOOLS). Empty, the default, offers
-    # them all. Two of them, threat_intel_query_tool and
-    # vulnerability_search_tool, hand the model data Wildbox holds for the
-    # caller's team; whatever a tool returns is sent to the model provider
-    # with the rest of the conversation. An operator who does not want that
-    # names them here. A name that is not a tool stops the service at start.
-    agent_disabled_tools: str = ""
+    # The team-data tools the model is given: a comma-separated list of names
+    # from TEAM_DATA_TOOLS above. Empty, the default, gives it neither: an
+    # analysis then runs on lookups of the IOC alone, and nothing Wildbox
+    # holds for the team enters the conversation.
+    #
+    # Naming a tool here is a decision about data, and it is the operator's:
+    # - what the tool returns (the team's threat indicators, or the
+    #   vulnerabilities Guardian records on the team's assets, with asset
+    #   names) is sent to the model provider like every tool output;
+    # - it then sits in the model's context beside text the other tools
+    #   fetched from the internet, and the model holds tools that reach
+    #   outside (URL analysis, DNS, WHOIS). A page or a record written to
+    #   instruct the model can ask it to pass that data out in a tool
+    #   argument. The prompt tells the model not to; a prompt is not a
+    #   control.
+    #
+    # A name that is not one of TEAM_DATA_TOOLS stops the service at start:
+    # a typo must neither enable a tool nor be mistaken for having done so.
+    agent_team_data_tools: str = ""
 
-    def disabled_tool_names(self) -> frozenset:
-        """The tool names in AGENT_DISABLED_TOOLS."""
+    @field_validator("agent_team_data_tools")
+    @classmethod
+    def _known_team_data_tools(cls, value: str) -> str:
+        value = (value or "").strip()
+        unknown = sorted(
+            {name.strip() for name in value.split(",") if name.strip()}
+            - set(TEAM_DATA_TOOLS)
+        )
+        if unknown:
+            raise ValueError(
+                f"AGENT_TEAM_DATA_TOOLS names no team-data tool: {', '.join(unknown)}. "
+                f"It takes any of: {', '.join(TEAM_DATA_TOOLS)}"
+            )
+        return value
+
+    def team_data_tool_names(self) -> frozenset:
+        """The team-data tools AGENT_TEAM_DATA_TOOLS gives the model."""
         return frozenset(
-            name.strip() for name in self.agent_disabled_tools.split(",") if name.strip()
+            name.strip() for name in self.agent_team_data_tools.split(",") if name.strip()
         )
 
     # Analysis Settings

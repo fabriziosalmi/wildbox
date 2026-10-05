@@ -219,7 +219,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     that user's gateway identity and `GATEWAY_INTERNAL_SECRET`, so the
     data service answers with that team's indicators and the shared
     feeds, and Guardian with what that user may see. The agents service
-    has no key of its own.
+    has no key of its own. The model is given these two only when the
+    operator opts in; see `AGENT_TEAM_DATA_TOOLS` under Added.
   - The four tools send the fields their tool validates.
     `reputation_check_tool` now takes the IOC's type; `url_analysis_tool`
     no longer offers a screenshot the tools service never took.
@@ -250,17 +251,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **`AGENT_DISABLED_TOOLS` withholds tools from the AI analysis's model**
-  (#652). Every tool output is sent to the model provider, and two
-  tools now return data Wildbox holds for the user's team: its threat
-  indicators and the vulnerabilities Guardian tracks. An operator who
-  wants that data to stay in the stack sets
-  `AGENT_DISABLED_TOOLS=threat_intel_query_tool,vulnerability_search_tool`
-  in `.env`. A withheld tool is not offered to the model, is not
-  mentioned in its prompt and makes no request; a name that is not a
-  tool stops the agents service at start. The default offers every
-  tool. The prompt also tells the model that tool output is data, not
-  instructions.
+- **`AGENT_TEAM_DATA_TOOLS` gives the AI analysis's model the team-data
+  tools, which are off by default** (#652). `threat_intel_query_tool`
+  and `vulnerability_search_tool` return data Wildbox holds for the
+  user's team: its threat indicators, and the vulnerabilities Guardian
+  records on its assets. The model is given one only when the operator
+  names it in `AGENT_TEAM_DATA_TOOLS` (`.env`; passed by both compose
+  files). Empty, the default, gives it neither: the tool is not in the
+  model's tool list, the prompt does not mention it, and the agents
+  service makes no request to the data service or to Guardian. Opting in
+  is a decision about data. What the tool returns is sent to the model
+  provider like every tool output; and it then sits in the model's
+  context beside text the lookup tools fetched from the internet, while
+  the model holds tools that reach outside with arguments it writes, so
+  text written to instruct the model can ask for the data to be passed
+  out. The prompt tells the model that tool output is data and not to
+  do so, which is a request, not a control. Any value but the two names
+  stops the service at start. Neither tool worked before this release,
+  so the default takes nothing away from an existing deployment.
 
 - **A guardian webhook endpoint path is unique per team, not across
   guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
