@@ -73,7 +73,7 @@ API_KEY=<openssl rand -hex 32>
 image: ollama/ollama:0.4.7
 image: n8nio/n8n:1.74.0
 image: grafana/grafana:11.4.0
-image: prom/prometheus:v2.55.1
+image: prom/prometheus:v3.13.4
 ```
 
 ❌ **DON'T:**

@@ -1,7 +1,7 @@
 # Unit tests for monitoring/alert_rules.yml.
 #
 #   docker run --rm --network none -v "$PWD/monitoring:/monitoring:ro" \
-#     -w /monitoring --entrypoint promtool prom/prometheus:v2.55.1 \
+#     -w /monitoring --entrypoint promtool prom/prometheus:v3.13.4 \
 #     test rules alert_rules.test.yml
 #
 # scripts/check_monitoring_config.py runs exactly that in CI, with the image

@@ -1324,7 +1324,13 @@ services:
   #
   #   docker compose --profile monitoring up -d
   prometheus:
-    image: prom/prometheus:v2.55.1
+    # 3.13 is the long-term support line (until 2027-07-31). 2.55.1, which
+    # stood here, was the last 2.x release (November 2024) and gets no fixes:
+    # the stored XSS in its web UI's heatmap (CVE-2026-44903) and the denial
+    # of service through the remote-read endpoint (CVE-2026-42154) are fixed
+    # in 3.5.3 and 3.11.3 only (#726). 3.x reads the TSDB of 2.55 as it is;
+    # going back is possible to 2.55 and no earlier.
+    image: prom/prometheus:v3.13.4
     profiles: ["monitoring"]
     restart: unless-stopped
     security_opt:
@@ -1332,12 +1338,12 @@ services:
     # The image's own flags, restated because `command` replaces them all,
     # plus the address this server is reached at: Prometheus writes it into
     # every alert as the link back to the expression that fired. Without it
-    # the link names the container's ID.
+    # the link names the container's ID. No --web.console.* flags: the 3.x
+    # image ships no console templates, so the directories they named are
+    # not there.
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --web.console.libraries=/usr/share/prometheus/console_libraries
-      - --web.console.templates=/usr/share/prometheus/consoles
       - --web.external-url=${PROMETHEUS_EXTERNAL_URL:-http://127.0.0.1:9090}
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro

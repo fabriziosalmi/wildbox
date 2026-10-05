@@ -9,6 +9,7 @@ and Dockerfiles as text, then run it on the repository itself.
 """
 
 import importlib.util
+import re
 import subprocess
 import sys
 import textwrap
@@ -742,7 +743,9 @@ def test_a_cache_mount_keeps_the_lists_out_of_the_layer():
         f"RUN --mount=type=cache,target=/root/.cache apt-get update && {INSTALL}\n"
     )
     assert docker_rules(elsewhere) == ["os-packages"]
-    bind = f"RUN --mount=type=bind,target=/var/lib/apt/lists apt-get update && {INSTALL}\n"
+    bind = (
+        f"RUN --mount=type=bind,target=/var/lib/apt/lists apt-get update && {INSTALL}\n"
+    )
     assert docker_rules(bind) == ["os-packages"]
 
 
@@ -942,9 +945,9 @@ def test_an_unverified_download_for_one_architecture_is_two_findings():
 
 def test_add_of_a_url_for_one_architecture_is_refused():
     pinned = "ADD --checksum=sha256:" + "a" * 64
-    assert docker_rules(f"{pinned} https://example.com/v1/tool_linux_arm64.tgz /tmp/\n") == [
-        "architecture"
-    ]
+    assert docker_rules(
+        f"{pinned} https://example.com/v1/tool_linux_arm64.tgz /tmp/\n"
+    ) == ["architecture"]
     assert docker_rules(f"{pinned} https://example.com/v1/tool.tgz /tmp/\n") == []
 
 
@@ -977,6 +980,58 @@ def test_the_tools_image_installs_trivy_for_its_platform():
     assert run.index("sha256sum -c") < run.index("tar -xzf")
 
 
+def version_tuple(text: str) -> tuple:
+    return tuple(int(part) for part in text.split("."))
+
+
+def test_the_sensor_image_installs_a_supported_osquery_for_its_platform():
+    # #726: 5.10.2 (October 2023) stood here. 5.23.1 is the first release
+    # with the fixes of 5.23.0 and 5.23.1 in osquery itself and OpenSSL 3.6.
+    text = (REPO / "open-security-sensor" / "Dockerfile").read_text(encoding="utf-8")
+    runs = [
+        i.value
+        for i in cch.parse_dockerfile(text)
+        if i.keyword == "RUN" and "osquery.deb" in i.value
+    ]
+    assert len(runs) == 1
+    run = " ".join(runs[0].split())
+    versions = re.findall(r"osquery_(\d+\.\d+\.\d+)-1\.linux_\$\{ARCH\}\.deb", run)
+    assert len(versions) == 1
+    assert version_tuple(versions[0]) >= (5, 23, 1), versions
+    # The package of the image's architecture, one checksum each, checked
+    # before dpkg runs it; any other architecture stops the build.
+    assert "ARCH=$(dpkg --print-architecture)" in run
+    checksums = re.findall(
+        r'"\$ARCH" = "(\w+)" \]; then OSQUERY_SHA256=([0-9a-f]{64});', run
+    )
+    assert [arch for arch, _ in checksums] == ["amd64", "arm64"]
+    assert checksums[0][1] != checksums[1][1]
+    assert re.search(r'else echo "Unsupported architecture: \$ARCH" && exit 1; fi', run)
+    assert run.index("sha256sum -c") < run.index("dpkg -i osquery.deb")
+    # The README names the version the image installs.
+    readme = (REPO / "open-security-sensor" / "README.md").read_text(encoding="utf-8")
+    assert f"osquery {versions[0]}," in readme
+
+
+def test_prometheus_is_a_supported_release():
+    # #726: v2.55.1 stood here, the last release of a line that gets no
+    # fixes. 3.13 is the long-term support line; 3.13.4 has the fixes of
+    # CVE-2026-44903 and CVE-2026-42154.
+    text = (REPO / "docker-compose.yml").read_text(encoding="utf-8")
+    prometheus = cch.load_compose(text)["services"]["prometheus"]
+    match = re.match(
+        r"^prom/prometheus:v(\d+\.\d+\.\d+)(@sha256:[0-9a-f]{64})?$",
+        prometheus["image"],
+    )
+    assert match, prometheus["image"]
+    assert version_tuple(match.group(1)) >= (3, 13, 4)
+    # The 3.x image has no console templates: the flags that named their
+    # directories are gone with them.
+    assert not [arg for arg in prometheus["command"] if "web.console" in arg]
+    assert "--config.file=/etc/prometheus/prometheus.yml" in prometheus["command"]
+    assert "--storage.tsdb.path=/prometheus" in prometheus["command"]
+
+
 def test_a_download_can_be_allowlisted_but_pip_cannot():
     found = docker_findings("RUN curl -sfL https://example.com/v1/t.tgz -o /t.tgz\n")
     allowlist, errors = cch.read_allowlist(
@@ -984,7 +1039,14 @@ def test_a_download_can_be_allowlisted_but_pip_cannot():
     )
     assert errors == []
     assert cch.apply_allowlist(found, allowlist) == ([], [])
-    for rule in ("pip", "npm", "pipe-to-shell", "base-image", "os-packages", "architecture"):
+    for rule in (
+        "pip",
+        "npm",
+        "pipe-to-shell",
+        "base-image",
+        "os-packages",
+        "architecture",
+    ):
         _, errors = cch.read_allowlist(f"{rule}  svc/Dockerfile  x  # because\n")
         assert len(errors) == 1 and "not a rule" in errors[0], rule
 
@@ -1236,9 +1298,10 @@ def test_every_image_installs_only_the_packages_it_names():
                     # The C library headers are a recommendation of gcc: left
                     # out, the compiler is installed and compiles nothing.
                     if "gcc" in command:
-                        assert {"libc6-dev", "g++", "build-essential"} & set(
-                            command
-                        ), (name, "gcc without the C library headers")
+                        assert {"libc6-dev", "g++", "build-essential"} & set(command), (
+                            name,
+                            "gcc without the C library headers",
+                        )
     # One per Debian-based image, two in the two-stage cspm image. A count
     # that drops means the loop above stopped seeing them.
     assert len(installs) == 10, [name for name, _ in installs]

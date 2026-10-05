@@ -53,7 +53,7 @@ components (`sensor/core/agent.py`):
 The code has Linux, macOS and Windows branches (default configuration paths,
 osquery binary names, log sources). The only packaged and
 exercised deployment is the Linux Docker image built from this directory's
-`Dockerfile` (osquery 5.10.2, amd64 or arm64). There are no native installer
+`Dockerfile` (osquery 5.23.1, amd64 or arm64). There are no native installer
 packages.
 
 ## Running the sensor
