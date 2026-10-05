@@ -33,6 +33,10 @@ data_lake:
   # until a batch is accepted; it drops nothing to make room.
   buffer_max_events: 5000
   buffer_max_bytes: 16777216  # 16 MiB
+  # The share of the team's request budget at the gateway (RATE_LIMIT_PER_HOUR
+  # there, counted per minute) that this sensor uses when it has a backlog;
+  # the rest is left to the team's dashboard sessions and other keys.
+  rate_limit_share: 0.5
 
 # Telemetry Collection
 collection:

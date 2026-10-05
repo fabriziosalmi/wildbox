@@ -147,6 +147,7 @@ data_lake:
   retry_max_delay: 300       # the delay doubles up to this
   buffer_max_events: 5000    # what may wait for the gateway
   buffer_max_bytes: 16777216
+  rate_limit_share: 0.5      # of the team's request budget at the gateway
 
 # Telemetry Collection
 collection:
@@ -718,7 +719,9 @@ redirects with it, and never logs it.
 Processed events wait in the sender's buffer, serialized, until the gateway
 answers for them. A batch is the oldest events: at most `batch_size` of them
 and 8 MiB, which the gateway's 10 MiB request limit admits. It is sent when
-it is full, or `flush_interval` seconds after its first event.
+it is full, or `flush_interval` seconds after its first event, and the next
+one as soon as the gateway has answered: see
+[How fast a sensor delivers](#how-fast-a-sensor-delivers).
 
 An answer is read for what it says. Only an answer about the events
 themselves costs events; one that says the sensor is not allowed, not now,
@@ -787,6 +790,38 @@ number of events dropped since the last such line, by reason.
 
 `data_lake.retry_attempts` is no longer read: the sensor says so at start-up
 when the configuration still sets it.
+
+### How fast a sensor delivers
+
+The sender sends one batch at a time and the next one when the gateway has
+answered, at least 20 ms after the previous request. What limits it is the
+gateway:
+
+- nginx admits 100 requests a second from one address; 20 ms between
+  requests keeps a sensor at half of that.
+- The gateway counts every request of a **team** against one budget,
+  `RATE_LIMIT_PER_HOUR` (10,000 by default), enforced per minute: 166
+  requests a minute for the team's dashboard sessions and all its keys
+  together, after which all of them get 429 until the minute ends. Each
+  answer states what is left (`X-RateLimit-Remaining`). The sensor uses
+  `data_lake.rate_limit_share` of it, half by default: when what is left of
+  the minute's budget falls to the other half, it waits for the next minute.
+  Sensors of the same team share that half between them.
+
+With the defaults a team's sensors deliver about 83 batches a minute:
+**8,300 events a minute, about 140 a second**, with `batch_size: 100`. To
+deliver more, raise `batch_size` (the data service takes up to 1,000 events
+in a batch, about 1,400 events a second; a larger value is split by the
+sender when the data service refuses it), raise `RATE_LIMIT_PER_HOUR` on the
+gateway, or give the sensor a larger `rate_limit_share`.
+
+Above that rate the buffer fills, the queues fill and the collectors wait.
+A burst is delivered later, in order. A log that is written faster than the
+sensor delivers for a long time falls further and further behind, and what
+it has not read is lost when the log is rotated away: `log_forwarder` in
+`GET /api/v1/components` shows, for each file, how many bytes are waiting
+to be read (`behind`), and `data_forwarder.pacing` the budget the gateway
+last stated and whether the sender is waiting for the next minute.
 
 ### In the Wildbox stack
 

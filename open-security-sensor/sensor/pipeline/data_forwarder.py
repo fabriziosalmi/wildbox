@@ -50,6 +50,12 @@ them:
   dropped. What is still here when the sensor stops is not settled; an
   event whose collector will read it again after the restart is then
   counted under ``events_returned_to_source`` and not as dropped.
+* The pace is the gateway's (#745). The next batch goes when the previous
+  one is answered, not a second later. The gateway counts requests per team
+  and minute and says what is left in each answer (``X-RateLimit-*``): when
+  what is left falls to the share the sensor leaves to the team's other
+  clients (``data_lake.rate_limit_share``), the sender waits for the next
+  minute. ``MIN_REQUEST_INTERVAL`` keeps it under nginx's limit per address.
 """
 
 import asyncio
@@ -127,6 +133,13 @@ SPLIT_BUDGET = 64
 DROP_REASONS = ("refused", "oversize", "unserializable", "unconfigured", "shutdown")
 # Seconds to wait after an HTTP 429 that names no Retry-After.
 RATE_LIMIT_DELAY = 10
+# Seconds between two requests, at least. The gateway's nginx admits 100
+# requests a second from one address, in bursts of 10 (limit_req zone=global
+# in wildbox_gateway.conf): this keeps a sensor at half of that.
+MIN_REQUEST_INTERVAL = 0.02
+# The longest the sender waits for the gateway's next window on its word: the
+# gateway's windows are a minute long.
+MAX_BUDGET_WAIT = 120
 # Seconds the last batches get when the sensor stops.
 STOP_FLUSH_SECONDS = 10
 # Seconds between two log lines that sum up what was dropped.
@@ -363,6 +376,7 @@ class DataForwarder:
             "batches_sent": 0,
             "batches_refused": 0,
             "batches_split": 0,
+            "budget_waits": 0,
             "send_failures": 0,
             "times_buffer_full": 0,
             "network_errors": 0,
@@ -393,9 +407,15 @@ class DataForwarder:
         self._retry_after = 0.0
         self._next_attempt: Optional[float] = None
 
-        # Rate limiting
-        self.last_request_time = 0.0
-        self.min_request_interval = 1.0  # Minimum seconds between requests
+        # Pacing. No request before _not_before (a monotonic time): the
+        # interval above after every request, and the gateway's next window
+        # once the sensor has used its share of the team's budget.
+        self.min_request_interval = MIN_REQUEST_INTERVAL
+        self._not_before = 0.0
+        # What the gateway last said of the team's budget, and until when
+        # the sender is waiting for it.
+        self.budget: Optional[Dict[str, int]] = None
+        self._budget_wait_until: Optional[float] = None
 
     @property
     def enabled(self) -> bool:
@@ -954,24 +974,61 @@ class DataForwarder:
     async def _send(self, body: bytes) -> str:
         """One attempt for one batch; SENT, RETRY or REFUSED."""
         try:
-            await self._apply_rate_limiting()
-            return await self._send_http_request(body)
+            await self._pace()
+            try:
+                return await self._send_http_request(body)
+            finally:
+                self._not_before = max(
+                    self._not_before, time.monotonic() + self.min_request_interval
+                )
         except Exception as e:
             logger.error(f"Error sending batch: {e}")
             self.stats["network_errors"] += 1
             self.stats["last_error"] = str(e)
             return RETRY
 
-    async def _apply_rate_limiting(self):
-        """Apply rate limiting to prevent overwhelming the API"""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
+    async def _pace(self):
+        """Wait until the next request may go."""
+        wait = self._not_before - time.monotonic()
+        if wait > 0:
+            await self._pause(wait)
+            # Waited for, or the forwarder is stopping: not owed any more.
+            self._not_before = time.monotonic()
+        self._budget_wait_until = None
 
-        if time_since_last < self.min_request_interval:
-            wait_time = self.min_request_interval - time_since_last
-            await asyncio.sleep(wait_time)
+    def _read_budget(self, response):
+        """Take the team's request budget from an answer, and wait for the
+        next window when the sensor's share of this one is used.
 
-        self.last_request_time = time.time()
+        The gateway counts every request of the team, the dashboard's and
+        other sensors' with this one's, against one budget per minute, and
+        answers 429 to all of them once it is spent. A sensor with a
+        backlog would spend it alone.
+        """
+        try:
+            limit = int(response.headers["X-RateLimit-Limit"])
+            remaining = int(response.headers["X-RateLimit-Remaining"])
+            reset = int(response.headers["X-RateLimit-Reset"])
+        except (KeyError, ValueError):
+            return
+        if limit <= 0 or remaining < 0:
+            return
+        self.budget = {"limit": limit, "remaining": remaining, "reset": reset}
+        share = self.config.data_lake.rate_limit_share
+        if remaining > limit * (1 - share):
+            return
+        wait = min(max(reset - time.time(), 0.0), MAX_BUDGET_WAIT)
+        if wait > 0:
+            self.stats["budget_waits"] += 1
+            self._budget_wait_until = time.time() + wait
+            self._not_before = max(self._not_before, time.monotonic() + wait)
+            logger.debug(
+                "The team's request budget is at %d of %d: waiting %.0f "
+                "seconds for the gateway's next window",
+                remaining,
+                limit,
+                wait,
+            )
 
     def _post(self, body: bytes):
         """POST to the ingest URL. Redirects are not followed: a redirected
@@ -985,6 +1042,7 @@ class DataForwarder:
         try:
             async with self._post(body) as response:
                 text = await response.text()
+                self._read_budget(response)
                 outcome, state, reason = classify_answer(response.status, text)
                 if outcome == SENT:
                     self._accepted = text
@@ -1094,6 +1152,21 @@ class DataForwarder:
             "retry": {
                 "consecutive_failures": self.failures,
                 "next_attempt": next_attempt,
+            },
+            # The team's request budget for the current minute, as the
+            # gateway last stated it, and until when the sender waits for
+            # the next one (null: it is not waiting).
+            "pacing": {
+                "min_request_interval": self.min_request_interval,
+                "rate_limit_share": data_lake.rate_limit_share,
+                "budget": self.budget,
+                "waiting_for_budget_until": (
+                    datetime.fromtimestamp(
+                        self._budget_wait_until, timezone.utc
+                    ).isoformat()
+                    if self._budget_wait_until
+                    else None
+                ),
             },
             "queue_size": self.input_queue.qsize(),
             "stats": self.stats.copy(),

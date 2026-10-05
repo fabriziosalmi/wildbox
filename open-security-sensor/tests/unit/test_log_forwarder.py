@@ -1011,7 +1011,7 @@ async def test_the_running_forwarder_follows_its_sources_and_stops_cleanly(
             "problems": {},
             # Read to its end; nothing accepted, as nothing took the events
             # further than the queue.
-            "positions": {str(log): {"read": size, "accepted": 0}},
+            "positions": {str(log): {"read": size, "accepted": 0, "behind": 0}},
         }
     ]
     assert status["positions"] == {

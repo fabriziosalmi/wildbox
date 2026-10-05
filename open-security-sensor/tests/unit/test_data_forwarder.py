@@ -22,6 +22,7 @@ import datetime
 import json
 import logging
 import sys
+import time
 from collections import deque
 from pathlib import Path
 
@@ -45,6 +46,7 @@ from sensor.core.config import (  # noqa: E402
 from sensor.pipeline import data_forwarder  # noqa: E402
 from sensor.pipeline.data_forwarder import (  # noqa: E402
     DROP_REASONS,
+    MIN_REQUEST_INTERVAL,
     REFUSED,
     RETRY,
     SENT,
@@ -140,6 +142,13 @@ class FakeGateway:
         # As nginx (413) or the data service (400): no more events than this.
         self.most_events = None
         self.too_many = 413
+        # As the gateway's limit per team: this many requests in a window,
+        # stated in every answer, and 429 past it. None: no such headers.
+        self.budget = None
+        self.window = 0  # the current window: changing it starts a new one
+        self.window_ends_in = 30
+        self.counted = {}
+        self.rate_headers = None  # else these, as they are
 
     async def handle(self, request):
         raw = await request.read()
@@ -160,6 +169,17 @@ class FakeGateway:
             }
         )
         headers = {}
+        if self.budget is not None:
+            used = self.counted[self.window] = self.counted.get(self.window, 0) + 1
+            headers["X-RateLimit-Limit"] = str(self.budget)
+            headers["X-RateLimit-Remaining"] = str(max(0, self.budget - used))
+            headers["X-RateLimit-Reset"] = str(int(time.time()) + self.window_ends_in)
+            if used > self.budget:
+                status = 429
+                headers["Retry-After"] = str(self.window_ends_in)
+                self.requests[-1]["status"] = 429
+        if self.rate_headers:
+            headers.update(self.rate_headers)
         if self.location:
             headers["Location"] = self.location
         if self.retry_after is not None:
@@ -1538,6 +1558,240 @@ async def test_rate_limiting_is_retried_after_what_the_gateway_asks(gateway):
     assert _held_ids(forwarder) == ["e1"]
 
 
+# -- the pace is the gateway's (#745) ---------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_next_batch_goes_when_the_previous_one_is_answered(gateway):
+    # main: one request a second, whatever the gateway allowed. These forty
+    # batches took forty seconds, and a log written faster than a batch a
+    # second fell behind for good.
+    config = SensorConfig(
+        data_lake=DataLakeConfig(
+            endpoint=gateway.url, api_key=API_KEY, ca_bundle=gateway.ca, batch_size=10
+        )
+    )
+    forwarder = DataForwarder(config, asyncio.Queue())
+    assert forwarder.min_request_interval == MIN_REQUEST_INTERVAL <= 0.05
+
+    await forwarder.start()
+    try:
+        started = asyncio.get_running_loop().time()
+        for event in _numbered(400):
+            forwarder.input_queue.put_nowait(event)
+        await _until(lambda: forwarder.stats["events_forwarded"] == 400, timeout=20)
+        took = asyncio.get_running_loop().time() - started
+    finally:
+        await forwarder.stop()
+
+    assert gateway.accepted_ids() == _ids(400)
+    assert len(gateway.requests) == 40
+    assert took < 10
+    # And not faster than nginx admits from one address (100 a second).
+    assert took >= 39 * MIN_REQUEST_INTERVAL
+
+
+class _Waits:
+    """Stands in for the sender's pause: records what is asked for, and
+    holds a wait for the gateway's next window until the test opens it."""
+
+    def __init__(self):
+        self.asked = []
+        self.next_window = asyncio.Event()
+
+    async def pause(self, seconds):
+        if seconds >= 1:
+            self.asked.append(seconds)
+            await self.next_window.wait()
+            self.next_window.clear()
+
+
+@pytest.mark.asyncio
+async def test_the_sender_leaves_the_team_its_share_of_the_request_budget(gateway):
+    # The gateway counts the whole team's requests in one budget a minute
+    # and answers 429 to all of them once it is spent. A sensor with a
+    # backlog must not spend it alone: at half of it, by default, it waits
+    # for the next window.
+    gateway.budget = 20
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=1)
+    waits = _Waits()
+    forwarder._pause = waits.pause
+
+    await forwarder.start()
+    try:
+        for event in _numbered(25):
+            forwarder.input_queue.put_nowait(event)
+        await _until(lambda: waits.asked)
+        for _ in range(20):
+            await asyncio.sleep(0)
+        first_window = len(gateway.requests)
+        status = forwarder.get_status()["pacing"]
+
+        gateway.window += 1  # the gateway's next minute
+        waits.next_window.set()
+        await _until(lambda: len(waits.asked) == 2)
+        second_window = len(gateway.requests) - first_window
+        gateway.window += 1
+        waits.next_window.set()
+        await _until(lambda: forwarder.stats["events_forwarded"] == 25)
+    finally:
+        waits.next_window.set()
+        await forwarder.stop()
+
+    # Ten of the twenty, then the wait until the window ends; never a 429.
+    assert (first_window, second_window) == (10, 10)
+    assert 25 <= waits.asked[0] <= 30
+    assert status["budget"]["limit"] == 20 and status["budget"]["remaining"] == 10
+    assert status["waiting_for_budget_until"]
+    assert status["rate_limit_share"] == 0.5
+    assert [r["status"] for r in gateway.requests] == [200] * 25
+    assert gateway.accepted_ids() == _ids(25)
+    assert forwarder.stats["budget_waits"] == 2
+    assert forwarder.get_status()["delivery"]["state"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_a_sensor_given_the_whole_budget_is_held_by_the_429_and_loses_nothing(
+    gateway,
+):
+    gateway.budget = 6
+    forwarder = _forwarder(
+        gateway.url, ca_bundle=gateway.ca, batch_size=1, rate_limit_share=1.0
+    )
+    waits = _Waits()
+    forwarder._pause = waits.pause
+
+    await forwarder.start()
+    try:
+        for event in _numbered(9):
+            forwarder.input_queue.put_nowait(event)
+        await _until(lambda: waits.asked)
+        held = forwarder.get_status()
+        gateway.window += 1
+        waits.next_window.set()
+        await _until(lambda: forwarder.stats["events_forwarded"] == 9)
+    finally:
+        waits.next_window.set()
+        await forwarder.stop()
+
+    assert gateway.accepted_ids() == _ids(9)
+    assert forwarder.stats["events_dropped"] == 0
+    # The sixth answer left nothing: the sender waited for the window
+    # rather than run into the 429.
+    assert held["pacing"]["budget"]["remaining"] == 0
+    assert [r["status"] for r in gateway.requests].count(429) == 0
+
+
+@pytest.mark.asyncio
+async def test_a_budget_spent_by_others_is_a_429_that_keeps_the_batch(gateway):
+    # The rest of the team used the budget before this request.
+    gateway.budget = 5
+    gateway.counted[0] = 5
+    gateway.window_ends_in = 7
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    await forwarder._init_session()
+    try:
+        for event in EVENTS:
+            forwarder.accept(event)
+        assert await forwarder._flush_batch() == RETRY
+        delay = forwarder._backoff()
+        state = forwarder.get_status()["delivery"]["state"]
+        gateway.window += 1
+        forwarder._not_before = 0
+        assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    assert state == "rate_limited"
+    assert delay == 7  # the gateway's Retry-After
+    assert gateway.accepted_ids() == ["e1", "e2"]
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        None,
+        {
+            "X-RateLimit-Limit": "many",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": "0",
+        },
+        {
+            "X-RateLimit-Limit": "0",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": "9999999999",
+        },
+        {
+            "X-RateLimit-Limit": "100",
+            "X-RateLimit-Remaining": "-5",
+            "X-RateLimit-Reset": "9999999999",
+        },
+        {"X-RateLimit-Limit": "100", "X-RateLimit-Remaining": "0"},
+        # Spent, and the window ended already: nothing to wait for.
+        {
+            "X-RateLimit-Limit": "100",
+            "X-RateLimit-Remaining": "0",
+            "X-RateLimit-Reset": "1",
+        },
+    ],
+)
+@pytest.mark.asyncio
+async def test_without_a_budget_it_can_read_the_sender_does_not_wait(gateway, headers):
+    gateway.rate_headers = headers
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca, batch_size=1)
+    waits = _Waits()
+    forwarder._pause = waits.pause
+
+    await forwarder.start()
+    try:
+        for event in _numbered(8):
+            forwarder.input_queue.put_nowait(event)
+        await _until(lambda: forwarder.stats["events_forwarded"] == 8)
+    finally:
+        waits.next_window.set()
+        await forwarder.stop()
+
+    assert waits.asked == []
+    assert forwarder.stats["budget_waits"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_wait_for_the_next_window_is_bounded(gateway):
+    # A reset time a day away is not the gateway's: its windows are a
+    # minute long.
+    gateway.rate_headers = {
+        "X-RateLimit-Limit": "100",
+        "X-RateLimit-Remaining": "0",
+        "X-RateLimit-Reset": str(int(time.time()) + 86400),
+    }
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    await forwarder._init_session()
+    try:
+        forwarder.accept(EVENTS[0])
+        assert await forwarder._flush_batch() == SENT
+    finally:
+        await forwarder.session.close()
+
+    wait = forwarder._not_before - time.monotonic()
+    assert data_forwarder.MAX_BUDGET_WAIT - 2 < wait <= data_forwarder.MAX_BUDGET_WAIT
+
+
+def test_the_share_of_the_budget_is_validated():
+    def errors(share):
+        return DataLakeConfig(
+            endpoint="https://gw", api_key=API_KEY, rate_limit_share=share
+        ).validate()
+
+    assert errors(0.5) == errors(1) == errors(0.01) == []
+    for share in (0, -0.5, 1.5, "half", None, True):
+        (error,) = errors(share)
+        assert "data_lake.rate_limit_share must be a number above 0" in error
+    config = _build_config_from_dict(
+        {"data_lake": {"endpoint": "https://gw", "rate_limit_share": 0.25}}
+    )
+    assert config.data_lake.rate_limit_share == 0.25
+
+
 def test_the_delay_doubles_with_each_failure_up_to_its_bound():
     assert [retry_delay(failures, 5, 300) for failures in range(0, 9)] == [
         0,
@@ -1569,7 +1823,8 @@ async def test_the_running_forwarder_backs_off_between_failed_attempts(
     backoffs = []
 
     async def no_wait(seconds):
-        backoffs.append(seconds)
+        if seconds >= 1:  # not the interval between two requests
+            backoffs.append(seconds)
 
     monkeypatch.setattr(forwarder, "_pause", no_wait)
     await forwarder.start()

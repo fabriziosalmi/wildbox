@@ -817,7 +817,11 @@ async def test_a_truncation_takes_the_accepted_position_back_to_the_beginning(
     # the new one.
     assert _saved_offset(data_dir) == 0
     assert run.forwarder.get_status()["log_sources"][0]["positions"] == {
-        str(log): {"read": len("new, read and not accepted yet\n"), "accepted": 0}
+        str(log): {
+            "read": len("new, read and not accepted yet\n"),
+            "accepted": 0,
+            "behind": 0,
+        }
     }
 
 
@@ -853,12 +857,32 @@ async def test_the_status_shows_how_far_each_file_was_read_and_accepted(data_dir
     status = run.forwarder.get_status()
 
     assert status["log_sources"][0]["positions"] == {
-        str(log): {"read": len("one\ntwo\n"), "accepted": len("one\n")}
+        str(log): {"read": len("one\ntwo\n"), "accepted": len("one\n"), "behind": 0}
     }
     assert status["positions"]["persisted"] is True
     assert status["positions"]["file"] == str(data_dir / STATE_FILE)
     assert status["positions"]["problem"] is None
     assert status["positions"]["last_saved"]
+
+
+@pytest.mark.asyncio
+async def test_the_status_shows_how_far_behind_a_file_is(data_dir, log):
+    # A log written faster than the sensor delivers: what waits is in the
+    # file, and the status says how much.
+    log.write_text("")
+    source = _source(log)
+    run, _ = await _run(data_dir, source)
+    _append(log, "one\ntwo\n")
+    await run.read()
+    _append(log, "written, and not read yet\n")
+
+    (positions,) = run.forwarder.get_status()["log_sources"][0]["positions"].values()
+
+    assert positions["read"] == len("one\ntwo\n")
+    assert positions["behind"] == len("written, and not read yet\n")
+    await run.read()
+    (positions,) = run.forwarder.get_status()["log_sources"][0]["positions"].values()
+    assert positions["behind"] == 0
 
 
 # -- the real pipeline ------------------------------------------------------
@@ -944,6 +968,7 @@ async def test_the_position_follows_what_the_gateway_accepts(
         assert status == {
             "read": len("one\ntwo\nthree\nfour\n"),
             "accepted": len("one\ntwo\n"),
+            "behind": 0,
         }
     finally:
         await pipeline.stop()

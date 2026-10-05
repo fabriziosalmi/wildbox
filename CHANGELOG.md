@@ -1113,6 +1113,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   difference as forwarded. An integration test revokes a sensor's key,
   writes lines, starts the sensor again with a valid key and requires
   each line once in the data service.
+- **The sensor sends the next batch when the previous one is answered**
+  (#745). It waited one second between two requests whatever the gateway
+  allowed, so it delivered at most 100 events a second with the default
+  `batch_size`; since it waits instead of dropping, a log written faster
+  than that fell behind for good. The pace is now the gateway's: 20 ms
+  between requests, under nginx's limit per address, and the team's
+  request budget as each answer states it. The sensor uses
+  `data_lake.rate_limit_share` of that budget (half, by default) and
+  then waits for the gateway's next minute, so that a sensor with a
+  backlog does not earn the team's dashboard a 429. With the defaults
+  that is about 140 events a second; the README says how to raise it and
+  what happens above it. `log_forwarder` reports how many bytes of each
+  file are waiting to be read (`behind`), and `data_forwarder.pacing`
+  the budget and whether the sender is waiting.
 
 ### Changed
 
