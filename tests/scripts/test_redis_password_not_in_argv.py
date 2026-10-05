@@ -267,3 +267,41 @@ def test_real_runtime_check_reads_the_running_redis(stack):
     )
     assert refused.returncode != 0
     assert "wrong REDIS_PASSWORD?" in refused.stderr
+
+
+HEALTH = REPO_ROOT / "scripts" / "shell-scripts" / "comprehensive_health_check.sh"
+
+
+def test_real_make_health_tells_the_right_password_from_a_wrong_one(stack, tmp_path):
+    """The Redis part of `make health` against the same server (#740).
+
+    It used to send no password and count NOAUTH as healthy. This stack has
+    no PostgreSQL, so only what the check says about Redis is read.
+    """
+
+    def databases(env_file):
+        return subprocess.run(
+            ["bash", str(HEALTH), "databases"],
+            env={
+                **stack["env"],
+                # Where the check reads the password, and what Compose reads
+                # instead of an .env in the repository.
+                "ENV_FILE": str(env_file),
+                "COMPOSE_ENV_FILES": str(stack["env_file"]),
+            },
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+    right = databases(stack["env_file"])
+    assert "Redis answers PONG to the stack's password" in right.stdout, right.stdout
+
+    wrong = tmp_path / "wrong.env"
+    wrong.write_text("REDIS_PASSWORD=not-the-password\n")
+    refused = databases(wrong)
+    assert refused.returncode != 0
+    assert "Redis refuses the REDIS_PASSWORD" in refused.stdout, refused.stdout
+    assert "Redis answers" not in refused.stdout
+    for result in (right, refused):
+        assert stack["password"] not in result.stdout + result.stderr

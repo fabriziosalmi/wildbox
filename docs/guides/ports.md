@@ -64,7 +64,9 @@ make health
 A service is healthy when its URL answers 2xx. A redirect is not followed and
 counts as unhealthy, as does any 4xx or 5xx and no answer at all. It also
 checks that PostgreSQL accepts connections and holds the `identity`, `data`
-and `guardian` databases, and that Redis answers. `automations` and
+and `guardian` databases, and that Redis answers `PONG` to a client that
+authenticates with the `REDIS_PASSWORD` of `.env` (or of the file `ENV_FILE`
+names): a Redis that refuses that password is unhealthy. `automations` and
 `prometheus` are skipped when they are not running, unless `COMPOSE_PROFILES`
 names their profile. The URLs live in one table,
 `scripts/lib/health_endpoints.sh`, which `scripts/wait-for-services.sh` uses

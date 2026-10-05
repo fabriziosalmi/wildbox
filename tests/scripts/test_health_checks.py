@@ -62,6 +62,9 @@ PATH_OF = {name: _port_and_path(url)[1] for name, url, _ in ENDPOINTS}
 DEFAULT_STACK = [name for name, _, profile in ENDPOINTS if not profile]
 PROFILE_SERVICES = {name: profile for name, _, profile in ENDPOINTS if profile}
 
+# Made up for these tests. Never a real secret.
+REDIS_PASSWORD = "made-up-redis-password"
+
 
 class Stub:
     """An HTTP server standing for every service, told apart by Host."""
@@ -108,6 +111,8 @@ class Stub:
         self.bin.mkdir()
         self.state = tmp_path / "state"
         self.state.mkdir()
+        self.env_file = tmp_path / "stack.env"
+        self.env_file.write_text(f"REDIS_PASSWORD={REDIS_PASSWORD}\n")
 
     def answer(self, service, status, path=None, **headers):
         self.answers[(PORT[service], path or PATH_OF[service])] = (status, headers)
@@ -131,6 +136,9 @@ class Stub:
             "HOME": str(self.tmp),
             "CURL_HOME": str(self.tmp),
             "FAKE_STATE": str(self.state),
+            # Never the repository's own .env: the Redis check reads the
+            # password from the file this names.
+            "ENV_FILE": str(self.env_file),
         }
         env.update(extra)
         return env
@@ -165,7 +173,19 @@ case " $* " in
   *" pg_isready "*) exit "${FAKE_PG_RC:-0}" ;;
   *"SELECT datname FROM pg_database"*)
     printf '%s\n' ${FAKE_DATABASES-postgres identity data guardian} ;;
-  *" redis-cli ping "*) echo "${FAKE_REDIS_REPLY-NOAUTH Authentication required.}" ;;
+  *" redis-cli ping "*)
+    # A Redis with a password. The client's is in REDISCLI_AUTH, which
+    # docker hands on only when the command names it with -e.
+    if [ -n "${FAKE_REDIS_REPLY:-}" ]; then
+      echo "$FAKE_REDIS_REPLY"
+    elif [[ " $* " != *" -e REDISCLI_AUTH "* ]] || [ -z "${REDISCLI_AUTH:-}" ]; then
+      echo "NOAUTH Authentication required."
+    elif [ "$REDISCLI_AUTH" = "${FAKE_REDIS_PASSWORD:-made-up-redis-password}" ]; then
+      echo "PONG"
+    else
+      echo "AUTH failed: WRONGPASS invalid username-password pair or user is disabled."
+      echo "NOAUTH Authentication required."
+    fi ;;
   *" logs "*" gateway "*) echo "${FAKE_GATEWAY_LOG:-}" ;;
 esac
 exit 0
@@ -302,13 +322,54 @@ def test_make_health_fails_when_a_database_check_fails(stub, extra, message):
     assert message in result.stdout
 
 
-def test_redis_that_asks_for_its_password_is_up(stub):
+def test_redis_is_healthy_when_it_answers_pong_to_the_stacks_password(stub):
     stub.stub_docker()
     result = stub.run("bash", str(HEALTH), "databases")
     assert result.returncode == 0, result.stdout
-    assert "Redis answers" in result.stdout
-    result = stub.run("bash", str(HEALTH), "databases", FAKE_REDIS_REPLY="PONG")
-    assert result.returncode == 0
+    assert "Redis answers PONG to the stack's password" in result.stdout
+    # By name, through the environment: the password is in no argument.
+    ping = [line for line in stub.docker_log().splitlines() if "redis-cli ping" in line]
+    assert ping == ["compose exec -T -e REDISCLI_AUTH wildbox-redis redis-cli ping"]
+    assert REDIS_PASSWORD not in stub.docker_log() + result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        # #740: this was "Redis answers", and the check passed.
+        ({"FAKE_REDIS_REPLY": "NOAUTH Authentication required."}, "Redis refuses"),
+        ({"FAKE_REDIS_PASSWORD": "what-the-server-really-holds"}, "Redis refuses"),
+        ({"FAKE_REDIS_REPLY": "LOADING Redis is loading the dataset"}, "does not answer"),
+        ({"FAKE_REDIS_REPLY": "PONG and something else"}, "does not answer"),
+    ],
+    ids=["noauth", "another-password", "loading", "not-exactly-pong"],
+)
+def test_redis_is_unhealthy_unless_the_reply_is_pong(stub, extra, message):
+    stub.stub_docker()
+    result = stub.run("bash", str(HEALTH), "databases", **extra)
+    assert result.returncode != 0, result.stdout
+    assert message in result.stdout
+    assert "Redis answers" not in result.stdout
+    assert REDIS_PASSWORD not in stub.docker_log() + result.stdout + result.stderr
+    # And `make health` as a whole fails with it.
+    assert stub.run("make", "health", **extra).returncode != 0
+
+
+def test_redis_cannot_be_called_healthy_without_a_password_to_check_with(stub):
+    stub.stub_docker()
+    stub.env_file.write_text("POSTGRES_PASSWORD=made-up\n")
+    result = stub.run("bash", str(HEALTH), "databases")
+    assert result.returncode != 0
+    assert "no REDIS_PASSWORD" in result.stdout
+    assert "redis-cli" not in stub.docker_log()
+
+
+def test_the_redis_password_can_come_from_the_environment(stub):
+    stub.stub_docker()
+    stub.env_file.write_text("")
+    result = stub.run("bash", str(HEALTH), "databases", REDIS_PASSWORD=REDIS_PASSWORD)
+    assert result.returncode == 0, result.stdout
+    assert REDIS_PASSWORD not in stub.docker_log()
 
 
 def test_the_check_only_reads_and_repairs_run_on_request(stub):

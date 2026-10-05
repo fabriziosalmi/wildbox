@@ -221,6 +221,11 @@ server no longer accepts that password. Nothing restarts the container for
 it; the status says that the container and the server disagree, which is
 what the command above ends.
 
+`make health` asks Redis with the password in `.env` and requires `PONG`. It
+passes right after the rotation, and fails if the server and `.env` come to
+disagree, for example when the Redis container restarts before it is
+recreated.
+
 ### POSTGRES_PASSWORD
 
 This password lives in two places. PostgreSQL reads `POSTGRES_PASSWORD` only

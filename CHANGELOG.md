@@ -542,6 +542,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **`make health` no longer reports a Redis it cannot log in to as
+  healthy** (#740). The check ran `redis-cli ping` without a password and
+  counted `NOAUTH` as success, so a Redis whose password no longer
+  matched `.env`, which no service can use, passed. It now authenticates
+  with `REDIS_PASSWORD` from the environment or from the env file Compose
+  reads (`ENV_FILE`, default `.env`), passes the password by name through
+  the environment, and requires the reply to be `PONG`. A refused
+  password, a Redis that is still loading and a missing password each
+  fail the check with a message of their own.
 - **identity answers 404, 500 and 503 in the body every service
   answers** (#722). It installed the shared error handlers and then
   registered two of its own by status code, which run first. Every 404
