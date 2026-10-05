@@ -94,10 +94,10 @@ performance:
   # Query interval in seconds
   query_interval: 10
 
-  # Maximum memory usage (MB)
+  # Thresholds, not limits: above this memory (MB) or this share of a CPU
+  # the sensor logs a warning and reports over_limits in its statistics.
+  # Nothing is slowed down.
   max_memory_mb: 128
-
-  # Maximum CPU usage percentage
   max_cpu_percent: 5
 
   # Maximum queue size before dropping events

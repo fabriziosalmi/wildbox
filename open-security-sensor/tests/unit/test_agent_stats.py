@@ -231,7 +231,8 @@ async def test_the_stats_route_answers_the_counters(tmp_path, gateway):
     assert stats["events_processed"] == 2
     assert stats["events_forwarded"] == 2
     assert isinstance(stats["uptime_seconds"], int)
-    assert stats["memory_mb"] > 0 and stats["throttled"] in (True, False)
+    assert stats["memory_mb"] > 0 and stats["over_limits"] in (True, False)
+    assert "throttled" not in stats
     datetime.fromisoformat(stats["timestamp"])
     assert stats["last_activity"] != stats["timestamp"]
 
@@ -266,6 +267,27 @@ async def test_the_summary_counts_errors_as_something_to_look_at(tmp_path, gatew
     finally:
         await agent.stop()
 
+    assert summary["alerts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_the_summary_counts_a_sensor_over_its_thresholds(tmp_path, gateway):
+    log = tmp_path / "app.log"
+    log.write_text("")
+    agent = _agent(log)
+    # This process uses more than one megabyte.
+    agent.config.performance.max_memory_mb = 1
+    api = LocalAPI(agent.config, agent)
+
+    await agent.start()
+    try:
+        await _until(lambda: "memory_mb" in agent.get_stats())
+        stats = await _answer(api._stats_handler)
+        summary = await _answer(api._dashboard_metrics_handler)
+    finally:
+        await agent.stop()
+
+    assert stats["over_limits"] is True
     assert summary["alerts"] == 1
 
 

@@ -1183,6 +1183,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   it is starting or stopping, 2 when it cannot be told. The key is sent
   to the local API only, past any proxy of the environment and without
   following a redirect.
+- **The sensor no longer says it throttles** (#745). Over
+  `performance.max_memory_mb` or `performance.max_cpu_percent` it logged
+  `throttling enabled` and reported `throttled: true` in
+  `GET /api/v1/stats`, and slowed nothing: no collector read the flag.
+  The flag is `over_limits`, the log line says that nothing is slowed
+  down, and the README and the shipped configurations call the two
+  settings what they are, the thresholds of a warning. The sensor still
+  measures every 5 seconds (it measured every 10 while the flag was set).
 
 ### Changed
 

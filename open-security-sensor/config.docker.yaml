@@ -83,8 +83,10 @@ fim:
 # Performance Tuning (Docker-optimized)
 performance:
   query_interval: 10
-  max_memory_mb: 256  # Higher for Docker
-  max_cpu_percent: 10  # Slightly higher for containerized environment
+  # Thresholds, not limits: above either the sensor logs a warning and
+  # reports over_limits in its statistics. Nothing is slowed down.
+  max_memory_mb: 256
+  max_cpu_percent: 10
   max_queue_size: 2000
   worker_threads: 4
 

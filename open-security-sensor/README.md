@@ -195,8 +195,8 @@ fim:
 # Performance Tuning
 performance:
   query_interval: 10
-  max_memory_mb: 128
-  max_cpu_percent: 5
+  max_memory_mb: 128    # thresholds of a warning and of over_limits in the
+  max_cpu_percent: 5    # statistics: nothing is limited or slowed down
 ```
 
 The `logging` section configures the sensor's own log:
@@ -1039,7 +1039,7 @@ since the sensor started:
 | `errors` | Errors of the processor and of the sender (network errors, error answers of the gateway) |
 | `last_activity` | When the last event was collected; `null` before the first |
 | `uptime_seconds` | Seconds since the sensor started |
-| `memory_mb`, `cpu_percent`, `throttled` | The sensor's own process, as measured every 5 seconds; absent until the first measurement |
+| `memory_mb`, `cpu_percent`, `over_limits` | The sensor's own process, as measured every 5 seconds; absent until the first measurement. `over_limits` is true while it uses more than `performance.max_memory_mb` or `performance.max_cpu_percent`, and for 30 seconds after: the sensor logs a warning and slows nothing down |
 | `timestamp` | When the answer was made |
 
 `events_collected` equals `events_forwarded` + `events_dropped` +

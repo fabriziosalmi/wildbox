@@ -408,11 +408,12 @@ class LocalAPI:
             stats = self.agent.get_stats()
             processor = self.agent.data_processor
 
-            # What deserves a look: errors, and resource limits exceeded.
+            # What deserves a look: errors, and the sensor using more than
+            # its configured thresholds.
             alerts = 0
             if stats.get('errors', 0) > 0:
                 alerts += 1
-            if stats.get('throttled'):
+            if stats.get('over_limits'):
                 alerts += 1
             # Events are collected and none reaches the data service.
             if stats.get('delivery_state', 'ok') != 'ok':

@@ -114,6 +114,8 @@ fim:
 # Performance Tuning
 performance:
   query_interval: 10
+  # Thresholds, not limits: above either the sensor logs a warning and
+  # reports over_limits in its statistics. Nothing is slowed down.
   max_memory_mb: 128
   max_cpu_percent: 5
   max_queue_size: 1000

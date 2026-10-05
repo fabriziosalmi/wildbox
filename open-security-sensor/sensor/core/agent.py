@@ -57,7 +57,7 @@ class SecuritySensorAgent:
     - File integrity monitoring
     - Log forwarding
     - Data processing and forwarding pipeline
-    - Resource monitoring and throttling
+    - Resource monitoring
     - Local management API
     """
     
@@ -76,7 +76,7 @@ class SecuritySensorAgent:
         self.resource_monitor = None
         
         # What the resource monitor measures (memory_mb, cpu_percent,
-        # throttled). The event counters are not kept here: get_stats()
+        # over_limits). The event counters are not kept here: get_stats()
         # reads them from the components that do the counting.
         self.resources: Dict[str, Any] = {}
 
