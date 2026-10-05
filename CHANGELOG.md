@@ -409,6 +409,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Every Python image holds what the shared package requires of it**
+  (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
+  PyJWT and prometheus-client as dependencies of the whole package, and
+  every image installed it with `pip install --no-deps` under a comment
+  saying the service's lock provided them. `pip check` failed in seven
+  images of eight: agents, responder and tools had neither passlib nor
+  PyJWT, guardian had those missing and no FastAPI, cspm no passlib, data
+  no PyJWT, the sensor none of the five, and cspm, data and guardian ran
+  prometheus-client 0.19.0 where the package asked for 0.20 or later.
+  Nothing failed because no module that needed a missing package was
+  imported there, which nothing checked. The package now has no
+  dependency of its own and one extra per group of modules (`fastapi`,
+  `auth`, `metrics`, `events`, `tracing`), each listing what those modules
+  import. A Dockerfile installs it with the extras of the modules its
+  service imports, without `--no-deps` and still with `--no-index`, so pip
+  resolves their requirements against what the hash-checked lock
+  installed and the build fails when the lock lacks one or pins it below
+  the declared floor; `pip check` then fails the build for any other
+  unmet requirement. The six FastAPI services install `fastapi` and
+  `metrics`; guardian (Django) and the sensor (aiohttp) import no module
+  that needs an extra and install none. `pip check` is clean in the eight
+  images and in the tools development image.
+- **The message a service logs when tracing is not initialized says
+  why** (#722). It advised
+  `pip install 'open-security-shared[observability]'`, an extra (the
+  OpenTelemetry API and SDK) that did not make the tracing module
+  importable. It now logs the import error. The extra is renamed
+  `tracing` and lists every distribution the module imports; the module
+  still cannot be imported with a current OpenTelemetry SDK, because it
+  uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
+  installs the extra.
 - **gateway: a dashboard on another origin can call the API: a CORS
   preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
   The production configuration answered 405 to every `OPTIONS` request
@@ -660,6 +691,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
+  version the other services already locked, up from 0.19.0. The six
+  services that call `install_observability` name
+  `prometheus-client>=0.20,<1.0.0` in their own `requirements.in`, the
+  floor of the shared package's `metrics` extra; responder and tools had
+  it only because dramatiq and flower require it. Nothing else moved in
+  the locks.
+- **`open-security-shared` extras** (#722). `observability` is now
+  `tracing`. `events` requires `sqlalchemy[asyncio]`, which its modules
+  import, and no longer httpx, which none of them imports.
+
 - **gateway: the CORS allowlist is `CORS_ORIGINS`, and only that**
   (#712). The gateway used to allow `localhost` and `127.0.0.1` on any
   port, in every deployment, and read no setting. It now reads
@@ -864,6 +906,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### CI
 
+- **An image whose environment does not satisfy the shared package does
+  not build, and Dependency Integrity says so first** (#722). The
+  offline install of the shared package with extras and the `pip check`
+  that follows run in every image build, so Docker Build Validation
+  fails on a lock that lacks a requirement or pins it too low. The
+  sensor's image, which no workflow built, joins that matrix.
+  `scripts/check_shared_dependencies.py`, a new step of Dependency
+  Integrity, reads the tree without building: it fails when a Dockerfile
+  installs the package with other extras than the modules its service
+  imports need, with `--no-deps` or without `pip check`, when a lock does
+  not pin a requirement of those extras at a version the package
+  accepts, and when a shared module imports something its extras do not
+  require.
 - **Code Quality checks every Dockerfile** (#657).
   `scripts/check_container_hygiene.py` also reads every tracked
   Dockerfile and fails on a `pip install` that is neither

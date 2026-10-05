@@ -16,8 +16,10 @@ Provides three things a service gets by calling ``install_observability(app, ...
    OpenTelemetry dependencies are installed, tracing is initialised; otherwise
    this is a no-op and the service still starts.
 
-prometheus_client is an optional dependency: if it is absent the middleware
-degrades to correlation only, so a service cannot fail to boot because of it.
+prometheus_client comes with the package's ``metrics`` extra, which every
+service that calls ``install_observability`` installs and locks. The import is
+still guarded: if it is absent the middleware degrades to correlation only, so
+a service cannot fail to boot because of it.
 """
 
 from __future__ import annotations
@@ -216,11 +218,15 @@ def install_observability(
 
             setup_wildbox_service_tracing(service_name=service_name, app=app)
             logger.info("Tracing initialised for %s", service_name)
-        except ImportError:
+        except ImportError as exc:
+            # No image installs the `tracing` extra, and the message used to
+            # advise an extra (`observability`: the API and the SDK) that did
+            # not make the module importable either. Say what failed.
             logger.info(
-                "Tracing not initialised for %s: OpenTelemetry extras not installed "
-                "(pip install 'open-security-shared[observability]')",
+                "Tracing not initialised for %s: open_security_shared.tracing "
+                "cannot be imported (%s)",
                 service_name,
+                exc,
             )
         except Exception:  # pragma: no cover - tracing must never block startup
             logger.warning("Tracing setup failed for %s", service_name, exc_info=True)

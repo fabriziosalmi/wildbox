@@ -1,8 +1,9 @@
 """Importing open_security_shared must not pull in optional dependencies.
 
-Services install the shared package with `pip install --no-deps`, on purpose:
-the shared package must not silently change a service's dependency tree. That
-only works if importing it does not immediately import the dependencies of
+The shared package has no dependency of its own, on purpose: it must not
+change a service's dependency tree. A service installs it with the extras of
+the modules it imports and locks what those need (#722). That only works if
+importing the package does not immediately import the dependencies of
 submodules the service never uses.
 
 It did. `__init__.py` did `from .auth_utils import ...` at module level, and
