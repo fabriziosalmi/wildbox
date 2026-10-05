@@ -18,8 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   take the three URLs from one rule, `open_security_shared.api_docs`:
   served when `ENVIRONMENT` is `development`, 404 for any other value.
   cspm no longer follows `DEBUG`. None of these paths was, or is,
-  reachable through the gateway. The two shell generators of the static
-  API pages no longer save a 404 body as a schema.
+  reachable through the gateway.
 
 ## [0.11.2] - 2026-10-05
 

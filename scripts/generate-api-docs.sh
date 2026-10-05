@@ -99,15 +99,13 @@ for service_config in "${SERVICES[@]}"; do
 
     echo -e "${YELLOW}Fetching OpenAPI schema for $service_name (port $port)...${NC}"
 
-    # Try to fetch OpenAPI schema. -f: a service outside development answers
-    # 404, and without it the error body was saved and rendered as the schema.
-    if curl -sf http://localhost:$port/openapi.json -o "$TEMP_DIR/${service_name}-openapi.json"; then
+    # Try to fetch OpenAPI schema
+    if curl -s http://localhost:$port/openapi.json -o "$TEMP_DIR/${service_name}-openapi.json"; then
         echo -e "${GREEN}✓${NC} Successfully fetched $service_name OpenAPI schema"
-    elif curl -sf http://localhost:$port/api/openapi.json -o "$TEMP_DIR/${service_name}-openapi.json"; then
+    elif curl -s http://localhost:$port/api/openapi.json -o "$TEMP_DIR/${service_name}-openapi.json"; then
         echo -e "${GREEN}✓${NC} Successfully fetched $service_name OpenAPI schema (from /api/openapi.json)"
     else
-        rm -f "$TEMP_DIR/${service_name}-openapi.json"
-        echo -e "${RED}✗${NC} Failed to fetch $service_name OpenAPI schema (the services publish /openapi.json only when ENVIRONMENT=development)"
+        echo -e "${RED}✗${NC} Failed to fetch $service_name OpenAPI schema"
     fi
 done
 

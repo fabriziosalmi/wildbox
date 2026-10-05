@@ -154,10 +154,7 @@ def fetch_openapi_schema(service_name: str, port: int) -> Dict:
         except Exception as e:
             continue
 
-    print_error(
-        f"Could not fetch OpenAPI schema for {service_name} "
-        "(the services publish /openapi.json only when ENVIRONMENT=development)"
-    )
+    print_error(f"Could not fetch OpenAPI schema for {service_name}")
     return None
 
 
