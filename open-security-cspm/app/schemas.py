@@ -344,28 +344,6 @@ class ComplianceReportResponse(BaseModel):
     recommendations: List[str] = Field(..., description="Recommendations")
 
 
-class ErrorResponse(BaseModel):
-    """Standard error response."""
-    
-    error: str = Field(..., description="Error type")
-    message: str = Field(..., description="Error message")
-    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
-    timestamp: datetime = Field(default_factory=datetime.utcnow, description="Error timestamp")
-    
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "error": "ValidationError",
-                "message": "Invalid credentials provided",
-                "details": {
-                    "field": "credentials.access_key_id",
-                    "reason": "required field missing"
-                },
-                "timestamp": "2024-01-15T10:30:00Z"
-            }
-        }
-
-
 class HealthCheckResponse(BaseModel):
     """Health check response."""
     

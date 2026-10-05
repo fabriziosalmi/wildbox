@@ -13,7 +13,7 @@ This page lists the routes registered in
 and the modules it includes. For request and response schemas, the service
 publishes its OpenAPI document at `/openapi.json`, Swagger UI at `/docs` and
 ReDoc at `/redoc` on its local port (not through the gateway), only when
-`ENVIRONMENT` is not `production`. The `.env` written by
+`ENVIRONMENT` is `development`. The `.env` written by
 `make generate-secrets` sets `ENVIRONMENT=production`, so those three paths
 answer 404 in the default stack.
 

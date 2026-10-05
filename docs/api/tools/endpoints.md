@@ -493,7 +493,7 @@ gateway, not on this service.
 | Path | Content |
 | --- | --- |
 | `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`; asynchronous runs happen in the worker, which is not scraped). `monitoring/prometheus.yml` scrapes it |
-| `/openapi.json` | The service's OpenAPI document |
+| `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
 | `/api` | Service name, version and tool names |
 
 None of them is part of the public API, and `/health` and these three are

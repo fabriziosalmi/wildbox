@@ -84,7 +84,7 @@ def _nothing_stored(client):
 
 def _assert_refused(response, provider):
     assert response.status_code == 400, response.text
-    message = response.json()["message"]
+    message = response.json()["error"]["message"]
     assert provider in message
     # The 400 names the providers that can be scanned.
     for supported in providers.supported_provider_ids():
@@ -203,7 +203,8 @@ def test_a_batch_names_every_unsupported_provider_it_holds(api):
     batch = {"scans": [_scan(p, c) for p, c in UNSUPPORTED.items()]}
     response = api.post("/api/v1/batch/scans", json=batch)
     assert response.status_code == 400, response.text
-    assert "Unsupported provider: azure, gcp." in response.json()["message"]
+    message = response.json()["error"]["message"]
+    assert "Unsupported provider: azure, gcp." in message
     _nothing_stored(api)
 
 

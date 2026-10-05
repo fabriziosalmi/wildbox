@@ -140,7 +140,8 @@ Service paths; through the gateway, replace `/api/v1/` with
 | GET | `/health/live` | Liveness |
 
 `scan_id` must be a UUID. The interactive documentation (`/docs`, `/redoc`,
-`/openapi.json`) is served only when `DEBUG` is true.
+`/openapi.json`) is served only when `ENVIRONMENT` is `development`, on the
+service port and not through the gateway; `DEBUG` does not change it.
 
 ### Start a scan
 
@@ -310,15 +311,26 @@ route.
 }
 ```
 
-A scan, single or in a batch, that names another provider is refused:
+A scan, single or in a batch, that names another provider is refused with
+400:
 
 ```json
 {
-  "error": "HTTPException",
-  "message": "Unsupported provider: gcp. Supported providers: aws.",
-  "details": { "status_code": 400 }
+  "error": {
+    "code": 400,
+    "message": "Unsupported provider: gcp. Supported providers: aws.",
+    "type": "HTTPException",
+    "request_id": "6f1c2d..."
+  }
 }
 ```
+
+Every error has this body, the one all Wildbox FastAPI services share
+(`open_security_shared.errors`): `error.code` is the HTTP status and
+`error.message` a sentence. A request that did not come through the gateway
+also carries the reason as data, in `error.details.code`
+(`GATEWAY_AUTH_REQUIRED`, `GATEWAY_SECRET_REQUIRED`,
+`INVALID_GATEWAY_HEADERS`).
 
 ## Configuration
 
@@ -337,9 +349,9 @@ Settings are read from the environment (`app/config.py`); the root
 | `SCAN_TIMEOUT_SECONDS` | `3600` | Time limit of one scan, 120 to 86400; the API and the worker refuse to start otherwise. Stack: from `CSPM_SCAN_TIMEOUT_SECONDS` |
 | `CSPM_REPORT_RETENTION_DAYS` | `90` | Days a scan's metadata, index entry and report are kept, 1 to 3650; the API and the worker refuse to start otherwise |
 | `CORS_ORIGINS` | `["http://localhost:3000"]` | Allowed origins, as a JSON list |
-| `DEBUG` | `false` | Serves `/docs`, `/redoc` and `/openapi.json` when true |
+| `DEBUG` | `false` | Auto-reload and a single worker when the module is run directly (`python -m app.main`) |
 | `LOG_LEVEL` | `INFO` | Log level |
-| `ENVIRONMENT` | `development` | Environment name |
+| `ENVIRONMENT` | `development` | `/docs`, `/redoc` and `/openapi.json` are served only when it is `development` |
 
 The `docker-compose.yml` in this directory is for standalone development.
 It does not set `GATEWAY_INTERNAL_SECRET` or `CSPM_CREDENTIAL_KEY`, so use

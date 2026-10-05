@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when any service was unreachable. The real counters are in
   `GET /metrics` (`wildbox_tool_executions_total`); for the health of
   the other services use their own health checks or Prometheus (#646).
+- **No service serves its OpenAPI schema outside development** (#679).
+  data turned `/docs` and `/redoc` off outside development but still
+  answered `/openapi.json`; tools served its schema in every environment;
+  identity, agents and responder turned the three paths off only for
+  `ENVIRONMENT=production`, so `staging` published them; and cspm served
+  them whenever `DEBUG` was true, in production too. The six services now
+  take the three URLs from one rule, `open_security_shared.api_docs`:
+  served when `ENVIRONMENT` is `development`, 404 for any other value.
+  cspm no longer follows `DEBUG`. None of these paths was, or is,
+  reachable through the gateway.
 - **gateway: the automations route requires `tools:admin`, as
   documented, and an authenticated route with no scope of its own
   requires `admin`** (#647). The scope map read `$uri`, and the
@@ -85,6 +95,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in `TOOLS_ALLOWED_INTERNAL_TARGETS`. They are now `8.8.8.8` and the
   host the Nmap project keeps for test scans, and the field descriptions
   name the setting (#646).
+- **An error detail that is a dict or a list reaches the client as JSON,
+  not as a Python dict string** (#655). The shared error handler built
+  `error.message` with `str()` unless the dict had a `reason`, so the
+  refusals of the gateway authentication dependency read
+  `"{'error': 'Gateway authentication required', 'message': ..., 'code':
+  'GATEWAY_AUTH_REQUIRED'}"` in tools, data, agents and responder.
+  `error.message` is now the dict's `reason`, else its `message`, else
+  its `error`, else the status phrase, and the dict is under
+  `error.details`, so the code is at `error.details.code`. A list detail
+  goes to `error.details` too. `error.message` is never empty.
+- **cspm answers the errors its endpoints raise in the canonical body**
+  (#655). A handler of its own replaced the shared one, so they left as
+  `{"error": "HTTPException", "message": ..., "details": {"status_code":
+  ...}, "timestamp": ...}`, with the same Python dict string for a dict
+  detail. They are now `{"error": {"code", "message", "type",
+  "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
+  were, and as every other service answers. A client that read the
+  top-level `message` of a cspm error must read `error.message`.
+- **Input that a validator refuses answers 422, not 500.** When a model's
+  validator raised `ValueError`, the field errors could not be rendered
+  as JSON and the request ended in an internal error: an IOC value of
+  the wrong format sent to `POST /api/v1/agents/analyze`, for one.
 - **gateway: `GET /api/v1/tools` requires `tools:read`** (#647). The
   scope map matched the tools routes with a trailing slash, so the list
   of tools, the first call a client makes, fell through to the generic
