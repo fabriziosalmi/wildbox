@@ -1,10 +1,24 @@
 """
 External System Integration Views
 
-Django REST Framework views for managing integrations with external systems.
+Django REST Framework views for the records of external systems.
+
+guardian stores these records and does nothing with them: no code contacts
+an external system, runs a synchronization, receives or sends a webhook, or
+delivers through a notification channel. The actions that claimed to
+(``test_connection``, ``health_check``, ``sync_status``, ``test_mapping``,
+``sync_now``, ``sync_statistics``, ``retry_sync``, ``test_webhook``,
+``trigger_webhook``, ``error_summary``, ``test_notification`` and
+``send_notification``) answered a fixed success, or fixed figures, without
+doing anything, and were removed (#644). An action added here must do what
+its response says: tests/unit/test_action_contracts.py fails for one that
+answers success and changes nothing.
 """
 
-from rest_framework import viewsets, status, permissions
+from datetime import timedelta
+
+from django.utils import timezone
+from rest_framework import viewsets, status
 from apps.core.permissions import IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
@@ -38,27 +52,6 @@ class ExternalSystemViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         """Record the gateway-authenticated user as the creator."""
         serializer.save(created_by=self.request.user)
 
-    @action(detail=True, methods=['post'])
-    def test_connection(self, request, pk=None):
-        """Test connection to external system"""
-        system = self.get_object()
-        # TODO: Implement actual connection test
-        return Response({'status': 'success', 'message': 'Connection test completed'})
-
-    @action(detail=True, methods=['post'])
-    def health_check(self, request, pk=None):
-        """Perform health check on external system"""
-        system = self.get_object()
-        # TODO: Implement actual health check
-        return Response({'status': 'healthy', 'response_time_ms': 150})
-
-    @action(detail=True, methods=['get'])
-    def sync_status(self, request, pk=None):
-        """Get synchronization status for this system"""
-        system = self.get_object()
-        # TODO: Return actual sync status
-        return Response({'status': 'active', 'last_sync': system.last_sync})
-
 
 class IntegrationMappingViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing field mappings between Guardian and external systems"""
@@ -70,20 +63,6 @@ class IntegrationMappingViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     ordering_fields = ['created_at', 'updated_at']
     ordering = ['-created_at']
 
-    @action(detail=True, methods=['post'])
-    def test_mapping(self, request, pk=None):
-        """Test field mapping configuration"""
-        mapping = self.get_object()
-        # TODO: Implement mapping test
-        return Response({'status': 'success', 'message': 'Mapping test completed'})
-
-    @action(detail=True, methods=['post'])
-    def sync_now(self, request, pk=None):
-        """Trigger immediate synchronization for this mapping"""
-        mapping = self.get_object()
-        # TODO: Implement immediate sync
-        return Response({'status': 'success', 'message': 'Sync initiated'})
-
 
 class SyncRecordViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     """ViewSet for managing synchronization records"""
@@ -94,24 +73,6 @@ class SyncRecordViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ['system', 'mapping', 'sync_status', 'last_sync_direction']
     ordering_fields = ['last_sync_at', 'next_sync_at', 'created_at']
     ordering = ['-last_sync_at']
-
-    @action(detail=False, methods=['get'])
-    def sync_statistics(self, request):
-        """Get synchronization statistics"""
-        # TODO: Implement sync statistics
-        return Response({
-            'total_syncs': 0,
-            'successful_syncs': 0,
-            'failed_syncs': 0,
-            'sync_rate': 0.0
-        })
-
-    @action(detail=True, methods=['post'])
-    def retry_sync(self, request, pk=None):
-        """Retry failed synchronization"""
-        sync_record = self.get_object()
-        # TODO: Implement sync retry
-        return Response({'status': 'success', 'message': 'Sync retry initiated'})
 
 
 class WebhookEndpointViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
@@ -127,20 +88,10 @@ class WebhookEndpointViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     ordering_fields = ['name', 'created_at']
     ordering = ['name']
 
-    @action(detail=True, methods=['post'])
-    def test_webhook(self, request, pk=None):
-        """Test webhook endpoint"""
-        webhook = self.get_object()
-        # TODO: Implement webhook test
-        return Response({'status': 'success', 'message': 'Webhook test completed'})
 
-    @action(detail=True, methods=['post'])
-    def trigger_webhook(self, request, pk=None):
-        """Manually trigger webhook for testing"""
-        webhook = self.get_object()
-        event_type = request.data.get('event_type')
-        # TODO: Implement webhook trigger
-        return Response({'status': 'success', 'message': 'Webhook triggered'})
+#: ``cleanup_logs`` deletes the logs older than this many days when the
+#: request does not say (the default the route always documented).
+DEFAULT_LOG_RETENTION_DAYS = 30
 
 
 class IntegrationLogViewSet(TeamScopedViewSetMixin, viewsets.ReadOnlyModelViewSet):
@@ -154,22 +105,33 @@ class IntegrationLogViewSet(TeamScopedViewSetMixin, viewsets.ReadOnlyModelViewSe
     ordering_fields = ['created_at', 'level']
     ordering = ['-created_at']
 
-    @action(detail=False, methods=['get'])
-    def error_summary(self, request):
-        """Get summary of integration errors"""
-        # TODO: Implement error summary
-        return Response({
-            'total_errors': 0,
-            'error_rate': 0.0,
-            'common_errors': []
-        })
-
     @action(detail=False, methods=['delete'])
     def cleanup_logs(self, request):
-        """Clean up old integration logs"""
-        days = request.query_params.get('older_than_days', 30)
-        # TODO: Implement log cleanup
-        return Response({'status': 'success', 'message': f'Logs older than {days} days cleaned up'})
+        """Delete the team's integration logs older than ``older_than_days``.
+
+        This answered "Logs older than N days cleaned up" and deleted
+        nothing (#644). It deletes the caller's team's logs only
+        (``get_queryset``), needs the owner or admin role like every other
+        write, and reports how many rows went.
+        """
+        raw = request.query_params.get('older_than_days', DEFAULT_LOG_RETENTION_DAYS)
+        try:
+            days = int(raw)
+        except (TypeError, ValueError):
+            days = 0
+        # Bounded above so the cutoff stays a date timedelta can compute.
+        if not 1 <= days <= 36500:
+            return Response(
+                {'older_than_days': ['A whole number of days, 1 or more.']},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        cutoff = timezone.now() - timedelta(days=days)
+        _, per_model = self.get_queryset().filter(created_at__lt=cutoff).delete()
+        return Response({
+            'deleted': per_model.get(IntegrationLog._meta.label, 0),
+            'older_than_days': days,
+        })
 
 
 class NotificationChannelViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
@@ -188,19 +150,3 @@ class NotificationChannelViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """Record the gateway-authenticated user as the creator."""
         serializer.save(created_by=self.request.user)
-
-    @action(detail=True, methods=['post'])
-    def test_notification(self, request, pk=None):
-        """Test notification channel"""
-        channel = self.get_object()
-        # TODO: Implement notification test
-        return Response({'status': 'success', 'message': 'Test notification sent'})
-
-    @action(detail=True, methods=['post'])
-    def send_notification(self, request, pk=None):
-        """Send notification through this channel"""
-        channel = self.get_object()
-        message = request.data.get('message')
-        severity = request.data.get('severity', 'info')
-        # TODO: Implement notification sending
-        return Response({'status': 'success', 'message': 'Notification sent'})

@@ -243,11 +243,21 @@ otherwise:
 Custom actions keep the Python method name in their path, underscores included
 (for example `test_connection/`, `run_now/`).
 
-### Placeholder actions
+### What an action's answer means
 
-Several actions are not implemented yet: they validate the request, then return a
-fixed success message without doing the work. The tables mark them as
-**placeholder**. Do not rely on them for automation.
+An action answers `2xx` only for something it did: a row it stored, changed or
+deleted, or a task it queued. Guardian served twenty actions that answered
+`{"status": "success", ...}`, or fixed figures, without doing anything (testing a
+connection, starting a scan, importing results, sending a notification,
+synchronizing a ticket). They were removed in
+[#644](https://github.com/fabriziosalmi/wildbox/issues/644): their routes answer
+`404`, and each section below says what is left in their place. Guardian does not
+contact external scanners, ticketing systems, webhooks or notification channels.
+
+What guardian cannot do for a record that exists answers an error with a stable
+`code`, never a success: for example `501` with
+`"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` when a discovery rule of a type without
+an implementation is run.
 
 ---
 
@@ -279,7 +289,7 @@ Custom actions:
 | `POST` | `assets/groups/{id}/apply_rules/` | Applies the group's assignment rules |
 | `POST` | `assets/groups/{id}/add_assets/` | Adds assets to the group |
 | `DELETE` | `assets/groups/{id}/remove_assets/` | Removes assets from the group |
-| `POST` | `assets/discovery-rules/{id}/execute/` | Runs a discovery rule now |
+| `POST` | `assets/discovery-rules/{id}/execute/` | Queues a run of the rule and returns `task_id`. `400` if the rule is disabled; `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` for a rule whose `discovery_type` is not `network_scan` (one stored before the API refused the other types) |
 | `POST` | `assets/discovery-rules/{id}/enable/` | Enables the rule |
 | `POST` | `assets/discovery-rules/{id}/disable/` | Disables the rule |
 | `GET` | `assets/software/inventory/` | Software inventory across assets |
@@ -320,27 +330,46 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `vulnerabilities/{id}/assign/` | Body `assigned_to` (user ID) and/or `assignee_group` |
-| `POST` | `vulnerabilities/{id}/close/` | Sets status `resolved`. Body `reason`, `resolution_method` (default `fixed`) |
-| `POST` | `vulnerabilities/{id}/reopen/` | Sets status `open`. Body `reason` |
+| `POST` | `vulnerabilities/{id}/assign/` | Body `assigned_to` (user ID) and/or `assignee_group`; `400` with neither |
+| `POST` | `vulnerabilities/{id}/close/` | Sets status `resolved`. Body `reason`, `resolution_method` (default `fixed`). Adds a history entry with the reason and the status the vulnerability had |
+| `POST` | `vulnerabilities/{id}/reopen/` | Sets status `open` and clears `resolved_at`. Body `reason`. Adds a history entry with the reason and the status the vulnerability had |
 | `POST` | `vulnerabilities/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `POST` | `vulnerabilities/{id}/remove_tag/` | Body `{"tag": "..."}` (a `POST` here, unlike assets) |
 | `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array |
 | `GET` | `vulnerabilities/{id}/attachments/` | Attachments, as a plain array |
 | `POST` | `vulnerabilities/bulk_action/` | See below |
 | `GET` | `vulnerabilities/stats/` | Counts by severity and status |
-| `GET` | `vulnerabilities/trends/` | Daily counts for the last `?days=N` days (default 30) |
+| `GET` | `vulnerabilities/trends/` | Daily counts for today and the `?days=N` days before it (default 30, from 0 to 366; `400` otherwise). See below |
 
 A vulnerability needs `title`, `description` and `asset` (an asset ID). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,
 `in_progress`, `resolved`, `accepted`, `false_positive`, `duplicate`; `priority` is
 one of `p1` to `p4`. `cvss_v3_score` must be between 0.0 and 10.0.
 
-`bulk_action/` takes `vulnerability_ids` (1 to 100 UUIDs) and `action`. The
-serializer accepts `close`, `reopen`, `assign`, `tag`, `untag` and `priority`, but
-the view only acts on `close`, `assign` (with `assigned_to` or `assignee_group`),
-`tag` (with `tag`) and `priority` (with `priority`); `reopen` and `untag` change
-nothing. The response reports `updated_count`.
+`bulk_action/` takes `vulnerability_ids` (1 to 100 UUIDs) and `action`, one of:
+
+| `action` | Also takes | Effect on each vulnerability |
+| --- | --- | --- |
+| `close` | `reason` (optional) | As `close/` |
+| `reopen` | `reason` (optional) | As `reopen/` |
+| `assign` | `assigned_to` and/or `assignee_group` | Sets the ones given and leaves the other as it was. Unlike `assign/`, sends no assignment e-mail |
+| `tag` | `tag` | Adds the tag |
+| `untag` | `tag` | Removes the tag |
+| `priority` | `priority` (`p1` to `p4`) | Sets the priority |
+
+The response reports `updated_count`, the number of the team's vulnerabilities
+among the ids; `404` if none of them is. Any other `action` answers `400`.
+Before #644, `reopen` and `untag` were accepted and answered
+`"Bulk action completed on 0 vulnerabilities"`.
+
+`trends/` counts the vulnerabilities the list would show the caller: the team's,
+and for a `member` only those assigned to or created by them. It takes `days` and
+none of the list's filters. Each day has `discovered_count` and `resolved_count`
+(vulnerabilities first discovered, and resolved, on that day), and `total_open`
+and `avg_risk_score`, which describe the vulnerabilities discovered by the end of
+that day whose status is `open` now: guardian keeps no daily snapshot, so a
+vulnerability that was open on a past day and has been resolved since is not
+counted as open on that day.
 
 ```bash
 curl -s --cacert "$CA" "$BASE/vulnerabilities/?severity=critical&status=open" \
@@ -357,7 +386,8 @@ curl -s --cacert "$CA" -X POST "$BASE/vulnerabilities/<vulnerability-id>/close/"
 ## Scanners, scans and schedules
 
 Prefix: `scanners/`. These routes record external scanners and their runs. Guardian
-does not yet start, stop or import scans on an external scanner; the only scan it
+does not contact an external scanner: it cannot test a connection to one, start,
+stop, pause or resume a scan on one, or import its results. The only scan it
 performs itself is the asset port scan (`assets/assets/{id}/scan/`).
 
 | Resource | Path | Notes |
@@ -372,15 +402,17 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `scanners/scanners/{id}/test_connection/` | **Placeholder.** Does not contact the scanner |
 | `GET` | `scanners/scanners/stats/` | Scanner and scan counts |
-| `POST` | `scanners/scans/{id}/start/` | **Placeholder.** Body `{"action": "start"}`; only sets the stored status to `running` |
-| `POST` | `scanners/scans/{id}/stop/` | **Placeholder.** Only sets the stored status |
-| `POST` | `scanners/scans/{id}/pause/` | **Placeholder.** Only sets the stored status |
-| `POST` | `scanners/scans/{id}/resume/` | **Placeholder.** Only sets the stored status |
 | `GET` | `scanners/scans/{id}/results/` | Results of one scan, as a plain array |
-| `POST` | `scanners/scans/import_results/` | **Placeholder.** Validates the body and imports nothing |
 | `POST` | `scanners/scan-schedules/{id}/disable/` | Disables a schedule |
+
+Removed in #644, because they answered `success` without contacting a scanner:
+
+| Removed route | Now answers | Use instead |
+| --- | --- | --- |
+| `POST scanners/scanners/{id}/test_connection/` | `404` | Nothing: guardian cannot reach a scanner. The action required the caller to send a `success` flag and answered `Connection test passed` whatever it was |
+| `POST scanners/scans/{id}/start/`, `stop/`, `pause/`, `resume/` | `404` | A scan's `status` is a field of the record: `PATCH scanners/scans/{id}/` with `{"status": "running"}` (`pending`, `running`, `completed`, `failed`, `cancelled` or `paused`). `stop/` stored `stopped`, which is not one of them |
+| `POST scanners/scans/import_results/` | `405` | Record the findings yourself: `POST scanners/scan-results/` for a scan's results, `POST vulnerabilities/` for vulnerabilities |
 
 ### Scan schedules are not supported
 
@@ -416,19 +448,39 @@ Custom actions:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `remediation/tickets/{id}/assign/` | **Placeholder.** Requires `assignee_id`; does not change the ticket |
-| `POST` | `remediation/tickets/{id}/update_status/` | Body `{"status": "..."}`; sets the ticket status |
-| `POST` | `remediation/tickets/{id}/sync_external/` | **Placeholder** |
-| `POST` | `remediation/workflows/{id}/start/` | Sets the workflow status |
-| `POST` | `remediation/workflows/{id}/pause/` | Sets the workflow status |
-| `POST` | `remediation/workflows/{id}/complete/` | Sets the workflow status |
+| `POST` | `remediation/tickets/{id}/assign/` | Body `{"assignee_id": <user ID>}`. Sets the ticket's `assigned_to` to that member of the team and returns it; `400` if the user is not one |
+| `POST` | `remediation/tickets/{id}/update_status/` | Body `{"status": "..."}`; sets the ticket status. `400` with the `valid` values for any other (`pending`, `assigned`, `in_progress`, `testing`, `completed`, `verified`, `rejected`, `deferred`) |
+| `POST` | `remediation/workflows/{id}/start/` | Sets the status to `in_progress`, sets `actual_start_date` if it has none and clears `actual_completion_date` |
+| `POST` | `remediation/workflows/{id}/complete/` | Sets the status to `completed` and `actual_completion_date` to now |
 | `GET` | `remediation/workflows/{id}/progress/` | Progress of the workflow's steps |
-| `POST` | `remediation/steps/{id}/execute/` | Marks the step started |
+| `POST` | `remediation/steps/{id}/execute/` | Marks the step started, by the caller. Runs nothing: `automation_script` is text for the person doing the step |
 | `POST` | `remediation/steps/{id}/complete/` | Marks the step completed; optional `notes`, `validation_results` |
 | `POST` | `remediation/steps/{id}/skip/` | Marks the step skipped |
-| `POST` | `remediation/templates/{id}/clone/` | **Placeholder** |
-| `POST` | `remediation/templates/{id}/apply/` | **Placeholder.** Requires `vulnerability_id` |
+| `POST` | `remediation/templates/{id}/clone/` | Stores a copy of the template and returns it (`201`). Optional `name`; otherwise the original's name, a space and `(copy)`. The copy's `usage_count` and `success_rate` start at 0 |
+| `POST` | `remediation/templates/{id}/apply/` | Creates the remediation workflow of a vulnerability from the template and returns it (`201`). See below |
 | `GET` | `remediation/templates/categories/` | Template categories in use |
+
+`apply/` takes `vulnerability_id`, one of the team's vulnerabilities, and an
+optional `title` (otherwise `<template name>: <vulnerability title>`). The workflow
+gets the template's `remediation_type`, `default_priority`, effort estimate,
+rollback and testing plans, and one step per entry of `step_templates` (`title`,
+`description`, `instructions`, `validation_criteria`, `estimated_duration_minutes`,
+`automation_script`), in order; the template's `usage_count` goes up by one. It
+answers:
+
+- `400` with `{"error": "Vulnerability not found"}` for an id that is not one of
+  the team's vulnerabilities;
+- `400` with `"code": "TEMPLATE_STEPS_INVALID"` when `step_templates` is not a list
+  of objects with those fields, and creates nothing;
+- `409` with `"code": "WORKFLOW_EXISTS"` when the vulnerability already has a
+  workflow (it has at most one).
+
+Removed in #644:
+
+| Removed route | Now answers | Use instead |
+| --- | --- | --- |
+| `POST remediation/tickets/{id}/sync_external/` | `404` | Nothing: guardian does not talk to the ticketing system. A ticket is a record you keep up to date with `PATCH remediation/tickets/{id}/` |
+| `POST remediation/workflows/{id}/pause/` | `404` | `PATCH remediation/workflows/{id}/` with `{"status": "deferred"}`. `pause/` stored `paused`, a status workflows do not have: the API then refused it on `PUT` and as a filter. A workflow it left `paused` keeps that value until you set another |
 
 ---
 
@@ -470,8 +522,12 @@ Custom actions (all `GET`):
 
 ## Integrations
 
-Prefix: `integrations/`. The records can be created and managed, but none of the
-actions below contacts the external system yet.
+Prefix: `integrations/`. These are records: guardian stores them and does nothing
+with them. It does not contact an external system, run a synchronization, receive
+or send a webhook, or deliver through a notification channel, and nothing writes
+integration logs. The notifications guardian does send (alert rules, SLA
+violations, compliance reminders) are e-mails to the recipients of the rule,
+vulnerability or assessment concerned; none uses a notification channel.
 
 | Resource | Path | Notes |
 | --- | --- | --- |
@@ -482,23 +538,26 @@ actions below contacts the external system yet.
 | Integration logs | `integrations/logs/` | Read-only (list and retrieve) |
 | Notification channels | `integrations/notifications/` | Standard routes |
 
-Custom actions:
+Custom action:
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `integrations/systems/{id}/test_connection/` | **Placeholder** |
-| `POST` | `integrations/systems/{id}/health_check/` | **Placeholder.** Returns a fixed answer |
-| `GET` | `integrations/systems/{id}/sync_status/` | **Placeholder.** Returns `last_sync` from the record |
-| `POST` | `integrations/mappings/{id}/test_mapping/` | **Placeholder** |
-| `POST` | `integrations/mappings/{id}/sync_now/` | **Placeholder** |
-| `GET` | `integrations/sync-records/sync_statistics/` | **Placeholder** |
-| `POST` | `integrations/sync-records/{id}/retry_sync/` | **Placeholder** |
-| `POST` | `integrations/webhooks/{id}/test_webhook/` | **Placeholder** |
-| `POST` | `integrations/webhooks/{id}/trigger_webhook/` | **Placeholder** |
-| `GET` | `integrations/logs/error_summary/` | **Placeholder** |
-| `DELETE` | `integrations/logs/cleanup_logs/` | **Placeholder.** Deletes nothing |
-| `POST` | `integrations/notifications/{id}/test_notification/` | **Placeholder** |
-| `POST` | `integrations/notifications/{id}/send_notification/` | **Placeholder** |
+| `DELETE` | `integrations/logs/cleanup_logs/` | Deletes the team's integration logs older than `?older_than_days=N` (default 30; a whole number from 1 to 36500, `400` otherwise). Returns `{"deleted": <rows>, "older_than_days": N}`. `owner` or `admin` only |
+
+Removed in #644. Each answered a fixed success, or fixed figures, whatever the
+record and without contacting anything; all now answer `404`:
+
+| Removed route | It answered | Use instead |
+| --- | --- | --- |
+| `POST integrations/systems/{id}/test_connection/` | `"Connection test completed"` | Nothing: guardian contacts no external system |
+| `POST integrations/systems/{id}/health_check/` | `{"status": "healthy", "response_time_ms": 150}` | Nothing. `status` and `last_health_check` on the record are what you store there |
+| `GET integrations/systems/{id}/sync_status/` | `"status": "active"` and the record's `last_sync` | `GET integrations/systems/{id}/` for `last_sync` |
+| `POST integrations/mappings/{id}/test_mapping/`, `sync_now/` | `"Mapping test completed"`, `"Sync initiated"` | Nothing: there is no synchronization |
+| `GET integrations/sync-records/sync_statistics/` | Zeros | `GET integrations/sync-records/?sync_status=failed` (or `success`, `pending`, ...) and read `count` |
+| `POST integrations/sync-records/{id}/retry_sync/` | `"Sync retry initiated"` | Nothing |
+| `POST integrations/webhooks/{id}/test_webhook/`, `trigger_webhook/` | `"Webhook test completed"`, `"Webhook triggered"` | Nothing: guardian sends no webhooks |
+| `GET integrations/logs/error_summary/` | Zeros | `GET integrations/logs/?level=error` and read `count` |
+| `POST integrations/notifications/{id}/test_notification/`, `send_notification/` | `"Test notification sent"`, `"Notification sent"` | Nothing: guardian delivers nothing through a channel |
 
 ---
 
@@ -651,6 +710,8 @@ Guardian answers errors in Django REST Framework's format:
 | `401` | No valid credential (answered by the gateway) | Gateway JSON |
 | `403` | Role or API key scope does not allow the request; or a request that did not come through the gateway | `{"detail": "..."}`, the gateway's `insufficient_scope` body, or `{"code": "GATEWAY_AUTH_REQUIRED", ...}` |
 | `404` | Unknown ID or route | `{"detail": "..."}` |
+| `409` | The request conflicts with what is stored | `{"detail": "...", "code": "WORKFLOW_EXISTS"}` |
+| `501` | The record exists and guardian cannot do this with it | `{"detail": "...", "code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"}` |
 | `429` | Rate limit exceeded | See [Rate limits](#rate-limits) |
 
 ---
