@@ -404,6 +404,36 @@ production overlay the responder reaches them on `backend`;
 - **Results belong to the user.** A tool task or an AI analysis a run
   queues is listed and readable by the user who ran it, and by nobody else.
 
+### The agents service's tools and limits
+
+The AI analysis calls the tools, data and guardian services as the user who
+submitted it, in the same way: each request carries that user's gateway
+identity and `GATEWAY_INTERNAL_SECRET`. Set these in `.env`;
+`docker-compose.yml` passes them to the `agents` container.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WILDBOX_API_URL` | `http://api:8000` | Tools service |
+| `AGENTS_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL`; the threat-indicator search |
+| `AGENTS_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL`; the vulnerability search. The host must be in Guardian's `ALLOWED_HOSTS` |
+| `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
+| `ANALYZE_TEAM_RATE_LIMIT` | empty | Optional ceiling for all users of one team together |
+| `AGENT_DISABLED_TOOLS` | empty | Comma-separated names of tools to withhold from the model |
+
+Whatever a tool returns is sent to Anthropic with the rest of the
+conversation. `threat_intel_query_tool` and `vulnerability_search_tool`
+return data Wildbox holds for the user's team: its threat indicators and
+the vulnerabilities Guardian tracks. To keep that data in the stack, set
+`AGENT_DISABLED_TOOLS=threat_intel_query_tool,vulnerability_search_tool`;
+the analysis then runs on the lookups of the IOC alone.
+
+A URL that is not an absolute `http` or `https` URL, a limit that cannot be
+parsed, or a withheld tool name that is not a tool stops the agents service
+at start. The limit counters are kept in
+Redis and survive a restart. In the production overlay the agents service
+reaches the three services on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
 ### Internal targets of the network tools
 
 The network tools (port and vulnerability scanners, the TLS and

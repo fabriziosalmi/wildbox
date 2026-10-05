@@ -29,7 +29,9 @@
 #             automations, prometheus
 #             gateway -> every upstream in nginx/conf.d/wildbox_gateway.conf;
 #             identity -> open-security-gateway:8081 (auth-cache purge);
-#             agents -> api:8000 (WILDBOX_API_URL); prometheus ->
+#             agents -> api:8000 (WILDBOX_API_URL), open-security-data:8002
+#             (WILDBOX_DATA_URL) and open-security-guardian:8013
+#             (WILDBOX_GUARDIAN_URL), for its tools; prometheus ->
 #             the /metrics targets in monitoring/prometheus.yml
 #   data      postgres, wildbox-redis, and only the services whose
 #   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup.
@@ -243,6 +245,12 @@ services:
         max-file: "5"
 
   # Agents Service - Production
+  # backend carries its tools' calls to the tools, data and guardian services
+  # (WILDBOX_*_URL in docker-compose.yml, #652); data carries Redis. The
+  # service URLs and the analysis rate limits come from the base file, which
+  # an operator sets through AGENTS_WILDBOX_DATA_URL,
+  # AGENTS_WILDBOX_GUARDIAN_URL, ANALYZE_RATE_LIMIT and
+  # ANALYZE_TEAM_RATE_LIMIT in .env.
   agents:
     restart: always
     networks: !override

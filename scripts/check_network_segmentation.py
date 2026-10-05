@@ -107,6 +107,9 @@ MUST_CONNECT = [
     ("cspm-worker", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "wildbox-redis", 6379, "REDIS_URL / CELERY_BROKER_URL"),
     ("agents", "api", 8000, "WILDBOX_API_URL"),
+    # The agent's tools call these as the analysis's caller (#652).
+    ("agents", "open-security-data", 8002, "WILDBOX_DATA_URL"),
+    ("agents", "open-security-guardian", 8013, "WILDBOX_GUARDIAN_URL"),
     ("sensor", "open-security-gateway", 443, "telemetry ingest via the gateway"),
     ("api", "github.com", 443, "outbound internet via backend"),
     ("agents", "api.anthropic.com", 443, "outbound internet via backend"),

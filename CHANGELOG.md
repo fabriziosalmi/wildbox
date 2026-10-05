@@ -7,6 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`AGENT_DISABLED_TOOLS` withholds tools from the AI analysis's model**
+  (#652). Every tool output is sent to the model provider, and two
+  tools now return data Wildbox holds for the user's team: its threat
+  indicators and the vulnerabilities Guardian tracks. An operator who
+  wants that data to stay in the stack sets
+  `AGENT_DISABLED_TOOLS=threat_intel_query_tool,vulnerability_search_tool`
+  in `.env`. A withheld tool is not offered to the model, is not
+  mentioned in its prompt and makes no request; a name that is not a
+  tool stops the agents service at start. The default offers every
+  tool. The prompt also tells the model that tool output is data, not
+  instructions.
+
+### Fixed
+
+- **The AI analysis's tools reach the services they name** (#652). Of
+  the nine tools the agent offers its model, six could only fail.
+  `threat_intel_query_tool` and `vulnerability_search_tool` called
+  `/api/v1/threat-intel/query` on the data service and
+  `/api/v1/vulnerabilities/search` on Guardian, routes neither serves,
+  at `localhost` inside the agents container: `WILDBOX_DATA_URL` and
+  `WILDBOX_GUARDIAN_URL` were not set by `docker-compose.yml`, and the
+  data default named identity's port. `reputation_check_tool`,
+  `dns_lookup_tool`, `url_analysis_tool` and `hash_lookup_tool` reached
+  a real tool of the tools service with field names its input model
+  does not have, and were answered 422. An analysis therefore ran on
+  WHOIS, geolocation and a port scan alone. Now:
+  - `threat_intel_query_tool` searches the data service's indicators
+    (`GET /api/v1/indicators/search`) and `vulnerability_search_tool`
+    the vulnerabilities Guardian records
+    (`GET /api/v1/vulnerabilities/?search=`). Both act as the user who
+    submitted the analysis, like every other tool: the request carries
+    that user's gateway identity and `GATEWAY_INTERNAL_SECRET`, so the
+    data service answers with that team's indicators and the shared
+    feeds, and Guardian with what that user may see. The agents service
+    has no key of its own.
+  - The four tools send the fields their tool validates.
+    `reputation_check_tool` now takes the IOC's type; `url_analysis_tool`
+    no longer offers a screenshot the tools service never took.
+  - `docker-compose.yml` sets `WILDBOX_DATA_URL` and
+    `WILDBOX_GUARDIAN_URL` (from `AGENTS_WILDBOX_DATA_URL` and
+    `AGENTS_WILDBOX_GUARDIAN_URL`), the service's defaults are those
+    addresses, and a value that is not an absolute `http(s)` URL stops
+    the service at start.
+  - A tool that fails returns an error to the model, with the service's
+    status and without its internal address, and never an empty result:
+    an unreachable Guardian used to raise into the analysis, since
+    `httpx.ConnectError` is not a builtin `ConnectionError`. The tool
+    descriptions and the system prompt say what each service really
+    does. A unit test checks every tool's request against the route,
+    the parameters and the input model in the target service's source.
+- **`ANALYZE_RATE_LIMIT` and `ANALYZE_TEAM_RATE_LIMIT` can be set in
+  `.env`** (#652). The agents service read them, but
+  `docker-compose.yml` did not pass them, so an operator needed a
+  Compose override of their own. The counters are now kept in the
+  service's Redis and not in the API process, so a restart no longer
+  hands every user a new budget, which a limit per day depends on. A
+  submission that cannot be counted because Redis is unreachable is
+  refused with 503.
+- **`completed_today` and `failed_today` of the agents statistics count
+  today** (#652). They were two Redis counters that nothing reset, so
+  they counted since the Redis data was last cleared. Each UTC date now
+  has its own counter, which expires two days later.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

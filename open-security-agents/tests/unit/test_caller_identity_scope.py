@@ -85,6 +85,9 @@ class FakeRedis:
     def incr(self, key):
         self.store[key] = int(self.store.get(key, 0)) + 1
 
+    def expire(self, key, ttl):
+        return True
+
     def delete(self, *keys):
         for key in keys:
             self.store.pop(key, None)
