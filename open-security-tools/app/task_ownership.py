@@ -15,11 +15,26 @@ A task without an owner record, such as one submitted before this record
 existed, belongs to nobody and is not readable. There is no administrator
 override: a task's result can carry what a tool found for the caller it acted
 for, and operators who need every task have Flower.
+
+A cancellation is recorded here too (#743):
+
+* ``wildbox:tools:task-cancelled:<task_id>`` exists once the task's owner has
+  cancelled it.
+
+Celery's own revocation is a broadcast that the workers running at that
+moment keep in memory. A pending task with no worker alive, or a worker that
+restarts before it takes the task, has nobody holding it: the task ran when a
+worker came back, after its owner had been told it was cancelled. The marker
+is in Redis, where the queue is, so it is there for as long as the task can
+be: the task reads it first when it starts and does not run
+(``app.tasks``), and the API reads it to answer ``cancelled`` at once. Only
+the owner's ``DELETE`` writes it, after the same ownership check as every
+other request about the task.
 """
 
 import json
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 # How long an owner record lives. Celery keeps a result for an hour after the
 # task finishes (result_expires in app/celery_app.py), and a task may wait in
@@ -30,6 +45,7 @@ OWNER_TTL_SECONDS = 24 * 60 * 60
 
 _OWNER_KEY = "wildbox:tools:task-owner:{task_id}"
 _USER_INDEX_KEY = "wildbox:tools:user-tasks:{user_id}"
+_CANCELLED_KEY = "wildbox:tools:task-cancelled:{task_id}"
 
 
 class TaskOwnershipUnavailable(RuntimeError):
@@ -110,6 +126,32 @@ class TaskOwnership:
                 continue
             owned.append(owner)
         return owned
+
+    def cancel(self, task_id: str) -> None:
+        """Record that the task's owner cancelled it.
+
+        Kept as long as an owner record: a task can wait in the queue, and
+        the marker must be there whenever a worker takes it.
+        """
+        self._redis.set(
+            _CANCELLED_KEY.format(task_id=task_id), "1", ex=OWNER_TTL_SECONDS
+        )
+
+    def forget_cancellation(self, task_id: str) -> None:
+        """Take back a cancellation that could not be carried out."""
+        self._redis.delete(_CANCELLED_KEY.format(task_id=task_id))
+
+    def is_cancelled(self, task_id: str) -> bool:
+        return bool(self._redis.get(_CANCELLED_KEY.format(task_id=task_id)))
+
+    def cancelled_among(self, task_ids: List[str]) -> Set[str]:
+        """Which of the tasks were cancelled, in one round trip."""
+        if not task_ids:
+            return set()
+        markers = self._redis.mget(
+            [_CANCELLED_KEY.format(task_id=task_id) for task_id in task_ids]
+        )
+        return {task_id for task_id, marker in zip(task_ids, markers) if marker}
 
     @staticmethod
     def _load(raw) -> Optional[Dict[str, Any]]:

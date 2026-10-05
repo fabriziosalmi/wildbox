@@ -7,12 +7,13 @@ import importlib.util
 from pathlib import Path
 from typing import Dict, Any, Optional
 from celery import Task, signals
-from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
+from celery.exceptions import Ignore, SoftTimeLimitExceeded, TimeLimitExceeded
 
 from app import async_metrics
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
 from app.prerun import PRE_RUN_REFUSALS, check_tool_request, refusal_log
+from app.task_ownership import TaskOwnershipUnavailable, get_task_ownership
 from app.tool_loader import load_tool_module as _shared_load_tool_module
 from app.logging_config import get_logger
 
@@ -119,6 +120,22 @@ def _count_cancelled_task(sender=None, request=None, terminated=None, **_):
     )
 
 
+def _cancelled_by_its_owner(task_id: Optional[str]) -> bool:
+    """Whether the task's owner cancelled it (app/task_ownership.py, #743).
+
+    A Redis that does not answer is raised, not read as "no": the task is
+    retried and then failed, never run without having asked. Without a
+    REDIS_URL there is no queue and no record to ask for.
+    """
+    if not task_id:
+        return False
+    try:
+        ownership = get_task_ownership()
+    except TaskOwnershipUnavailable:
+        return False
+    return ownership.is_cancelled(task_id)
+
+
 @celery_app.task(
     bind=True,
     base=ToolExecutionTask,
@@ -153,6 +170,24 @@ def execute_tool_async(
 
     def settled(outcome: str) -> None:
         setattr(self.request, _OUTCOME_ATTRIBUTE, outcome)
+
+    # A cancelled task does not run, whichever worker takes it and whenever.
+    # Celery's revocation is a message to the workers alive when it is sent;
+    # one that started since never heard it and would run the task. The
+    # owner's cancellation is a record in Redis, and this is where it holds.
+    if _cancelled_by_its_owner(task_id):
+        logger.info(
+            f"Async tool execution cancelled before it started: {tool_name}",
+            extra={"tool_name": tool_name, "task_id": task_id},
+        )
+        # The state Celery itself writes for a revoked task, so the task
+        # reads the same whichever way its cancellation reached the worker.
+        self.backend.mark_as_revoked(
+            task_id, reason="cancelled by its owner", request=self.request
+        )
+        async_metrics.record_outcome(task_id, tool_name, async_metrics.CANCELLED)
+        # Nothing more to store and nothing to retry: acknowledge and stop.
+        raise Ignore()
     
     logger.info(
         f"Starting async tool execution: {tool_name}",

@@ -131,6 +131,13 @@ def test_the_owner_cancels_a_task_that_has_not_finished():
     response = cancel(token, task_id)
 
     assert response.status_code == 200, response.text[:300]
+    # Cancelled from that moment, not from when a worker gets to it (#743):
+    # the cancellation is a record the API reads, and the task reads it
+    # first if it ever starts. A second cancellation has nothing to cancel.
+    at_once = read(token, task_id)
+    assert at_once.status_code == 200, at_once.text[:300]
+    assert at_once.json()["status"] == "cancelled", at_once.json()
+    assert cancel(token, task_id).status_code == 400
     body = wait_until_finished(token, task_id)
     assert body["status"] == "cancelled", body
     assert body["state"] == "REVOKED", body

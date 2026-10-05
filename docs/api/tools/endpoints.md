@@ -393,7 +393,7 @@ curl -s --cacert "$CA" https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-883f-0016d
 | `SUCCESS` | `completed`, `failed`, `timeout` or `refused` (the task finished and reports how the tool ended) | `error`, `result` (the tool's output when completed), `duration`, `completed_at` |
 | `FAILURE` | `failed` | `error` (`Task execution failed (<exception class>)`, never the exception message), `message`, `completed_at` |
 | `RETRY` | `retrying` | `message`, `info` (the same failure text as `error` above) |
-| `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` |
+| `REVOKED` | `cancelled` | `message` (`Task was cancelled`), `completed_at` (null until a worker has dropped or stopped the task: the state is reported as soon as the owner cancels) |
 
 Any other state, including a result record the service cannot read, answers
 200 with status `unknown` and `message` `The task state cannot be read`
@@ -425,8 +425,13 @@ curl -s --cacert "$CA" -X DELETE https://<host>/api/v1/tasks/1b4e28ba-2fa1-41d2-
 }
 ```
 
-The answer means the cancellation was sent to the worker; reading the task
-afterward reports status `cancelled` once the worker has revoked it.
+The cancellation is recorded with the task before the workers are told
+([#743](https://github.com/fabriziosalmi/wildbox/issues/743)). From then on
+the task reads status `cancelled`, and a task that has not started never
+starts: the worker that takes it reads the record first and drops it,
+including a worker that was not running when the task was canceled. A task
+that is running is stopped (`SIGTERM` to its process). If it finishes on its
+own before that reaches it, it reads the status it finished with.
 
 **400** (`Task cannot be cancelled (current state: ...)`) for a task that
 has finished or was already canceled; **404** for a task the caller did not

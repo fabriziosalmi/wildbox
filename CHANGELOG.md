@@ -497,6 +497,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A canceled tool task never runs, and reads `cancelled` at once**
+  (#743). `DELETE /api/v1/tasks/{id}` asked Celery to revoke the task,
+  which is a broadcast the workers running at that moment keep in
+  memory. For a pending task with no worker alive, or one that restarts
+  before it takes the task, nobody held it: the task ran when a worker
+  came back, and until then its owner read `pending`. The cancellation
+  is now a record in Redis, written after the ownership check and
+  before the broadcast. The task reads it first when it starts and does
+  not run, whichever worker takes it and whenever; a Redis that does
+  not answer is not read as "not canceled". The API reads it too: the
+  task and the task list say `cancelled` as soon as the owner cancels,
+  and a second `DELETE` answers 400. A task that finished before the
+  cancellation could stop it reads as it finished. A test cancels a
+  queued task and only then starts a real worker: the task is dropped,
+  counted once, and its tool leaves no trace.
 - **tools checks an asynchronous submission as it checks a synchronous
   run, and queues nothing that fails** (#743).
   `POST /api/v1/tools/{tool}/async` recorded an owner and queued a task

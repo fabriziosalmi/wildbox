@@ -99,6 +99,25 @@ def _status_of(state: str, result: Any) -> str:
 # A state the stored result does not let us read.
 UNREADABLE = "UNKNOWN"
 
+# The states in which Celery has settled a task: nothing changes them.
+FINAL_STATES = ("SUCCESS", "FAILURE", "REVOKED")
+# The states in which a task can still be cancelled.
+CANCELLABLE_STATES = ("PENDING", "STARTED", "RUNNING", "RETRY")
+
+
+def _state_for_its_owner(state: str, cancelled: bool) -> str:
+    """The state to report for a task its owner may have cancelled.
+
+    A cancelled task that Celery has not settled yet reads as revoked at
+    once (#743). The result backend only says so after a worker has dropped
+    or stopped the task, and until then it said "pending" or "running" for a
+    task that will not run. A task that finished before the cancellation
+    could stop it keeps the state it finished with: it did run.
+    """
+    if cancelled and state not in FINAL_STATES:
+        return "REVOKED"
+    return state
+
 # The progress fields execute_tool_async writes with update_state. STARTED
 # carries the worker's host name and pid, which are not the caller's business.
 PROGRESS_FIELDS = ("tool_name", "started_at", "status")
@@ -309,6 +328,11 @@ def get_task_status(
 
     meta = _task_meta(task_id)
     state = _state_of(meta)
+    if state not in FINAL_STATES:
+        try:
+            state = _state_for_its_owner(state, _ownership().is_cancelled(task_id))
+        except RedisError as e:
+            raise _tracking_failed(e)
     result = meta.get("result")
 
     response = {
@@ -388,7 +412,15 @@ def cancel_task(
     """
     Cancel one of the caller's pending or running tasks.
 
-    404 for a task the caller did not submit; 400 for one that has finished.
+    404 for a task the caller did not submit; 400 for one that has finished
+    or was already cancelled.
+
+    The cancellation is recorded before Celery is asked to revoke the task
+    (#743). The revocation is a broadcast the running workers keep in
+    memory: with no worker alive, or one that restarts before it takes the
+    task, nobody held it and the task ran when a worker came back. The
+    record is what the task reads first when it starts (app/tasks.py); the
+    broadcast is what stops a task that is already running.
     """
     _owned_task(task_id, caller)
     logger.info(
@@ -400,9 +432,27 @@ def cancel_task(
     )
 
     state = _state_of(_task_meta(task_id))
+    ownership = _ownership()
+    try:
+        state = _state_for_its_owner(state, ownership.is_cancelled(task_id))
+        if state in CANCELLABLE_STATES:
+            ownership.cancel(task_id)
+    except RedisError as e:
+        raise _tracking_failed(e)
 
-    if state in ("PENDING", "STARTED", "RUNNING", "RETRY"):
-        AsyncResult(task_id, app=celery_app).revoke(terminate=True)
+    if state in CANCELLABLE_STATES:
+        try:
+            AsyncResult(task_id, app=celery_app).revoke(terminate=True)
+        except (RedisError, OperationalError, OSError) as e:
+            # The workers were not told: a running task would go on. Say so,
+            # and take the record back so that the caller can try again.
+            try:
+                ownership.forget_cancellation(task_id)
+            except RedisError as forget_error:
+                logger.warning(
+                    f"Could not take back the cancellation of {task_id}: {forget_error}"
+                )
+            raise _tracking_failed(e)
 
         return {
             "task_id": task_id,
@@ -431,10 +481,15 @@ def list_tasks(
     except RedisError as e:
         raise _tracking_failed(e)
 
+    try:
+        cancelled = _ownership().cancelled_among([owner["task_id"] for owner in owned])
+    except RedisError as e:
+        raise _tracking_failed(e)
+
     tasks = []
     for owner in owned:
         meta = _task_meta(owner["task_id"])
-        state = _state_of(meta)
+        state = _state_for_its_owner(_state_of(meta), owner["task_id"] in cancelled)
         result = meta.get("result") if state == "SUCCESS" else None
         tasks.append(
             {
