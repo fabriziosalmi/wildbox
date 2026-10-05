@@ -15,7 +15,8 @@ components (`sensor/core/agent.py`):
   [What osquery collects](#what-osquery-collects).
 - **File monitor** (`sensor/collectors/file_monitor.py`): polls the configured
   paths and reports created, modified and deleted files, with a SHA-256 hash for
-  files under 10 MB. See [File integrity monitoring](#file-integrity-monitoring).
+  regular files under 10 MiB, against a baseline that outlives a restart. See
+  [File integrity monitoring](#file-integrity-monitoring).
 - **Log forwarder** (`sensor/collectors/log_forwarder.py`): off by default
   (`collection.log_forwarding: false`). Follows the log files and system logs
   listed under `log_sources`, or a per-platform default set when the
@@ -596,9 +597,18 @@ With `collection.file_monitoring` and `fim.enabled` on, which is the default,
 the file monitor scans the paths listed under `fim.paths` every 60 seconds
 and reports what changed since the scan before: `file_created`,
 `file_deleted`, and `file_modified` with the list of what changed (`size`,
-`mtime`, `permissions`, `owner`, `group` and, for a file under 10 MiB that
-the sensor can read, `content`, from its SHA-256). The first scan is the
-baseline and reports nothing.
+`mtime`, `permissions`, `owner`, `group` and, for a regular file under 10
+MiB that the sensor can read, `content`, from its SHA-256). The first scan
+of a path is its baseline and reports nothing.
+
+A scan walks the paths and reads the files in a worker thread, so the rest
+of the sensor goes on meanwhile. It reads regular files only (a FIFO, a
+socket or a device is watched by its mode, owner and times), never more
+than 10 MiB of one, and it watches at most `fim.max_files` files, all paths
+together (50,000 by default; about 700 bytes of memory each). Beyond that
+number files are not watched: the monitor logs it once and reports
+`files_over_limit`. A file that comes under watch when room is made is
+reported as created.
 
 ```yaml
 fim:
@@ -609,10 +619,14 @@ fim:
   exclude_patterns:
     - "*.tmp"
   max_depth: 10
+  max_files: 50000
 ```
 
 `fim.paths` are the sensor's own paths, absolute; anything else stops the
-sensor at start-up. Whether a path exists does not:
+sensor at start-up, and so do `exclude_patterns` that are not a list of
+patterns, a `max_depth` that is not a whole number from 0 to 1000 and a
+`max_files` that is not one from 1 to 1,000,000. Whether a path exists does
+not:
 
 - A path that does not exist is a warning that names it when the monitor
   starts. It is watched from the scan at which it appears, with what it
@@ -625,7 +639,52 @@ sensor at start-up. Whether a path exists does not:
 
 `file_monitor` in `GET /api/v1/components` reports `watching`,
 `configured_paths`, `monitored_paths`, `missing_paths`, `tracked_files`,
-`unhashed_files`, `scan_count` and `last_scan_duration`.
+`unhashed_files`, `max_files`, `files_over_limit`, `scan_count`,
+`last_scan_duration` and `baseline`.
+
+### The baseline and restarts
+
+With `data_dir` set, the monitor keeps its baseline in
+`<data_dir>/fim-baseline.json`: for each watched file its size, times, mode,
+owner, group and SHA-256, and no content. When the sensor starts it compares
+the files with that baseline, so what was created, modified or deleted
+while it was stopped is reported by its first scan, and the log says how
+many changes that was. A path that is new to the configuration has no
+baseline: what it holds is taken as it is.
+
+The baseline is what the data service has been told, not what the monitor
+last saw. A file's entry moves when the event that reports its change is
+accepted by the gateway, or dropped for good and counted (see
+[When the gateway takes nothing](#when-the-gateway-takes-nothing)). So:
+
+- a change found while the gateway is away, and still unsent when the
+  sensor stops, is found again by the next start and reported then;
+- if the queue is full when the sensor starts (the gateway has been away
+  for a while), the changes of that first scan are handed over as it
+  empties: the sensor does not wait for room to finish starting;
+- a change delivered in the sensor's last seconds whose baseline was not
+  written (a crash, a full disk) is reported again: the same change can
+  arrive twice, and is never lost for that reason.
+
+The file is written at most every 5 seconds while the baseline moves, and
+when the sensor stops, the way the position file is (a temporary file,
+flushed, renamed over the old one). It is read once, at start, and not
+trusted: a file that is not a regular file of the sensor's user, that is
+not what this sensor writes down to the type of each value, or that names a
+file outside its own paths, is ignored whole, with a warning. So is a
+baseline taken with other `exclude_patterns`, `max_depth` or `max_files`:
+compared with it, every file that entered or left what is watched would be
+a change that never happened. In both cases the monitor does what it does
+without a file: it takes what it finds as the baseline, and what changed
+meanwhile is not reported. `baseline` in the monitor's status says which
+file is used, what became of the one found at start (`loaded`), when it was
+last written, why it could not be (`problem`), and how many changes are
+found and not delivered yet (`changes_not_delivered`).
+
+Without `data_dir` the baseline is in memory only, as it always was: the
+status says so, and what changes while the sensor is stopped is not
+reported. The shipped container configurations set `data_dir` to the
+`sensor_data` volume.
 
 **In the container** the shipped configuration lists `/host/etc`,
 `/host/bin`, `/host/usr/bin` and `/host/opt`, and no compose file mounts
@@ -655,9 +714,11 @@ with no capability, so it reads what that user may read:
   that reads `/etc/shadow` reads every password hash.
 
 What the monitor does not do: it polls, so a file created and deleted
-between two scans is never seen; its baseline is in memory, so what changed
-while the sensor was stopped is not reported; and it does not follow what a
-symbolic link points to outside the watched paths.
+between two scans is never seen, and a file changed twice between two is one
+change; and it does not go into a directory that a symbolic link points to.
+A link to a file is watched as the file it points to, wherever that is. A
+directory the sensor cannot list is skipped, and what it held is neither
+changed nor deleted for the monitor until it can be listed again.
 
 ## Sending telemetry to Wildbox
 

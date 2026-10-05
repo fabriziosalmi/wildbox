@@ -195,8 +195,8 @@ class SecuritySensorAgent:
         In this order: what produces events; then, once the events already
         collected have reached the sender or QUEUE_DRAIN_SECONDS have
         passed, what carries them, so that the sender's last batches are the
-        last events; then the log positions once more, for what those
-        batches delivered.
+        last events; then the log positions and the file monitor's baseline
+        once more, for what those batches delivered.
         """
         collectors = [
             component
@@ -223,6 +223,8 @@ class SecuritySensorAgent:
 
         if self.log_forwarder:
             self.log_forwarder.save_positions()
+        if self.file_monitor:
+            self.file_monitor.save_baseline()
 
     @staticmethod
     async def _stop_all(components):

@@ -110,7 +110,7 @@ stack itself the root `docker-compose.yml` already wires all of this.
 | :--- | :--- |
 | `./config.yaml.example:/etc/security-sensor/config.yaml:ro` | Configuration |
 | `sensor_logs:/var/log/security-sensor` | Sensor log file |
-| `sensor_data:/var/lib/security-sensor` | Sensor state: the log forwarder's read positions (`data_dir`), so that a recreated container goes on where the last one stopped |
+| `sensor_data:/var/lib/security-sensor` | Sensor state (`data_dir`): the log forwarder's read positions and the file monitor's baseline, so that a recreated container goes on where the last one stopped |
 | `/proc/stat`, `/proc/meminfo`, the `/proc` load average file, `/sys/class/net` (read-only, under `/host`) | Host metrics |
 
 The root `docker-compose.yml` also mounts the gateway's certificate,

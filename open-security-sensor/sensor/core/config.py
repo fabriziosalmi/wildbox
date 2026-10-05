@@ -433,6 +433,11 @@ def _log_path_problems(path: Any) -> List[str]:
     return []
 
 
+# The most fim.max_files may be: a watched file takes about 700 bytes of
+# memory and 250 of the saved baseline.
+FIM_MAX_FILES_LIMIT = 1000000
+
+
 @dataclass
 class FIMConfig:
     """File Integrity Monitoring configuration"""
@@ -445,6 +450,10 @@ class FIMConfig:
     ])
     recursive: bool = True
     max_depth: int = 10
+    # The most files the monitor watches, all paths together: what it keeps
+    # in memory and in its saved baseline. Beyond it files are not watched,
+    # and the monitor says how many.
+    max_files: int = 50000
 
 @dataclass
 class PerformanceConfig:
@@ -594,6 +603,29 @@ class SensorConfig:
             )
         elif self.fim.enabled and not self.fim.paths:
             errors.append("fim.paths cannot be empty when FIM is enabled")
+        # A string here would be read one character at a time, and its "*"
+        # would exclude every file.
+        patterns = self.fim.exclude_patterns
+        if not isinstance(patterns, list) or not all(
+            isinstance(pattern, str) for pattern in patterns
+        ):
+            errors.append(
+                f"fim.exclude_patterns must be a list of patterns, got {patterns!r}"
+            )
+        for name, least, most in (
+            ("max_depth", 0, 1000),
+            ("max_files", 1, FIM_MAX_FILES_LIMIT),
+        ):
+            value = getattr(self.fim, name)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not least <= value <= most
+            ):
+                errors.append(
+                    f"fim.{name} must be a whole number between {least} and "
+                    f"{most}, got {value!r}"
+                )
         
         return errors
 
@@ -752,7 +784,8 @@ def _build_config_from_dict(config_data: Dict[str, Any]) -> SensorConfig:
         paths=fim_data.get('paths', ["/etc", "/bin", "/usr/bin", "/opt"]),
         exclude_patterns=fim_data.get('exclude_patterns', ["*.tmp", "*.log", "*.cache", "*.pid"]),
         recursive=fim_data.get('recursive', True),
-        max_depth=fim_data.get('max_depth', 10)
+        max_depth=fim_data.get('max_depth', 10),
+        max_files=fim_data.get('max_files', 50000)
     )
     
     # Performance configuration

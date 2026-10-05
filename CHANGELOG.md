@@ -1154,6 +1154,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cycle and the query it is in, which nothing did. The README says what
   osquery collects: pictures of the processes, sockets and users at each
   cycle, not a stream of events.
+- **A file-integrity scan no longer stops the sensor, and what changed
+  while the sensor was stopped is reported** (#745). The file monitor
+  walked its paths and hashed every file under 10 MiB in the event loop,
+  at every scan: meanwhile no batch was sent, no log was read and the
+  local API did not answer. The scan now runs in a worker thread and is
+  bounded: regular files only (a FIFO under a watched path was opened and
+  waited on forever, a link to a device was read forever), never more
+  than 10 MiB of one, and at most `fim.max_files` files (50,000), with
+  `files_over_limit` in the status beyond. The baseline was in memory
+  only, so a sensor that started took whatever it found as normal. It is
+  now kept in `<data_dir>/fim-baseline.json`, written and validated like
+  the position file, and it follows what the data service accepted: a
+  change made while the sensor was stopped, or found and not delivered
+  before it stopped, is reported by the first scan after the start. Also
+  fixed on the way: with two watched paths of which one begins like the
+  other (`/host/etc`, `/host/etc-backup`), the second one's files were
+  reported deleted and created at every scan; the files of a directory
+  that could not be listed were reported deleted; stopping the sensor
+  did not end a monitor that was waiting for room in the queue; and
+  `fim.exclude_patterns` given as a string excluded every file.
 
 ### Changed
 

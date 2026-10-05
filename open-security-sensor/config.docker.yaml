@@ -36,10 +36,12 @@ collection:
   log_forwarding: false
 
 # Where the sensor keeps what must outlive a restart: the log forwarder's
-# read positions (log-positions.json). In the container this is the
-# sensor_data volume. Overridden by SENSOR_DATA_DIR. The directory must exist
-# and be writable by the sensor's user; one sensor per directory. Without it
-# positions are kept in memory only and read_from applies at every start.
+# read positions (log-positions.json) and the file monitor's baseline
+# (fim-baseline.json). In the container this is the sensor_data volume.
+# Overridden by SENSOR_DATA_DIR. The directory must exist and be writable by
+# the sensor's user; one sensor per directory. Without it both are kept in
+# memory only: read_from applies at every start, and a file changed while
+# the sensor was stopped is not reported.
 data_dir: /var/lib/security-sensor
 
 # Log sources: what the log forwarder reads when log_forwarding is true.
@@ -74,6 +76,9 @@ fim:
     - "*.lock"
   recursive: true
   max_depth: 10
+  # The most files watched, all paths together. Beyond it files are not
+  # watched, and the monitor's status says how many.
+  max_files: 50000
 
 # Performance Tuning (Docker-optimized)
 performance:
