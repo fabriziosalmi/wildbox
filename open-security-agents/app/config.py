@@ -70,15 +70,15 @@ class Settings(BaseSettings):
     wildbox_api_url: str = "http://api:8000"
     wildbox_data_url: str = "http://open-security-data:8002"
     wildbox_guardian_url: str = "http://open-security-guardian:8013"
-    # No tool calls the responder. Kept so that an env file which sets it
-    # still loads: the settings refuse unknown keys from a .env file.
-    wildbox_responder_url: str = "http://open-security-responder:8018"
+    # There is no WILDBOX_RESPONDER_URL: no tool calls the responder. The
+    # setting existed for a health check of the client that nothing called
+    # (#727). The settings refuse unknown keys from a .env file, so one
+    # that still sets it must drop the line.
 
     @field_validator(
         "wildbox_api_url",
         "wildbox_data_url",
         "wildbox_guardian_url",
-        "wildbox_responder_url",
     )
     @classmethod
     def _service_url(cls, value: str, info: ValidationInfo) -> str:

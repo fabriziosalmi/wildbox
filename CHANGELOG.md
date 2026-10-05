@@ -218,6 +218,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
+  client that was its only reader.** `WildboxAPIClient.health_check()`
+  had no caller, and no tool of the agent calls the responder. The
+  method and the setting are gone, with the lines in the service's own
+  `docker-compose.yml` and `.env.example`; the root `docker-compose.yml`
+  never set the variable. In the environment it is ignored. In a `.env`
+  file in the service's directory, which only a run outside the Compose
+  stack reads, it now stops the service at start, as every key the
+  settings do not know does: remove the line (#727).
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,
