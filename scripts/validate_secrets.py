@@ -54,6 +54,10 @@ OPTIONAL_SECRETS = [
     "STRIPE_SECRET_KEY",
     "STRIPE_PUBLISHABLE_KEY",
     "GRAFANA_ADMIN_PASSWORD",
+    # What guardian-worker presents to identity to learn who may be e-mailed
+    # about a team (#705). Without it guardian e-mails only the addresses
+    # typed into an alert rule or a report schedule.
+    "GUARDIAN_CONTACTS_SECRET",
 ]
 
 # Insecure patterns (case-insensitive)
@@ -80,6 +84,7 @@ MIN_LENGTHS = {
     "API_KEY_HASH_SECRET": 32,
     "POSTGRES_PASSWORD": 16,
     "GATEWAY_INTERNAL_SECRET": 32,
+    "GUARDIAN_CONTACTS_SECRET": 32,
     "API_KEY": 40,  # wsk_xxxx. + 64 chars
     "INITIAL_ADMIN_PASSWORD": 12,
 }
@@ -183,6 +188,27 @@ def check_database_urls(env_vars) -> list:
     return problems
 
 
+def check_contacts_secret(env_vars) -> list:
+    """GUARDIAN_CONTACTS_SECRET must not be another secret's value (#705).
+
+    guardian-worker holds it, and the worker reaches outside the stack. Equal
+    to GATEWAY_INTERNAL_SECRET it would hand the worker the secret that lets
+    its holder speak as any user to every service; identity refuses to start
+    on that, and this says so before the stack is started.
+    """
+    problems = []
+    value = env_vars.get("GUARDIAN_CONTACTS_SECRET", "")
+    if not value:
+        return problems
+    for other in ("GATEWAY_INTERNAL_SECRET", "JWT_SECRET_KEY", "API_KEY_HASH_SECRET"):
+        if value == env_vars.get(other, ""):
+            problems.append(
+                f"GUARDIAN_CONTACTS_SECRET has the value of {other}; generate a "
+                "separate one: openssl rand -hex 32"
+            )
+    return problems
+
+
 def check_env_permissions(env_path) -> list:
     """The .env file must not be readable by other local users (WILDBO-SEC-03)."""
     problems = []
@@ -239,6 +265,8 @@ def main():
     warnings = []
 
     for problem in dsn_problems:
+        all_errors.append(problem)
+    for problem in check_contacts_secret(env_vars):
         all_errors.append(problem)
 
     # Validate required secrets

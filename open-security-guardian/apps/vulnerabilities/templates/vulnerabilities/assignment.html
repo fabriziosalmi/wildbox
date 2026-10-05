@@ -1,0 +1,8 @@
+<p>The vulnerability <strong>{{ vulnerability.title }}</strong> has been assigned to you.</p>
+<ul>
+  <li>Asset: {{ vulnerability.asset.name }}</li>
+  <li>Severity: {{ vulnerability.get_severity_display }}</li>
+  <li>Risk score: {{ vulnerability.risk_score|floatformat:1 }}</li>
+  <li>Due: {% if vulnerability.due_date %}{{ vulnerability.due_date|date:"Y-m-d H:i e" }}{% else %}not set{% endif %}</li>
+</ul>
+{% if link %}<p>Your team's vulnerabilities, in the dashboard: <a href="{{ link }}">{{ link }}</a></p>{% endif %}

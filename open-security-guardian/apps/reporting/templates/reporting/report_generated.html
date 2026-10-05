@@ -5,4 +5,4 @@
   <li>Format: {{ report.get_format_display }}</li>
   <li>Generated: {{ report.generated_at|date:"Y-m-d H:i e" }}</li>
 </ul>
-<p>Download it from guardian: <code>GET /api/v1/reports/reports/{{ report.id }}/download/</code></p>
+<p>Download it from the API, with your API key or session: <code>GET {{ download }}</code></p>

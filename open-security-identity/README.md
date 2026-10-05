@@ -167,6 +167,35 @@ ages out. Deactivating an account sends guardian nothing.
 `503` if the secret is not configured). The gateway does not route `/internal/`
 to identity.
 
+`POST /internal/team-contacts` is called by guardian's worker only, when it
+is about to e-mail somebody about a team's data: guardian mirrors identity's
+users by id and keeps no address. It requires the
+`X-Guardian-Contacts-Secret` header to match `GUARDIAN_CONTACTS_SECRET`
+(`403` otherwise, `503` if the secret is not configured), a secret of its
+own: `X-Gateway-Secret` does not open it, and identity does not start when
+the two secrets have the same value. The body names one team and either the
+users or the roles wanted, never both and never neither; a field it does not
+know is refused (`422`):
+
+```json
+{"team_id": "<team UUID>", "roles": ["owner", "admin"]}
+```
+
+```json
+{"team_id": "<team UUID>", "user_ids": ["<user UUID>"]}
+```
+
+It answers the members of that team, with an active account and an address,
+that the request selects. A team that does not exist, a user who is not in
+it and a deactivated account are an empty answer:
+
+```json
+{"team_id": "<team UUID>", "contacts": [{"user_id": "<user UUID>", "email": "owner@example.com", "role": "owner"}]}
+```
+
+An address is returned as identity holds it; identity does not verify
+addresses. No address is written to identity's log.
+
 Request body:
 
 ```json
@@ -244,6 +273,7 @@ case-insensitive), plus a few variables read directly.
 | `GATEWAY_INTERNAL_SECRET` | unset | Required for `/internal/authorize` and for purges sent to the gateway |
 | `GATEWAY_INTERNAL_URL` | `http://open-security-gateway:8081/internal/gateway/purge-auth-cache` | Gateway purge endpoint |
 | `GUARDIAN_INTERNAL_URL` | `http://open-security-guardian:8013/internal/team-memberships/revoke/` | Where guardian is told that a membership ended. Empty: no guardian, nothing is sent |
+| `GUARDIAN_CONTACTS_SECRET` | unset | What guardian's worker presents to `/internal/team-contacts`. At least 32 characters, and not the value of `GATEWAY_INTERNAL_SECRET`, `JWT_SECRET_KEY` or `API_KEY_HASH_SECRET`: identity does not start otherwise. Unset, the route answers `503` |
 | `CORS_ORIGINS` | `http://localhost:3000`, `https://wildbox.local`, `https://dashboard.wildbox.local` | Comma-separated or JSON list |
 | `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS` | see `app/config.py` | |
 | `ENVIRONMENT` | `development` | `production` disables the API docs |
@@ -254,7 +284,8 @@ case-insensitive), plus a few variables read directly.
 
 The root `docker-compose.yml` passes `ENVIRONMENT`, `DATABASE_URL`,
 `REDIS_URL`, `JWT_SECRET_KEY`, `API_KEY_HASH_SECRET`,
-`GATEWAY_INTERNAL_SECRET`, `CREATE_INITIAL_ADMIN`, `INITIAL_ADMIN_EMAIL` and
+`GATEWAY_INTERNAL_SECRET`, `GUARDIAN_INTERNAL_URL`,
+`GUARDIAN_CONTACTS_SECRET`, `CREATE_INITIAL_ADMIN`, `INITIAL_ADMIN_EMAIL` and
 `INITIAL_ADMIN_PASSWORD`.
 
 `API_KEY_HASH_SECRET` keys API-key digests, so rotating `JWT_SECRET_KEY`

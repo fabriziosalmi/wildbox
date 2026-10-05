@@ -1,0 +1,87 @@
+{
+  "_comment": "Who identity answers may be e-mailed about a team (#705). Run by identity's unit tests against its route (open-security-identity/app/team_contacts.py) and by guardian's against the stand-in its tests use (open-security-guardian/tests/unit/identity_stub.py), so the two agree. A user is one account: 'cat' is a member of team A and an admin of team B.",
+  "members": [
+    {"team": "A", "user": "ann", "email": "ann@a.example", "role": "owner", "active": true},
+    {"team": "A", "user": "bob", "email": "bob@a.example", "role": "admin", "active": true},
+    {"team": "A", "user": "cat", "email": "cat@a.example", "role": "member", "active": true},
+    {"team": "A", "user": "dan", "email": "dan@a.example", "role": "admin", "active": false},
+    {"team": "A", "user": "eve", "email": "", "role": "admin", "active": true},
+    {"team": "B", "user": "fay", "email": "fay@b.example", "role": "owner", "active": true},
+    {"team": "B", "user": "cat", "email": "cat@a.example", "role": "admin", "active": true},
+    {"team": "B", "user": "gus", "email": "gus@b.example", "role": "member", "active": true}
+  ],
+  "cases": [
+    {
+      "name": "the owners and admins of a team: active, with an address, of that team",
+      "team": "A",
+      "roles": ["owner", "admin"],
+      "expect": [["ann", "owner"], ["bob", "admin"]]
+    },
+    {
+      "name": "an admin of another team is not an admin here",
+      "team": "A",
+      "roles": ["admin"],
+      "expect": [["bob", "admin"]]
+    },
+    {
+      "name": "the same question about the other team",
+      "team": "B",
+      "roles": ["owner", "admin"],
+      "expect": [["fay", "owner"], ["cat", "admin"]]
+    },
+    {
+      "name": "one role",
+      "team": "B",
+      "roles": ["owner"],
+      "expect": [["fay", "owner"]]
+    },
+    {
+      "name": "members are answered when asked for",
+      "team": "A",
+      "roles": ["member"],
+      "expect": [["cat", "member"]]
+    },
+    {
+      "name": "a member by id, with the role held in the team asked about",
+      "team": "A",
+      "users": ["cat"],
+      "expect": [["cat", "member"]]
+    },
+    {
+      "name": "the same user in the other team",
+      "team": "B",
+      "users": ["cat"],
+      "expect": [["cat", "admin"]]
+    },
+    {
+      "name": "users of another team are not found in this one",
+      "team": "A",
+      "users": ["fay", "gus"],
+      "expect": []
+    },
+    {
+      "name": "a deactivated account is nobody to tell",
+      "team": "A",
+      "users": ["dan"],
+      "expect": []
+    },
+    {
+      "name": "an account without an address is nobody to write to",
+      "team": "A",
+      "users": ["eve"],
+      "expect": []
+    },
+    {
+      "name": "several by id: only the active member of the team",
+      "team": "A",
+      "users": ["ann", "fay", "dan", "eve"],
+      "expect": [["ann", "owner"]]
+    },
+    {
+      "name": "a team nobody is in",
+      "team": "C",
+      "roles": ["owner", "admin", "member"],
+      "expect": []
+    }
+  ]
+}

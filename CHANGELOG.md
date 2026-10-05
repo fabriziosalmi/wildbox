@@ -512,6 +512,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guardian were checked: the gateway sends the header, and identity's
   membership notice goes to a route Guardian exempts from the redirect;
   a unit test keeps both true.
+- **guardian's e-mail notifications have an address to go to** (#705).
+  guardian mirrors identity's users by id, with no address, so the SLA
+  and assignment e-mails addressed to the assignee reached nobody;
+  compliance notifications named no recipient at all; and Compose passed
+  guardian no mail setting, so Django's console backend printed each
+  message, a team's asset names and findings with it, to the worker's
+  log while guardian recorded it as sent. Every e-mail about a team's
+  data now goes through one function, which decides who is told: the
+  addresses the team typed into the alert rule or report schedule
+  concerned; the vulnerability's assignee; otherwise the team's owners
+  and admins. guardian keeps no address. Its worker asks identity when it
+  is about to send, so an address that changed, a role that was taken
+  away, a deactivated account or a member who left is not written to;
+  a copy kept from a header on the member's last request would have been
+  as old as that request. A notification is sent when the mail server
+  accepted it, and otherwise recorded as not sent with the reason: no
+  mail server configured, nobody to tell, identity not reachable, the
+  server refusing. Links open a page the dashboard has, or are left out:
+  the vulnerability e-mails linked `/vulnerabilities/<id>/`, which it
+  does not serve, and the report e-mail named a path no client of the
+  gateway can call. A compliance e-mail is written from the row it is
+  about, not from what its caller passed. Tests run every notification
+  for two teams and check that each reaches its own team's people only
+  and names nothing of the other; 137 mutations of the change each fail
+  a test.
 - **The agents service's `result_url` is a path a client can follow**
   (#716). `POST /api/v1/agents/analyze` and the task read answered
   `"result_url": "/v1/analyze/{task_id}"`, the service's own path, which
@@ -674,6 +699,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **guardian sends e-mail by SMTP or not at all, and checks its mail
+  settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
+  Without `EMAIL_HOST` there is no mail server and every notification is
+  recorded as not sent; with one, `DEFAULT_FROM_EMAIL` is required, and
+  a port, a TLS choice or a login that cannot work stops guardian at
+  start-up. `GUARDIAN_BASE_URL` is the address users open the dashboard
+  at, scheme and host only; anything else stops guardian, and unset, the
+  e-mails carry no link.
+- **A guardian notification without a recipient of its own goes to its
+  team's owners and admins** (#705): compliance notifications, an alert
+  rule or a report schedule that names no recipients, and an SLA
+  violation whose vulnerability has no assignee who can be told. The
+  owners and admins are told once of such a violation; an assignee is
+  still reminded once a day. An SLA entry in a vulnerability's history
+  now reads `sent`, `sent to the team's owners and admins (no assignee
+  to e-mail)` or `not sent (<reason>)`, and an assignment notification
+  adds an entry of its own.
 
 ### Added
 
@@ -701,6 +743,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **identity tells guardian's worker who may be e-mailed about a team**
+  (#705). `POST /internal/team-contacts` answers the active members of
+  one team that the caller selects, by user id or by role, with their
+  address and role; there is no way to list a whole team, and the
+  gateway does not proxy the route. The caller presents
+  `GUARDIAN_CONTACTS_SECRET`, a secret of its own: guardian's worker
+  reaches outside the stack and holds no `GATEWAY_INTERNAL_SECRET`, and
+  identity does not start when the two have the same value.
+  `make generate-secrets` writes one; without it the route answers 503
+  and guardian e-mails only the addresses typed into a rule or a
+  schedule. Compose passes guardian's worker its mail server as
+  `GUARDIAN_EMAIL_HOST`, `GUARDIAN_EMAIL_PORT`, `GUARDIAN_EMAIL_USE_TLS`,
+  `GUARDIAN_EMAIL_USE_SSL`, `GUARDIAN_EMAIL_HOST_USER`,
+  `GUARDIAN_EMAIL_HOST_PASSWORD` and `GUARDIAN_DEFAULT_FROM_EMAIL`.
+- **A guardian alert notification says why it was not delivered**
+  (#705). `GET .../alerts/{id}/notifications/` gains `failure_reason`,
+  empty when `delivered` is true, and `recipients` lists who the
+  notification was addressed to, the team's owners and admins included.
 
 ### CI
 
