@@ -656,9 +656,13 @@ def record_alert_evaluation(rule_id, current_value, triggered, now=None):
 
 
 def alert_recipients(rule):
-    """notification_config['recipients'], else DEFAULT_NOTIFICATION_RECIPIENTS."""
-    configured = (rule.notification_config or {}).get('recipients') or []
-    return list(configured) or list(getattr(settings, 'DEFAULT_NOTIFICATION_RECIPIENTS', []))
+    """The rule's own notification_config['recipients'], and nobody else.
+
+    A rule that names none notifies nobody: its notifications are recorded
+    undelivered. There is no platform-wide list to fall back to, which
+    would receive every team's alerts (#678).
+    """
+    return list((rule.notification_config or {}).get('recipients') or [])
 
 
 def evaluate_alert_condition(rule, current_value):
@@ -688,17 +692,25 @@ def notify_scheduled_report(report):
     This lived in a post_save signal that read ``instance.tracker``, which
     Report does not have, so saving a completed report raised and
     generate_report recorded it as failed. The schedule's recipients were
-    never used; without any, DEFAULT_NOTIFICATION_RECIPIENTS are told.
+    never used. A schedule without recipients e-mails nobody: the report is
+    generated and listed, and the log says no e-mail went out (#678).
     """
     from apps.core.utils import send_notification
 
     schedule = report.schedule
+    recipients = list(schedule.recipients or [])
+    if not recipients:
+        logger.warning(
+            f"Report schedule {schedule.pk}: report {report.pk} is ready, "
+            "no e-mail sent (the schedule has no recipients)"
+        )
+        return False
     return send_notification(
         subject=f"Scheduled Report Generated: {report.name}",
         template='reporting/report_generated.html',
         context={'report': report, 'schedule': schedule},
         notification_type='report',
-        recipients=list(schedule.recipients or []) or None,
+        recipients=recipients,
     )
 
 

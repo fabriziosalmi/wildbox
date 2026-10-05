@@ -160,7 +160,10 @@ class Command(BaseCommand):
             )
         
         self.stdout.write(
-            self.style.SUCCESS(f'Sent overdue notifications for {count} assessments')
+            self.style.WARNING(
+                f'Queued overdue notifications for {count} assessments; '
+                'compliance notifications have no recipients and are not sent'
+            )
         )
 
     def check_expiring_exceptions(self, dry_run):
@@ -201,7 +204,10 @@ class Command(BaseCommand):
             )
         
         self.stdout.write(
-            self.style.SUCCESS(f'Sent expiry notifications for {count} exceptions')
+            self.style.WARNING(
+                f'Queued expiry notifications for {count} exceptions; '
+                'compliance notifications have no recipients and are not sent'
+            )
         )
 
     def update_asset_inventory(self, dry_run):

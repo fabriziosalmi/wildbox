@@ -175,6 +175,11 @@ team (the member's keys for that team). A key's `expires_at` is honored even
 when the gateway has a decision for the key in its cache. See
 [Revoking an API key](../../guides/authentication.md#revoking-an-api-key).
 
+Removing a member from a team, and deleting an account, also tell guardian,
+once the change is made, so that the user is no longer accepted or named as
+one of the team's users there. That notice never fails the request: see
+[Team memberships](../../guides/deployment.md#team-memberships).
+
 `/internal/authorize` reports, for an API key, `api_key_id` (what the gateway
 revokes the key by) and `credential_expires_at` (the key's expiry in epoch
 seconds, or null); for a session token, `credential_expires_at` is the
