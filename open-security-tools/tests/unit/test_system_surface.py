@@ -4,6 +4,7 @@
 this module pins which of them exist and what they answer.
 """
 
+import asyncio
 import os
 import re
 import sys
@@ -85,6 +86,29 @@ def test_health_answers_what_the_probes_read(client):
     # The fields of the handler that never ran are not part of the answer.
     assert "uptime_seconds" not in body
     assert "tools_loaded" not in body
+
+
+def test_health_counts_a_run_in_progress(app, client):
+    # The tool routes used to run through an execution manager of their own,
+    # a different object from the one /health reads, so active_executions was
+    # 0 whatever was running.
+    from app.api import router as router_module
+
+    seen = []
+
+    def tool(input_data):
+        # Synchronous, so the manager runs it in a worker thread, from which
+        # the service is asked how many executions are active.
+        seen.append(TestClient(app).get("/health").json()["active_executions"])
+        return "done"
+
+    result = asyncio.run(
+        router_module.execution_manager.execute_tool(tool, None, "health_probe")
+    )
+
+    assert result.status.value == "completed", result.error
+    assert seen == [1]
+    assert client.get("/health").json()["active_executions"] == 0
 
 
 # --- /api/system/* ---------------------------------------------------------

@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
+- **`active_executions` in the tools `/health` response counts the runs
+  in progress.** It was always 0: the tool routes ran through an
+  execution manager of their own, not the one `/health` reads. For the
+  same reason the service cancelled nothing when it shut down; it now
+  cancels the synchronous runs in progress and waits up to 10 seconds
+  for them to stop (#646).
 
 ## [0.11.2] - 2026-10-05
 
