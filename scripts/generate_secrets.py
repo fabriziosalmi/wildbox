@@ -226,6 +226,10 @@ def main():
         # everything but /health.
         "SENSOR_API_KEY": generate_hex(32),
         "DATA_SECRET_KEY": generate_hex(32),
+        # What guardian-worker presents to identity to learn who may be
+        # e-mailed about a team (#705). Its own value: the worker holds no
+        # GATEWAY_INTERNAL_SECRET, and identity refuses one equal to it.
+        "GUARDIAN_CONTACTS_SECRET": generate_hex(32),
     }
 
     # Read template

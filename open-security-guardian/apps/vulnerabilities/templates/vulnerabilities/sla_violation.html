@@ -1,0 +1,9 @@
+<p>The vulnerability <strong>{{ vulnerability.title }}</strong> is past its due date{% if no_assignee %} and has no assignee who can be told{% endif %}.</p>
+<ul>
+  <li>Asset: {{ vulnerability.asset.name }}</li>
+  <li>Severity: {{ vulnerability.get_severity_display }}</li>
+  <li>Risk score: {{ vulnerability.risk_score|floatformat:1 }}</li>
+  <li>Due: {{ vulnerability.due_date|date:"Y-m-d H:i e" }}</li>
+  <li>Overdue by: {{ overdue_hours|floatformat:1 }} hours</li>
+</ul>
+{% if link %}<p>Your team's vulnerabilities, in the dashboard: <a href="{{ link }}">{{ link }}</a></p>{% endif %}
