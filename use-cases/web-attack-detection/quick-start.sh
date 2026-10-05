@@ -116,12 +116,16 @@ collection:
   system_inventory: false
   log_forwarding: true
 
+# The sensor reads exactly this file. read_from: beginning also forwards the
+# sample logs already in it when the sensor starts (and again at every
+# restart: it is for a test, not for a production log).
 log_sources:
   - name: nginx_access
     type: file
     path: ${TEST_DIR}/logs/access.log
     format: nginx
     enabled: true
+    read_from: beginning
 
 performance:
   query_interval: 5
@@ -132,13 +136,6 @@ performance:
 
 logging:
   level: INFO
-  format: json
-
-sensor:
-  name: "test-web-server-sensor"
-  tags:
-    - "test"
-    - "web-attack-detection"
 EOF
 
 echo -e "${GREEN}✓${NC} Created sensor configuration: /tmp/wildbox-test-config.yaml"
@@ -186,9 +183,9 @@ echo "1. Create the sensor's team member and its API key with the"
 echo "   data:ingest scope (README.md, Step 1b), then:"
 echo "   $ export SENSOR_DATA_LAKE_API_KEY=wsk_..."
 echo ""
-echo "2. Start the sensor. Note: it does not read log_sources yet and reads"
-echo "   /var/log/nginx/access.log instead (#638); copy the sample logs there"
-echo "   on a test host to have them forwarded."
+echo "2. Start the sensor. It reads ${TEST_DIR}/logs/access.log, the"
+echo "   log_sources entry of the configuration above, from its beginning,"
+echo "   and logs \"Log source 'nginx_access': reading ...\" when it does."
 echo "   $ cd ../../open-security-sensor"
 echo "   $ pip install -r requirements.txt"
 echo "   $ python main.py --config /tmp/wildbox-test-config.yaml --test-connection"

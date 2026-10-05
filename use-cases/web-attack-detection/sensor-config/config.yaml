@@ -45,13 +45,25 @@ collection:
   log_forwarding: true
 
 # Log Forwarding Configuration
+# The sensor reads exactly the enabled sources below and nothing else, and
+# sends every line they hold to Wildbox. A source with an unknown key, type
+# or format stops the sensor at start-up with a message naming it; a file
+# that does not exist or cannot be read is a warning ("Log source ...") and
+# is read once it appears. See open-security-sensor/README.md, "Log
+# forwarding".
 log_sources:
   # Nginx Access Logs
   - name: nginx_access
     type: file
+    # Absolute; a file or a pattern such as /var/log/nginx/*access.log.
+    # In the sensor's container this is the container's path: mount the
+    # host's directory first (README.md, Step 4, Option A).
     path: /var/log/nginx/access.log
     format: nginx
     enabled: true
+    # end: only the lines written after the sensor starts (the default).
+    # beginning: also what the file already holds, at every start.
+    read_from: end
 
   # Nginx Error Logs (optional)
   - name: nginx_error
@@ -91,20 +103,7 @@ performance:
   # Number of worker threads
   worker_threads: 2
 
-# Logging Configuration
+# Logging Configuration: the sensor's own log, on standard output. Set
+# "file" to also write it to a file (never one a log source matches).
 logging:
   level: INFO
-  format: json
-  output: /var/log/security-sensor/sensor.log
-
-# Sensor Identity (the ID the data service shows is data_lake.sensor_id)
-sensor:
-  # Sensor name/description
-  name: "web-server-sensor"
-
-  # Tags for organization
-  tags:
-    - "web-server"
-    - "nginx"
-    - "production"
-    - "attack-detection"
