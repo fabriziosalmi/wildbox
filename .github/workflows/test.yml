@@ -164,7 +164,7 @@ jobs:
         run: |
           cd open-security-guardian
           # As the unit-tests job installs them.
-          pip install ../open-security-shared || true
+          pip install ../open-security-shared
           pip install -r requirements.txt
           pip install pytest pytest-asyncio
 
