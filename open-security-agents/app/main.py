@@ -34,6 +34,7 @@ from .worker import celery_app, run_threat_enrichment_task
 from .auth import get_current_user, GatewayUser
 from .rate_limit import limit_analysis, limiter, rate_limited_caller
 from .tools.wildbox_client import CallerIdentityUnavailable, require_caller_identity
+from open_security_shared.api_docs import api_docs_urls
 
 # Configure logging
 logging.basicConfig(
@@ -89,9 +90,11 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down Open Security Agents...")
 
 
-# Determine if running in production
+# /docs, /redoc and /openapi.json are served in development only, by the rule
+# every service shares. They used to be turned off for the exact value
+# "production", so any other environment, "staging" included, published the
+# schema (#679).
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-DISABLE_DOCS = ENVIRONMENT == "production"
 
 # One version, in one place. The FastAPI constructor said 0.1.6 while the root
 # endpoint reported 1.0.0, so the two things a caller can ask disagreed
@@ -103,10 +106,8 @@ app = FastAPI(
     title="Open Security Agents API",
     description="AI-powered threat intelligence enrichment service",
     version=SERVICE_VERSION,
-    docs_url=None if DISABLE_DOCS else "/docs",
-    redoc_url=None if DISABLE_DOCS else "/redoc",
-    openapi_url=None if DISABLE_DOCS else "/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    **api_docs_urls(ENVIRONMENT),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.

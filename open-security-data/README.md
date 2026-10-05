@@ -149,9 +149,9 @@ forwarded to the service's `/api/v1/<path>`, and `/api/v1/data/health` to
 | GET | `/api/v1/data/sensors` | The team's sensors |
 | GET | `/api/v1/data/sensors/{sensor_id}` | One of the team's sensors |
 
-The OpenAPI UI (`/docs`, `/redoc`) is enabled only when `ENVIRONMENT` is
-`development`, and only on the service port (`http://127.0.0.1:8002/docs`), not
-through the gateway. Prometheus metrics are at `http://127.0.0.1:8002/metrics`.
+The OpenAPI UI (`/docs`, `/redoc`) and the schema (`/openapi.json`) are served
+only when `ENVIRONMENT` is `development`, and only on the service port
+(`http://127.0.0.1:8002/docs`), not through the gateway. Prometheus metrics are at `http://127.0.0.1:8002/metrics`.
 
 The dashboard reaches the service through `dataClient` in
 `open-security-dashboard/src/lib/api-client.ts`, whose base URL is the gateway

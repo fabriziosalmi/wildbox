@@ -99,7 +99,8 @@ calls the gateway, not port 8018.
 | `GET /metrics` | Prometheus metrics | anyone on the network |
 
 A run of another team answers 404, as a run that does not exist does.
-`/docs` serves the OpenAPI page outside production.
+`/docs`, `/redoc` and `/openapi.json` are served only when `ENVIRONMENT` is
+`development`, on the service port and not through the gateway.
 
 ### Cancelling a run
 
