@@ -277,10 +277,10 @@ def test_an_sla_violation_nobody_is_told_of_is_recorded_and_logged(
     assert mailoutbox == []
     (reason,) = _sla_history(unassigned)
     assert reason.startswith(
-        "SLA violation notification not sent (no assignee with an e-mail address)"
+        "SLA violation notification not sent (no assignee to e-mail)"
     )
     assert f"SLA violation of vulnerability {unassigned.id}" in caplog.text
-    assert "not sent (no assignee with an e-mail address)" in caplog.text
+    assert "not sent (no assignee to e-mail)" in caplog.text
 
 
 @pytest.mark.django_db

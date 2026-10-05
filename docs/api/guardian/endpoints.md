@@ -146,8 +146,16 @@ reports in `X-Wildbox-Team-ID` (`apps/core/tenancy.py`):
 - Names are unique within a team (environments, asset groups, discovery
   rules, frameworks, vulnerability templates, webhook endpoint paths): a
   name another team uses is free, and the answer to a duplicate never says
-  what another team has. A user can be assigned
-  or named only once they have made a request as a member of the team.
+  what another team has.
+- A user can be assigned or named (an assignee, an owner, an approver, the
+  people a dashboard is shared with) only while they are a member of the
+  team: they have made a request as a member of it within the last 30 days
+  (`GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS`), and identity has not removed
+  them from it. A user who left is refused as an id that does not exist
+  is, and the roles they held in the team are cleared when they are
+  removed: a vulnerability assigned to them becomes unassigned, with a
+  line in its history. What they did (the rows they created, the notes
+  they wrote) stays attributed to them.
 - `/api/v1/guardian/tasks/<uuid>/` answers only for tasks the team
   dispatched; any other id answers `404`.
 

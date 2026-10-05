@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .access_revocation import active_api_key_ids, end_account_access_or_503
 from .auth import token_predates_cutoff, verify_access_token, verify_password
 from .database import get_db
+from .guardian_memberships import notify_accounts_ended  # noqa: E402
 from .models import User, Team, TeamMembership, TeamRole
 from .config import settings
 from .logout import RevocationError, revoke_sessions_issued_before, revoke_token
@@ -285,7 +286,11 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         await end_account_access_or_503(
             await self._active_api_key_ids(user), user.id, "The deletion"
         )
+        deleted_user_id = str(user.id)
         await super().delete(user, request=request)
+        # Its memberships went with it: guardian is told, so no team goes on
+        # naming the account as an assignee or an owner (#676).
+        await notify_accounts_ended([deleted_user_id])
 
     async def set_password(self, user, password: str):
         """Set the user's password, ending their other sessions (see _update).

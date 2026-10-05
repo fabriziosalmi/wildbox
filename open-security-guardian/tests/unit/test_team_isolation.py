@@ -365,6 +365,69 @@ def _referenced(model, team_id):
     return team_fixtures.make(model, team_id)
 
 
+# --- users: a former member is refused like a stranger (#676) ----------------------
+
+USER_FIELD_CASES = [case for case in FK_CASES if case.values[3].__name__ == "User"]
+
+
+def test_there_are_fields_that_take_a_user():
+    # Every field of every API view through which a team can name a user:
+    # assignees, owners, contacts, approvers, share targets and the rest.
+    assert len(USER_FIELD_CASES) > 15, [case.id for case in USER_FIELD_CASES]
+
+
+def _leaves_by_notice(team_id, member):
+    """identity told guardian the member left the team."""
+    from apps.core.memberships import revoke_membership
+
+    revoke_membership(team_id, member.username)
+
+
+def _leaves_unseen(team_id, member):
+    """No notice came; the member has made no request for longer than the window."""
+    from apps.core.models import TeamMembership
+    from django.conf import settings
+    from django.utils import timezone
+
+    stale = (
+        timezone.now() - settings.TEAM_MEMBERSHIP_MAX_AGE - timezone.timedelta(days=1)
+    )
+    assert TeamMembership.objects.filter(team_id=team_id, user=member).update(
+        last_seen=stale
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("leaves", [_leaves_by_notice, _leaves_unseen])
+@pytest.mark.parametrize("url,view_cls,name,target,many", USER_FIELD_CASES)
+def test_a_former_member_is_refused_wherever_a_team_names_a_user(
+    api, teams, url, view_cls, name, target, many, leaves
+):
+    team_a, _ = teams
+    member = team_fixtures.user(team_a)
+    colleague = team_fixtures.user(team_a)
+
+    def error_for(user):
+        value = [user.pk] if many else user.pk
+        response = api("post", url, team_a, data={name: value})
+        return response.json().get(name) if response.status_code == 400 else None
+
+    # Positive control: while a member, the field takes them.
+    assert error_for(member) is None
+
+    leaves(team_a, member)
+
+    error = error_for(member)
+    assert error, f"{view_cls.__name__}.{name} accepts a user who left the team"
+    assert "does not exist" in str(error), error
+    # Answered as an id nobody has, and the colleague who stays is accepted.
+    unknown = type(member)(pk=10**9)
+    assert str(error_for(unknown)).replace(str(unknown.pk), "<id>") == str(
+        error
+    ).replace(str(member.pk), "<id>")
+    assert error_for(colleague) is None
+
+
 @pytest.mark.django_db
 def test_a_derived_row_cannot_be_filed_under_a_shared_parent(api, teams):
     """A control under a shared framework would make it every team's."""

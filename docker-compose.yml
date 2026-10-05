@@ -60,6 +60,12 @@ services:
       # Shared secret the gateway presents to /internal/authorize. Without it
       # identity returns "Service misconfigured" and ALL gateway auth fails.
       - GATEWAY_INTERNAL_SECRET=${GATEWAY_INTERNAL_SECRET}
+      # Where identity tells guardian that a member left a team, so guardian
+      # stops accepting them as one of its users at once (#676). "-", not
+      # ":-": unset means guardian's name on this network, while an empty
+      # value in .env is kept and switches the notice off, for a deployment
+      # that does not run guardian.
+      - GUARDIAN_INTERNAL_URL=${GUARDIAN_INTERNAL_URL-http://open-security-guardian:8013/internal/team-memberships/revoke/}
       - CREATE_INITIAL_ADMIN=${CREATE_INITIAL_ADMIN:-true}
       - INITIAL_ADMIN_EMAIL=${INITIAL_ADMIN_EMAIL}
       - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
@@ -617,6 +623,11 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - LOG_FILE=/app/logs/guardian.log
       - ALLOWED_HOSTS=localhost,127.0.0.1,open-security-guardian
+      # How many days a user stays one of a team's users without acting in
+      # it, 1 to 365, default 30 (#676). The same value on guardian,
+      # guardian-worker and guardian-beat: the API and the e-mails apply
+      # one rule.
+      - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
     volumes:
       - guardian_logs:/app/logs
       # Generated reports: guardian-worker writes them, guardian serves
@@ -690,6 +701,10 @@ services:
       # Seconds between reminders of an alert rule that keeps firing, or
       # off; empty means one day (guardian/schedule.py, #549).
       - GUARDIAN_ALERT_RENOTIFY_INTERVAL=${GUARDIAN_ALERT_RENOTIFY_INTERVAL:-}
+      # The SLA and assignment e-mails go to an assignee only while they
+      # are a member of the vulnerability's team: the same window as on
+      # guardian (#676).
+      - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -758,6 +773,9 @@ services:
       - GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS=${GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS:-}
       - GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS=${GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS:-}
       - GUARDIAN_SCHEDULE_USER_SCHEDULES=${GUARDIAN_SCHEDULE_USER_SCHEDULES:-}
+      # Not used by the scheduler; passed so that an invalid value stops all
+      # three guardian containers, not two of them (#676).
+      - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
     depends_on:
       postgres:
         condition: service_healthy

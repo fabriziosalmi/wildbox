@@ -14,6 +14,7 @@ import requests
 from datetime import timedelta
 
 from apps.core.locks import single_instance
+from apps.core.tenancy import is_current_member
 
 from .models import (
     Vulnerability, VulnerabilityStatus, VulnerabilityHistory,
@@ -77,7 +78,17 @@ def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id)
     try:
         vulnerability = Vulnerability.objects.get(id=vulnerability_id)
         assigned_by = User.objects.get(id=assigned_by_user_id)
-        
+
+        if vulnerability.assigned_to and member_assignee(vulnerability) is None:
+            # Assigned to somebody who is not, or no longer, a member of the
+            # vulnerability's team: the API refuses that, so this is a stale
+            # assignment. Nothing about the team's data is e-mailed (#676).
+            logger.warning(
+                f"Assignment notification for vulnerability {vulnerability_id} not sent: "
+                "the assignee is not a member of its team"
+            )
+            return {'notification_sent': False}
+
         if vulnerability.assigned_to:
             recipient_email = vulnerability.assigned_to.email
             recipient_name = vulnerability.assigned_to.get_full_name()
@@ -189,7 +200,7 @@ def scan_vulnerability_remediation(self, vulnerability_id):
 #: What every history entry of the SLA check starts with; the check finds its
 #: own entries of the last day by it.
 SLA_HISTORY_MARKER = 'SLA violation notification'
-SLA_NO_RECIPIENT = 'not sent (no assignee with an e-mail address)'
+SLA_NO_RECIPIENT = 'not sent (no assignee to e-mail)'
 
 
 def sla_recipient(vulnerability):
@@ -200,9 +211,31 @@ def sla_recipient(vulnerability):
     it would have received every team's asset names and vulnerability titles
     (#678). A vulnerability without an assignee, or whose assignee has no
     e-mail address, notifies nobody, and its history says so.
+
+    The assignee is told only while they are a member of the
+    vulnerability's team (#676). identity tells guardian when a member
+    leaves, and their assignments are cleared then; if that notice never
+    arrived, this is what keeps a team's asset names and vulnerability
+    titles from being e-mailed to somebody who left it.
+    """
+    assignee = member_assignee(vulnerability)
+    return (assignee.email or None) if assignee else None
+
+
+def member_assignee(vulnerability):
+    """The vulnerability's assignee, if they may be told about it, else None.
+
+    A vulnerability of a team: its assignee, while a current member of that
+    team. A vulnerability without a team (written before guardian kept one)
+    has no team boundary to cross: its assignee, as before.
     """
     assignee = vulnerability.assigned_to
-    return (assignee.email or None) if assignee else None
+    if assignee is None:
+        return None
+    team_id = vulnerability.asset.team_id
+    if team_id is not None and not is_current_member(assignee, team_id):
+        return None
+    return assignee
 
 
 @shared_task

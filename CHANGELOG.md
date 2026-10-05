@@ -27,6 +27,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **A user who left a team is no longer one of its users in guardian**
+  (#676). guardian recorded a membership the first time the gateway
+  authenticated a user in a team and never removed it. A member that
+  identity removed from a team could no longer authenticate in it, but the
+  team could still assign vulnerabilities to them and share dashboards
+  with them, and its data went on naming them as assignee, owner or
+  approver. Two things end a membership in guardian now. identity tells
+  guardian when it removes a member from a team or deletes an account
+  (`POST /internal/team-memberships/revoke/` on the internal network,
+  authenticated with the gateway-internal secret, refused when that
+  secret is not configured, and not routed by the gateway): the user is
+  refused at once wherever a team names a user, and the roles they held in
+  the team are cleared, a vulnerability's assignee with a line in its
+  history. And a membership counts only for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30, from 1 to 365, no way to
+  switch it off) from the user's last request in the team, so a notice
+  that never arrived, or a member who left before this release, does not
+  stay a member: a user who left can make no request that renews it. The
+  notice is sent after identity has committed the removal and does not
+  block it, because removing a member must not depend on guardian being
+  up; a notice guardian does not confirm is logged as an error by
+  identity, and `manage.py revoke_team_membership` applies it by hand.
+  What a former member did stays on record. The SLA and assignment
+  e-mails go to an assignee only while they are a member of the
+  vulnerability's team. Deactivating an account sends no notice: it keeps
+  its memberships and can be reactivated. Tests list, from the URL
+  configuration, the 24 fields through which a team can name a user and
+  check each against a member who left, by notice and by window; an
+  integration test removes a member in identity and has guardian refuse
+  them through the gateway.
+
 - **guardian has no platform-wide notification recipient** (#678).
   Alert rules, scheduled reports and compliance notifications without
   recipients fell back to a `DEFAULT_NOTIFICATION_RECIPIENTS` setting,

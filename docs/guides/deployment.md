@@ -339,6 +339,55 @@ For example, "more than 5 unresolved critical vulnerabilities":
   `last_value` and `last_evaluated_at`. `trigger_count` counts the times it
   started firing.
 
+#### Team memberships
+
+guardian lets a team name only its own members: as the assignee of a
+vulnerability, the owner of an asset, the people a dashboard is shared with.
+identity owns memberships, so guardian learns of them in two ways:
+
+- Every request the gateway authenticates tells guardian that the user is
+  in the team now. guardian counts a user as a member for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` from their last request.
+- When a member is removed from a team, or an account is deleted, identity
+  tells guardian at `GUARDIAN_INTERNAL_URL`, after it has made the change.
+  guardian stops accepting the user at once and clears the roles they held
+  in that team.
+
+| Variable | Read by | Default | Meaning |
+| --- | --- | --- | --- |
+| `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` | `guardian`, `guardian-worker`, `guardian-beat` | `30` | Days a user stays one of a team's users without making a request in it, from 1 to 365. Any other value stops the three containers at start-up: there is no way to switch the window off, since that would keep a former member for good. Shorter bounds a lost notice more tightly; a member who has not opened guardian for longer than this cannot be assigned work until their next request |
+| `GUARDIAN_INTERNAL_URL` | `identity` | `http://open-security-guardian:8013/internal/team-memberships/revoke/` | Where identity tells guardian that a membership ended. Set it to an empty value only in a deployment that does not run guardian: identity then sends nothing |
+
+- The notice does not go through the gateway, which proxies guardian's
+  `/api/v1/` only. identity and guardian share a network in both Compose
+  files, and guardian refuses the notice without `GATEWAY_INTERNAL_SECRET`,
+  which both already have.
+- Removing a member does not wait for guardian. If guardian does not
+  confirm the notice (three attempts), the member is removed all the same
+  and identity logs an error that begins `guardian was not told of`. The
+  gateway already refuses the member, and guardian stops counting them when
+  the window runs out. To apply the notice without waiting, run it by hand
+  in guardian's container, with the ids from identity:
+
+  ```bash
+  docker compose exec guardian python manage.py revoke_team_membership \
+    --team <team UUID> --user <user UUID>
+  # an account that was deleted:
+  docker compose exec guardian python manage.py revoke_team_membership \
+    --user <user UUID> --all-teams
+  ```
+
+  `--dry-run` reports what would be cleared and changes nothing. Use it
+  only for a user identity has removed: the roles it clears do not come
+  back.
+- Deactivating an account sends no notice: the account keeps its
+  memberships and can be reactivated. It cannot make requests, so it stops
+  counting in guardian when the window runs out.
+- After the upgrade, an existing membership counts from the day guardian
+  first saw the user, not from the upgrade. A member who has used guardian
+  since is unaffected; one first seen more than 30 days ago is counted
+  again from their next request.
+
 #### Notification recipients
 
 guardian e-mails a notification to the recipients its own team named, and to
@@ -352,8 +401,8 @@ names, vulnerability titles and findings.
 | --- | --- | --- |
 | Alert rule | the rule's `notification_config.recipients` | not sent; the notification is recorded with `delivered: false` and listed by `GET /api/v1/guardian/reports/alerts/{id}/notifications/` |
 | Scheduled report | the schedule's `recipients` | not sent; the report is generated and listed, and `guardian-worker` logs a warning that names the schedule |
-| SLA violation | the vulnerability's assignee, if the account has an e-mail address | not sent; the vulnerability's history (`GET /api/v1/guardian/vulnerabilities/{id}/history/`) records the violation once, as `SLA violation notification not sent (no assignee with an e-mail address)`, and `guardian-worker` logs a warning |
-| Vulnerability assignment | the assignee, if the account has an e-mail address | not sent; `guardian-worker` logs a warning |
+| SLA violation | the vulnerability's assignee, while they are a member of its team and the account has an e-mail address | not sent; the vulnerability's history (`GET /api/v1/guardian/vulnerabilities/{id}/history/`) records the violation once, as `SLA violation notification not sent (no assignee to e-mail)`, and `guardian-worker` logs a warning |
+| Vulnerability assignment | the assignee, while they are a member of the vulnerability's team and the account has an e-mail address | not sent; `guardian-worker` logs a warning |
 | Compliance (high-risk finding, assessment started, completed or overdue, exception expiring) | nobody: an assessment, a result and an exception name no recipients | not sent; `guardian-worker` logs `Notification not sent, it has no recipients (compliance)` with the subject |
 
 - An account has an e-mail address in guardian only if an operator set one
