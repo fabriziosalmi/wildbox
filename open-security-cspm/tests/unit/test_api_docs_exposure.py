@@ -1,11 +1,10 @@
-"""identity serves its API schema and documentation pages in development only.
+"""cspm serves its API schema and documentation pages in development only.
 
-/docs, /redoc and /openapi.json map every route, admin and internal ones
-included. identity served the two pages unconditionally (#496), then turned
-all three off for the exact value ``production`` only, so ``staging`` still
-published them (#679). The rule is now the one every service shares
-(``open_security_shared.api_docs``): served when ``ENVIRONMENT`` is
-``development``, 404 in any other environment.
+/docs, /redoc and /openapi.json map every route of the service. cspm served
+them whenever ``DEBUG`` was true, whatever the environment, so ``DEBUG=true``
+published the schema in production (#679). The rule is now the one every
+service shares (``open_security_shared.api_docs``): served when
+``ENVIRONMENT`` is ``development``, 404 in any other environment.
 
 Every FastAPI service has this test, with the same shape. The application is
 built when its module is imported, from the environment of that moment, so
@@ -16,7 +15,6 @@ environment. The probe does not enter the lifespan, so it needs no database.
 
 import json
 import os
-import string
 import subprocess
 import sys
 from pathlib import Path
@@ -30,10 +28,9 @@ APP = "app.main:app"
 
 # What the settings need before the module can be imported; test-only values.
 SETTINGS = {
-    "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
-    "JWT_SECRET_KEY": "a" * 32,
-    # Required when ENVIRONMENT=production; needs enough distinct characters.
-    "API_KEY_HASH_SECRET": string.ascii_letters[:40],
+    "SECRET_KEY": "test-only-secret-key-at-least-32-chars-long",
+    "CSPM_CREDENTIAL_KEY": "dGVzdC1vbmx5LWtleS1ub3QtdXNlZC1mb3ItY3J5cHRvISE=",
+    "DEBUG": "false",
 }
 
 DOCS, REDOC, SCHEMA = "/docs", "/redoc", "/openapi.json"
@@ -81,3 +78,16 @@ def statuses(environment, **overrides):
 )
 def test_schema_and_docs_are_served_in_development_only(environment, expected):
     assert statuses(environment) == expected
+
+
+@pytest.mark.parametrize(
+    "environment, debug, expected",
+    [
+        ("production", "true", OUTSIDE_DEVELOPMENT),
+        ("staging", "true", OUTSIDE_DEVELOPMENT),
+        ("development", "true", IN_DEVELOPMENT),
+    ],
+)
+def test_debug_does_not_decide(environment, debug, expected):
+    # DEBUG used to be the switch, and the environment was not looked at.
+    assert statuses(environment, DEBUG=debug) == expected

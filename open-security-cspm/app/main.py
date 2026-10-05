@@ -18,6 +18,7 @@ import uvicorn
 
 from .config import settings
 from .credential_crypto import encrypt_credentials
+from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.gateway_auth import get_user_from_gateway_headers
 from .worker import celery_app, run_cspm_scan_task, get_available_checks_task, health_check_task
 from .checks.runner import check_runner
@@ -38,19 +39,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Conditionally expose API docs (disabled in production)
-_docs_url = "/docs" if settings.debug else None
-_redoc_url = "/redoc" if settings.debug else None
-_openapi_url = "/openapi.json" if settings.debug else None
-
 # Create FastAPI application
+#
+# /docs, /redoc and /openapi.json are served in development only, by the rule
+# every service shares. They used to follow DEBUG whatever the environment,
+# so DEBUG=true published the schema in production (#679).
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description="Cloud Security Posture Management for Wildbox Security Suite",
-    docs_url=_docs_url,
-    redoc_url=_redoc_url,
-    openapi_url=_openapi_url
+    **api_docs_urls(settings.environment),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.

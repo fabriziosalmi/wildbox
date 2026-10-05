@@ -182,4 +182,4 @@ urls:
 	@echo "Wildbox Security API URLs:"
 	@echo "========================="
 	@echo "Health Check:   http://localhost:8000/health"
-	@echo "OpenAPI schema: http://localhost:8000/openapi.json"
+	@echo "OpenAPI schema: http://localhost:8000/openapi.json (ENVIRONMENT=development only)"

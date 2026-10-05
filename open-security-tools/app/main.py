@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from app.config import settings
 from app.logging_config import configure_logging, get_logger
 from app.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, CacheControlMiddleware
+from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.errors import install_error_handlers
 from open_security_shared.observability import install_observability
 from app.api.router import router as api_router, DISCOVERED_TOOLS, register_tool_endpoint
@@ -103,11 +104,15 @@ def create_app() -> FastAPI:
         title="Wildbox Security Tools",
         description="A modular security tools platform with dynamic tool discovery",
         version="0.1.6",
-        # No Swagger UI or ReDoc pages: the standalone web UI that served
-        # them is gone (#581). The schema stays at /openapi.json.
+        # No Swagger UI or ReDoc pages in any environment: the standalone
+        # web UI that served them is gone (#581), and FastAPI's own pages
+        # load their scripts from a CDN, which SecurityHeadersMiddleware's
+        # Content-Security-Policy (script-src 'self') blocks. The schema is
+        # served in development only, by the rule every service shares; it
+        # used to be served in every environment (#679).
         docs_url=None,
         redoc_url=None,
-        openapi_url="/openapi.json",
+        openapi_url=api_docs_urls(settings.environment)["openapi_url"],
         lifespan=lifespan
     )
     

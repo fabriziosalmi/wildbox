@@ -96,7 +96,7 @@ curl -s --cacert "$CA" -H "Authorization: Bearer $TOKEN" https://localhost/api/v
 - An account a team owner or admin created must change its initial password first: until it does, identity and the gateway answer 403 `PASSWORD_CHANGE_REQUIRED` to everything but reading the account, changing the password and logging out.
 - Passwords are hashed with Argon2id through fastapi-users' `PasswordHelper`; older bcrypt hashes still verify.
 - The gateway calls identity with a 5-second timeout, caches authorization decisions for 300 seconds (`AUTH_CACHE_TTL`), and opens a circuit breaker for 60 seconds after 10 failed calls.
-- identity serves `/docs`, `/redoc` and `/openapi.json` only when `ENVIRONMENT` is not `production` (the generated `.env` sets `production`).
+- Every FastAPI service (identity, tools, data, responder, agents, cspm) serves `/openapi.json`, and `/docs` and `/redoc` where it has them, only when `ENVIRONMENT` is `development` (the generated `.env` sets `production`), and only on its own port, not through the gateway.
 - API keys: create with `POST /api/v1/identity/api-keys`, send as `X-API-Key`. Every authenticated route, the agents routes included, accepts a bearer token or an API key.
 - The gateway limits each team to `RATE_LIMIT_PER_HOUR` requests per hour (default 10,000), enforced per minute (1/60 of it in each 60-second window, 166 by default), and reports the limit in `X-RateLimit-*` headers. A value that is not a whole number from 1 to 1,000,000,000 stops the gateway at start-up.
 

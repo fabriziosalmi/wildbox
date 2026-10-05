@@ -205,7 +205,7 @@ show_usage() {
     echo ""
     echo "3. Check the service:"
     echo "   Health Check:   http://localhost:8000/health"
-    echo "   OpenAPI schema: http://localhost:8000/openapi.json"
+    echo "   OpenAPI schema: http://localhost:8000/openapi.json (ENVIRONMENT=development only)"
     echo ""
     echo "Useful commands:"
     echo -e "   ${GREEN}make help${NC}     - Show all available commands"
