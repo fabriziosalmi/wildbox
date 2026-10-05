@@ -41,6 +41,25 @@ A file source is tailed with these rules:
   event queue to take each line. When the data service is unreachable the
   queue fills, the forwarder stops reading, and the file is the buffer.
 
+The systemd journal and the macOS unified log are read from a command that
+follows them (``journalctl --follow``, ``log stream``):
+
+* An entry is a line of the command's output. One longer than
+  ``MAX_ENTRY_BYTES`` is forwarded once, as the text it begins with, marked
+  ``truncated``; the rest of it is dropped as it arrives, so the memory held
+  does not depend on what is logged. (The readers used to stop for good at
+  the first entry over 64 KiB.)
+* What the command writes to its standard error is read, so that it never
+  blocks on it, and the last of it is kept for the log and the status.
+* A command that ends is started again, after a delay that doubles from
+  ``CHILD_RESTART_MIN`` to ``CHILD_RESTART_MAX`` seconds and starts over
+  once a run has lasted ``CHILD_STABLE_SECONDS``.
+* The journal is followed from the cursor of the last entry read, so a
+  restart of the command neither skips nor repeats; the cursor of the last
+  entry the data service accepted is saved with the file positions, and a
+  restart of the sensor goes on from it. The unified log has no such
+  position: ``log stream`` shows what is logged while it runs.
+
 A path that does not exist, cannot be read or is refused is a warning that
 names the source, logged once, and the source keeps being checked: logs appear
 and rotate while the sensor runs. A source the configuration gets wrong (an
@@ -63,7 +82,12 @@ from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Deque, Dict, List, Optional, Tuple
 
-from sensor.collectors.position_store import MAX_FILES, PositionStore, file_entries
+from sensor.collectors.position_store import (
+    CURSOR_PATTERN,
+    MAX_FILES,
+    PositionStore,
+    file_entries,
+)
 from sensor.core.config import LogSourceConfig, SensorConfig, has_wildcard
 from sensor.pipeline.delivery import DELIVERY_KEY, Delivery
 from sensor.utils.platform import is_windows, is_linux, is_macos
@@ -93,6 +117,24 @@ CHECK_BYTES = 64
 MAX_FILES_PER_SOURCE = 64
 # Rotated-and-compressed logs a pattern such as "access.log*" also matches.
 COMPRESSED_SUFFIXES = (".gz", ".bz2", ".xz", ".zst", ".zip", ".lz4", ".Z")
+# An entry of the journal or of the unified log longer than this is
+# forwarded cut. journalctl prints a field of more than 4096 bytes as null,
+# and a field that is not text as a list of numbers, so an entry rarely comes
+# near it.
+MAX_ENTRY_BYTES = 256 * 1024
+# Seconds before a command that follows a system log is started again after
+# it ended: the first delay, the longest, and how long a run must last for
+# the next delay to be the first one again.
+CHILD_RESTART_MIN = 1.0
+CHILD_RESTART_MAX = 300.0
+CHILD_STABLE_SECONDS = 60.0
+# Seconds a command gets to end after it is told to.
+CHILD_STOP_SECONDS = 5.0
+# Bytes of a command's standard error kept for the log and the status.
+STDERR_KEPT = 512
+# Starts in a row that a saved journal cursor may fail before it is given up.
+CURSOR_ATTEMPTS = 3
+_JOURNAL_CURSOR = re.compile(rb'"__CURSOR"\s*:\s*"([^"\\]{1,512})"')
 # Seconds between two writes of the positions, when they have moved. What a
 # killed sensor sends again is what the data service accepted since the last
 # write.
@@ -194,14 +236,70 @@ class _Record:
 
 class _Pending:
     """A line whose event is in the sensor: where it ends in its file, and
-    the bytes before that point."""
+    the bytes before that point. For a journal entry, its cursor."""
 
     __slots__ = ("end", "window", "settled")
 
-    def __init__(self, end: int, window: bytes):
+    def __init__(self, end: Any, window: bytes = b""):
         self.end = end
         self.window = window
         self.settled = False
+
+
+def _settle_in_order(pending: Deque[_Pending], entry: _Pending) -> Optional[_Pending]:
+    """Mark ``entry`` settled; the last of the entries now settled with all
+    those read before them, if that moved."""
+    entry.settled = True
+    last = None
+    while pending and pending[0].settled:
+        last = pending.popleft()
+    return last
+
+
+class _SystemSource:
+    """A source read from a command or a query, and what it is doing."""
+
+    def __init__(self, source: LogSourceConfig):
+        self.source = source
+        # starting, running, restarting (the command ended and will be
+        # started again), unavailable (it cannot be started here), skipped
+        # (this platform has no such log), stopped.
+        self.state = "starting"
+        self.restarts = 0
+        self.last_exit: Optional[int] = None
+        self.last_error: Optional[str] = None
+        self.entries_forwarded = 0
+        self.entries_truncated = 0
+        self.entries_unparsed = 0
+        # Called when the source's command has ended, with whether that run
+        # of it produced an entry.
+        self.ended = None
+        # journald: the cursor of the last entry read, from which the
+        # command is started again, and of the last entry accepted, which
+        # is what is saved.
+        self.read_cursor: Optional[str] = None
+        self.accepted_cursor: Optional[str] = None
+        self.pending: Deque[_Pending] = deque()
+
+    def saved(self) -> Optional[Dict[str, Any]]:
+        """What to keep for this source in the position file."""
+        if self.source.type == "journald" and self.accepted_cursor:
+            return {"type": "journald", "cursor": self.accepted_cursor}
+        return None
+
+    def status(self) -> Dict[str, Any]:
+        status = {
+            "state": self.state,
+            "restarts": self.restarts,
+            "last_exit": self.last_exit,
+            "last_error": self.last_error,
+            "entries_forwarded": self.entries_forwarded,
+            "entries_truncated": self.entries_truncated,
+            "entries_unparsed": self.entries_unparsed,
+        }
+        if self.source.type == "journald":
+            status["accepted_cursor"] = self.accepted_cursor
+        return status
 
 
 class _Tail:
@@ -280,6 +378,7 @@ class LogForwarder:
         self.log_sources = self._initialize_log_sources()
 
         self._file_sources: Dict[str, _FileSource] = {}
+        self._system_sources: Dict[str, _SystemSource] = {}
         self._tasks: List[asyncio.Task] = []
 
         # Read positions (#725). What an earlier run saved is read once,
@@ -340,7 +439,12 @@ class LogForwarder:
             for source in self.log_sources:
                 monitor = None
                 unsupported = self._unsupported_here(source)
+                if source.type != "file":
+                    runtime = self._system_source(source)
+                    self._system_sources[source.name] = runtime
                 if unsupported:
+                    runtime.state = "skipped"
+                    runtime.last_error = unsupported
                     logger.warning(
                         "Log source %r (%s) is skipped: %s",
                         source.name,
@@ -373,11 +477,11 @@ class LogForwarder:
                     self._scan(state)
                     monitor = self._monitor_file(state)
                 elif source.type == "journald":
-                    monitor = self._monitor_journald(source)
+                    monitor = self._monitor_journald(runtime)
                 elif source.type == "windows_event":
                     monitor = self._monitor_windows_events(source)
                 elif source.type == "unified_log":
-                    monitor = self._monitor_unified_log(source)
+                    monitor = self._monitor_unified_log(runtime)
 
                 if monitor is not None:
                     self._tasks.append(asyncio.create_task(monitor))
@@ -386,12 +490,18 @@ class LogForwarder:
 
             if self.positions.persistent:
                 self._tasks.append(asyncio.create_task(self._save_periodically()))
-            elif self._file_sources:
+            elif self._file_sources or any(
+                runtime.source.type in ("journald", "windows_event")
+                and runtime.state != "skipped"
+                for runtime in self._system_sources.values()
+            ):
                 logger.warning(
                     "data_dir is not set: read positions are kept in memory "
                     "only. After a restart each file source starts as its "
                     "read_from says: from the end, it skips what was written "
-                    "meanwhile; from the beginning, it sends everything again"
+                    "meanwhile; from the beginning, it sends everything "
+                    "again. The journal and an event log are followed from "
+                    "that moment on"
                 )
 
         except Exception as e:
@@ -412,6 +522,9 @@ class LogForwarder:
             await asyncio.gather(*tasks, return_exceptions=True)
         for state in self._file_sources.values():
             self._close_all(state)
+        for runtime in self._system_sources.values():
+            if runtime.state not in ("skipped", "unavailable"):
+                runtime.state = "stopped"
         self.save_positions()
 
     # -- read positions ---------------------------------------------------
@@ -428,13 +541,19 @@ class LogForwarder:
                 state.records[record.key] = record
         return state
 
+    def _system_source(self, source: LogSourceConfig) -> _SystemSource:
+        """The state of a source that is not a file, with what an earlier
+        run saved for it."""
+        runtime = _SystemSource(source)
+        saved = self._saved.get(source.name) or {}
+        if source.type == "journald" and saved.get("type") == "journald":
+            runtime.accepted_cursor = runtime.read_cursor = saved["cursor"]
+        return runtime
+
     def _settled(self, tail: _Tail, entry: _Pending):
         """The sensor has finished with a line's event: move the file's
         saved offset past every line settled with all those before it."""
-        entry.settled = True
-        last = None
-        while tail.pending and tail.pending[0].settled:
-            last = tail.pending.popleft()
+        last = _settle_in_order(tail.pending, entry)
         if last is not None:
             tail.record.offset = last.end
             tail.record.check = _digest(last.window)
@@ -449,8 +568,14 @@ class LogForwarder:
         sources = {
             name: entry
             for name, entry in self._saved.items()
-            if name in configured and name not in self._file_sources
+            if name in configured
+            and name not in self._file_sources
+            and name not in self._system_sources
         }
+        for name, runtime in self._system_sources.items():
+            entry = runtime.saved() or self._saved.get(name)
+            if entry and entry.get("type") == runtime.source.type:
+                sources[name] = entry
         now = time.time()
         for name, state in self._file_sources.items():
             if not state.scanned:
@@ -974,50 +1099,279 @@ class LogForwarder:
 
     # -- system logs ------------------------------------------------------
 
-    async def _monitor_journald(self, source: LogSourceConfig):
-        """Monitor systemd journal for new entries"""
-        logger.info("Starting journald monitoring")
+    async def _follow_command(self, runtime: _SystemSource, command, handle):
+        """Run a command that follows a system log, for as long as the
+        forwarder runs: read its entries, and start it again when it ends.
 
-        try:
-            # Use journalctl to follow logs
-            cmd = ['journalctl', '-f', '--output=json', '--no-pager']
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
+        ``command`` gives the arguments of each start; ``handle(line, cut)``
+        is awaited for each line of output, ``cut`` when the line is only
+        the beginning of an entry longer than ``MAX_ENTRY_BYTES``.
+        """
+        source = runtime.source
+        delay = CHILD_RESTART_MIN
+        while self.running:
+            argv = command()
+            started = time.monotonic()
+            forwarded = runtime.entries_forwarded
             try:
-                while self.running:
-                    try:
-                        line = await process.stdout.readline()
-                        if not line:
-                            break
-
-                        line_str = line.decode('utf-8', errors='replace').strip()
-                        if line_str:
-                            await self._process_journal_entry(line_str, source)
-
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        logger.error(f"Error reading journald: {e}")
-                        break
-            finally:
-                # Cleanup
+                process = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdin=asyncio.subprocess.DEVNULL,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError:
+                runtime.state = "unavailable"
+                runtime.last_error = f"{argv[0]} is not installed"
+                logger.warning(
+                    "Log source %r (%s) is not read: %s is not installed here",
+                    source.name,
+                    source.type,
+                    argv[0],
+                )
+                return
+            except OSError as e:
+                runtime.last_exit = None
+                runtime.last_error = f"{argv[0]} cannot be started: {e.strerror or e}"
+            else:
+                runtime.state = "running"
+                errors = asyncio.create_task(self._read_stderr(process, runtime))
+                closed = False
                 try:
-                    process.terminate()
-                    await process.wait()
-                except (OSError, ProcessLookupError):
-                    pass
+                    await self._read_entries(process.stdout, handle)
+                    closed = True  # it closed its output: it is ending
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    # Not the end of the source: the command is started
+                    # again, from where the reading had got to.
+                    logger.error("Log source %r: error reading %s: %s", source.name, argv[0], e)
+                finally:
+                    await self._end_command(process, ending=closed)
+                    # What it had written and nobody read: taken out of the
+                    # pipe, so that the pipe closes with the command.
+                    rest = asyncio.gather(self._discard(process.stdout), errors)
+                    try:
+                        await asyncio.wait_for(rest, CHILD_STOP_SECONDS)
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        pass
+                runtime.last_exit = process.returncode
+            if not self.running:
+                break
 
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(
-                "Log source %r: journald cannot be read: %s", source.name, e
+            self._command_ended(runtime, runtime.entries_forwarded > forwarded)
+            if time.monotonic() - started >= CHILD_STABLE_SECONDS:
+                delay = CHILD_RESTART_MIN
+            runtime.state = "restarting"
+            runtime.restarts += 1
+            logger.warning(
+                "Log source %r: %s ended (exit status %s%s); it is started "
+                "again in %.0f seconds",
+                source.name,
+                argv[0],
+                runtime.last_exit,
+                f", it said: {runtime.last_error}" if runtime.last_error else "",
+                delay,
             )
+            await self._restart_pause(delay)
+            delay = min(delay * 2, CHILD_RESTART_MAX)
+
+    async def _restart_pause(self, seconds: float):
+        await asyncio.sleep(seconds)
+
+    @staticmethod
+    def _command_ended(runtime: _SystemSource, forwarded: bool):
+        """A source's command has ended and will be started again;
+        ``forwarded`` when this run of it produced an entry."""
+        if runtime.ended is not None:
+            runtime.ended(forwarded)
+
+    async def _read_entries(self, stream: asyncio.StreamReader, handle):
+        """Give ``handle`` each line of ``stream``, holding at most
+        ``MAX_ENTRY_BYTES`` and one read of it."""
+        partial = b""
+        discarding = False
+        while True:
+            # read(), not readline(): a line longer than the stream's limit
+            # makes readline() raise, and whatever follows it is lost.
+            chunk = await stream.read(READ_CHUNK)
+            if not chunk:
+                return  # the command closed its output: it has ended
+            lines = (partial + chunk).split(b"\n")
+            partial = lines.pop()
+            for line in lines:
+                if discarding:
+                    # The end of an entry whose beginning was forwarded cut.
+                    discarding = False
+                    continue
+                await handle(line, len(line) > MAX_ENTRY_BYTES)
+            if len(partial) > MAX_ENTRY_BYTES:
+                if not discarding:
+                    await handle(partial, True)
+                    discarding = True
+                partial = b""
+
+    async def _read_stderr(self, process, runtime: _SystemSource):
+        """Read what the command says on its standard error, so that it
+        never waits for someone to; keep the last of it."""
+        kept = b""
+        while True:
+            chunk = await process.stderr.read(4096)
+            if not chunk:
+                return
+            kept = (kept + chunk)[-STDERR_KEPT:]
+            text = kept.decode("utf-8", errors="replace").replace("\x00", REPLACEMENT)
+            runtime.last_error = " ".join(text.split()) or None
+            logger.debug("Log source %r: %s", runtime.source.name, runtime.last_error)
+
+    @staticmethod
+    async def _discard(stream: asyncio.StreamReader):
+        while await stream.read(READ_CHUNK):
+            pass
+
+    @staticmethod
+    async def _end_command(process, ending: bool = False):
+        """End the command if it is still running, and wait for it.
+
+        ``ending``: it closed its output and is expected to exit by itself.
+        It is then waited for first: signalling a process that has exited
+        and was not waited for yet loses its exit status.
+        """
+        if process.returncode is not None:
+            return
+        if ending:
+            try:
+                await asyncio.wait_for(process.wait(), CHILD_STOP_SECONDS)
+                return
+            except asyncio.TimeoutError:
+                pass
+        try:
+            process.terminate()
+        except (OSError, ProcessLookupError):
+            pass
+        try:
+            await asyncio.wait_for(process.wait(), CHILD_STOP_SECONDS)
+        except asyncio.TimeoutError:
+            try:
+                process.kill()
+            except (OSError, ProcessLookupError):
+                pass
+            await process.wait()
+
+    @staticmethod
+    def _cut_text(raw: bytes) -> str:
+        """The beginning of an entry too long to forward whole, as text."""
+        text = raw[:MAX_LINE_BYTES].decode("utf-8", errors="replace")
+        return text.replace("\x00", REPLACEMENT).strip()
+
+    # journald
+
+    def _journal_command(self, runtime: _SystemSource) -> List[str]:
+        """journalctl, following the journal from the last entry read; the
+        first time, from now on."""
+        argv = ["journalctl", "--follow", "--output=json", "--no-pager"]
+        if runtime.read_cursor:
+            # One argument, and a cursor is checked before it is kept: it
+            # cannot be taken for another option.
+            argv.append(f"--after-cursor={runtime.read_cursor}")
+        else:
+            argv.append("--lines=0")
+        return argv
+
+    async def _monitor_journald(self, runtime: _SystemSource):
+        """Follow the systemd journal"""
+        logger.info(
+            "Log source %r: following the systemd journal %s",
+            runtime.source.name,
+            "from the saved cursor" if runtime.read_cursor else "from now on",
+        )
+        failed_with_cursor = 0
+
+        def ended(forwarded: bool):
+            # A cursor journalctl does not accept (the journal it pointed
+            # into is gone) would fail every start for ever.
+            nonlocal failed_with_cursor
+            if forwarded or not runtime.read_cursor or runtime.last_exit == 0:
+                failed_with_cursor = 0
+                return
+            failed_with_cursor += 1
+            if failed_with_cursor < CURSOR_ATTEMPTS:
+                return
+            failed_with_cursor = 0
+            logger.warning(
+                "Log source %r: journalctl failed %d times in a row from the "
+                "saved cursor; the cursor is given up and the journal is "
+                "followed from now on. Entries logged in between are not read",
+                runtime.source.name,
+                CURSOR_ATTEMPTS,
+            )
+            runtime.read_cursor = None
+
+        async def handle(line: bytes, cut: bool):
+            await self._journal_entry(runtime, line, cut)
+
+        runtime.ended = ended
+        await self._follow_command(
+            runtime, lambda: self._journal_command(runtime), handle
+        )
+
+    async def _journal_entry(self, runtime: _SystemSource, raw: bytes, cut: bool):
+        """Queue one entry of journalctl's output."""
+        source = runtime.source
+        metadata = {'log_source': source.name, 'format': 'json'}
+        if cut:
+            data: Any = {'raw_message': self._cut_text(raw)}
+            metadata['truncated'] = True
+            # Wherever it is in what was kept: journalctl does not print
+            # an entry's fields in a fixed order.
+            found = _JOURNAL_CURSOR.search(raw)
+            cursor = found.group(1).decode("ascii", errors="replace") if found else None
+        else:
+            text = raw.decode("utf-8", errors="replace").strip()
+            if not text:
+                return
+            try:
+                data = json.loads(text)
+            except (ValueError, RecursionError):
+                data = None
+            if not isinstance(data, dict):
+                runtime.entries_unparsed += 1
+                logger.debug("Log source %r: a line of journalctl is not an entry", source.name)
+                return
+            cursor = data.get('__CURSOR')
+        if not isinstance(cursor, str) or not CURSOR_PATTERN.match(cursor):
+            cursor = None
+
+        event = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'source': 'log_forwarder',
+            'type': f"log.{source.name}",
+            'data': data,
+            'metadata': metadata
+        }
+        entry = _Pending(cursor)
+        runtime.pending.append(entry)
+        event[DELIVERY_KEY] = Delivery(
+            lambda: self._journal_settled(runtime, entry),
+            replayable=self.positions.persistent,
+        )
+        if cursor:
+            # From here if journalctl has to be started again: this entry
+            # is in the sensor, and must not be read a second time.
+            runtime.read_cursor = cursor
+
+        await self.event_queue.put(event)
+        runtime.entries_forwarded += 1
+        if cut:
+            runtime.entries_truncated += 1
+
+    def _journal_settled(self, runtime: _SystemSource, entry: _Pending):
+        """The sensor has finished with an entry's event: the saved cursor
+        moves to the last entry settled with all those read before it."""
+        last = _settle_in_order(runtime.pending, entry)
+        if last is not None and last.end:
+            runtime.accepted_cursor = last.end
+            self._positions_dirty = True
 
     async def _monitor_windows_events(self, source: LogSourceConfig):
         """Monitor Windows Event Log"""
@@ -1069,53 +1423,60 @@ class LogForwarder:
                 logger.error(f"Error monitoring Windows events: {e}")
                 await asyncio.sleep(30)
 
-    async def _monitor_unified_log(self, source: LogSourceConfig):
-        """Monitor macOS Unified Log"""
-        if not is_macos():
-            return
+    # the macOS unified log
 
-        logger.info("Starting macOS Unified Log monitoring")
+    @staticmethod
+    def _unified_log_command() -> List[str]:
+        """log stream, one JSON object per line. (--style json prints one
+        array over many lines, of which no line is an entry: the reader
+        that asked for it never forwarded anything.)"""
+        return ["log", "stream", "--style", "ndjson"]
 
-        try:
-            # Use log command to stream logs
-            cmd = ['log', 'stream', '--style', 'json']
+    async def _monitor_unified_log(self, runtime: _SystemSource):
+        """Follow the macOS unified log"""
+        logger.info(
+            "Log source %r: following the unified log from now on",
+            runtime.source.name,
+        )
 
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+        async def handle(line: bytes, cut: bool):
+            await self._unified_log_entry(runtime, line, cut)
 
+        await self._follow_command(runtime, self._unified_log_command, handle)
+
+    async def _unified_log_entry(self, runtime: _SystemSource, raw: bytes, cut: bool):
+        """Queue one entry of log stream's output."""
+        source = runtime.source
+        metadata = {'log_source': source.name, 'format': 'json'}
+        if cut:
+            data: Any = {'raw_message': self._cut_text(raw)}
+            metadata['truncated'] = True
+        else:
+            text = raw.decode("utf-8", errors="replace").strip()
+            if not text:
+                return
             try:
-                while self.running:
-                    try:
-                        line = await process.stdout.readline()
-                        if not line:
-                            break
+                data = json.loads(text)
+            except (ValueError, RecursionError):
+                data = None
+            if not isinstance(data, dict):
+                # Among them the line log stream begins with, which says
+                # what it filters on.
+                runtime.entries_unparsed += 1
+                return
 
-                        line_str = line.decode('utf-8', errors='replace').strip()
-                        if line_str:
-                            await self._process_unified_log_entry(line_str, source)
-
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        logger.error(f"Error reading unified log: {e}")
-                        break
-            finally:
-                # Cleanup
-                try:
-                    process.terminate()
-                    await process.wait()
-                except (OSError, ProcessLookupError):
-                    pass
-
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(
-                "Log source %r: the unified log cannot be read: %s", source.name, e
-            )
+        event = {
+            'timestamp': datetime.now(timezone.utc).isoformat(),
+            'source': 'log_forwarder',
+            'type': f"log.{source.name}",
+            'data': data,
+            'metadata': metadata
+        }
+        # No Delivery: log stream cannot be asked for an entry again.
+        await self.event_queue.put(event)
+        runtime.entries_forwarded += 1
+        if cut:
+            runtime.entries_truncated += 1
 
     # -- events -----------------------------------------------------------
 
@@ -1163,27 +1524,6 @@ class LogForwarder:
         self.stats["lines_forwarded"] += 1
         return True
 
-    async def _process_journal_entry(self, entry: str, source: LogSourceConfig):
-        """Process a journald entry"""
-        try:
-            journal_data = json.loads(entry)
-        except ValueError as e:
-            logger.debug(f"Error processing journal entry: {e}")
-            return
-
-        event = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': 'log_forwarder',
-            'type': f"log.{source.name}",
-            'data': journal_data,
-            'metadata': {
-                'log_source': source.name,
-                'format': 'json'
-            }
-        }
-
-        await self.event_queue.put(event)
-
     async def _process_windows_event(self, event: Dict[str, Any], source: LogSourceConfig):
         """Process a Windows event"""
         processed_event = {
@@ -1198,27 +1538,6 @@ class LogForwarder:
         }
 
         await self.event_queue.put(processed_event)
-
-    async def _process_unified_log_entry(self, entry: str, source: LogSourceConfig):
-        """Process a macOS unified log entry"""
-        try:
-            log_data = json.loads(entry)
-        except ValueError as e:
-            logger.debug(f"Error processing unified log entry: {e}")
-            return
-
-        event = {
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'source': 'log_forwarder',
-            'type': 'log.unified',
-            'data': log_data,
-            'metadata': {
-                'log_source': source.name,
-                'format': 'json'
-            }
-        }
-
-        await self.event_queue.put(event)
 
     def _parse_log_line(self, line: str, format_type: str) -> Optional[Dict[str, Any]]:
         """Parse a log line based on its format"""
@@ -1305,6 +1624,9 @@ class LogForwarder:
                     for path, tail in sorted(state.tails.items())
                 } if state else {}
                 monitored += len(entry['files'])
+            runtime = self._system_sources.get(source.name)
+            if runtime is not None:
+                entry.update(runtime.status())
             sources.append(entry)
         return {
             'running': self.running,

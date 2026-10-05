@@ -239,7 +239,7 @@ log_sources:
 | Key | Default | Meaning |
 | :--- | :--- | :--- |
 | `name` | Required | Unique; letters, digits, `_`, `.`, `-`, at most 64. The events' type is `log.<name>`, which is also their first tag |
-| `type` | `file` | `file`, `journald` (Linux, runs `journalctl -f`), `windows_event` (Windows) or `unified_log` (macOS, runs `log stream`) |
+| `type` | `file` | `file`, `journald` (Linux, runs `journalctl --follow`), `windows_event` (Windows) or `unified_log` (macOS, runs `log stream`); see [The journal and the unified log](#the-journal-and-the-unified-log) |
 | `path` | Required for `file` | Absolute path of a file, or a pattern with `*`, `?` and `[...]`. `**` is not supported, and a pattern must name the directory it reads (`/*.log` is refused) |
 | `format` | `raw` | For `file`: `syslog`, `nginx`, `apache` or `raw`. A line the format does not match is forwarded as `raw_message` only |
 | `enabled` | `true` | `false` keeps the entry and does not read it |
@@ -391,6 +391,56 @@ again. The shipped container configurations set it to the `sensor_data`
 volume; `config.yaml`, for a host, leaves it unset. If a write fails (a full
 disk), the sensor logs it once, reports it under `log_forwarder.positions`
 in `GET /api/v1/components`, and tries again every second.
+
+### The journal and the unified log
+
+A `journald` source runs `journalctl --follow --output=json` and a
+`unified_log` source runs `log stream --style ndjson`; each line the command
+prints is an entry, forwarded as an event of type `log.<name>` with the
+entry's fields in `data`.
+
+- **Long entries.** An entry up to 256 KiB is forwarded whole. A longer one
+  is forwarded once, as the first 16 KiB of its text in `data.raw_message`,
+  with `metadata.truncated: true`; the rest is discarded as it arrives, so
+  the memory the reader holds does not depend on what is logged. A line that
+  is not a JSON object is counted (`entries_unparsed`) and passed over.
+- **The command's standard error** is read as it is written and its last 512
+  bytes are kept: they are in the warning logged when the command ends, and
+  in the source's `last_error`.
+- **A command that ends** is started again after 1 second, then 2, 4 and so
+  on up to 5 minutes; after a run of a minute or more the delay starts over
+  from 1 second. A command that is not installed is reported once and not
+  tried again (`state: unavailable`).
+- **Where the journal is followed from.** The first time, from now on
+  (`--lines=0`). When `journalctl` is started again, after the last entry
+  read (`--after-cursor`), so nothing is skipped or read twice. With
+  `data_dir` set, the cursor of the last entry the data service accepted is
+  saved with the file positions, and a restarted sensor goes on from it. If
+  `journalctl` fails three times in a row from a saved cursor (it refuses
+  one it cannot parse), the sensor gives the cursor up, says so, and
+  follows the journal from now on. Given a cursor the journal no longer
+  holds, `journalctl` goes on from the nearest entry it has, which can send
+  entries again. `journalctl` 257 follows the current boot only: after a
+  reboot, what the previous boot logged after the sensor stopped is not
+  read.
+- **The unified log has no position.** `log stream` shows what is logged
+  while it runs: entries logged while the sensor is stopped, or while the
+  command is being started again, are not read, and an entry still in the
+  sensor when it stops is counted under `events_dropped_shutdown`.
+
+Each such source reports, under `log_forwarder` in `GET /api/v1/components`,
+its `state` (`starting`, `running`, `restarting`, `unavailable`, `skipped` on
+a platform that has no such log, `stopped`), `restarts`, `last_exit`,
+`last_error` and the counters `entries_forwarded`, `entries_truncated` and
+`entries_unparsed`; a `journald` source also its `accepted_cursor`.
+
+The `journald` reader was checked against the real `journalctl` (systemd
+257) in a container, on journal files written with `systemd-journal-remote`:
+entries of 120 kB and 360 kB, the command killed, the sensor restarted, a
+malformed cursor. It was not run against a live `systemd-journald`. The
+`unified_log` reader was run against `log stream` on macOS 26. Neither runs
+in CI, where a script plays the command, and the Docker image contains
+neither command.
 
 ### What a source can read
 

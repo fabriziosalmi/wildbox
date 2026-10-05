@@ -57,8 +57,9 @@ _TMP_PREFIX = ".log-positions."
 _TMP_SUFFIX = ".tmp"
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
-# A journal cursor: "s=...;i=...;b=...;m=...;t=...;x=...".
-_CURSOR = re.compile(r"^[A-Za-z0-9][A-Za-z0-9=;:_.+/-]{0,511}$")
+# A journal cursor: "s=...;i=...;b=...;m=...;t=...;x=...". It becomes an
+# argument of journalctl: nothing that could begin an option or hold a space.
+CURSOR_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9=;:_.+/-]{0,511}$")
 _WINDOWS_LOG_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9 _-]{0,63}$")
 _MAX_INT = 2**63 - 1
 
@@ -152,7 +153,7 @@ def _valid_source(value: Any, what: str) -> Dict[str, Any]:
         entry = _mapping(value, what, ("type", "cursor"))
         return {
             "type": "journald",
-            "cursor": _text(entry["cursor"], f"{what}.cursor", _CURSOR),
+            "cursor": _text(entry["cursor"], f"{what}.cursor", CURSOR_PATTERN),
         }
     if kind == "windows_event":
         entry = _mapping(value, what, ("type", "log_name", "record_id"))

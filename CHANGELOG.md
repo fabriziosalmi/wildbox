@@ -472,6 +472,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   per file, how far it was read and accepted. An integration test
   restarts the pipeline inside the sensor container and checks through
   the gateway that a line written in between is stored, and none twice.
+- **The sensor's journal and unified-log readers survive a long entry,
+  read the command's standard error and start the command again**
+  (#725). They read `journalctl -f` and `log stream` line by line with
+  a 64 KiB limit: the first longer entry raised, the reader logged an
+  error and ended, and the source stayed silent until the sensor was
+  restarted. Nothing read the command's standard error, so a command
+  that wrote enough of it blocked, and a command that ended was never
+  started again. An entry up to 256 KiB is now forwarded whole and a
+  longer one once, as its first 16 KiB of text marked `truncated`, with
+  the rest discarded as it arrives; standard error is drained and its
+  last 512 bytes kept for the log and the status; a command that ends
+  is started again after 1 second, doubling up to 5 minutes. The journal
+  is followed from now on at the first start instead of from
+  `journalctl`'s last ten entries, which were sent again at every
+  start, and from the cursor of the last entry read when the command is
+  started again; with `data_dir` the cursor of the last accepted entry
+  is saved and a restarted sensor goes on from it. The unified-log
+  reader asked `log stream` for `--style json`, one array printed over
+  many lines of which none is an entry, so it never forwarded anything:
+  it now asks for `ndjson`, and its events have the type `log.<name>`
+  like every other source's, not `log.unified`. Each such source
+  reports its `state`, `restarts`, `last_exit`, `last_error` and entry
+  counters under `log_forwarder` in `GET /api/v1/components`. Checked
+  against `journalctl` 257 on journal files written for the purpose, and
+  against `log stream` on macOS 26; not against a live
+  `systemd-journald`.
 
 ### Changed
 
