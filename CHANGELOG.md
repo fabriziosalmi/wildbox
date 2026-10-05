@@ -55,6 +55,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   scope. `scripts/check_gateway_config.py` fails for a configuration
   that authenticates without declaring `$wildbox_route_uri`.
 
+- **A user who left a team is no longer one of its users in guardian**
+  (#676). guardian recorded a membership the first time the gateway
+  authenticated a user in a team and never removed it. A member that
+  identity removed from a team could no longer authenticate in it, but the
+  team could still assign vulnerabilities to them and share dashboards
+  with them, and its data went on naming them as assignee, owner or
+  approver. Two things end a membership in guardian now. identity tells
+  guardian when it removes a member from a team or deletes an account
+  (`POST /internal/team-memberships/revoke/` on the internal network,
+  authenticated with the gateway-internal secret, refused when that
+  secret is not configured, and not routed by the gateway): the user is
+  refused at once wherever a team names a user, and the roles they held in
+  the team are cleared, a vulnerability's assignee with a line in its
+  history. And a membership counts only for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30, from 1 to 365, no way to
+  switch it off) from the user's last request in the team, so a notice
+  that never arrived, or a member who left before this release, does not
+  stay a member: a user who left can make no request that renews it. The
+  notice is sent after identity has committed the removal and does not
+  block it, because removing a member must not depend on guardian being
+  up; a notice guardian does not confirm is logged as an error by
+  identity, and `manage.py revoke_team_membership` applies it by hand.
+  What a former member did stays on record. The SLA and assignment
+  e-mails go to an assignee only while they are a member of the
+  vulnerability's team. Deactivating an account sends no notice: it keeps
+  its memberships and can be reactivated. Tests list, from the URL
+  configuration, the 24 fields through which a team can name a user and
+  check each against a member who left, by notice and by window; an
+  integration test removes a member in identity and has guardian refuse
+  them through the gateway.
+
+- **guardian has no platform-wide notification recipient** (#678).
+  Alert rules, scheduled reports and compliance notifications without
+  recipients fell back to a `DEFAULT_NOTIFICATION_RECIPIENTS` setting,
+  and every SLA violation was copied to `SECURITY_TEAM_EMAIL`. Nothing
+  defined either, so no such e-mail was sent; an operator who did define
+  them would have sent every team's asset names, vulnerability titles and
+  findings to one mailbox, across the team boundary of #642. Both are no
+  longer read. An alert rule and a report schedule e-mail the recipients
+  their team gave them, and an SLA violation e-mails the vulnerability's
+  assignee. A notification without recipients is not sent, and says so:
+  an alert notification is recorded with `delivered: false`, an SLA
+  violation is recorded once in the vulnerability's history as not
+  sent, and the worker logs a warning for each. Compliance notifications
+  have no recipients of their own, so none is e-mailed until a team can
+  name them. The SLA check no longer records a notification as sent when
+  its delivery failed. Unit tests define both settings and check that
+  nothing reaches them; eleven mutations of the fix each fail a test.
+
 ### Removed
 
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
@@ -131,6 +180,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/api/v1/data/report.png` or a tool called `x.js` went to the
   dashboard, unauthenticated, and the service never saw the request.
   The location no longer matches under `/api/`.
+
+- **A guardian webhook endpoint path is unique per team, not across
+  guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642
+  left unique across every team: a team could not use a path another team
+  had taken, such as the conventional `/webhooks/jira`, and the `400` it
+  got told it that the path existed in a team it cannot see. The path is
+  a stored record, not a routing key: guardian serves no inbound webhook
+  route and nothing looks a request up by it, so it does not need to be
+  generated. The database now keeps it unique within the external system
+  the endpoint belongs to, and the API refuses a path that any endpoint of
+  the caller's own team already uses, looking at that team's rows only. A
+  path another team uses is answered exactly as a free one. Migration
+  `integrations.0003` replaces the constraint; existing rows already
+  satisfy the new one. Unit tests cover both teams, a second system of the
+  same team, updates and the database constraint; six mutations of the
+  fix each fail a test.
 
 ## [0.11.2] - 2026-10-05
 

@@ -36,9 +36,11 @@ from __future__ import annotations
 
 import uuid
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ImproperlyConfigured
 from django.db.models import Q
+from django.utils import timezone
 from django_filters import ModelChoiceFilter, ModelMultipleChoiceFilter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers
@@ -48,8 +50,10 @@ from rest_framework.permissions import SAFE_METHODS
 TEAM_FIELD = "team_id"
 
 # auth.User rows are the gateway's identity users, mirrored on first sight
-# (apps.core.gateway_middleware). A user is reachable by a team once they
-# have made a request as a member of it (apps.core.models.TeamMembership).
+# (apps.core.gateway_middleware). A user is reachable by a team while they
+# are one of its current members: they have made a request as a member of
+# it, recently enough, and identity has not said they left
+# (apps.core.models.TeamMembership, ``current_memberships`` below).
 USER_TEAM_LOOKUP = "guardian_team_memberships__team_id"
 
 
@@ -58,6 +62,38 @@ def team_lookup(model):
     if model is get_user_model():
         return USER_TEAM_LOOKUP
     return getattr(model, "TEAM_LOOKUP", None)
+
+
+def membership_cutoff(now=None):
+    """The instant before which a membership row no longer counts (#676)."""
+    return (now or timezone.now()) - settings.TEAM_MEMBERSHIP_MAX_AGE
+
+
+def current_memberships(team_id=None, now=None):
+    """The membership rows guardian still trusts, of one team or of all.
+
+    A row says that the gateway authenticated a user in a team at
+    ``last_seen``. It is trusted for settings.TEAM_MEMBERSHIP_MAX_AGE and no
+    longer: identity owns memberships, and a user it removed from a team can
+    no longer make the requests that refresh the row. So a row guardian was
+    never told to delete -- the notice was lost, or the member left before
+    there was one -- expires instead of making an ex-member one of the
+    team's users for good. Every decision about who a team's users are goes
+    through here.
+    """
+    from apps.core.models import TeamMembership
+
+    rows = TeamMembership.objects.filter(last_seen__gte=membership_cutoff(now))
+    if team_id is not None:
+        rows = rows.filter(team_id=normalize_team_id(team_id))
+    return rows
+
+
+def is_current_member(user, team_id):
+    """True if ``user`` is, as far as guardian may trust, in ``team_id`` now."""
+    if user is None or team_id is None:
+        return False
+    return current_memberships(team_id).filter(user_id=user.pk).exists()
 
 
 def has_global_rows(model):
@@ -104,6 +140,13 @@ def team_q(model, team_id, *, writable=False):
     team_id = normalize_team_id(team_id)
     if team_id is None:
         return Q(**{f"{lookup}__isnull": True})
+    if model is get_user_model():
+        # A user of the team is one with a membership row of this team that
+        # still counts. By primary key, not by a join on the two conditions:
+        # a join lets "a row of this team" and "a row that still counts" be
+        # two different rows once a caller chains filters, and a user with a
+        # stale row here and a fresh one elsewhere would pass.
+        return Q(pk__in=current_memberships(team_id).values("user_id"))
     condition = Q(**{lookup: team_id})
     if has_global_rows(model) and not writable:
         condition |= Q(**{f"{lookup}__isnull": True})

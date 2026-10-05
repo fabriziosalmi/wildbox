@@ -98,6 +98,13 @@ def _calculate_compliance_metrics(assessment_id):
 def send_compliance_notification(notification_type, object_id, data):
     """
     Send compliance-related notifications
+
+    A compliance notification has no recipients of its own: an assessment,
+    a result and an exception name none. It was sent to the platform-wide
+    DEFAULT_NOTIFICATION_RECIPIENTS, which nothing defined and which would
+    have received every team's findings (#678). Until a team can name who
+    receives its compliance notifications, each one is rendered, not sent,
+    and logged as such; this returns False.
     """
     try:
         notification_templates = {
@@ -168,7 +175,7 @@ def check_overdue_assessments():
             )
             count += 1
             
-        logger.info(f"Sent overdue notifications for {count} assessments")
+        logger.info(f"Queued overdue notifications for {count} assessments")
         return count
         
     except Exception as e:
@@ -206,7 +213,7 @@ def check_expiring_exceptions():
             )
             count += 1
             
-        logger.info(f"Sent expiry notifications for {count} exceptions")
+        logger.info(f"Queued expiry notifications for {count} exceptions")
         return count
         
     except Exception as e:
