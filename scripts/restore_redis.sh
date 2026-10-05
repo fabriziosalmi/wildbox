@@ -82,9 +82,41 @@ BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
 cd "$SCRIPT_DIR/.."
 
+# The timestamps in the names of the files matching the pattern $1 with the
+# suffix $2, oldest first. From the names, which the backup writes, not from
+# modification times, which a copy changes.
+stamps_of() {
+  local file
+  for file in "${BACKUP_DIR}"/$1; do
+    [ -e "$file" ] || continue
+    file="${file##*/}"
+    file="${file%%"$2"*}"
+    file="${file: -15}"
+    [[ "$file" =~ ^[0-9]{8}_[0-9]{6}$ ]] && echo "$file"
+  done | sort -u
+}
+
 if [ "$USE_LATEST" = true ]; then
+  # The newest backup RUN, as restore_postgres.sh --latest takes it. A run
+  # taken with SKIP_REDIS=true has archives and no snapshot: the newest
+  # snapshot is then older than the databases --latest restores, and the
+  # two would be from different moments (#740).
+  NEWEST=$(stamps_of 'redis_[0-9]*.rdb.gz*' .rdb.gz | tail -n 1)
+  [ -n "$NEWEST" ] || wb_die "no Redis snapshot found in $BACKUP_DIR"
+  NEWEST_RUN=$({ echo "$NEWEST"; stamps_of '*_[0-9]*.sql.gz*' .sql.gz; } | sort -u | tail -n 1)
+  if [ "$NEWEST_RUN" != "$NEWEST" ]; then
+    cat >&2 <<MSG
+REFUSING --latest: the newest backup run, $NEWEST_RUN, holds no Redis
+snapshot (a run with SKIP_REDIS=true). The newest snapshot is from
+$NEWEST, an earlier run than the one restore_postgres.sh --latest
+restores. Nothing was changed. Name the snapshot to restore it:
+
+    --timestamp $NEWEST
+MSG
+    exit 1
+  fi
   # shellcheck disable=SC2012
-  SNAPSHOT=$(ls -t "${BACKUP_DIR}/redis_"[0-9]*.rdb.gz* 2>/dev/null | head -1 || true)
+  SNAPSHOT=$(ls "${BACKUP_DIR}/redis_${NEWEST}.rdb.gz"* 2>/dev/null | head -1 || true)
 else
   # shellcheck disable=SC2012
   SNAPSHOT=$(ls "${BACKUP_DIR}/redis_${TIMESTAMP}.rdb.gz"* 2>/dev/null | head -1 || true)

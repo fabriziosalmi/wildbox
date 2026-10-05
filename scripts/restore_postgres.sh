@@ -32,6 +32,16 @@
 # be the default, one forgotten option away from the harmless one. The flag
 # makes it a decision, and keeps it usable from a script: there is no prompt.
 #
+# --latest restores the newest backup RUN: the archives that carry the
+# newest timestamp, which backup_postgres.sh gives every file of one run. If
+# that run does not hold every database asked for (it was taken with
+# --databases, or a file is missing), the script refuses and says what the
+# run holds. It used to take the newest archive of each database on its own,
+# so the databases could come from different runs, hours or days apart
+# (#740). To restore a run that is not the newest, name it with --timestamp;
+# to mix runs on purpose, run the script once per database with --databases
+# and --timestamp.
+#
 # What a failed restore leaves (#740):
 #
 #   - Every archive is read to the end of its table of contents before any
@@ -82,7 +92,7 @@ while [ $# -gt 0 ]; do
     --latest) USE_LATEST=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --overwrite-live-databases) OVERWRITE_LIVE=true; shift ;;
-    -h|--help) sed -n '2,58p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,68p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -128,18 +138,76 @@ if [ "$BACKUP_MODE" = compose ]; then
   cd "$SCRIPT_DIR/.."
 fi
 
+# The timestamps of the archives of the database $1, oldest first. They are
+# read from the file names, which the backup writes, not from modification
+# times, which a copy to or from another disk changes.
+stamps_of() {
+  local file
+  for file in "${BACKUP_DIR}/${1}_"[0-9]*.sql.gz*; do
+    [ -e "$file" ] || continue
+    file="${file##*/"${1}"_}"
+    file="${file%%.sql.gz*}"
+    [[ "$file" =~ ^[0-9]{8}_[0-9]{6}$ ]] && echo "$file"
+  done | sort -u
+}
+
+# --latest: one backup run, the newest, for every database asked for.
+if [ "$USE_LATEST" = true ]; then
+  NEWEST=$(for db in "${DB_ARRAY[@]}"; do stamps_of "$db"; done | sort -u | tail -n 1)
+  [ -n "$NEWEST" ] || wb_die "no backup found for ${DB_ARRAY[*]} in $BACKUP_DIR"
+  MISSING=()
+  for db in "${DB_ARRAY[@]}"; do
+    grep -qx "$NEWEST" <<< "$(stamps_of "$db")" || MISSING+=("$db")
+  done
+  if [ "${#MISSING[@]}" -gt 0 ]; then
+    # The newest run that does hold all of them, if there is one.
+    COMPLETE=$(stamps_of "${DB_ARRAY[0]}")
+    for db in "${DB_ARRAY[@]}"; do
+      COMPLETE=$(comm -12 <(printf '%s\n' "$COMPLETE") <(stamps_of "$db"))
+    done
+    COMPLETE=$(printf '%s\n' "$COMPLETE" | tail -n 1)
+    {
+      echo "REFUSING --latest: the newest backup run, $NEWEST, does not hold every"
+      echo "database asked for."
+      echo ""
+      for db in "${DB_ARRAY[@]}"; do
+        if grep -qx "$NEWEST" <<< "$(stamps_of "$db")"; then
+          printf '    %-12s %s\n' "$db" "${db}_${NEWEST}"
+        else
+          own=$(stamps_of "$db" | tail -n 1)
+          if [ -n "$own" ]; then
+            printf '    %-12s not in this run; its newest archive is from %s\n' "$db" "$own"
+          else
+            printf '    %-12s not in this run, and in no other\n' "$db"
+          fi
+        fi
+      done
+      echo ""
+      echo "--latest restores one run, so that the databases are from the same"
+      echo "moment; the newest archive of each would mix runs. Nothing was changed."
+      echo "Name what to restore:"
+      echo ""
+      if [ -n "$COMPLETE" ]; then
+        echo "    --timestamp $COMPLETE   the newest run that holds all of them"
+      else
+        echo "    (no run in $BACKUP_DIR holds all of them)"
+      fi
+      echo "    --databases <list>            only the databases the newest run holds"
+      echo "    --timestamp <stamp> --databases <database>, once per database,"
+      echo "                                  to mix runs on purpose"
+    } >&2
+    exit 1
+  fi
+  TIMESTAMP="$NEWEST"
+fi
+
 # Which archive each database would be restored from, before anything else:
 # a refusal names them, and a missing one stops the run before the first
 # database is touched.
 ARCHIVES=()
 for db in "${DB_ARRAY[@]}"; do
-  if [ "$USE_LATEST" = true ]; then
-    # shellcheck disable=SC2012
-    ARCHIVE=$(ls -t "${BACKUP_DIR}/${db}_"[0-9]*.sql.gz* 2>/dev/null | head -1 || true)
-  else
-    # shellcheck disable=SC2012
-    ARCHIVE=$(ls "${BACKUP_DIR}/${db}_${TIMESTAMP}.sql.gz"* 2>/dev/null | head -1 || true)
-  fi
+  # shellcheck disable=SC2012
+  ARCHIVE=$(ls "${BACKUP_DIR}/${db}_${TIMESTAMP}.sql.gz"* 2>/dev/null | head -1 || true)
   if [ -z "$ARCHIVE" ]; then
     echo "ERROR: no backup found for '$db' in $BACKUP_DIR" >&2
     exit 1

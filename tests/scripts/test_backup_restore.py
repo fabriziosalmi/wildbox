@@ -963,7 +963,9 @@ def test_a_flag_that_is_only_close_is_not_the_flag(harness):
 def test_a_missing_archive_stops_the_restore_before_any_database_is_touched(harness):
     """It used to overwrite identity and data, then fail on guardian."""
     _archives(harness, databases=("identity", "data"))
-    result = harness.run(RESTORE, "--latest", "--overwrite-live-databases")
+    result = harness.run(
+        RESTORE, "--timestamp", STAMP, "--overwrite-live-databases"
+    )
     assert result.returncode == 1
     assert "no backup found for 'guardian'" in result.stderr
     assert _restored(harness) == []
@@ -1051,6 +1053,123 @@ def test_the_first_database_failing_restores_none(harness):
     assert "restored from the backup: none\n" in result.stderr
     assert "not attempted, unchanged: data guardian\n" in result.stderr
     assert _restored(harness) == []
+
+
+# --- --latest is one backup run (#740) ----------------------------------------
+
+OLDER, NEWER = "20260101_000000", "20260202_000000"
+
+
+def _restored_from(result):
+    """{database: timestamp of the archive it was restored from}."""
+    return dict(
+        re.findall(r"^Restoring (\w+) from \1_(\d{8}_\d{6})\.sql\.gz", result.stdout, re.M)
+    )
+
+
+def test_latest_restores_the_newest_run_whatever_the_file_times_say(harness):
+    """The timestamp is in the name. A copy from another disk resets mtimes."""
+    _archives(harness, stamp=NEWER)
+    _archives(harness, stamp=OLDER)
+    for path in harness.backups.iterdir():
+        # The older run's files are the most recently written ones.
+        when = 2_000_000_000 if OLDER in path.name else 1_000_000_000
+        os.utime(path, (when, when))
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored_from(result) == {db: NEWER for db in DATABASES}
+
+    redis = harness.run(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", FAKE_RUNNING="postgres"
+    )
+    assert redis.returncode == 0, redis.stdout + redis.stderr
+    assert f"Snapshot: redis_{NEWER}.rdb.gz" in redis.stdout
+
+
+@pytest.mark.parametrize(
+    "target",
+    [["--overwrite-live-databases"], ["--into-suffix", "_check"], ["--dry-run"]],
+    ids=["live", "suffix", "dry-run"],
+)
+def test_latest_refuses_a_newest_run_that_lacks_a_database(harness, target):
+    """It restored identity and data from one run and guardian from another."""
+    _archives(harness, stamp=OLDER)
+    _archives(harness, stamp=NEWER, databases=("identity", "data"))
+    result = harness.run(RESTORE, "--latest", *target)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"REFUSING --latest: the newest backup run, {NEWER}" in result.stderr
+    assert re.search(rf"^    identity +identity_{NEWER}$", result.stderr, re.M)
+    assert re.search(
+        rf"^    guardian +not in this run; its newest archive is from {OLDER}$",
+        result.stderr,
+        re.M,
+    )
+    assert "Nothing was changed" in result.stderr
+    # The way out is named: the newest run that holds all three.
+    assert f"--timestamp {OLDER}   the newest run that holds all of them" in result.stderr
+    assert harness.docker_log() == ""
+    assert _restored(harness) == []
+
+
+def test_a_run_is_complete_for_the_databases_that_are_asked_for(harness):
+    _archives(harness, stamp=OLDER)
+    _archives(harness, stamp=NEWER, databases=("identity", "data"))
+    result = harness.run(
+        RESTORE, "--latest", "--databases", "identity,data", "--into-suffix", "_check"
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored_from(result) == {"identity": NEWER, "data": NEWER}
+
+
+def test_a_run_that_is_not_the_newest_is_restored_by_its_timestamp(harness):
+    _archives(harness, stamp=OLDER)
+    _archives(harness, stamp=NEWER, databases=("identity", "data"))
+    result = harness.run(RESTORE, "--timestamp", OLDER, "--into-suffix", "_check")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _restored_from(result) == {db: OLDER for db in DATABASES}
+    # And mixing runs is something an operator can still do, by naming them.
+    one = harness.run(
+        RESTORE, "--timestamp", NEWER, "--databases", "data", "--into-suffix", "_check"
+    )
+    assert one.returncode == 0, one.stdout + one.stderr
+    assert _restored_from(one) == {"data": NEWER}
+
+
+def test_latest_says_so_when_no_run_holds_every_database(harness):
+    _archives(harness, stamp=OLDER, databases=("identity",))
+    _archives(harness, stamp=NEWER, databases=("data",))
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 1
+    assert "holds all of them)" in result.stderr and "(no run in" in result.stderr
+    assert re.search(r"^    guardian +not in this run, and in no other$", result.stderr, re.M)
+    assert _restored(harness) == []
+
+
+def test_latest_without_any_archive_is_an_error(harness):
+    harness.backups.mkdir()
+    result = harness.run(RESTORE, "--latest", "--into-suffix", "_check")
+    assert result.returncode == 1
+    assert "no backup found for identity data guardian" in result.stderr
+
+
+def test_redis_latest_refuses_a_snapshot_older_than_the_newest_run(harness):
+    """The newest run was taken with SKIP_REDIS=true: it has no snapshot."""
+    _archives(harness, stamp=OLDER)
+    _archives(harness, stamp=NEWER)
+    (harness.backups / f"redis_{NEWER}.rdb.gz").unlink()
+    result = harness.run(
+        RESTORE_REDIS, "--latest", "--replace-redis-data", FAKE_RUNNING="postgres"
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"REFUSING --latest: the newest backup run, {NEWER}, holds no Redis" in result.stderr
+    assert f"--timestamp {OLDER}" in result.stderr
+    assert " run " not in harness.docker_log()
+
+    named = harness.run(
+        RESTORE_REDIS, "--timestamp", OLDER, "--replace-redis-data", FAKE_RUNNING="postgres"
+    )
+    assert named.returncode == 0, named.stdout + named.stderr
+    assert f"Snapshot: redis_{OLDER}.rdb.gz" in named.stdout
 
 
 def test_redis_restore_is_refused_without_the_flag(harness):
@@ -1586,6 +1705,41 @@ def test_real_redis_restore_of_a_damaged_snapshot_leaves_the_data_in_place(
     ).stdout.split()
     assert ".restore-incoming" not in listing and ".restore-previous" not in listing
     stack.redis("DEL", "written:after:backup")
+
+
+def test_real_latest_does_not_mix_two_backup_runs(stack, tmp_path):
+    """A full run, then one of `identity` alone: --latest used to take
+    identity from the second and the other two from the first."""
+    backups = tmp_path / "backups"
+    full = stack.script(BACKUP, BACKUP_DIR=str(backups), SKIP_REDIS="true")
+    assert full.returncode == 0, full.stdout + full.stderr
+    (first,) = {p.name.split("_", 1)[1].split(".")[0] for p in backups.iterdir()}
+    while True:
+        # The next run needs a timestamp of its own, one second later.
+        partial = stack.script(
+            BACKUP, "--databases", "identity", BACKUP_DIR=str(backups), SKIP_REDIS="true"
+        )
+        assert partial.returncode == 0, partial.stdout + partial.stderr
+        if len(list(backups.glob("identity_*.sql.gz"))) == 2:
+            break
+
+    before = stack.databases()
+    refused = stack.script(RESTORE, "--latest", "--into-suffix", "_mix", BACKUP_DIR=str(backups))
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "REFUSING --latest" in refused.stderr
+    assert f"--timestamp {first}   the newest run that holds all of them" in refused.stderr
+    assert stack.databases() == before
+
+    # The run it names restores, all three from the same moment.
+    named = stack.script(
+        RESTORE, "--timestamp", first, "--into-suffix", "_mix", BACKUP_DIR=str(backups)
+    )
+    try:
+        assert named.returncode == 0, named.stdout + named.stderr
+        assert stack.psql("guardian_mix", "SELECT count(*) FROM widgets") == "90"
+    finally:
+        for db in DATABASES:
+            stack.psql("postgres", f'DROP DATABASE IF EXISTS "{db}_mix" WITH (FORCE)')
 
 
 def test_real_backup_of_a_missing_database_fails_and_keeps_nothing(stack, tmp_path):

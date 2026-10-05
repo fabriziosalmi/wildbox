@@ -542,6 +542,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **`restore_postgres.sh --latest` restores one backup run** (#740). It
+  took the newest archive of each database on its own, so after a run
+  limited with `--databases` the three databases were restored from
+  different runs, hours or days apart, without a word. `--latest` now
+  means the newest run, the archives that carry the newest timestamp,
+  read from the file names and no longer from modification times, which
+  a copy from another disk changes. If that run does not hold every
+  database asked for, the script refuses, shows what the run holds and
+  names the newest run that is complete. `restore_redis.sh --latest`
+  refuses in the same way when the newest run holds no Redis snapshot
+  (`SKIP_REDIS=true`). A run that is not the newest is named with
+  `--timestamp`; runs are mixed on purpose with `--databases` and
+  `--timestamp`, one database at a time.
 - **A restore that fails leaves the data that was there** (#740).
   `scripts/restore_redis.sh` deleted the contents of the Redis volume and
   then loaded the snapshot, so a snapshot that did not load left an empty

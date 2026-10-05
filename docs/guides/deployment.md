@@ -840,6 +840,17 @@ what it would have overwritten: each database with the archive it would be
 restored from, or the Redis volume with the snapshot. Neither script asks a
 question, so both still run from a script of your own.
 
+Give both scripts the same `--timestamp`, so that PostgreSQL and Redis come
+from the same backup run. `--latest` means the newest run: the files that
+carry the newest timestamp, read from their names. `restore_postgres.sh
+--latest` refuses when that run does not hold every database asked for (a
+run taken with `--databases`), and `restore_redis.sh --latest` refuses when
+it holds no Redis snapshot (a run taken with `SKIP_REDIS=true`): the newest
+archive of each would be data from different moments. The refusal names the
+newest run that is complete. To mix runs on purpose, run
+`restore_postgres.sh` once per database with `--databases` and
+`--timestamp`.
+
 `restore_postgres.sh` has two targets that need no flag: `--into-suffix
 _check` restores into `<db>_check` next to the live databases, and
 `--dry-run` only reads the archives. It looks up every archive before it
