@@ -48,9 +48,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # the image is reproducible; the vulnerability DB is fetched at first run.
 # Download the release tarball directly (the install.sh path was unreliable in
 # the slim image). CI/prod build for linux/amd64 -> the Linux-64bit asset.
+#
+# The tarball is checked against a SHA-256 recorded here before it is
+# unpacked: a release asset can be replaced under the same version (#657).
+# The value is the Linux-64bit line of the release's
+# trivy_${TRIVY_VERSION}_checksums.txt; change it together with the version.
 ARG TRIVY_VERSION=0.72.0
+ARG TRIVY_SHA256=bbb64b9695866ce4a7a8f5c9592002c5961cab378577fa3f8a040df362b9b2ea
 RUN curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \
     -o /tmp/trivy.tar.gz \
+    && echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c - \
     && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy \
     && rm /tmp/trivy.tar.gz \
     && trivy --version
@@ -60,14 +67,24 @@ RUN useradd --create-home --shell /bin/bash --user-group wildbox
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --require-hashes -r requirements.txt
+# --require-hashes: refuse to install an artefact whose hash does not match the
+# lockfile (WILDBO-DEP-04).
+# pip is the one in the digest-pinned base image (24.0): no `--upgrade pip`,
+# which installed whatever PyPI served that day, unhashed, and then ran it
+# (#657). --no-build-isolation: a source distribution in the lockfile is built
+# with the base image's setuptools instead of one downloaded for the build,
+# so nothing is fetched that the lockfile does not name with a hash.
+RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
 
 # Install the shared package, provided via the `shared` additional build
 # context (see docker-compose.yml / CI). --no-deps: its deps already come from
-# this service's requirements.txt.
+# this service's requirements.txt. --no-index --no-build-isolation: build it
+# with the setuptools already in the image (the digest-pinned base image's,
+# or the one a lockfile pins by hash). Without them pip made an isolated
+# build environment and downloaded the latest setuptools from PyPI, unhashed,
+# at every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-deps /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
 
 # Copy application code
 COPY . .
