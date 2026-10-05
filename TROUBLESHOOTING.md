@@ -112,7 +112,7 @@ How login, tokens and logout work is described in
 | 503 from the gateway on authenticated calls | The gateway cannot reach identity (5-second timeout; after 10 failures it stops trying for 60 seconds) | `docker compose ps identity` and `docker compose logs identity` |
 | identity logs "Authentication required" from Redis | identity's Redis URL has no password | Unset `IDENTITY_REDIS_URL`, or include `REDIS_PASSWORD` in it; see [UPGRADING.md](UPGRADING.md) |
 | `curl` fails with a certificate error | The development certificate is self-signed | Pass `--cacert open-security-gateway/ssl/wildbox.crt` and use `localhost`; do not turn verification off |
-| `http://localhost:8001/docs` returns 404 | identity serves its API docs only when `ENVIRONMENT` is not `production`, and the generated `.env` sets `production` | Expected; use the [identity API reference](https://www.wildbox.io/api/identity/endpoints/) |
+| `http://localhost:8001/docs` returns 404 | identity, like every other service, serves its API docs and schema only when `ENVIRONMENT` is `development`, and the generated `.env` sets `production` | Expected; use the [identity API reference](https://www.wildbox.io/api/identity/endpoints/) |
 
 ---
 

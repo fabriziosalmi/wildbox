@@ -494,7 +494,7 @@ gateway, not on this service.
 | Path | Content |
 | --- | --- |
 | `/metrics` | Prometheus exposition format |
-| `/openapi.json` | The service's OpenAPI document |
+| `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
 | `/api` | Service name, version and tool names |
 | `/api/system/info` | Tool count and names, concurrency and timeout settings |
 | `/api/system/operational-metrics` | Execution counters as JSON |

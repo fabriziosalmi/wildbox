@@ -101,10 +101,13 @@ for service_port in "${SERVICES[@]}"; do
 
     echo -e "${YELLOW}Downloading $service OpenAPI schema...${NC}"
 
-    if curl -s http://localhost:$port/openapi.json -o "$TEMP_DIR/${service}-openapi.json"; then
+    # -f: a service outside development answers 404, and without it the
+    # error body was saved and rendered as the schema.
+    if curl -sf http://localhost:$port/openapi.json -o "$TEMP_DIR/${service}-openapi.json"; then
         echo -e "${GREEN}✓${NC} Downloaded $service"
     else
-        echo -e "${RED}✗${NC} Failed to download $service"
+        rm -f "$TEMP_DIR/${service}-openapi.json"
+        echo -e "${RED}✗${NC} Failed to download $service (the services publish /openapi.json only when ENVIRONMENT=development)"
     fi
 done
 
