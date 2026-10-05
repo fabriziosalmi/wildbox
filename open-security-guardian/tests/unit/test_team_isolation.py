@@ -197,7 +197,8 @@ DETAIL_ACTIONS = _detail_actions()
 
 
 def test_there_are_detail_actions():
-    assert len(DETAIL_ACTIONS) > 50
+    # A floor, not a count: #724 removed three detail actions that did nothing.
+    assert len(DETAIL_ACTIONS) > 40
 
 
 @pytest.mark.django_db

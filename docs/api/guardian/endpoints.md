@@ -354,10 +354,15 @@ Custom actions:
 | `POST` | `vulnerabilities/{id}/add_tag/` | Body `{"tag": "..."}` |
 | `POST` | `vulnerabilities/{id}/remove_tag/` | Body `{"tag": "..."}` (a `POST` here, unlike assets) |
 | `GET` | `vulnerabilities/{id}/history/` | Change history, as a plain array. The SLA check and the assignment notification record here what became of their e-mail: `SLA violation notification sent`, `sent to the team's owners and admins (no assignee to e-mail)` or `not sent (<reason>)` (`field_name` `sla_status`), and `Assignment notification sent` or `not sent (<reason>)` (`field_name` `assignment_notification`) |
-| `GET` | `vulnerabilities/{id}/attachments/` | Attachments, as a plain array |
 | `POST` | `vulnerabilities/bulk_action/` | See below |
 | `GET` | `vulnerabilities/stats/` | Counts by severity and status |
 | `GET` | `vulnerabilities/trends/` | Daily counts for today and the `?days=N` days before it (default 30, from 0 to 366; `400` otherwise). See below |
+
+Removed in #724: `GET vulnerabilities/{id}/attachments/`, which answers `404`.
+Guardian has no way to attach a file to a vulnerability (there was never an upload
+route), so the list was always empty, and the `file` of an attachment would have
+been a `/media/` URL that nothing serves. Record the location of evidence in the
+vulnerability's `evidence` or `references` fields.
 
 A vulnerability needs `title`, `description` and `asset` (an asset ID). `severity`
 is one of `critical`, `high`, `medium`, `low`, `info`; `status` is one of `open`,

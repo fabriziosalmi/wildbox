@@ -263,19 +263,6 @@ def _history_entry(ctx):
     )
 
 
-def _attachment(ctx):
-    from apps.vulnerabilities.models import VulnerabilityAttachment
-
-    VulnerabilityAttachment.objects.create(
-        vulnerability=ctx.row,
-        uploaded_by=tf.user(ctx.team),
-        file="attachments/evidence.txt",
-        filename="evidence.txt",
-        file_size=1,
-        content_type="text/plain",
-    )
-
-
 def _scan_result(ctx):
     from apps.scanners.models import ScanResult
 
@@ -385,7 +372,6 @@ CONTRACTS = {
         body={"tag": "kev"}, prepare=lambda c: _set(c.row, tags=["kev"])
     ),
     "VulnerabilityViewSet.history.get": Reads(populate=_history_entry),
-    "VulnerabilityViewSet.attachments.get": Reads(populate=_attachment),
     "VulnerabilityViewSet.bulk_action.post": Effect(
         body=lambda c: {
             "vulnerability_ids": [str(tf.vulnerability(c.team).pk)],

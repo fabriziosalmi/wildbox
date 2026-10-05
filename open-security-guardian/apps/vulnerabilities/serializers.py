@@ -10,7 +10,7 @@ from apps.core.tenancy import TeamScopedModelSerializer
 from django.contrib.auth.models import User
 from .models import (
     Vulnerability, VulnerabilityTemplate, VulnerabilityAssessment,
-    VulnerabilityHistory, VulnerabilityAttachment
+    VulnerabilityHistory
 )
 
 
@@ -117,16 +117,6 @@ class VulnerabilityHistorySerializer(TeamScopedModelSerializer):
         model = VulnerabilityHistory
         fields = '__all__'
         read_only_fields = ['timestamp', 'changed_by']
-
-
-class VulnerabilityAttachmentSerializer(TeamScopedModelSerializer):
-    """Serializer for vulnerability attachments"""
-    uploaded_by_name = serializers.CharField(source='uploaded_by.get_full_name', read_only=True)
-    
-    class Meta:
-        model = VulnerabilityAttachment
-        fields = '__all__'
-        read_only_fields = ['uploaded_at', 'uploaded_by']
 
 
 class VulnerabilityBulkActionSerializer(serializers.Serializer):

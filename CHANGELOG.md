@@ -358,6 +358,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
   leftover lines in `.env` are ignored, and `validate_secrets.py` no
   longer asks for `N8N_BASIC_AUTH_PASSWORD`.
+- **guardian: `GET vulnerabilities/{id}/attachments/`** (#724). guardian
+  has never had a route, a task or a command that attaches a file to a
+  vulnerability, so the list was always empty; and the `file` of an
+  attachment would have been a `/media/` URL, which nothing serves. The
+  route answers 404 and its serializer is gone. The table stays, unused.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,

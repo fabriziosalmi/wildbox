@@ -19,13 +19,13 @@ from datetime import timedelta, datetime
 
 from .models import (
     Vulnerability, VulnerabilityTemplate, VulnerabilityAssessment,
-    VulnerabilityHistory, VulnerabilityAttachment, VulnerabilityStatus
+    VulnerabilityHistory, VulnerabilityStatus
 )
 from .serializers import (
     VulnerabilityListSerializer, VulnerabilityDetailSerializer,
     VulnerabilityCreateSerializer, VulnerabilityUpdateSerializer,
     VulnerabilityTemplateSerializer, VulnerabilityAssessmentSerializer,
-    VulnerabilityHistorySerializer, VulnerabilityAttachmentSerializer,
+    VulnerabilityHistorySerializer,
     VulnerabilityBulkActionSerializer, VulnerabilityStatsSerializer,
     VulnerabilityTrendSerializer
 )
@@ -229,17 +229,13 @@ class VulnerabilityViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         serializer = VulnerabilityHistorySerializer(history, many=True)
         return Response(serializer.data)
     
-    @action(detail=True, methods=['get'])
-    def attachments(self, request, pk=None):
-        """Get vulnerability attachments"""
-        vulnerability = self.get_object()
-        attachments = VulnerabilityAttachment.objects.filter(
-            vulnerability=vulnerability
-        ).order_by('-uploaded_at')
-        
-        serializer = VulnerabilityAttachmentSerializer(attachments, many=True)
-        return Response(serializer.data)
-    
+    # There is no ``attachments`` action. It listed VulnerabilityAttachment
+    # rows, and guardian has never had a route, a task or a command that
+    # creates one; each row's ``file`` would have been a /media/ URL that
+    # nothing serves (#642 stopped serving media: it is outside /api/, so
+    # neither the gateway's authentication nor the team check applied). The
+    # route always answered an empty list, and was removed (#724).
+
     @action(detail=False, methods=['post'])
     def bulk_action(self, request):
         """Perform bulk actions on vulnerabilities"""
