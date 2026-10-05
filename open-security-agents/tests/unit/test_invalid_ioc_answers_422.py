@@ -51,4 +51,7 @@ def test_a_malformed_ioc_value_is_a_field_error(client, ioc):
     assert error["message"] == "Request validation failed"
     [item] = error["details"]
     assert item["loc"] == ["body", "ioc", "value"]
-    assert f"Invalid format for {ioc['type']} IOC" in item["msg"]
+    # The message names the type and stops there: it used to end with the
+    # value it refused, quoted.
+    assert item["msg"] == f"Value error, Invalid format for {ioc['type']} IOC"
+    assert ioc["value"] not in item["msg"]

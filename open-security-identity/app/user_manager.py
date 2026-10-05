@@ -469,14 +469,16 @@ class UserManager(BaseUserManager[User, uuid.UUID]):
         """
         logger.info(f"User {user.email} has registered. Running post-registration logic.")
         
-        # Ottieni la sessione DB dalla request
-        if not request or not hasattr(request.state, 'db'):
-            logger.warning("No database session found in request state")
+        # Without a request the account was not registered through the API:
+        # scripts/init.sh creates the first administrator that way and makes
+        # its team itself. (The test used to be for request.state.db as
+        # well, a session a middleware put there for this hook; the hook has
+        # long used the session below, and the middleware is gone.)
+        if request is None:
+            logger.info("Account created outside a request: no personal team is made here")
             return
-            
-        # Use fastapi-users' own session — the one `user` is attached to.
-        # request.state.db is a *separate* session (set by db_session_middleware);
-        # adding the already-attached `user` to it raises InvalidRequestError.
+
+        # fastapi-users' own session, the one `user` is attached to.
         db: AsyncSession = self.user_db.session
 
         # Crea team con l'utente come owner

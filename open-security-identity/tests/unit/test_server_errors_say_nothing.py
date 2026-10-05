@@ -1,0 +1,166 @@
+"""A 500 does not say what went wrong inside; the log does.
+
+Four routes caught an error to answer a 500 of their own, with the text of
+the exception in it, in every environment: the three analytics routes
+(``Failed to generate ...: {str(e)}``) and the deletion of a user
+(``Failed to delete user: {str(e)}``). The text of an exception names
+tables, columns, hosts and paths. The routes now leave the error to the
+shared handler, which answers the same 500 for every unhandled error and
+logs the exception.
+
+The requests go through the real application and its real routes; the user
+store, the database session and the gateway call are stubs.
+"""
+
+import asyncio
+import os
+import sys
+import uuid
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
+os.environ.setdefault("JWT_SECRET_KEY", "a" * 32)
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+import app.database as database  # noqa: E402
+import app.main as main  # noqa: E402
+from app import user_manager  # noqa: E402
+from app.api_v1.endpoints import users  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+# What an exception says when a query meets a schema it did not expect.
+INTERNALS = 'relation "billing_secrets" does not exist at db-7.internal:5432'
+
+ANALYTICS = [
+    "/api/v1/analytics/admin/system-stats",
+    "/api/v1/analytics/admin/user-activity",
+    "/api/v1/analytics/admin/usage-summary",
+]
+
+
+class Session:
+    """A session that finds one user to delete and fails where it is told to."""
+
+    def __init__(self):
+        self.victim = SimpleNamespace(
+            id=uuid.uuid4(),
+            email="bob@example.com",
+            is_superuser=False,
+            owned_teams=[],
+            team_memberships=[],
+            api_keys=[],
+        )
+        self.execute_failure = None
+        self.commit_failure = None
+        self.deleted = []
+        self.rollbacks = 0
+
+    async def execute(self, _query):
+        if self.execute_failure is not None:
+            raise self.execute_failure
+        return SimpleNamespace(scalar_one_or_none=lambda: self.victim)
+
+    async def delete(self, row):
+        self.deleted.append(row)
+
+    async def commit(self):
+        if self.commit_failure is not None:
+            raise self.commit_failure
+
+    async def rollback(self):
+        self.rollbacks += 1
+
+    async def close(self):
+        pass
+
+
+@pytest.fixture
+def identity(monkeypatch):
+    admin = SimpleNamespace(
+        id=uuid.uuid4(),
+        email="root@example.com",
+        is_active=True,
+        is_superuser=True,
+        is_verified=True,
+        must_change_password=False,
+        tokens_valid_after=None,
+    )
+    session = Session()
+
+    class Store:
+        async def get(self, user_id):
+            return admin if user_id == admin.id else None
+
+    async def the_manager():
+        yield user_manager.UserManager(Store())
+
+    async def get_db():
+        yield session
+
+    async def not_blacklisted(_jti):
+        return False
+
+    async def no_keys(*_args, **_kwargs):
+        return []
+
+    async def the_gateway_confirms(*_args, **_kwargs):
+        return None
+
+    app = main.app
+    app.dependency_overrides[user_manager.get_user_manager] = the_manager
+    app.dependency_overrides[database.get_db] = get_db
+    monkeypatch.setattr(user_manager, "is_token_blacklisted", not_blacklisted)
+    monkeypatch.setattr(main, "get_db", get_db)
+    monkeypatch.setattr(database, "get_db", get_db)
+    monkeypatch.setattr(users, "active_api_key_ids", no_keys)
+    monkeypatch.setattr(users, "end_account_access_or_503", the_gateway_confirms)
+    token = asyncio.run(user_manager.get_jwt_strategy().write_token(admin))
+    yield SimpleNamespace(
+        client=TestClient(app, raise_server_exceptions=False),
+        headers={"Authorization": f"Bearer {token}"},
+        session=session,
+    )
+    app.dependency_overrides.clear()
+
+
+def says_nothing(response):
+    assert response.status_code == 500, response.text
+    assert INTERNALS not in response.text
+    for fragment in ("billing_secrets", "db-7.internal", "Failed to", "ValueError"):
+        assert fragment not in response.text, fragment
+
+
+@pytest.mark.parametrize("path", ANALYTICS)
+def test_an_analytics_route_that_fails_does_not_say_how(identity, caplog, path):
+    identity.session.execute_failure = ValueError(INTERNALS)
+
+    with caplog.at_level("ERROR"):
+        response = identity.client.get(path, headers=identity.headers)
+
+    says_nothing(response)
+
+
+def test_a_deletion_that_fails_does_not_say_how_and_is_rolled_back(identity):
+    identity.session.commit_failure = ValueError(INTERNALS)
+
+    response = identity.client.delete(
+        f"/api/v1/admin/users/{identity.session.victim.id}", headers=identity.headers
+    )
+
+    says_nothing(response)
+    assert identity.session.rollbacks == 1
+
+
+def test_a_deletion_that_succeeds_is_unchanged(identity):
+    response = identity.client.delete(
+        f"/api/v1/admin/users/{identity.session.victim.id}", headers=identity.headers
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"message": "User bob@example.com deleted successfully"}
+    assert identity.session.deleted == [identity.session.victim]
+    assert identity.session.rollbacks == 0
