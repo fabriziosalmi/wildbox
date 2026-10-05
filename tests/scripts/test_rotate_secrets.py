@@ -1,11 +1,14 @@
-"""Rotating POSTGRES_PASSWORD changes the server and every connection string,
-or neither (#649), and each secret's next step names what really reads it.
+"""Rotating POSTGRES_PASSWORD or REDIS_PASSWORD changes the server and every
+URL that embeds the password, or neither (#649, #723), and each secret's next
+step names what really reads it.
 
 rotate_secrets.sh rewrote only the POSTGRES_PASSWORD= line of .env. The
 services do not read that variable: they connect with DATABASE_URL-style
 strings that embed the password, and the password itself lives in the running
 server. Following the script left every service on the old password in .env
-and the server on whatever it had, and the script reported success.
+and the server on whatever it had, and the script reported success. Redis
+had the same defect: the Redis URLs a deployment overrides in .env kept the
+old password, and the running server was never told the new one.
 
 Three kinds of test:
 
@@ -16,7 +19,9 @@ Three kinds of test:
   config` (no container is started): which services each secret reaches;
 - against a real throwaway PostgreSQL, started under this test's own Compose
   project name: the old password is refused and the new one accepted, from
-  another container, before and after it is recreated.
+  another container, before and after it is recreated. The same tests for a
+  real Redis are in test_rotate_redis_real.py, so that one stack runs at a
+  time.
 
 No test reads a real .env, and every password here is made up.
 """
@@ -30,8 +35,10 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
+import time
 import uuid
 from pathlib import Path
 
@@ -46,6 +53,7 @@ VALIDATOR = REPO_ROOT / "scripts" / "validate_secrets.py"
 # Made up for these tests. Never real secrets.
 OLD = "old-made-up-db-password-0000"
 OLD_VERIFIER = "SCRAM-SHA-256$4096:b2xkLXNhbHQ=$b2xkLXN0b3JlZA==:b2xkLXNlcnZlcg=="
+OLD_REDIS = "old-made-up-redis-password-0000"
 
 DSN_KEYS = (
     "DATABASE_URL",
@@ -75,6 +83,7 @@ def _env_from_example():
     """The template, with the database password a deployment would have."""
     text = (REPO_ROOT / ".env.example").read_text()
     text = text.replace("YOUR_DB_PASSWORD", OLD)
+    text = re.sub(r"(?m)^REDIS_PASSWORD=.*$", f"REDIS_PASSWORD={OLD_REDIS}", text)
     return re.sub(r"(?m)^POSTGRES_PASSWORD=.*$", f"POSTGRES_PASSWORD={OLD}", text)
 
 
@@ -111,6 +120,7 @@ import json
 import os
 import re
 import sys
+import time
 
 state = os.environ["FAKE_STATE"]
 with open(os.path.join(state, "docker.log"), "a") as log:
@@ -119,9 +129,15 @@ with open(os.path.join(state, "docker.log"), "a") as log:
 args = sys.argv[1:]
 assert args[:2] == ["compose", "--env-file"], args
 env_file, args = args[2], args[3:]
+profiles = []
 if args[0] == "--profile":
-    args = args[2:]
+    profiles, args = [args[1]], args[2:]
 command, args = args[0], args[1:]
+
+if command == "config" and os.environ.get("FAKE_REAL_DOCKER"):
+    # The repository's compose files, rendered by the real docker.
+    real = os.environ["FAKE_REAL_DOCKER"]
+    os.execv(real, [real, *sys.argv[1:]])
 
 
 def counted(name):
@@ -131,29 +147,125 @@ def counted(name):
     return count
 
 
+def word(variable, n, default):
+    """The n-th space-separated word of a variable; the last repeats."""
+    values = os.environ.get(variable, default).split()
+    return values[min(n, len(values)) - 1]
+
+
 def nth(variable, n):
-    """The n-th space-separated exit status in a variable; the last repeats."""
-    values = os.environ.get(variable, "0").split()
-    return int(values[min(n, len(values)) - 1])
+    """The same, for a variable that holds exit statuses."""
+    return int(word(variable, n, "0"))
+
+
+def redis(data):
+    """A Redis with one password, as redis-cli shows it on a pipe.
+
+    The first line of stdin is the password the client presents; the rest
+    is its commands. FAKE_REDIS_SET, FAKE_REDIS_PING and FAKE_REDIS_INFO say
+    how the n-th call of each kind goes: honest, or
+      down   the server cannot be reached
+      error  (set) Redis answers with an error and changes nothing
+      drop   (set) Redis answers OK and changes nothing
+      lost   (set) the password changes and the reply never arrives
+      slow   (set) the call takes a few seconds
+    """
+    lines = data.split("\n")
+    auth, commands = lines[0], [line for line in lines[1:] if line]
+    with open(os.path.join(state, "redis.log"), "a") as log:
+        log.write(json.dumps({"auth": auth, "commands": commands}) + "\n")
+    held = os.path.join(state, "redis_password")
+    current = (
+        open(held).read() if os.path.exists(held) else os.environ["FAKE_REDIS_PASSWORD"]
+    )
+    kind = (
+        "SET"
+        if any(c.startswith("CONFIG SET") for c in commands)
+        else "PING" if commands == ["PING"] else "INFO"
+    )
+    behavior = word("FAKE_REDIS_" + kind, counted("redis_" + kind), "honest")
+    if behavior == "down":
+        print("Could not connect to Redis at 172.18.0.2:6379: Connection refused")
+        sys.exit(1)
+    if behavior == "slow":
+        open(os.path.join(state, "redis_slow"), "w").close()
+        time.sleep(3)
+    if auth not in {current, *os.environ.get("FAKE_REDIS_ALSO_ACCEPTS", "").split()}:
+        print("AUTH failed: WRONGPASS invalid username-password pair or user is disabled.")
+        for _ in commands:
+            print("NOAUTH Authentication required.")
+        print()
+        sys.exit(0)
+    for line in commands:
+        if line == "PING":
+            print("PONG")
+        elif line == "INFO persistence":
+            fields = os.environ.get(
+                "FAKE_REDIS_PERSISTENCE", "aof_enabled:1 aof_last_write_status:ok"
+            )
+            sys.stdout.write("# Persistence\r\nloading:0\r\n")
+            sys.stdout.write("".join(field + "\r\n" for field in fields.split()))
+        else:
+            match = re.fullmatch(
+                r'CONFIG SET requirepass "((?:\\x[0-9a-f]{2})+)"', line
+            )
+            assert match, line
+            if behavior == "error":
+                print("ERR CONFIG SET failed (possibly related to argument 'requirepass')")
+                continue
+            if behavior != "drop":
+                password = bytes.fromhex(match.group(1).replace("\\x", "")).decode()
+                open(held, "w").write(password)
+            if behavior == "lost":
+                sys.exit(1)
+            print("OK")
+    sys.exit(0)
 
 
 if command == "ps":
     if args[-1] in os.environ.get("FAKE_RUNNING", "").split():
         print("0123456789ab")
 elif command == "config":
-    # The compose file, rendered with the env file the script named.
+    if os.environ.get("FAKE_CONFIG_RC", "0") != "0":
+        sys.exit(int(os.environ["FAKE_CONFIG_RC"]))
+    # The compose file, rendered with the env file the script named:
+    # ${NAME} and ${NAME:-default}, innermost first.
     values = dict(
         line.split("=", 1)
         for line in open(env_file).read().splitlines()
         if "=" in line and not line.startswith("#")
     )
-    template = open(os.environ["FAKE_COMPOSE_TEMPLATE"]).read()
-    sys.stdout.write(
-        re.sub(r"\$\{([A-Z_]+)\}", lambda m: values.get(m.group(1), ""), template)
-    )
+
+    def quoted(name):
+        """A value as it sits inside a JSON string."""
+        return json.dumps(values.get(name, ""))[1:-1]
+
+    rendered, template = None, open(os.environ["FAKE_COMPOSE_TEMPLATE"]).read()
+    while rendered != template:
+        rendered = template
+        template = re.sub(
+            r"\$\{([A-Z0-9_]+)\}", lambda m: quoted(m.group(1)), template
+        )
+        template = re.sub(
+            r"\$\{([A-Z0-9_]+):-([^${}]*)\}",
+            lambda m: quoted(m.group(1)) or m.group(2),
+            template,
+        )
+    document = json.loads(rendered)
+    # A service behind a profile is rendered only when the profile is active.
+    document["services"] = {
+        name: service
+        for name, service in document["services"].items()
+        if not service.get("profiles")
+        or "*" in profiles
+        or set(service["profiles"]) & set(profiles)
+    }
+    json.dump(document, sys.stdout)
 elif command == "exec":
     assert args[0] == "-T" and args[2:4] == ["sh", "-c"], args
     script, data = args[4], sys.stdin.read()
+    if "redis-cli" in script:
+        redis(data)
     if "hostname -i" in script:
         # The password check: the candidate arrives on stdin.
         open(os.path.join(state, "checked_password"), "w").write(data.rstrip("\n"))
@@ -176,12 +288,36 @@ sys.exit(0)
 COMPOSE_TEMPLATE = {
     "services": {
         "postgres": {"environment": {"POSTGRES_PASSWORD": "${POSTGRES_PASSWORD}"}},
-        "identity": {"environment": {"DATABASE_URL": "${DATABASE_URL}"}},
+        "identity": {
+            "environment": {
+                "DATABASE_URL": "${DATABASE_URL}",
+                "REDIS_URL": "${IDENTITY_REDIS_URL:-redis://:${REDIS_PASSWORD}@wildbox-redis:6379/0}",
+            }
+        },
         "data": {"environment": {"DATABASE_URL": "${DATA_DATABASE_URL}"}},
-        "guardian": {"environment": {"DATABASE_URL": "${GUARDIAN_DATABASE_URL}"}},
+        "guardian": {
+            "environment": {
+                "DATABASE_URL": "${GUARDIAN_DATABASE_URL}",
+                "CELERY_BROKER_URL": "redis://:${REDIS_PASSWORD}@wildbox-redis:6379/1",
+            }
+        },
         "dashboard": {"environment": {"NEXTAUTH_SECRET": "${NEXTAUTH_SECRET}"}},
         "api": {"environment": {"API_KEY": "${API_KEY}"}},
         "gateway": {"environment": {}},
+        # As the stack starts it: the password is an argument of the server,
+        # and of the health check.
+        "wildbox-redis": {
+            "command": ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"],
+            "healthcheck": {"test": ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]},
+        },
+        # Holds both passwords, and runs only for an operator who asked for it.
+        "backup": {
+            "profiles": ["backup"],
+            "environment": {
+                "POSTGRES_PASSWORD": "${POSTGRES_PASSWORD}",
+                "REDIS_PASSWORD": "${REDIS_PASSWORD}",
+            },
+        },
     }
 }
 
@@ -202,20 +338,24 @@ class Harness:
         self.env_file.write_text(_env_from_example())
         self.env_file.chmod(0o600)
 
-    def run(self, *args, path=None, **overrides):
+    def env(self, path=None, **overrides):
         env = {
             "PATH": path or f"{self.bin}{os.pathsep}{os.environ['PATH']}",
             "HOME": str(self.tmp),
             "ENV_FILE": str(self.env_file),
             "FAKE_STATE": str(self.state),
             "FAKE_COMPOSE_TEMPLATE": str(self.template),
-            "FAKE_RUNNING": "postgres",
+            "FAKE_RUNNING": "postgres wildbox-redis",
             "FAKE_OLD_VERIFIER": OLD_VERIFIER,
+            "FAKE_REDIS_PASSWORD": OLD_REDIS,
         }
         env.update(overrides)
+        return env
+
+    def run(self, *args, path=None, **overrides):
         return subprocess.run(
             ["bash", str(ROTATE), *args],
-            env=env,
+            env=self.env(path=path, **overrides),
             cwd=self.tmp,
             capture_output=True,
             text=True,
@@ -224,6 +364,28 @@ class Harness:
 
     def rotate_postgres(self, **overrides):
         return self.run("--secret", "POSTGRES_PASSWORD", **overrides)
+
+    def rotate_redis(self, **overrides):
+        return self.run("--secret", "REDIS_PASSWORD", **overrides)
+
+    def redis_calls(self):
+        """What reached redis-cli on stdin, one dict per call."""
+        return [json.loads(line) for line in self.log("redis.log").splitlines()]
+
+    def redis_password(self):
+        """The password the stub server holds now."""
+        return self.log("redis_password") or OLD_REDIS
+
+    def add_to_env(self, text):
+        with self.env_file.open("a") as handle:
+            handle.write(text)
+
+    def no_redis_secret_in(self, result, new):
+        escaped = "".join(f"\\x{byte:02x}" for byte in new.encode())
+        for text in (result.stdout, result.stderr, self.log()):
+            assert OLD_REDIS not in text
+            assert new not in text
+            assert escaped not in text
 
     def values(self):
         return _parse(self.env_file.read_text())
@@ -512,6 +674,500 @@ def test_the_documented_list_of_services_to_recreate_matches_the_compose_file():
     assert f"docker compose up -d --no-deps {' '.join(services)}\n" in documented
 
 
+# --- Redis: the same procedure (#723) ---------------------------------------
+
+COMPOSE_FILES = (
+    "docker-compose.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.dev.yml",
+)
+# A Redis URL as the compose files build one: the default user, the password
+# from REDIS_PASSWORD, the stack's Redis, optionally behind an override.
+COMPOSE_REDIS_URL = re.compile(
+    r"(?:\$\{([A-Z0-9_]+):-)?rediss?://:\$\{REDIS_PASSWORD\}@wildbox-redis:6379/(\d+)"
+)
+
+
+def _compose_redis_urls():
+    """[(override variable or '', database)] for every Redis URL in compose."""
+    found = []
+    for compose_file in COMPOSE_FILES:
+        for line in (REPO_ROOT / compose_file).read_text().splitlines():
+            if line.lstrip().startswith("#") or "redis://" not in line:
+                continue
+            line = re.sub(r"\$\{REDIS_PASSWORD:\?[^}]*\}", "${REDIS_PASSWORD}", line)
+            urls = COMPOSE_REDIS_URL.findall(line)
+            # A URL of another shape would be one the rotation does not know.
+            assert len(urls) == line.count("redis://"), f"{compose_file}: {line}"
+            found += urls
+    return found
+
+
+def _redis_overrides():
+    return sorted({variable for variable, _ in _compose_redis_urls() if variable})
+
+
+def test_every_redis_url_the_compose_files_build_is_one_the_rotation_reaches():
+    """Each is built from REDIS_PASSWORD or from a variable .env can set."""
+    urls = _compose_redis_urls()
+    assert len(urls) > 10
+    overrides = _redis_overrides()
+    assert "IDENTITY_REDIS_URL" in overrides and "CSPM_CELERY_BROKER_URL" in overrides
+    # The server itself takes the variable as an argument, which is what the
+    # script checks before it promises the password survives a restart.
+    compose = yaml.safe_load((REPO_ROOT / "docker-compose.yml").read_text())
+    assert "--requirepass ${REDIS_PASSWORD:?" in compose["services"]["wildbox-redis"][
+        "command"
+    ]
+
+
+def test_every_redis_url_gets_the_new_password_and_nothing_else_changes(harness):
+    """The acceptance test of #723: every URL an operator can override."""
+    overrides = _redis_overrides()
+    harness.add_to_env(
+        "".join(
+            f"{variable}=redis://:{OLD_REDIS}@wildbox-redis:6379/{index}\n"
+            for index, variable in enumerate(overrides)
+        )
+    )
+    before = harness.values()
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    after = harness.values()
+    new = after["REDIS_PASSWORD"]
+    assert new != OLD_REDIS
+    for variable in overrides:
+        assert after[variable] == before[variable].replace(OLD_REDIS, new), variable
+    # Nothing else in the file moved: no PostgreSQL connection string either.
+    assert {k for k, v in after.items() if v != before[k]} == {
+        "REDIS_PASSWORD",
+        *overrides,
+    }
+    assert OLD_REDIS not in harness.env_file.read_text()
+    validator = _load(VALIDATOR, "validate_secrets")
+    assert validator.validate_secret("REDIS_PASSWORD", new)[0]
+    for variable in ("REDIS_PASSWORD", *overrides):
+        assert re.search(rf"^    {variable}$", result.stdout, re.M), variable
+
+
+def test_the_running_redis_gets_the_same_password_and_is_asked_about_both(harness):
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stderr
+    new = harness.values()["REDIS_PASSWORD"]
+    # The server holds what .env holds: the two cannot diverge.
+    assert harness.redis_password() == new
+
+    calls = harness.redis_calls()
+    sets = [c for c in calls if c["commands"][0].startswith("CONFIG SET")]
+    assert len(sets) == 1
+    # Authenticated with the old password, one command, the value escaped
+    # byte by byte so that nothing in it can end the argument.
+    assert sets[0]["auth"] == OLD_REDIS
+    escaped = "".join(f"\\x{byte:02x}" for byte in new.encode())
+    assert sets[0]["commands"] == [f'CONFIG SET requirepass "{escaped}"']
+    # Then it asked the server about the new password and about the old one.
+    after = calls[calls.index(sets[0]) + 1 :]
+    assert [(c["auth"], c["commands"]) for c in after] == [
+        (new, ["PING"]),
+        (OLD_REDIS, ["PING"]),
+    ]
+    assert "accepted the new one and refused the old one" in result.stdout
+
+
+def test_redis_is_asked_over_the_network_and_no_password_reaches_argv(harness):
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stderr
+    harness.no_redis_secret_in(result, harness.values()["REDIS_PASSWORD"])
+    executions = [line for line in harness.log().splitlines() if " exec " in line]
+    assert len(executions) == 5
+    for line in executions:
+        # The container's own address, not the loopback, and the password
+        # from stdin into REDISCLI_AUTH: no -a, no -u, no AUTH argument.
+        assert "exec -T wildbox-redis sh -c" in line
+        assert 'redis-cli -h "$(hostname -i' in line
+        assert "IFS= read -r REDISCLI_AUTH" in line
+        assert not re.search(r"redis-cli.* (-a|-u|--pass|--user)\b", line)
+        assert "requirepass" not in line
+
+
+def test_the_operator_is_told_to_recreate_redis_too_and_why(harness):
+    harness.add_to_env(f"IDENTITY_REDIS_URL=redis://:{OLD_REDIS}@wildbox-redis:6379/0\n")
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stderr
+    out = result.stdout
+    # Redis first, then exactly the services whose rendered configuration
+    # carries the new password: identity through the URL .env overrides,
+    # guardian through the one Compose builds.
+    assert "    docker compose up -d --no-deps wildbox-redis identity guardian\n" in out
+    assert "OLD password on its" in out and "comes back with the old password" in out
+    assert "keeps its data volume" in out
+    # A profile's service holds it too, and is named apart from the command:
+    # `docker compose up` would start it for an operator who never ran it.
+    command = re.search(r"^    docker compose up .*$", out, re.M).group(0)
+    assert "backup" not in command
+    assert re.search(r"Compose profile that is not active.*\n.*\n.*\n\n    backup\n", out)
+    backup = harness.backups()[0]
+    assert f"Then delete {backup}" in out
+    assert stat.S_IMODE(backup.stat().st_mode) == 0o600
+    assert stat.S_IMODE(harness.env_file.stat().st_mode) == 0o600
+
+
+def test_a_profile_service_is_not_named_in_the_postgres_command_either(harness):
+    result = harness.rotate_postgres()
+    assert result.returncode == 0, result.stderr
+    assert "    docker compose up -d --no-deps identity data guardian\n" in result.stdout
+    assert re.search(r"not active.*\n.*\n.*\n\n    backup\n", result.stdout)
+
+
+def test_an_active_profile_puts_its_service_in_the_command(harness):
+    template = json.loads(harness.template.read_text())
+    del template["services"]["backup"]["profiles"]
+    harness.template.write_text(json.dumps(template))
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stderr
+    assert (
+        "    docker compose up -d --no-deps wildbox-redis identity guardian backup\n"
+        in result.stdout
+    )
+    assert "not active here" not in result.stdout
+
+
+def _refused(harness, result, reason):
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "REFUSING to rotate REDIS_PASSWORD" in result.stderr
+    assert reason in result.stderr
+    assert "Nothing was changed" in result.stderr
+    assert harness.backups() == []
+    assert "Rotated" not in result.stdout
+    assert not any(
+        call["commands"][0].startswith("CONFIG SET") for call in harness.redis_calls()
+    )
+    assert harness.redis_password() == OLD_REDIS
+    assert OLD_REDIS not in result.stdout + result.stderr + harness.log()
+
+
+@pytest.mark.parametrize(
+    "overrides, reason",
+    [
+        ({"FAKE_RUNNING": "postgres"}, "'wildbox-redis' service is not running"),
+        (
+            {"FAKE_REDIS_PASSWORD": "what-the-server-really-holds"},
+            "the running Redis refuses the REDIS_PASSWORD",
+        ),
+        ({"FAKE_REDIS_PING": "down"}, "could not ask Redis"),
+        ({"FAKE_CONFIG_RC": "1"}, "does not pass the REDIS_PASSWORD"),
+        (
+            {"FAKE_REDIS_PERSISTENCE": "aof_enabled:0 aof_last_write_status:ok"},
+            "not writing its append-only file",
+        ),
+        (
+            {"FAKE_REDIS_PERSISTENCE": "aof_enabled:1 aof_last_write_status:err"},
+            "not writing its append-only file",
+        ),
+        ({"FAKE_REDIS_INFO": "down"}, "not writing its append-only file"),
+    ],
+    ids=[
+        "redis-stopped",
+        "env-and-server-disagree",
+        "unreachable",
+        "compose-unreadable",
+        "aof-off",
+        "aof-write-failed",
+        "persistence-unknown",
+    ],
+)
+def test_the_redis_rotation_is_refused_rather_than_half_done(harness, overrides, reason):
+    original = harness.env_file.read_bytes()
+    _refused(harness, harness.rotate_redis(**overrides), reason)
+    assert harness.env_file.read_bytes() == original
+
+
+def test_the_redis_rotation_is_refused_without_a_current_password(harness):
+    text = re.sub(r"(?m)^REDIS_PASSWORD=.*\n", "", harness.env_file.read_text())
+    harness.env_file.write_text(text)
+    _refused(harness, harness.rotate_redis(), "REDIS_PASSWORD is not set")
+    assert harness.env_file.read_text() == text
+    assert harness.redis_calls() == []
+
+
+def test_the_redis_rotation_is_refused_when_compose_does_not_pass_the_password(
+    harness,
+):
+    """Then a recreated Redis would not start with the rotated password."""
+    template = json.loads(harness.template.read_text())
+    template["services"]["wildbox-redis"] = {
+        "command": ["redis-server", "--requirepass", "set-somewhere-else"]
+    }
+    harness.template.write_text(json.dumps(template))
+    original = harness.env_file.read_bytes()
+    _refused(harness, harness.rotate_redis(), "does not pass the REDIS_PASSWORD")
+    assert harness.env_file.read_bytes() == original
+    assert harness.redis_calls() == []
+
+
+def test_the_redis_rotation_is_refused_without_docker(harness, tmp_path):
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for tool in "bash cat dirname grep sed tr tail".split():
+        (tools / tool).symlink_to(shutil.which(tool))
+    original = harness.env_file.read_bytes()
+    result = harness.rotate_redis(path=str(tools))
+    assert result.returncode == 1
+    assert "docker is not available" in result.stderr
+    assert harness.env_file.read_bytes() == original
+    assert harness.backups() == []
+
+
+def _rolled_back(harness, result, original, reason):
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert f"ROTATION FAILED: {reason}" in result.stderr
+    assert "nothing was rotated" in result.stderr
+    assert "INCONSISTENT" not in result.stderr
+    assert "Rotated" not in result.stdout
+    # Both places hold the old password again.
+    assert harness.env_file.read_bytes() == original
+    assert harness.redis_password() == OLD_REDIS
+    assert "The running Redis accepts the previous password." in result.stderr
+    # The last thing the script did was ask the server about the old one.
+    last = harness.redis_calls()[-1]
+    assert (last["auth"], last["commands"]) == (OLD_REDIS, ["PING"])
+    assert OLD_REDIS not in result.stdout + result.stderr + harness.log()
+
+
+@pytest.mark.parametrize(
+    "overrides, reason, took",
+    [
+        ({"FAKE_REDIS_SET": "error honest"}, "Redis did not accept", False),
+        ({"FAKE_REDIS_SET": "down honest"}, "Redis did not accept", False),
+        # The change took and its reply was lost: the server holds the new
+        # password, and the rollback has to put the old one back.
+        ({"FAKE_REDIS_SET": "lost honest"}, "Redis did not accept", True),
+        # Redis said OK and nothing changed.
+        (
+            {"FAKE_REDIS_SET": "drop honest"},
+            "the server does not accept the new password",
+            False,
+        ),
+        # The change took, and then the server could not be asked.
+        (
+            {"FAKE_REDIS_PING": "honest down honest"},
+            "the server does not accept the new password",
+            True,
+        ),
+        (
+            {"FAKE_REDIS_PING": "honest honest down honest"},
+            "the server does not refuse the old password",
+            True,
+        ),
+        # A server that still takes the old password next to the new one.
+        (
+            {"FAKE_REDIS_ALSO_ACCEPTS": OLD_REDIS},
+            "the server does not refuse the old password",
+            True,
+        ),
+    ],
+    ids=[
+        "set-refused",
+        "set-unreachable",
+        "set-reply-lost",
+        "set-did-not-take",
+        "new-cannot-be-checked",
+        "old-cannot-be-checked",
+        "old-still-accepted",
+    ],
+)
+def test_a_failed_redis_step_restores_the_env_file_and_the_server(
+    harness, overrides, reason, took
+):
+    harness.add_to_env(f"IDENTITY_REDIS_URL=redis://:{OLD_REDIS}@wildbox-redis:6379/0\n")
+    original = harness.env_file.read_bytes()
+    result = harness.rotate_redis(**overrides)
+    _rolled_back(harness, result, original, reason)
+    # When the server held the new password, the old one was set back by a
+    # client that authenticated with the new one.
+    restores = [
+        call
+        for call in harness.redis_calls()
+        if call["commands"][0].startswith("CONFIG SET") and call["auth"] != OLD_REDIS
+    ]
+    assert len(restores) == 1
+    escaped = "".join(f"\\x{byte:02x}" for byte in OLD_REDIS.encode())
+    assert restores[0]["commands"] == [f'CONFIG SET requirepass "{escaped}"']
+    assert (harness.state / "redis_password").exists() == took
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        # The change took, and Redis is gone when the script tries to undo it.
+        {"FAKE_REDIS_SET": "lost down", "FAKE_REDIS_PING": "honest down"},
+        # It answers again, and holds the new password after all.
+        {"FAKE_REDIS_SET": "lost down"},
+    ],
+    ids=["unreachable", "still-the-new-password"],
+)
+def test_a_redis_that_cannot_be_put_back_is_reported_as_inconsistent(
+    harness, overrides
+):
+    original = harness.env_file.read_bytes()
+    result = harness.rotate_redis(**overrides)
+    assert result.returncode == 3, result.stdout + result.stderr
+    assert "INCONSISTENT" in result.stderr
+    assert "nothing was rotated" not in result.stderr
+    assert "accepts the previous password" not in result.stderr
+    # .env is back regardless, and the way out is the one that always works:
+    # Redis starts with the password on its command line.
+    assert harness.env_file.read_bytes() == original
+    assert (
+        "    docker compose up -d --no-deps --force-recreate wildbox-redis\n"
+        in result.stderr
+    )
+    assert OLD_REDIS not in result.stdout + result.stderr + harness.log()
+
+
+def test_an_interrupted_redis_rotation_is_rolled_back(harness):
+    """SIGTERM while the server is being changed: both places are put back."""
+    original = harness.env_file.read_bytes()
+    process = subprocess.Popen(
+        ["bash", str(ROTATE), "--secret", "REDIS_PASSWORD"],
+        env=harness.env(FAKE_REDIS_SET="slow honest"),
+        cwd=harness.tmp,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    deadline = time.time() + 60
+    while not (harness.state / "redis_slow").exists():
+        assert process.poll() is None and time.time() < deadline, process.communicate()
+        time.sleep(0.05)
+    # .env already holds the new password at this point.
+    assert harness.env_file.read_bytes() != original
+    process.send_signal(signal.SIGTERM)
+    stdout, stderr = process.communicate(timeout=60)
+    assert process.returncode == 1, stdout + stderr
+    assert "ROTATION FAILED: interrupted." in stderr
+    assert "nothing was rotated" in stderr
+    assert harness.env_file.read_bytes() == original
+    assert harness.redis_password() == OLD_REDIS
+    assert "Rotated" not in stdout
+
+
+def test_redis_urls_for_another_server_or_user_are_left_and_named(harness):
+    harness.add_to_env(
+        f"IDENTITY_REDIS_URL=redis://:{OLD_REDIS}@wildbox-redis:6379/0\n"
+        f"NAMED_DEFAULT_REDIS_URL=rediss://default:{OLD_REDIS}@wildbox-redis/3\n"
+        f"QUOTED_REDIS_URL='redis://:{OLD_REDIS}@wildbox-redis:6379/4?health_check_interval=30'\n"
+        "CACHE_REDIS_URL=redis://:elsewhere-pw@cache.example.com:6379/0\n"
+        "ACL_USER_REDIS_URL=redis://reporting:reporting-pw@wildbox-redis:6379/5\n"
+        "NO_PASSWORD_REDIS_URL=redis://wildbox-redis:6379/6\n"
+        "USER_ONLY_REDIS_URL=redis://someone@wildbox-redis:6379/7\n"
+        "OTHER_PLAIN_REDIS_URL=redis://cache.example.com:6379/0\n"
+        "NOT_A_URL=wildbox-redis\n"
+    )
+    before = harness.values()
+    result = harness.rotate_redis()
+    assert result.returncode == 0, result.stderr
+
+    after = harness.values()
+    new = after["REDIS_PASSWORD"]
+    assert after["IDENTITY_REDIS_URL"] == f"redis://:{new}@wildbox-redis:6379/0"
+    assert after["NAMED_DEFAULT_REDIS_URL"] == f"rediss://default:{new}@wildbox-redis/3"
+    assert after["QUOTED_REDIS_URL"] == (
+        f"'redis://:{new}@wildbox-redis:6379/4?health_check_interval=30'"
+    )
+    left = (
+        "CACHE_REDIS_URL",
+        "ACL_USER_REDIS_URL",
+        "NO_PASSWORD_REDIS_URL",
+        "USER_ONLY_REDIS_URL",
+        "OTHER_PLAIN_REDIS_URL",
+        "NOT_A_URL",
+    )
+    for key in (*left, *DSN_KEYS, "POSTGRES_PASSWORD"):
+        assert after[key] == before[key], key
+
+    out = result.stdout
+    assert "NOT changed" in out
+    assert "CACHE_REDIS_URL: host 'cache.example.com' is not this stack's Redis" in out
+    assert "ACL_USER_REDIS_URL: it connects as another user" in out
+    assert "NO_PASSWORD_REDIS_URL: it carries no password" in out
+    assert "USER_ONLY_REDIS_URL: it carries no password" in out
+    # A Redis that is not the stack's and holds no password is nobody's concern.
+    assert "OTHER_PLAIN_REDIS_URL" not in out and "NOT_A_URL" not in out
+    assert "elsewhere-pw" not in out and "reporting-pw" not in out
+
+
+def test_a_postgres_rotation_leaves_the_redis_urls_alone(harness):
+    harness.add_to_env(f"IDENTITY_REDIS_URL=redis://:{OLD_REDIS}@wildbox-redis:6379/0\n")
+    result = harness.rotate_postgres()
+    assert result.returncode == 0, result.stderr
+    assert harness.values()["IDENTITY_REDIS_URL"] == (
+        f"redis://:{OLD_REDIS}@wildbox-redis:6379/0"
+    )
+    assert harness.values()["REDIS_PASSWORD"] == OLD_REDIS
+    assert harness.redis_calls() == []
+
+
+def test_a_redis_under_another_service_name_is_the_one_that_is_changed(harness):
+    template = json.loads(harness.template.read_text())
+    template["services"]["cache"] = template["services"].pop("wildbox-redis")
+    harness.template.write_text(
+        json.dumps(template).replace("@wildbox-redis:", "@cache:")
+    )
+    harness.add_to_env(f"IDENTITY_REDIS_URL=redis://:{OLD_REDIS}@cache:6379/0\n")
+    result = harness.rotate_redis(REDIS_SERVICE="cache", FAKE_RUNNING="cache")
+    assert result.returncode == 0, result.stdout + result.stderr
+    new = harness.values()["REDIS_PASSWORD"]
+    assert harness.values()["IDENTITY_REDIS_URL"] == f"redis://:{new}@cache:6379/0"
+    assert "exec -T cache sh -c" in harness.log()
+    assert "    docker compose up -d --no-deps cache identity guardian\n" in result.stdout
+
+
+def test_a_redis_password_with_awkward_characters_is_still_the_one_presented(harness):
+    """An operator's own password: it is read from .env, never interpreted."""
+    awkward = "p@ss w0rd\\with\"quotes'and#hash"
+    text = re.sub(
+        r"(?m)^REDIS_PASSWORD=.*$",
+        lambda _: f"REDIS_PASSWORD={awkward}",
+        harness.env_file.read_text(),
+    )
+    harness.env_file.write_text(text)
+    result = harness.rotate_redis(
+        FAKE_REDIS_PASSWORD=awkward, FAKE_REDIS_SET="lost honest"
+    )
+    # The change took and its reply was lost, so the script put the old
+    # password back: it authenticated with it, byte for byte, and sent it
+    # back escaped so that the quotes and the backslash end nothing.
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "nothing was rotated" in result.stderr
+    calls = harness.redis_calls()
+    assert calls[0] == {"auth": awkward, "commands": ["PING"]}
+    assert calls[-1] == {"auth": awkward, "commands": ["PING"]}
+    assert harness.log("redis_password") == awkward
+    assert awkward not in result.stdout + result.stderr + harness.log()
+
+
+def test_the_list_says_redis_is_changed_in_the_server_and_the_urls():
+    result = subprocess.run(
+        ["bash", str(ROTATE), "--list"], capture_output=True, text=True, timeout=30
+    )
+    redis = result.stdout.split("REDIS_PASSWORD", 1)[1].split("POSTGRES_PASSWORD")[0]
+    assert "running Redis" in redis and "every Redis" in redis and "URL" in redis
+    assert "is not rewritten" not in result.stdout
+
+
+def test_the_help_text_ends_where_the_header_ends():
+    result = subprocess.run(
+        ["bash", str(ROTATE), "--help"], capture_output=True, text=True, timeout=30
+    )
+    assert result.returncode == 0
+    lines = result.stdout.splitlines()
+    assert lines[-1] == "# argument list."
+    assert "--secret REDIS_PASSWORD" in result.stdout
+    assert "set -euo pipefail" not in result.stdout
+
+
 # --- every secret: a value the stack accepts, and an accurate next step ------
 
 
@@ -539,7 +1195,10 @@ def test_a_rotated_secret_is_drawn_the_way_a_fresh_install_draws_it():
         assert call.group(1).replace("'", '"') == fresh[name].replace("'", '"'), name
 
 
-@pytest.mark.parametrize("name", [n for n in ROTATABLE if n != "POSTGRES_PASSWORD"])
+IN_A_SERVER = ("POSTGRES_PASSWORD", "REDIS_PASSWORD")
+
+
+@pytest.mark.parametrize("name", [n for n in ROTATABLE if n not in IN_A_SERVER])
 def test_a_rotated_value_passes_the_validator_make_start_runs(harness, name):
     """API_KEY was rotated to a value `make validate-secrets` rejects."""
     validator = _load(VALIDATOR, "validate_secrets")
@@ -640,22 +1299,27 @@ def _services_reading(variable):
     }
 
 
-@pytest.mark.parametrize(
-    "name", ["API_KEY", "NEXTAUTH_SECRET", "CSPM_CREDENTIAL_KEY", "REDIS_PASSWORD"]
-)
+def _renderable_env():
+    """The template, with every variable the compose file requires.
+
+    .env.example leaves some variables to the generator; each one the compose
+    file requires (${NAME:?...}) gets a made-up value so that it renders.
+    """
+    text = _env_from_example()
+    compose_text = (REPO_ROOT / "docker-compose.yml").read_text()
+    for variable in sorted(set(re.findall(r"\$\{([A-Z0-9_]+):\?", compose_text))):
+        if not re.search(rf"(?m)^{variable}=.+", text):
+            text += f"{variable}=made-up-{uuid.uuid4().hex}\n"
+    return text
+
+
+@pytest.mark.parametrize("name", ["API_KEY", "NEXTAUTH_SECRET", "CSPM_CREDENTIAL_KEY"])
 def test_the_services_to_recreate_come_from_the_real_compose_file(
     docker, tmp_path, name
 ):
     """The script renders the repository's compose file; nothing is started."""
     env_file = tmp_path / "stack.env"
-    text = _env_from_example()
-    # .env.example leaves some variables to the generator; give every one
-    # the compose file requires (${NAME:?...}) a made-up value so it renders.
-    compose_text = (REPO_ROOT / "docker-compose.yml").read_text()
-    for variable in sorted(set(re.findall(r"\$\{([A-Z0-9_]+):\?", compose_text))):
-        if not re.search(rf"(?m)^{variable}=.+", text):
-            text += f"{variable}=made-up-{uuid.uuid4().hex}\n"
-    env_file.write_text(text)
+    env_file.write_text(_renderable_env())
     result = subprocess.run(
         ["bash", str(ROTATE), "--secret", name],
         env={
@@ -678,20 +1342,57 @@ def test_the_services_to_recreate_come_from_the_real_compose_file(
     listed = set(command.group(1).split())
     expected = _services_reading(name)
     assert expected, f"no service reads {name}?"
-    # Every default service that reads it is listed; anything more is a
-    # profile service (backup, monitoring) that reads it too.
-    assert expected <= listed
-    # What --list and the next-step text say about each of these.
+    # Exactly the default services that read it, which is also what --list
+    # and the next-step text say about each of these.
+    assert listed == expected
     exactly = {
         "API_KEY": {"api", "tools-worker", "tools-flower"},
         "NEXTAUTH_SECRET": {"dashboard"},
         "CSPM_CREDENTIAL_KEY": {"cspm", "cspm-worker"},
     }
-    if name in exactly:
-        assert listed == exactly[name]
-    else:
-        assert {"wildbox-redis", "identity", "guardian", "cspm", "agents"} <= listed
+    assert listed == exactly[name]
     assert _parse(env_file.read_text())[name] not in result.stdout + result.stderr
+
+
+def test_the_redis_services_to_recreate_come_from_the_real_compose_file(
+    docker, harness
+):
+    """The repository's compose file, rendered by the real docker.
+
+    The Redis server is the stub, so no container is started: `config` goes
+    to the real docker, `ps` and `exec` do not.
+    """
+    harness.env_file.write_text(_renderable_env())
+    overrides = {
+        "FAKE_REAL_DOCKER": shutil.which("docker"),
+        "COMPOSE_FILE": str(REPO_ROOT / "docker-compose.yml"),
+        "COMPOSE_PROJECT_NAME": f"wbtest723-{uuid.uuid4().hex[:8]}",
+        "HOME": os.environ.get("HOME", str(harness.tmp)),
+    }
+    for name in ("DOCKER_HOST", "DOCKER_CONFIG", "DOCKER_CONTEXT"):
+        if name in os.environ:
+            overrides[name] = os.environ[name]
+    result = harness.rotate_redis(**overrides)
+    assert result.returncode == 0, result.stdout + result.stderr
+    new = harness.values()["REDIS_PASSWORD"]
+    assert harness.redis_password() == new
+    harness.no_redis_secret_in(result, new)
+
+    command = re.search(
+        r"^    (docker compose up -d --no-deps (.+))$", result.stdout, re.M
+    )
+    assert command, result.stdout
+    listed = command.group(2).split()
+    # Redis itself, first, then every default service that reads the
+    # variable. The backup profile's service reads it too and is named apart.
+    assert listed[0] == "wildbox-redis"
+    assert set(listed) == _services_reading("REDIS_PASSWORD")
+    assert {"identity", "guardian", "cspm", "agents", "api"} <= set(listed)
+    assert "backup" not in listed
+    assert re.search(r"not active here.*\n.*\n.*\n\n    backup\n", result.stdout)
+    # The guide shows the same command.
+    documented = (REPO_ROOT / "docs" / "SECURITY_SECRETS_ROTATION.md").read_text()
+    assert f"{command.group(1)}\n" in documented
 
 
 # --- a real PostgreSQL -------------------------------------------------------

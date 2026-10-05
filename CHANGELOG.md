@@ -649,6 +649,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   whatever the secret. It now prints the services that receive the
   rotated secret, read from `docker compose config`, and the command
   that recreates only those (#649).
+- **Rotating `REDIS_PASSWORD` changes the running Redis and every Redis
+  URL in `.env`, or neither** (#723). `scripts/rotate_secrets.sh`
+  rewrote the `REDIS_PASSWORD=` line and nothing else: a Redis URL that
+  `.env` overrides (`IDENTITY_REDIS_URL`, `GUARDIAN_CELERY_BROKER_URL`
+  and the like) kept the old password, the running server was never told
+  the new one, and the script reported success with the stack stopped.
+  The rotation now follows the PostgreSQL one. It refuses unless
+  `wildbox-redis` is running, accepts the password in `.env`, receives it
+  from the compose configuration and is writing its append-only file. It
+  rewrites the variable and every `redis://` URL in `.env` that points
+  at the stack's Redis as the default user, and lists the ones it leaves
+  alone. It sets the password in the running server with
+  `CONFIG SET requirepass`, asks the server over TCP that the new one is
+  accepted and the old one refused, and restores `.env` and the server if
+  a step fails or the script is interrupted. Both passwords reach
+  `redis-cli` over standard input; Redis keeps `CONFIG` out of `MONITOR`
+  and redacts the value in its slow log.
+- **After a Redis rotation the Redis container is recreated too, and the
+  script says why** (#723). Redis keeps no password of its own: it
+  starts with `--requirepass` from the command line its container was
+  created with, so the change in the running server lasts until that
+  container restarts, and a restart before the recreation brings the old
+  password back. The command the script prints names `wildbox-redis`
+  first and then the services that hold the password. Recreating Redis
+  keeps its data volume, and the append-only file brings back queues,
+  scan and run state, revoked tokens and lockouts.
+- **The rotation script no longer names a profile's service in the
+  command it prints** (#723). For `POSTGRES_PASSWORD` and
+  `REDIS_PASSWORD` the command included `backup`, and
+  `docker compose up` starts a profile's service when it is named, so
+  following the script started a backup container on a stack that never
+  enabled the profile. Services behind a profile that is not active are
+  now listed separately.
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
