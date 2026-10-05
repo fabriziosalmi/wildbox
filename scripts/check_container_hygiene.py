@@ -47,6 +47,11 @@ pipe-to-shell  a download fed to an interpreter (``curl ... | sh``) or
 download       ``curl``, ``wget`` or ``ADD <url>`` with nothing in the same
                instruction that checks the result (``sha256sum -c``,
                ``gpg --verify``, ``cosign verify``, ``ADD --checksum=``).
+architecture   ``curl`` or ``wget`` of a URL that names one machine
+               (``Linux-64bit``, ``amd64``, ``arm64``) in a ``RUN`` that never
+               asks which platform it is building for. The tools image
+               downloaded the x86-64 Trivy on every platform, so an arm64
+               image shipped a binary it could not run (#726).
 
 os-packages    ``apt-get install`` without ``--no-install-recommends``, which
                also installs every package the named ones recommend; an
@@ -65,7 +70,7 @@ A deliberate exception goes in scripts/container_hygiene_allowlist.txt as
 prints in brackets. An entry without a reason, or one that no longer matches
 a finding, is an error, so the list cannot go stale. The Compose rules and
 ``download`` can be allow-listed; ``base-image``, ``pip``, ``npm``,
-``pipe-to-shell`` and ``os-packages`` cannot.
+``pipe-to-shell``, ``os-packages`` and ``architecture`` cannot.
 
 Usage: python scripts/check_container_hygiene.py [--root DIR] [--allowlist FILE]
 """
@@ -765,6 +770,19 @@ _VERIFIED = re.compile(
     r"|\bcosign\s+verify"
 )
 _DIGEST = re.compile(r"@sha256:[0-9a-f]{64}$")
+# A URL that names the machine its file runs on, in the spellings release
+# assets use: trivy_0.72.0_Linux-64bit.tar.gz, tool_linux_amd64.deb, ...
+_ONE_ARCHITECTURE = re.compile(
+    r"(?<![A-Za-z0-9])"
+    r"(amd64|x86[_-]64|x64|64bit|arm64|aarch64|armv[5-8][a-z]*|armhf|i[36]86|ppc64le|s390x|riscv64)"
+    r"(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+# What a script that chooses by platform reads.
+_PLATFORM_AWARE = re.compile(
+    r"TARGETARCH|TARGETPLATFORM|TARGETVARIANT|BUILDARCH"
+    r"|dpkg\s+--print-architecture|\buname\s+-m\b|\barch\b|apk\s+--print-arch"
+)
 _ARG_REFERENCE = re.compile(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?")
 
 
@@ -832,15 +850,25 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                         f"{keyword} --from={source} copies from an image that is "
                         "not pinned by digest",
                     )
-            if keyword == "ADD" and "--checksum=" not in value:
+            if keyword == "ADD":
                 for url in _URL.findall(value):
-                    add(
-                        "download",
-                        instruction,
-                        url,
-                        f"ADD {url} has no --checksum=sha256:..., so the build "
-                        "takes whatever the URL serves",
-                    )
+                    if "--checksum=" not in value:
+                        add(
+                            "download",
+                            instruction,
+                            url,
+                            f"ADD {url} has no --checksum=sha256:..., so the "
+                            "build takes whatever the URL serves",
+                        )
+                    named = _ONE_ARCHITECTURE.search(url)
+                    if named:
+                        add(
+                            "architecture",
+                            instruction,
+                            url,
+                            f"ADD {url} fetches the {named.group(1)} build "
+                            "whatever the platform the image is built for",
+                        )
 
         elif keyword == "RUN":
             script = run_script(value)
@@ -869,17 +897,31 @@ def check_dockerfile(path: str, text: str) -> list[Finding]:
                 if problem:
                     add("npm", instruction, shown, problem)
                     continue
-                if os.path.basename(command[0]) in ("curl", "wget") and not verified:
-                    for url in _URL.findall(shown):
-                        if not _LOCAL_URL.match(url):
-                            add(
-                                "download",
-                                instruction,
-                                url,
-                                f"downloads {url} and nothing in the same RUN "
-                                "checks it (sha256sum -c); a URL that names a "
-                                "version can still serve other bytes",
-                            )
+                if os.path.basename(command[0]) not in ("curl", "wget"):
+                    continue
+                for url in _URL.findall(shown):
+                    if _LOCAL_URL.match(url):
+                        continue
+                    if not verified:
+                        add(
+                            "download",
+                            instruction,
+                            url,
+                            f"downloads {url} and nothing in the same RUN "
+                            "checks it (sha256sum -c); a URL that names a "
+                            "version can still serve other bytes",
+                        )
+                    named = _ONE_ARCHITECTURE.search(url)
+                    if named and not _PLATFORM_AWARE.search(script):
+                        add(
+                            "architecture",
+                            instruction,
+                            url,
+                            f"downloads the {named.group(1)} build whatever the "
+                            "platform the image is built for; choose the asset "
+                            "by TARGETARCH (or dpkg --print-architecture), with "
+                            "a checksum for each, and fail on any other",
+                        )
     return findings
 
 

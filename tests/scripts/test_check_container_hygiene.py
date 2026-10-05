@@ -863,6 +863,120 @@ def test_add_of_a_url_needs_a_checksum():
     assert docker_rules("ADD ./local.tgz /tmp/\n") == []
 
 
+# --- Dockerfiles: downloads for one architecture -------------------------------
+
+CHECKED = 'echo "${SHA256}  /tmp/t.tgz" | sha256sum -c -'
+
+
+def test_the_trivy_download_issue_726_named():
+    # open-security-tools/Dockerfile:58 as it stood: verified, and x86-64 on
+    # every platform.
+    found = docker_findings("""\
+        ARG TRIVY_VERSION=0.72.0
+        ARG TRIVY_SHA256=bbb64b96
+        RUN curl -sfL "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" \\
+            -o /tmp/trivy.tar.gz \\
+            && echo "${TRIVY_SHA256}  /tmp/trivy.tar.gz" | sha256sum -c - \\
+            && tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+        """)
+    assert [(f.rule, f.line) for f in found] == [("architecture", 4)]
+    assert "64bit" in found[0].message and "TARGETARCH" in found[0].message
+
+
+@pytest.mark.parametrize(
+    "asset",
+    [
+        "tool_1.2.3_Linux-64bit.tar.gz",
+        "tool_1.2.3_linux_amd64.deb",
+        "tool-1.2.3-x86_64-unknown-linux-musl.tar.gz",
+        "tool_1.2.3_linux_x64.tar.gz",
+        "tool_1.2.3_Linux-ARM64.tar.gz",
+        "tool-1.2.3.aarch64.rpm",
+        "tool_1.2.3_linux_armv7.tar.gz",
+        "tool-1.2.3-linux-s390x.tar.gz",
+    ],
+)
+def test_a_download_for_one_architecture_is_refused(asset):
+    run = f"RUN curl -fsSL https://example.com/v1.2.3/{asset} -o /tmp/t.tgz && {CHECKED}\n"
+    found = docker_findings(run)
+    assert [f.rule for f in found] == ["architecture"], found
+    assert found[0].subject == f"https://example.com/v1.2.3/{asset}"
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        # The tools image: the asset chosen from TARGETARCH.
+        'case "${TARGETARCH}" in amd64) A=Linux-64bit ;; arm64) A=Linux-ARM64 ;; '
+        "*) exit 1 ;; esac && curl -sfL https://example.com/v1/t_${A}.tar.gz -o /tmp/t.tgz",
+        # The sensor image: the package named after dpkg's architecture.
+        "ARCH=$(dpkg --print-architecture) && "
+        'curl -fsSL "https://example.com/deb/tool_1.2.3-1.linux_${ARCH}.deb" -o /tmp/t.tgz',
+        'if [ "$(dpkg --print-architecture)" = amd64 ]; then '
+        "curl -fsSL https://example.com/v1/tool_linux_amd64.tgz -o /tmp/t.tgz; fi",
+        'if [ "$(uname -m)" = x86_64 ]; then '
+        "curl -fsSL https://example.com/v1/tool_linux_amd64.tgz -o /tmp/t.tgz; fi",
+        # Not a binary: the same file on every machine.
+        "curl -fsSL https://example.com/v0.17.2/lib/resty/http.lua -o /tmp/t.tgz",
+        "curl -fsSL https://example.com/archive/v1.2.3.tar.gz -o /tmp/t.tgz",
+        "curl -fsSL https://example.com/tool-64bits-of-entropy.txt -o /tmp/t.tgz",
+    ],
+)
+def test_a_download_chosen_by_platform_or_for_every_platform_passes(run):
+    assert docker_rules(f"ARG TARGETARCH\nRUN {run} && {CHECKED}\n") == []
+
+
+def test_a_build_argument_nobody_reads_is_not_a_choice():
+    # ARG TARGETARCH on its own changes nothing: the RUN must use it.
+    run = (
+        "ARG TARGETARCH\n"
+        f"RUN curl -fsSL https://example.com/v1/tool_linux_amd64.tgz -o /tmp/t.tgz && {CHECKED}\n"
+    )
+    assert docker_rules(run) == ["architecture"]
+
+
+def test_an_unverified_download_for_one_architecture_is_two_findings():
+    run = "RUN curl -fsSL https://example.com/v1/tool_linux_amd64.tgz -o /tmp/t.tgz\n"
+    assert docker_rules(run) == ["download", "architecture"]
+
+
+def test_add_of_a_url_for_one_architecture_is_refused():
+    pinned = "ADD --checksum=sha256:" + "a" * 64
+    assert docker_rules(f"{pinned} https://example.com/v1/tool_linux_arm64.tgz /tmp/\n") == [
+        "architecture"
+    ]
+    assert docker_rules(f"{pinned} https://example.com/v1/tool.tgz /tmp/\n") == []
+
+
+def test_the_tools_image_installs_trivy_for_its_platform():
+    text = (REPO / "open-security-tools" / "Dockerfile").read_text(encoding="utf-8")
+    instructions = cch.parse_dockerfile(text)
+    arguments = {
+        i.value.partition("=")[0]: i.value.partition("=")[2]
+        for i in instructions
+        if i.keyword == "ARG"
+    }
+    assert "TARGETARCH" in arguments
+    # One recorded checksum per architecture, both full SHA-256 values.
+    for name in ("TRIVY_SHA256_AMD64", "TRIVY_SHA256_ARM64"):
+        assert len(arguments[name]) == 64 and int(arguments[name], 16), name
+    assert arguments["TRIVY_SHA256_AMD64"] != arguments["TRIVY_SHA256_ARM64"]
+    runs = [i.value for i in instructions if i.keyword == "RUN" and "trivy" in i.value]
+    assert len(runs) == 1
+    run = runs[0]
+    assert 'case "${TARGETARCH}" in' in run
+    assert 'amd64) TRIVY_ASSET=Linux-64bit; TRIVY_SHA256="${TRIVY_SHA256_AMD64}"' in run
+    assert 'arm64) TRIVY_ASSET=Linux-ARM64; TRIVY_SHA256="${TRIVY_SHA256_ARM64}"' in run
+    # Any other architecture stops the build before anything is downloaded.
+    default = run[run.index("*)") : run.index("esac")]
+    assert "exit 1" in default
+    assert run.index("esac") < run.index("curl")
+    # What is downloaded is what the case chose, not a name written out.
+    assert "/trivy_${TRIVY_VERSION}_${TRIVY_ASSET}.tar.gz" in run
+    assert run.count("Linux-64bit") == 1 and run.count("Linux-ARM64") == 1
+    assert run.index("sha256sum -c") < run.index("tar -xzf")
+
+
 def test_a_download_can_be_allowlisted_but_pip_cannot():
     found = docker_findings("RUN curl -sfL https://example.com/v1/t.tgz -o /t.tgz\n")
     allowlist, errors = cch.read_allowlist(
@@ -870,7 +984,7 @@ def test_a_download_can_be_allowlisted_but_pip_cannot():
     )
     assert errors == []
     assert cch.apply_allowlist(found, allowlist) == ([], [])
-    for rule in ("pip", "npm", "pipe-to-shell", "base-image", "os-packages"):
+    for rule in ("pip", "npm", "pipe-to-shell", "base-image", "os-packages", "architecture"):
         _, errors = cch.read_allowlist(f"{rule}  svc/Dockerfile  x  # because\n")
         assert len(errors) == 1 and "not a rule" in errors[0], rule
 
