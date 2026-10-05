@@ -273,6 +273,7 @@ The service refuses a run with these statuses:
 | 422 | The body is not a JSON object | `Request validation failed` |
 | 422 | The body does not match the input schema | `Input validation failed`; `error.details.errors` lists `loc`, `msg` and `type` for each field. Submitted values are not echoed back |
 | 500 | The tool failed | `Tool execution failed` |
+| 503 | The tool acts on behalf of the caller and the caller's hourly allowance cannot be counted, because Redis does not answer (see [Rate Limits](#rate-limits)). The tool was not run | `Rate limiting temporarily unavailable` |
 
 The time limit is the input's `timeout` field when the tool's schema has
 one (the shared input schema defaults it to 30 seconds, 300 at most),
@@ -474,33 +475,72 @@ curl -s http://127.0.0.1:8000/health
 {
   "status": "healthy",
   "service": "tools",
-  "version": "1.0.0",
+  "version": "0.1.6",
   "timestamp": 1790000000.0,
-  "response_time_ms": 0.01,
-  "environment": "development",
   "tools_count": 52,
-  "available_tools": ["api_security_analyzer", "..."],
-  "active_executions": 0,
-  "max_concurrent_tools": 10,
-  "default_timeout": 300
+  "active_executions": 0
 }
 ```
 
-`status` is `degraded` (with `error`) when the service cannot read its
-execution state. The gateway's own `https://<host>/health` reports on the
-gateway, not on this service.
+`status` is `degraded` (with `error`, and without the two counts) when the
+service cannot read its execution state. `version` is the service's one
+version, the same the `X-API-Version` response header and the OpenAPI
+schema carry. `tools_count` is the number of tools loaded and
+`active_executions` the synchronous runs in progress.
+
+The answer names neither the environment, nor the concurrency and timeout
+settings, nor the tools: the route answers anyone who reaches the service
+port, and a health check needs the status
+([#721](https://github.com/fabriziosalmi/wildbox/issues/721)). The gateway's
+own `https://<host>/health` reports on the gateway, not on this service.
 
 ### Other Internal Endpoints
 
 | Path | Content |
 | --- | --- |
-| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`; asynchronous runs happen in the worker, which is not scraped). `monitoring/prometheus.yml` scrapes it |
+| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`), synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`) and the [asynchronous run metrics](#asynchronous-run-metrics). `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | The service's OpenAPI document, only when `ENVIRONMENT` is `development` |
-| `/api` | Service name, version and tool names |
+| `/api` | Service name, version and the path of the tool list (`/api/tools`, which asks for the gateway's identity) |
 
 None of them is part of the public API, and `/health` and these three are
 the only routes that answer without the gateway's identity: every other
 route under `/api/` answers 401 to a request that does not carry it.
+
+### Asynchronous Run Metrics
+
+An asynchronous run executes in `tools-worker`, which Prometheus does not
+scrape. The worker counts in Redis how each task ended, and `/metrics` of
+this service reads the counts on every scrape:
+
+| Metric | Type | What it is |
+| --- | --- | --- |
+| `wildbox_tool_async_executions_total{tool, outcome}` | counter | Tasks by tool and outcome, one count per task, made when the task ends |
+| `wildbox_tool_async_queue_length` | gauge | Tasks in the queue that no worker has taken |
+| `wildbox_tool_async_tasks_consumed_total` | counter | Times a worker took a task off the queue: every start (a retried task starts again) and every task it dropped because it was canceled while it waited |
+| `wildbox_tool_async_metrics_up` | gauge | 1 when the three above could be read from Redis; 0, and no value for them, when not |
+
+`outcome` is one of:
+
+| Outcome | The task |
+| --- | --- |
+| `completed` | ran its tool, which returned (a result with `success: false` included) |
+| `failed` | ran its tool, which raised; or failed in the worker after its retries |
+| `timeout` | was stopped at the soft time limit (9 minutes) or killed at the hard one (10 minutes) |
+| `cancelled` | was canceled with `DELETE /api/v1/tasks/{task_id}`, while it waited or while it ran |
+| `refused` | ended before its tool was started: the caller may not run the tool, the target is not allowed, the input does not validate or no tool has that name |
+
+The status a client reads from `GET /api/v1/tasks/{task_id}` is unchanged
+and differs in two places: a task that ended before its tool started
+because of its input, its target or its tool name reads `failed` there,
+and one killed at the hard time limit reads `failed`
+(`Task execution failed (TimeLimitExceeded)`). A tool name that is not a
+tool is counted under `tool="unknown"`.
+
+The counters are kept in Redis (`wildbox:tools:async-outcomes`,
+`wildbox:tools:async-consumed`), so they survive a restart of the API and
+of the worker and are reset only with the Redis data. A count the worker
+cannot write, because Redis does not answer it, is lost: the counters can
+be short, never long.
 
 The service has no `/api/system/` routes. `info`, `metrics`,
 `operational-metrics` and `health-aggregate` existed there, without
@@ -511,7 +551,7 @@ for one of them answers 404. What they reported is available elsewhere:
 | Was in | Now |
 | --- | --- |
 | `info`: tool names | `GET /api/v1/tools`, through the gateway |
-| `info`: environment, concurrency and timeout settings | `GET /health`, above |
+| `info`: environment, concurrency and timeout settings | Not served: they are the deployment's own settings (`ENVIRONMENT`, `MAX_CONCURRENT_TOOLS`, `TOOL_TIMEOUT`), and no route that answers without authentication reports them |
 | `metrics`, `operational-metrics`: counters of synchronous executions (which stayed at zero) | `wildbox_tool_executions_total` in `/metrics` |
 | `health-aggregate`: the health of the other services (it reported a healthy stack as `degraded`) | Each service's own health check (`docker compose ps`), and the `up` series Prometheus records for every service it scrapes |
 
@@ -542,8 +582,13 @@ never enforced, no longer exist
 in `.env` has no effect. What the service does limit is the cost of a call:
 `MAX_CONCURRENT_TOOLS` synchronous runs at a time (10), `TOOL_TIMEOUT`
 seconds per run (300), and, for the tools that act for a caller, a number
-of runs per caller per hour (one for a destructive test), counted in each
-process's memory.
+of runs per caller in any hour (one for a destructive test). That count is
+kept in the service's Redis, shared by the API and the workers and kept
+across restarts; past it the run is refused with 403
+(`Rate limit exceeded for destructive_test operations`), and when Redis
+cannot be reached the run is refused with 503
+(`Rate limiting temporarily unavailable`) instead of being let through
+uncounted.
 
 ## Errors
 
@@ -592,7 +637,7 @@ the `X-Request-ID` the gateway set, for finding the request in the logs.
 | 408 | Synchronous run timed out |
 | 422 | Request body missing, not an object, or not matching the input schema |
 | 500 | Tool failed |
-| 503 | Asynchronous execution unavailable (Redis, the result backend or the task queue down) |
+| 503 | Asynchronous execution unavailable (Redis, the result backend or the task queue down). Run: the caller's hourly allowance cannot be counted |
 
 ## Examples
 

@@ -12,8 +12,19 @@
 #   wildbox_http_requests_total            open-security-shared/observability.py
 #                                          {service, method, path, status}
 #   wildbox_tool_executions_total          open-security-tools/app/execution_manager.py
-#                                          {tool, outcome}
+#                                          {tool, outcome}; synchronous runs
+#   wildbox_tool_async_executions_total    open-security-tools/app/async_metrics.py
+#                                          {tool, outcome}; asynchronous runs
+#   wildbox_tool_async_queue_length        the same file: tasks no worker has taken
+#   wildbox_tool_async_tasks_consumed_total  the same file: tasks a worker took
+#   wildbox_tool_async_metrics_up          the same file: 1 when the three above
+#                                          could be read
 #   alertmanager_notifications_failed_total  Alertmanager {integration, reason}
+#
+# The four wildbox_tool_async_* metrics are exported by the tools api, which
+# is a scrape target, and not by tools-worker, which runs the tasks and is
+# not one: Prometheus cannot reach it on the production networks. The worker
+# counts in Redis and the api reads the counts on every scrape.
 #
 # open-security-tools/tests/unit/test_alert_rule_metrics.py fails if a
 # wildbox_* selector here names a metric or a label the code does not export.
@@ -57,10 +68,10 @@ groups:
     rules:
       # Synchronous runs only. wildbox_tool_executions_total is incremented by
       # the api process for POST /api/v1/tools/{tool}; runs submitted to
-      # /api/v1/tools/{tool}/async execute in tools-worker, a Celery prefork
-      # worker that exports no metrics, and are not counted anywhere
-      # Prometheus can read. The alert is named and described for what it
-      # measures; it says nothing about asynchronous runs.
+      # /api/v1/tools/{tool}/async execute in tools-worker and have a counter
+      # and an alert of their own, WildboxAsyncToolFailureRate below. Two
+      # alerts and not one ratio over both, so that a worker that fails every
+      # task is not hidden by synchronous runs that succeed.
       #
       # outcome="failed" is a tool that raised an error it does not handle
       # (the caller gets a 500). A tool that reports an unreachable target or
@@ -85,10 +96,101 @@ groups:
             Over the last fifteen minutes {{ $value | humanizePercentage }} of
             the synchronous tool runs (POST /api/v1/tools/<tool>) raised an
             error the tool does not handle, and the share has stayed above 25%
-            for fifteen minutes. Asynchronous runs (the tools-worker) are not
-            measured: this alert neither fires for them nor clears because
-            of them. Timeouts, refused runs and failures a tool reports in its
-            result count as runs, not as failures.
+            for fifteen minutes. Asynchronous runs (the tools-worker) are
+            measured by WildboxAsyncToolFailureRate: this alert neither fires
+            for them nor clears because of them. Timeouts, refused runs and
+            failures a tool reports in its result count as runs, not as
+            failures.
+
+      # The same question for the runs submitted to
+      # /api/v1/tools/{tool}/async. The counter is kept in Redis by the worker
+      # and exported by the api (see the top of this file), one count per
+      # task when Celery settles its state:
+      #
+      #   failed     the tool raised, or the task failed in the worker after
+      #              its retries (a task that is retried is counted once);
+      #   completed  the tool returned, `success: false` included;
+      #   timeout    stopped at the soft time limit or killed at the hard one;
+      #   cancelled  revoked, while it waited or while it ran;
+      #   refused    ended before the tool was started: the caller may not run
+      #              it, the target is not allowed, the input does not
+      #              validate or no tool has that name. The synchronous path
+      #              answers the last three with a 4xx before a run exists.
+      #
+      # The counter lives as long as the Redis data, not as long as a
+      # process, so restarting the api or the worker does not reset it. A
+      # count the worker could not write (Redis did not answer it) is lost:
+      # the counter can be short, never long.
+      - alert: WildboxAsyncToolFailureRate
+        expr: |
+          sum(rate(wildbox_tool_async_executions_total{outcome="failed"}[15m]))
+          /
+          sum(rate(wildbox_tool_async_executions_total[15m])) > 0.25
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over a quarter of asynchronous tool runs are failing"
+          description: >-
+            Over the last fifteen minutes {{ $value | humanizePercentage }} of
+            the asynchronous tool runs (POST /api/v1/tools/<tool>/async,
+            executed by tools-worker) failed: the tool raised an error it does
+            not handle, or the task failed in the worker after its retries.
+            The share has stayed above 25% for fifteen minutes. Timeouts,
+            canceled and refused tasks and failures a tool reports in its
+            result count as runs, not as failures. Synchronous runs are
+            measured by WildboxSyncToolFailureRate.
+
+      # The queue has not been empty for fifteen minutes and in that time no
+      # worker took a task from it. Both numbers are needed: a queue alone is
+      # a backlog, which a busy worker has too. A worker that is alive cannot
+      # go fifteen minutes without starting a task while one waits, because
+      # no task runs for more than ten (task_time_limit in
+      # open-security-tools/app/celery_app.py; a tools test fails if that
+      # limit reaches this window). So this is tools-worker stopped,
+      # restarting, or unable to reach Redis.
+      #
+      # It cannot fire on an idle stack: an empty queue is 0, and the
+      # consumed counter is exported as 0 before the first task, not absent.
+      # It does not see tasks a worker has already taken: a worker killed
+      # while it ran some keeps them out of the queue until the broker's
+      # visibility timeout returns them, an hour later.
+      - alert: WildboxAsyncToolTasksNotConsumed
+        expr: |
+          wildbox_tool_async_queue_length > 0
+          and on ()
+          increase(wildbox_tool_async_tasks_consumed_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Asynchronous tool tasks are queued and no worker is taking them"
+          description: >-
+            {{ $value }} asynchronous tool task(s) are waiting in the queue,
+            the queue has not been empty for fifteen minutes and no worker has
+            taken a task in that time. Callers of
+            POST /api/v1/tools/<tool>/async get a task that stays pending.
+            Check `docker compose ps tools-worker` and its logs: the worker is
+            stopped, restarting, or cannot reach Redis.
+
+      # The two alerts above read numbers the tools api gets from Redis on
+      # each scrape. When it cannot, it exports none of them (a zero would
+      # read as a counter that was reset), so neither alert can fire and
+      # neither says why. This one does.
+      - alert: WildboxAsyncToolMetricsUnreadable
+        expr: wildbox_tool_async_metrics_up == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The tools service cannot read the asynchronous run counters"
+          description: >-
+            For ten minutes the tools api on {{ $labels.instance }} has not
+            been able to read the counters of asynchronous runs from Redis.
+            While this lasts WildboxAsyncToolFailureRate and
+            WildboxAsyncToolTasksNotConsumed cannot fire. Asynchronous
+            execution itself needs the same Redis: check `wildbox-redis` and
+            the api's logs.
 
   - name: wildbox-alerting
     rules:
