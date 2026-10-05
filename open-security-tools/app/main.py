@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
     logger.info("Wildbox Security API starting up...")
-    logger.info(f"Environment: {settings.environment}")
+    logger.info(f"Environment: {settings.environment or '(not declared)'}")
     logger.info(f"Debug mode: {settings.debug}")
     logger.info(f"Max concurrent tools: {settings.max_concurrent_tools}")
     logger.info(f"Default tool timeout: {settings.tool_timeout}s")

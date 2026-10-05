@@ -4,7 +4,6 @@ FastAPI application for Open Security Identity service.
 
 from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import uvicorn
 
 from .config import settings
@@ -42,9 +41,20 @@ app = FastAPI(
 
 # Canonical error contract + correlation id + Prometheus metrics.
 # One shape for every Wildbox service (see open_security_shared.errors).
-from open_security_shared.errors import install_error_handlers as _install_error_handlers
+from open_security_shared.errors import (
+    error_response as _error_response,
+    get_request_id as _get_request_id,
+    install_error_handlers as _install_error_handlers,
+)
 from open_security_shared.observability import install_observability as _install_observability
 
+# These are the only error handlers of the service. Two more used to be
+# registered at the end of this module, by status code: one answered
+# {"detail": "Endpoint not found"} to every 404, including the ones a route
+# raised with its own message ("User not found"), and one replaced the
+# catch-all with {"detail": "Internal server error"}, which has no request id
+# (#722). A handler registered for a status code runs before the handlers
+# registered for an exception class, so do not add one.
 _install_error_handlers(app)
 _install_observability(app, service_name="identity", service_version=settings.app_version)
 
@@ -75,9 +85,12 @@ async def db_session_middleware(request: Request, call_next):
     except OperationalError as e:
         logger.error(f"Database connection error: {e}")
         request.state.db = None
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Database temporarily unavailable"}
+        # The canonical body, like every other error of the service: this
+        # answered {"detail": ...}, a shape of its own (#722).
+        return _error_response(
+            code=503,
+            message="Database temporarily unavailable",
+            request_id=_get_request_id(request),
         )
     except SQLAlchemyError as e:
         logger.error(f"Database error in middleware: {e}")
@@ -369,25 +382,6 @@ async def startup_event():
             "JWT_SECRET_KEY, so rotating JWT_SECRET_KEY invalidates every API "
             "key. Set API_KEY_HASH_SECRET (required when ENVIRONMENT=production)."
         )
-
-
-
-@app.exception_handler(404)
-async def not_found_handler(request: Request, exc):
-    """Custom 404 handler."""
-    return JSONResponse(
-        status_code=404,
-        content={"detail": "Endpoint not found"}
-    )
-
-
-@app.exception_handler(500)
-async def internal_error_handler(request: Request, exc):
-    """Custom 500 handler."""
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"}
-    )
 
 
 if __name__ == "__main__":

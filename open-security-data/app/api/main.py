@@ -1000,7 +1000,7 @@ if __name__ == "__main__":
     )
     
     logger.info("Starting Open Security Data API")
-    logger.info(f"Environment: {config.environment}")
+    logger.info(f"Environment: {config.environment or '(not declared)'}")
     logger.info(f"Debug mode: {config.debug}")
     logger.info(f"Database URL: {config.database.url.split('@')[-1] if '@' in config.database.url else 'Not configured'}")
     
