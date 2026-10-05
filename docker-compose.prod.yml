@@ -134,7 +134,8 @@ services:
       # (#531). Empty allows no cross-origin requests: the browser reaches
       # identity through the gateway, on the dashboard's own origin.
       - CORS_ORIGINS=${CORS_ORIGINS}
-      - ENABLE_METRICS=true
+      # No ENABLE_METRICS: nothing read it, here as on the tools api (#743).
+      # /metrics is always served.
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       # Required in production: identity refuses to start without it (#648).
       # Repeated from the base file so the overlay states it on its own.

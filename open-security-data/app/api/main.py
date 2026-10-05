@@ -21,6 +21,9 @@ from sqlalchemy.exc import SQLAlchemyError
 import uvicorn
 import json
 
+# One version, written once, in app/__init__.py: the schema and the
+# X-API-Version header each had a literal of their own (#743).
+from app import __version__ as SERVICE_VERSION
 from app.config import get_config
 from app.models import Source, Indicator, IPAddress, Domain, FileHash, CollectionRun
 from app.utils.database import get_db_session, run_migrations
@@ -82,7 +85,7 @@ app = FastAPI(
     - Real-time Threat Analysis
     - Security Event Correlation
     """,
-    version="0.1.6",
+    version=SERVICE_VERSION,
     lifespan=lifespan,
     # /docs, /redoc and /openapi.json in development only. openapi_url was
     # left at FastAPI's default, so the schema stayed on in every
@@ -96,7 +99,7 @@ from open_security_shared.errors import install_error_handlers as _install_error
 from open_security_shared.observability import install_observability as _install_observability
 
 _install_error_handlers(app)
-_install_observability(app, service_name="data", service_version="0.1.6")
+_install_observability(app, service_name="data", service_version=SERVICE_VERSION)
 
 
 # Security headers middleware

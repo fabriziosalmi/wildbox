@@ -365,6 +365,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **`ENABLE_METRICS` for identity in `docker-compose.prod.yml`, and
+  `ENABLE_METRICS` and `METRICS_PORT` in `.env.example`** (#743). No
+  code reads the first, and no Compose file passed the other two to a
+  container: every service that has a `/metrics` route always serves
+  it. A test now reads the root Compose files and the code of every
+  service built from this repository, and fails when a variable passed
+  to a container is neither a field of its settings nor read by its
+  code. The 26 it finds today and this change does not fix are listed
+  in `tests/scripts/test_compose_variables_are_read.py`, by file and
+  service; they include `CORS_ALLOWED_ORIGINS` for guardian in the
+  production overlay, which guardian does not read.
 - **agents: `WILDBOX_RESPONDER_URL`, and the health check of the
   client that was its only reader.** `WildboxAPIClient.health_check()`
   had no caller, and no tool of the agent calls the responder. The
@@ -497,6 +508,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **agents and data report one version** (#743). Each passed one
+  version literal to the application and a second to the middleware
+  that writes the `X-API-Version` header of every response. Both now
+  read one name, as tools does. A test reads every FastAPI service's
+  application module and fails when the two are not the same name or
+  either is a literal; responder still passes one, which the test
+  lists.
 - **The visibility timeout of the tools task queue is a setting of the
   service, and the documentation states what happens to a task whose
   worker is killed** (#743). `open-security-tools/app/celery_app.py`
