@@ -18,6 +18,8 @@ on:
       - '.github/compose.ci-*.yml'
       - 'open-security-gateway/nginx/**'
       - 'scripts/check_network_segmentation.py'
+      - 'scripts/check_monitoring_config.py'
+      - 'monitoring/**'
       - 'scripts/check_redis_config.py'
       - 'scripts/generate_secrets.py'
       - '.env.example'
@@ -65,7 +67,8 @@ jobs:
       - name: Install test dependencies
         timeout-minutes: 5
         run: |
-          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary
+          # pyyaml: scripts/check_monitoring_config.py reads the rule file.
+          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary pyyaml
 
       - name: Generate secrets
         # Same as integration-tests.yml: generated the way a fresh install
@@ -150,6 +153,22 @@ jobs:
 
       - name: Segmentation from inside the running containers
         run: python3 scripts/check_network_segmentation.py runtime
+
+      - name: The monitoring profile delivers alerts on the production networks
+        # Prometheus had no Alertmanager to send a firing alert to (#658), and
+        # nothing ever started the profile, so nothing showed whether its
+        # scrape targets resolve once the overlay has taken the flat network
+        # away. Both services are on `backend` here. Started and healthy,
+        # Prometheus must reach Alertmanager by its service name; then the
+        # script asks the running Prometheus: an Alertmanager discovered,
+        # every rule loaded, every scrape target up, and every metric an
+        # alert expression reads exported by one of them.
+        timeout-minutes: 8
+        run: |
+          docker compose --profile monitoring up -d --wait --wait-timeout 240 prometheus alertmanager
+          docker compose --profile monitoring exec -T prometheus \
+            wget -q -O - http://alertmanager:9093/-/ready
+          python3 scripts/check_monitoring_config.py --runtime http://127.0.0.1:9090 --wait 180
 
       - name: guardian-worker consumes the routed queues; guardian-beat is alone
         # The queues the running worker actually reads, against the ones
@@ -274,4 +293,6 @@ jobs:
 
       - name: Tear down
         if: always()
-        run: docker compose down -v
+        # The profile is named so that prometheus and alertmanager, which
+        # hold `backend`, are removed with the rest.
+        run: docker compose --profile monitoring down -v

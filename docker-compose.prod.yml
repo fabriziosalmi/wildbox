@@ -26,11 +26,13 @@
 #             the sensor is a client of the gateway like a browser, and
 #             reaches no backend service directly)
 #   backend   gateway, identity, api, data, cspm, guardian, responder, agents,
-#             automations, prometheus
+#             automations, prometheus, alertmanager
 #             gateway -> every upstream in nginx/conf.d/wildbox_gateway.conf;
 #             identity -> open-security-gateway:8081 (auth-cache purge);
 #             agents -> api:8000 (WILDBOX_API_URL); prometheus ->
-#             the /metrics targets in monitoring/prometheus.yml
+#             the /metrics targets in monitoring/prometheus.yml and
+#             alertmanager:9093 (alerts, and its /metrics); alertmanager ->
+#             the mail server or webhook it notifies, outside the stack
 #   data      postgres, wildbox-redis, and only the services whose
 #   (internal) DATABASE_URL / REDIS_URL / CELERY_BROKER_URL name them, plus backup.
 #             guardian-beat is on data alone: it reads its schedule from
@@ -446,6 +448,13 @@ services:
       - egress
 
   prometheus:
+    networks: !override
+      - backend
+
+  # The same segment as prometheus, which sends it the alerts and scrapes it
+  # (#658). backend has a route out, which is how a notification reaches a
+  # mail server or a webhook; it has no path to PostgreSQL or Redis.
+  alertmanager:
     networks: !override
       - backend
 

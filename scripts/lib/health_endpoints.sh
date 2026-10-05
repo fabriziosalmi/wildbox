@@ -35,6 +35,7 @@ dashboard|http://localhost:3000/|
 tools-flower|http://localhost:5555/healthcheck|
 automations|http://localhost:5678/healthz|automations
 prometheus|http://localhost:9090/-/healthy|monitoring
+alertmanager|http://localhost:9093/-/healthy|monitoring
 TABLE
 }
 
