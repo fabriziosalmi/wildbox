@@ -368,6 +368,17 @@ jobs:
       - name: Automation workflows call existing API routes
         run: python3 scripts/check_automation_workflows.py
 
+      # The gateway's development Compose file mounted /var/run/docker.sock
+      # into gliderlabs/logspout:latest (#680): root on the host for an
+      # unmaintained image at whatever version the registry served. Only the
+      # root Compose file was ever validated, so nothing noticed. This reads
+      # every tracked Compose file and refuses a runtime socket mount, an
+      # image that names no version, a privileged setting and a port
+      # published on every interface; deliberate exceptions go in
+      # scripts/container_hygiene_allowlist.txt with a reason.
+      - name: Compose files mount no runtime socket and pin their images
+        run: python3 scripts/check_container_hygiene.py
+
       # Tier 1 -- real defects, whole tree, always blocking.
       - name: Flake8 (correctness, whole tree)
         run: |

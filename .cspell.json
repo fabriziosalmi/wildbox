@@ -782,6 +782,9 @@
     "getaddrinfo",
     "pycares",
     "logspout",
+    "gliderlabs",
+    "curlimages",
+    "seccomp",
     "unrouted"
   ],
   "ignoreWords": [

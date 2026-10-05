@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **gateway: the development Compose file no longer mounts the Docker
+  socket** (#680). `open-security-gateway/docker-compose.dev.yml` ran
+  `gliderlabs/logspout:latest` with `/var/run/docker.sock` mounted
+  read-only. `:ro` restricts the socket file, not the Docker API behind
+  it, so anything that compromised that container was root on the
+  developer's host; the image is unmaintained and was pulled at whatever
+  version the registry served. It also shipped to `syslog://logs:514`, a
+  host the file never defined, so nothing read its output. The service
+  is removed: `docker compose logs -f` follows every container.
+- **The standalone Compose files publish on loopback and name image
+  versions** (#680). An audit of all 21 tracked Compose files found no
+  other socket mount and no privileged setting, but 19 ports published
+  on every interface by development stacks: the debugging gateway,
+  Redis without a password (gateway, tools, sensor, agents), the
+  sensor's test PostgreSQL, the tools API with its default key, the
+  agents API, the standalone dashboard, and the Prometheus and Grafana
+  of the data and sensor stacks. They now bind `127.0.0.1`, as the root
+  `docker-compose.yml` already did. Four `nginx:alpine` and one `curlimages/curl:latest`
+  followed upstream with no version; they are `nginx:1.30-alpine` and
+  `curlimages/curl:8.22.0`. The gateway's 80, 443 and 8080 in the root
+  stack, and the reverse proxies of the standalone data, tools and
+  scaled-sensor stacks, stay on every interface: they are entry points.
+
+### CI
+
+- **Code Quality checks every Compose file** (#680). Only the root
+  `docker-compose.yml` was ever validated, so the gateway's development
+  file could mount the Docker socket unnoticed.
+  `scripts/check_container_hygiene.py` reads every tracked YAML file
+  with a top-level `services:` and fails on a runtime socket mount, an
+  image that names no version, a privileged setting or a port published
+  on every interface. Deliberate exceptions go in
+  `scripts/container_hygiene_allowlist.txt` with a reason; an entry
+  that matches nothing any more fails too. On the previous commit it
+  reports 27 problems.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

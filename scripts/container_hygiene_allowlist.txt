@@ -1,0 +1,24 @@
+# Container settings that scripts/check_container_hygiene.py would refuse,
+# kept on purpose.
+#
+# The check fails the Code Quality job for a runtime socket mount, an image
+# that names no version, a privileged setting or a port published on every
+# interface, in any tracked Compose file. List a finding here only when it is
+# deliberate, as "rule  file  subject  # reason"; the subject is what the
+# finding prints in brackets. An entry without a reason, or one that matches
+# no finding any more, fails the check too.
+
+# The gateway is the platform's entry point: browsers, API clients and
+# sensors on other machines reach it (docs/guides/ports.md).
+port  docker-compose.yml  gateway:443   # HTTPS entry point of the platform
+port  docker-compose.yml  gateway:80    # answers /health and redirects to HTTPS
+port  docker-compose.yml  gateway:8080  # answers /health and redirects to HTTPS
+
+# Reverse proxies of the standalone per-service stacks. Each is that stack's
+# entry point; the service behind it is published on 127.0.0.1 only.
+port  open-security-data/docker-compose.yml          nginx:80   # reverse proxy in front of the data API
+port  open-security-data/docker-compose.yml          nginx:443  # reverse proxy in front of the data API
+port  open-security-sensor/docker-compose.scale.yml  nginx:80   # load balancer in front of the scaled sensors
+port  open-security-sensor/docker-compose.scale.yml  nginx:443  # load balancer in front of the scaled sensors
+port  open-security-tools/docker-compose.yml         nginx:80   # reverse proxy, started only with --profile production
+port  open-security-tools/docker-compose.yml         nginx:443  # reverse proxy, started only with --profile production
