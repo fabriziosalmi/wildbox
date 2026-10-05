@@ -31,6 +31,9 @@ jobs:
       # and the correctly-configured gateway; gateway-wrong-secret gets a
       # different one to prove the rejection path (#133/#134).
       CI_GATEWAY_SECRET: ci-gateway-proof-of-origin-fixture-value
+      # The origins cors_tests.sh calls from, in the form the deployment
+      # guide gives (comma-separated; the space is deliberate).
+      CI_CORS_ORIGINS: "https://dashboard.example.test, http://localhost:3000"
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -64,6 +67,7 @@ jobs:
           # loopback here only, for revocation_tests.sh; never in compose.
           docker run -d --name gateway --network gwtest -p 8080:80 -p 127.0.0.1:8082:8081 \
             -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
+            -e CORS_ORIGINS="$CI_CORS_ORIGINS" \
             -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
             wildbox-gateway-test
           docker run -d --name gateway-wrong-secret --network gwtest -p 8081:80 \
@@ -81,6 +85,7 @@ jobs:
           # It finds identity at its default address, the mock's alias.
           docker run -d --name gateway-prod --network gwtest -p 127.0.0.1:8443:443 \
             -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
+            -e CORS_ORIGINS="$CI_CORS_ORIGINS" \
             wildbox-gateway-prod
 
       - name: Wait for services
@@ -119,6 +124,27 @@ jobs:
       # requires, per method, and a pin for each location (#647).
       - name: Run gateway route scope tests
         run: bash open-security-gateway/test/route_scope_tests.sh
+
+      # Which of Wildbox's own headers each proxying location of
+      # wildbox_gateway.conf sends its upstream, and a classification for
+      # every one of them: the gateway's secret goes to Wildbox services
+      # only (#711).
+      - name: Run gateway upstream header tests
+        run: bash open-security-gateway/test/upstream_header_tests.sh
+
+      # CORS against the configuration that ships, and the same checks
+      # against the test configuration: preflights for the origins in
+      # CORS_ORIGINS and only those, and no OPTIONS answered 405 that a
+      # browser needs (#712).
+      - name: Run gateway CORS tests
+        run: bash open-security-gateway/test/cors_tests.sh
+
+      # The image as built, nothing mounted over /etc/nginx: only this
+      # project's configuration is loaded, port 80 is the gateway's, and
+      # Docker reports the container healthy by the image's own HEALTHCHECK
+      # (#713).
+      - name: Run gateway production image tests
+        run: bash open-security-gateway/test/production_image_tests.sh gateway-prod
 
       # Logout must hold on every worker even with an authorization in flight
       # (#571). Strict: no retries, many iterations.

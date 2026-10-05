@@ -30,7 +30,7 @@ Browser/API Client → Gateway (port 80/443) → Backend Services
 | **cspm** | 8019 | FastAPI cloud security (31 checks) | API Key |
 | **sensor** | 8004 | Rust endpoint monitoring (osquery) | Certificate |
 | **dashboard** | 3000 | Next.js 14 frontend (App Router) | Session + JWT |
-| **automations** | 5678 | n8n workflow automation | Basic Auth |
+| **automations** | 5678 | n8n workflow automation | n8n's own accounts; not behind the gateway |
 
 ### Shared Infrastructure
 

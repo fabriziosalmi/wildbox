@@ -299,6 +299,9 @@ services:
     environment:
       - ENVIRONMENT=production
       - LOG_LEVEL=warn
+      # As for the services below: only what the operator lists, and nothing
+      # when it is empty (the dashboard on the gateway's own origin).
+      - CORS_ORIGINS=${CORS_ORIGINS}
     deploy:
       resources:
         limits:

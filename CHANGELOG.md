@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **gateway: n8n is no longer reachable through the gateway** (#714).
+  `/api/v1/automations/` proxied to n8n's whole surface, its editor, its
+  REST API and its webhooks, for whoever the gateway authenticated:
+  every registered session of every team, whatever its role, and any API
+  key holding `tools:admin`. n8n is a single-tenant tool with accounts
+  of its own and knows nothing of Wildbox's teams, and an instance whose
+  owner account has not been created yet lets the first caller create
+  it, with no credential (`POST /rest/owner/setup`, measured on 1.74.0).
+  The owner writes workflows, which run code in a container that reaches
+  the gateway and the services. Withholding headers (#711, below) does
+  not make that safe, so the location is removed, with its row in the
+  scope map: the path answers 404 with or without a credential. Nothing
+  shipped needs an inbound path: the workflows in
+  `open-security-automations/workflows` start on a schedule and call the
+  API outbound with an API key. n8n's editor stays on the port Compose
+  publishes on the loopback interface, `127.0.0.1:5678`, and its README
+  now tells the operator to create the owner account right after the
+  first start and how to check that one exists; n8n 1.74 has no way to
+  create it ahead of time. `N8N_BASIC_AUTH_ACTIVE`, `N8N_BASIC_AUTH_USER`
+  and `N8N_BASIC_AUTH_PASSWORD` are gone from both Compose files, both
+  `.env.example` files, `generate_secrets.py`, `validate_secrets.py` and
+  `security_validation_v2.sh`: n8n 1.x has no basic auth and ignored
+  them, so they read like a lock on the editor and were none. The
+  Traefik labels in `open-security-automations/docker-compose.yml`,
+  which would have let a Traefik on the same host publish n8n, are
+  removed too. `tools:admin` stays a valid scope; no route requires it.
+  The harness asks the production image for nine n8n paths as a session,
+  with a `tools:admin`, an `admin` and an unlimited key and with no
+  credential, and expects the gateway's own 404 each time;
+  `tests/scripts` fails for a location that proxies to anything but a
+  Wildbox service or the dashboard, for an n8n port published off the
+  loopback interface, and for a file that sets the variables again.
+
+- **gateway: nothing outside Wildbox's services receives the gateway's
+  secret, the caller's identity or the session cookie** (#711). The
+  automations location proxied to n8n with the same settings as a
+  Wildbox service, so n8n was sent `X-Gateway-Secret` and the caller's
+  user, team and role on every request, and from a browser the session
+  JWT in the `auth_token` cookie. The secret is what the services accept
+  as proof that the identity headers came from the gateway: whoever
+  holds it can state any user, team and role to all of them, a workflow
+  started by a webhook reads the headers of the request that started it,
+  and n8n reaches every service on the internal network. That location
+  is removed (#714, above); rotate the secret if n8n ever ran behind it.
+  The same audit of every other upstream: the `auth_token` cookie is
+  removed on every authenticated route, so the backends, from which
+  `Authorization` was already withheld, no longer get the same token in
+  a cookie; and a client's `X-API-Key` no longer reaches the dashboard
+  or identity's own routes, which do not read it. The gateway also
+  stops adding `Authorization: Basic` from `N8N_BASIC_AUTH_USER` and
+  `N8N_BASIC_AUTH_PASSWORD`. A new `test/upstream_header_tests.sh` runs
+  the production image and configuration, fails for a proxying location
+  it has no classification for, and checks what each upstream receives
+  of a request that carries a session token, an API key, the session
+  cookie and forged copies of the gateway's own headers.
+
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
   and forwarded the user, the team and the role alone, so no service
@@ -309,6 +365,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 
+- **gateway: `/api/v1/automations/`, the route to n8n** (#714). It
+  answers 404. n8n's editor is on `http://127.0.0.1:5678` of the host
+  with the `automations` profile started; from another machine, through
+  an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
+  leftover lines in `.env` are ignored, and `validate_secrets.py` no
+  longer asks for `N8N_BASIC_AUTH_PASSWORD`.
 - **tools: `RATE_LIMIT_REQUESTS`, `RATE_LIMIT_WINDOW` and
   `ENABLE_RATE_LIMITING`, settings that no code enforced.**
   `docker-compose.yml` set the first two and operators could tune them,
@@ -492,6 +554,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   still cannot be imported with a current OpenTelemetry SDK, because it
   uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
   installs the extra.
+- **gateway: a dashboard on another origin can call the API: a CORS
+  preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
+  The production configuration answered 405 to every `OPTIONS` request
+  before any location ran, so no preflight was ever answered: a page on
+  another origin, the dashboard's own development server on
+  `http://localhost:3000` included, could log in and do nothing else.
+  The harness did not see it, because its CORS cases ran against a test
+  configuration without that rule. Besides, the allowlist was a map
+  written into `nginx.conf`, not `CORS_ORIGINS`, and only identity's
+  routes carried the headers. CORS is now decided in one place
+  (`lua/cors.lua`, `includes/cors.conf`, included by both
+  configurations): a preflight from a listed origin is answered 204 by
+  the gateway, before authentication; a response to a listed origin
+  names it and allows credentials, the gateway's own 401, 403, 404 and
+  429 included; a response to any other origin names nobody; what a
+  service sets is replaced, so no header is doubled; the API's responses
+  carry `Vary: Origin`. Any other `OPTIONS` request is still 405.
+  `test/cors_tests.sh` runs against the production image and
+  configuration.
+- **gateway: a container run from the image alone is healthy, and its
+  port 80 is the gateway's** (#713). The image kept the base image's
+  `/etc/nginx/conf.d/default.conf`, a server for `localhost` on port 80
+  with a welcome page. It was loaded beside `wildbox_gateway.conf`, so
+  the image's own `HEALTHCHECK` (`curl http://localhost:80/health`) got
+  404 and Docker reported the container unhealthy, and port 80 served
+  the welcome page instead of the redirect to HTTPS. The Compose stack
+  did not show it: it mounts `open-security-gateway/nginx` over
+  `/etc/nginx`. The Dockerfile removes the file, and
+  `test/production_image_tests.sh` checks the image as built.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
@@ -725,6 +816,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tracing`. `events` requires `sqlalchemy[asyncio]`, which its modules
   import, and no longer httpx, which none of them imports.
 
+- **gateway: the CORS allowlist is `CORS_ORIGINS`, and only that**
+  (#712). The gateway used to allow `localhost` and `127.0.0.1` on any
+  port, in every deployment, and read no setting. It now reads
+  `CORS_ORIGINS`, which `docker-compose.yml` defaults to
+  `http://localhost:3000` and the production overlay passes as set, and
+  allows nothing else. Each entry must be an origin (scheme, host,
+  optional port): with a wildcard, a path or a bare host name the
+  gateway does not start, and says which entry. The `$cors_allow_origin`
+  map in `nginx.conf` and `includes/cors_params.conf` are gone.
 - **`make health` only reads.** On every run it created the `data`
   database if it was missing and restarted the gateway if its log had
   ever contained `host not found in upstream`. Those repairs now run

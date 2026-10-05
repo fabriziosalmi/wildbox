@@ -65,9 +65,11 @@ These start only when their Compose profile is named, for example
 
 ### Optional Services
 
-- **Automations (n8n)**: in the `automations` profile. The gateway resolves it
-  at request time on `/api/v1/automations/`, so the gateway starts without it
-  and that route answers 502 until the profile is started.
+- **Automations (n8n)**: in the `automations` profile. The gateway does not
+  route to it: its workflows call the API outbound, through the gateway, and
+  its editor is published on `127.0.0.1:5678` of the host only. Create n8n's
+  owner account right after the first start; see
+  `open-security-automations/README.md`.
 
 ### Deprecated Services
 

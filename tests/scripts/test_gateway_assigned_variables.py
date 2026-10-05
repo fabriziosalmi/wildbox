@@ -44,6 +44,8 @@ def server_declaring(names, route_uri=True):
     # The path the scope map reads (#647), where the check asks for it.
     if route_uri:
         declarations += "    set $wildbox_route_uri $uri;\n"
+    # The one CORS policy (#712), which the check asks for as well.
+    declarations += "    include /etc/nginx/includes/cors.conf;\n"
     return "server {\n" + declarations + _AUTH_LOCATION + "}\n"
 
 

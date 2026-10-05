@@ -35,6 +35,13 @@ API-key scope it requires by that variable, the path as it was before any
 location rewrote it; without the declaration the map knows no path and
 requires ``admin`` of every scope-limited key (#647).
 
+And it fails when CORS is not decided in one place. A configuration file
+that authenticates must include ``includes/cors.conf`` (the request-method
+rule, the preflight and the response labels, from ``lua/cors.lua``), and no
+configuration file may set an ``Access-Control-*`` header itself. The
+production configuration once answered 405 to every preflight while the
+test configuration, with rules of its own, passed the CORS tests (#712).
+
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
 """
@@ -61,6 +68,10 @@ ASSIGNED_VARIABLES = (
     "wildbox_scopes",
 )
 _ROUTE_URI = re.compile(r"^\s*set\s+\$wildbox_route_uri\s+\$uri\s*;")
+_CORS_INCLUDE = re.compile(r"^\s*include\s+/etc/nginx/includes/cors\.conf\s*;")
+_CORS_HEADER = re.compile(
+    r"(add_header|more_set_headers)\b.*Access-Control-", re.IGNORECASE
+)
 _SET_EMPTY = re.compile(r'^\s*set\s+\$([a-z_]+)\s+""\s*;')
 
 
@@ -122,6 +133,30 @@ def check(gateway_dir: Path) -> list:
             failures.extend(inline_authorizations(path, gateway_dir))
             failures.extend(undeclared_assigned_variables(path, gateway_dir))
             failures.extend(missing_route_uri(path, gateway_dir))
+            failures.extend(cors_outside_the_include(path, gateway_dir))
+    return failures
+
+
+def cors_outside_the_include(path: Path, gateway_dir: Path) -> list:
+    """CORS decided anywhere but includes/cors.conf and lua/cors.lua."""
+    where = path.relative_to(gateway_dir.parent)
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    failures = [
+        f"{where}:{number}: sets an Access-Control-* header itself; CORS is decided "
+        "in lua/cors.lua, applied by includes/cors.conf"
+        for number, line in enumerate(lines, 1)
+        if _CORS_HEADER.search(line)
+    ]
+    authenticates = any(_AUTHENTICATE.search(line) for line in lines)
+    if authenticates and not any(_CORS_INCLUDE.match(line) for line in lines):
+        failures.append(
+            f"{where}: calls authenticate() but does not include "
+            "/etc/nginx/includes/cors.conf in its server block; without it the "
+            "configuration has no request-method rule and answers no CORS preflight"
+        )
     return failures
 
 
@@ -191,7 +226,7 @@ def main(argv=None) -> int:
         "Every variable the gateway reads is declared in nginx.conf, every "
         "authorization goes through auth_handler, and every configuration that "
         "authenticates declares the variables it assigns and the path the scope "
-        "map reads."
+        "map reads, and includes the one CORS policy."
     )
     return 0
 
