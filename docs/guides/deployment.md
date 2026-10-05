@@ -487,6 +487,69 @@ production overlay the responder reaches them on `backend`;
 - **Results belong to the user.** A tool task or an AI analysis a run
   queues is listed and readable by the user who ran it, and by nobody else.
 
+### The agents service's tools and limits
+
+The AI analysis calls the tools service, and the data and guardian services
+when you enable their tools, as the user who submitted it: each request
+carries that user's gateway identity and `GATEWAY_INTERNAL_SECRET`. Set
+these in `.env`; both compose files pass them to the `agents` container.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `WILDBOX_API_URL` | `http://api:8000` | Tools service |
+| `AGENT_TEAM_DATA_TOOLS` | empty | The team-data tools the model is given; see below before setting it |
+| `AGENTS_WILDBOX_DATA_URL` | `http://open-security-data:8002` | Data service, passed as `WILDBOX_DATA_URL`; the threat-indicator search |
+| `AGENTS_WILDBOX_GUARDIAN_URL` | `http://open-security-guardian:8013` | Guardian, passed as `WILDBOX_GUARDIAN_URL`; the vulnerability search. The host must be in Guardian's `ALLOWED_HOSTS` |
+| `ANALYZE_RATE_LIMIT` | `5/minute` | Analyses each user may submit, in the `limits` notation (`5/minute;50/day` for several) |
+| `ANALYZE_TEAM_RATE_LIMIT` | empty | Optional ceiling for all users of one team together |
+
+A URL that is not an absolute `http` or `https` URL, a limit that cannot be
+parsed, or an `AGENT_TEAM_DATA_TOOLS` value that names anything but the two
+tools stops the agents service at start. The limit counters are kept in
+Redis and survive a restart. In the production overlay the agents service
+reaches the three services on `backend`;
+`scripts/check_network_segmentation.py runtime` checks that it does.
+
+#### Giving the AI analysis your team's data
+
+By default an analysis looks the indicator up outside (reputation, WHOIS,
+DNS, geolocation, redirects, open ports) and reads nothing Wildbox holds.
+Two more tools exist, and the model is given one only if you name it:
+
+```bash
+# .env; either name alone, or both
+AGENT_TEAM_DATA_TOOLS=threat_intel_query_tool,vulnerability_search_tool
+```
+
+- `threat_intel_query_tool` searches the data service's indicators: those
+  of the user's team and of the feeds shared by every team.
+- `vulnerability_search_tool` searches the vulnerabilities Guardian
+  records on the team's assets.
+
+Both act as the user who submitted the analysis, so they return what that
+user may see. Decide with these two facts in hand:
+
+- **What it sends to Anthropic.** Every tool output is part of the
+  conversation with the model. For each search the model makes, and it
+  chooses the search text and may search several times: up to 25
+  indicators (type, value, threat types, confidence, severity, description,
+  tags, dates), or up to 25 vulnerabilities (title, CVE ID, severity,
+  status, priority, scores, asset name and type, due date), and the number
+  of matches.
+- **The injection risk.** That data then sits in the model's context beside
+  text the other tools fetched from the internet: WHOIS records, DNS
+  answers, and the redirects and headers of the URL being analyzed. The
+  model also holds tools that reach outside, with arguments it writes
+  (`url_analysis_tool`, `dns_lookup_tool`, `whois_lookup_tool`). Someone
+  who controls the fetched text can write it as instructions, asking the
+  model to search your vulnerabilities and pass the result out in one of
+  those arguments. The prompt tells the model to treat tool output as data
+  and not to do this; that is a request to the model, not a control.
+
+With the setting empty, neither tool is in the model's tool list or its
+prompt, and the agents service makes no request to the data service or to
+Guardian.
+
 ### Internal targets of the network tools
 
 The network tools (port and vulnerability scanners, the TLS and

@@ -14,6 +14,7 @@ import redis
 
 from .config import settings
 from .agents.threat_enrichment_agent import get_threat_enrichment_agent
+from .stats import COMPLETED, FAILED, count_today
 from .tools.wildbox_client import CallerIdentityUnavailable, caller_identity
 
 # Configure logging
@@ -95,7 +96,7 @@ def _record_failure(task_id: str) -> None:
         redis_client.setex(
             f"task:{task_id}:status", settings.task_result_expires, "failed"
         )
-        redis_client.incr("stats:failed_today")
+        count_today(redis_client, FAILED)
     except Exception:
         logger.error(f"Could not record the failure of task {task_id}", exc_info=True)
 
@@ -145,7 +146,7 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
             )
             
             # Update stats
-            redis_client.incr("stats:completed_today")
+            count_today(redis_client, COMPLETED)
             
             logger.info(f"Completed threat enrichment task {task_id} - Verdict: {result.get('verdict', 'Unknown')}")
             
@@ -165,7 +166,7 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
         )
         
         # Update stats
-        redis_client.incr("stats:failed_today")
+        count_today(redis_client, FAILED)
         
         # Update task state
         task.update_state(
