@@ -248,14 +248,14 @@ schedule is defined in `open-security-guardian/guardian/schedule.py`; when
 
 | Task | Default | Why | Variable |
 | --- | --- | --- | --- |
-| SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. The assignee is e-mailed at most once every 24 hours per vulnerability, however often the check runs (see Notification recipients) | `GUARDIAN_SCHEDULE_SLA_CHECK` |
+| SLA violation check | every 15 minutes | The shortest SLA is 4 hours (P1), so a breach is reported within 15 minutes of it. The assignee is e-mailed at most once every 24 hours per vulnerability, however often the check runs; the team's owners and admins, when there is no assignee to tell, once (see Notification recipients) | `GUARDIAN_SCHEDULE_SLA_CHECK` |
 | Alert rules | every 15 minutes | A condition is noticed within 15 minutes of becoming true. A rule notifies when it starts firing and when it recovers, not on every evaluation (below), so a shorter interval detects sooner without sending more mail | `GUARDIAN_SCHEDULE_ALERT_RULES` |
 | Risk score recalculation | daily, 02:00 | A full pass over open vulnerabilities, so off-peak. Edits and threat-intel enrichment already recalculate one vulnerability at a time; the pass catches what does not, such as a change to an asset's criticality | `GUARDIAN_SCHEDULE_RISK_SCORES` |
 | Expired report cleanup | daily, 03:00 | Reports expire 30 days after generation; a day's precision is enough | `GUARDIAN_SCHEDULE_REPORT_CLEANUP` |
 | Vulnerability history cleanup | daily, 03:30 | One year of history is kept; running daily keeps each deletion to one day of rows | `GUARDIAN_SCHEDULE_HISTORY_CLEANUP` |
 | Asset inventory | daily, 04:30 | Marks assets not seen for 30 days inactive | `GUARDIAN_SCHEDULE_ASSET_INVENTORY` |
-| Overdue compliance assessments | daily, 08:00 | Prepares one reminder per overdue assessment on every run, at the start of the working day. Compliance notifications have no recipients yet, so none is e-mailed (see Notification recipients) | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
-| Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and prepares a reminder on every run: weekly gives about four reminders per exception, daily would give thirty. Not e-mailed, like the reminder above | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
+| Overdue compliance assessments | daily, 08:00 | Sends one reminder per overdue assessment on every run, at the start of the working day, to the owners and admins of the assessment's team (see Notification recipients) | `GUARDIAN_SCHEDULE_OVERDUE_ASSESSMENTS` |
+| Expiring compliance exceptions | Mondays, 08:00 | Looks 30 days ahead and prepares a reminder on every run: weekly gives about four reminders per exception, daily would give thirty. Sent to the owners and admins of the exception's team | `GUARDIAN_SCHEDULE_EXPIRING_EXCEPTIONS` |
 | User-defined schedules | every minute | Queues the discovery rules and report schedules that are due (below). Their cron fields have a one-minute resolution, so each starts within a minute of its time; a sweep that finds nothing due is two indexed queries | `GUARDIAN_SCHEDULE_USER_SCHEDULES` |
 
 To change one, set its variable in `.env` and restart the scheduler:
@@ -291,8 +291,8 @@ docker compose logs guardian-beat
   tick (at least every 5 seconds); the container turns unhealthy when the file
   is older than a minute, that is when beat is running but no longer
   scheduling.
-- The SLA and assignment e-mails prefix their vulnerability link with
-  `GUARDIAN_BASE_URL`; unset, the link is a relative path.
+- The e-mails these tasks send, and what they need to be sent at all, are
+  described under Notification recipients and E-mail below.
 
 #### Schedules defined through the API
 
@@ -344,9 +344,10 @@ For example, "more than 5 unresolved critical vulnerabilities":
   default 86400, or `off` for no reminders). A day, because a condition still
   true after a day is a backlog to be reminded of, like the SLA check's daily
   reminder, and not news every 15 minutes.
-- Notifications are e-mailed to `notification_config.recipients`. A rule
-  that names none sends no e-mail (see Notification recipients). Each
-  notification is recorded, delivered or not, and
+- Notifications are e-mailed to `notification_config.recipients`, or to the
+  owners and admins of the rule's team when it names none (see Notification
+  recipients). Each notification is recorded with who it was addressed to,
+  whether it was delivered and, when it was not, why (`failure_reason`), and
   `GET /api/v1/guardian/reports/alerts/{id}/notifications/` lists them.
 - The rule shows its `state` (`ok` or `firing`), `firing_since`,
   `last_value` and `last_evaluated_at`. `trigger_count` counts the times it
@@ -403,26 +404,92 @@ identity owns memberships, so guardian learns of them in two ways:
 
 #### Notification recipients
 
-guardian e-mails a notification to the recipients its own team named, and to
-nobody else. There is no platform-wide recipient: the
+guardian e-mails a notification about a team's data to people of that team,
+and to nobody else. There is no platform-wide recipient: the
 `DEFAULT_NOTIFICATION_RECIPIENTS` and `SECURITY_TEAM_EMAIL` settings that
-earlier versions looked for are no longer read, and defining them changes
+earlier versions looked for are not read, and defining them changes
 nothing. One address for the whole platform would receive every team's asset
 names, vulnerability titles and findings.
 
-| Notification | Sent to | Without a recipient |
+| Notification | Sent to | Otherwise |
 | --- | --- | --- |
-| Alert rule | the rule's `notification_config.recipients` | not sent; the notification is recorded with `delivered: false` and listed by `GET /api/v1/guardian/reports/alerts/{id}/notifications/` |
-| Scheduled report | the schedule's `recipients` | not sent; the report is generated and listed, and `guardian-worker` logs a warning that names the schedule |
-| SLA violation | the vulnerability's assignee, while they are a member of its team and the account has an e-mail address | not sent; the vulnerability's history (`GET /api/v1/guardian/vulnerabilities/{id}/history/`) records the violation once, as `SLA violation notification not sent (no assignee to e-mail)`, and `guardian-worker` logs a warning |
-| Vulnerability assignment | the assignee, while they are a member of the vulnerability's team and the account has an e-mail address | not sent; `guardian-worker` logs a warning |
-| Compliance (high-risk finding, assessment started, completed or overdue, exception expiring) | nobody: an assessment, a result and an exception name no recipients | not sent; `guardian-worker` logs `Notification not sent, it has no recipients (compliance)` with the subject |
+| Alert rule | the rule's `notification_config.recipients` | the owners and admins of the rule's team |
+| Scheduled report | the schedule's `recipients` | the owners and admins of the schedule's team |
+| SLA violation | the vulnerability's assignee, once a day | the owners and admins of the vulnerability's team, once |
+| Vulnerability assignment | the assignee | nobody: it is meaningful to the assignee only |
+| Compliance (high-risk finding, assessment started, completed or overdue, exception expiring) | the owners and admins of the team the assessment or the exception belongs to | |
 
-- An account has an e-mail address in guardian only if an operator set one
-  on its user in the Django admin: guardian mirrors the identity service's
-  users by id and does not copy their addresses.
-- An SLA violation whose e-mail could not be delivered is recorded as
-  `not sent (delivery failed)` and tried again a day later.
+- guardian keeps no e-mail address. It mirrors the identity service's users
+  by id, and `guardian-worker` asks identity for the addresses when it is
+  about to send: the address of an assignee, or the owners and admins of a
+  team. An address that was changed, a role that was taken away, an account
+  that was deactivated or a member who was removed is therefore not written
+  to from the next e-mail on, and an owner who never opened guardian is told
+  like any other.
+- An assignee is told while guardian still counts them as a member of the
+  vulnerability's team (see Team memberships) and identity says they have an
+  active account in it. Otherwise an SLA violation goes to the owners and
+  admins.
+- The addresses a team types into an alert rule or a report schedule are
+  used as they are, and stay until the team edits them.
+- A row written before guardian kept a team has no
+  owners and admins: only an alert rule's or a schedule's own recipients
+  are told about it.
+
+A notification is sent when the mail server accepted it. Otherwise it is
+recorded as not sent, with the reason, where its team can read it:
+
+| Notification | Where it is recorded |
+| --- | --- |
+| Alert rule | `GET /api/v1/guardian/reports/alerts/{id}/notifications/`: `recipients` (who it was addressed to), `delivered` and `failure_reason` |
+| SLA violation | the vulnerability's history (`GET /api/v1/guardian/vulnerabilities/{id}/history/`): `SLA violation notification sent`, `sent to the team's owners and admins (no assignee to e-mail)` or `not sent (<reason>)` |
+| Vulnerability assignment | the vulnerability's history: `Assignment notification sent` or `not sent (<reason>)` |
+| Scheduled report, compliance | the log of `guardian-worker`: `Notification not sent (<kind>), <reason>: <subject>` |
+
+| Reason | What to do |
+| --- | --- |
+| `no mail server is configured` | set `GUARDIAN_EMAIL_HOST` (below) |
+| `guardian is not set up to ask identity for addresses (GUARDIAN_CONTACTS_SECRET)` | set `GUARDIAN_CONTACTS_SECRET` (below) |
+| `identity could not be asked for the addresses` | identity was not reachable, or refused: the two containers do not have the same `GUARDIAN_CONTACTS_SECRET`, or identity has none. `guardian-worker` logs the status it got. An SLA violation is tried again a day later, an assignment three more times |
+| `the team has no owner or admin with an active account and an address` | give the team an owner or an admin in identity |
+| `the member has no active account with an address in the team` | the assignee was deactivated or removed, or left the team: assign the vulnerability to somebody else |
+| `the row belongs to no team, so there is nobody to tell` | assign the rows written before guardian kept a team to one (`manage.py assign_guardian_team`) |
+| `delivery failed` | the mail server refused or did not answer; `guardian-worker` logs the kind of error. An SLA violation is tried again a day later |
+
+A reason only a person can remove is recorded once per SLA violation, not
+once a day. No address is written to a log.
+
+#### E-mail
+
+`guardian-worker` sends guardian's e-mail, by SMTP. Set these in `.env` and
+recreate the worker (`docker compose up -d guardian-worker`); every value is
+checked when guardian starts, and one that cannot work stops the worker with
+the variable's name in the error.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `GUARDIAN_EMAIL_HOST` | empty | The mail server. Empty means there is none: no e-mail is sent, and every notification is recorded as not sent. Nothing is printed to the log in its place |
+| `GUARDIAN_EMAIL_PORT` | `587` | Its port |
+| `GUARDIAN_EMAIL_USE_TLS` | `true` | Switch the connection to TLS once connected, the usual choice on port 587 |
+| `GUARDIAN_EMAIL_USE_SSL` | `false` | TLS from the start of the connection, the usual choice on port 465. One of the two, not both; with this one set, `GUARDIAN_EMAIL_USE_TLS` defaults to false |
+| `GUARDIAN_EMAIL_HOST_USER`, `GUARDIAN_EMAIL_HOST_PASSWORD` | empty | The login. Both, or neither for a server that takes mail without one. A login without TLS is refused: the password would cross the network in clear text |
+| `GUARDIAN_DEFAULT_FROM_EMAIL` | none | The sender, `guardian@example.com` or `Wildbox Guardian <guardian@example.com>`. Required with a mail server: there is no default sender |
+| `GUARDIAN_CONTACTS_SECRET` | empty | What `guardian-worker` presents to identity to learn who may be e-mailed about a team. The same value goes to `identity` and `guardian-worker`, and to nothing else; `make generate-secrets` writes one, and `openssl rand -hex 32` makes one for an existing deployment. It must not be the value of `GATEWAY_INTERNAL_SECRET`: identity does not start if it is. Empty, guardian e-mails only the addresses typed into an alert rule or a report schedule |
+| `GUARDIAN_TEAM_CONTACTS_URL` | `http://open-security-identity:8001/internal/team-contacts` | Where the worker asks. Leave it unset in the Compose stack |
+| `GUARDIAN_BASE_URL` | empty | The address users open the dashboard at, scheme and host only (`https://wildbox.example.com`). The SLA and assignment e-mails link the dashboard's vulnerability list under it, and the report e-mail gives the download route in full. Empty, the e-mails carry no link |
+
+- `EMAIL_BACKEND` is not read. Earlier versions defaulted to Django's
+  console backend, which printed each e-mail to the worker's log and
+  recorded it as sent.
+- The worker asks identity on the internal network, not through the gateway,
+  which does not proxy the route. In the production overlay the two share
+  the `data` network, and the worker reaches the mail server on `egress`.
+- The worker holds no `GATEWAY_INTERNAL_SECRET`, in either Compose file: it
+  scans addresses and fetches URLs outside the stack. The contacts secret
+  opens one route of identity, which answers the address and role of the
+  active members of a team that the caller names by id or by role.
+- An alert, a compliance event or a report has no page in the dashboard, so
+  their e-mails carry no link.
 
 ### cspm's scan worker
 
@@ -674,6 +741,18 @@ with `SKIP_REDIS=true`, and the output says so. Files are written with mode
 `600` in a mode `700` directory, since they hold every password hash and
 stored credential. Archives older than `BACKUP_RETENTION` days (30 by
 default) are removed after a successful run.
+
+The guardian archive holds no credential of a scanner or an external system,
+because guardian stores none
+([#728](https://github.com/fabriziosalmi/wildbox/issues/728)). An archive
+written by 0.11.2 or earlier can hold them in plain text, if a team had sent
+any: a scanner's API key or password, an external system's `auth_config`, a
+webhook endpoint's `secret_token`, a notification channel's `config`.
+Upgrading removes them from the database, not from the archives already
+written, and restoring one of those archives into the current version removes
+them from the restored database only. Delete those archives as soon as you
+can do without them, and if one may have been read, change the secrets it
+holds where they were issued.
 
 | Variable | Default | Meaning |
 | :--- | :--- | :--- |

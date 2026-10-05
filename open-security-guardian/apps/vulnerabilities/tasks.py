@@ -5,8 +5,6 @@ Celery tasks for background processing of vulnerability data.
 """
 
 from celery import shared_task
-from django.core.mail import send_mail
-from django.contrib.auth.models import User
 from django.utils import timezone
 from django.conf import settings
 import logging
@@ -14,14 +12,25 @@ import requests
 from datetime import timedelta
 
 from apps.core.locks import single_instance
+from apps.core.notifications import TeamDirectory
 from apps.core.tenancy import is_current_member
 
 from .models import (
     Vulnerability, VulnerabilityStatus, VulnerabilityHistory,
     VulnerabilityAssessment
 )
+from .notifications import (
+    ASSIGNMENT_HISTORY_MARKER,
+    notify_assignment,
+    notify_sla_violation,
+    sla_outcome,
+)
 
 logger = logging.getLogger(__name__)
+
+
+class NotificationNotDelivered(Exception):
+    """A notification that may go through on another attempt."""
 
 
 @shared_task(bind=True, max_retries=3)
@@ -69,15 +78,25 @@ def update_vulnerability_risk_scores(self, vulnerability_ids=None):
 @shared_task(bind=True, max_retries=3)
 def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id):
     """
-    Send notification when vulnerability is assigned
-    
+    Tell the assignee that a vulnerability is theirs
+
     Args:
         vulnerability_id: ID of the assigned vulnerability
-        assigned_by_user_id: ID of user who made the assignment
+        assigned_by_user_id: ID of user who made the assignment. Not used:
+            the e-mail named them by ``get_full_name()``, which guardian's
+            mirror of an identity user does not have, and looked them up
+            first, so a call without one failed (#705). Kept so that a task
+            already queued still runs.
+
+    The address is identity's, asked for now (apps.core.notifications), and
+    what became of the notification is written in the vulnerability's
+    history. A failure that can pass is tried again; the last attempt
+    records it.
     """
     try:
-        vulnerability = Vulnerability.objects.get(id=vulnerability_id)
-        assigned_by = User.objects.get(id=assigned_by_user_id)
+        vulnerability = Vulnerability.objects.select_related(
+            'asset', 'assigned_to'
+        ).get(id=vulnerability_id)
 
         if vulnerability.assigned_to and member_assignee(vulnerability) is None:
             # Assigned to somebody who is not, or no longer, a member of the
@@ -89,51 +108,32 @@ def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id)
             )
             return {'notification_sent': False}
 
-        if vulnerability.assigned_to:
-            recipient_email = vulnerability.assigned_to.email
-            recipient_name = vulnerability.assigned_to.get_full_name()
-        else:
-            # Handle group assignment - would need group email mapping
-            logger.warning(f"Group assignment notification not implemented for {vulnerability.assignee_group}")
-            return
-        
-        if not recipient_email:
-            logger.warning(f"No email address for assigned user {vulnerability.assigned_to.username}")
-            return
-        
-        subject = f"Vulnerability Assigned: {vulnerability.title}"
-        message = f"""
-        Hello {recipient_name},
-        
-        A vulnerability has been assigned to you:
-        
-        Title: {vulnerability.title}
-        Asset: {vulnerability.asset.name}
-        Severity: {vulnerability.get_severity_display()}
-        Risk Score: {vulnerability.risk_score:.1f}
-        Due Date: {vulnerability.due_date.strftime('%Y-%m-%d %H:%M') if vulnerability.due_date else 'Not set'}
-        
-        Assigned by: {assigned_by.get_full_name()}
-        
-        Please review and take appropriate action.
-        
-        View vulnerability: {settings.BASE_URL}/vulnerabilities/{vulnerability.id}/
-        
-        Best regards,
-        Security Team
-        """
-        
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
-            fail_silently=False
+        if not vulnerability.assigned_to:
+            # Assigned to a group: a group is a name, with no address.
+            logger.warning(
+                f"Assignment notification for vulnerability {vulnerability_id} not sent: "
+                "it is assigned to a group, which has no address"
+            )
+            return {'notification_sent': False}
+
+        delivery = notify_assignment(vulnerability)
+        if delivery.retry and self.request.retries < self.max_retries:
+            raise NotificationNotDelivered(delivery.reason)
+
+        VulnerabilityHistory.objects.create(
+            vulnerability=vulnerability,
+            field_name='assignment_notification',
+            old_value='',
+            new_value='sent' if delivery.sent else 'not_sent',
+            change_reason=f'{ASSIGNMENT_HISTORY_MARKER} {delivery.outcome}'
         )
-        
-        logger.info(f"Assignment notification sent for vulnerability {vulnerability_id}")
-        return {'notification_sent': True}
-        
+        if not delivery.sent:
+            logger.warning(
+                f"Assignment notification for vulnerability {vulnerability_id} "
+                f"{delivery.outcome}"
+            )
+        return {'notification_sent': delivery.sent}
+
     except Vulnerability.DoesNotExist:
         logger.error(f"Vulnerability {vulnerability_id} not found")
         return {'error': 'Vulnerability not found'}
@@ -152,34 +152,19 @@ def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id)
 #: What every history entry of the SLA check starts with; the check finds its
 #: own entries of the last day by it.
 SLA_HISTORY_MARKER = 'SLA violation notification'
-SLA_NO_RECIPIENT = 'not sent (no assignee to e-mail)'
-
-
-def sla_recipient(vulnerability):
-    """Who is told that a vulnerability is past its due date: its assignee.
-
-    Nobody else. The check also copied every violation to a
-    SECURITY_TEAM_EMAIL setting, one address for the whole platform: defined,
-    it would have received every team's asset names and vulnerability titles
-    (#678). A vulnerability without an assignee, or whose assignee has no
-    e-mail address, notifies nobody, and its history says so.
-
-    The assignee is told only while they are a member of the
-    vulnerability's team (#676). identity tells guardian when a member
-    leaves, and their assignments are cleared then; if that notice never
-    arrived, this is what keeps a team's asset names and vulnerability
-    titles from being e-mailed to somebody who left it.
-    """
-    assignee = member_assignee(vulnerability)
-    return (assignee.email or None) if assignee else None
 
 
 def member_assignee(vulnerability):
-    """The vulnerability's assignee, if they may be told about it, else None.
+    """The vulnerability's assignee, if guardian counts them in its team.
 
-    A vulnerability of a team: its assignee, while a current member of that
-    team. A vulnerability without a team (written before guardian kept one)
-    has no team boundary to cross: its assignee, as before.
+    Its assignee, while a current member of the vulnerability's team (#676).
+    identity tells guardian when a member leaves, and their assignments are
+    cleared then; if that notice never arrived, this is what keeps a team's
+    asset names and vulnerability titles from being e-mailed to somebody
+    who left it. Whether they can be written to is identity's to say
+    (apps.core.notifications). A vulnerability without a team (written
+    before guardian kept one) keeps its assignee, and e-mails nobody: there
+    is no team to ask identity about.
     """
     assignee = vulnerability.assigned_to
     if assignee is None:
@@ -190,71 +175,62 @@ def member_assignee(vulnerability):
     return assignee
 
 
+def _sla_outcome_of(entry):
+    """The outcome a history entry of the SLA check recorded, '' for none."""
+    if entry is None:
+        return ''
+    recorded = entry.change_reason[len(SLA_HISTORY_MARKER):].strip()
+    return recorded.rsplit(' - ', 1)[0]
+
+
 @shared_task
 @single_instance
 def check_sla_violations():
     """
-    Record SLA violations and notify the assignee of each
+    Record SLA violations and notify somebody of each
 
-    A violation is recorded in the vulnerability's history with whether its
-    notification was sent: once a day while there is an assignee to remind,
-    once when there is nobody to tell.
+    The assignee, while a member of the vulnerability's team with an active
+    account; otherwise the team's owners and admins (#705). Never an address
+    for the whole platform: the check copied every violation to a
+    SECURITY_TEAM_EMAIL setting, which would have received every team's
+    asset names and vulnerability titles (#678).
+
+    A violation is recorded in the vulnerability's history with what became
+    of its notification: once a day while there is an assignee to remind,
+    once when the owners and admins were told instead, once when nobody
+    could be told and only a person can change that. See
+    apps.vulnerabilities.notifications.notify_sla_violation.
     """
     try:
         now = timezone.now()
-        
+
         # Find overdue vulnerabilities
         overdue_vulns = Vulnerability.objects.filter(
             due_date__lt=now,
             status=VulnerabilityStatus.OPEN
         ).select_related('asset', 'assigned_to')
-        
+
         notification_count = 0
         not_sent_count = 0
+        # identity is asked once per team and assignee, not once per row.
+        directory = TeamDirectory()
         for vuln in overdue_vulns:
-            recipient = sla_recipient(vuln)
             last_entry = VulnerabilityHistory.objects.filter(
                 vulnerability=vuln,
                 change_reason__icontains=SLA_HISTORY_MARKER,
-            ).order_by('-timestamp').first()
-            if last_entry is not None:
-                # At most one notification a day, however often this runs.
-                if last_entry.timestamp >= now - timedelta(hours=24):
-                    continue
-                # Nobody to tell, and the history already says so: once is
-                # enough, not a line a day for every unassigned vulnerability.
-                if not recipient and SLA_NO_RECIPIENT in last_entry.change_reason:
-                    continue
+            ).order_by('-timestamp', '-pk').first()
+            # At most one notification a day, however often this runs.
+            if last_entry is not None and last_entry.timestamp >= now - timedelta(hours=24):
+                continue
 
             overdue_hours = (now - vuln.due_date).total_seconds() / 3600
-            sent = False
-            if recipient:
-                subject = f"SLA Violation: {vuln.title} - {overdue_hours:.1f}h overdue"
-                message = f"""
-                    SLA Violation Alert
-
-                    Vulnerability: {vuln.title}
-                    Asset: {vuln.asset.name}
-                    Risk Score: {vuln.risk_score:.1f}
-                    Due Date: {vuln.due_date.strftime('%Y-%m-%d %H:%M')}
-                    Overdue by: {overdue_hours:.1f} hours
-
-                    Please take immediate action.
-
-                    View: {settings.BASE_URL}/vulnerabilities/{vuln.id}/
-                    """
-                # send_mail answers how many messages went out: with
-                # fail_silently, 0 is a delivery that failed.
-                sent = bool(send_mail(
-                    subject=subject,
-                    message=message,
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[recipient],
-                    fail_silently=True
-                ))
-                outcome = 'sent' if sent else 'not sent (delivery failed)'
-            else:
-                outcome = SLA_NO_RECIPIENT
+            delivery = notify_sla_violation(
+                vuln, overdue_hours, _sla_outcome_of(last_entry), directory
+            )
+            if delivery is None:
+                # Nothing the history does not already say.
+                continue
+            outcome = sla_outcome(delivery)
 
             # The violation is recorded on the vulnerability either way, so
             # its team sees it, and whether anybody was told (#678).
@@ -265,7 +241,7 @@ def check_sla_violations():
                 new_value='violated',
                 change_reason=f'{SLA_HISTORY_MARKER} {outcome} - {overdue_hours:.1f}h overdue'
             )
-            if sent:
+            if delivery.sent:
                 notification_count += 1
             else:
                 not_sent_count += 1

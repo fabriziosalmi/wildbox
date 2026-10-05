@@ -6,6 +6,7 @@ DRF serializers for scanner-related API endpoints.
 
 from rest_framework import serializers
 
+from apps.core.refused_fields import RefusedFieldsMixin
 from apps.core.tenancy import (
     TeamScopedModelSerializer,
     context_team_id,
@@ -31,11 +32,28 @@ class ScannerListSerializer(TeamScopedModelSerializer):
         ]
 
 
-class ScannerDetailSerializer(TeamScopedModelSerializer):
-    """Detailed serializer for scanner CRUD operations"""
+SCANNER_CREDENTIAL_REFUSED = (
+    "guardian does not store scanner credentials: it has no code that "
+    "connects to a scanner, so nothing would use one. Leave this field out."
+)
+
+
+class ScannerDetailSerializer(RefusedFieldsMixin, TeamScopedModelSerializer):
+    """Detailed serializer for scanner CRUD operations
+
+    A scanner has no credential here (#728): ``api_key`` and ``password``
+    were accepted, stored as plain text under comments that said "In a real
+    implementation, encrypt", and read by nothing. The columns are gone and
+    a request that sends either is answered 400, not accepted and dropped.
+    """
     is_healthy = serializers.ReadOnlyField()
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
-    
+
+    refused_fields = {
+        'api_key': SCANNER_CREDENTIAL_REFUSED,
+        'password': SCANNER_CREDENTIAL_REFUSED,
+    }
+
     class Meta:
         model = Scanner
         fields = '__all__'
@@ -43,20 +61,6 @@ class ScannerDetailSerializer(TeamScopedModelSerializer):
             'total_scans_completed', 'total_vulnerabilities_found',
             'avg_scan_duration_minutes', 'last_health_check', 'created_at', 'updated_at'
         ]
-        extra_kwargs = {
-            'password': {'write_only': True},
-            'api_key': {'write_only': True}
-        }
-    
-    def create(self, validated_data):
-        """Create scanner with encrypted credentials"""
-        # In a real implementation, encrypt sensitive fields
-        return super().create(validated_data)
-    
-    def update(self, instance, validated_data):
-        """Update scanner with encrypted credentials"""
-        # In a real implementation, encrypt sensitive fields
-        return super().update(instance, validated_data)
 
 
 class ScanProfileSerializer(TeamScopedModelSerializer):

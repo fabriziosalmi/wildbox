@@ -18,5 +18,12 @@ os.environ.setdefault("CELERY_BROKER_URL", "memory://")
 os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
 os.environ.setdefault("ALLOWED_HOSTS", "*")
 os.environ.setdefault("DJANGO_DEBUG", "True")
+# A deployment with a mail server, so that the suite exercises sending
+# (pytest-django swaps the SMTP backend for Django's in-memory one, and no
+# test reaches a server). A test of a deployment without one empties
+# settings.EMAIL_HOST. No GUARDIAN_CONTACTS_SECRET: identity is asked only
+# by the tests that stand one in (tests/unit/identity_stub.py).
+os.environ.setdefault("EMAIL_HOST", "smtp.test.invalid")
+os.environ.setdefault("DEFAULT_FROM_EMAIL", "guardian@test.invalid")
 
 from guardian.settings import *  # noqa: F401,F403,E402
