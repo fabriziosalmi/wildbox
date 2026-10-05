@@ -409,9 +409,9 @@ def test_the_table_uses_the_url_each_container_healthcheck_uses():
     services = _compose()
     for name, url, _ in ENDPOINTS:
         test = (services[name].get("healthcheck") or {}).get("test")
-        if not test:
-            assert name == "prometheus", f"{name} has no healthcheck to compare"
-            continue
+        # No exemption: prometheus, the one service that had no healthcheck,
+        # has one since #658.
+        assert test, f"{name} has no healthcheck to compare"
         command = " ".join(test)
         urls = re.findall(r"http://localhost[^\s'\",)]*", command)
         assert urls == [url], f"{name}: healthcheck probes {urls}, the table {url}"

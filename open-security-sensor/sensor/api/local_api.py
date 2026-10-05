@@ -210,6 +210,12 @@ class LocalAPI:
                     'paths': self.config.fim.paths,
                     'exclude_patterns': self.config.fim.exclude_patterns
                 },
+                # null: no log_sources section, the forwarder reads the
+                # platform's defaults (see /api/v1/components for those).
+                'log_sources': (
+                    None if self.config.log_sources is None
+                    else [source.to_dict() for source in self.config.log_sources]
+                ),
                 'performance': {
                     'query_interval': self.config.performance.query_interval,
                     'max_memory_mb': self.config.performance.max_memory_mb,

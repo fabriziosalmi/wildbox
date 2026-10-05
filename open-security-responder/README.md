@@ -160,8 +160,10 @@ A run acts for the user who started it. The execute endpoint records the
 user the gateway authenticated (user, team and role), the run is owned by
 that user's team, and every request a connector makes for the run carries
 that user's gateway identity (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
-`X-Wildbox-Role`) and `X-Gateway-Secret`, the headers the gateway itself
-puts on a request it forwards for that user.
+`X-Wildbox-Role`), `X-Gateway-Secret` and `X-Forwarded-Proto: https`, the
+headers the gateway itself puts on a request it forwards for that user.
+The last one matters to Guardian, which redirects a plain-HTTP request
+without it to `https://`.
 
 - **The services authorize each call for that user.** The tools a run
   starts, the AI analysis tasks it queues and the vulnerabilities it
@@ -430,7 +432,12 @@ open-security-responder/
    gateway secret.
 4. Add the action to `ACTIONS` in
    `tests/unit/test_connectors_reach_the_services.py`, which checks its
-   route and body against the target service's source.
+   route and body against the target service's source. The stand-in those
+   tests call (`tests/unit/service_contracts.py`) answers as the service
+   would, from its source: 404 for a route it does not serve, 403 without
+   identity or secret, and Guardian's 301 for a plain-HTTP request without
+   `X-Forwarded-Proto: https`. When a service gains a rule of that kind,
+   teach it to the stand-in, so a connector that breaks it fails a test.
 
 ## 📊 Monitoring
 

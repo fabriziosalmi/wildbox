@@ -283,6 +283,64 @@ async def test_a_server_error_is_retried_with_the_configured_attempts(gateway):
 
     assert len(gateway.requests) == 3
     assert forwarder.stats["events_failed"] == 2
+    # Kept for the next flush: the data service may be back by then.
+    assert forwarder.batch_buffer == EVENTS
+
+
+@pytest.mark.asyncio
+async def test_while_the_gateway_is_unavailable_the_buffer_stays_bounded(gateway):
+    # The log forwarder stops reading when the queue is full; what the sender
+    # holds while every batch fails must not grow either. It keeps the
+    # oldest 100 events to retry and gives up on what comes after them.
+    gateway.status = 503
+    forwarder = _forwarder(
+        gateway.url, ca_bundle=gateway.ca, retry_attempts=1, batch_size=5
+    )
+    events = [dict(EVENTS[0], id=f"e{index}") for index in range(150)]
+    largest = 0
+    await forwarder._init_session()
+    try:
+        for event in events:
+            forwarder.batch_buffer.append(event)
+            largest = max(largest, len(forwarder.batch_buffer))
+            if len(forwarder.batch_buffer) >= forwarder.config.data_lake.batch_size:
+                await forwarder._flush_batch()
+    finally:
+        await forwarder.session.close()
+
+    assert largest <= 101
+    assert [event["id"] for event in forwarder.batch_buffer] == [
+        f"e{index}" for index in range(100)
+    ]
+    assert forwarder.stats["events_forwarded"] == 0
+
+
+@pytest.mark.parametrize("status", [401, 403, 413, 422])
+@pytest.mark.asyncio
+async def test_a_refused_batch_is_dropped_and_does_not_block_the_next(
+    gateway, status
+):
+    # It used to be put back in the buffer: sent again with every flush,
+    # refused again, and whatever was collected meanwhile lost with it. One
+    # batch the gateway found too large (413) stopped forwarding for good.
+    gateway.status = status
+    forwarder = _forwarder(gateway.url, ca_bundle=gateway.ca)
+    await forwarder._init_session()
+    try:
+        forwarder.batch_buffer.extend(EVENTS)
+        await forwarder._flush_batch()
+
+        assert forwarder.batch_buffer == []
+        assert forwarder.stats["events_failed"] == 2
+
+        gateway.status = 200
+        forwarder.batch_buffer.append(EVENTS[0])
+        await forwarder._flush_batch()
+    finally:
+        await forwarder.session.close()
+
+    assert forwarder.stats["events_forwarded"] == 1
+    assert [len(r["json"]["events"]) for r in gateway.requests] == [2, 1]
 
 
 @pytest.mark.asyncio

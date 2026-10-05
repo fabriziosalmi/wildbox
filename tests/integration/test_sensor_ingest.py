@@ -16,9 +16,13 @@ list). What they assert happens through the gateway, as for any client:
     team and not for another team;
   * the ingest-only key can do nothing but ingest;
   * a batch cannot be stored for another team by claiming it;
-  * once the key is revoked, the next batch is refused with 401 (#593/#608).
+  * once the key is revoked, the next batch is refused with 401 (#593/#608);
+  * a line written to a file that ``log_sources`` names is read by the log
+    forwarder and stored for the key's team, and a file it does not name is
+    not read (#638).
 
-Deterministic: one batch per step, no retries, no waiting.
+Deterministic: one batch per step, no retries, and no waiting except for the
+log forwarder to look at its file.
 """
 
 import json
@@ -69,6 +73,91 @@ async def main():
         "ca_bundle": config.data_lake.ca_bundle,
         "tls_verify": config.data_lake.tls_verify,
         "stats": forwarder.stats,
+    }))
+
+
+asyncio.run(main())
+"""
+
+
+# Runs in the sensor container (#638). Takes the container's configuration,
+# adds one log source for a file in a temporary directory, and runs the real
+# log forwarder on it: a line appended to the file is collected, processed and
+# sent as the running sensor sends it. A second file in the same directory,
+# which no source names, receives a line too.
+FORWARD_LOG = r"""
+import asyncio, json, os, shutil, sys, tempfile
+
+request = json.load(sys.stdin)
+os.environ["SENSOR_DATA_LAKE_API_KEY"] = request["key"]
+
+import yaml
+
+from sensor.collectors.log_forwarder import LogForwarder
+from sensor.core.config import load_config
+from sensor.pipeline.data_forwarder import DataForwarder
+from sensor.pipeline.data_processor import DataProcessor
+
+
+async def main():
+    directory = tempfile.mkdtemp(prefix="log-source-")
+    configured = os.path.join(directory, "access.log")
+    unlisted = os.path.join(directory, "unlisted.log")
+    for path in (configured, unlisted):
+        open(path, "w").close()
+
+    with open("/etc/security-sensor/config.yaml") as handle:
+        settings = yaml.safe_load(handle)
+    settings.setdefault("collection", {})["log_forwarding"] = True
+    settings["log_sources"] = [
+        {
+            "name": request["source"],
+            "type": "file",
+            "path": configured,
+            "format": "nginx",
+        }
+    ]
+    config_path = os.path.join(directory, "config.yaml")
+    with open(config_path, "w") as handle:
+        yaml.safe_dump(settings, handle)
+
+    config = load_config(config_path)
+    config.data_lake.sensor_id = request["sensor_id"]
+    config.data_lake.retry_attempts = 1
+
+    collected = asyncio.Queue()
+    forwarder = LogForwarder(config, collected)
+    forwarder.poll_interval = 0.05
+    await forwarder.start()
+    try:
+        with open(unlisted, "a") as handle:
+            handle.write(request["unlisted_line"] + "\n")
+        with open(configured, "a") as handle:
+            handle.write(request["line"] + "\n")
+        events = [await asyncio.wait_for(collected.get(), timeout=30)]
+        # Several more looks at the source: anything else it reads shows up.
+        await asyncio.sleep(0.5)
+        while not collected.empty():
+            events.append(collected.get_nowait())
+    finally:
+        await forwarder.stop()
+        shutil.rmtree(directory, ignore_errors=True)
+
+    processor = DataProcessor(config, asyncio.Queue(), asyncio.Queue())
+    sender = DataForwarder(config, asyncio.Queue())
+    sender.min_request_interval = 0
+    await sender._init_session()
+    try:
+        for event in events:
+            sender.batch_buffer.append(await processor._process_single_event(event))
+        await sender._flush_batch()
+    finally:
+        await sender.session.close()
+    print(json.dumps({
+        "sources": [[source.name, source.path] for source in forwarder.log_sources],
+        "configured": configured,
+        "collected": len(events),
+        "stats": sender.stats,
     }))
 
 
@@ -141,11 +230,16 @@ def _events(marker):
 
 def _forward(key, sensor_id, events):
     """One batch through the real forwarder in the sensor container."""
+    return _in_sensor(FORWARD, key, sensor_id=sensor_id, events=events)
+
+
+def _in_sensor(script, key, **request):
+    """Run ``script`` in the sensor container; the JSON it prints last."""
     if shutil.which("docker") is None:
         _unavailable("docker is not available to reach the sensor container")
     result = subprocess.run(
-        ["docker", "exec", "-i", SENSOR_CONTAINER, "python", "-c", FORWARD],
-        input=json.dumps({"key": key, "sensor_id": sensor_id, "events": events}),
+        ["docker", "exec", "-i", SENSOR_CONTAINER, "python", "-c", script],
+        input=json.dumps(dict(request, key=key)),
         capture_output=True,
         text=True,
         timeout=60,
@@ -222,6 +316,57 @@ def test_a_batch_is_stored_for_the_keys_team_and_not_for_another(teams):
         f"{DATA_API}/sensors/{sensor_id}", headers=_bearer(teams["b"]), timeout=TIMEOUT
     )
     assert sensors_b.status_code == 404, sensors_b.text[:200]
+
+
+def test_a_line_written_to_a_configured_log_source_reaches_the_keys_team(teams):
+    """The log forwarder reads the source the configuration names (#638).
+
+    It used to ignore ``log_sources`` and read ``/var/log/syslog``,
+    ``/var/log/auth.log`` and the journal, none of which exists in the
+    container: a line written to the configured file went nowhere. This is
+    the one test here that waits, for the forwarder to look at the file, up
+    to a bound.
+    """
+    sensor_id = f"logs-{uuid.uuid4().hex[:8]}"
+    source = f"access_{uuid.uuid4().hex[:6]}"
+    marker = uuid.uuid4().hex
+    unlisted_marker = uuid.uuid4().hex
+    line = (
+        f'203.0.113.9 - - [05/Oct/2026:10:00:00 +0000] "GET /search?q={marker} '
+        f'HTTP/1.1" 200 512 "-" "sqlmap/1.7"'
+    )
+
+    result = _in_sensor(
+        FORWARD_LOG,
+        teams["key"]["key"],
+        sensor_id=sensor_id,
+        source=source,
+        line=line,
+        unlisted_line=f"a line in a file no source names {unlisted_marker}",
+    )
+
+    # Exactly the configured source: no default path beside it, and nothing
+    # read from the file next to it.
+    assert result["sources"] == [[source, result["configured"]]], result
+    assert result["collected"] == 1, result
+    assert result["stats"]["batches_sent"] == 1, result["stats"]
+    assert result["stats"]["events_forwarded"] == 1, result["stats"]
+
+    listed = _listed(teams["a"], sensor_id)
+    assert len(listed) == 1, listed
+    (event,) = listed
+    assert event["event_type"] == "security_event"
+    assert f"log.{source}" in event["tags"]
+    collected = event["event_data"]
+    assert collected["source"] == "log_forwarder"
+    assert collected["type"] == f"log.{source}"
+    assert collected["data"]["client_ip"] == "203.0.113.9"
+    assert marker in collected["data"]["request"]
+    assert collected["data"]["raw_message"] == line
+    assert collected["metadata"]["log_file"] == result["configured"]
+    assert unlisted_marker not in json.dumps(listed)
+
+    assert _listed(teams["b"], sensor_id) == []
 
 
 def test_the_ingest_key_can_do_nothing_but_ingest(teams):
