@@ -6,6 +6,7 @@ import hmac
 import json
 from typing import Annotated, Any, Optional
 
+from open_security_shared.environment import production_checks_apply
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode
 
@@ -31,12 +32,14 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 8001
     
-    # "production" makes API_KEY_HASH_SECRET mandatory (see below);
-    # "development" publishes the API schema and documentation pages
-    # (app/main.py). An environment that is not declared is neither: the
+    # Only "development" is a development environment: it publishes the API
+    # schema and documentation pages (app/main.py) and may run without
+    # API_KEY_HASH_SECRET (see below). Every other value is held to the
+    # start-up checks, an environment that is not declared included: the
     # default was "development", so a service started without ENVIRONMENT (a
-    # bare `docker run`) published its route map (#722). Empty is also what
-    # Compose passes for an undefined variable.
+    # bare `docker run`) published its route map (#722), and the secret was
+    # required for the exact value "production" only (#736). Empty is also
+    # what Compose passes for an undefined variable.
     environment: str = ""
 
     # Database
@@ -47,10 +50,10 @@ class Settings(BaseSettings):
 
     # Keys the HMAC used to store API-key digests. Kept separate from the JWT
     # signing key so that rotating one does not invalidate the other
-    # (WILDBO-SEC-01). Required when ENVIRONMENT=production. It used to be
+    # (WILDBO-SEC-01). Required unless ENVIRONMENT=development. It used to be
     # optional with a silent fallback to jwt_secret_key, and compose never
     # passed it, so every digest stayed keyed by the JWT secret and a JWT
-    # rotation invalidated every API key (#648). Outside production an unset
+    # rotation invalidated every API key (#648). In development an unset
     # value still falls back to jwt_secret_key, with a warning at start-up.
     api_key_hash_secret: Optional[str] = Field(
         default=None,
@@ -220,14 +223,18 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
-    def _hash_secret_required_in_production(self) -> "Settings":
-        """Refuse to start in production without API_KEY_HASH_SECRET."""
+    def _hash_secret_required_outside_development(self) -> "Settings":
+        """Refuse to start without API_KEY_HASH_SECRET, except in development.
+
+        The test used to be for the exact value "production": "staging", or
+        no ENVIRONMENT at all, started on the fallback (#736).
+        """
         if (
-            self.environment.strip().lower() == "production"
+            production_checks_apply(self.environment)
             and self.api_key_hash_secret is None
         ):
             raise ValueError(
-                "API_KEY_HASH_SECRET is required when ENVIRONMENT=production. "
+                "API_KEY_HASH_SECRET is required unless ENVIRONMENT=development. "
                 "On an existing deployment run "
                 "'./scripts/rotate_secrets.sh --secret API_KEY_HASH_SECRET "
                 "--init' so that existing API keys keep working (see "

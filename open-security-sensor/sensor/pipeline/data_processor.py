@@ -18,9 +18,31 @@ import hashlib
 import platform
 
 from sensor.core.config import SensorConfig
+from sensor.pipeline.delivery import attach_delivery, settle, take_delivery
 from sensor.utils.platform import get_platform_info
 
 logger = logging.getLogger(__name__)
+
+# What an event is, from the type its collector gives it and from nothing
+# else: the file monitor's three types, and osquery's "<pack>.<query>" for
+# two of its packs. It used to be whether the type contained "file",
+# "process", "network" or "socket", so a log line of a source named
+# network_devices was enriched as a connection, and one of a source named
+# process_audit that mentioned systemd was dropped as a noisy process.
+FILE_EVENT_TYPES = frozenset({"file_created", "file_modified", "file_deleted"})
+_PACK_KINDS = {"process_events": "process", "network": "network"}
+
+
+def event_kind(event_type: Any) -> Optional[str]:
+    """The kind of an event: "file", "process" or "network"; None for any
+    other event, a log line among them."""
+    if not isinstance(event_type, str):
+        return None
+    if event_type in FILE_EVENT_TYPES:
+        return "file"
+    pack, dot, query = event_type.partition(".")
+    return _PACK_KINDS.get(pack) if dot and query else None
+
 
 class DataProcessor:
     """Process and enrich telemetry data"""
@@ -30,7 +52,10 @@ class DataProcessor:
         self.input_queue = input_queue
         self.output_queue = output_queue
         self.running = False
-        
+        # Events a worker has taken from the input queue and not yet passed
+        # on or filtered: in neither queue for that moment.
+        self.in_flight = 0
+
         # Processor statistics
         self.stats = {
             'events_processed': 0,
@@ -79,14 +104,24 @@ class DataProcessor:
                 event = await asyncio.wait_for(self.input_queue.get(), timeout=1.0)
                 
                 # Process the event
-                processed_event = await self._process_single_event(event)
-                
-                if processed_event:
-                    # Forward to output queue
-                    await self.output_queue.put(processed_event)
-                    self.stats['events_processed'] += 1
-                else:
-                    self.stats['events_filtered'] += 1
+                self.in_flight += 1
+                try:
+                    # What the collector wants to be told about this event;
+                    # it is not part of the event (sensor.pipeline.delivery).
+                    delivery = take_delivery(event)
+                    processed_event = await self._process_single_event(event)
+
+                    if processed_event:
+                        # Forward to output queue
+                        attach_delivery(processed_event, delivery)
+                        await self.output_queue.put(processed_event)
+                        self.stats['events_processed'] += 1
+                    else:
+                        # It goes no further: the sensor has finished with it.
+                        self.stats['events_filtered'] += 1
+                        settle(delivery)
+                finally:
+                    self.in_flight -= 1
                 
             except asyncio.TimeoutError:
                 # No events available, continue
@@ -141,7 +176,7 @@ class DataProcessor:
         data = event.get('data', {})
         
         # Filter noisy process events
-        if 'process' in event_type.lower():
+        if event_kind(event_type) == 'process':
             if isinstance(data, list):
                 # Filter entire list if all processes are noisy
                 filtered_data = []
@@ -186,16 +221,19 @@ class DataProcessor:
         event_type = event.get('type', '')
         data = event.get('data', {})
         
+        # By what the event is, not by what its type happens to contain.
+        kind = event_kind(event_type)
+
         # Enrich network events
-        if 'network' in event_type.lower() or 'socket' in event_type.lower():
+        if kind == 'network':
             event = await self._enrich_network_event(event)
-        
+
         # Enrich process events
-        elif 'process' in event_type.lower():
+        elif kind == 'process':
             event = self._enrich_process_event(event)
-        
+
         # Enrich file events
-        elif 'file' in event_type.lower():
+        elif kind == 'file':
             event = self._enrich_file_event(event)
         
         # Add common enrichments

@@ -87,10 +87,11 @@ test.describe('AI analysis', { tag: '@backend' }, () => {
     await value.fill('not-an-address')
     await page.getByTestId('submit-analysis').click()
 
-    await expect(page.getByTestId('ioc-value-error')).toHaveText(
-      "Invalid format for ipv4 IOC: 'not-an-address'",
-      { timeout: 30_000 }
-    )
+    // The service names the type and not the value it refused (#735); the
+    // value is in the field, which keeps the focus.
+    await expect(page.getByTestId('ioc-value-error')).toHaveText('Invalid format for ipv4 IOC', {
+      timeout: 30_000,
+    })
     await expect(value).toBeFocused()
     await expect(page.getByTestId('analysis-card')).toHaveCount(0)
   })

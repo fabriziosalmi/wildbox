@@ -449,9 +449,14 @@ async def test_the_local_api_shows_the_sources_the_sensor_was_given(tmp_path):
 @pytest.mark.parametrize(
     "shipped", ["config.yaml.example", "config.yaml", "config.docker.yaml"]
 )
-def test_the_shipped_configurations_keep_the_default_sources(shipped):
+def test_the_shipped_configurations_keep_the_default_sources(
+    shipped, tmp_path, monkeypatch
+):
     # They only document the section, commented out: uncommenting the key
     # without an entry would be the refused "present but empty" case.
+    # (The data directory the container's configurations name is the
+    # container's: here it is this test's.)
+    monkeypatch.setenv("SENSOR_DATA_DIR", str(tmp_path))
     config = load_config(str(SERVICE_ROOT / shipped))
 
     assert config.log_sources is None
