@@ -278,15 +278,30 @@ class SyncRecord(models.Model):
 
 
 class WebhookEndpoint(models.Model):
-    """Webhook endpoints for real-time integration"""
+    """Webhook endpoints for real-time integration
+
+    ``endpoint_url`` is a record of the path a team chose, not a routing
+    key: guardian serves no inbound webhook route, and nothing looks a
+    request up by it. So it is a name like the others of #642, unique in
+    its team and free in every other one (#677). It was unique across
+    guardian: a team could not use a path another team had taken, and the
+    400 told it that the path existed there.
+
+    The database keeps it unique within the external system the endpoint
+    belongs to, which is all a constraint can say for a row that takes its
+    team from its parent; the serializer refuses a path any system of the
+    caller's team already uses. If guardian ever receives webhooks on these
+    paths, the path becomes a routing key and has to be generated, not
+    chosen: uniqueness per team would not be enough to route by.
+    """
     TEAM_LOOKUP = 'system__team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    
+
     system = models.ForeignKey(ExternalSystem, on_delete=models.CASCADE, related_name='webhooks')
-    
+
     # Webhook Configuration
     name = models.CharField(max_length=200)
-    endpoint_url = models.CharField(max_length=500, unique=True, help_text="Webhook endpoint path")
+    endpoint_url = models.CharField(max_length=500, db_index=True, help_text="Webhook endpoint path")
     secret_token = models.CharField(max_length=200, blank=True, help_text="Webhook verification token")
     
     # Event Configuration
@@ -308,6 +323,12 @@ class WebhookEndpoint(models.Model):
 
     class Meta:
         ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['system', 'endpoint_url'],
+                name='webhook_path_unique_per_system',
+            ),
+        ]
 
     def __str__(self):
         return f"Webhook: {self.name} ({self.system.name})"

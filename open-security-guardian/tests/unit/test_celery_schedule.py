@@ -317,14 +317,14 @@ def test_the_sla_check_notifies_once_a_day(locmem_cache, mailoutbox):
     vulnerability = _overdue_vulnerability()
     first = check_sla_violations.apply()
     assert first.successful(), first.traceback
-    assert first.get() == {"notifications_sent": 1}
+    assert first.get() == {"notifications_sent": 1, "notifications_not_sent": 0}
     assert len(mailoutbox) == 1
     assert mailoutbox[0].to == ["owner@example.com"]
     assert f"/vulnerabilities/{vulnerability.id}/" in mailoutbox[0].body
 
     # Running every 15 minutes does not mean an e-mail every 15 minutes.
     second = check_sla_violations.apply()
-    assert second.get() == {"notifications_sent": 0}
+    assert second.get() == {"notifications_sent": 0, "notifications_not_sent": 0}
     assert len(mailoutbox) == 1
 
 
