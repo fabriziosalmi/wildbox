@@ -389,6 +389,12 @@ services:
       # and the setting had no effect wherever it was written.
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
+      # The origins whose pages may call the API from a browser (#712). The
+      # gateway answers their preflights and names them in its responses;
+      # it reads the same setting the services do. The default is the
+      # dashboard's development server. An entry that is not an origin
+      # (scheme, host, optional port) stops the gateway at startup.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     networks:
       - wildbox
     # Every service whose hostname appears in an `upstream` block of

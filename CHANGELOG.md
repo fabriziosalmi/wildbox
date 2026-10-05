@@ -337,6 +337,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **gateway: a dashboard on another origin can call the API: a CORS
+  preflight is answered, for the origins in `CORS_ORIGINS`** (#712).
+  The production configuration answered 405 to every `OPTIONS` request
+  before any location ran, so no preflight was ever answered: a page on
+  another origin, the dashboard's own development server on
+  `http://localhost:3000` included, could log in and do nothing else.
+  The harness did not see it, because its CORS cases ran against a test
+  configuration without that rule. Besides, the allowlist was a map
+  written into `nginx.conf`, not `CORS_ORIGINS`, and only identity's
+  routes carried the headers. CORS is now decided in one place
+  (`lua/cors.lua`, `includes/cors.conf`, included by both
+  configurations): a preflight from a listed origin is answered 204 by
+  the gateway, before authentication; a response to a listed origin
+  names it and allows credentials, the gateway's own 401, 403, 404 and
+  429 included; a response to any other origin names nobody; what a
+  service sets is replaced, so no header is doubled; the API's responses
+  carry `Vary: Origin`. Any other `OPTIONS` request is still 405.
+  `test/cors_tests.sh` runs against the production image and
+  configuration.
 - **gateway: a container run from the image alone is healthy, and its
   port 80 is the gateway's** (#713). The image kept the base image's
   `/etc/nginx/conf.d/default.conf`, a server for `localhost` on port 80
@@ -544,6 +563,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **gateway: the CORS allowlist is `CORS_ORIGINS`, and only that**
+  (#712). The gateway used to allow `localhost` and `127.0.0.1` on any
+  port, in every deployment, and read no setting. It now reads
+  `CORS_ORIGINS`, which `docker-compose.yml` defaults to
+  `http://localhost:3000` and the production overlay passes as set, and
+  allows nothing else. Each entry must be an origin (scheme, host,
+  optional port): with a wildcard, a path or a bare host name the
+  gateway does not start, and says which entry. The `$cors_allow_origin`
+  map in `nginx.conf` and `includes/cors_params.conf` are gone.
 - **`make health` only reads.** On every run it created the `data`
   database if it was missing and restarted the gateway if its log had
   ever contained `host not found in upstream`. Those repairs now run

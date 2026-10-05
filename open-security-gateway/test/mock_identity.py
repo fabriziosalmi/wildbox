@@ -124,10 +124,11 @@ TOKENS = {
         "scopes": [],
         "api_key_id": "key-noscopes",
     },
-    # The session upstream_header_tests.sh uses (#711): a token of its
-    # own, so that the authorization counts other scripts assert on do not
-    # depend on which script ran first.
-    "upstream-headers-session-token": {
+    # The session of the scripts that run against the production
+    # configuration (upstream_header_tests.sh, cors_tests.sh): a token of
+    # its own, so that the authorization counts other scripts assert on do
+    # not depend on which script ran first.
+    "prod-harness-session-token": {
         "user_id": "user-1616",
         "team_id": "team-1616",
         "role": "admin",
@@ -216,6 +217,14 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        # A service with CORS middleware of its own (#712): the mock answers
+        # with the Access-Control-Allow-Origin a test asks it for, so the
+        # test can see that the gateway's word replaces it.
+        said = self.headers.get("X-Mock-Allow-Origin")
+        if said:
+            self.send_header("Access-Control-Allow-Origin", said)
+            self.send_header("Access-Control-Allow-Credentials", "true")
+            self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         if self.command != "HEAD":

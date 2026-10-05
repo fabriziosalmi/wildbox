@@ -48,7 +48,7 @@ if [ -z "${CI_GATEWAY_SECRET:-}" ]; then
     fail "CI_GATEWAY_SECRET is not set: the proof of origin cannot be compared"
 fi
 
-SESSION="upstream-headers-session-token"
+SESSION="prod-harness-session-token"
 SESSION_COOKIE="auth_token=eyJhbGciOiJIUzI1NiJ9.session.fixture"
 # Everything a client can send: both credentials, the dashboard's cookies,
 # and forged copies of every header the gateway sets itself.

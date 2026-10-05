@@ -511,39 +511,8 @@ else
     fail "RATE_LIMIT_PER_HOUR=120: five requests in a row were all served (last HTTP $STATUS)"
 fi
 
-# --- CORS (dashboard on a separate origin) ---------------------------------
-echo "== CORS =="
-# 13. Preflight from an ALLOWED origin (localhost): echoed origin.
-ACAO=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: http://localhost:3000" \
-    -H "Access-Control-Request-Method: POST" \
-    "$GATEWAY_URL/auth/jwt/login" 2>/dev/null | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
-if [ "$ACAO" = "http://localhost:3000" ]; then
-    pass "CORS preflight echoes an allowed origin"
-else
-    fail "CORS preflight: expected origin echoed, got '$ACAO'"
-fi
-
-# 14. Credentials flag present on the preflight.
-ACAC=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: http://localhost:3000" "$GATEWAY_URL/auth/jwt/login" 2>/dev/null \
-    | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-credentials"{print $2}')
-if [ "$ACAC" = "true" ]; then
-    pass "CORS allows credentials"
-else
-    fail "CORS: expected Allow-Credentials true, got '$ACAC'"
-fi
-
-# 15. A DISALLOWED origin gets NO Access-Control-Allow-Origin header (the
-#     security-critical case: the browser then blocks the response).
-EVIL=$(curl -sk -o /dev/null -D - -X OPTIONS \
-    -H "Origin: https://evil.example" "$GATEWAY_URL/auth/jwt/login" 2>/dev/null \
-    | tr -d '\r' | awk -F': ' 'tolower($1)=="access-control-allow-origin"{print $2}')
-if [ -z "$EVIL" ]; then
-    pass "CORS does not echo a disallowed origin"
-else
-    fail "CORS LEAK: echoed disallowed origin '$EVIL'"
-fi
+# CORS is in cors_tests.sh (#712): it runs against the production
+# configuration, where these cases should have been, and against this one.
 
 echo
 echo "== Results: $PASS passed, $FAIL failed =="

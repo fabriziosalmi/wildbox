@@ -10,11 +10,12 @@ The configuration lives in:
 
 | File | Contents |
 | --- | --- |
-| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, CORS allowlist, exported environment variables |
+| `nginx/nginx.conf` | Global settings, `limit_req` zones, Lua shared dictionaries, exported environment variables |
 | `nginx/conf.d/wildbox_gateway.conf` | Upstreams, listeners and every `location` block |
-| `nginx/includes/` | Shared proxy, CORS and dashboard header settings, and the auth-cache purge endpoint |
+| `nginx/includes/` | Shared proxy settings, the request-method and CORS rules (`cors.conf`), dashboard header settings, and the auth-cache purge endpoint |
 | `nginx/lua/auth_handler.lua` | Authentication, decision cache, revocation, API-key scopes, per-team rate limit |
 | `nginx/lua/utils.lua` | Token extraction, header cleanup, HTTP client helper |
+| `nginx/lua/cors.lua` | The CORS allowlist (`CORS_ORIGINS`), the preflight answer, and the labels on the API's responses |
 | `scripts/docker-entrypoint.sh` | Generates a self-signed certificate if none is mounted, then starts OpenResty with `nginx/nginx.conf` |
 
 ## Running
@@ -331,6 +332,7 @@ them through the `env` directives in `nginx.conf`.
 | `IDENTITY_SERVICE_URL` | `http://open-security-identity:8001` | Base URL for `/internal/authorize` |
 | `AUTH_CACHE_TTL` | `300` | Seconds a decision is cached |
 | `RATE_LIMIT_PER_HOUR` | `10000` | Per-team request budget, see above. Must be a whole number from 1 to 1,000,000,000; any other value stops the gateway at startup |
+| `CORS_ORIGINS` | `http://localhost:3000` in `docker-compose.yml`, empty under the production overlay | The origins whose pages may call the API from a browser, see [CORS](#cors). An entry that is not an origin stops the gateway at startup |
 
 The Compose file and `.env.example` also set `WILDBOX_ENV`, `GATEWAY_LOG_LEVEL`
 and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
@@ -338,9 +340,37 @@ and `GATEWAY_DEBUG`. They have no effect: no nginx or Lua code reads
 configuration but never used. The error log level is fixed at `warn` in
 `nginx.conf`.
 
-To accept cross-origin requests from a dashboard served on another origin, add
-the origin to the `$cors_allow_origin` map in `nginx.conf`. By default only
-`localhost` and `127.0.0.1` origins are allowed.
+### CORS
+
+The dashboard is normally served by the gateway, on the API's own origin,
+and needs no CORS. A dashboard on another origin, and the dashboard's
+development server on `http://localhost:3000`, do. `CORS_ORIGINS` lists the
+origins that may call the API from a browser: exact origins (scheme, host,
+optional port), comma-separated; a JSON list is read too. Nothing is
+allowed that is not listed, and an entry that is not an origin (a wildcard,
+a path, a bare host name) stops the gateway at startup.
+
+The rules are in `nginx/lua/cors.lua`, applied by `includes/cors.conf`,
+which the production and the test configuration both include at server
+level. For the API (`/api/` and identity's routes under `/auth/`):
+
+- A preflight from a listed origin (`OPTIONS` with `Origin` and
+  `Access-Control-Request-Method`) is answered `204` by the gateway, before
+  authentication and without reaching a service. Any other `OPTIONS`
+  request, and any method outside `GET`, `HEAD`, `POST`, `PUT`, `PATCH` and
+  `DELETE`, is answered `405`.
+- A response to a request from a listed origin carries
+  `Access-Control-Allow-Origin` with that origin (never `*`) and
+  `Access-Control-Allow-Credentials: true`, the gateway's own `401`, `403`,
+  `404` and `429` answers included.
+- A response to any other origin carries no `Access-Control-*` header. What
+  a service sets is removed either way: the gateway is the one authority,
+  so a header is never doubled.
+- Every response carries `Vary: Origin`.
+
+The dashboard's own pages are not labelled. `test/cors_tests.sh` checks all
+of this against the production image and configuration, and the same core
+cases against the test configuration.
 
 ## Logs
 
@@ -386,7 +416,8 @@ CI runs two checks on this directory:
   location of `wildbox_gateway.conf` requires, per method, with the mock
   answering for every upstream. `test/upstream_header_tests.sh`
   runs against the same image: which of Wildbox's own headers each
-  proxying location sends its upstream. `test/production_image_tests.sh` checks the
+  proxying location sends its upstream. `test/cors_tests.sh` checks CORS against it and against the test
+  configuration. `test/production_image_tests.sh` checks the
   image as built, with nothing mounted over `/etc/nginx`: only this
   project's configuration is loaded, port 80 answers `/health` and
   redirects the rest whatever the `Host`, and Docker reports the container
