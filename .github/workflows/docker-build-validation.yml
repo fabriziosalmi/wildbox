@@ -5,6 +5,13 @@ name: Docker Build Validation
 # package, or compose — are validated before merge. The existing
 # "Build Docker Images" job (test.yml) still builds and pushes on main only.
 #
+# The build is also the check that an image's environment satisfies what it
+# installs (#722): each Python Dockerfile installs the shared package with the
+# extras of the modules its service imports, offline, so pip must find their
+# requirements in what the hash-checked lock installed, and then runs
+# `pip check`. An image whose lock lacks a requirement, or pins it below the
+# floor the shared package declares, does not build.
+#
 # Path-filtered so it doesn't run on docs-only PRs.
 
 on:
@@ -14,6 +21,8 @@ on:
       - 'open-security-*/Dockerfile.*'
       - 'open-security-*/requirements.txt'
       - 'open-security-*/app/**'
+      - 'open-security-*/sensor/**'
+      - 'open-security-*/setup.py'
       - 'open-security-*/pyproject.toml'
       - 'open-security-*/manage.py'
       - 'open-security-shared/**'
@@ -44,6 +53,9 @@ jobs:
           - responder
           - agents
           - cspm
+          # The sensor's image was built by no workflow: nothing in CI ran
+          # its Dockerfile, hence nothing checked its environment.
+          - sensor
           - gateway
           - dashboard
     steps:

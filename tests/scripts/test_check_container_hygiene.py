@@ -923,12 +923,15 @@ def python_dockerfiles() -> list:
 def test_every_python_image_installs_the_same_way():
     # #657: identity, data, agents and sensor used the base image's pip, the
     # other four upgraded it first. All of them, and the tools dev image, now
-    # run the same two commands.
+    # run the same two commands. The shared package is installed offline and,
+    # since #722, without --no-deps and with the extras of the modules the
+    # service imports, so pip checks its requirements against the lock
+    # (tests/scripts/test_check_shared_dependencies.py holds the extras).
     files = python_dockerfiles()
     assert len(files) == 9, [str(path) for path in files]
     hashed = "pip install --no-cache-dir --require-hashes --no-build-isolation"
     shared = (
-        "pip install --no-cache-dir --no-index --no-deps --no-build-isolation "
+        "pip install --no-cache-dir --no-index --no-build-isolation "
         "/tmp/open-security-shared"
     )
     for path in files:
@@ -939,7 +942,9 @@ def test_every_python_image_installs_the_same_way():
             for command in cch.shell_commands(instruction.value)
             if cch.pip_arguments(command) is not None
         ]
-        assert shared in runs, path
+        installs = [run for run in runs if run.startswith(shared)]
+        assert len(installs) == 1, path
+        assert installs[0][len(shared) :] in ("", "[fastapi,metrics]"), path
         lockfile = [run for run in runs if run.startswith(hashed)]
         assert len(lockfile) == 1 and lockfile[0].endswith("-r requirements.txt"), path
         for run in runs:

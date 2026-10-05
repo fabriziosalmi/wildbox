@@ -49,14 +49,22 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirements.txt
 
 # Install the shared package, provided via the `shared` additional build
-# context (see docker-compose.yml / CI). --no-deps: its deps already come from
-# this service's requirements.txt. --no-index --no-build-isolation: build it
-# with the setuptools already in the image (the digest-pinned base image's,
-# or the one a lockfile pins by hash). Without them pip made an isolated
-# build environment and downloaded the latest setuptools from PyPI, unhashed,
-# at every build (#657).
+# context (see docker-compose.yml / CI), with no extra: this service
+# is Django and imports no module of the package that needs one
+# (scripts/check_shared_dependencies.py fails when that stops being true).
+# No --no-deps: pip resolves what the package requires, and with --no-index
+# it can only resolve it against what the hash-checked install above put in
+# the image. `pip check` then fails the build for any requirement the
+# environment does not meet. With --no-deps nothing looked, and the package
+# declared FastAPI, passlib and PyJWT as dependencies of this image too
+# (#722).
+# --no-index --no-build-isolation: build it with the setuptools already in
+# the image (the digest-pinned base image's, or the one a lockfile pins by
+# hash). Without them pip made an isolated build environment and downloaded
+# the latest setuptools from PyPI, unhashed, at every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-build-isolation /tmp/open-security-shared \
+    && pip check
 
 # Copy project
 COPY . .
