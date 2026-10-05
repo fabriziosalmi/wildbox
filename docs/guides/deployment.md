@@ -736,6 +736,15 @@ row count with the source, and drops the scratch databases. The live
 databases are only read. Run it on a schedule: a restore that has never been
 tested is not one.
 
+The comparison is exact, also on a stack that is in use. For each database
+the drill opens one read-only transaction, counts every table inside it, and
+has the backup dumped from that transaction's snapshot
+(`backup_postgres.sh --snapshot`). The restored copy has to hold the same
+tables with the same row counts, to the row; what the services write while
+the drill runs is on neither side of the comparison. The drill fails if a
+count differs, if it cannot open a snapshot, or if the backup cannot be taken
+from it.
+
 To restore for real, stop the services first, then:
 
 ```bash

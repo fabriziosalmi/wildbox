@@ -707,6 +707,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **The restore drill compares the restore with one snapshot of the
+  source** (#723). It counted the live tables before and after the backup
+  and accepted any restored count in between, to tolerate writes during
+  the drill. That was wrong in both directions: a table that grew and
+  shrank while the drill ran failed it (`restored 15 rows, source had 10
+  before and 10 after the backup`), and a restore that lost a row of a
+  table that grew passed it. For each database the drill now opens one
+  read-only `REPEATABLE READ` transaction, exports its snapshot, counts
+  every table inside it, and has the backup dumped from that snapshot;
+  the restored counts must be equal to the row. It fails if a snapshot
+  cannot be opened or is gone before the dump. `backup_postgres.sh` takes
+  `--snapshot DATABASE=ID` for this.
 - **A restore over live data needs an explicit flag** (#723).
   `scripts/restore_postgres.sh` without `--into-suffix` restored over the
   live databases with no confirmation: the destructive form was the

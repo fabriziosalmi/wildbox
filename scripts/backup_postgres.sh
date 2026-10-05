@@ -25,6 +25,13 @@
 #   BACKUP_MODE=host POSTGRES_HOST=db.internal POSTGRES_PASSWORD=... \
 #     ./scripts/backup_postgres.sh                    # external database
 #
+# --snapshot DATABASE=ID (repeatable) dumps that database from a snapshot
+# another session exported with pg_export_snapshot(), instead of the one
+# pg_dump would take itself: the archive then holds exactly what that
+# session sees. The session has to keep its transaction open until the dump
+# has started, or pg_dump fails. The restore drill uses this to compare a
+# restore with the source as the backup saw it (scripts/verify_restore.sh).
+#
 # Modes (see scripts/lib/db_access.sh):
 #   compose  Default. Runs pg_dump and redis-cli inside the stack's
 #            containers with `docker compose exec`. Honors COMPOSE_FILE,
@@ -69,13 +76,16 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # (WILDBO-DATA-01).
 DATABASES="${DATABASES:-identity,data,guardian}"
 UPLOAD_S3=false
+SNAPSHOTS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --upload-s3) UPLOAD_S3=true; shift ;;
     --databases=*) DATABASES="${1#*=}"; shift ;;
     --databases) DATABASES="${2:?--databases needs a value}"; shift 2 ;;
-    -h|--help) sed -n '2,56p' "$0"; exit 0 ;;
+    --snapshot=*) SNAPSHOTS+=("${1#*=}"); shift ;;
+    --snapshot) SNAPSHOTS+=("${2:?--snapshot needs DATABASE=SNAPSHOT_ID}"); shift 2 ;;
+    -h|--help) sed -n '2,62p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -108,6 +118,30 @@ for db in "${RAW_DBS[@]}"; do
   DB_ARRAY+=("$db")
 done
 [ "${#DB_ARRAY[@]}" -gt 0 ] || wb_die "no database to back up (DATABASES is empty)."
+
+# --snapshot DATABASE=ID. The identifier ends up on pg_dump's command line,
+# so it has to look like one, and the database has to be one of this run's:
+# a snapshot given for a database that is not dumped would be a comparison
+# its caller believes in and nothing made.
+for pair in "${SNAPSHOTS[@]+"${SNAPSHOTS[@]}"}"; do
+  [[ "$pair" =~ ^([A-Za-z_][A-Za-z0-9_]*)=([0-9A-Fa-f]+(-[0-9A-Fa-f]+)*)$ ]] \
+    || wb_die "--snapshot takes DATABASE=SNAPSHOT_ID, the identifier as pg_export_snapshot() returns it; got: $pair"
+  case " ${DB_ARRAY[*]} " in
+    *" ${BASH_REMATCH[1]} "*) ;;
+    *) wb_die "--snapshot names '${BASH_REMATCH[1]}', which is not one of the databases to back up (${DB_ARRAY[*]})." ;;
+  esac
+done
+
+# Echo the snapshot identifier given for the database $1, if there is one.
+snapshot_for() {
+  local pair
+  for pair in "${SNAPSHOTS[@]+"${SNAPSHOTS[@]}"}"; do
+    if [ "${pair%%=*}" = "$1" ]; then
+      printf '%s' "${pair#*=}"
+      return 0
+    fi
+  done
+}
 
 mkdir -p "$BACKUP_DIR"
 BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
@@ -172,8 +206,13 @@ for db in "${DB_ARRAY[@]}"; do
   partial="${BACKUP_DIR}/.${db}_${TIMESTAMP}.partial"
   archive="${BACKUP_DIR}/${db}_${TIMESTAMP}.sql"
 
-  wb_pg pg_dump -d "$db" --format=custom --compress=9 \
-    --no-owner --no-privileges > "$partial"
+  dump_args=(-d "$db" --format=custom --compress=9 --no-owner --no-privileges)
+  snapshot=$(snapshot_for "$db")
+  if [ -n "$snapshot" ]; then
+    dump_args+=("--snapshot=$snapshot")
+    echo "  from the exported snapshot $snapshot"
+  fi
+  wb_pg pg_dump "${dump_args[@]}" > "$partial"
 
   # `gzip -t` only proves the gzip container; ask pg_restore to read the
   # archive's table of contents before calling it a backup.
