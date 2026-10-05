@@ -309,6 +309,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dispatched and the e-mails sent before and after, and fails a `2xx`
   answer that changed nothing. A `GET` must answer differently when the
   data differs, so fixed figures fail too.
+- **Rotating `POSTGRES_PASSWORD` no longer locks every service out.**
+  `scripts/rotate_secrets.sh` rewrote only the `POSTGRES_PASSWORD=` line
+  of `.env`. The services connect with `DATABASE_URL`,
+  `DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and
+  `RESPONDER_DATABASE_URL`, which embed the password, and the password
+  itself lives in the running server, so the next restart failed with
+  `password authentication failed` while the script reported success. The
+  rotation now changes the server and every connection string in `.env`
+  that points at the stack's PostgreSQL, checks that the server accepts
+  the new password, and names the services to recreate. It refuses to
+  run when the stack is not running, and if a step fails it restores
+  `.env` and the server's previous password and says so. The password is
+  sent to the server as a SCRAM-SHA-256 verifier over standard input: it
+  is in no command line and in no statement the server could log (#649).
+- **A rotated `API_KEY` is accepted by the stack again.** The script
+  drew every secret as a 64-character URL-safe token. `API_KEY` must be
+  `wsk_<prefix>.<64 hex characters>` for `make validate-secrets`, which
+  `make start` runs first, and the tools service rejects a key that
+  contains a weak pattern such as `abc`. Each secret is now drawn by the
+  generator `make generate-secrets` uses for it (#649).
+- **The rotation script says what reads each secret.** It described
+  `NEXTAUTH_SECRET` as invalidating dashboard sessions, although nothing
+  reads it, and named two of the three containers that require
+  `API_KEY`. After a rotation it ended with advice about
+  `GATEWAY_INTERNAL_SECRET` and `docker compose up -d --force-recreate`
+  whatever the secret. It now prints the services that receive the
+  rotated secret, read from `docker compose config`, and the command
+  that recreates only those (#649).
 - **`make backup` and `make restore-drill` work on the default stack.**
   They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
   environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
