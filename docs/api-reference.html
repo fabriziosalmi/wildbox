@@ -191,7 +191,7 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
                     </tbody>
                 </table>
             </div>
-            <p class="text-gray-400 mt-6">Backends also listen on <code>127.0.0.1</code> ports of the Docker host, for health checks and debugging; see <a href="/guides/ports/" class="accent">Service ports</a>. identity, agents and responder serve their own interactive documentation there only when <code>ENVIRONMENT</code> is not <code>production</code>, data only when it is <code>development</code>, and cspm only with <code>DEBUG</code> on; tools serves no documentation pages, only its <code>/openapi.json</code>.</p>
+            <p class="text-gray-400 mt-6">Backends also listen on <code>127.0.0.1</code> ports of the Docker host, for health checks and debugging; see <a href="/guides/ports/" class="accent">Service ports</a>. identity, agents, responder, data and cspm serve their own interactive documentation and <code>/openapi.json</code> there only when <code>ENVIRONMENT</code> is <code>development</code>; tools serves no documentation pages, and its <code>/openapi.json</code> under the same condition.</p>
         </section>
 
         <!-- Errors -->

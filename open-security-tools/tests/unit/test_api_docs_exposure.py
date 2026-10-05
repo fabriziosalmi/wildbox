@@ -1,11 +1,14 @@
-"""identity serves its API schema and documentation pages in development only.
+"""tools serves its API schema in development only, and no documentation page.
 
-/docs, /redoc and /openapi.json map every route, admin and internal ones
-included. identity served the two pages unconditionally (#496), then turned
-all three off for the exact value ``production`` only, so ``staging`` still
-published them (#679). The rule is now the one every service shares
+/openapi.json maps every route of the service, and tools served it in every
+environment (#679). The rule is now the one every service shares
 (``open_security_shared.api_docs``): served when ``ENVIRONMENT`` is
 ``development``, 404 in any other environment.
+
+tools is the one service without /docs and /redoc, in any environment: its
+standalone web UI, which served them, is gone (#581), and FastAPI's own pages
+load their scripts from a CDN, which the service's Content-Security-Policy
+(``script-src 'self'``) blocks.
 
 Every FastAPI service has this test, with the same shape. The application is
 built when its module is imported, from the environment of that moment, so
@@ -16,7 +19,6 @@ environment. The probe does not enter the lifespan, so it needs no database.
 
 import json
 import os
-import string
 import subprocess
 import sys
 from pathlib import Path
@@ -30,14 +32,11 @@ APP = "app.main:app"
 
 # What the settings need before the module can be imported; test-only values.
 SETTINGS = {
-    "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
-    "JWT_SECRET_KEY": "a" * 32,
-    # Required when ENVIRONMENT=production; needs enough distinct characters.
-    "API_KEY_HASH_SECRET": string.ascii_letters[:40],
+    "API_KEY": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6",
 }
 
 DOCS, REDOC, SCHEMA = "/docs", "/redoc", "/openapi.json"
-IN_DEVELOPMENT = {DOCS: 200, REDOC: 200, SCHEMA: 200}
+IN_DEVELOPMENT = {DOCS: 404, REDOC: 404, SCHEMA: 200}
 OUTSIDE_DEVELOPMENT = {DOCS: 404, REDOC: 404, SCHEMA: 404}
 
 MARKER = "API_DOCS_PROBE "
@@ -79,5 +78,5 @@ def statuses(environment, **overrides):
         ("staging", OUTSIDE_DEVELOPMENT),
     ],
 )
-def test_schema_and_docs_are_served_in_development_only(environment, expected):
+def test_schema_is_served_in_development_only_and_docs_never(environment, expected):
     assert statuses(environment) == expected

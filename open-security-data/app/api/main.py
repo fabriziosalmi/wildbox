@@ -39,6 +39,7 @@ from app.schemas.api import *
 from app.models import SensorMetadata as SensorMetadataRow  # noqa: E402
 from app.models import TelemetryEvent as TelemetryEventRow  # noqa: E402
 from app.auth import get_current_user, GatewayUser
+from open_security_shared.api_docs import api_docs_urls
 from open_security_shared.tenancy import team_filter, team_or_global_filter
 
 logger = logging.getLogger(__name__)
@@ -83,8 +84,10 @@ app = FastAPI(
     """,
     version="0.1.6",
     lifespan=lifespan,
-    docs_url="/docs" if config.environment == "development" else None,
-    redoc_url="/redoc" if config.environment == "development" else None
+    # /docs, /redoc and /openapi.json in development only. openapi_url was
+    # left at FastAPI's default, so the schema stayed on in every
+    # environment after the two pages were turned off (#679).
+    **api_docs_urls(config.environment),
 )
 
 # Canonical error contract + correlation id + Prometheus metrics.

@@ -3,13 +3,8 @@
 import time
 import asyncio
 import aiohttp
-import sys
-import os
 from datetime import datetime
 from typing import List
-
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig
