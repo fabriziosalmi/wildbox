@@ -11,6 +11,15 @@
 # the append-only file, and stops it. The service then starts with the
 # restored data.
 #
+# The data that is in the volume stays there until the snapshot has been
+# loaded and checked: it is loaded in a scratch directory of the volume, the
+# temporary server has to answer and to hold as many keys as the snapshot,
+# the append-only file it writes is read back, and only then are the two
+# swapped. A snapshot that does not load leaves Redis as it was; it used to
+# leave it empty (#740). scripts/lib/restore_redis_volume.sh is that part,
+# and says what a run that dies during the swap leaves and how the next run
+# deals with it. The volume needs room for both copies meanwhile.
+#
 # It REPLACES everything in the Redis data volume: scan and run state,
 # queued work, revoked tokens and lockouts written since the backup are
 # lost. So it runs only when told to, with --replace-redis-data, and it
@@ -51,7 +60,7 @@ while [ $# -gt 0 ]; do
     --timestamp=*) TIMESTAMP="${1#*=}"; shift ;;
     --latest) USE_LATEST=true; shift ;;
     --replace-redis-data) REPLACE=true; shift ;;
-    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -110,7 +119,8 @@ trap 'exit 143' TERM
 
 echo "=== Wildbox Redis Restore ==="
 echo "Snapshot: $(basename "$SNAPSHOT")"
-echo "Target:   the data volume of the '$REDIS_SERVICE' service (REPLACED)"
+echo "Target:   the data volume of the '$REDIS_SERVICE' service (replaced once"
+echo "          the snapshot has loaded; kept as it is if it does not)"
 echo ""
 
 STAGED="$WORKDIR/dump.rdb"
@@ -122,48 +132,11 @@ fi
 [ "$(head -c 5 "$STAGED")" = "REDIS" ] || wb_die "$(basename "$SNAPSHOT") is not an RDB snapshot."
 
 # One container of the service: its image and its /data volume, nothing
-# else. The temporary server listens on a Unix socket only.
-# shellcheck disable=SC2016
-"${WB_COMPOSE[@]}" run --rm -T --no-deps --entrypoint sh "$REDIS_SERVICE" -c '
-  set -eu
-  cd /data
-  rm -rf appendonlydir dump.rdb
-  cat > dump.rdb
-  rcli() { redis-cli -s /tmp/restore.sock "$@"; }
-  field() { rcli INFO "$1" 2>/dev/null | tr -d "\r" | sed -n "s/^$2://p"; }
-  redis-server --dir /data --dbfilename dump.rdb --appendonly no --save "" \
-    --port 0 --unixsocket /tmp/restore.sock --daemonize yes \
-    --logfile /tmp/restore.log >/dev/null
-  i=0
-  until [ "$(field persistence loading)" = "0" ]; do
-    i=$((i + 1))
-    if [ "$i" -gt 600 ]; then
-      echo "the temporary Redis did not finish loading the snapshot:" >&2
-      cat /tmp/restore.log >&2
-      exit 1
-    fi
-    sleep 1
-  done
-  keys=$(rcli INFO keyspace | tr -d "\r" | grep -c "^db" || true)
-  # Turning the append-only file on makes this server write one from the
-  # data it just loaded; that file is what the service reads at start.
-  rcli CONFIG SET appendonly yes >/dev/null
-  i=0
-  until [ "$(field persistence aof_enabled)" = "1" ] \
-     && [ "$(field persistence aof_rewrite_in_progress)" = "0" ] \
-     && [ "$(field persistence aof_last_bgrewrite_status)" = "ok" ]; do
-    i=$((i + 1))
-    if [ "$i" -gt 600 ]; then
-      echo "the temporary Redis did not write the append-only file:" >&2
-      cat /tmp/restore.log >&2
-      exit 1
-    fi
-    sleep 1
-  done
-  rcli SHUTDOWN NOSAVE >/dev/null 2>&1 || true
-  [ -d appendonlydir ] || { echo "no append-only file was written" >&2; exit 1; }
-  echo "  loaded the snapshot: $keys Redis database(s) with keys"
-' < "$STAGED"
+# else. What runs in it is scripts/lib/restore_redis_volume.sh, with the
+# snapshot on stdin: it loads the snapshot next to the data that is there,
+# checks what was loaded, and only then swaps the two.
+"${WB_COMPOSE[@]}" run --rm -T --no-deps --entrypoint sh "$REDIS_SERVICE" \
+  -c "$(cat "$SCRIPT_DIR/lib/restore_redis_volume.sh")" < "$STAGED"
 
 echo ""
 echo "=== Redis restore complete ==="

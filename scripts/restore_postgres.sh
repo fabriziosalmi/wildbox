@@ -32,6 +32,22 @@
 # be the default, one forgotten option away from the harmless one. The flag
 # makes it a decision, and keeps it usable from a script: there is no prompt.
 #
+# What a failed restore leaves (#740):
+#
+#   - Every archive is read to the end of its table of contents before any
+#     database is touched, so an unreadable archive stops the run with
+#     nothing restored.
+#   - Each database is restored in one transaction (pg_restore
+#     --single-transaction). If anything in it fails, PostgreSQL rolls the
+#     whole database back to what it was. It used to run statement by
+#     statement and carry on after an error, which left a database with
+#     some tables dropped, some reloaded and some rows twice.
+#   - The databases are restored one after the other, each in a transaction
+#     of its own: PostgreSQL has no transaction that spans databases. If the
+#     second of three fails, the first is restored and the other two are as
+#     they were. The script says which is which; running the same command
+#     again restores all of them, and restoring a database twice is safe.
+#
 # Like the backup, it runs pg_restore and psql inside the stack's postgres
 # container by default (compose mode) and connects directly with
 # BACKUP_MODE=host; see scripts/lib/db_access.sh and backup_postgres.sh for
@@ -66,7 +82,7 @@ while [ $# -gt 0 ]; do
     --latest) USE_LATEST=true; shift ;;
     --dry-run) DRY_RUN=true; shift ;;
     --overwrite-live-databases) OVERWRITE_LIVE=true; shift ;;
-    -h|--help) sed -n '2,42p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,58p' "$0"; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
@@ -178,11 +194,12 @@ echo ""
 
 wb_require_postgres
 
+# First every archive, then every database: an archive that is not a
+# readable pg_dump stops the run before the first database is touched. This
+# is also the check `gzip -t` could not make.
 for i in "${!DB_ARRAY[@]}"; do
   db="${DB_ARRAY[$i]}"
   ARCHIVE="${ARCHIVES[$i]}"
-  echo "Restoring $db from $(basename "$ARCHIVE")"
-
   STAGED="$WORKDIR/${db}.dump"
   if [[ "$ARCHIVE" == *.gpg ]]; then
     gpg --batch --yes --decrypt "$ARCHIVE" > "${STAGED}.gz"
@@ -190,32 +207,77 @@ for i in "${!DB_ARRAY[@]}"; do
   else
     gunzip -c "$ARCHIVE" > "$STAGED"
   fi
-
-  # Prove the archive is a readable pg_dump before touching any database. This
-  # is the check `gzip -t` could not make.
   if ! wb_pg_stdin pg_restore --list < "$STAGED" > "$WORKDIR/${db}.toc" 2>"$WORKDIR/${db}.err"; then
-    echo "  FAILED: archive is not a readable pg_dump custom archive" >&2
+    echo "FAILED: $(basename "$ARCHIVE") is not a readable pg_dump custom archive" >&2
     cat "$WORKDIR/${db}.err" >&2
+    echo "No database was touched." >&2
     exit 1
   fi
-  echo "  archive readable: $(grep -c '^[0-9]' "$WORKDIR/${db}.toc" || true) objects"
-
-  TARGET_DB="${db}${INTO_SUFFIX}"
+  echo "$(basename "$ARCHIVE"): archive readable, $(grep -c '^[0-9]' "$WORKDIR/${db}.toc" || true) objects"
   if [ "$DRY_RUN" = true ]; then
-    echo "  dry run: would restore into '$TARGET_DB'"
-    continue
+    echo "  dry run: would restore into '${db}${INTO_SUFFIX}'"
   fi
+done
+if [ "$DRY_RUN" = true ]; then
+  echo ""
+  echo "=== Dry run complete: nothing was written ==="
+  exit 0
+fi
 
+# Which databases came out how, for the operator when one fails.
+RESTORED=()
+report_failure() {
+  local failed="$1" i seen=false left=()
+  for i in "${!DB_ARRAY[@]}"; do
+    if [ "$seen" = true ]; then
+      left+=("${DB_ARRAY[$i]}${INTO_SUFFIX}")
+    elif [ "${DB_ARRAY[$i]}${INTO_SUFFIX}" = "$failed" ]; then
+      seen=true
+    fi
+  done
+  {
+    echo ""
+    echo "=== Restore FAILED ==="
+    echo "  restored from the backup: ${RESTORED[*]:-none}"
+    echo "  failed, as it was before: $failed"
+    echo "  not attempted, unchanged: ${left[*]:-none}"
+    echo "Each database is restored in a transaction of its own; no transaction"
+    echo "spans them. Fix the cause and run the same command again: it restores"
+    echo "all of them, and restoring a database twice is safe."
+  } >&2
+}
+
+echo ""
+for i in "${!DB_ARRAY[@]}"; do
+  db="${DB_ARRAY[$i]}"
+  STAGED="$WORKDIR/${db}.dump"
+  TARGET_DB="${db}${INTO_SUFFIX}"
+  echo "Restoring $db from $(basename "${ARCHIVES[$i]}")"
+
+  created=false
   exists=$(wb_psql postgres "SELECT 1 FROM pg_database WHERE datname = '${TARGET_DB}'")
   if [ "$exists" = "1" ]; then
     echo "  database '$TARGET_DB' already exists, restoring into it"
   else
     wb_psql postgres "CREATE DATABASE \"${TARGET_DB}\""
+    created=true
   fi
 
-  wb_pg_stdin pg_restore -d "$TARGET_DB" \
-    --no-owner --no-privileges --clean --if-exists \
-    < "$STAGED"
+  # One transaction: everything the archive drops and loads, or nothing.
+  # --single-transaction also stops at the first error instead of carrying
+  # on with the statements after it.
+  if ! wb_pg_stdin pg_restore -d "$TARGET_DB" \
+      --no-owner --no-privileges --clean --if-exists --single-transaction \
+      < "$STAGED"; then
+    echo "  FAILED: the restore of '$TARGET_DB' was rolled back" >&2
+    if [ "$created" = true ]; then
+      # It did not exist before this run, and it holds nothing.
+      wb_psql postgres "DROP DATABASE IF EXISTS \"${TARGET_DB}\"" >/dev/null 2>&1 || true
+    fi
+    report_failure "$TARGET_DB"
+    exit 1
+  fi
+  RESTORED+=("$TARGET_DB")
 
   COUNT=$(wb_psql "$TARGET_DB" \
     "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")

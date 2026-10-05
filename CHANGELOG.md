@@ -542,6 +542,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with a credential, for a route it serves (the tool list, the data
   health probe, the agents statistics) and expects 200, and expects the
   tools service's own 404 for the mistaken path.
+- **A restore that fails leaves the data that was there** (#740).
+  `scripts/restore_redis.sh` deleted the contents of the Redis volume and
+  then loaded the snapshot, so a snapshot that did not load left an empty
+  Redis. It now loads the snapshot in a scratch directory of the volume,
+  requires the temporary server to answer and to hold as many keys as the
+  snapshot, reads back the append-only file it wrote, and only then swaps
+  it with the data in place; the volume needs room for both meanwhile.
+  `scripts/restore_postgres.sh` ran `pg_restore --clean` statement by
+  statement and carried on after an error: measured on a table that a
+  later view depended on, the failed restore left it without its primary
+  key and with its rows loaded twice. Each database is now restored in
+  one transaction (`--single-transaction`) and is rolled back whole when
+  anything fails, and every archive is read before the first database is
+  touched. The three databases remain three transactions: if one fails,
+  the script says which were restored, which failed and which were not
+  reached, and the same command run again restores all of them.
 - **`make health` no longer reports a Redis it cannot log in to as
   healthy** (#740). The check ran `redis-cli ping` without a password and
   counted `NOAUTH` as success, so a Redis whose password no longer

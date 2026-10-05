@@ -850,6 +850,26 @@ because Redis runs with the append-only file enabled and then ignores a
 `dump.rdb` at start: copying the snapshot into the volume by hand gives an
 empty Redis.
 
+#### When a restore fails
+
+A restore that fails leaves the data that was there.
+
+`restore_postgres.sh` reads every archive before it touches a database, and
+restores each database in one transaction (`pg_restore --single-transaction`).
+If anything in it fails, PostgreSQL rolls that database back to what it was.
+The three databases are three transactions, because PostgreSQL has none that
+spans databases: if the second fails, the first is restored and the other two
+are unchanged. The script lists which is which, and the same command run
+again restores all three; restoring a database twice is safe.
+
+`restore_redis.sh` loads the snapshot in a scratch directory of the Redis
+volume. The temporary server has to answer and to hold as many keys as the
+snapshot, the append-only file it writes is read back, and only then is it
+swapped with the data in place. The volume needs room for both copies during
+the restore. The swap itself is two renames: if the script is killed between
+them, the previous data is in `.restore-previous` in the volume, and the next
+run puts it back before it does anything else.
+
 ---
 
 ## 7. Monitoring
