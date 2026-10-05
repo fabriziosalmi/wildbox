@@ -96,7 +96,8 @@ MUST_CONNECT = [
     ("guardian-worker", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
     ("guardian-beat", "wildbox-postgres", 5432, "DATABASE_URL (PeriodicTask rows)"),
     ("guardian-beat", "wildbox-redis", 6379, "CELERY_BROKER_URL"),
-    ("responder", "wildbox-postgres", 5432, "DATABASE_URL"),
+    # Redis only: the responder has no database (#654). It is on data for
+    # this connection.
     ("responder", "wildbox-redis", 6379, "REDIS_URL"),
     # The playbook connectors call these as the run's caller (#616).
     ("responder", "open-security-tools", 8000, "WILDBOX_API_URL"),

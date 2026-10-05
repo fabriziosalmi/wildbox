@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse
 import redis
 
 from .models import (
-    ExecutionStatus, PlaybookExecutionRequest, PlaybookExecutionResult,
-    PlaybookListResponse, HealthCheckResponse
+    ExecutionStatus, PlaybookExecutionAccepted, PlaybookExecutionRequest,
+    PlaybookExecutionResult, PlaybookListResponse, HealthCheckResponse
 )
 from .config import settings
 from .playbook_parser import playbook_parser
@@ -32,6 +32,20 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Where a client reads a run back: the gateway path, the only one a client
+# can reach. The responder accepts gateway-authenticated requests only, and
+# the gateway publishes /v1/<x> as /api/v1/responder/<x>
+# (open-security-gateway/nginx/conf.d/wildbox_gateway.conf). It was the
+# service's own /v1/runs/{id}, which on the gateway is the dashboard or a
+# 404, never the run (#654).
+#
+# A constant, as the tools service's TASK_STATUS_PATH is, and a path without
+# scheme or host: nothing in it comes from the request, so no Host or
+# X-Forwarded-* header a client sends can change where it points, and a
+# client resolves it against the address it called.
+# tests/unit/test_run_status_url.py keeps it equal to the gateway's route.
+RUN_STATUS_PATH = "/api/v1/responder/runs/{run_id}"
 
 
 @asynccontextmanager
@@ -191,17 +205,21 @@ async def list_playbooks(current_user: GatewayUser = Depends(get_current_user)):
 
 # #182 policy: executing a playbook is an operational action, member-allowed
 # (gated only by gateway auth + per-run team ownership, not by role).
-@app.post("/v1/playbooks/{playbook_id}/execute")
+@app.post(
+    "/v1/playbooks/{playbook_id}/execute",
+    response_model=PlaybookExecutionAccepted,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def execute_playbook(
     playbook_id: str,
     request: PlaybookExecutionRequest = PlaybookExecutionRequest(),
     current_user: GatewayUser = Depends(get_current_user)
 ):
     """
-    Execute a playbook.
+    Start a run of a playbook, as the user the gateway authenticated.
 
-    Authentication handled by gateway via X-Wildbox-* headers.
-    Legacy Bearer token support maintained during migration.
+    Answers 202 with the run's id and ``status_url``, the path to read the
+    run back at through the gateway.
     """
     logger.info(f"🔐 Authenticated request to execute playbook: {playbook_id} (User: {current_user.user_id}, Team: {current_user.team_id})")
     
@@ -232,16 +250,13 @@ async def execute_playbook(
             },
         )
 
-        return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content={
-                "run_id": run_id,
-                "playbook_id": playbook_id,
-                "playbook_name": playbook.name,
-                "status": "accepted",
-                "status_url": f"/v1/runs/{run_id}",
-                "message": f"Playbook '{playbook.name}' execution started"
-            }
+        return PlaybookExecutionAccepted(
+            run_id=run_id,
+            playbook_id=playbook_id,
+            playbook_name=playbook.name,
+            status="accepted",
+            status_url=RUN_STATUS_PATH.format(run_id=run_id),
+            message=f"Playbook '{playbook.name}' execution started",
         )
         
     except HTTPException:
@@ -311,7 +326,12 @@ async def reload_playbooks(current_user: GatewayUser = Depends(require_role("own
 
 @app.get("/v1/connectors")
 async def list_connectors(current_user: GatewayUser = Depends(get_current_user)):
-    """List all available connectors and their actions"""
+    """List the connectors and the actions each one offers.
+
+    Names and actions only: what a playbook step needs to call
+    ``connector.action``. The addresses the connectors call are deployment
+    configuration and are not part of the answer (#654).
+    """
     try:
         connectors = connector_registry.list_connectors()
         return {

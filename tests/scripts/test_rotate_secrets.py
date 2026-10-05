@@ -51,7 +51,6 @@ DSN_KEYS = (
     "DATABASE_URL",
     "GUARDIAN_DATABASE_URL",
     "DATA_DATABASE_URL",
-    "RESPONDER_DATABASE_URL",
 )
 ROTATABLE = (
     "JWT_SECRET_KEY",
@@ -180,7 +179,6 @@ COMPOSE_TEMPLATE = {
         "identity": {"environment": {"DATABASE_URL": "${DATABASE_URL}"}},
         "data": {"environment": {"DATABASE_URL": "${DATA_DATABASE_URL}"}},
         "guardian": {"environment": {"DATABASE_URL": "${GUARDIAN_DATABASE_URL}"}},
-        "responder": {"environment": {"DATABASE_URL": "${RESPONDER_DATABASE_URL}"}},
         "dashboard": {"environment": {"NEXTAUTH_SECRET": "${NEXTAUTH_SECRET}"}},
         "api": {"environment": {"API_KEY": "${API_KEY}"}},
         "gateway": {"environment": {}},
@@ -311,7 +309,7 @@ def test_the_operator_is_told_what_changed_and_what_to_recreate(harness):
     # Exactly the services whose rendered configuration carries the new
     # password, without postgres itself, which reads it only at first init.
     assert (
-        "    docker compose up -d --no-deps identity data guardian responder\n" in out
+        "    docker compose up -d --no-deps identity data guardian\n" in out
     )
     assert "keeps running" in out
     backup = harness.backups()[0]
