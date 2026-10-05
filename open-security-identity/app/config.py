@@ -31,8 +31,13 @@ class Settings(BaseSettings):
     debug: bool = False
     port: int = 8001
     
-    # "production" makes API_KEY_HASH_SECRET mandatory (see below).
-    environment: str = "development"
+    # "production" makes API_KEY_HASH_SECRET mandatory (see below);
+    # "development" publishes the API schema and documentation pages
+    # (app/main.py). An environment that is not declared is neither: the
+    # default was "development", so a service started without ENVIRONMENT (a
+    # bare `docker run`) published its route map (#722). Empty is also what
+    # Compose passes for an undefined variable.
+    environment: str = ""
 
     # Database
     database_url: str = Field(..., description="Database connection URL")

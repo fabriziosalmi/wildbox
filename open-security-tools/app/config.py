@@ -24,7 +24,13 @@ class Settings(BaseSettings):
     host: str = Field(default="127.0.0.1", description="Host to bind the server")
     port: int = Field(default=8000, ge=1, le=65535, description="Port to bind the server")
     debug: bool = Field(default=False, description="Debug mode")
-    environment: str = Field(default="development", description="Environment name")
+    # None when ENVIRONMENT is not declared; validate_environment turns that
+    # into "", which is neither "development" (the API schema is served) nor
+    # "production" (the start-up checks in app/main.py are fatal). The
+    # default was "development", so a service started without the variable
+    # published its schema (#722). A value that is set must still be one of
+    # the three names: an empty or misspelt ENVIRONMENT refuses to start.
+    environment: Optional[str] = Field(default=None, description="Environment name")
     
     # Logging settings
     log_level: str = Field(default="INFO", description="Logging level")
@@ -102,6 +108,8 @@ class Settings(BaseSettings):
     
     @validator('environment')
     def validate_environment(cls, v):
+        if v is None:
+            return ""  # not declared: not development, not production
         valid_envs = ['development', 'staging', 'production']
         if v.lower() not in valid_envs:
             raise ValueError(f'environment must be one of {valid_envs}')

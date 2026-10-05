@@ -121,7 +121,9 @@ def test_the_production_configuration_is_read():
 
     assert "= /api/v1/tools" in locations
     assert "~ ^/api/v1/tools/(.*)$" in locations
-    assert "/api/v1/automations/" in locations
+    assert "/api/v1/guardian/" in locations
+    # n8n is not routed to (#714).
+    assert not any("automations" in entry for entry in locations)
     # The identity passthrough and the dashboard do not authenticate here.
     assert "/api/v1/identity/" not in locations
     assert "/" not in locations
@@ -131,7 +133,7 @@ def test_the_production_configuration_is_read():
     calls = sum(
         1
         for line in text.splitlines()
-        if "auth_handler.authenticate()" in al.strip_comment(line)
+        if "auth_handler.authenticate(" in al.strip_comment(line)
     )
     assert len(locations) == calls
 
@@ -151,3 +153,167 @@ def test_the_command_prints_one_location_a_line(capsys):
 
     assert printed == al.authenticated_locations(PRODUCTION_CONF.read_text())
     assert al.main([]) == 2
+
+
+# --- The locations that proxy (#711) ----------------------------------------
+
+UPSTREAM_HARNESS = GATEWAY / "test" / "upstream_header_tests.sh"
+
+
+def test_a_location_that_proxies_is_listed_whether_it_authenticates_or_not():
+    conf = server(
+        location(
+            "/api/v1/data/", AUTH + "        proxy_pass http://data_service/api/v1/;\n"
+        ),
+        location("/", "        proxy_pass http://dashboard_service;\n"),
+        location("/api/", '        return 404 \'{"error":"endpoint_not_found"}\';\n'),
+        location("/health", "        return 200 'ok';\n"),
+    )
+
+    assert al.proxying_locations(conf) == ["/api/v1/data/", "/"]
+
+
+def test_a_commented_out_proxy_pass_does_not_proxy():
+    conf = server(
+        location(
+            "/api/v1/sensor/",
+            "        # proxy_pass http://sensor_service/api/v1/;\n        return 404;\n",
+        ),
+        "    # The original content was a proxy_pass to the legacy service.\n",
+    )
+
+    assert al.proxying_locations(conf) == []
+
+
+def test_the_production_configuration_proxies_where_it_says():
+    text = PRODUCTION_CONF.read_text()
+    proxying = al.proxying_locations(text)
+
+    # One location for each proxy_pass directive outside comments.
+    directives = sum(
+        1
+        for line in text.splitlines()
+        if al.strip_comment(line).lstrip().startswith("proxy_pass ")
+    )
+    assert len(proxying) == directives
+    assert "/" in proxying and "/api/v1/identity/" in proxying
+    assert not any("automations" in entry for entry in proxying)
+    # Every location that authenticates proxies somewhere.
+    assert set(al.authenticated_locations(text)) <= set(proxying)
+    # The catch-all and the health checks answer by themselves.
+    assert "/api/" not in proxying and "/health" not in proxying
+
+
+def test_the_harness_classifies_every_proxying_location():
+    """Checked on the wire by the harness; here so that it also fails early."""
+    harness = UPSTREAM_HARNESS.read_text()
+    classified = set(re.findall(r"^upstream '([^']+)'", harness, re.MULTILINE))
+    locations = set(al.proxying_locations(PRODUCTION_CONF.read_text()))
+
+    assert (
+        locations - classified == set()
+    ), "proxying locations without a classification"
+    assert (
+        classified - locations == set()
+    ), "classifications for locations that do not exist"
+
+
+WILDBOX_SERVICES = (
+    "identity_service",
+    "data_service",
+    "cspm_service",
+    "guardian_service",
+    "responder_service",
+    "agents_service",
+    "api_service",
+)
+
+# What each kind the harness knows may proxy to.
+UPSTREAMS_OF_A_KIND = {
+    "backend": WILDBOX_SERVICES,
+    "identity": ("identity_service",),
+    "dashboard": ("dashboard_service",),
+}
+
+
+def location_blocks(text):
+    """The lines of each location of a configuration, comments stripped."""
+    blocks = {}
+    current = None
+    for raw in text.splitlines():
+        line = al.strip_comment(raw)
+        match = re.match(r"^\s*location\s+(.+?)\s*\{\s*$", line)
+        if match:
+            current = match.group(1)
+            blocks[current] = []
+        elif current is not None:
+            blocks[current].append(line)
+    return blocks
+
+
+def proxy_targets(body):
+    return re.findall(r"proxy_pass\s+http://([^/;\s]+)", body)
+
+
+def harness_kinds():
+    return dict(
+        re.findall(
+            r"^upstream '([^']+)'\s*\\?\s*(\w+)\b",
+            UPSTREAM_HARNESS.read_text(),
+            re.MULTILINE,
+        )
+    )
+
+
+def test_every_proxying_location_proxies_to_a_wildbox_service():
+    """A backend is sent the gateway's secret: the upstream must be one that checks it.
+
+    And nothing else is proxied to at all. n8n was (#711, #714): a location
+    whose upstream is not one of Wildbox's own services fails here, whatever
+    the harness calls it.
+    """
+    text = PRODUCTION_CONF.read_text()
+    kinds = harness_kinds()
+    assert set(kinds) == set(al.proxying_locations(text))
+    assert set(kinds.values()) <= set(UPSTREAMS_OF_A_KIND), "a kind nothing defines"
+
+    blocks = location_blocks(text)
+    for spec, kind in kinds.items():
+        targets = proxy_targets("\n".join(blocks[spec]))
+        assert targets, spec
+        for target in targets:
+            assert (
+                target in UPSTREAMS_OF_A_KIND[kind]
+            ), f"{spec} is classified {kind} but proxies to {target}"
+
+
+def test_the_gateway_does_not_route_to_n8n():
+    """The automations location is gone (#714) and so is everything it needed."""
+    text = PRODUCTION_CONF.read_text()
+    directives = "\n".join(al.strip_comment(line) for line in text.splitlines())
+
+    for name in ("automations", "n8n", "5678"):
+        assert name not in directives, f"{name} outside a comment"
+    # No proxy_pass to a name resolved at request time, which is how n8n was
+    # reached: every upstream is one of the upstream blocks declared above.
+    for spec, body in location_blocks(text).items():
+        for target in proxy_targets("\n".join(body)):
+            assert not target.startswith("$"), f"{spec} proxies to {target}"
+            assert target in WILDBOX_SERVICES + ("dashboard_service",), spec
+    # authenticate() takes no argument: there is no other kind of upstream.
+    assert "auth_handler.authenticate(" in directives
+    calls = re.findall(r"auth_handler\.authenticate\(([^)]*)\)", directives)
+    assert calls and all(arguments.strip() == "" for arguments in calls)
+
+    handler = (GATEWAY / "nginx" / "lua" / "auth_handler.lua").read_text()
+    code = "\n".join(line.split("--", 1)[0] for line in handler.splitlines())
+    assert "/api/v1/automations" not in code
+    assert "third_party" not in code
+
+
+def test_the_command_lists_proxying_locations(capsys):
+    assert al.main(["--proxying", str(PRODUCTION_CONF)]) == 0
+    printed = capsys.readouterr().out.splitlines()
+
+    assert printed == al.proxying_locations(PRODUCTION_CONF.read_text())
+    assert al.main(["--proxying"]) == 2
