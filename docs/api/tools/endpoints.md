@@ -493,16 +493,26 @@ gateway, not on this service.
 
 | Path | Content |
 | --- | --- |
-| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and tool executions by outcome (`wildbox_tool_executions_total`). `monitoring/prometheus.yml` scrapes it |
+| `/metrics` | Prometheus exposition format: request counts and durations by route (`wildbox_http_requests_total`, `wildbox_http_request_duration_seconds`) and synchronous tool executions by tool and outcome (`wildbox_tool_executions_total`; asynchronous runs happen in the worker, which is not scraped). `monitoring/prometheus.yml` scrapes it |
 | `/openapi.json` | The service's OpenAPI document |
 | `/api` | Service name, version and tool names |
-| `/api/system/info` | Tool count and names, concurrency and timeout settings |
-| `/api/system/operational-metrics` | Execution counters as JSON |
-| `/api/system/health-aggregate` | Calls `/health` on the other services and summarizes the answers |
 
-None of them is part of the public API. `/metrics` is the service's only
-metrics endpoint: `/api/system/metrics`, a JSON route that answered 500 to
-every request, was removed.
+None of them is part of the public API, and `/health` and these three are
+the only routes that answer without the gateway's identity: every other
+route under `/api/` answers 401 to a request that does not carry it.
+
+The service has no `/api/system/` routes. `info`, `metrics`,
+`operational-metrics` and `health-aggregate` existed there, without
+authentication, until they were removed
+([#646](https://github.com/fabriziosalmi/wildbox/issues/646)); a request
+for one of them answers 404. What they reported is available elsewhere:
+
+| Was in | Now |
+| --- | --- |
+| `info`: tool names | `GET /api/v1/tools`, through the gateway |
+| `info`: environment, concurrency and timeout settings | `GET /health`, above |
+| `metrics`, `operational-metrics`: counters of synchronous executions (which stayed at zero) | `wildbox_tool_executions_total` in `/metrics` |
+| `health-aggregate`: the health of the other services (it reported a healthy stack as `degraded`) | Each service's own health check (`docker compose ps`), and the `up` series Prometheus records for every service it scrapes |
 
 ## Rate Limits
 

@@ -69,15 +69,6 @@ class Settings(BaseSettings):
     tools_directory: str = Field(default="app/tools", description="Directory containing security tools")
     auto_reload_tools: bool = Field(default=True, description="Auto-reload tools on changes")
     
-    # Service URLs for health aggregation
-    identity_service_url: Optional[str] = Field(default=None, description="Identity service URL")
-    data_service_url: Optional[str] = Field(default=None, description="Data service URL") 
-    guardian_service_url: Optional[str] = Field(default=None, description="Guardian service URL")
-    sensor_service_url: Optional[str] = Field(default=None, description="Sensor service URL")
-    responder_service_url: Optional[str] = Field(default=None, description="Responder service URL")
-    agents_service_url: Optional[str] = Field(default=None, description="Agents service URL")
-    cspm_service_url: Optional[str] = Field(default=None, description="CSPM service URL")
-
     # Internal targets the network tools may scan (#614): comma-separated CIDR
     # ranges, IP addresses and host names. Empty by default, so private,
     # loopback, link-local and other internal targets are refused. Parsed

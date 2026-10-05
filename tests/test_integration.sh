@@ -74,9 +74,6 @@ echo ""
 echo -e "${BLUE}2. Testing New Integration Endpoints${NC}"
 echo "-------------------------------------------"
 
-# Test new system health aggregation endpoint
-test_api_json "$API_BASE/api/system/health-aggregate" "System Health Aggregation" "status"
-
 # Test new threat intel dashboard endpoint
 test_api_json "$DATA_BASE/api/v1/dashboard/threat-intel" "Threat Intel Dashboard Metrics" "active_feeds"
 
@@ -140,8 +137,8 @@ echo "==============================================="
 # Quick curl commands for manual testing
 echo "Manual test commands:"
 echo ""
-echo -e "${YELLOW}# Test System Health Aggregation:${NC}"
-echo "curl -s '$API_BASE/api/system/health-aggregate' | jq"
+echo -e "${YELLOW}# Test the tools service health:${NC}"
+echo "curl -s '$API_BASE/health' | jq"
 echo ""
 echo -e "${YELLOW}# Test Threat Intel Metrics:${NC}"
 echo "curl -s '$DATA_BASE/api/v1/dashboard/threat-intel' | jq"

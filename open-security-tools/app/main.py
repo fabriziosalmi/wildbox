@@ -6,8 +6,6 @@ import time
 import importlib.util
 from typing import Dict, Any, List
 from contextlib import asynccontextmanager
-import time
-from datetime import datetime
 
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -45,7 +43,6 @@ def discover_tools() -> Dict[str, Any]:
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
     # Startup
-    app.state.start_time = time.time()
     logger.info("Wildbox Security API starting up...")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
@@ -191,90 +188,19 @@ def create_app() -> FastAPI:
                 "response_time_ms": round(response_time_ms, 2),
                 "error": "An internal error occurred"
             }
-    
-    @app.get("/api/system/operational-metrics", tags=["System"])
-    async def get_metrics():
-        """
-        Get operational metrics for the tools service as JSON.
-        Returns tool execution statistics and system health metrics.
-        """
-        start_time = time.time()
-        try:
-            active_executions = execution_manager.get_active_executions()
-            
-            # Get execution statistics
-            total_executions = 0
-            successful_executions = 0
-            failed_executions = 0
-            
-            # Real counters. The hasattr guard that used to wrap this checked
-            # for a method that existed nowhere, so these were reported as zero
-            # on every call (WILDBO-OBS-01).
-            stats = execution_manager.get_execution_stats()
-            total_executions = stats.get('total', 0)
-            successful_executions = stats.get('successful', 0)
-            failed_executions = stats.get('failed', 0)
-            
-            return {
-                "service": "tools",
-                "version": "1.0.0",
-                "timestamp": time.time(),
-                "uptime_seconds": time.time() - app.state.start_time if hasattr(app.state, 'start_time') else 0,
-                "metrics": {
-                    "tools_total": len(discovered_tools),
-                    "tools_available": len(discovered_tools),
-                    "executions_active": len(active_executions),
-                    "executions_total": total_executions,
-                    "executions_successful": successful_executions,
-                    "executions_failed": failed_executions,
-                    "max_concurrent": settings.max_concurrent_tools,
-                    "default_timeout_seconds": settings.tool_timeout,
-                    "rate_limit_requests": settings.rate_limit_requests,
-                    "rate_limit_window_seconds": settings.rate_limit_window
-                },
-                "tools": list(discovered_tools.keys())
-            }
-        except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-            # The exception text stays in the log: returning it exposed
-            # internal details (paths, settings) to the caller.
-            logger.error(f"Error collecting metrics: {e}")
-            return {
-                "service": "tools",
-                "version": "1.0.0",
-                "timestamp": time.time(),
-                "error": "Failed to collect metrics",
-            }
-    
-    # System information endpoint
-    @app.get("/api/system/info", tags=["System"])
-    async def system_info():
-        """Get detailed system information."""
-        active_executions = execution_manager.get_active_executions()
-        return {
-            "application": {
-                "name": "Wildbox Security Tools",
-                "version": "1.0.0",
-                "environment": settings.environment,
-                "debug": settings.debug
-            },
-            "tools": {
-                "count": len(discovered_tools),
-                "available": list(discovered_tools.keys())
-            },
-            "execution": {
-                "active_count": len(active_executions),
-                "max_concurrent": settings.max_concurrent_tools,
-                "default_timeout": settings.tool_timeout
-            },
-            "security": {
-                "rate_limit_requests": settings.rate_limit_requests,
-                "rate_limit_window": settings.rate_limit_window
-            }
-        }
-    
-    # Store startup time for uptime calculation
-    global startup_time
-    startup_time = time.time()
+
+    # There is deliberately no /api/system/* route. Four used to be registered
+    # here without authentication: info, metrics, operational-metrics and
+    # health-aggregate. They reported on the whole platform (environment and
+    # debug flag, execution counters, the health body of every other
+    # service), which only a platform operator should read, and this
+    # service cannot tell one from a tenant: the gateway forwards a team
+    # role, and anyone who registers owns a team of their own. Nothing
+    # called them either, and what they said was not true: the counters
+    # stayed at zero, and a healthy stack was reported as degraded.
+    # Operators have GET /metrics (Prometheus) for the counters and each
+    # service's own health check (#646). Do not add a route here without a
+    # dependency on app.auth.get_current_user.
 
     # Root redirect
     @app.get("/api")
@@ -285,88 +211,6 @@ def create_app() -> FastAPI:
             "version": "1.0.0",
             "tools": f"/api/tools",
             "available_tools": list(discovered_tools.keys())
-        }
-    
-    @app.get("/api/system/health-aggregate", tags=["System"])
-    async def system_health_aggregate():
-        """Get aggregated health metrics from all services."""
-        import httpx
-        
-        services = {
-            "identity": settings.identity_service_url or "http://open-security-identity:8001",
-            "data": settings.data_service_url or "http://open-security-data:8002", 
-            "guardian": settings.guardian_service_url or "http://open-security-guardian:8013",
-            "sensor": settings.sensor_service_url or "http://open-security-sensor:8004",
-            "responder": settings.responder_service_url or "http://open-security-responder:8018",
-            "agents": settings.agents_service_url or "http://open-security-agents:8006",
-            "cspm": settings.cspm_service_url or "http://open-security-cspm:8019"
-        }
-        
-        health_status = {
-            "api": {
-                "status": "operational",
-                "uptime": time.time() - startup_time,
-                "response_time": 0,  # Will be calculated
-                "version": "1.0.0"
-            }
-        }
-        
-        total_services = len(services) + 1  # +1 for API itself
-        operational_services = 1  # API is operational
-        total_response_time = 0
-        
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            for service_name, service_url in services.items():
-                try:
-                    start_time = time.time()
-                    response = await client.get(f"{service_url}/health")
-                    response_time = (time.time() - start_time) * 1000
-                    
-                    if response.status_code == 200:
-                        health_status[service_name] = {
-                            "status": "operational",
-                            "response_time": response_time,
-                            "data": response.json()
-                        }
-                        operational_services += 1
-                        total_response_time += response_time
-                    else:
-                        health_status[service_name] = {
-                            "status": "degraded",
-                            "response_time": response_time,
-                            "error": f"HTTP {response.status_code}"
-                        }
-                        total_response_time += response_time
-                        
-                except (ValueError, KeyError, TypeError, ConnectionError, TimeoutError) as e:
-                    health_status[service_name] = {
-                        "status": "down",
-                        "error": str(e)
-                    }
-        
-        # Calculate aggregate metrics
-        uptime_percentage = (operational_services / total_services) * 100
-        avg_response_time = total_response_time / total_services if total_services > 0 else 0
-        error_rate = ((total_services - operational_services) / total_services) * 100
-        
-        overall_status = "operational"
-        if uptime_percentage < 50:
-            overall_status = "down"
-        elif uptime_percentage < 90:
-            overall_status = "degraded"
-            
-        return {
-            "status": overall_status,
-            "uptime_percentage": round(uptime_percentage, 2),
-            "avg_response_time": round(avg_response_time, 0),
-            "error_rate": round(error_rate, 2),
-            "services": health_status,
-            "summary": {
-                "total_services": total_services,
-                "operational_services": operational_services,
-                "degraded_services": total_services - operational_services,
-                "timestamp": datetime.now().isoformat()
-            }
         }
     
     return app

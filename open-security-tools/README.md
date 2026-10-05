@@ -135,27 +135,35 @@ returns `404`. Task listings cover roughly the last day.
 
 ### Unauthenticated endpoints
 
-These routes have no authentication dependency. The gateway does not route
+These four routes have no authentication dependency; every other route
+answers `401` without the gateway's identity. The gateway does not route
 them, so they are reachable only from the Docker network or, in the root
 stack, from the host on `127.0.0.1:8000`:
 
-| Path                                | Content                                                 |
-| ----------------------------------- | ------------------------------------------------------- |
-| `/health`                           | Status, tool count and names, active executions         |
-| `/metrics`                          | Prometheus exposition format                            |
-| `/openapi.json`                     | OpenAPI schema (there is no Swagger UI or ReDoc page)   |
-| `/api`                              | Service name and the list of loaded tools               |
-| `/api/system/info`                  | Environment, tool list, execution and rate-limit settings |
-| `/api/system/operational-metrics`   | Execution counters as JSON                              |
-| `/api/system/health-aggregate`      | Calls `/health` on the other Wildbox services           |
+| Path            | Content                                                         |
+| --------------- | --------------------------------------------------------------- |
+| `/health`       | Status, environment, tool count and names, active executions    |
+| `/metrics`      | Prometheus exposition format; `monitoring/prometheus.yml` scrapes it |
+| `/openapi.json` | OpenAPI schema (there is no Swagger UI or ReDoc page)           |
+| `/api`          | Service name and the list of loaded tools                       |
 
 ```bash
 curl -s http://127.0.0.1:8000/health
 ```
 
-The execution history and statistics behind these endpoints live in the `api`
-process memory, so run a single `api` replica (see the comment on the `api`
-service in the root `docker-compose.yml`).
+`/health` is the route the image's and the compose file's health checks
+probe. `/metrics` carries the request counters and
+`wildbox_tool_executions_total`, the synchronous executions by tool and
+outcome; asynchronous runs happen in the worker, which exposes no metrics.
+
+There are no `/api/system/` routes: `info`, `metrics`, `operational-metrics`
+and `health-aggregate` answered without authentication and were removed
+(#646). For the health of the other services, use their own health checks
+(`docker compose ps`) or Prometheus.
+
+The active-execution count and the counters behind these endpoints live in
+the `api` process memory, so run a single `api` replica (see the comment on
+the `api` service in the root `docker-compose.yml`).
 
 ## Tools
 

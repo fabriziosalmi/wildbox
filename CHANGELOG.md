@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **tools no longer serves `/api/system/info`,
+  `/api/system/operational-metrics` and `/api/system/health-aggregate`,
+  which answered without authentication.** Anyone who could reach the
+  service port (the Docker network, or `127.0.0.1:8000` on the host)
+  read the environment and debug flag, the tool inventory and the health
+  body of every other service. The gateway never routed them and nothing
+  called them. They are removed rather than put behind a role: the
+  gateway forwards a team role, anyone who registers owns a team, and so
+  tools cannot tell a platform operator from a tenant. What they
+  reported was also wrong: the execution counters stayed at zero, and
+  the aggregate called a healthy stack `degraded`, because it probed
+  guardian at `/health` (a redirect to `/health/`), and answered 500
+  when any service was unreachable. The real counters are in
+  `GET /metrics` (`wildbox_tool_executions_total`); for the health of
+  the other services use their own health checks or Prometheus (#646).
+
 ### Removed
 
 - **tools: `GET /api/system/metrics`, which answered 500 to every
