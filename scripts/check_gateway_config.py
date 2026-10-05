@@ -29,6 +29,12 @@ and ``$wildbox_auth_type`` and ``$wildbox_scopes`` are what
 ``proxy_params.conf`` sends the services as the credential's type and scopes
 (#637).
 
+And it fails when a configuration file authenticates without declaring
+``set $wildbox_route_uri $uri;``. auth_handler maps a request to the
+API-key scope it requires by that variable, the path as it was before any
+location rewrote it; without the declaration the map knows no path and
+requires ``admin`` of every scope-limited key (#647).
+
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
 """
@@ -54,6 +60,7 @@ ASSIGNED_VARIABLES = (
     "wildbox_auth_type",
     "wildbox_scopes",
 )
+_ROUTE_URI = re.compile(r"^\s*set\s+\$wildbox_route_uri\s+\$uri\s*;")
 _SET_EMPTY = re.compile(r'^\s*set\s+\$([a-z_]+)\s+""\s*;')
 
 
@@ -114,7 +121,25 @@ def check(gateway_dir: Path) -> list:
         if path.suffix == ".conf":
             failures.extend(inline_authorizations(path, gateway_dir))
             failures.extend(undeclared_assigned_variables(path, gateway_dir))
+            failures.extend(missing_route_uri(path, gateway_dir))
     return failures
+
+
+def missing_route_uri(path: Path, gateway_dir: Path) -> list:
+    """A configuration that authenticates without the path the scope map reads."""
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    if not any(_AUTHENTICATE.search(line) for line in lines):
+        return []
+    if any(_ROUTE_URI.match(line) for line in lines):
+        return []
+    return [
+        f"{path.relative_to(gateway_dir.parent)}: calls authenticate() but does not "
+        "declare `set $wildbox_route_uri $uri;` in its server block; the scope map "
+        "reads the request path from it"
+    ]
 
 
 def undeclared_assigned_variables(path: Path, gateway_dir: Path) -> list:
@@ -165,7 +190,8 @@ def main(argv=None) -> int:
     print(
         "Every variable the gateway reads is declared in nginx.conf, every "
         "authorization goes through auth_handler, and every configuration that "
-        "authenticates declares the variables it assigns."
+        "authenticates declares the variables it assigns and the path the scope "
+        "map reads."
     )
     return 0
 

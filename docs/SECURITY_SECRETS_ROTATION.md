@@ -39,25 +39,35 @@ What the script does:
    [JWT_SECRET_KEY](#jwt_secret_key)). Set `COMPOSE_FILE` to the files you
    start the stack with, for example
    `COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml`.
-4. Copies the file to `.env.bak.<timestamp>` with mode `0600`. The copy
+4. Refuses `POSTGRES_PASSWORD` unless the `postgres` service is running (see
+   [POSTGRES_PASSWORD](#postgres_password)).
+5. Copies the file to `.env.bak.<timestamp>` with mode `0600`. The copy
    holds the **old** secret: delete it once the rotation is verified.
-5. Generates the new value with Python's `secrets.token_urlsafe(48)` (64
-   URL-safe characters), replaces the `NAME=` line or appends one, and sets
-   `.env` back to `0600`. With `--secret API_KEY_HASH_SECRET --init` it copies
-   the current `JWT_SECRET_KEY` value instead of generating one.
-6. Prints the next step. It does not restart anything.
+6. Generates the new value with the generator `make generate-secrets` uses
+   for that secret, so it has the shape the services and
+   `make validate-secrets` expect (`API_KEY`, for example, is
+   `wsk_prod.<64 hex characters>`). It replaces the `NAME=` line or appends
+   one, and leaves `.env` with mode `0600`. With
+   `--secret API_KEY_HASH_SECRET --init` it copies the current
+   `JWT_SECRET_KEY` value instead of generating one.
+7. Prints the next step: which services receive the secret, read from
+   `docker compose config`, and the command that recreates them. It does not
+   restart anything.
 
-The script changes `.env` only. Running containers keep the old value until
-they are recreated, which is what the script suggests:
+Except for `POSTGRES_PASSWORD`, the script changes `.env` only. Running
+containers keep the old value until they are recreated, with the command the
+script prints, for example:
 
 ```bash
-docker compose up -d --force-recreate
+docker compose up -d --no-deps api tools-worker tools-flower
 make health
 ```
 
 Recreate with the same compose files you start the stack with (for example
 the production overlay), so the services come back with their usual
-configuration.
+configuration. If the script cannot read the compose configuration it prints
+`docker compose up -d` instead, which recreates every container whose
+configuration changed.
 
 ## What each secret costs to rotate
 
@@ -138,30 +148,51 @@ updated by the script: edit them by hand.
 
 ### POSTGRES_PASSWORD
 
-PostgreSQL reads `POSTGRES_PASSWORD` only when it initializes an empty data
-directory; on an existing deployment the password lives in the database. The
-script changes only the `POSTGRES_PASSWORD=` line, while `DATABASE_URL`,
-`DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and `RESPONDER_DATABASE_URL`
-embed the password and are left as they are. A complete rotation is:
+This password lives in two places. PostgreSQL reads `POSTGRES_PASSWORD` only
+when it initializes an empty data directory; on an existing deployment the
+password is stored in the server. The services do not read the variable at
+all: they connect with `DATABASE_URL`, `DATA_DATABASE_URL` and
+`GUARDIAN_DATABASE_URL`, which embed it.
 
-1. Run `./scripts/rotate_secrets.sh --secret POSTGRES_PASSWORD`.
-2. While the old containers are still running, set the same value in the
-   database. `\password` prompts for it, so it does not appear on the
-   command line or in shell history (replace `postgres` with your
-   `POSTGRES_USER` if you changed it):
+The script changes both places or neither, and needs the stack running:
 
-   ```bash
-   docker compose exec postgres psql -U postgres -c '\password postgres'
-   ```
+```bash
+./scripts/rotate_secrets.sh --secret POSTGRES_PASSWORD
+```
 
-3. Replace the old password with the new one in the four connection strings
-   above in `.env`.
-4. Recreate all services.
+1. It refuses, changing nothing, if Docker is missing, if the `postgres`
+   service is not running in the Compose project (`COMPOSE_FILE`,
+   `COMPOSE_PROJECT_NAME`), or if the role named by `POSTGRES_USER` does not
+   exist in the server.
+2. It rewrites `POSTGRES_PASSWORD` and the password inside every PostgreSQL
+   connection string in `.env` that points at the stack's `postgres` service
+   (host `postgres` or `wildbox-postgres`) with that user. Nothing else in
+   the connection strings changes. Connection strings for another host or
+   user are left alone and listed, so you can update them by hand.
+3. It sets the new password in the running server. The statement carries a
+   SCRAM-SHA-256 verifier computed by the script and is sent to `psql` over
+   standard input, so the password is in no command line and in no statement
+   the server could log.
+4. It asks the server, over TCP, whether it accepts the new password.
+5. If step 3 or 4 fails, it restores `.env` from the backup and puts the
+   server's previous password back, and says so. If the server cannot be
+   reached to do that, it says `INCONSISTENT`, exits with status 3, and
+   prints the command that sets the password by hand.
+
+Then recreate the services it names, for example:
+
+```bash
+docker compose up -d --no-deps identity data data-scheduler guardian guardian-worker guardian-beat
+```
+
+Until then they keep the connections they already have and fail to open new
+ones. The `postgres` container itself keeps running. If you run the `backup`
+profile, recreate that container too.
 
 ### NEXTAUTH_SECRET
 
 Passed to the dashboard container, but the dashboard source does not read it,
-so rotating it has no visible effect.
+so rotating it has no visible effect, and the script says so.
 
 ## API keys issued to users and teams
 

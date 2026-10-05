@@ -107,17 +107,35 @@ for 60 seconds.
 ### API-key scopes
 
 A key whose `scopes` is a list is checked against the scope each request
-needs (`required_scope_for_request` in `auth_handler.lua`):
+needs (`ROUTE_SCOPES` in `auth_handler.lua`). A row covers its path and
+everything under it, so `/api/v1/tools` and `/api/v1/tools/whois` need the
+same scope:
 
-| Path | Read (`GET`, `HEAD`, `OPTIONS`) | Other methods |
+| Path | Read (`GET`, `HEAD`) | Other methods |
 | --- | --- | --- |
-| `/api/v1/tools/*`, `/api/v1/agents/*`, `/api/v1/tasks*` | `tools:read` | `tools:execute` |
-| `/api/v1/automations/*` | `tools:admin` | `tools:admin` |
-| `/api/v1/data/ingest` | `read` | `data:ingest`, also satisfied by `data:write` or `write` |
-| `/api/v1/guardian/*` | `data:read` | `data:write`, or `data:delete` for `DELETE` |
-| Any other authenticated path | `read` | `write` |
+| `/api/v1/tools`, `/api/v1/agents`, `/api/v1/tasks` | `tools:read` | `tools:execute` |
+| `/api/v1/automations` | `tools:admin` | `tools:admin` |
+| `/api/v1/guardian` | `data:read` | `data:write`, or `data:delete` for `DELETE` |
+| `/api/v1/data/ingest` (this path only) | `read` | `data:ingest`, also satisfied by `data:write` or `write` |
+| `/api/v1/data`, `/api/v1/cspm`, `/api/v1/responder`, `/api/v1/identity/health` | `read` | `write` |
+| An authenticated path with no row | `admin` | `admin` |
 
 `admin` and `*` satisfy every scope. Session tokens are not scope-limited.
+
+A generic scope also satisfies the resource scopes of its level: `read`
+satisfies `tools:read` and `data:read`, and `write` satisfies those and
+`tools:execute`, `data:write` and `data:ingest`. `tools:admin` and
+`data:delete` are satisfied only by themselves, by the resource's `admin`
+scope, and by `admin` and `*`.
+
+The request is mapped by the path nginx chose its location for, before any
+rewrite in that location: the server block copies `$uri` into
+`$wildbox_route_uri`, and `scripts/check_gateway_config.py` fails for a
+configuration that authenticates without it.
+
+A location added to `wildbox_gateway.conf` needs a row in `ROUTE_SCOPES`
+and a pin in `test/route_scope_tests.sh`. Without the row it requires
+`admin` of every scope-limited key; without the pin the harness fails.
 
 ### What the service is told
 
@@ -195,7 +213,10 @@ Notes:
 
 - `/api/v1/guardian/*` presents `Host: open-security-guardian` to the Django
   service and forwards the caller's host as `X-Forwarded-Host`; redirects are
-  rewritten back to `/api/v1/guardian/`.
+  rewritten back to `/api/v1/guardian/`. It also sends
+  `X-Forwarded-Prefix: /api/v1/guardian`, a literal that replaces any value
+  the client sent: guardian writes its pagination links under that path, as
+  relative references without a host (#643).
 - `/api/v1/automations/*` reaches n8n, which runs only with the `automations`
   Compose profile; the upstream is resolved at request time, so the route
   answers `502` while n8n is not running. The gateway replaces the
@@ -210,7 +231,7 @@ Notes:
 | `= /auth/login`, `= /auth/signup`, `GET /auth/logout` | dashboard pages | none |
 | `/login/`, `/register/`, `/signup/` | dashboard | none |
 | `/_next/hmr` | dashboard, WebSocket upgrade (`next dev` hot reload) | none |
-| `/favicon.ico` and paths ending in `.css`, `.js`, or an image or font extension | dashboard, cached for one year | none |
+| `/favicon.ico` and paths outside `/api/` ending in `.css`, `.js`, or an image or font extension | dashboard, cached for one year | none |
 | `/ws/*` | dashboard, WebSocket upgrade | none at the gateway |
 | `/public/*` | files under `/var/www/public/` in the container (none are shipped) | none |
 | `/tools/*` | `404` JSON: the standalone tools UI was removed | none |
@@ -321,15 +342,22 @@ To add a backend service, add an `upstream` and a `location` block to
 `nginx/conf.d/wildbox_gateway.conf`, call `auth_handler.authenticate()` in an
 `access_by_lua_block`, and add the service to the gateway's `depends_on` in the
 root `docker-compose.yml`: nginx resolves upstream names at startup and exits
-if one cannot be resolved.
+if one cannot be resolved. Give the route a row in `ROUTE_SCOPES`
+(`nginx/lua/auth_handler.lua`) and a pin in `test/route_scope_tests.sh`; see
+[API-key scopes](#api-key-scopes).
 
 CI runs two checks on this directory:
 
 - `.github/workflows/gateway-lint.yml` runs `luacheck` over `nginx/lua`.
-- `.github/workflows/gateway-tests.yml` builds `Dockerfile.test` and runs
-  `test/ci_auth_tests.sh`, `test/scope_forwarding_tests.sh`,
-  `test/scope_vector_tests.sh` and `test/revocation_tests.sh` against a mock
-  identity (`test/mock_identity.py`).
+- `.github/workflows/gateway-tests.yml` runs the harness against a mock
+  identity (`test/mock_identity.py`). It builds `Dockerfile.test`, whose
+  configuration is written for the tests, and runs `test/ci_auth_tests.sh`,
+  `test/scope_forwarding_tests.sh`, `test/scope_vector_tests.sh`,
+  `test/revocation_tests.sh` and `test/startup_config_tests.sh` against it.
+  It also builds the production `Dockerfile` and runs
+  `test/route_scope_tests.sh` against it: the scope each authenticated
+  location of `wildbox_gateway.conf` requires, per method, with the mock
+  answering for every upstream.
 
 The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
 directory are for standalone use. They use a separate `wildbox-net` network

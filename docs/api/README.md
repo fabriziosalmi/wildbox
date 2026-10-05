@@ -10,15 +10,30 @@ the service is right: please
 [open an issue](https://github.com/fabriziosalmi/wildbox/issues) naming the
 service and the endpoint.
 
-| Service | Reference | OpenAPI (Redoc) |
-| --------- | ----------- | ----------------- |
-| **Identity** | [endpoints.md](identity/endpoints.md) | - |
-| **Tools** | [endpoints.md](tools/endpoints.md) | - |
-| **Data** | [endpoints.md](data/endpoints.md) | - |
-| **Guardian** | [endpoints.md](guardian/endpoints.md) | - |
-| **Responder** | [endpoints.md](responder/endpoints.md) | [responder-api.html](responder-api.html) |
-| **Agents** | [endpoints.md](agents/endpoints.md) | [agents-api.html](agents-api.html) |
-| **CSPM** | Not written yet. The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400`. `GET /api/v1/cspm/providers` lists the providers a scan can be submitted for and their check counts. Its routes are under `/api/v1/cspm/` | - |
+| Service | Reference |
+| --------- | ----------- |
+| **Identity** | [endpoints.md](identity/endpoints.md) |
+| **Tools** | [endpoints.md](tools/endpoints.md) |
+| **Data** | [endpoints.md](data/endpoints.md) |
+| **Guardian** | [endpoints.md](guardian/endpoints.md) |
+| **Responder** | [endpoints.md](responder/endpoints.md) |
+| **Agents** | [endpoints.md](agents/endpoints.md) |
+| **CSPM** | Not written yet. The service scans AWS only, with 22 checks; a scan request for GCP or Azure is refused with `400`. `GET /api/v1/cspm/providers` lists the providers a scan can be submitted for and their check counts. Its routes are under `/api/v1/cspm/` |
+
+### OpenAPI Schemas
+
+No generated OpenAPI page is published. The two that were (`agents-api.html`
+and `responder-api.html`, now redirects to the references above) each held a
+schema exported once from the service; nothing regenerated them, and they
+listed the routes without their authentication. The scripts that wrote them
+(`scripts/generate-api-docs*`) are gone for the same reason.
+
+A running service is the source for a machine-readable schema:
+
+- identity, tools, data, responder, agents and cspm serve `/openapi.json` on
+  their local port when `ENVIRONMENT` is `development`, and answer 404 for it
+  otherwise;
+- guardian serves `/api/schema/` when `DEBUG` is on.
 
 ## Reaching the APIs
 

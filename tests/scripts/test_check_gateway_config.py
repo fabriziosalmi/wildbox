@@ -181,3 +181,77 @@ def test_the_agents_routes_authenticate_through_auth_handler():
 
         assert "auth_handler.authenticate()" in block, opening
         assert upstream in block, opening
+
+
+# --- The path the scope map reads (#647) -----------------------------------
+
+_AUTHENTICATING_LOCATION = (
+    "location /api/v1/x/ {\n"
+    "    access_by_lua_block {\n"
+    '        local auth_handler = require "auth_handler"\n'
+    "        auth_handler.authenticate()\n"
+    "    }\n"
+    "}\n"
+)
+
+
+def _site(declaration):
+    # The variables authenticate() assigns (#637), so that the route URI is
+    # the one thing each case varies.
+    assigned = "".join(f'    set ${name} "";\n' for name in cgc.ASSIGNED_VARIABLES)
+    return {
+        "conf.d/site.conf": "server {\n"
+        + assigned
+        + declaration
+        + _AUTHENTICATING_LOCATION
+        + "}\n"
+    }
+
+
+def test_both_gateway_configurations_declare_the_route_uri():
+    for name in ("conf.d/wildbox_gateway.conf", "test/wildbox_gateway_test.conf"):
+        assert cgc.missing_route_uri(GATEWAY_DIR / name, GATEWAY_DIR) == [], name
+
+
+def test_authenticating_without_the_route_uri_fails(tmp_path):
+    gateway = write_gateway(tmp_path, "env A;\n", _site(""))
+
+    failures = cgc.check(gateway)
+
+    assert len(failures) == 1
+    assert "conf.d/site.conf" in failures[0]
+    assert "$wildbox_route_uri" in failures[0]
+
+
+def test_a_commented_route_uri_declaration_does_not_count(tmp_path):
+    gateway = write_gateway(
+        tmp_path, "env A;\n", _site("    # set $wildbox_route_uri $uri;\n")
+    )
+
+    assert len(cgc.check(gateway)) == 1
+
+
+def test_the_route_uri_must_be_the_request_path(tmp_path):
+    gateway = write_gateway(
+        tmp_path, "env A;\n", _site('    set $wildbox_route_uri "";\n')
+    )
+
+    assert len(cgc.check(gateway)) == 1
+
+
+def test_authenticating_with_the_route_uri_passes(tmp_path):
+    gateway = write_gateway(
+        tmp_path, "env A;\n", _site("    set $wildbox_route_uri $uri;\n")
+    )
+
+    assert cgc.check(gateway) == []
+
+
+def test_a_configuration_that_does_not_authenticate_needs_no_route_uri(tmp_path):
+    gateway = write_gateway(
+        tmp_path,
+        "env A;\n",
+        {"includes/purge.conf": "location = /internal/purge {\n    return 204;\n}\n"},
+    )
+
+    assert cgc.check(gateway) == []

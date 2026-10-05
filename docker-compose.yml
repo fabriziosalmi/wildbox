@@ -625,6 +625,13 @@ services:
       # guardian-worker and guardian-beat: the API and the e-mails apply
       # one rule.
       - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
+      # Requests one user may make to guardian per period, such as
+      # 1000/hour, or off; empty means 1000/hour. A malformed value stops
+      # guardian at start-up (guardian/rate_limit.py). The variable guardian
+      # read before, API_RATE_LIMIT, was never passed here, so the setting
+      # did nothing (#645). Only this service serves requests: the worker
+      # and beat do not need it.
+      - GUARDIAN_RATE_LIMIT_USER=${GUARDIAN_RATE_LIMIT_USER:-}
     volumes:
       - guardian_logs:/app/logs
       # Generated reports: guardian-worker writes them, guardian serves
@@ -823,7 +830,12 @@ services:
       - "127.0.0.1:8018:8018"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}
+      # No DATABASE_URL: the responder has no SQL state. Its runs and its
+      # worker queue are in Redis (REDIS_URL below). The variable that was
+      # here named a `responder` database nothing creates, fell back to
+      # identity's DATABASE_URL when unset, and so put a PostgreSQL password
+      # in a container that opens no database connection (#654).
+      #
       # Checked on the requests the responder receives, and sent, with the
       # identity of the user who started the run, on the requests its
       # playbooks make to the services below (#616). The playbook worker
@@ -846,8 +858,7 @@ services:
       # accepts connections or Redis has loaded its AOF -- so the stack
       # converged by crash-looping, which made a real dependency failure
       # indistinguishable from ordinary startup churn (WILDBO-REL-04).
-      postgres:
-        condition: service_healthy
+      # Redis only: the responder does not use PostgreSQL (#654).
       wildbox-redis:
         condition: service_healthy
     networks:
@@ -1216,6 +1227,10 @@ services:
     profiles: ["backup"]
     restart: unless-stopped
     environment:
+      # This container is on the Compose network and has the client tools,
+      # so the script connects directly. `make backup` on the host uses the
+      # script's compose mode instead (#681).
+      - BACKUP_MODE=host
       - POSTGRES_HOST=wildbox-postgres
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}

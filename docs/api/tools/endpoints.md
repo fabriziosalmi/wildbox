@@ -147,15 +147,14 @@ on the routes that run a tool or cancel a task:
 
 | Request | Required scope |
 | --- | --- |
-| `GET /api/v1/tools` | `read` |
-| `GET /api/v1/tools/{tool_name}/info` | `tools:read` |
+| `GET /api/v1/tools`, `GET /api/v1/tools/{tool_name}/info` | `tools:read` |
 | `POST /api/v1/tools/{tool_name}`, `POST /api/v1/tools/{tool_name}/async` | `tools:execute` |
 | `GET /api/v1/tasks`, `GET /api/v1/tasks/{task_id}` | `tools:read` |
 | `DELETE /api/v1/tasks/{task_id}` | `tools:execute` |
 
-`GET /api/v1/tools` has no subpath, so the gateway maps it to the generic
-`read` scope rather than `tools:read`. A key missing the scope gets
-403 `insufficient_scope`.
+`tools:execute` and the generic `read` and `write` scopes also satisfy
+`tools:read`, and `write` satisfies `tools:execute`. A key missing the scope
+gets 403 `insufficient_scope`, and the body names the `required_scope`.
 
 ## Endpoint Summary
 

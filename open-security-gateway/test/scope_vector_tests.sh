@@ -46,6 +46,8 @@ request_requiring() {
         data:read)     METHOD=GET;    ROUTE=/api/v1/guardian/assets/ ;;
         data:write)    METHOD=POST;   ROUTE=/api/v1/guardian/assets/ ;;
         data:delete)   METHOD=DELETE; ROUTE=/api/v1/guardian/assets/7/ ;;
+        # A route the scope map has no row for requires admin (#647).
+        admin)         METHOD=GET;    ROUTE=/api/v1/auth/me ;;
         *) return 1 ;;
     esac
 }
@@ -61,8 +63,8 @@ while read -r granted required verdict extra; do
         continue
     fi
     if ! request_requiring "$required"; then
-        # No route of this configuration requires it ("admin": a route the
-        # scope map does not know). The shared package's tests cover the row.
+        # No route requires it. The shared package's tests cover the row;
+        # the count below fails if a row of the table goes unchecked here.
         SKIPPED=$((SKIPPED + 1))
         continue
     fi
@@ -90,8 +92,8 @@ done < "$VECTORS"
 if [ "$ROWS" -lt 200 ]; then
     fail "only $ROWS rows read from $VECTORS: the table has 200"
 fi
-if [ "$PASS" -lt 180 ]; then
-    fail "only $PASS rows were checked on the wire: every row but the 'admin' ones has a route"
+if [ "$PASS" -lt 200 ]; then
+    fail "only $PASS rows were checked on the wire: every row of the table has a route"
 fi
 
 echo "✅ $PASS rows agree with the gateway ($SKIPPED without a route here)"

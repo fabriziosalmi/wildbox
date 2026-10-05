@@ -38,10 +38,25 @@ jobs:
       - name: Build gateway test image
         run: docker build -f open-security-gateway/Dockerfile.test -t wildbox-gateway-test open-security-gateway
 
+      # The image that ships, with the configuration that ships: the route
+      # scope tests read the scope of every production location from it
+      # (#647). The test image above runs a configuration written for the
+      # tests, with only some of the routes.
+      - name: Build gateway production image
+        run: docker build -t wildbox-gateway-prod open-security-gateway
+
       - name: Start mock identity and gateways
         run: |
           docker network create gwtest
+          # The mock is identity and, for the production configuration,
+          # every upstream: it answers on each service's name and port.
           docker run -d --name identity-test --network gwtest -p 8001:8001 \
+            --network-alias open-security-identity --network-alias open-security-data \
+            --network-alias open-security-cspm --network-alias open-security-guardian \
+            --network-alias open-security-responder --network-alias open-security-agents \
+            --network-alias open-security-tools --network-alias open-security-dashboard \
+            --network-alias dashboard --network-alias open-security-automations \
+            -e MOCK_PORTS=8001,8002,8019,8013,8018,8006,8000,3000,5678 \
             -e EXPECTED_GATEWAY_SECRET="$CI_GATEWAY_SECRET" \
             -v "$PWD/open-security-gateway/test/mock_identity.py:/mock_identity.py:ro" \
             python:3.12-alpine python /mock_identity.py
@@ -62,12 +77,18 @@ jobs:
             -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
             -e RATE_LIMIT_PER_HOUR=120 \
             wildbox-gateway-test
+          # The production image and configuration, for route_scope_tests.sh.
+          # It finds identity at its default address, the mock's alias.
+          docker run -d --name gateway-prod --network gwtest -p 127.0.0.1:8443:443 \
+            -e GATEWAY_INTERNAL_SECRET="$CI_GATEWAY_SECRET" \
+            wildbox-gateway-prod
 
       - name: Wait for services
         run: |
-          for url in http://localhost:8001/health http://localhost:8080/health http://localhost:8081/health http://localhost:8083/health; do
+          for url in http://localhost:8001/health http://localhost:8080/health http://localhost:8081/health http://localhost:8083/health https://localhost:8443/health; do
             for i in $(seq 1 30); do
-              if curl -fsS "$url" >/dev/null 2>&1; then
+              # -k: the production image generates a self-signed certificate.
+              if curl -fsSk "$url" >/dev/null 2>&1; then
                 echo "$url ready"
                 break
               fi
@@ -94,6 +115,11 @@ jobs:
       - name: Run gateway scope vector tests
         run: bash open-security-gateway/test/scope_vector_tests.sh
 
+      # The scope every authenticated route of wildbox_gateway.conf
+      # requires, per method, and a pin for each location (#647).
+      - name: Run gateway route scope tests
+        run: bash open-security-gateway/test/route_scope_tests.sh
+
       # Logout must hold on every worker even with an authorization in flight
       # (#571). Strict: no retries, many iterations.
       - name: Run gateway revocation tests
@@ -113,5 +139,7 @@ jobs:
           docker logs gateway-wrong-secret 2>&1 | tail -50 || true
           echo "===== gateway-low-limit ====="
           docker logs gateway-low-limit 2>&1 | tail -50 || true
+          echo "===== gateway-prod ====="
+          docker logs gateway-prod 2>&1 | tail -50 || true
           echo "===== identity-test ====="
           docker logs identity-test 2>&1 | tail -50 || true

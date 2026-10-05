@@ -145,8 +145,8 @@ on it, a generic scope satisfies the resource scopes of its level, and
 two implementations are held together by one table of 200 pairs,
 `open-security-gateway/test/scope_vectors.txt`: the shared package's tests
 check theirs against every row, and the gateway's harness
-(`test/scope_vector_tests.sh`) checks the Lua on the wire against the 180
-rows a route of the test configuration requires.
+(`test/scope_vector_tests.sh`) checks the Lua against every row on the
+wire.
 
 ### Where a scope is checked twice
 

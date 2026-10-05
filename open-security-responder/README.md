@@ -90,11 +90,11 @@ calls the gateway, not port 8018.
 | Method and path (responder) | What it does | Who may |
 | --- | --- | --- |
 | `GET /v1/playbooks` | List the loaded playbooks | any member |
-| `POST /v1/playbooks/{playbook_id}/execute` | Start a run; body `{"trigger_data": {...}}`; answers 202 with `run_id` | any member |
+| `POST /v1/playbooks/{playbook_id}/execute` | Start a run; body `{"trigger_data": {...}}`; answers 202 with `run_id` and `status_url`, the run's path on the gateway (`/api/v1/responder/runs/{run_id}`) | any member |
 | `GET /v1/runs/{run_id}` | A run's status, step results and log | the run's team |
 | `DELETE /v1/runs/{run_id}` | Cancel a run (see [Cancelling a run](#cancelling-a-run)) | the run's team |
 | `POST /v1/playbooks/reload` | Reload the playbooks from disk | owner, admin |
-| `GET /v1/connectors` | List the connectors and their actions | any member |
+| `GET /v1/connectors` | List the connectors' names and actions (not the service addresses they call) | any member |
 | `GET /health` | Health check, no authentication | anyone |
 | `GET /metrics` | Prometheus metrics | anyone on the network |
 

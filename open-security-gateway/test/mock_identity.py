@@ -356,7 +356,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             # Also what a request the gateway maps to a service's /health
             # lands on: say which request it was, as the echo does.
-            self._reply(200, {"status": "ok", "method": self.command, "path": self.path})
+            self._reply(
+                200,
+                {
+                    "status": "ok",
+                    "method": self.command,
+                    "path": self.path,
+                    "headers": {k.lower(): v for k, v in self.headers.items()},
+                },
+            )
         elif self.path == "/__mock/counts":
             self._reply(200, dict(authorize_calls))
         else:
