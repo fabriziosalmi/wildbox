@@ -139,11 +139,13 @@ def test_the_worker_counts_a_failed_task_under_todays_key(monkeypatch):
             raise ValueError("bad tool output")
 
     monkeypatch.setattr(worker, "get_threat_enrichment_agent", lambda: Agent())
-    worker.run_threat_enrichment_task(
-        task_id="task-1",
-        ioc={"type": "domain", "value": "example.com"},
-        caller={"user_id": "u", "team_id": "t", "role": "member"},
-    )
+    # A failed task raises; it used to return a report (#717).
+    with pytest.raises(ValueError, match="bad tool output"):
+        worker.run_threat_enrichment_task(
+            task_id="task-1",
+            ioc={"type": "domain", "value": "example.com"},
+            caller={"user_id": "u", "team_id": "t", "role": "member"},
+        )
     # And a task refused for having no caller.
     with pytest.raises(worker.CallerIdentityUnavailable):
         worker.run_threat_enrichment_task(

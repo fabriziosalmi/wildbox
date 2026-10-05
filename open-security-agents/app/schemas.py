@@ -100,7 +100,14 @@ class AnalysisTaskStatus(BaseModel):
     completed_at: Optional[datetime] = Field(None, description="Task completion timestamp")
     progress: Optional[str] = Field(None, description="Current progress description")
     error: Optional[str] = Field(None, description="Error message if failed")
-    result_url: Optional[str] = Field(None, description="URL to fetch results when completed")
+    result_url: Optional[str] = Field(
+        None,
+        description=(
+            "Where to read the task: its path on the gateway, "
+            "/api/v1/agents/analyze/{task_id}, to resolve against the address "
+            "the client called"
+        ),
+    )
     
     class Config:
         schema_extra = {
@@ -110,7 +117,7 @@ class AnalysisTaskStatus(BaseModel):
                 "created_at": "2025-06-25T10:00:00Z",
                 "started_at": "2025-06-25T10:00:05Z",
                 "progress": "Performing WHOIS lookup...",
-                "result_url": "/v1/analyze/abc-123-def"
+                "result_url": "/api/v1/agents/analyze/abc-123-def"
             }
         }
 

@@ -410,6 +410,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guardian were checked: the gateway sends the header, and identity's
   membership notice goes to a route Guardian exempts from the redirect;
   a unit test keeps both true.
+- **The agents service's `result_url` is a path a client can follow**
+  (#716). `POST /api/v1/agents/analyze` and the task read answered
+  `"result_url": "/v1/analyze/{task_id}"`, the service's own path, which
+  on the gateway is not the task; the responder passed it on to whoever
+  ran `all_star_e2e`. It is now the task's path on the gateway,
+  `/api/v1/agents/analyze/{task_id}`: a constant without scheme or host,
+  like the tools service's and the responder's `status_url`, so no
+  request header can change it. A unit test follows it through the
+  rewrite in the gateway's configuration to the task.
+- **An AI analysis that fails is a failed task, not a completed one with
+  a made-up report** (#717). When the agent raised, it answered a report
+  with the verdict `Informational` and confidence 0; the worker did the
+  same when the task body raised; and a report the model did not
+  produce was replaced by a verdict taken from the first verdict word in
+  the narrative ("not malicious" read as `Malicious`), a confidence of
+  0.3 and one evidence item per tool that no tool had reported. Each
+  came back from `GET /api/v1/agents/analyze/{task_id}` as a completed
+  analysis and was counted in `completed_today`: with no
+  `ANTHROPIC_API_KEY`, every submission "completed". Now a failure
+  leaves the task `failed`, counted in `failed_today`, with no report,
+  and `error` says why: no model key (the task fails before anything
+  runs), the model unreachable or refusing, a timeout, a report that
+  could not be generated, or an internal error. Only the model's
+  structured report produces a verdict, a confidence or evidence.
+- **The AI analysis's system prompt no longer sends the model the
+  literal text `{input}` as its target** (#718). The prompt ended with
+  `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
+  not a template, so the placeholder was never filled. The line is
+  gone; the target is in the user turn, where it always was.
 
 ### Changed
 
