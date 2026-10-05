@@ -290,6 +290,38 @@ from its environment; no gateway location maps a client path to `/internal`.
 
 ---
 
+## Errors
+
+Every error of the service has the body every Wildbox service answers:
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "User not found",
+    "type": "HTTPException",
+    "request_id": "6f1c2d..."
+  }
+}
+```
+
+`error.code` is the HTTP status, `error.message` the reason and
+`error.request_id` the correlation id, the `X-Request-ID` the gateway sent
+or one the service generated. There is no top-level `detail`.
+
+| Status | `error.message` | `error.type` |
+| --- | --- | --- |
+| 404, raised by a route | The route's own message: `User not found`, `Team not found`, `API key not found` | `HTTPException` |
+| 404, no such path | `Not Found` | `HTTPException` |
+| 500, unhandled error | `An internal error occurred`; the cause is in the service log under the same request id | `InternalServerError` |
+| 503, database unreachable | `Database temporarily unavailable` | `HTTPException` |
+
+A fastapi-users error keeps its code at `error.details` (see
+[Password Policy](#password-policy)); when the detail is a bare code, such as
+`LOGIN_BAD_CREDENTIALS`, the code is `error.message`.
+
+---
+
 ## Related Documentation
 
 - [Authentication and sessions](../../guides/authentication.md)

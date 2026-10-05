@@ -311,6 +311,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **identity answers 404, 500 and 503 in the body every service
+  answers** (#722). It installed the shared error handlers and then
+  registered two of its own by status code, which run first. Every 404
+  answered `{"detail": "Endpoint not found"}`, the ones a route raised
+  with its own message included: asking about a user, a team or an API
+  key that does not exist said the endpoint did not exist. Every 500
+  answered `{"detail": "Internal server error"}`, without the request id
+  that ties a reported failure to the log. The database middleware
+  answered `{"detail": "Database temporarily unavailable"}` for a lost
+  connection. All three now have the canonical body:
+  `error.message` is the route's own message (`User not found`), `Not
+  Found` for a path that does not exist, `An internal error occurred`
+  for an unhandled error, and `error.request_id` is always there. The
+  gateway reads only the status of identity's answers, and the dashboard
+  reads `error.message` before `detail`, so neither changes; a client
+  that read `detail` from an identity 404, 500 or 503 must read
+  `error.message`.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
