@@ -560,17 +560,19 @@ def test_the_stand_in_refuses_what_the_real_services_refuse(services):
     """The premise of this file: a request to a route the service does not
     serve is answered 404 by the stand-in, as #652's routes were."""
 
-    async def get(url):
+    async def get(url, **extra):
         async with client_module.httpx.AsyncClient() as client:
             return await client.get(
-                url, headers={"X-Gateway-Secret": services_module.SECRET}
+                url, headers={"X-Gateway-Secret": services_module.SECRET, **extra}
             )
 
-    for url in (
-        f"{settings.wildbox_data_url}/api/v1/threat-intel/query",
-        f"{settings.wildbox_guardian_url}/api/v1/vulnerabilities/search",
-    ):
-        response = asyncio.run(get(url))
+    guardian_url = f"{settings.wildbox_guardian_url}/api/v1/vulnerabilities/search"
+    for url in (f"{settings.wildbox_data_url}/api/v1/threat-intel/query", guardian_url):
+        # Guardian redirects plain HTTP unless the caller says the request
+        # arrived over TLS (#707); the client always says so.
+        response = asyncio.run(get(url, **{"X-Forwarded-Proto": "https"}))
         assert response.status_code == 404, url
+    # Without that header the stand-in redirects, as Guardian does.
+    assert asyncio.run(get(guardian_url)).status_code == 301
     assert isinstance(httpx.ConnectError("x"), httpx.HTTPError)
     assert not isinstance(httpx.ConnectError("x"), ConnectionError)
