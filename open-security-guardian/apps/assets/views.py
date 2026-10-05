@@ -13,7 +13,8 @@ from django.db.models import Q, Count
 from django.utils import timezone
 
 from .models import (
-    Asset, Environment, BusinessFunction, AssetGroup, 
+    IMPLEMENTED_DISCOVERY_TYPES,
+    Asset, Environment, BusinessFunction, AssetGroup,
     AssetSoftware, AssetPort, AssetDiscoveryRule
 )
 from .serializers import (
@@ -269,9 +270,24 @@ class AssetDiscoveryRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         rule = self.get_object()
         
         if not rule.enabled:
-            return Response({'error': 'Discovery rule is disabled'}, 
+            return Response({'error': 'Discovery rule is disabled'},
                           status=status.HTTP_400_BAD_REQUEST)
-        
+
+        # A rule of a type with no implementation (one stored before the
+        # API refused them, #548) was queued and answered "executed" with a
+        # task id; the task then skipped it (#644).
+        if rule.discovery_type not in IMPLEMENTED_DISCOVERY_TYPES:
+            return Response(
+                {
+                    'detail': (
+                        f'{rule.discovery_type} discovery is not implemented; '
+                        f'supported: {", ".join(IMPLEMENTED_DISCOVERY_TYPES)}.'
+                    ),
+                    'code': 'DISCOVERY_TYPE_NOT_IMPLEMENTED',
+                },
+                status=status.HTTP_501_NOT_IMPLEMENTED,
+            )
+
         # Trigger discovery task
         from apps.assets.tasks import execute_discovery_rule
         task = record_team_task(execute_discovery_rule.delay(rule.id), rule.team_id)

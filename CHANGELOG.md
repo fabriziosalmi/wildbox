@@ -101,6 +101,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
+- **guardian: twenty actions that answered `success` without doing
+  anything** (#644). They returned `200 {"status": "success", ...}`, or
+  fixed figures, whatever the record and without contacting anything, so
+  a client, an operator or a test could not tell them from real results:
+  a notification "sent", a connection "tested", results "imported". None
+  can be done without an external system that guardian does not talk to,
+  and nothing in Wildbox called them, so their routes are gone rather
+  than left to answer an error:
+  - integrations: `systems/{id}/test_connection/`, `health_check/`
+    (always `{"status": "healthy", "response_time_ms": 150}`) and
+    `sync_status/`; `mappings/{id}/test_mapping/` and `sync_now/`;
+    `sync-records/sync_statistics/` (zeros) and `{id}/retry_sync/`;
+    `webhooks/{id}/test_webhook/` and `trigger_webhook/`;
+    `logs/error_summary/` (zeros); `notifications/{id}/test_notification/`
+    and `send_notification/`;
+  - scanners: `scanners/{id}/test_connection/`, which required the caller
+    to send a `success` flag and answered "Connection test passed"
+    whatever it was; `scans/{id}/start/`, `stop/`, `pause/` and `resume/`,
+    which only overwrote the stored status (`stop/` with `stopped`, a
+    status scans do not have); `scans/import_results/`;
+  - remediation: `tickets/{id}/sync_external/`, and
+    `workflows/{id}/pause/`, which stored `paused`, a status workflows do
+    not have, so the API then refused that workflow's own status on a
+    `PUT` and as a filter.
+
+  They answer `404` (`405` for `POST scans/import_results/`). The
+  [API reference](docs/api/guardian/endpoints.md) lists each with what to
+  use instead: a scan's status is set with `PATCH scanners/scans/{id}/`, a
+  workflow is put on hold with `PATCH` and `{"status": "deferred"}`, and
+  the counts the two statistics routes stood for are the `count` of
+  `sync-records/?sync_status=failed` and `logs/?level=error`. Also
+  removed, for the same reason: the model method
+  `NotificationChannel.send_notification`, which counted a notification
+  and returned `True` having sent nothing; the Celery task
+  `scan_vulnerability_remediation`, which answered `still_present` for
+  every vulnerability without a scan and which nothing dispatched; and
+  the cloud and CMDB discovery functions that logged "not yet
+  implemented" and returned 0 assets.
 
 ### Fixed
 
@@ -162,6 +200,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfy the new one. Unit tests cover both teams, a second system of the
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
+- **The guardian actions that can be done in its own database now do
+  what they answered** (#644):
+  - `POST remediation/tickets/{id}/assign/` answered "Ticket assigned"
+    for any `assignee_id`, a user that does not exist included, and left
+    the ticket as it was. It sets `assigned_to` to that member of the
+    caller's team and answers `400` for anyone else.
+  - `POST remediation/templates/{id}/clone/` answered "Template cloned"
+    and created nothing. It stores a copy in the caller's team and
+    returns it (`201`).
+  - `POST remediation/templates/{id}/apply/` counted a use of the
+    template and created no workflow. It creates the remediation workflow
+    of the team's vulnerability `vulnerability_id`, with the template's
+    type, priority, plans and steps, and returns it (`201`); `409
+    WORKFLOW_EXISTS` when the vulnerability already has one, and `400
+    TEMPLATE_STEPS_INVALID`, with nothing created, for a template whose
+    steps cannot be created.
+  - `DELETE integrations/logs/cleanup_logs/` answered "Logs older than N
+    days cleaned up" and deleted nothing. It deletes the caller's team's
+    integration logs older than `older_than_days` (default 30) and
+    reports how many.
+  - `POST vulnerabilities/bulk_action/` accepted `reopen` and `untag` and
+    answered "Bulk action completed on 0 vulnerabilities". Both are
+    performed, an action the view does not perform answers `400`, a bulk
+    `close` records its reason and history as `close/` does, and a bulk
+    `assign` sets what the request names: a group given alone unassigned
+    every user, and a user given alone cleared every group.
+  - `POST remediation/tickets/{id}/update_status/` stored any string as
+    the status; one the model does not define answers `400`.
+  - `POST remediation/workflows/{id}/start/` and `complete/` set the
+    status and no date, so a workflow completed in time was measured
+    against the clock and became `missed` once its planned date passed.
+    They set `actual_start_date` and `actual_completion_date`.
+  - `POST vulnerabilities/{id}/assign/` with neither an assignee nor a
+    group answered "assigned successfully" and queued the assignment
+    notification again; it answers `400`.
+  - `POST vulnerabilities/{id}/close/` and `reopen/` wrote a history
+    entry that said the status had been `open`, or `resolved`, whatever
+    it was. The entry has the status the vulnerability had.
+  - `POST assets/discovery-rules/{id}/execute/` answered "executed" with
+    a task id for a rule of a type that is not implemented (one stored
+    before 0.11.0 refused them), and the task then skipped it. It answers
+    `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"`. A network-scan
+    rule's task reported the networks it had queued as assets discovered;
+    it reports `networks_queued`.
+  - `GET vulnerabilities/trends/?days=abc` answered 500, and nothing
+    bounded the window. `days` is a whole number from 0 to 366, `400`
+    otherwise. The docs audit behind #644 read `trends` as ignoring the
+    rule that a member sees only their own vulnerabilities: it has
+    followed it since #642, and a test now pins it.
+
+  A test walks the URLconf and fails for a custom action that is not
+  classified in `tests/unit/test_action_contracts.py`; for one classified
+  as changing something, it compares every row guardian stores, the tasks
+  dispatched and the e-mails sent before and after, and fails a `2xx`
+  answer that changed nothing. A `GET` must answer differently when the
+  data differs, so fixed figures fail too.
 
 ## [0.11.2] - 2026-10-05
 

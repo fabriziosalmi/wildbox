@@ -33,7 +33,7 @@ Every task is routed by name in `guardian/celery.py` (`TASK_QUEUES`), and
 
 | Queue | Tasks |
 | --- | --- |
-| `scanning` | Asset discovery, discovery rules, asset port scans, remediation re-scans |
+| `scanning` | Asset discovery, discovery rules, asset port scans |
 | `reporting` | Report generation and metrics, alert-rule checks, expired-report cleanup, compliance reports |
 | `analytics` | Vulnerability risk-score recomputation, compliance metrics |
 | `default` | Notifications, SLA checks, threat-intel enrichment, history cleanup, asset inventory, compliance reminders, the user-schedule dispatcher |
@@ -223,6 +223,14 @@ through the gateway:
 | `integrations/` | `systems`, `mappings`, `sync-records`, `webhooks`, `logs`, `notifications` (records only) |
 | `reports/` | `templates`, `schedules`, `reports`, `dashboards`, `widgets`, `metrics`, `alerts` |
 | `tasks/<task_id>/` | State of a dispatched Celery task |
+
+An action answers `2xx` only for something it did. The actions that answered
+`success` without doing anything (testing a connection to a scanner or an
+external system, starting a scan, importing results, synchronizing, sending
+a notification, and others) were removed in #644 and answer 404; the
+[API reference](../docs/api/guardian/endpoints.md) lists each removed route
+with what to use instead, and [apps/README.md](apps/README.md) says how the
+tests keep a new one out.
 
 The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
 when `DEBUG` is true, and only on the service port, not through the gateway.
