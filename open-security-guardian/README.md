@@ -269,6 +269,13 @@ a notification, and others) were removed in #644 and answer 404; the
 with what to use instead, and [apps/README.md](apps/README.md) says how the
 tests keep a new one out.
 
+Guardian stores no credential of a scanner or an external system. The
+fields that took one (`api_key` and `password` on a scanner, `auth_config`
+on an external system, `secret_token` on a webhook endpoint, `config` on a
+notification channel) kept it as plain text for code that does not exist,
+and were removed in #728 with the values they held; a request that sends
+one answers 400 on that field.
+
 The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
 when `DEBUG` is true, and only on the service port, not through the gateway.
 

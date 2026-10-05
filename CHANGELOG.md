@@ -215,6 +215,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **guardian no longer stores the credentials of scanners and external
+  systems, which it kept in plain text and never used** (#728). A
+  scanner's `api_key` and `password` (the help text of the second said
+  "Encrypted"; the serializer said "In a real implementation, encrypt"),
+  an external system's `auth_config`, a webhook endpoint's
+  `secret_token` and a notification channel's `config` were stored as
+  the API was sent them. Whoever could read guardian's database, a dump
+  or a backup read every team's scanner keys, bearer tokens, basic-auth
+  passwords and Slack webhook URLs. Nobody else could: the API never
+  returned the five fields, and no code read them, since guardian
+  connects to no scanner, contacts no external system, receives no
+  webhook and delivers nothing through a channel (the actions that
+  claimed to were removed in #644). They are removed, not encrypted: a
+  key that three containers must have at start, and that every backup
+  then depends on, would protect values nothing can use. Migrations
+  blank the values and then drop the columns, in that order because
+  PostgreSQL's `DROP COLUMN` leaves a column's bytes in each row until
+  the row is next written, and log how many rows held a secret, never a
+  value. The code that first connects to a scanner brings its credential
+  back encrypted with a key the database does not hold, as cspm does;
+  a unit test fails for a model field or a served serializer field named
+  like a secret until it says how it is protected. Unit tests send each
+  secret through every write route and read every table afterwards, and
+  run the migrations forwards and backwards on rows that hold secrets;
+  on PostgreSQL 15 the heap files of the four tables held the secrets
+  after a drop alone and none after the migrations as written.
+  Twenty-two mutations of the fix each fail a test.
 
 ### Removed
 
@@ -308,6 +335,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other checks called the tools service and Redis without credentials
   and reported the refusals as problems. `make health` is the health
   check (#656).
+- **guardian: the `api_key` and `password` fields of a scanner, the
+  `auth_config` field of an external system, the `secret_token` field of
+  a webhook endpoint and the `config` field of a notification channel**
+  (#728), with `Scanner.get_connection_info` and
+  `ExternalSystem.get_auth_headers`, which nothing called. The fields
+  were write-only, so no response changes. A `POST`, `PUT` or `PATCH`
+  that sends a value in one of them answers `400` on that field, with
+  the reason, instead of `201` or `200` for a secret guardian would
+  discard; an empty value (`""`, `null`, `{}`, `[]`) is ignored.
 
 ### Fixed
 
