@@ -9,14 +9,9 @@ import asyncio
 import aiohttp
 import ipaddress
 import json
-import sys
-import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import re
-
-# Add parent directories to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from ...utils.tool_utils import RateLimiter
 from ...tool_config import ToolConfig

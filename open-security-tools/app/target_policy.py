@@ -101,9 +101,10 @@ logger = logging.getLogger(__name__)
 ALLOWLIST_ENV = "TOOLS_ALLOWED_INTERNAL_TARGETS"
 
 # The largest range a single input may name: a /22 in IPv4, a /118 in IPv6.
-# network_scanner sweeps at most 1000 hosts and iot_security_scanner 256, so
-# nothing a tool scans is lost; a larger request is refused instead of being
-# expanded (a /8 is 16 million addresses, an IPv6 /64 more than memory holds).
+# network_scanner sweeps at most 1024 hosts (its MAX_HOSTS) and
+# iot_security_scanner 256, so nothing a tool scans is lost; a larger request
+# is refused instead of being expanded (a /8 is 16 million addresses, an IPv6
+# /64 more than memory holds).
 MAX_TARGET_ADDRESSES = 1024
 
 # Name suffixes that never belong to a public host: RFC 6761 (localhost),
