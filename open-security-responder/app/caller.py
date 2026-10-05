@@ -32,6 +32,11 @@ from .config import settings
 
 VALID_ROLES = ("owner", "admin", "member", "viewer")
 
+# The scheme of the request a connector call stands for: what the gateway
+# puts in X-Forwarded-Proto on everything it forwards from its HTTPS
+# listener, the only one that proxies.
+FORWARDED_PROTO = "https"
+
 _run_caller: ContextVar[Optional[Dict[str, str]]] = ContextVar(
     "responder_run_caller", default=None
 )
@@ -128,4 +133,12 @@ def gateway_headers() -> Dict[str, str]:
         "X-Wildbox-Team-ID": caller["team_id"],
         "X-Wildbox-Role": caller["role"],
         "X-Gateway-Secret": secret,
+        # As the gateway sends it (nginx/includes/proxy_params.conf): the
+        # run was started over HTTPS, and TLS ends at the gateway, which
+        # calls the services over plain HTTP as the connectors do. Guardian
+        # redirects a plain-HTTP request that does not say so to https://
+        # on its own port, where nothing listens (SECURE_SSL_REDIRECT with
+        # SECURE_PROXY_SSL_HEADER), so without this header every Guardian
+        # action was answered 301 (#707).
+        "X-Forwarded-Proto": FORWARDED_PROTO,
     }

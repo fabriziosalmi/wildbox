@@ -25,6 +25,7 @@ DATA_MAIN = REPO_ROOT / "open-security-data" / "app" / "api" / "main.py"
 DATA_SCHEMAS = REPO_ROOT / "open-security-data" / "app" / "schemas" / "api.py"
 GUARDIAN = REPO_ROOT / "open-security-guardian"
 GUARDIAN_URLS = GUARDIAN / "guardian" / "urls.py"
+GUARDIAN_SETTINGS = GUARDIAN / "guardian" / "settings.py"
 GUARDIAN_VULN_SERIALIZERS = GUARDIAN / "apps" / "vulnerabilities" / "serializers.py"
 GUARDIAN_VULN_MODELS = GUARDIAN / "apps" / "vulnerabilities" / "models.py"
 GUARDIAN_VULN_FILTERS = GUARDIAN / "apps" / "vulnerabilities" / "filters.py"
@@ -309,14 +310,68 @@ def routes_of(service):
     }[service]()
 
 
+def guardian_https_redirect():
+    """Guardian's HTTPS redirect, read from guardian/settings.py.
+
+    ``(enabled, (header, value), exempt patterns)``: Django's
+    SECURE_SSL_REDIRECT, the request header SECURE_PROXY_SSL_HEADER trusts
+    as proof the client used HTTPS (as an HTTP header name, not a META key),
+    and the SECURE_REDIRECT_EXEMPT patterns. They are set when DEBUG is off,
+    which is how docker-compose.yml runs Guardian.
+    """
+    found = {}
+    for node in ast.walk(ast.parse(GUARDIAN_SETTINGS.read_text())):
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            name = node.targets[0].id
+            if name in (
+                "SECURE_SSL_REDIRECT",
+                "SECURE_PROXY_SSL_HEADER",
+                "SECURE_REDIRECT_EXEMPT",
+            ):
+                found[name] = ast.literal_eval(node.value)
+    meta_key, value = found.get("SECURE_PROXY_SSL_HEADER", ("", ""))
+    header = meta_key.removeprefix("HTTP_").replace("_", "-")
+    return (
+        bool(found.get("SECURE_SSL_REDIRECT")),
+        (header, value),
+        tuple(found.get("SECURE_REDIRECT_EXEMPT", ())),
+    )
+
+
+def https_redirect(service, request):
+    """The redirect ``service`` answers a plain-HTTP ``request`` with, or None.
+
+    Only Guardian redirects. Django's SecurityMiddleware answers 301 to
+    https:// on the same host, port and path for a request that is not
+    secure, and a request is secure only when it carries the header
+    SECURE_PROXY_SSL_HEADER names: TLS ends at the gateway, which sends it.
+    An internal caller that does not send it gets the redirect, to a port
+    where nothing speaks TLS (#707). The middleware runs before the route is
+    resolved and before authentication, so this comes first.
+    """
+    if service != "guardian" or request.url.scheme == "https":
+        return None
+    enabled, (header, value), exempt = guardian_https_redirect()
+    if not enabled or (header and request.headers.get(header) == value):
+        return None
+    path = request.url.path.lstrip("/")
+    if any(re.search(pattern, path) for pattern in exempt):
+        return None
+    return str(request.url.copy_with(scheme="https"))
+
+
 def refusal(service, request, secret):
     """(status, reason) the real service answers ``request`` with, or None.
 
-    404 for a route the service does not declare; 403 for a request without
-    the gateway identity headers or with the wrong X-Gateway-Secret, as
-    open_security_shared.gateway_auth (tools, agents, data) and Guardian's
-    GatewayAuthMiddleware answer it.
+    301 for a plain-HTTP request Guardian redirects to HTTPS (see
+    https_redirect); 404 for a route the service does not declare; 403 for a
+    request without the gateway identity headers or with the wrong
+    X-Gateway-Secret, as open_security_shared.gateway_auth (tools, agents,
+    data) and Guardian's GatewayAuthMiddleware answer it.
     """
+    location = https_redirect(service, request)
+    if location:
+        return 301, f"Moved Permanently to {location}"
     if route_for(routes_of(service), request.method, request.url.path) is None:
         return 404, f"{service} serves no {request.method} {request.url.path}"
     headers = request.headers

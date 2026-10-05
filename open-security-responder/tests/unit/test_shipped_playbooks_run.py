@@ -30,6 +30,7 @@ that each request carried that user.
 import ast
 import json
 import os
+import re
 import sys
 from datetime import timezone
 from pathlib import Path
@@ -262,11 +263,15 @@ class Services:
     caller who is neither owner nor admin, as IsGatewayAdminOrReadOnly does.
     """
 
-    def __init__(self, tools=None, agents=202, guardian=201, assets=()):
+    def __init__(
+        self, tools=None, agents=202, guardian=201, assets=(), vulnerabilities=()
+    ):
         self.tools = tools or {}
         self.agents = agents
         self.guardian = guardian
         self.assets = list(assets)
+        # Each with the id of its asset under "asset".
+        self.vulnerabilities = list(vulnerabilities)
         self.calls = []
 
     def _service(self, request):
@@ -306,6 +311,32 @@ class Services:
                 return httpx.Response(self.agents, json={"detail": "unavailable"})
             return httpx.Response(202, json=analysis_task())
         if service == "guardian" and request.method == "GET":
+            # One asset, by id: 404 for an id Guardian does not hold for the
+            # caller's team, as for an asset of another team.
+            detail = re.fullmatch(r"/api/v1/assets/assets/([^/]+)/", path)
+            if detail:
+                asset = next(
+                    (a for a in self.assets if a["id"] == detail.group(1)), None
+                )
+                if asset is None:
+                    return httpx.Response(404, json={"detail": "Not found."})
+                return httpx.Response(200, json=asset)
+            if path == "/api/v1/vulnerabilities/":
+                asset_id = request.url.params.get("asset_id")
+                found = [
+                    v
+                    for v in self.vulnerabilities
+                    if asset_id is None or v["asset"] == asset_id
+                ]
+                return httpx.Response(
+                    200,
+                    json={
+                        "count": len(found),
+                        "next": None,
+                        "previous": None,
+                        "results": found,
+                    },
+                )
             search = request.url.params.get("search", "")
             found = [
                 a
@@ -785,6 +816,96 @@ def test_hash_evidence_queues_the_hashing_as_the_caller(run, playbooks):
 def test_hash_evidence_without_text_fails_before_any_call(run, playbooks):
     services = Services(tools={"hash_generator": lambda p: {}})
     record = run("hash_evidence", {}, services)
+    assert record.status == ExecutionStatus.FAILED
+    assert services.calls == []
+
+
+# --- asset_vulnerabilities --------------------------------------------------
+#
+# The one shipped playbook that only calls Guardian, and does so on every
+# run. Every Guardian action was answered 301 on the running stack (#707):
+# the connectors called it over plain HTTP without X-Forwarded-Proto, and
+# Guardian redirects such a request to https://. The stand-in answers that
+# redirect as Guardian does (service_contracts.https_redirect), so these
+# fail if the header goes.
+
+ASSET_ID = "7a3e9c1b-5d2f-4b8a-9e6c-1f0d2b4a6c83"
+OTHER_ASSET_ID = "1c9e7a3b-2f5d-4a8b-9c6e-3d0f1b2a4c68"
+
+
+def asset_services():
+    return Services(
+        assets=[
+            guardian_asset("203.0.113.7", ASSET_ID),
+            guardian_asset("203.0.113.8", OTHER_ASSET_ID),
+        ],
+        vulnerabilities=[
+            {"id": "v-1", "asset": ASSET_ID, "title": "OpenSSH regreSSHion"},
+            {"id": "v-2", "asset": ASSET_ID, "title": "Outdated TLS configuration"},
+            {"id": "v-3", "asset": OTHER_ASSET_ID, "title": "Another asset's finding"},
+        ],
+    )
+
+
+def test_asset_vulnerabilities_reads_the_asset_and_its_findings(run, playbooks):
+    services = asset_services()
+    record = run("asset_vulnerabilities", {"asset_id": ASSET_ID}, services)
+
+    assert_completed(
+        record,
+        playbooks,
+        {"read_asset": "ran", "list_vulnerabilities": "ran", "report": "ran"},
+    )
+    assert [(s, m, p) for s, m, p, _, _ in services.calls] == [
+        ("guardian", "GET", f"/api/v1/assets/assets/{ASSET_ID}/"),
+        ("guardian", "GET", "/api/v1/vulnerabilities/"),
+    ]
+    assert output(record, "read_asset")["name"] == "host-203.0.113.7"
+    listed = output(record, "list_vulnerabilities")
+    assert listed["count"] == 2
+    assert output(record, "report")["data"] == {
+        "run_id": record.run_id,
+        "asset_id": ASSET_ID,
+        "asset_name": "host-203.0.113.7",
+        "vulnerabilities": "2",
+        "titles": "OpenSSH regreSSHion; Outdated TLS configuration",
+    }
+
+
+def test_asset_vulnerabilities_tells_guardian_the_run_came_over_https(run, playbooks):
+    """Guardian redirects plain HTTP without this header (#707)."""
+    services = asset_services()
+    record = run("asset_vulnerabilities", {"asset_id": ASSET_ID}, services)
+
+    assert record.status == ExecutionStatus.COMPLETED, record.error
+    assert len(services.calls) == 2
+    for *_, headers in services.calls:
+        assert headers["x-forwarded-proto"] == "https"
+
+
+def test_asset_vulnerabilities_fails_for_an_asset_the_caller_cannot_see(run, playbooks):
+    """Guardian answers 404 for another team's asset as for none; the run
+    stops there and lists nothing."""
+    services = asset_services()
+    unknown = "5d2f7a3e-9c1b-4b8a-8e6c-2b4a6c831f0d"
+    record = run("asset_vulnerabilities", {"asset_id": unknown}, services)
+
+    assert record.status == ExecutionStatus.FAILED
+    assert "404" in record.error
+    assert [p for _, _, p, _, _ in services.calls] == [
+        f"/api/v1/assets/assets/{unknown}/"
+    ]
+
+
+@pytest.mark.parametrize(
+    "trigger", [{}, {"asset_id": "not-a-uuid"}, {"asset_id": "../x"}]
+)
+def test_asset_vulnerabilities_without_a_valid_id_sends_nothing(
+    run, playbooks, trigger
+):
+    services = asset_services()
+    record = run("asset_vulnerabilities", trigger, services)
+
     assert record.status == ExecutionStatus.FAILED
     assert services.calls == []
 
