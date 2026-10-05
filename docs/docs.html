@@ -165,18 +165,16 @@ permalink: /docs.html
                                 <h3 id="responder-service" class="font-semibold mb-2">Responder Service</h3>
                                 <p class="mb-3">Incident response playbook execution and remediation automation.</p>
                                 <a href="/api/responder/endpoints/" class="btn-link">Endpoint reference</a>
-                                <a href="/api/responder-api.html" class="btn-link secondary">OpenAPI (Redoc)</a>
                             </div>
 
                             <div class="api-endpoint">
                                 <h3 id="agents-service" class="font-semibold mb-2">Agents Service</h3>
                                 <p class="mb-3">AI-assisted threat analysis.</p>
                                 <a href="/api/agents/endpoints/" class="btn-link">Endpoint reference</a>
-                                <a href="/api/agents-api.html" class="btn-link secondary">OpenAPI (Redoc)</a>
                             </div>
                         </div>
 
-                        <p>Only the responder and agents services have a published Redoc page; each embeds an OpenAPI document exported from that service. For the others, a running service can expose its own schema on its local port; some disable it in production. See also the <a href="/api/">API documentation index</a>.</p>
+                        <p>The endpoint references are written by hand and are the published API documentation. For a machine-readable schema, run the service in development: identity, tools, data, responder, agents and cspm serve <code>/openapi.json</code> on their local port when <code>ENVIRONMENT</code> is <code>development</code>, and guardian serves <code>/api/schema/</code> when <code>DEBUG</code> is on. See also the <a href="/api/">API documentation index</a>.</p>
 
                         <h2 id="authentication">Authentication</h2>
                         <p>Obtain a JWT from the identity service with a form-encoded login (fields <code>username</code> and <code>password</code>), then send it as a bearer token. Through the gateway the login path is <code>/auth/jwt/login</code>; the <a href="/guides/quickstart/">Quick start</a> shows the full, tested sequence. Token lifetime (30 minutes, no refresh), logout and the failed-login lockout are described in <a href="/guides/authentication/">Authentication and sessions</a>.</p>
