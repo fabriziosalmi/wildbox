@@ -34,6 +34,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   served when `ENVIRONMENT` is `development`, 404 for any other value.
   cspm no longer follows `DEBUG`. None of these paths was, or is,
   reachable through the gateway.
+- **gateway: the development Compose file no longer mounts the Docker
+  socket** (#680). `open-security-gateway/docker-compose.dev.yml` ran
+  `gliderlabs/logspout:latest` with `/var/run/docker.sock` mounted
+  read-only. `:ro` restricts the socket file, not the Docker API behind
+  it, so anything that compromised that container was root on the
+  developer's host; the image is unmaintained and was pulled at whatever
+  version the registry served. It also shipped to `syslog://logs:514`, a
+  host the file never defined, so nothing read its output. The service
+  is removed: `docker compose logs -f` follows every container.
+- **The standalone Compose files publish on loopback and name image
+  versions** (#680). An audit of all 21 tracked Compose files found no
+  other socket mount and no privileged setting, but 19 ports published
+  on every interface by development stacks: the debugging gateway,
+  Redis without a password (gateway, tools, sensor, agents), the
+  sensor's test PostgreSQL, the tools API with its default key, the
+  agents API, the standalone dashboard, and the Prometheus and Grafana
+  of the data and sensor stacks. They now bind `127.0.0.1`, as the root
+  `docker-compose.yml` already did. Four `nginx:alpine` and one `curlimages/curl:latest`
+  followed upstream with no version; they are `nginx:1.30-alpine` and
+  `curlimages/curl:8.22.0`. The gateway's 80, 443 and 8080 in the root
+  stack, and the reverse proxies of the standalone data, tools and
+  scaled-sensor stacks, stay on every interface: they are entry points.
+
+- **Image builds no longer run or download an installer that nothing
+  pinned** (#657). cspm, guardian, responder, tools and the tools
+  development image ran `pip install --upgrade pip` before their
+  hash-checked install: the installer was whatever PyPI served at build
+  time, unhashed, and it then installed everything else. They now use
+  the pip of the digest-pinned base image (24.0), as identity, data,
+  agents and sensor did. A second download was in all eight images:
+  `pip install --no-deps /tmp/open-security-shared` built the shared
+  package in an isolated environment, for which pip fetched the latest
+  setuptools (84.0.0 on the day of the fix) from PyPI, unhashed, at
+  every build. The shared package, and the sensor's own
+  `pip install -e .`, are now installed with
+  `--no-index --no-deps --no-build-isolation`, so pip cannot reach an
+  index for them; the hash-checked installs carry
+  `--no-build-isolation`, so a source distribution in a lockfile is
+  built with the base image's setuptools instead of one downloaded for
+  the occasion. The tools development image also moves from Python
+  3.12 to the 3.11 its lockfile is compiled for, states
+  `--require-hashes`, drops an unpinned `pip install watchdog` that
+  nothing imported, and installs the shared package, without which its
+  container could not import the application.
+- **The downloads in the image builds are checked against a SHA-256**
+  (#657). Trivy in the tools image, osquery in the sensor image and the
+  three lua-resty-http files in the gateway images were pinned by
+  version in the URL and nothing else; a release asset or a git tag can
+  be replaced under the same name. Each is now verified with
+  `sha256sum -c` before it is unpacked or installed, against the value
+  upstream publishes (Trivy's checksum file; the osquery packages on
+  pkg.osquery.io and on the GitHub release; the lua-resty-http files at
+  the commit the tag names).
 
 - **A user who left a team is no longer one of its users in guardian**
   (#676). guardian recorded a membership the first time the gateway
@@ -205,6 +258,93 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfy the new one. Unit tests cover both teams, a second system of the
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
+- **Rotating `POSTGRES_PASSWORD` no longer locks every service out.**
+  `scripts/rotate_secrets.sh` rewrote only the `POSTGRES_PASSWORD=` line
+  of `.env`. The services connect with `DATABASE_URL`,
+  `DATA_DATABASE_URL`, `GUARDIAN_DATABASE_URL` and
+  `RESPONDER_DATABASE_URL`, which embed the password, and the password
+  itself lives in the running server, so the next restart failed with
+  `password authentication failed` while the script reported success. The
+  rotation now changes the server and every connection string in `.env`
+  that points at the stack's PostgreSQL, checks that the server accepts
+  the new password, and names the services to recreate. It refuses to
+  run when the stack is not running, and if a step fails it restores
+  `.env` and the server's previous password and says so. The password is
+  sent to the server as a SCRAM-SHA-256 verifier over standard input: it
+  is in no command line and in no statement the server could log (#649).
+- **A rotated `API_KEY` is accepted by the stack again.** The script
+  drew every secret as a 64-character URL-safe token. `API_KEY` must be
+  `wsk_<prefix>.<64 hex characters>` for `make validate-secrets`, which
+  `make start` runs first, and the tools service rejects a key that
+  contains a weak pattern such as `abc`. Each secret is now drawn by the
+  generator `make generate-secrets` uses for it (#649).
+- **The rotation script says what reads each secret.** It described
+  `NEXTAUTH_SECRET` as invalidating dashboard sessions, although nothing
+  reads it, and named two of the three containers that require
+  `API_KEY`. After a rotation it ended with advice about
+  `GATEWAY_INTERNAL_SECRET` and `docker compose up -d --force-recreate`
+  whatever the secret. It now prints the services that receive the
+  rotated secret, read from `docker compose config`, and the command
+  that recreates only those (#649).
+- **`make backup` and `make restore-drill` work on the default stack.**
+  They ran `pg_dump` on the host and needed `POSTGRES_PASSWORD` in the
+  environment, a `POSTGRES_HOST` the host could resolve and the PostgreSQL
+  client tools installed, none of which the default stack provides. They
+  now run the tools inside the stack's own containers with
+  `docker compose exec`, honoring `COMPOSE_FILE`, `COMPOSE_PROJECT_NAME`
+  and `ENV_FILE`; a host mode (`BACKUP_MODE=host`, or setting
+  `POSTGRES_HOST`) remains for an external database. `make backup` writes
+  to `./backups` (#681).
+- **A backup that is missing a part now fails.** The script printed a
+  warning, skipped Redis and exited 0 when `redis-cli` or `REDIS_PASSWORD`
+  was missing. Redis holds state that exists nowhere else (CSPM scans,
+  playbook runs, revoked tokens, queued work), so it is part of every
+  backup unless `SKIP_REDIS=true` says otherwise. If any database or Redis
+  fails, the run exits non-zero and removes the files it wrote, so a
+  timestamp in the backup directory is always a complete set; retention
+  runs only after a complete backup (#681).
+- **Backup files are written with mode `600`** in a mode `700` directory,
+  no password file is written, and the Redis password is no longer passed
+  to `redis-cli` on its command line (#681).
+- **The restore drill compares exact row counts and only reads the live
+  databases.** It used estimated counts and ran `ANALYZE` on the live
+  databases, and it left its archives in `/tmp`. It now restores into
+  `<db>_restore_drill`, compares every table with the source, and removes
+  its archives (#681).
+
+### Added
+
+- **`scripts/restore_redis.sh` restores the Redis snapshot a backup
+  takes.** Redis runs with the append-only file enabled and then ignores
+  `dump.rdb` at start, so copying the snapshot into the data volume gave
+  an empty Redis. The script loads the snapshot in a one-off container
+  and writes the append-only file; it refuses to run while Redis is
+  running (#681).
+
+### CI
+
+- **Code Quality checks every Dockerfile** (#657).
+  `scripts/check_container_hygiene.py` also reads every tracked
+  Dockerfile and fails on a `pip install` that is neither
+  `--require-hashes --no-build-isolation -r <lockfile>` nor
+  `--no-index <local path>`, on an npm install that resolves versions
+  at build time, on a `FROM` or `COPY --from=<image>` without a digest,
+  on a download piped to a shell, and on a `curl`, `wget` or
+  `ADD <url>` that nothing in the same instruction verifies. The pip,
+  npm, base image and pipe-to-shell rules cannot be allow-listed. On
+  the commit before these fixes it reports 33 problems in the 13
+  Dockerfiles. `apt-get install` and `apk add` without versions are
+  not checked.
+- **Code Quality checks every Compose file** (#680). Only the root
+  `docker-compose.yml` was ever validated, so the gateway's development
+  file could mount the Docker socket unnoticed.
+  `scripts/check_container_hygiene.py` reads every tracked YAML file
+  with a top-level `services:` and fails on a runtime socket mount, an
+  image that names no version, a privileged setting or a port published
+  on every interface. Deliberate exceptions go in
+  `scripts/container_hygiene_allowlist.txt` with a reason; an entry
+  that matches nothing any more fails too. On the previous commit it
+  reports 27 problems.
 
 ## [0.11.2] - 2026-10-05
 

@@ -3,7 +3,7 @@ version: '3.8'
 services:
   # Load balancer for multiple sensor instances
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30-alpine
     container_name: sensor-nginx
     restart: unless-stopped
     

@@ -3,12 +3,16 @@ version: '3.8'
 services:
   # Development version with hot reload
   wildbox-api-dev:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
+      # Dockerfile.dev installs the shared package from this named build
+      # context, as Dockerfile does (see docker-compose.yml).
+      additional_contexts:
+        shared: ../open-security-shared
     container_name: wildbox-security-api-dev
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     environment:
       - API_KEY=${API_KEY:-dev-api-key-change-this}
       - HOST=0.0.0.0
@@ -31,7 +35,7 @@ services:
     image: redis:7-alpine
     container_name: wildbox-redis-dev
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis-dev-data:/data
     restart: unless-stopped
