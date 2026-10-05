@@ -14,7 +14,7 @@ is a field of the record, set with PUT or PATCH like the others. The scan
 guardian itself performs is the asset port scan (apps.assets).
 """
 
-from rest_framework import viewsets, status
+from rest_framework import mixins, viewsets
 from apps.core.permissions import IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
@@ -155,16 +155,14 @@ class ScanResultViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     ordering = ['-created_at']
 
 
-SCAN_SCHEDULES_UNSUPPORTED = (
-    "Scheduled scans are not supported: guardian cannot start a scan on an "
-    "external scanner yet (starting, stopping and importing scans are not "
-    "implemented), so a schedule would never run. Existing schedules can be "
-    "listed, disabled and deleted."
-)
-
-
-class ScanScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
-    """ViewSet for managing scan schedules.
+class ScanScheduleViewSet(
+    TeamScopedViewSetMixin,
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """The scan schedules stored before #548: listed, disabled and deleted.
 
     A scan schedule names an external scanner (Nessus, Qualys, OpenVAS,
     Rapid7 or a custom one) and a scan profile, and guardian has no code
@@ -173,9 +171,13 @@ class ScanScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     (apps.assets.tasks.scan_asset_ports) is guardian's own TCP connect scan
     of one asset; it uses neither the scanner nor the profile and produces
     no Scan or ScanResult, so running it for a scan schedule would report
-    work that was not done. Creating, changing, triggering and enabling a
-    schedule therefore answer 400 instead of accepting a schedule nothing
-    would run (#548).
+    work that was not done.
+
+    So nothing runs a schedule, and the API offers no way to make one, change
+    one, run one or switch one on. Those routes existed and always answered
+    400 (#548); a route that can only refuse is not part of an API, and they
+    were removed (#724): POST on the list and PUT and PATCH on a schedule
+    answer 405, ``trigger/`` and ``enable/`` 404.
     """
     queryset = ScanSchedule.objects.all()
     serializer_class = ScanScheduleSerializer
@@ -185,33 +187,6 @@ class ScanScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
     filterset_fields = ['scanner', 'is_active']
     ordering_fields = ['name', 'created_at', 'next_run']
     ordering = ['next_run']
-
-    @staticmethod
-    def _unsupported():
-        return Response(
-            {'detail': SCAN_SCHEDULES_UNSUPPORTED},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    def create(self, request, *args, **kwargs):
-        return self._unsupported()
-
-    def update(self, request, *args, **kwargs):
-        # PATCH goes through here too (partial_update calls update).
-        self.get_object()
-        return self._unsupported()
-
-    @action(detail=True, methods=['post'])
-    def trigger(self, request, pk=None):
-        """Manually trigger a scheduled scan: not supported (#548)."""
-        self.get_object()
-        return self._unsupported()
-
-    @action(detail=True, methods=['post'])
-    def enable(self, request, pk=None):
-        """Enable a scan schedule: not supported (#548)."""
-        self.get_object()
-        return self._unsupported()
 
     @action(detail=True, methods=['post'])
     def disable(self, request, pk=None):

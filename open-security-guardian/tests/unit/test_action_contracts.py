@@ -17,7 +17,9 @@ not by hand, and must be classified in ``CONTRACTS`` as one of:
   stores nothing (testing a widget or an alert rule). Its answer must
   follow the data: the test changes the data and expects another answer.
 * ``Refuses``: an action that always answers an error and changes nothing
-  (what guardian cannot do, said honestly).
+  (what guardian cannot do for a record that exists, said honestly). There
+  is none at present: the two there were, on scan schedules, could do
+  nothing else, and a route that can only refuse was removed instead (#724).
 * ``Reads``: a GET. It must store nothing, and its answer must follow the
   data: fixed figures (``{"status": "healthy", "response_time_ms": 150}``)
   fail.
@@ -383,12 +385,11 @@ CONTRACTS = {
     # --- scanners ---
     "ScannerViewSet.stats.get": Reads(),
     "ScanViewSet.results.get": Reads(populate=_scan_result),
-    # A scan schedule would never run (#548): asked to, guardian says so.
-    "ScanScheduleViewSet.trigger.post": Refuses(400),
-    "ScanScheduleViewSet.enable.post": Refuses(
-        400, prepare=lambda c: _set(c.row, is_active=False)
+    # A scan schedule would never run (#548): nothing triggers or enables
+    # one. The two actions that could only answer 400 were removed (#724).
+    "ScanScheduleViewSet.disable.post": Effect(
+        prepare=lambda c: _set(c.row, is_active=True)
     ),
-    "ScanScheduleViewSet.disable.post": Effect(),
     # --- remediation ---
     "RemediationTicketViewSet.assign.post": Effect(
         body=lambda c: {"assignee_id": c.member()}

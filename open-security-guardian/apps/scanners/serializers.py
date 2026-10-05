@@ -159,7 +159,7 @@ class ScanResultSerializer(TeamScopedModelSerializer):
 
 
 class ScanScheduleSerializer(TeamScopedModelSerializer):
-    """Serializer for recurring scan schedules"""
+    """A stored scan schedule, as it is read: the API writes none (#724)."""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
     profile_name = serializers.CharField(source='profile.name', read_only=True)
     created_by_name = serializers.CharField(source='created_by.get_full_name', read_only=True)
@@ -172,16 +172,6 @@ class ScanScheduleSerializer(TeamScopedModelSerializer):
             'failed_runs', 'created_at', 'updated_at'
         ]
     
-    def validate_cron_expression(self, value):
-        """Validate cron expression format"""
-        # Basic cron validation - in real implementation use a proper cron library
-        parts = value.split()
-        if len(parts) != 5:
-            raise serializers.ValidationError(
-                "Cron expression must have 5 parts: minute hour day month weekday"
-            )
-        return value
-
 
 class ScannerStatsSerializer(serializers.Serializer):
     """Serializer for scanner statistics"""

@@ -485,18 +485,24 @@ those are stored as sent and returned to every member of the team.
 ### Scan schedules are not supported
 
 Because guardian cannot start a scan on an external scanner, a scan schedule would
-never run. Creating (`POST scanners/scan-schedules/`), updating (`PUT`/`PATCH`),
-triggering (`POST .../{id}/trigger/`) and enabling (`POST .../{id}/enable/`) a
-schedule all answer `400`:
+never run, and the API offers no way to make one, change one, run one or switch one
+on. A schedule stored by an earlier version can be listed and read
+(`GET scanners/scan-schedules/`, `GET .../{id}/`), disabled
+(`POST .../{id}/disable/`) and deleted (`DELETE .../{id}/`).
 
-```json
-{
-  "detail": "Scheduled scans are not supported: guardian cannot start a scan on an external scanner yet (starting, stopping and importing scans are not implemented), so a schedule would never run. Existing schedules can be listed, disabled and deleted."
-}
-```
+The routes that are not there answer as any missing route does:
 
-Existing schedules can still be listed, retrieved, disabled and deleted. See
-[issue #548](https://github.com/fabriziosalmi/wildbox/issues/548).
+| Request | Answer |
+| --- | --- |
+| `POST scanners/scan-schedules/` | `405`, `Allow: GET, HEAD, OPTIONS` |
+| `PUT` or `PATCH scanners/scan-schedules/{id}/` | `405`, `Allow: GET, DELETE, HEAD, OPTIONS` |
+| `POST scanners/scan-schedules/{id}/trigger/` | `404` |
+| `POST scanners/scan-schedules/{id}/enable/` | `404` |
+
+From #548 to #724 these four were routed and answered
+`400 {"detail": "Scheduled scans are not supported: ..."}` to every request. A
+client that treated that `400` as "not supported" should treat `404` and `405`
+the same way.
 
 ---
 

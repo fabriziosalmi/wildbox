@@ -370,6 +370,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an SSH tunnel. The `N8N_BASIC_AUTH_*` variables are removed with it:
   leftover lines in `.env` are ignored, and `validate_secrets.py` no
   longer asks for `N8N_BASIC_AUTH_PASSWORD`.
+- **guardian: the scan-schedule routes that could only refuse** (#724).
+  Since #548, `POST scanners/scan-schedules/`, `PUT` and `PATCH` on a
+  schedule, and `POST .../{id}/trigger/` and `.../{id}/enable/` answered
+  400 "Scheduled scans are not supported" to every request: guardian
+  cannot start a scan on an external scanner, so a schedule would never
+  run. A route that can do nothing else is not part of an API. The first
+  three now answer 405, with the methods that exist in `Allow`, and the
+  two actions 404. Listing, reading, disabling and deleting a stored
+  schedule are unchanged.
 - **guardian: `GET vulnerabilities/{id}/attachments/`** (#724). guardian
   has never had a route, a task or a command that attaches a file to a
   vulnerability, so the list was always empty; and the `file` of an

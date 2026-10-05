@@ -307,7 +307,7 @@ The dispatcher in the last row runs the schedules users create:
 | --- | --- | --- | --- |
 | Asset discovery rule (`/api/v1/guardian/assets/discovery-rules/`) | `schedule`: five crontab fields, in `CELERY_TIMEZONE` (UTC unless set), with the same syntax as the variables above | the rule's network scan, on the `scanning` queue | `network_scan` rules only. Cloud API and CMDB discovery are placeholders and agent reports and DNS zone transfers have no code, so the API refuses those types |
 | Report schedule (`/api/v1/guardian/reports/schedules/`) | `next_run` (the first run) and `frequency`: once, daily, weekly, monthly or quarterly | a report, generated on the `reporting` queue and e-mailed to the schedule's `recipients` when it is ready; a schedule without recipients sends no e-mail (see Notification recipients) | vulnerability summary, asset inventory, compliance status and executive dashboard reports, as JSON or HTML. The other report types have no data behind them and the other formats are not written yet, so the API refuses them |
-| Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so creating, changing, triggering or enabling one answers 400. Existing ones can still be listed, disabled and deleted |
+| Scan schedule (`/api/v1/guardian/scanners/scan-schedules/`) | `cron_expression` | nothing | nothing: guardian cannot start a scan on an external scanner yet, so the API has no route that creates, changes, triggers or enables one. Existing ones can still be listed, disabled and deleted |
 
 - Each due time runs once. The dispatcher claims a run by moving `next_run`
   on in the same statement that checks it, so two overlapping sweeps, or a

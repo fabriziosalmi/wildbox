@@ -310,8 +310,6 @@ def _fk_cases():
     for url, view_cls in VIEWSETS:
         if not hasattr(view_cls, "create"):
             continue
-        if view_cls.__name__ == "ScanScheduleViewSet":
-            continue  # creating one is refused outright (#548)
         for name, target, many, _ in _related_fields(view_cls, "create"):
             cases.append(
                 pytest.param(

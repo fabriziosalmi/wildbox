@@ -923,6 +923,11 @@ def scan_schedule():
     )
 
 
+# The routes below answered 400 "Scheduled scans are not supported" (#548).
+# They could answer nothing else, and were removed (#724): the method or the
+# path is not there, which is what the answer says now.
+
+
 @pytest.mark.django_db
 def test_scan_schedules_cannot_be_created(client, scan_schedule):
     payload = {
@@ -932,8 +937,8 @@ def test_scan_schedules_cannot_be_created(client, scan_schedule):
         "cron_expression": "0 2 * * 0",
     }
     response = _post(client, SCAN_SCHEDULES, payload)
-    assert response.status_code == 400, response.content[:500]
-    assert "not supported" in response.json()["detail"]
+    assert response.status_code == 405, response.content[:500]
+    assert response["Allow"] == "GET, HEAD, OPTIONS"
     assert type(scan_schedule).objects.count() == 1
 
 
@@ -942,20 +947,53 @@ def test_scan_schedules_cannot_be_created(client, scan_schedule):
 def test_scan_schedules_cannot_be_run_or_enabled(client, scan_schedule, action):
     _set(scan_schedule, is_active=False)
     url = f"{SCAN_SCHEDULES}{scan_schedule.pk}/{action}/"
-    response = client.post(url, secure=True, **_headers())
-    assert response.status_code == 400, response.content[:500]
-    assert "not supported" in response.json()["detail"]
+    for method in (client.post, client.get):
+        assert method(url, secure=True, **_headers()).status_code == 404
     scan_schedule.refresh_from_db()
     assert scan_schedule.is_active is False
 
 
 @pytest.mark.django_db
-def test_scan_schedules_cannot_be_changed(client, scan_schedule):
+@pytest.mark.parametrize("method", ["patch", "put"])
+def test_scan_schedules_cannot_be_changed(client, scan_schedule, method):
     url = f"{SCAN_SCHEDULES}{scan_schedule.pk}/"
-    response = _patch(client, url, {"cron_expression": "* * * * *"})
-    assert response.status_code == 400, response.content[:500]
+    response = getattr(client, method)(
+        url,
+        data={"cron_expression": "* * * * *", "is_active": True},
+        content_type="application/json",
+        secure=True,
+        **_headers(),
+    )
+    assert response.status_code == 405, response.content[:500]
+    assert response["Allow"] == "GET, DELETE, HEAD, OPTIONS"
     scan_schedule.refresh_from_db()
     assert scan_schedule.cron_expression == "0 2 * * *"
+
+
+def test_the_scan_schedule_routes_are_the_ones_that_do_something():
+    from django.urls import get_resolver
+
+    routes = {}
+
+    def walk(patterns, prefix=""):
+        for entry in patterns:
+            path = prefix + str(entry.pattern).lstrip("^").rstrip("$")
+            if hasattr(entry, "url_patterns"):
+                walk(entry.url_patterns, path)
+            elif "scan-schedules" in path and "format" not in path:
+                routes[path.split("scan-schedules/", 1)[1]] = {
+                    method: action
+                    for method, action in entry.callback.actions.items()
+                    if method != "head"
+                }
+
+    walk(get_resolver().url_patterns)
+
+    assert routes == {
+        "": {"get": "list"},
+        "(?P<pk>[^/.]+)/": {"get": "retrieve", "delete": "destroy"},
+        "(?P<pk>[^/.]+)/disable/": {"post": "disable"},
+    }
 
 
 @pytest.mark.django_db
@@ -964,6 +1002,11 @@ def test_existing_scan_schedules_can_be_listed_disabled_and_deleted(
 ):
     listing = client.get(SCAN_SCHEDULES, secure=True, **_headers())
     assert listing.status_code == 200
+    assert [row["name"] for row in listing.json()["results"]] == ["nightly"]
     url = f"{SCAN_SCHEDULES}{scan_schedule.pk}/"
+    assert client.get(url, secure=True, **_headers()).json()["is_active"] is True
     assert client.post(f"{url}disable/", secure=True, **_headers()).status_code == 200
+    scan_schedule.refresh_from_db()
+    assert scan_schedule.is_active is False
     assert client.delete(url, secure=True, **_headers()).status_code == 204
+    assert type(scan_schedule).objects.count() == 0
