@@ -184,12 +184,17 @@ request "unmapped route serves an unrestricted key" 200 \
     -H "X-API-Key: wsk_scoped~unmapped-star~*" "$UNMAPPED"
 # The map reads the path from $wildbox_route_uri, which the server block
 # fills in. Where it is empty the path is unknown, and unknown is unmapped:
-# this location empties it and is otherwise the tools route.
+# this location empties it and is otherwise a tools route. Its $uri is under
+# /api/v1/tools, so a map that fell back to $uri would let these keys by.
+UNROUTED="$GATEWAY_URL/api/v1/tools/unrouted/echo"
 request "a route whose path the map cannot read is unmapped" 403 \
-    -H "X-API-Key: wsk_toolsexec_ci_fixture" "$GATEWAY_URL/api/v1/unrouted/tools/echo"
+    -H "X-API-Key: wsk_toolsexec_ci_fixture" "$UNROUTED"
 assert_json "unreadable path requires admin" '.required_scope' 'admin'
+request "an unreadable path is not mapped by its \$uri" 403 -X POST \
+    -H "X-API-Key: wsk_scoped~unmapped-lesser~read,write,tools:admin,data:delete" "$UNROUTED"
+assert_json "unreadable path requires admin to write" '.required_scope' 'admin'
 request "an unreadable path serves an admin key" 200 \
-    -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$GATEWAY_URL/api/v1/unrouted/tools/echo"
+    -H "X-API-Key: wsk_scoped~unmapped-admin~admin" "$UNROUTED"
 assert_json "unreadable path still proxied where the location says" '.path' '/api/v1/tools/echo'
 
 # 10. Auth cache: the two valid-bearer requests above (tests 4 and 5) must
