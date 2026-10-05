@@ -83,7 +83,12 @@ data_dir: /var/lib/security-sensor
 fim:
   enabled: true
   paths:
-    # Host paths (mounted as /host/*)
+    # The sensor's own paths; in the container, the container's. These four
+    # are where a host's directories would be mounted, and no compose file
+    # mounts them: as shipped, the monitor watches nothing, says so when it
+    # starts and reports it in GET /api/v1/components. Mount the directories
+    # to watch read-only first, for example "/etc:/host/etc:ro"; see
+    # README.md, "File integrity monitoring".
     - "/host/etc"
     - "/host/bin"
     - "/host/usr/bin"

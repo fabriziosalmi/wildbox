@@ -569,8 +569,16 @@ class SensorConfig:
         if self.performance.max_cpu_percent < 1 or self.performance.max_cpu_percent > 100:
             errors.append("performance.max_cpu_percent must be between 1 and 100")
         
-        # Validate FIM paths
-        if self.fim.enabled and not self.fim.paths:
+        # Validate FIM paths. Whether a path exists is not checked here: it
+        # can appear while the sensor runs, and the file monitor reports it.
+        if not isinstance(self.fim.paths, list) or not all(
+            isinstance(path, str) and os.path.isabs(path) for path in self.fim.paths
+        ):
+            errors.append(
+                f"fim.paths must be a list of absolute paths, got "
+                f"{self.fim.paths!r}"
+            )
+        elif self.fim.enabled and not self.fim.paths:
             errors.append("fim.paths cannot be empty when FIM is enabled")
         
         return errors

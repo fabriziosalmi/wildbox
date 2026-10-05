@@ -551,6 +551,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   event types. A side effect: the rows of `network.process_open_sockets`
   are no longer filtered as processes, so sockets held by `systemd` or
   `dbus` processes are reported.
+- **The sensor's file monitor says when it watches nothing** (#725).
+  The container configuration lists `/host/etc`, `/host/bin`,
+  `/host/usr/bin` and `/host/opt`, which no compose file mounts, so
+  file-integrity monitoring in the container watched nothing while it
+  logged "started successfully" and reported `running: true`. The
+  monitor now names each configured path that does not exist in a
+  warning when it starts, says in so many words when none exists, and
+  reports `watching`, `configured_paths`, `missing_paths` and
+  `unhashed_files` under `file_monitor` in `GET /api/v1/components`. A
+  path that appears later is watched from then on, with what it holds as
+  its baseline; a watched path that goes is reported once. `fim.paths`
+  must be a list of absolute paths: a plain string used to be watched
+  one character at a time. The host directories are still not mounted
+  by default, on purpose; the sensor README and `DOCKER.md` show the
+  read-only mount to add and what uid 999 can and cannot hash.
+  `config.yaml`, the configuration for a host, listed the container's
+  `/host/...` paths too and now lists `/etc`, `/bin`, `/usr/bin` and
+  `/opt`.
 
 ### Changed
 

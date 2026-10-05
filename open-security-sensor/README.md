@@ -14,7 +14,7 @@ components (`sensor/core/agent.py`):
   events and system inventory, and runs one-off queries through `osqueryi`.
 - **File monitor** (`sensor/collectors/file_monitor.py`): polls the configured
   paths and reports created, modified and deleted files, with a SHA-256 hash for
-  files under 10 MB.
+  files under 10 MB. See [File integrity monitoring](#file-integrity-monitoring).
 - **Log forwarder** (`sensor/collectors/log_forwarder.py`): off by default
   (`collection.log_forwarding: false`). Follows the log files and system logs
   listed under `log_sources`, or a per-platform default set when the
@@ -304,8 +304,8 @@ logged once, and the source keeps being checked every second:
 
 A source of a type this platform cannot read (`journald` on macOS) is skipped
 with a warning. This matches the other collectors: the file monitor warns
-about a path that does not exist and skips it, and the sensor stops for a
-configuration it cannot use.
+about a path that does not exist, watches it once it appears, and says when
+it watches nothing; and the sensor stops for a configuration it cannot use.
 
 The sources, the files each one is reading, how far each file has been read
 and accepted, and each source's current problems are in
@@ -547,6 +547,75 @@ Mount the narrowest directory that holds the logs: a source can only match
 what is mounted, so the mount is the outer limit of what a mistaken pattern
 can send. Do not mount `/var/log` whole unless everything in it may leave
 the host, and never `/`.
+
+## File integrity monitoring
+
+With `collection.file_monitoring` and `fim.enabled` on, which is the default,
+the file monitor scans the paths listed under `fim.paths` every 60 seconds
+and reports what changed since the scan before: `file_created`,
+`file_deleted`, and `file_modified` with the list of what changed (`size`,
+`mtime`, `permissions`, `owner`, `group` and, for a file under 10 MiB that
+the sensor can read, `content`, from its SHA-256). The first scan is the
+baseline and reports nothing.
+
+```yaml
+fim:
+  enabled: true
+  paths:
+    - "/etc"
+    - "/usr/bin"
+  exclude_patterns:
+    - "*.tmp"
+  max_depth: 10
+```
+
+`fim.paths` are the sensor's own paths, absolute; anything else stops the
+sensor at start-up. Whether a path exists does not:
+
+- A path that does not exist is a warning that names it when the monitor
+  starts. It is watched from the scan at which it appears, with what it
+  holds then as its baseline.
+- When none of the paths exists, the monitor logs `File integrity
+  monitoring is enabled and none of the N paths in fim.paths exists: it is
+  watching nothing`, and its status says `watching: false`.
+- A watched path that disappears is a warning, once; when it is back, what
+  changed meanwhile is reported.
+
+`file_monitor` in `GET /api/v1/components` reports `watching`,
+`configured_paths`, `monitored_paths`, `missing_paths`, `tracked_files`,
+`unhashed_files`, `scan_count` and `last_scan_duration`.
+
+**In the container** the shipped configuration lists `/host/etc`,
+`/host/bin`, `/host/usr/bin` and `/host/opt`, and no compose file mounts
+them: as shipped, the monitor is on and it is watching nothing. That is
+deliberate. A read-only mount of the host's `/etc` gives the sensor's
+process, and whatever takes it over, every world-readable file of the
+host's configuration, so it is the operator's choice. To watch host
+directories, mount them read-only in a `docker-compose.override.yml` next to
+the compose file:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /etc:/host/etc:ro
+      - /usr/bin:/host/usr/bin:ro
+```
+
+and keep in `fim.paths` only what you mounted. The sensor runs as uid 999
+with no capability, so it reads what that user may read:
+
+- a file it cannot read, such as the host's `/etc/shadow`, is still watched
+  by its size, modification time, mode and owner, but not hashed: a change
+  that keeps the size and restores the time is not seen. `unhashed_files`
+  counts them;
+- do not add the sensor to a group to make such files readable: the group
+  that reads `/etc/shadow` reads every password hash.
+
+What the monitor does not do: it polls, so a file created and deleted
+between two scans is never seen; its baseline is in memory, so what changed
+while the sensor was stopped is not reported; and it does not follow what a
+symbolic link points to outside the watched paths.
 
 ## Sending telemetry to Wildbox
 
@@ -799,7 +868,10 @@ never measured them, and they were always zero or a constant.
 - Host access is limited to read-only mounts of `/proc/stat`, `/proc/meminfo`,
   the `/proc` load average file and `/sys/class/net`. No host log is mounted:
   the log forwarder reads a host log only after its directory is mounted on
-  purpose (see [What a source can read](#what-a-source-can-read)).
+  purpose (see [What a source can read](#what-a-source-can-read)). No host
+  directory is mounted for the file monitor either, which therefore watches
+  nothing until one is (see
+  [File integrity monitoring](#file-integrity-monitoring)).
 - The log forwarder reads the files `log_sources` lists and nothing else,
   regular files only, and follows no link out of a source's directory.
 - The local API is published on `127.0.0.1` only, because it can read host

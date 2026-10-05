@@ -48,15 +48,15 @@ collection:
 #
 # data_dir: /var/lib/security-sensor
 
-# File Integrity Monitoring (Docker-optimized paths)
+# File Integrity Monitoring. The paths are this host's: a path that does not
+# exist is reported when the sensor starts and watched once it appears.
 fim:
   enabled: true
   paths:
-    # Host paths (mounted as /host/*)
-    - "/host/etc"
-    - "/host/bin"
-    - "/host/usr/bin"
-    - "/host/opt"
+    - "/etc"
+    - "/bin"
+    - "/usr/bin"
+    - "/opt"
   exclude_patterns:
     - "*.tmp"
     - "*.log"

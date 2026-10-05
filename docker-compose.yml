@@ -1142,7 +1142,12 @@ services:
       # does not exist before the gateway's first start, and the sensor is
       # in the default stack, so the bind would fail a fresh `up`.
       - gateway_cert:/etc/ssl/wildbox:ro
-      # Host monitoring (limited to safe read-only paths)
+      # Host monitoring (limited to safe read-only paths). Nothing of the
+      # host's /etc, /bin, /usr/bin or /opt is mounted: the file monitor's
+      # default paths (/host/etc...) do not exist here and it watches
+      # nothing, which it says when it starts. To watch a host directory,
+      # mount it read-only in an override file: see
+      # open-security-sensor/README.md, "File integrity monitoring".
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
       - /proc/loadavg:/host/proc/loadavg:ro

@@ -118,6 +118,26 @@ The root `docker-compose.yml` also mounts the gateway's certificate,
 the host's `/proc`, `/etc`, `/var/log` or the Docker socket: this table is
 everything of the host the container can read.
 
+## Watching host files
+
+File integrity monitoring is on in the shipped configuration, and its paths,
+`/host/etc`, `/host/bin`, `/host/usr/bin` and `/host/opt`, are not mounted
+by the compose files: the sensor logs that it is watching nothing, and
+`GET /api/v1/components` shows `file_monitor.watching: false` with the four
+paths under `missing_paths`. To watch a host directory, mount it read-only
+in a `docker-compose.override.yml`:
+
+```yaml
+services:
+  sensor:
+    volumes:
+      - /etc:/host/etc:ro
+```
+
+and keep in `fim.paths` what you mounted. The sensor reads the mount as uid
+999: what that user cannot read is watched without a hash. See
+[README.md](README.md#file-integrity-monitoring).
+
 ## Forwarding host logs
 
 The log forwarder (`collection.log_forwarding: true`) reads the files listed
@@ -206,6 +226,9 @@ docker compose down
 - `Security Sensor not started: ... log_sources[0] ('name'): ...`: the
   `log_sources` section has an entry the sensor cannot understand; the
   message says which and why. See [README.md](README.md#log-forwarding).
+- `File integrity monitoring is enabled and none of the 4 paths in fim.paths
+  exists: it is watching nothing`: no host directory is mounted for it. See
+  [Watching host files](#watching-host-files).
 - `Log source 'name': <path> is not read: ...`: the file is not mounted, does
   not exist yet, or uid 999 may not read it. See
   [Forwarding host logs](#forwarding-host-logs).
