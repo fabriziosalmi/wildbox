@@ -154,6 +154,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
+- **The API-doc generators and the two pages they left behind.**
+  `scripts/generate-api-docs.py`, `generate-api-docs.sh` and
+  `generate-api-docs-redoc.sh` could not produce current documentation:
+  they knew six services and no cspm, fetched schemas that are served in
+  development only, asked guardian for a path it does not have, wrote
+  pages that load the moving `redoc@next` tag from a CDN, and overwrote
+  `docs/api/swagger-index.html`. The published
+  `agents-api.html` and `responder-api.html` each held a schema exported
+  once; nothing regenerated them and they listed every route without its
+  authentication. Both are now redirects to the hand-written endpoint
+  references, which are the API documentation, and the Redoc bundle and
+  fonts vendored for them are removed. A running service in development
+  serves its own schema (#656).
+- **`scripts/shell-scripts/system_monitor.sh`.** Its report counted the
+  word `healthy` in the concatenated bodies of eight URLs, so a body
+  saying `unhealthy` counted, and printed `"status": "operational"`,
+  `"tools_available": 55` and `"encryption": "tls"` as constants. Its
+  other checks called the tools service and Redis without credentials
+  and reported the refusals as problems. `make health` is the health
+  check (#656).
 
 ### Fixed
 
@@ -199,6 +219,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validator raised `ValueError`, the field errors could not be rendered
   as JSON and the request ended in an internal error: an IOC value of
   the wrong format sent to `POST /api/v1/agents/analyze`, for one.
+- **`make health` fails when the stack is unhealthy.** It probed each
+  service with `curl -s`, which exits 0 on any HTTP status, and always
+  exited 0 itself. It asked guardian for `/health`, which answers a 301
+  to `/health/`, so guardian counted as healthy while its real health
+  route answered 503. A service is now healthy only when its health URL
+  answers 2xx; a redirect is not followed and is not healthy, nor is any
+  4xx, 5xx or silence. The check also fails when PostgreSQL is down or
+  lacks one of the three databases, or when Redis does not answer, and
+  it exits non-zero in every one of those cases (#656).
+- **`scripts/wait-for-services.sh` waits for guardian where it listens.**
+  Its default was port 8003 and `/health`; guardian is on 8013 at
+  `/health/`, so the script waited out its three minutes and went on.
+  The health scripts now read one table,
+  `scripts/lib/health_endpoints.sh`, which a test keeps equal to
+  `docker-compose.yml` and to the Service ports guide (#656).
+
+### Changed
+
+- **`make health` only reads.** On every run it created the `data`
+  database if it was missing and restarted the gateway if its log had
+  ever contained `host not found in upstream`. Those repairs now run
+  only when asked for:
+  `./scripts/shell-scripts/comprehensive_health_check.sh fix` (#656).
 
 - **A guardian webhook endpoint path is unique per team, not across
   guardian** (#677). `WebhookEndpoint.endpoint_url` was the one name #642

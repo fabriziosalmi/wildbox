@@ -449,8 +449,8 @@ pre-commit install
 ### Services Not Ready
 
 ```bash
-# Check service health
-./comprehensive_health_check.sh
+# Check service health (non-zero exit when a service is unhealthy)
+make health
 
 # Restart specific service
 docker-compose restart gateway
