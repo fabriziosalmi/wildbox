@@ -554,6 +554,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   did not show it: it mounts `open-security-gateway/nginx` over
   `/etc/nginx`. The Dockerfile removes the file, and
   `test/production_image_tests.sh` checks the image as built.
+- **guardian: `assign_guardian_team --dry-run` says what the run would
+  do** (#724). It printed what `--list` prints, "N row(s) without a
+  team", whatever team was given. It now names the team, how many rows
+  of each model it would get, and the key and name of the first ten of
+  each (`-v 2` for all), and ends with "Dry run: N row(s) would be
+  assigned to <team>; nothing changed." `--list` together with `--team`
+  or `--dry-run` is refused instead of answering one of the two.
 - **guardian: a bulk assignment notifies the assignee, as `assign/`
   does** (#724). `vulnerabilities/bulk_action/` with `assign` and an
   `assigned_to` set the assignee of up to a hundred vulnerabilities and

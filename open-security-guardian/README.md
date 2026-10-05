@@ -176,12 +176,16 @@ writes.
 
   ```bash
   docker compose exec guardian python manage.py assign_guardian_team --list
+  docker compose exec guardian python manage.py assign_guardian_team --team <team UUID> --dry-run
   docker compose exec guardian python manage.py assign_guardian_team --team <team UUID>
   ```
 
-  `--dry-run` reports what it would change; `--include-shared` also gives
-  the shared frameworks and vulnerability templates to that team. See
-  [UPGRADING.md](../UPGRADING.md).
+  `--list` counts the rows without a team. `--team <team UUID> --dry-run`
+  changes nothing and says what the same command without `--dry-run` would
+  do: the team, how many rows of each model it would get, and the key and
+  name of the first ten of each (`-v 2` names them all). `--include-shared`
+  also gives the shared frameworks and vulnerability templates to that
+  team. See [UPGRADING.md](../UPGRADING.md).
 
 ## Quick start
 
