@@ -341,9 +341,14 @@ def test_the_rotation_is_refused_rather_than_half_done(harness, overrides, reaso
     assert "Rotated" not in result.stdout
 
 
-def test_the_rotation_is_refused_without_docker(harness):
+def test_the_rotation_is_refused_without_docker(harness, tmp_path):
+    # A PATH of its own: a CI runner has a real docker in /usr/bin.
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    for tool in "bash cat dirname grep sed tr".split():
+        (tools / tool).symlink_to(shutil.which(tool))
     original = harness.env_file.read_bytes()
-    result = harness.rotate_postgres(path="/usr/bin:/bin")
+    result = harness.rotate_postgres(path=str(tools))
     assert result.returncode == 1
     assert "docker is not available" in result.stderr
     assert harness.env_file.read_bytes() == original
