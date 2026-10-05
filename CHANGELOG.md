@@ -33,6 +33,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API root stop agreeing. Reverting to the stock paginator, or dropping
   the header from the gateway, fails both.
 
+### Fixed
+
+- **guardian: the rate limit is configurable, checked at start and counted
+  per user; the health check is no longer throttled** (#645).
+  `API_RATE_LIMIT` was documented as guardian's rate limit, but
+  `docker-compose.yml` never passed it to the container, and the one
+  value would have replaced two different defaults, for anonymous callers
+  and for users. The setting is now `GUARDIAN_RATE_LIMIT_USER`
+  (`1000/hour` unless set; `<count>/<period>`, or `off`), passed by
+  compose in development and production. Guardian refuses to start on a
+  malformed value, naming the variable; it used to start and answer 500
+  to every request. Requests are counted per user, on the user id the
+  gateway forwards, not per address. The throttle for anonymous callers
+  is removed: guardian refuses every request under `/api/` that did not
+  come through the gateway, so the only route it reached was `/health/`,
+  where it refused the container's own probe (120 an hour against a limit
+  of 100) for the last ten minutes of every hour, and the container
+  reported unhealthy. A guardian run outside compose still reads
+  `API_RATE_LIMIT` when the new variable is unset.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

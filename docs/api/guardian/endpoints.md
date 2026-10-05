@@ -592,7 +592,8 @@ Guardian's health check is `GET /health/`, with the trailing slash, on guardian'
 own port (bound to `127.0.0.1:8013` in `docker-compose.yml`). It is not under
 `/api/v1/`, so the gateway does not route it. It needs no authentication and
 returns `200` with `"status": "healthy"`, or `503` with `"status": "unhealthy"`,
-plus a `checks` object with the status of the database and Redis.
+plus a `checks` object with the status of the database and Redis. It is not rate
+limited.
 
 ---
 
@@ -608,14 +609,25 @@ Two limits apply to guardian requests:
   the current minute window, and `X-RateLimit-Policy` is the hourly figure, such
   as `10000;w=3600`. The gateway validates the variable at startup and does not
   start when it is not a whole number from 1 to 1,000,000,000.
-- **Guardian, per user.** Django REST Framework throttles authenticated users to
-  1000 requests per hour and anonymous callers to 100 per hour
-  (`DEFAULT_THROTTLE_RATES` in `guardian/settings.py`). Guardian reads an
-  `API_RATE_LIMIT` variable that would replace both rates, but `docker-compose.yml`
-  does not pass it to the guardian container, so the defaults apply.
+- **Guardian, per user.** Guardian allows each user `GUARDIAN_RATE_LIMIT_USER`
+  requests, 1000 per hour unless the deployment sets it, counted on the user the
+  gateway authenticated (`X-Wildbox-User-ID`), not on an address
+  (`apps/core/throttling.py`). The value is `<count>/<period>`
+  with a period of `second`, `minute`, `hour` or `day`, for example `20/minute`, or
+  `off` to leave only the gateway's limit. Guardian checks it at startup and does
+  not start with any other value. One member cannot use up guardian for the rest
+  of the team this way; the team as a whole is held by the gateway's limit.
 
 Both answer `429 Too Many Requests` when exceeded. Guardian's throttle body is
-`{"detail": "Request was throttled. Expected available in N seconds."}`.
+`{"detail": "Request was throttled. Expected available in N seconds."}`, with the
+same number of seconds in `Retry-After`.
+
+Guardian has no limit for anonymous callers, because it has no anonymous callers:
+a request under `/api/` that did not come through the gateway is refused (see
+[Gateway only](#gateway-only)). Before #645 it carried one, 100 requests per hour
+per address, whose only reachable route was the [health check](#health-check); and
+the variable it read for both rates, `API_RATE_LIMIT`, was not passed to the
+container by `docker-compose.yml`.
 
 ---
 

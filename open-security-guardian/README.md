@@ -272,11 +272,36 @@ Settings are in `guardian/settings.py`. The root compose file passes:
   on `wildbox-redis` unless overridden by the `GUARDIAN_*` equivalents.
 - `GATEWAY_INTERNAL_SECRET`, shared with the gateway.
 - `DEBUG` (default `false`), `LOG_LEVEL`, `ALLOWED_HOSTS`.
+- `GUARDIAN_RATE_LIMIT_USER`, on `guardian` only: see
+  [Rate limit](#rate-limit).
 - On `guardian-worker`: `GUARDIAN_BASE_URL` (prefix of links in e-mails) and
   `GUARDIAN_ALERT_RENOTIFY_INTERVAL`.
 
-`API_RATE_LIMIT` sets the DRF throttle rate. `PROMETHEUS_ENABLED` (default
-`true`) controls `/metrics/`.
+`PROMETHEUS_ENABLED` (default `true`) controls `/metrics/`.
+
+### Rate limit
+
+Guardian throttles each user to `GUARDIAN_RATE_LIMIT_USER` requests:
+`1000/hour` unless set (`guardian/rate_limit.py`).
+
+- The value is `<count>/<period>`, the period one of `second`, `minute`,
+  `hour` or `day`, or `off` for no throttle in Guardian. An empty value means
+  the default. Anything else stops Guardian when it starts, with the variable
+  and the value in the error; it used to start and answer 500 to every
+  request.
+- The count is per user, on the user id the gateway forwards
+  (`apps/core/throttling.py`), not per address: every request arrives from
+  the gateway's address. It sits under the gateway's `RATE_LIMIT_PER_HOUR`,
+  which is per team, so one member cannot use up Guardian for the others. A
+  user over the rate gets 429 with `Retry-After`.
+- There is no throttle for anonymous callers. Under `/api/` there are none,
+  and the one Guardian had (100 an hour per address) met only `/health/`:
+  the container's own probe, 120 an hour from `127.0.0.1`, was refused for
+  the last ten minutes of every hour, and the container reported unhealthy
+  (#645). `/health/` is not throttled.
+- `API_RATE_LIMIT` is the variable's former name. The root compose file
+  never passed it, so it had no effect there; a Guardian run from its own
+  `.env` still reads it when `GUARDIAN_RATE_LIMIT_USER` is unset.
 
 ## Monitoring
 

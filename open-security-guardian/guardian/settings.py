@@ -221,6 +221,13 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # DJANGO REST FRAMEWORK CONFIGURATION
 # =============================================================================
 
+# Requests one user may make per period, as DRF reads a rate, or None for
+# 'off'. Parsed here, so a malformed GUARDIAN_RATE_LIMIT_USER stops guardian
+# at start-up instead of answering 500 to every request (#645).
+from guardian.rate_limit import user_rate  # noqa: E402
+
+USER_RATE_LIMIT = user_rate()
+
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         # Gateway-injected identity (no CSRF — there is no browser session).
@@ -247,13 +254,15 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
-    'DEFAULT_THROTTLE_CLASSES': [
-        'rest_framework.throttling.AnonRateThrottle',
-        'rest_framework.throttling.UserRateThrottle'
-    ],
+    # One throttle, per user as the gateway names the user, at
+    # GUARDIAN_RATE_LIMIT_USER (1000/hour unless set; 'off' removes it). No
+    # throttle for anonymous callers: under /api/ there are none, and the
+    # one it had refused the health check (#645; apps/core/throttling.py).
+    'DEFAULT_THROTTLE_CLASSES': (
+        ['apps.core.throttling.GatewayUserRateThrottle'] if USER_RATE_LIMIT else []
+    ),
     'DEFAULT_THROTTLE_RATES': {
-        'anon': os.getenv('API_RATE_LIMIT', '100/hour'),
-        'user': os.getenv('API_RATE_LIMIT', '1000/hour')
+        'user': USER_RATE_LIMIT,
     },
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
