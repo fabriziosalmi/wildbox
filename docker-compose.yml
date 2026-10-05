@@ -625,6 +625,13 @@ services:
       # guardian-worker and guardian-beat: the API and the e-mails apply
       # one rule.
       - GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS=${GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS:-}
+      # Requests one user may make to guardian per period, such as
+      # 1000/hour, or off; empty means 1000/hour. A malformed value stops
+      # guardian at start-up (guardian/rate_limit.py). The variable guardian
+      # read before, API_RATE_LIMIT, was never passed here, so the setting
+      # did nothing (#645). Only this service serves requests: the worker
+      # and beat do not need it.
+      - GUARDIAN_RATE_LIMIT_USER=${GUARDIAN_RATE_LIMIT_USER:-}
     volumes:
       - guardian_logs:/app/logs
       # Generated reports: guardian-worker writes them, guardian serves
