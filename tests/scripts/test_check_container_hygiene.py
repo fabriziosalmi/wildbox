@@ -8,6 +8,7 @@ to build the shared package (#657). These feed the checker Compose documents
 and Dockerfiles as text, then run it on the repository itself.
 """
 
+import fnmatch
 import importlib.util
 import re
 import subprocess
@@ -16,6 +17,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 SCRIPT = REPO / "scripts" / "check_container_hygiene.py"
@@ -50,7 +52,7 @@ def test_a_file_without_services_is_not_compose():
 def test_compose_tags_are_read_not_refused():
     text = compose("""
         db:
-          image: postgres:15
+          image: postgres:15@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           ports: !reset []
           networks: !override
             - data
@@ -82,7 +84,7 @@ def test_a_python_object_tag_is_not_constructed():
 def test_a_runtime_socket_mount_is_refused(volume):
     found = findings(f"""
         logviewer:
-          image: gliderlabs/logspout:v3.2.14
+          image: gliderlabs/logspout:v3.2.14@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           volumes:
             - "{volume}"
         """)
@@ -93,7 +95,7 @@ def test_a_runtime_socket_mount_is_refused(volume):
 def test_a_socket_in_long_volume_syntax_is_refused():
     assert rules("""
         agent:
-          image: example/agent:1.2.3
+          image: example/agent:1.2.3@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           volumes:
             - type: bind
               source: /var/run/docker.sock
@@ -105,7 +107,7 @@ def test_a_socket_in_long_volume_syntax_is_refused():
 def test_ordinary_mounts_pass():
     assert rules("""
             sensor:
-              image: example/sensor:1.0.0
+              image: example/sensor:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
               volumes:
                 - /proc/stat:/host/proc/stat:ro
                 - ./config.yaml:/etc/sensor/config.yaml:ro
@@ -138,21 +140,61 @@ def test_an_image_without_a_version_is_refused(image):
     assert rules(f"svc:\n  image: {image}\n") == ["image"]
 
 
+DIGEST = "@sha256:" + "a" * 64
+
+
 @pytest.mark.parametrize(
     "image",
     [
         "redis:7-alpine",
         "postgres:15",
         "nginx:1.30-alpine",
-        "prom/prometheus:v2.55.1",
+        "prom/prometheus:v3.13.4",
         "registry.example.com:5000/team/app:1.4.2",
         "redis:${REDIS_TAG:-7-alpine}",
-        "nginx@sha256:" + "a" * 64,
-        "nginx:alpine@sha256:" + "a" * 64,
     ],
 )
-def test_an_image_with_a_version_passes(image):
-    assert rules(f"svc:\n  image: {image}\n") == []
+def test_an_image_with_a_version_and_its_digest_passes(image):
+    assert rules(f"svc:\n  image: {image}{DIGEST}\n") == []
+    # The tag alone was accepted before #726: it is published again with
+    # every rebuild upstream, so the same file ran different code.
+    found = findings(f"svc:\n  image: {image}\n")
+    assert [f.rule for f in found] == ["image"]
+    assert "can be published again" in found[0].message
+    assert found[0].subject == f"svc:{image}"
+
+
+def test_a_default_that_carries_the_digest_passes():
+    assert rules("svc:\n  image: ${REDIS_IMAGE:-redis:7-alpine" + DIGEST + "}\n") == []
+
+
+@pytest.mark.parametrize(
+    "image, says",
+    [
+        ("nginx" + DIGEST, "has a digest and no tag"),
+        ("registry.example.com:5000/team/app" + DIGEST, "has a digest and no tag"),
+        ("nginx:alpine" + DIGEST, "'alpine' names no version"),
+        ("nginx:latest" + DIGEST, "floats with upstream"),
+        ("redis:7-alpine@sha256:abc123", "is not a SHA-256 digest"),
+        ("redis:7-alpine@sha512:" + "a" * 128, "is not a SHA-256 digest"),
+        ("redis:7-alpine@" + "a" * 64, "is not a SHA-256 digest"),
+        ("redis:7-alpine@sha256:" + "A" * 64, "is not a SHA-256 digest"),
+    ],
+)
+def test_a_digest_does_not_replace_the_version(image, says):
+    found = findings(f"svc:\n  image: {image}\n")
+    assert [f.rule for f in found] == ["image"]
+    assert says in found[0].message
+
+
+def test_outside_compose_a_version_is_enough():
+    # check_workflow_pins.py uses the same function for `docker://` actions,
+    # which the repository pins by tag like every other action.
+    assert cch.image_problem("alpine:3.20") is None
+    assert cch.image_problem("alpine" + DIGEST) is None
+    assert cch.image_problem("alpine:latest") is not None
+    assert "can be published again" in cch.image_problem("alpine:3.20", digest=True)
+    assert cch.image_problem("alpine:3.20" + DIGEST, digest=True) is None
 
 
 def test_each_unversioned_image_is_told_why():
@@ -197,13 +239,15 @@ def test_the_name_of_a_built_image_is_not_checked():
     ],
 )
 def test_a_privileged_setting_is_refused(setting):
-    assert rules(f"svc:\n  image: example/svc:1.0.0\n  {setting}\n") == ["privilege"]
+    assert rules(
+        f"svc:\n  image: example/svc:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  {setting}\n"
+    ) == ["privilege"]
 
 
 def test_hardening_settings_pass():
     assert rules("""
             svc:
-              image: example/svc:1.0.0
+              image: example/svc:1.0.0@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
               privileged: false
               cap_drop: [ALL]
               security_opt: ['no-new-privileges:true']
@@ -229,14 +273,16 @@ def test_hardening_settings_pass():
     ],
 )
 def test_a_port_on_every_interface_is_refused(port, subject):
-    found = findings(f"redis:\n  image: redis:7-alpine\n  ports:\n    - {port}\n")
+    found = findings(
+        f"redis:\n  image: redis:7-alpine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  ports:\n    - {port}\n"
+    )
     assert [(f.rule, f.subject) for f in found] == [("port", subject)]
 
 
 def test_a_port_in_long_syntax_on_every_interface_is_refused():
     found = findings("""
         redis:
-          image: redis:7-alpine
+          image: redis:7-alpine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           ports:
             - target: 6379
               published: 6380
@@ -255,11 +301,21 @@ def test_a_port_in_long_syntax_on_every_interface_is_refused():
     ],
 )
 def test_a_loopback_port_passes(port):
-    assert rules(f"redis:\n  image: redis:7-alpine\n  ports:\n    - {port}\n") == []
+    assert (
+        rules(
+            f"redis:\n  image: redis:7-alpine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  ports:\n    - {port}\n"
+        )
+        == []
+    )
 
 
 def test_no_ports_pass():
-    assert rules("redis:\n  image: redis:7-alpine\n  ports: []\n") == []
+    assert (
+        rules(
+            "redis:\n  image: redis:7-alpine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  ports: []\n"
+        )
+        == []
+    )
 
 
 # --- Reporting ---------------------------------------------------------------
@@ -1117,7 +1173,7 @@ def run(root: Path, *extra: str) -> subprocess.CompletedProcess:
 
 
 GOOD = compose(
-    "redis:\n  image: redis:7-alpine\n  ports:\n    - '127.0.0.1:6379:6379'\n"
+    "redis:\n  image: redis:7-alpine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n  ports:\n    - '127.0.0.1:6379:6379'\n"
 )
 LOGSPOUT = compose("""
     logviewer:
@@ -1314,6 +1370,96 @@ def test_no_dockerfile_exception_is_allowlisted():
         )
     )
     assert [key for key in allowlist if key[0] == "download"] == []
+
+
+def compose_images() -> dict:
+    """{directory: [image, ...]} for the third-party images of tracked Compose files."""
+    found: dict = {}
+    for name in cch.tracked_files(REPO):
+        if not cch.is_yaml(name):
+            continue
+        try:
+            document = cch.load_compose((REPO / name).read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            continue  # not Compose; check_tree reports a Compose file it cannot read
+        if document is None:
+            continue
+        parent = Path(name).parent.as_posix()
+        directory = "/" if parent == "." else "/" + parent
+        for service in document["services"].values():
+            if (
+                isinstance(service, dict)
+                and "image" in service
+                and "build" not in service
+            ):
+                found.setdefault(directory, []).append(service["image"])
+    return found
+
+
+def dependabot_entry(ecosystem: str) -> dict:
+    document = yaml.safe_load(
+        (REPO / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    )
+    entries = [e for e in document["updates"] if e["package-ecosystem"] == ecosystem]
+    assert len(entries) == 1, ecosystem
+    return entries[0]
+
+
+def test_every_compose_image_is_pinned_by_tag_and_digest():
+    # #726: the tags were versions and nothing more, so `redis:7-alpine` was
+    # whatever the registry served on the day of the pull.
+    images = [image for group in compose_images().values() for image in group]
+    assert len(images) >= 20, images
+    pinned = re.compile(r"^[\w./-]+:[\w.-]*\d[\w.-]*@sha256:[0-9a-f]{64}$")
+    for image in images:
+        assert pinned.match(image), image
+    # One digest per tag: the same image is the same bytes in every file.
+    by_tag: dict = {}
+    for image in images:
+        tag, _, digest = image.partition("@")
+        by_tag.setdefault(tag, set()).add(digest)
+    assert {tag: digests for tag, digests in by_tag.items() if len(digests) > 1} == {}
+    allowlist, _ = cch.read_allowlist(
+        (REPO / "scripts" / "container_hygiene_allowlist.txt").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert [key for key in allowlist if key[0] == "image"] == []
+
+
+def test_dependabot_reads_every_directory_with_a_compose_image():
+    # A pin nothing moves is a pin that goes stale: the "docker" ecosystem
+    # reads Dockerfiles only, so nothing proposed a new tag or digest for the
+    # images the Compose files run.
+    entry = dependabot_entry("docker-compose")
+    assert entry["schedule"]["interval"] == "weekly"
+    patterns = entry["directories"]
+    for directory in compose_images():
+        assert any(
+            fnmatch.fnmatchcase(directory, pattern) for pattern in patterns
+        ), directory
+    ignored = {
+        rule["dependency-name"]: rule["update-types"] for rule in entry["ignore"]
+    }
+    # Majors are decided by hand: one in a grouped pull request holds the
+    # weekly digests back with it.
+    assert ignored["*"] == ["version-update:semver-major"]
+    assert ignored["prom/prometheus"] == ["version-update:semver-minor"]
+    assert entry["groups"]["docker-compose"]["patterns"] == ["*"]
+
+
+def test_dependabot_reads_every_directory_with_a_dockerfile():
+    patterns = dependabot_entry("docker")["directories"]
+    directories = {
+        "/" + str(Path(name).parent)
+        for name in cch.tracked_files(REPO)
+        if cch.is_dockerfile(name)
+    }
+    assert len(directories) >= 9
+    for directory in directories:
+        assert any(
+            fnmatch.fnmatchcase(directory, pattern) for pattern in patterns
+        ), directory
 
 
 def test_no_compose_file_runs_a_log_shipper():

@@ -76,3 +76,39 @@ updates:
       docker:
         patterns:
           - "*"
+
+  # The images the Compose files run without building them: PostgreSQL, Redis,
+  # n8n, Prometheus, Alertmanager, nginx, curl, alpine. Each is pinned by tag
+  # and by the digest of its image index (`redis:7-alpine@sha256:...`), which
+  # scripts/check_container_hygiene.py requires. Nothing moved them before: a
+  # tag was whatever the registry served on the day of the pull, and the
+  # "docker" entry above reads Dockerfiles only (#726). This entry proposes
+  # the new digest when a tag is published again, and newer minor and patch
+  # tags.
+  - package-ecosystem: "docker-compose"
+    directories:
+      - "/"
+      - "/.github"
+      - "/open-security-*"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    ignore:
+      # A new major of PostgreSQL is a dump and restore, of Redis, n8n or
+      # Prometheus a migration with its own notes. In one grouped pull
+      # request with the weekly digests it would hold all of them back, as
+      # the node 26 proposal did for the base images. Decided by hand.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # 3.13 is the long-term support line of Prometheus (until 2027-07-31):
+      # patch releases come through, the move to the next line is a decision.
+      - dependency-name: "prom/prometheus"
+        update-types: ["version-update:semver-minor"]
+      # nginx alternates stable (even) and mainline (odd) minors: after 1.30
+      # the next tag is 1.31, which is mainline.
+      - dependency-name: "nginx"
+        update-types: ["version-update:semver-minor"]
+    groups:
+      docker-compose:
+        patterns:
+          - "*"

@@ -12,10 +12,15 @@ per-service ones, those under .github/) and refuses, per service:
 socket     a bind mount of a container runtime socket (docker.sock and the
            like) or of a directory that holds one. ``:ro`` does not help: it
            restricts the socket file, not the API behind it.
-image      an ``image:`` that does not name a version: no tag, ``latest``, or
-           a tag with no digit in it (``nginx:alpine``). A digest
-           (``@sha256:``) is accepted. A service that also has ``build:`` is
-           skipped: there ``image:`` names what the build produces.
+image      an ``image:`` that is not pinned by version and digest
+           (``redis:7-alpine@sha256:...``): no tag, ``latest``, a tag with no
+           digit in it (``nginx:alpine``), or a tag without the digest of the
+           image it named when it was written. A tag is published again with
+           every rebuild upstream, so a tag alone lets the same file run
+           different code on two hosts (#726); Dependabot's ``docker-compose``
+           ecosystem proposes the new digest. A service that also has
+           ``build:`` is skipped: there ``image:`` names what the build
+           produces.
 privilege  ``privileged``, ``cap_add``, ``devices``, the host's network, PID,
            IPC, user or cgroup namespace, or an unconfined seccomp or
            AppArmor profile.
@@ -167,21 +172,39 @@ def load_compose(text: str) -> dict[str, Any] | None:
     return None
 
 
-def image_problem(reference: str) -> str | None:
-    """Say why an image reference does not name a version, or None when it does."""
+def image_problem(reference: str, digest: bool = False) -> str | None:
+    """Say why an image reference is not pinned, or None when it is.
+
+    A reference must name a version. With ``digest`` it must also carry the
+    digest of that version (``name:1.2.3@sha256:...``): a tag can be
+    published again, so the same file would run different code, and without
+    the tag neither a reader nor Dependabot can tell which line the digest
+    follows.
+    """
     resolved = expand_defaults(str(reference).strip())
     if "$" in resolved:
         return "the tag comes from a variable with no default, so it cannot be verified"
-    if re.search(r"@sha256:[0-9a-f]{64}$", resolved):
+    resolved, at, pinned = resolved.partition("@")
+    if at and not re.fullmatch(r"sha256:[0-9a-f]{64}", pinned):
+        return f"'@{pinned}' is not a SHA-256 digest"
+    if at and not digest:
         return None
     name = resolved.rsplit("/", 1)[-1]
     if ":" not in name:
+        if at:
+            return "has a digest and no tag; name the version the digest is of"
         return "has no tag, which is :latest; name a version"
     tag = name.rsplit(":", 1)[1]
     if tag == "latest":
         return "floats with upstream; name a version"
     if not re.search(r"\d", tag):
         return f"the tag '{tag}' names no version and floats with upstream"
+    if digest and not at:
+        return (
+            f"the tag '{tag}' can be published again with other content; add "
+            "the digest of the image index (@sha256:..., as `docker buildx "
+            "imagetools inspect` prints it)"
+        )
     return None
 
 
@@ -271,7 +294,7 @@ def check_compose(path: str, text: str) -> list[Finding]:
                 )
 
         if "image" in service and "build" not in service:
-            problem = image_problem(service["image"])
+            problem = image_problem(service["image"], digest=True)
             if problem:
                 reference = str(service["image"])
                 add("image", name, reference, f"runs {reference}: {problem}", reference)

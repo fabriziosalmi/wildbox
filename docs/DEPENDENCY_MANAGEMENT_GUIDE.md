@@ -103,8 +103,15 @@ Monday and opens or refreshes one pull request on the
 
 ## Dependabot
 
-Dependabot handles GitHub Actions, npm and Docker base images. It does **not**
-handle pip: `.github/dependabot.yml` has no `pip` entry, because Dependabot
+Dependabot handles GitHub Actions, npm, the base images of the Dockerfiles
+(`docker`) and the images the Compose files run without building them
+(`docker-compose`): PostgreSQL, Redis, n8n, Prometheus, Alertmanager, nginx,
+curl and alpine. Those are pinned by tag and by the digest of the image index,
+and Dependabot proposes the new digest when a tag is published again, and
+newer minor and patch tags. A new major is ignored there and decided by hand,
+as is a minor of Prometheus, which stays on its long-term support line.
+
+It does **not** handle pip: `.github/dependabot.yml` has no `pip` entry, because Dependabot
 regenerates the lock with `pip-compile` rather than the `uv` command above, and
 its pull requests could never pass the Dependency Integrity check (#420).
 
