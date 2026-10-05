@@ -1,11 +1,11 @@
 # Observability Roadmap
 
-> **Partly superseded.** Phase 1 (Prometheus metrics) is done, though not in
-> the way this plan proposed; the sections below say what exists. Phases 2 to
-> 5 remain plans. For the services and ports that run today see
-> <https://www.wildbox.io/guides/ports/>.
+> **Partly superseded.** Phase 1 (Prometheus metrics) and the Alertmanager of
+> phase 5 are done, though not in the way this plan proposed; the sections
+> below say what exists. Phases 2 to 4 remain plans. For the services and
+> ports that run today see <https://www.wildbox.io/guides/ports/>.
 
-**Status:** Phase 1 done; phases 2 to 5 planned  
+**Status:** Phase 1 and phase 5.1 done; phases 2 to 4 planned  
 **Priority:** MEDIUM
 
 ## Current State
@@ -22,13 +22,17 @@
   `PROMETHEUS_ENABLED` is true, the default), but Prometheus does not scrape it
 - A Prometheus server in the `monitoring` Compose profile, with scrape targets
   in `monitoring/prometheus.yml` and alert rules in `monitoring/alert_rules.yml`
+- An Alertmanager in the same profile, which Prometheus sends firing alerts
+  to. Its shipped configuration notifies nobody; e-mail and webhook examples
+  are in `monitoring/examples/` (see the
+  [deployment guide](https://www.wildbox.io/guides/deployment/#7-monitoring))
 
 **Missing:**
 
 - **Guardian and gateway scraping** (not in `monitoring/prometheus.yml`)
-- **Alert delivery**: the rules are evaluated, but there is no Alertmanager and
-  `monitoring/prometheus.yml` has no `alerting` section, so alerts are visible
-  only in the Prometheus UI
+- **Worker metrics**: the Celery workers (`tools-worker`, `guardian-worker`,
+  `cspm-worker`) and the data scheduler export nothing, so asynchronous tool
+  runs, scans and feed collection have no alert
 - **Grafana dashboards**
 - **Distributed tracing**: `open-security-shared/tracing.py` initializes
   OpenTelemetry only when its dependencies are installed, and no Compose file
@@ -210,10 +214,17 @@ services:
 
 ### 5.1 Prometheus AlertManager
 
-Alert rules already exist in `monitoring/alert_rules.yml` (`WildboxServiceDown`,
-`WildboxHighErrorRate`, `WildboxNoToolExecutions`, `WildboxToolFailureRate`).
-What this phase still needs is an Alertmanager and an `alerting` section in
-`monitoring/prometheus.yml`. The original proposal follows.
+Done. The `monitoring` profile runs `prom/alertmanager:v0.34.1`,
+`monitoring/prometheus.yml` has an `alerting` section that names it, and
+`monitoring/alert_rules.yml` holds `WildboxServiceDown`,
+`WildboxHighErrorRate`, `WildboxSyncToolFailureRate`, `WildboxAlertmanagerDown`
+and `WildboxAlertNotificationsFailing`, with unit tests in
+`monitoring/alert_rules.test.yml`. What each alert measures, and how to
+configure a receiver, is in the
+[deployment guide](https://www.wildbox.io/guides/deployment/#7-monitoring).
+The original proposal follows; its rules were not adopted as written (the
+metrics they name, `http_requests_total` and `pg_stat_activity_count`, are
+not exported).
 
 **Proposed rules (original plan):**
 

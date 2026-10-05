@@ -1256,19 +1256,109 @@ services:
     image: prom/prometheus:v2.55.1
     profiles: ["monitoring"]
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    # The image's own flags, restated because `command` replaces them all,
+    # plus the address this server is reached at: Prometheus writes it into
+    # every alert as the link back to the expression that fired. Without it
+    # the link names the container's ID.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      - --web.external-url=${PROMETHEUS_EXTERNAL_URL:-http://127.0.0.1:9090}
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus_data:/prometheus
     ports:
       - "127.0.0.1:9090:9090"
+    depends_on:
+      # Started, not healthy: with an Alertmanager that cannot start (an
+      # invalid configuration file) Prometheus must still come up, because
+      # its /alerts page is then the only place that says so
+      # (WildboxAlertmanagerDown).
+      alertmanager:
+        condition: service_started
     networks:
       - wildbox
+    healthcheck:
+      # BusyBox wget, the only HTTP client in the image. 127.0.0.1, not
+      # localhost, which BusyBox may resolve to ::1 first.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9090/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus evaluated the alert rules and had nowhere to send them: no
+  # Alertmanager existed and prometheus.yml had no `alerting:` section, so a
+  # firing alert was a line on a page bound to 127.0.0.1 (#658).
+  #
+  # What this service does with an alert is decided by its configuration file.
+  # The one shipped, monitoring/alertmanager.yml, routes everything to a
+  # receiver named `no-notifications`: alerts are visible here and in
+  # Prometheus, and nobody is told. To be told, point ALERTMANAGER_CONFIG_FILE
+  # at a copy of monitoring/examples/alertmanager-email.yml or
+  # alertmanager-webhook.yml (docs/guides/deployment.md, section 7).
+  #
+  # No secret reaches this service through `environment` or `command`:
+  # Alertmanager expands neither in its configuration, and argv is readable by
+  # anyone who can list processes. The configuration names files instead
+  # (smtp_auth_password_file, url_file, credentials_file), which are read from
+  # ALERTMANAGER_SECRETS_DIR at every notification.
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    profiles: ["monitoring"]
+    restart: unless-stopped
+    # The image's default user (nobody), stated so that it cannot become root
+    # by an image change. Secret files must be readable by this UID.
+    user: "65534:65534"
+    # Nothing is written outside the data volume.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      # The address the UI is reached at, for the links in notifications.
+      - --web.external-url=${ALERTMANAGER_EXTERNAL_URL:-http://127.0.0.1:9093}
+      # One instance: no gossip listener on 9094 for a cluster that does not
+      # exist.
+      - --cluster.listen-address=
+    volumes:
+      - ${ALERTMANAGER_CONFIG_FILE:-./monitoring/alertmanager.yml}:/etc/alertmanager/alertmanager.yml:ro
+      - ${ALERTMANAGER_SECRETS_DIR:-./monitoring/secrets}:/etc/alertmanager/secrets:ro
+      # Silences and the notification log, so a restart neither forgets a
+      # silence nor notifies again for what it already sent.
+      - alertmanager_data:/alertmanager
+    ports:
+      # The UI and API have no authentication; localhost only, like
+      # Prometheus. Reach it from elsewhere through an SSH tunnel.
+      - "127.0.0.1:9093:9093"
+    networks:
+      - wildbox
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9093/-/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
   postgres_data:
   wildbox_backups:
   prometheus_data:
+  alertmanager_data:
   wildbox_redis_data:
   guardian_logs:
   guardian_media:

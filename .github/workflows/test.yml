@@ -339,6 +339,18 @@ jobs:
       - name: Every test file is collected by a workflow
         run: python scripts/check_test_collection.py
 
+      # Prometheus evaluated monitoring/alert_rules.yml and had nowhere to
+      # send what fired: no Alertmanager, no `alerting:` section (#658). And
+      # nothing ever read the rules: a rule on a metric that does not exist
+      # loads without a word. This checks the monitoring profile statically
+      # (Alertmanager defined and hardened, Prometheus pointed at it, a
+      # default receiver that sends nowhere named for it, no secret inline),
+      # then runs `promtool check config`, `promtool test rules` and
+      # `amtool check-config` from the images docker-compose.yml names, so a
+      # broken rule or configuration fails here and not on a server.
+      - name: Monitoring profile delivers alerts; rules and Alertmanager config are valid
+        run: python3 scripts/check_monitoring_config.py
+
       # WILDBO-QUAL-03: every step in this job used to carry
       # continue-on-error: true, so "Code Quality" reported success no matter
       # how many violations existed, and build-images did not even depend on it.

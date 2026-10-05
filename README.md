@@ -131,7 +131,7 @@ Change the initial password after the first login.
 | Service | Start with |
 | :--- | :--- |
 | Workflow automation (n8n) | `docker compose --profile automations up -d` |
-| Prometheus | `docker compose --profile monitoring up -d` |
+| Prometheus and Alertmanager | `docker compose --profile monitoring up -d` |
 | Scheduled backups | `docker compose --profile backup up -d` |
 
 ## Operations
@@ -145,6 +145,8 @@ Change the initial password after the first login.
 | Back up PostgreSQL | `make backup` |
 | Rehearse a restore | `make restore-drill` |
 | List rotatable secrets | `make rotate-secrets` |
+| Firing alerts (`monitoring` profile) | `http://127.0.0.1:9093` (Alertmanager), `http://127.0.0.1:9090/alerts` (Prometheus) |
+| Send a test alert | `docker compose --profile monitoring exec alertmanager amtool alert add WildboxTestNotification severity=info --alertmanager.url=http://127.0.0.1:9093` |
 | Stop | `docker compose down` |
 
 `make backup` and `make restore-drill` run on the host and need a database
@@ -152,6 +154,11 @@ they can reach, which the default stack does not publish; the
 [deployment guide](https://www.wildbox.io/guides/deployment/#6-backups-and-restore)
 lists what they need. On a default stack, the `backup` profile runs the
 backups on the Compose network instead.
+
+The `monitoring` profile notifies nobody until you configure a receiver:
+alerts are shown in the two pages above and nowhere else. The
+[deployment guide](https://www.wildbox.io/guides/deployment/#7-monitoring)
+has e-mail and webhook examples.
 
 Ports, service names and bindings are listed in one place:
 [ports reference](https://www.wildbox.io/guides/ports/). Production guidance is in the

@@ -101,6 +101,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The service's metrics endpoint is the Prometheus one, `GET /metrics`,
   which `monitoring/prometheus.yml` scrapes; it is now registered by the
   shared package, as in the other services (#646).
+- **The `WildboxNoToolExecutions` alert rule** (#658). It fired when no
+  tool had run for twelve hours, which on a stack nobody used overnight
+  or over a weekend is a healthy state, and it could not fire in the
+  case it was written for: after a restart with no run the counter has
+  no series, and the expression is empty rather than zero. It also read
+  a counter of synchronous runs only. Nothing replaces it: no metric
+  says that the stack has stopped doing work it should be doing.
 
 ### Fixed
 
@@ -162,6 +169,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   satisfy the new one. Unit tests cover both teams, a second system of the
   same team, updates and the database constraint; six mutations of the
   fix each fail a test.
+
+- **A firing alert has somewhere to go: the `monitoring` profile runs an
+  Alertmanager** (#658). Prometheus evaluated
+  `monitoring/alert_rules.yml`, but `monitoring/prometheus.yml` had no
+  `alerting` section and no Compose file defined an Alertmanager, so a
+  firing alert was a line on a page bound to `127.0.0.1:9090` and
+  Prometheus dropped the notification. The profile now starts
+  `prom/alertmanager:v0.34.1` next to Prometheus, on `127.0.0.1:9093`,
+  as a non-root user on a read-only root filesystem, and Prometheus
+  sends it what fires. Out of the box it still notifies nobody, and says
+  so: the shipped `monitoring/alertmanager.yml` routes every alert to a
+  receiver named `no-notifications`, and alerts are then visible in the
+  Alertmanager and Prometheus UIs only. To be notified, point
+  `ALERTMANAGER_CONFIG_FILE` at a copy of one of the two examples in
+  `monitoring/examples/` (e-mail, generic webhook). Neither holds a
+  secret, and none goes in `.env` or on a command line: the SMTP
+  password and the webhook URL are read from files in
+  `ALERTMANAGER_SECRETS_DIR`. The
+  [deployment guide](docs/guides/deployment.md#7-monitoring) has the
+  steps and a command that sends a test alert.
+- **Every alert rule reads a metric that exists and says what it
+  measures** (#658). `WildboxToolFailureRate` is now
+  `WildboxSyncToolFailureRate`: its counter is incremented by the api
+  process only, so it never saw a run submitted to
+  `/api/v1/tools/{tool}/async`, and its name and one-line summary did
+  not say so. The expression is unchanged. Every rule has a description
+  of what it counts and what it cannot see. Two rules watch the alerting
+  path itself, `WildboxAlertmanagerDown` and
+  `WildboxAlertNotificationsFailing`, which fires when Alertmanager
+  cannot deliver, for example because a secret file is unreadable.
+  Notifications link to `PROMETHEUS_EXTERNAL_URL` and
+  `ALERTMANAGER_EXTERNAL_URL` (`http://127.0.0.1:9090` and `:9093`)
+  instead of a container ID. CI now fails on a broken rule or
+  configuration: `scripts/check_monitoring_config.py` runs
+  `promtool check config`, `promtool test rules` on
+  `monitoring/alert_rules.test.yml` and `amtool check-config` from the
+  images the Compose file names, a unit test of the tools service
+  checks each `wildbox_*` selector against what `/metrics` really
+  serves, and the production-stack job starts the profile and checks
+  that every target is up and every metric a rule reads is exported.
 
 ## [0.11.2] - 2026-10-05
 

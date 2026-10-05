@@ -36,7 +36,8 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `dashboard` | `open-security-dashboard` | `127.0.0.1:3000` | Web dashboard | `http://localhost:3000/` |
 | `tools-flower` | `open-security-tools-flower` | `127.0.0.1:5555` | Celery Flower for the tools workers | `http://localhost:5555/healthcheck` |
 | `automations` | `open-security-automations` | `127.0.0.1:5678` | n8n; only with `--profile automations` | `http://localhost:5678/healthz` |
-| `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | - |
+| `prometheus` | (Compose default) | `127.0.0.1:9090` | Prometheus; only with `--profile monitoring` | `http://localhost:9090/-/ready` |
+| `alertmanager` | (Compose default) | `127.0.0.1:9093` | Alertmanager: receives the alerts Prometheus fires; only with `--profile monitoring` | `http://localhost:9093/-/ready` |
 | `postgres` | `wildbox-postgres` | none | PostgreSQL 15 | `pg_isready` inside the container |
 | `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
 | `tools-worker`, `guardian-worker`, `cspm-worker` | (Compose default) | none | Celery workers for tools, guardian and cspm | `celery ... inspect ping` inside the container |
@@ -75,13 +76,18 @@ keeps it private is the network layout, not a credential:
 
 Prometheus itself (`--profile monitoring`) listens on `127.0.0.1:9090`, also
 without authentication, and scrapes the six services over the Compose network
-using `monitoring/prometheus.yml`.
+using `monitoring/prometheus.yml`. The same profile starts Alertmanager on
+`127.0.0.1:9093`, without authentication as well: Prometheus sends it the
+alerts that fire and scrapes its metrics. Whether Alertmanager then notifies
+anybody depends on its configuration, and the one that ships notifies nobody;
+see [Monitoring](deployment.md#7-monitoring).
 
 From the Docker host:
 
 ```bash
 curl -s http://127.0.0.1:8001/metrics | head
 curl -s 'http://127.0.0.1:9090/api/v1/query?query=up'
+curl -s http://127.0.0.1:9093/api/v2/alerts      # what Alertmanager holds now
 ```
 
 Do not publish these ports beyond localhost; put an authenticating proxy in

@@ -1,0 +1,302 @@
+# Unit tests for monitoring/alert_rules.yml.
+#
+#   docker run --rm --network none -v "$PWD/monitoring:/monitoring:ro" \
+#     -w /monitoring --entrypoint promtool prom/prometheus:v2.55.1 \
+#     test rules alert_rules.test.yml
+#
+# scripts/check_monitoring_config.py runs exactly that in CI, with the image
+# docker-compose.yml names. Each alert has a case in which it fires and the
+# cases closest to it in which it must not.
+rule_files:
+  - alert_rules.yml
+
+evaluation_interval: 30s
+
+tests:
+  # --------------------------------------------------------------------------
+  # WildboxServiceDown
+  # --------------------------------------------------------------------------
+  - name: a service that stops answering scrapes fires after two minutes
+    interval: 30s
+    input_series:
+      - series: 'up{job="wildbox-services", instance="open-security-identity:8001"}'
+        values: '1 1 0x20'
+      - series: 'up{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '1x22'
+    alert_rule_test:
+      # Down since 1m; 1m30s later it is still pending.
+      - eval_time: 2m30s
+        alertname: WildboxServiceDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: WildboxServiceDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: wildbox-services
+              instance: open-security-identity:8001
+            exp_annotations:
+              summary: "open-security-identity:8001 is not answering Prometheus scrapes"
+              description: >-
+                Prometheus has not been able to scrape /metrics on
+                open-security-identity:8001 for two minutes: the service is
+                stopped, restarting, or unreachable on the Compose network.
+                Check `docker compose ps` and the service's logs.
+
+  - name: a restart shorter than two minutes does not fire
+    interval: 30s
+    input_series:
+      - series: 'up{job="wildbox-services", instance="open-security-data:8002"}'
+        values: '1 1 0 0 0 1x20'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: WildboxServiceDown
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: WildboxServiceDown
+        exp_alerts: []
+
+  - name: a target of another job is not a Wildbox service
+    interval: 30s
+    input_series:
+      - series: 'up{job="prometheus", instance="localhost:9090"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WildboxServiceDown
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------
+  # WildboxHighErrorRate
+  # --------------------------------------------------------------------------
+  - name: 10% of a service's requests ending in 5xx fires after ten minutes
+    interval: 30s
+    input_series:
+      - series: 'wildbox_http_requests_total{service="tools", method="POST", path="/api/tools/{tool_name}", status="200"}'
+        values: '0+90x60'
+      - series: 'wildbox_http_requests_total{service="tools", method="POST", path="/api/tools/{tool_name}", status="500"}'
+        values: '0+6x60'
+      - series: 'wildbox_http_requests_total{service="tools", method="GET", path="/health", status="503"}'
+        values: '0+4x60'
+      # A healthy service next to it.
+      - series: 'wildbox_http_requests_total{service="identity", method="GET", path="/health", status="200"}'
+        values: '0+10x60'
+    alert_rule_test:
+      - eval_time: 9m
+        alertname: WildboxHighErrorRate
+        exp_alerts: []
+      - eval_time: 12m
+        alertname: WildboxHighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              service: tools
+            exp_annotations:
+              summary: "tools answers more than 5% of its requests with a 5xx"
+              description: >-
+                Over the last five minutes 10% of the HTTP requests the tools
+                service handled ended in a 5xx status, and it has stayed above
+                5% for ten minutes. The count includes health checks and
+                Prometheus scrapes, and every request is counted by the service
+                itself, so requests the gateway refused or could not forward
+                are not in it.
+
+  - name: 4% of 5xx, and any amount of 4xx, does not fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_http_requests_total{service="data", method="GET", path="/health", status="200"}'
+        values: '0+46x60'
+      - series: 'wildbox_http_requests_total{service="data", method="GET", path="/api/v1/iocs", status="500"}'
+        values: '0+4x60'
+      - series: 'wildbox_http_requests_total{service="data", method="GET", path="/api/v1/iocs", status="401"}'
+        values: '0+50x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WildboxHighErrorRate
+        exp_alerts: []
+
+  - name: a service with no traffic at all, after earlier errors, does not fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_http_requests_total{service="cspm", method="GET", path="/health", status="200"}'
+        values: '7x60'
+      - series: 'wildbox_http_requests_total{service="cspm", method="GET", path="/health", status="500"}'
+        values: '3x60'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WildboxHighErrorRate
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------
+  # WildboxSyncToolFailureRate
+  # --------------------------------------------------------------------------
+  - name: half of the synchronous tool runs raising fires after fifteen minutes
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '0+1x80'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: WildboxSyncToolFailureRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: WildboxSyncToolFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Over a quarter of synchronous tool runs are failing"
+              description: >-
+                Over the last fifteen minutes 50% of the synchronous tool runs
+                (POST /api/v1/tools/<tool>) raised an error the tool does not
+                handle, and the share has stayed above 25% for fifteen minutes.
+                Asynchronous runs (the tools-worker) are not measured: this
+                alert neither fires for them nor clears because of them.
+                Timeouts, refused runs and failures a tool reports in its
+                result count as runs, not as failures.
+
+  - name: timeouts and refusals are runs, not failures
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_executions_total{tool="port_scanner", outcome="timeout"}'
+        values: '0+2x80'
+      - series: 'wildbox_tool_executions_total{tool="sql_injection_scanner", outcome="refused"}'
+        values: '0+2x80'
+      - series: 'wildbox_tool_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '0+1x80'
+    alert_rule_test:
+      # 1 failed in 6 runs: 16.7%.
+      - eval_time: 30m
+        alertname: WildboxSyncToolFailureRate
+        exp_alerts: []
+
+  # The rule this file replaced, WildboxNoToolExecutions, fired here: a
+  # healthy stack on which nobody ran a tool for twelve hours. Nothing in the
+  # rule file may.
+  - name: a healthy stack that nobody uses overnight fires nothing
+    interval: 30s
+    input_series:
+      - series: 'up{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '1x2880'
+      - series: 'up{job="alertmanager", instance="alertmanager:9093"}'
+        values: '1x2880'
+      - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '12x2880'
+      - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="failed"}'
+        values: '5x2880'
+      - series: 'wildbox_http_requests_total{service="tools", method="GET", path="/health", status="200"}'
+        values: '0+1x2880'
+      - series: 'alertmanager_notifications_failed_total{integration="email", reason="other"}'
+        values: '0x2880'
+    alert_rule_test:
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxSyncToolFailureRate
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxServiceDown
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxHighErrorRate
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxAlertmanagerDown
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxAlertNotificationsFailing
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxNoToolExecutions
+
+  # --------------------------------------------------------------------------
+  # WildboxAlertmanagerDown
+  # --------------------------------------------------------------------------
+  - name: an Alertmanager that stops answering scrapes fires after five minutes
+    interval: 30s
+    input_series:
+      - series: 'up{job="alertmanager", instance="alertmanager:9093"}'
+        values: '1 1 0x30'
+    alert_rule_test:
+      - eval_time: 5m30s
+        alertname: WildboxAlertmanagerDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: WildboxAlertmanagerDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: alertmanager
+              instance: alertmanager:9093
+            exp_annotations:
+              summary: "Alertmanager is not answering Prometheus scrapes"
+              description: >-
+                Prometheus has not been able to scrape Alertmanager at
+                alertmanager:9093 for five minutes. While it is down no alert
+                is delivered, this one included: it is visible on Prometheus's
+                /alerts page only. Check `docker compose ps alertmanager` and
+                its logs; an invalid configuration file keeps it restarting.
+      # It is not a Wildbox service: one alert, not two.
+      - eval_time: 6m
+        alertname: WildboxServiceDown
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------
+  # WildboxAlertNotificationsFailing
+  # --------------------------------------------------------------------------
+  - name: notifications that keep failing fire, by integration
+    interval: 30s
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{integration="webhook", reason="serverError"}'
+        values: '0x4 1+1x40'
+      - series: 'alertmanager_notifications_failed_total{integration="email", reason="other"}'
+        values: '0x45'
+    alert_rule_test:
+      - eval_time: 6m30s
+        alertname: WildboxAlertNotificationsFailing
+        exp_alerts: []
+      - eval_time: 7m30s
+        alertname: WildboxAlertNotificationsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              integration: webhook
+            exp_annotations:
+              summary: "Alertmanager cannot deliver notifications by webhook"
+              description: >-
+                Alertmanager failed to send notifications through its webhook
+                integration in the last fifteen minutes. If that is the
+                only receiver, this alert cannot be delivered either: it is
+                visible in the Alertmanager UI and on Prometheus's /alerts
+                page. The reason is in the Alertmanager logs; a secret file
+                that is missing or not readable by UID 65534, a wrong password
+                and an unreachable server are the usual ones.
+
+  - name: one failed notification that then succeeds clears within twenty minutes
+    interval: 30s
+    input_series:
+      - series: 'alertmanager_notifications_failed_total{integration="email", reason="other"}'
+        values: '0x4 1x80'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: WildboxAlertNotificationsFailing
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              integration: email
+            exp_annotations:
+              summary: "Alertmanager cannot deliver notifications by email"
+              description: >-
+                Alertmanager failed to send notifications through its email
+                integration in the last fifteen minutes. If that is the
+                only receiver, this alert cannot be delivered either: it is
+                visible in the Alertmanager UI and on Prometheus's /alerts
+                page. The reason is in the Alertmanager logs; a secret file
+                that is missing or not readable by UID 65534, a wrong password
+                and an unreachable server are the usual ones.
+      - eval_time: 20m
+        alertname: WildboxAlertNotificationsFailing
+        exp_alerts: []
