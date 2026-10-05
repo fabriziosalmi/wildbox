@@ -312,10 +312,16 @@ Custom actions:
 | `POST` | `assets/groups/{id}/add_assets/` | Adds assets to the group |
 | `DELETE` | `assets/groups/{id}/remove_assets/` | Removes assets from the group |
 | `POST` | `assets/discovery-rules/{id}/execute/` | Queues a run of the rule and returns `task_id`. `400` if the rule is disabled; `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` for a rule whose `discovery_type` is not `network_scan` (one stored before the API refused the other types) |
-| `POST` | `assets/discovery-rules/{id}/enable/` | Enables the rule |
+| `POST` | `assets/discovery-rules/{id}/enable/` | Enables the rule. `501` with `"code": "DISCOVERY_TYPE_NOT_IMPLEMENTED"` for a rule whose `discovery_type` is not `network_scan`: it would never run |
 | `POST` | `assets/discovery-rules/{id}/disable/` | Disables the rule |
 | `GET` | `assets/software/inventory/` | Software inventory across assets |
 | `GET` | `assets/ports/summary/` | Port summary across assets |
+
+A rule is `enabled` when it runs on its schedule. A rule of a type guardian does
+not implement (one stored before the API refused the other types) never runs, so it
+cannot be enabled: `enable/` answers `501` and a `PATCH` with `"enabled": true`
+answers `400` on `enabled`. The upgrade to this version switches off the ones that
+were stored as enabled (#724).
 
 A discovery rule of type `network_scan` lists what it sweeps in
 `target_specification`: `networks`, 1 to 32 networks in CIDR notation, each of at

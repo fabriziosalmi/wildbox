@@ -4,8 +4,6 @@ Asset Management Serializers
 Django REST Framework serializers for asset management.
 """
 
-import ipaddress
-
 from rest_framework import serializers
 
 from apps.core.tenancy import (
@@ -210,6 +208,27 @@ class AssetDiscoveryRuleSerializer(TeamScopedModelSerializer):
                 f"{', '.join(IMPLEMENTED_DISCOVERY_TYPES)}."
             )
         return value
+
+    def validate(self, attrs):
+        """A rule of a type with no implementation cannot be switched on.
+
+        Such a rule is one stored before the API refused its type (#548).
+        It never runs; ``{"enabled": true}`` on it was accepted and meant
+        nothing (#724).
+        """
+        attrs = super().validate(attrs)
+        discovery_type = attrs.get(
+            'discovery_type', getattr(self.instance, 'discovery_type', None)
+        )
+        if attrs.get('enabled') and discovery_type not in IMPLEMENTED_DISCOVERY_TYPES:
+            raise serializers.ValidationError({
+                'enabled': (
+                    f"{discovery_type} discovery is not implemented, so the "
+                    "rule would never run; supported: "
+                    f"{', '.join(IMPLEMENTED_DISCOVERY_TYPES)}."
+                )
+            })
+        return attrs
 
     def validate_schedule(self, value):
         """Five crontab fields that parse and match some time (#548)."""

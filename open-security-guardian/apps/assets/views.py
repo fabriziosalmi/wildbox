@@ -288,16 +288,7 @@ class AssetDiscoveryRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         # API refused them, #548) was queued and answered "executed" with a
         # task id; the task then skipped it (#644).
         if rule.discovery_type not in IMPLEMENTED_DISCOVERY_TYPES:
-            return Response(
-                {
-                    'detail': (
-                        f'{rule.discovery_type} discovery is not implemented; '
-                        f'supported: {", ".join(IMPLEMENTED_DISCOVERY_TYPES)}.'
-                    ),
-                    'code': 'DISCOVERY_TYPE_NOT_IMPLEMENTED',
-                },
-                status=status.HTTP_501_NOT_IMPLEMENTED,
-            )
+            return self._not_implemented(rule)
 
         # Trigger discovery task
         from apps.assets.tasks import execute_discovery_rule
@@ -308,10 +299,29 @@ class AssetDiscoveryRuleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             'task_id': task.id
         })
 
+    @staticmethod
+    def _not_implemented(rule):
+        """The answer for what guardian cannot do with a rule of that type."""
+        return Response(
+            {
+                'detail': (
+                    f'{rule.discovery_type} discovery is not implemented; '
+                    f'supported: {", ".join(IMPLEMENTED_DISCOVERY_TYPES)}.'
+                ),
+                'code': 'DISCOVERY_TYPE_NOT_IMPLEMENTED',
+            },
+            status=status.HTTP_501_NOT_IMPLEMENTED,
+        )
+
     @action(detail=True, methods=['post'])
     def enable(self, request, pk=None):
         """Enable a discovery rule"""
         rule = self.get_object()
+        # "Enabled" is "runs on its schedule", and a rule of a type with no
+        # implementation never runs: it was switched on, answered "enabled"
+        # and stayed idle (#724).
+        if rule.discovery_type not in IMPLEMENTED_DISCOVERY_TYPES:
+            return self._not_implemented(rule)
         rule.enabled = True
         rule.save()
         

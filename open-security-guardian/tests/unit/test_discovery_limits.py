@@ -1,12 +1,17 @@
-"""A discovery is checked before it is queued (#724).
+"""A discovery is checked before it is queued, and a rule that never runs is
+not "enabled" (#724).
 
 ``POST assets/assets/discover/`` took ``network_range`` as it came. A value
 that is not a network answered "Asset discovery initiated" with a task id;
 the worker found out, and retried three times. ``10.0.0.0/8`` was accepted
 too: sixteen million connection attempts in one task. A discovery rule
 checked that its networks parse, and not how large they are.
+
+And a discovery rule of a type guardian does not implement, which the
+dispatcher never runs, could be switched on: ``enable/`` answered "enabled".
 """
 
+import importlib
 import json
 import uuid
 from pathlib import Path
@@ -269,3 +274,103 @@ def test_a_rule_within_the_bounds_is_stored(api):
     response = api("post", _RULES, team, _rule(target_specification=specification))
 
     assert response.status_code == 201, response.content[:300]
+
+
+# --- a rule that never runs cannot be enabled ------------------------------------------
+
+
+def _legacy_rule(team, discovery_type="cloud_api", enabled=False):
+    """A rule of a type that is not implemented, stored before #548."""
+    rule = tf.make(AssetDiscoveryRule, team)
+    AssetDiscoveryRule.objects.filter(pk=rule.pk).update(
+        discovery_type=discovery_type,
+        target_specification={"provider": "aws"},
+        enabled=enabled,
+    )
+    return rule
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "discovery_type", ["cloud_api", "cmdb_import", "agent_report", "dns_zone"]
+)
+def test_enable_refuses_a_rule_of_a_type_that_never_runs(api, discovery_type):
+    team = uuid.uuid4()
+    rule = _legacy_rule(team, discovery_type)
+
+    response = api("post", f"{_RULES}{rule.pk}/enable/", team)
+
+    assert response.status_code == 501, response.content[:300]
+    assert response.json()["code"] == "DISCOVERY_TYPE_NOT_IMPLEMENTED"
+    assert discovery_type in response.json()["detail"]
+    assert AssetDiscoveryRule.objects.get(pk=rule.pk).enabled is False
+
+
+@pytest.mark.django_db
+def test_a_patch_cannot_enable_it_either(api):
+    team = uuid.uuid4()
+    rule = _legacy_rule(team)
+    url = f"{_RULES}{rule.pk}/"
+
+    refused = api("patch", url, team, {"enabled": True})
+
+    assert refused.status_code == 400, refused.content[:300]
+    assert "never run" in str(refused.json()["enabled"])
+    assert AssetDiscoveryRule.objects.get(pk=rule.pk).enabled is False
+    # Everything else about it can still be edited, and it can be deleted.
+    assert api("patch", url, team, {"description": "kept"}).status_code == 200
+    assert api("patch", url, team, {"enabled": False}).status_code == 200
+    assert api("post", f"{url}disable/", team).status_code == 200
+    assert api("delete", url, team).status_code == 204
+
+
+@pytest.mark.django_db
+def test_a_rule_that_runs_is_enabled_as_before(api):
+    team = uuid.uuid4()
+    rule = tf.make(AssetDiscoveryRule, team)
+    AssetDiscoveryRule.objects.filter(pk=rule.pk).update(enabled=False)
+    url = f"{_RULES}{rule.pk}/"
+
+    assert api("post", f"{url}enable/", team).status_code == 200
+    assert AssetDiscoveryRule.objects.get(pk=rule.pk).enabled is True
+    AssetDiscoveryRule.objects.filter(pk=rule.pk).update(enabled=False)
+    assert api("patch", url, team, {"enabled": True}).status_code == 200
+    assert AssetDiscoveryRule.objects.get(pk=rule.pk).enabled is True
+
+
+def test_the_types_a_rule_may_have_are_the_models_choices():
+    """The four refused above are every choice that is not implemented."""
+    from apps.assets.models import IMPLEMENTED_DISCOVERY_TYPES
+
+    choices = {
+        value
+        for value, _ in AssetDiscoveryRule._meta.get_field("discovery_type").choices
+    }
+    assert choices - set(IMPLEMENTED_DISCOVERY_TYPES) == {
+        "cloud_api",
+        "cmdb_import",
+        "agent_report",
+        "dns_zone",
+    }
+
+
+@pytest.mark.django_db
+def test_the_migration_switches_off_the_stored_rules_that_never_run():
+    from django.apps import apps
+
+    migration = importlib.import_module(
+        "apps.assets.migrations.0003_disable_rules_that_never_run"
+    )
+    team = uuid.uuid4()
+    idle = _legacy_rule(team, "cloud_api", enabled=True)
+    already_off = _legacy_rule(team, "dns_zone", enabled=False)
+    running = tf.make(AssetDiscoveryRule, team)
+    assert running.enabled is True
+
+    migration.disable(apps, None)
+
+    enabled = dict(AssetDiscoveryRule.objects.values_list("pk", "enabled"))
+    assert enabled == {idle.pk: False, already_off.pk: False, running.pk: True}
+    from apps.assets.models import IMPLEMENTED_DISCOVERY_TYPES
+
+    assert migration.IMPLEMENTED == IMPLEMENTED_DISCOVERY_TYPES

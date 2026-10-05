@@ -503,6 +503,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
+- **guardian: a discovery rule that never runs cannot be enabled**
+  (#724). A rule of a type guardian does not implement (cloud API, CMDB
+  import, agent report, DNS zone), stored before the API refused those
+  types, is never run by the dispatcher, and could still be switched
+  on: `enable/` answered "enabled". It now answers 501 with
+  `DISCOVERY_TYPE_NOT_IMPLEMENTED`, as `execute/` does, and a `PATCH`
+  with `"enabled": true` answers 400. A migration switches off the
+  stored rules of those types.
 - **guardian: a discovery is checked before it is queued, and sweeps
   at most 1,024 addresses** (#724). `POST assets/assets/discover/`
   accepted any `network_range`: a value that is not a network answered
