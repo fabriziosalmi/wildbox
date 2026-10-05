@@ -166,7 +166,11 @@ reports in `X-Wildbox-Team-ID` (`apps/core/tenancy.py`):
   is, and the roles they held in the team are cleared when they are
   removed: a vulnerability assigned to them becomes unassigned, with a
   line in its history. What they did (the rows they created, the notes
-  they wrote) stays attributed to them.
+  they wrote) stays attributed to them. A member who is removed from a
+  team and added back within ten minutes can use guardian at once, but can
+  be named again only once the ten minutes have passed and they have made
+  a request: for that long guardian does not take a request as proof of
+  the membership, since one sent before the removal may arrive after it.
 - `/api/v1/guardian/tasks/<uuid>/` answers only for tasks the team
   dispatched; any other id answers `404`.
 

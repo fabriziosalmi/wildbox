@@ -65,6 +65,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a request that carries a session token, an API key, the session
   cookie and forged copies of the gateway's own headers.
 
+- **guardian: a request that overtakes a membership notice no longer
+  undoes it** (#724, after #676). When identity removes a member from a
+  team it tells the gateway, then guardian, which deletes its record of
+  the membership. A request the gateway had authenticated a moment
+  earlier could reach guardian after the notice, and guardian records a
+  membership for every request it lets in: the record came back, and
+  the former member could be assigned and named in that team again for
+  `GUARDIAN_TEAM_MEMBERSHIP_MAX_AGE_DAYS` (30 days by default). guardian
+  now remembers a notice for ten minutes and records no such membership
+  in that time; the request itself is still served. A member removed and
+  added back within ten minutes can use guardian at once, and can be
+  named once the ten minutes have passed and they have made a request.
 - **guardian: a report no longer names where its file is on the
   server** (#724). Every answer that carried a report (the list, the
   record, `recent/`, `failed/`, a template's `reports/`, and the answers

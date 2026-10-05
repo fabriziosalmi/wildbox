@@ -29,18 +29,43 @@ in neither, so a new field cannot be cleared, or kept, by accident.
 A notice can be lost (guardian down while identity removes the member).
 The window on ``last_seen`` is what holds then: see
 apps.core.tenancy.current_memberships.
+
+A notice can also be overtaken. identity tells the gateway first, so no new
+request of the former member is authenticated; but one authenticated a
+moment earlier may reach guardian after the notice, and the middleware
+records a membership for every request it lets in. That request would put
+back the row the notice deleted, for a whole window. So a notice is
+remembered (``TeamMembershipRevocation``) for ``REVOCATION_GRACE``, and in
+that time the middleware does not record the membership it ended
+(``revoked_recently``, apps.core.gateway_middleware._record_membership).
+The request itself is served: the gateway authenticated it.
 """
 
 from __future__ import annotations
 
 import logging
 
+from datetime import timedelta
+
 from apps.core.tenancy import normalize_team_id, team_lookup, team_q
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
+
+#: How long after a notice no request records the membership it ended.
+#: Longer than a request can take from the gateway's authentication to
+#: guardian's middleware: the gateway gives a request five seconds to
+#: connect and a minute to be answered (nginx/includes/proxy_params.conf),
+#: and stops authenticating the member before guardian is told. Ten times
+#: that leaves room for a queue in front of guardian's workers. The cost is
+#: on the other side: a member removed from a team and added back within the
+#: grace can use guardian at once, and can be named (assigned, shared with)
+#: only when it has passed and they have made a request since.
+REVOCATION_GRACE = timedelta(minutes=10)
 
 #: Who is responsible for a row, or has access to it, now. Cleared when the
 #: user leaves the row's team. "app_label.Model": field names.
@@ -168,6 +193,43 @@ def _record_unassignment(model, field, pks):
     )
 
 
+def _remember_revocation(user_id, team_id=None):
+    """Note that a membership ended, before anything is deleted.
+
+    Before, and outside the transaction that deletes: a request that
+    records the membership at the same moment either commits its row first,
+    and the deletion that follows removes it, or commits it later, and then
+    finds this note and removes the row itself. In no order does the row
+    outlive the notice (apps.core.gateway_middleware._record_membership).
+    """
+    from apps.core.models import TeamMembershipRevocation
+
+    now = timezone.now()
+    # The notes that no longer hold anything back.
+    TeamMembershipRevocation.objects.filter(
+        revoked_at__lt=now - REVOCATION_GRACE
+    ).delete()
+    TeamMembershipRevocation.objects.create(
+        username=str(user_id), team_id=team_id, revoked_at=now
+    )
+
+
+def revoked_recently(user_id, team_id, now=None):
+    """True if identity said, within the grace, that this membership ended.
+
+    Either this membership (the user left the team) or all of the user's
+    (the account is gone).
+    """
+    from apps.core.models import TeamMembershipRevocation
+
+    since = (now or timezone.now()) - REVOCATION_GRACE
+    return TeamMembershipRevocation.objects.filter(
+        Q(team_id=normalize_team_id(team_id)) | Q(team_id__isnull=True),
+        username=str(user_id),
+        revoked_at__gt=since,
+    ).exists()
+
+
 def revoke_membership(team_id, user_id):
     """A user left a team: delete the membership, clear their roles in it.
 
@@ -181,6 +243,9 @@ def revoke_membership(team_id, user_id):
     team_id = normalize_team_id(team_id)
     if team_id is None:
         raise ValueError("revoke_membership needs a team")
+    # Also for a user guardian has not seen: the request in flight may be
+    # their first.
+    _remember_revocation(user_id, team_id)
     user = _mirror(user_id)
     if user is None:
         return {}
@@ -205,6 +270,7 @@ def revoke_user(user_id):
     """
     from apps.core.models import TeamMembership
 
+    _remember_revocation(user_id)
     user = _mirror(user_id)
     if user is None:
         return {}

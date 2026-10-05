@@ -139,7 +139,11 @@ writes.
   in the team are cleared (assignee, owner, technical contact, approver,
   assessor, dashboard shares). If that notice is lost, the user stops
   counting when the window runs out, because a user who left can make no
-  request that renews it. What a former member did stays on record: the
+  request that renews it. A request the gateway authenticated just before
+  the removal may still arrive just after the notice; guardian remembers
+  a notice for ten minutes (`REVOCATION_GRACE`, `apps/core/memberships.py`)
+  and in that time serves such a request without recording the membership
+  again (#724). What a former member did stays on record: the
   rows they created, the exceptions they approved, the notes they wrote.
   The SLA and assignment e-mails go to an assignee only while they are a
   member of the vulnerability's team.
