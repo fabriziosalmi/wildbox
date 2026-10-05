@@ -7,11 +7,7 @@ DRF serializers for scanner-related API endpoints.
 from rest_framework import serializers
 
 from apps.core.refused_fields import RefusedFieldsMixin
-from apps.core.tenancy import (
-    TeamScopedModelSerializer,
-    context_team_id,
-    scope_to_team,
-)
+from apps.core.tenancy import TeamScopedModelSerializer
 from django.contrib.auth.models import User
 from .models import (
     Scanner, ScanProfile, Scan, ScanResult, ScanSchedule,
@@ -162,22 +158,6 @@ class ScanResultSerializer(TeamScopedModelSerializer):
         ]
 
 
-class ScanResultSummarySerializer(serializers.Serializer):
-    """Serializer for scan result summaries"""
-    total_results = serializers.IntegerField()
-    critical_count = serializers.IntegerField()
-    high_count = serializers.IntegerField()
-    medium_count = serializers.IntegerField()
-    low_count = serializers.IntegerField()
-    info_count = serializers.IntegerField()
-    
-    processed_count = serializers.IntegerField()
-    vulnerabilities_created = serializers.IntegerField()
-    
-    top_affected_hosts = serializers.ListField(child=serializers.DictField())
-    common_vulnerabilities = serializers.ListField(child=serializers.DictField())
-
-
 class ScanScheduleSerializer(TeamScopedModelSerializer):
     """Serializer for recurring scan schedules"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
@@ -220,41 +200,3 @@ class ScannerStatsSerializer(serializers.Serializer):
     
     scanner_types = serializers.DictField()
     scan_frequency = serializers.DictField()
-
-
-class ScannerHealthSerializer(serializers.Serializer):
-    """Serializer for scanner health status"""
-    scanner_id = serializers.UUIDField()
-    scanner_name = serializers.CharField()
-    is_healthy = serializers.BooleanField()
-    last_check = serializers.DateTimeField()
-    status = serializers.CharField()
-    error_message = serializers.CharField(required=False)
-    response_time_ms = serializers.IntegerField(required=False)
-
-
-class BulkScanActionSerializer(serializers.Serializer):
-    """Serializer for bulk scan actions"""
-    scan_ids = serializers.ListField(
-        child=serializers.UUIDField(),
-        min_length=1,
-        max_length=50
-    )
-    action = serializers.ChoiceField(choices=[
-        ('start', 'Start'),
-        ('pause', 'Pause'),
-        ('cancel', 'Cancel'),
-        ('delete', 'Delete')
-    ])
-    reason = serializers.CharField(max_length=500, required=False)
-    
-    def validate_scan_ids(self, value):
-        """Validate that all scan IDs exist in the caller's team (#642)."""
-        existing_scans = scope_to_team(
-            Scan.objects.filter(id__in=value), context_team_id(self.context)
-        ).count()
-        if existing_scans != len(value):
-            raise serializers.ValidationError(
-                f"Some scan IDs are invalid. Found {existing_scans} out of {len(value)} scans."
-            )
-        return value
