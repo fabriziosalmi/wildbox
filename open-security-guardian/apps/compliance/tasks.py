@@ -1,14 +1,45 @@
 from celery import shared_task
+from django.apps import apps as django_apps
 from django.db import transaction
 from django.utils import timezone
 from django.db.models import Count, Q
 from .models import ComplianceAssessment, ComplianceResult, ComplianceMetrics
 from apps.core.locks import single_instance
-from apps.core.tenancy import scope_to_team
-from apps.core.utils import send_notification
+from apps.core.notifications import notify_team_from_template
+from apps.core.tenancy import scope_to_team, team_lookup
 import logging
 
 logger = logging.getLogger(__name__)
+
+#: Each compliance notification: its subject, its template, and the model
+#: of the row it is about. The row's team is who is told.
+COMPLIANCE_NOTIFICATIONS = {
+    'high_risk_finding': (
+        'High Risk Compliance Finding',
+        'compliance/high_risk_finding.html',
+        'ComplianceResult',
+    ),
+    'assessment_completed': (
+        'Compliance Assessment Completed',
+        'compliance/assessment_completed.html',
+        'ComplianceAssessment',
+    ),
+    'assessment_started': (
+        'Compliance Assessment Started',
+        'compliance/assessment_started.html',
+        'ComplianceAssessment',
+    ),
+    'exception_expiring': (
+        'Compliance Exception Expiring Soon',
+        'compliance/exception_expiring.html',
+        'ComplianceException',
+    ),
+    'assessment_overdue': (
+        'Compliance Assessment Overdue',
+        'compliance/assessment_overdue.html',
+        'ComplianceAssessment',
+    ),
+}
 
 
 @shared_task
@@ -94,56 +125,86 @@ def _calculate_compliance_metrics(assessment_id):
         return None
 
 
+def _moment(data, key):
+    """The moment of an event as its caller wrote it: a short text, or ''."""
+    value = data.get(key) if isinstance(data, dict) else None
+    return str(value)[:40] if value else ''
+
+
+def _compliance_context(notification_type, row, data):
+    """What a compliance e-mail says, read from the row it is about."""
+    now = timezone.now()
+    if notification_type == 'high_risk_finding':
+        return {
+            'assessment': row.assessment.name,
+            'control': row.control.control_id,
+            'status': row.status,
+            'risk_level': row.risk_level,
+        }
+    if notification_type == 'exception_expiring':
+        return {
+            'exception': row.title,
+            'control': row.control.control_id,
+            'expiry_date': row.valid_until.isoformat(),
+            'days_until_expiry': (row.valid_until - now).days,
+        }
+    context = {'assessment': row.name, 'framework': row.framework.name}
+    if notification_type == 'assessment_overdue':
+        context['due_date'] = row.due_date.isoformat() if row.due_date else ''
+        context['days_overdue'] = (now - row.due_date).days if row.due_date else 0
+    elif notification_type == 'assessment_started':
+        context['started_at'] = _moment(data, 'started_at')
+    elif notification_type == 'assessment_completed':
+        context['completed_at'] = _moment(data, 'completed_at')
+    return context
+
+
 @shared_task
 def send_compliance_notification(notification_type, object_id, data):
     """
-    Send compliance-related notifications
+    Tell a team's owners and admins of a compliance event of that team
 
     A compliance notification has no recipients of its own: an assessment,
     a result and an exception name none. It was sent to the platform-wide
     DEFAULT_NOTIFICATION_RECIPIENTS, which nothing defined and which would
-    have received every team's findings (#678). Until a team can name who
-    receives its compliance notifications, each one is rendered, not sent,
-    and logged as such; this returns False.
+    have received every team's findings (#678), and then to nobody. It
+    goes to the owners and admins of the team the row belongs to, as
+    identity lists them when it is sent (#705).
+
+    The team, and everything the e-mail says about the row, are read from
+    the row ``object_id`` names when the e-mail is written: a team's e-mail
+    cannot carry what a caller passed about another row. From ``data`` only
+    the moment of the event is taken (``started_at``, ``completed_at``). A
+    notification about a row that is gone, or that belongs to no team, is
+    not sent. Returns whether it was sent; when it was not, the log says why.
     """
     try:
-        notification_templates = {
-            'high_risk_finding': {
-                'subject': 'High Risk Compliance Finding',
-                'template': 'compliance/high_risk_finding.html'
-            },
-            'assessment_completed': {
-                'subject': 'Compliance Assessment Completed',
-                'template': 'compliance/assessment_completed.html'
-            },
-            'assessment_started': {
-                'subject': 'Compliance Assessment Started',
-                'template': 'compliance/assessment_started.html'
-            },
-            'exception_expiring': {
-                'subject': 'Compliance Exception Expiring Soon',
-                'template': 'compliance/exception_expiring.html'
-            },
-            'assessment_overdue': {
-                'subject': 'Compliance Assessment Overdue',
-                'template': 'compliance/assessment_overdue.html'
-            }
-        }
-        
-        if notification_type not in notification_templates:
+        if notification_type not in COMPLIANCE_NOTIFICATIONS:
             logger.error(f"Unknown notification type: {notification_type}")
             return False
-            
-        template_config = notification_templates[notification_type]
-        
-        # Send notification using core utility
-        return send_notification(
-            subject=template_config['subject'],
-            template=template_config['template'],
-            context=data,
-            notification_type='compliance'
+
+        subject, template, model_name = COMPLIANCE_NOTIFICATIONS[notification_type]
+        model = django_apps.get_model('compliance', model_name)
+        row = model.objects.filter(pk=object_id).first()
+        if row is None:
+            logger.warning(
+                f"Compliance notification not sent ({notification_type}): "
+                f"{model_name} {object_id} no longer exists"
+            )
+            return False
+        team_id = model.objects.filter(pk=row.pk).values_list(
+            team_lookup(model), flat=True
+        )[0]
+
+        delivery = notify_team_from_template(
+            team_id,
+            subject,
+            template,
+            _compliance_context(notification_type, row, data or {}),
+            kind='compliance',
         )
-        
+        return delivery.sent
+
     except Exception as e:
         logger.error(f"Error sending compliance notification: {str(e)}")
         return False

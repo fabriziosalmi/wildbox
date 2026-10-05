@@ -382,6 +382,9 @@ services:
   # The broker and the database are on data; egress for what the tasks
   # reach outside the stack: port scans of asset addresses, threat-intel
   # URLs, SMTP and chat webhooks. Nothing looks the worker up by name.
+  # identity is on data too: the worker asks it there who may be e-mailed
+  # about a team (#705), with GUARDIAN_CONTACTS_SECRET. It is not on
+  # backend and holds no GATEWAY_INTERNAL_SECRET.
   guardian-worker:
     restart: always
     networks: !override

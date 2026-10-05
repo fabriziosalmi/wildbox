@@ -368,9 +368,12 @@ class AlertNotification(models.Model):
     """One notification an alert rule sent, or tried to send (#549).
 
     The record of what a rule told whom and when: the API lists it per
-    rule, and it is how the repeat suppression can be checked. ``delivered``
-    is False when the e-mail could not be sent, for instance because no
-    recipient is configured.
+    rule, and it is how the repeat suppression can be checked.
+    ``recipients`` is who it was addressed to: the rule's own recipients,
+    or its team's owners and admins when the rule names none (#705).
+    ``delivered`` is False when the e-mail was not sent, and
+    ``failure_reason`` then says why: no mail server configured, nobody to
+    tell, identity not reachable for the addresses, the server refusing.
     """
     TEAM_LOOKUP = 'rule__team_id'
     KIND_FIRING = 'firing'
@@ -390,6 +393,9 @@ class AlertNotification(models.Model):
     operator = models.CharField(max_length=10, blank=True)
     recipients = models.JSONField(default=list, blank=True)
     delivered = models.BooleanField(default=False)
+    # Why it was not delivered; empty when it was, and for the rows written
+    # before the reason was kept.
+    failure_reason = models.CharField(max_length=255, blank=True, default='')
     # The evaluation that called for it.
     created_at = models.DateTimeField(default=timezone.now)
 
