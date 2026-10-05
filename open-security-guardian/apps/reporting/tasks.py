@@ -18,6 +18,19 @@ from apps.reporting.models import SUPPORTED_REPORT_FORMATS, SUPPORTED_REPORT_TYP
 logger = logging.getLogger(__name__)
 
 
+def failure_message(error):
+    """What a failed report says to its team in ``error_message``.
+
+    The reason, as guardian words it ("pdf reports are not generated yet").
+    Not the text of an error of the operating system, which names the file
+    it was about: "[Errno 13] Permission denied: '/app/media/reports/...'"
+    is a path on the server in an API response (#724). The log has it.
+    """
+    if isinstance(error, OSError):
+        return 'The report file could not be written.'
+    return str(error)
+
+
 @shared_task
 def generate_report(report_id):
     """
@@ -83,7 +96,7 @@ def generate_report(report_id):
         try:
             report = Report.objects.get(id=report_id)
             report.status = 'failed'
-            report.error_message = str(e)
+            report.error_message = failure_message(e)
             report.save()
         except Exception:
             pass

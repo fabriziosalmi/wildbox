@@ -685,7 +685,10 @@ failed, with the reason. A template's `default_format` is `pdf` unless set, so p
 template type or format answers `400` with the reason in `template` or `format`.
 
 A generated report is processed by a worker. Poll `reports/reports/{id}/` until its
-`status` is `completed`, then download it:
+`status` is `completed`, then download it. A report record has `file_size` and
+`file_hash` (SHA-256) once its file is written, and no path: where guardian keeps
+the file is not part of the API (the `file_path` field was removed in #724). A
+report whose `status` is `failed` has the reason in `error_message`.
 
 ```bash
 curl -s --cacert "$CA" -X POST "$BASE/reports/templates/<template-id>/generate/" \

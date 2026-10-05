@@ -65,6 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of a request that carries a session token, an API key, the session
   cookie and forged copies of the gateway's own headers.
 
+- **guardian: a report no longer names where its file is on the
+  server** (#724). Every answer that carried a report (the list, the
+  record, `recent/`, `failed/`, a template's `reports/`, and the answers
+  of `generate/` and `run_now/`) had a read-only `file_path`, such as
+  `/app/media/reports/<team id>/<report id>.json`. The field is gone
+  from the API; the file is still `reports/reports/{id}/download/`. A
+  report that failed because its file could not be written says so in
+  `error_message` without the text of the operating system's error,
+  which names the path too.
 - **API-key scopes reach the services, and data, guardian and tools
   check them again** (#637). The gateway enforced an API key's scopes
   and forwarded the user, the team and the role alone, so no service
