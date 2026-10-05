@@ -1,32 +1,66 @@
 #!/usr/bin/env bash
 #
-# PostgreSQL Backup Script for Wildbox Security Suite
+# Backup for the Wildbox Security Suite: PostgreSQL and Redis.
 #
-# Creates timestamped, compressed, encrypted backups of all PostgreSQL databases.
-# Supports retention rotation and optional upload to S3.
+# What it backs up:
+#
+#   PostgreSQL  The three databases scripts/init-databases.sql provisions:
+#               identity, data and guardian. One pg_dump custom-format
+#               archive each, gzip-compressed.
+#   Redis       One RDB snapshot of every Redis database. Redis is not a
+#               cache here: it holds the only copy of CSPM scan metadata and
+#               reports, responder playbook run state, agents analysis
+#               results, tools task ownership, identity's revoked-token list
+#               and account lockouts, and the Celery queues.
+#
+# A run either completes or leaves nothing: if any database or Redis fails,
+# the script exits non-zero and removes the files this run wrote, so a
+# timestamp in the backup directory is always a complete set. Leaving Redis
+# out is a decision you state (SKIP_REDIS=true), never a silent fallback.
 #
 # Usage:
-#   ./backup_postgres.sh                  # Backup with defaults
-#   ./backup_postgres.sh --upload-s3      # Backup and upload to S3
-#   ./backup_postgres.sh --databases identity,data  # Specific databases
+#   ./scripts/backup_postgres.sh                      # the default stack
+#   ./scripts/backup_postgres.sh --databases identity,data
+#   ./scripts/backup_postgres.sh --upload-s3          # also copy to S3
+#   BACKUP_MODE=host POSTGRES_HOST=db.internal POSTGRES_PASSWORD=... \
+#     ./scripts/backup_postgres.sh                    # external database
+#
+# Modes (see scripts/lib/db_access.sh):
+#   compose  Default. Runs pg_dump and redis-cli inside the stack's
+#            containers with `docker compose exec`. Honors COMPOSE_FILE,
+#            COMPOSE_PROJECT_NAME and ENV_FILE. Needs only Docker.
+#   host     Connects from this machine. Chosen by BACKUP_MODE=host, or by
+#            setting POSTGRES_HOST. Needs the PostgreSQL client tools and
+#            redis-cli on PATH.
 #
 # Environment variables:
-#   POSTGRES_HOST       (default: wildbox-postgres)
-#   POSTGRES_PORT       (default: 5432)
-#   POSTGRES_USER       (default: postgres)
-#   POSTGRES_PASSWORD   (required)
-#   BACKUP_DIR          (default: /backups/postgres)
-#   BACKUP_RETENTION    (default: 30 days)
-#   GPG_RECIPIENT       (optional, for encryption)
-#   S3_BUCKET           (optional, for remote upload)
+#   BACKUP_MODE         compose | host (default: host if POSTGRES_HOST is
+#                       set, compose otherwise)
+#   BACKUP_DIR          default: <repository>/backups in compose mode,
+#                       /backups/postgres in host mode
+#   BACKUP_RETENTION    days of archives to keep (default: 30)
+#   DATABASES           default: identity,data,guardian
+#   SKIP_REDIS          true to leave Redis out
+#   GPG_RECIPIENT       optional: encrypt every archive for this recipient
+#   S3_BUCKET           required by --upload-s3
+#   compose mode:       POSTGRES_SERVICE (postgres), REDIS_SERVICE
+#                       (wildbox-redis), ENV_FILE (.env), REDIS_PASSWORD
+#                       (default: read from the env file)
+#   host mode:          POSTGRES_HOST, POSTGRES_PORT, POSTGRES_USER,
+#                       POSTGRES_PASSWORD, REDIS_HOST, REDIS_PORT,
+#                       REDIS_PASSWORD
+#
+# Archives are written with mode 600 in a mode-700 directory: they hold
+# every password hash and every stored credential. No password file is
+# written.
 
 set -euo pipefail
+umask 077
 
-# Configuration
-POSTGRES_HOST="${POSTGRES_HOST:-wildbox-postgres}"
-POSTGRES_PORT="${POSTGRES_PORT:-5432}"
-POSTGRES_USER="${POSTGRES_USER:-postgres}"
-BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/db_access.sh
+. "$SCRIPT_DIR/lib/db_access.sh"
+
 BACKUP_RETENTION="${BACKUP_RETENTION:-30}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 # All three databases scripts/init-databases.sql provisions. This defaulted to
@@ -36,152 +70,169 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 DATABASES="${DATABASES:-identity,data,guardian}"
 UPLOAD_S3=false
 
-# Parse arguments
-for arg in "$@"; do
-  case $arg in
-    --upload-s3) UPLOAD_S3=true ;;
-    --databases=*) DATABASES="${arg#*=}" ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --upload-s3) UPLOAD_S3=true; shift ;;
+    --databases=*) DATABASES="${1#*=}"; shift ;;
+    --databases) DATABASES="${2:?--databases needs a value}"; shift 2 ;;
+    -h|--help) sed -n '2,56p' "$0"; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-# Verify password is set
-if [ -z "${POSTGRES_PASSWORD:-}" ]; then
-  echo "ERROR: POSTGRES_PASSWORD environment variable is required"
-  exit 1
+wb_init_mode
+
+if [ "$BACKUP_MODE" = compose ]; then
+  # Compose resolves its files and .env from the repository root.
+  BACKUP_DIR="${BACKUP_DIR:-$SCRIPT_DIR/../backups}"
+else
+  BACKUP_DIR="${BACKUP_DIR:-/backups/postgres}"
 fi
 
-# Use .pgpass file instead of exporting PGPASSWORD (avoids exposure in /proc)
-PGPASS_FILE=$(mktemp)
-chmod 600 "$PGPASS_FILE"
-echo "${POSTGRES_HOST}:${POSTGRES_PORT}:*:${POSTGRES_USER}:${POSTGRES_PASSWORD}" > "$PGPASS_FILE"
-export PGPASSFILE="$PGPASS_FILE"
-trap 'rm -f "$PGPASS_FILE"' EXIT
-
-# Validate BACKUP_RETENTION is numeric
-if ! [[ "$BACKUP_RETENTION" =~ ^[0-9]+$ ]]; then
-  echo "ERROR: BACKUP_RETENTION must be a positive integer, got: $BACKUP_RETENTION"
-  exit 1
+[[ "$BACKUP_RETENTION" =~ ^[0-9]+$ ]] \
+  || wb_die "BACKUP_RETENTION must be a number of days, got: $BACKUP_RETENTION"
+if [ "$UPLOAD_S3" = true ]; then
+  [ -n "${S3_BUCKET:-}" ] || wb_die "--upload-s3 needs S3_BUCKET."
+  command -v aws >/dev/null 2>&1 || wb_die "--upload-s3 needs the aws CLI on PATH."
+fi
+if [ -n "${GPG_RECIPIENT:-}" ]; then
+  command -v gpg >/dev/null 2>&1 || wb_die "GPG_RECIPIENT is set but gpg is not on PATH."
 fi
 
-# Create backup directory
+DB_ARRAY=()
+IFS=',' read -ra RAW_DBS <<< "$DATABASES"
+for db in "${RAW_DBS[@]}"; do
+  db="${db//[[:space:]]/}"
+  [ -n "$db" ] || continue
+  wb_valid_db_name "$db" || wb_die "not a database name: '$db'"
+  DB_ARRAY+=("$db")
+done
+[ "${#DB_ARRAY[@]}" -gt 0 ] || wb_die "no database to back up (DATABASES is empty)."
+
 mkdir -p "$BACKUP_DIR"
+BACKUP_DIR="$(cd "$BACKUP_DIR" && pwd)"
+# Retention deletes by age from this directory; never from the root.
+[ "$BACKUP_DIR" != "/" ] || wb_die "BACKUP_DIR must not be the root directory."
+chmod 700 "$BACKUP_DIR"
 
-echo "=== Wildbox PostgreSQL Backup ==="
-echo "Timestamp: $TIMESTAMP"
-echo "Host: $POSTGRES_HOST:$POSTGRES_PORT"
-echo "Databases: $DATABASES"
+if [ "$BACKUP_MODE" = compose ]; then
+  cd "$SCRIPT_DIR/.."
+fi
+
+echo "=== Wildbox backup ==="
+echo "Timestamp:  $TIMESTAMP"
+echo "Mode:       $WB_MODE_LABEL"
+echo "PostgreSQL: ${DB_ARRAY[*]}"
+if [ "${SKIP_REDIS:-false}" = "true" ]; then
+  echo "Redis:      SKIPPED (SKIP_REDIS=true)"
+else
+  echo "Redis:      RDB snapshot of every database"
+fi
 echo "Backup dir: $BACKUP_DIR"
 echo ""
 
-# Redis holds the only copy of CSPM scan state, responder run state and agents
-# task ownership -- nothing used to copy it out at all, so a lost volume lost
-# that state permanently (WILDBO-DATA-01).
-backup_redis() {
-  if [ "${SKIP_REDIS:-false}" = "true" ]; then
-    echo "Skipping Redis backup (SKIP_REDIS=true)"
-    return 0
+# Everything this run writes, so a failure can take all of it back.
+RUN_FILES=()
+COMPLETE=false
+cleanup() {
+  local status=$?
+  if [ "$COMPLETE" != true ]; then
+    for f in "${RUN_FILES[@]+"${RUN_FILES[@]}"}"; do
+      rm -f "$f"
+    done
+    rm -f "$BACKUP_DIR"/.*_"${TIMESTAMP}".partial "$BACKUP_DIR"/.*_"${TIMESTAMP}".partial.log 2>/dev/null || true
+    echo "" >&2
+    echo "=== BACKUP FAILED: nothing from this run was kept ===" >&2
+    [ "$status" -ne 0 ] || status=1
   fi
-  local host="${REDIS_HOST:-wildbox-redis}"
-  local port="${REDIS_PORT:-6379}"
-  local out="${BACKUP_DIR}/redis_${TIMESTAMP}.rdb"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
-  if ! command -v redis-cli >/dev/null 2>&1; then
-    echo "  WARNING: redis-cli not found; skipping Redis backup"
-    return 0
+# Encrypt FILE in place when GPG_RECIPIENT is set; echo the resulting name.
+finish_file() {
+  local file="$1"
+  if [ -n "${GPG_RECIPIENT:-}" ]; then
+    RUN_FILES+=("${file}.gpg")
+    gpg --batch --yes --encrypt --recipient "$GPG_RECIPIENT" \
+      --output "${file}.gpg" "$file"
+    rm -f "$file"
+    file="${file}.gpg"
   fi
-  if [ -z "${REDIS_PASSWORD:-}" ]; then
-    echo "  WARNING: REDIS_PASSWORD not set; skipping Redis backup"
-    return 0
-  fi
-
-  echo "Backing up Redis (BGSAVE + dump)"
-  redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning BGSAVE >/dev/null
-  # Wait for the background save to finish before copying.
-  for _ in $(seq 1 60); do
-    if [ "$(redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning INFO persistence \
-            | tr -d '\r' | grep '^rdb_bgsave_in_progress:' | cut -d: -f2)" = "0" ]; then
-      break
-    fi
-    sleep 1
-  done
-  redis-cli -h "$host" -p "$port" -a "$REDIS_PASSWORD" --no-auth-warning --rdb "$out" >/dev/null
-  gzip -f "$out"
-  echo "  Created: ${out}.gz ($(du -h "${out}.gz" | cut -f1))"
+  FINISHED="$file"
 }
 
-# Backup each database
-IFS=',' read -ra DB_ARRAY <<< "$DATABASES"
+wb_require_postgres
+
+S3_UPLOADS=()
 for db in "${DB_ARRAY[@]}"; do
-  db=$(echo "$db" | xargs)  # trim whitespace
-  BACKUP_FILE="${BACKUP_DIR}/${db}_${TIMESTAMP}.sql.gz"
-
   echo "Backing up database: $db"
+  partial="${BACKUP_DIR}/.${db}_${TIMESTAMP}.partial"
+  archive="${BACKUP_DIR}/${db}_${TIMESTAMP}.sql"
 
-  pg_dump \
-    -h "$POSTGRES_HOST" \
-    -p "$POSTGRES_PORT" \
-    -U "$POSTGRES_USER" \
-    -d "$db" \
-    --format=custom \
-    --compress=9 \
-    --no-owner \
-    --no-privileges \
-    -f "${BACKUP_FILE%.gz}"
+  wb_pg pg_dump -d "$db" --format=custom --compress=9 \
+    --no-owner --no-privileges > "$partial"
 
-  # Compress with gzip
-  gzip -f "${BACKUP_FILE%.gz}"
-
-  # Encrypt if GPG recipient is set
-  if [ -n "${GPG_RECIPIENT:-}" ]; then
-    gpg --batch --yes --encrypt --recipient "$GPG_RECIPIENT" "$BACKUP_FILE"
-    rm -f "$BACKUP_FILE"
-    BACKUP_FILE="${BACKUP_FILE}.gpg"
-    echo "  Encrypted: $BACKUP_FILE"
+  # `gzip -t` only proves the gzip container; ask pg_restore to read the
+  # archive's table of contents before calling it a backup.
+  toc=$(wb_pg_stdin pg_restore --list < "$partial")
+  objects=$(printf '%s\n' "$toc" | grep -c '^[0-9]' || true)
+  if [ "$objects" -eq 0 ]; then
+    echo "  WARNING: the $db database holds no objects; its archive is empty."
   fi
 
-  # Show file size
-  FILE_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
-  echo "  Created: $BACKUP_FILE ($FILE_SIZE)"
-
-  # Upload to S3 if requested
-  if [ "$UPLOAD_S3" = true ] && [ -n "${S3_BUCKET:-}" ]; then
-    S3_KEY="postgres-backups/${db}/${db}_${TIMESTAMP}.sql.gz"
-    if [ -n "${GPG_RECIPIENT:-}" ]; then
-      S3_KEY="${S3_KEY}.gpg"
-    fi
-    aws s3 cp "$BACKUP_FILE" "s3://${S3_BUCKET}/${S3_KEY}" --quiet
-    echo "  Uploaded to: s3://${S3_BUCKET}/${S3_KEY}"
-  fi
+  RUN_FILES+=("$archive" "${archive}.gz")
+  mv "$partial" "$archive"
+  gzip -f "$archive"
+  gzip -t "${archive}.gz"
+  finish_file "${archive}.gz"
+  echo "  Created: $FINISHED ($(du -h "$FINISHED" | cut -f1), $objects objects)"
+  S3_UPLOADS+=("$FINISHED|postgres-backups/${db}/$(basename "$FINISHED")")
 done
 
-backup_redis
+if [ "${SKIP_REDIS:-false}" = "true" ]; then
+  echo "Redis: SKIPPED (SKIP_REDIS=true). Scan state, playbook run state,"
+  echo "  revoked tokens and queued work are NOT in this backup."
+else
+  echo "Backing up Redis"
+  partial="${BACKUP_DIR}/.redis_${TIMESTAMP}.partial"
+  snapshot="${BACKUP_DIR}/redis_${TIMESTAMP}.rdb"
+  wb_redis_snapshot "$partial"
+  RUN_FILES+=("$snapshot" "${snapshot}.gz")
+  mv "$partial" "$snapshot"
+  gzip -f "$snapshot"
+  gzip -t "${snapshot}.gz"
+  finish_file "${snapshot}.gz"
+  echo "  Created: $FINISHED ($(du -h "$FINISHED" | cut -f1))"
+  S3_UPLOADS+=("$FINISHED|redis-backups/$(basename "$FINISHED")")
+fi
 
-# Retention: remove backups older than BACKUP_RETENTION days
-echo ""
-echo "Cleaning up backups older than ${BACKUP_RETENTION} days..."
-# Safety: ensure BACKUP_DIR is an absolute path under expected location
-case "$BACKUP_DIR" in
-  /backups/*|/tmp/*) ;;
-  *) echo "ERROR: BACKUP_DIR must be an absolute path under /backups/ or /tmp/, got: $BACKUP_DIR"; exit 1 ;;
-esac
-DELETED=$(find "$BACKUP_DIR" \( -name "*.sql.gz*" -o -name "*.rdb.gz" \) -mtime +"$BACKUP_RETENTION" -delete -print | wc -l)
-echo "  Removed $DELETED old backup(s)"
+# The local set is complete from here on: a failed upload must not delete it.
+COMPLETE=true
 
-# Verify backup integrity (test decompression of latest)
-echo ""
-echo "Verifying backup integrity..."
-for db in "${DB_ARRAY[@]}"; do
-  db=$(echo "$db" | xargs)
-  LATEST=$(ls -t "${BACKUP_DIR}/${db}_"*.sql.gz 2>/dev/null | head -1 || true)
-  if [ -n "$LATEST" ]; then
-    if gzip -t "$LATEST" 2>/dev/null; then
-      echo "  $db: OK"
-    else
-      echo "  $db: FAILED (corrupt backup)"
+if [ "$UPLOAD_S3" = true ]; then
+  echo ""
+  echo "Uploading to s3://${S3_BUCKET}"
+  for entry in "${S3_UPLOADS[@]}"; do
+    if ! aws s3 cp "${entry%%|*}" "s3://${S3_BUCKET}/${entry#*|}" --quiet; then
+      echo "ERROR: upload of $(basename "${entry%%|*}") failed. The local backup is complete; the copy in S3 is NOT." >&2
       exit 1
     fi
-  fi
-done
+    echo "  Uploaded: s3://${S3_BUCKET}/${entry#*|}"
+  done
+fi
+
+# Retention runs only after a complete backup, and only on this script's own
+# file names, directly in BACKUP_DIR.
+echo ""
+echo "Removing backups older than ${BACKUP_RETENTION} days..."
+DELETED=$(find "$BACKUP_DIR" -maxdepth 1 -type f \
+  \( -name '*_[0-9]*_[0-9]*.sql.gz' -o -name '*_[0-9]*_[0-9]*.sql.gz.gpg' \
+     -o -name 'redis_[0-9]*_[0-9]*.rdb.gz' -o -name 'redis_[0-9]*_[0-9]*.rdb.gz.gpg' \) \
+  -mtime +"$BACKUP_RETENTION" -print -delete | wc -l | tr -d ' ')
+echo "  Removed $DELETED old file(s)"
 
 echo ""
-echo "=== Backup complete ==="
+echo "=== Backup complete: ${#DB_ARRAY[@]} database(s)$([ "${SKIP_REDIS:-false}" = "true" ] && echo ", Redis skipped" || echo " and Redis") ==="

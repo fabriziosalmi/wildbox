@@ -47,6 +47,8 @@ logs/
 *.bak
 *.backup
 backup/
+# `make backup` writes here by default: database dumps and Redis snapshots.
+/backups/
 dumps/
 
 # System files
