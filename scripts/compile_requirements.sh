@@ -11,6 +11,7 @@
 # Usage:
 #   ./scripts/compile_requirements.sh            # compile all services
 #   ./scripts/compile_requirements.sh data tools # compile specific services
+#   ./scripts/compile_requirements.sh ci-tools   # the tools CI installs
 #   ./scripts/compile_requirements.sh --check    # fail if any lock is stale (CI)
 #   ./scripts/compile_requirements.sh --upgrade  # ignore the current lock's pins
 #
@@ -25,8 +26,18 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-SERVICES=(agents cspm data guardian identity responder sensor tools)
+# The eight services, and one lock that is not a service: `ci-tools`, the test
+# runner and linters the workflows install (tests/ci-tools/requirements.in).
+SERVICES=(agents cspm data guardian identity responder sensor tools ci-tools)
 PYTHON_VERSION="3.11"
+
+# Directory that holds a lock's requirements.in and requirements.txt.
+lock_dir() {
+  case "$1" in
+    ci-tools) echo "tests/ci-tools" ;;
+    *) echo "open-security-$1" ;;
+  esac
+}
 # Resolve for the platform the images actually run on, not the developer's.
 # Compiled on macOS without this, the sensor lock picked up pyobjc-core, whose
 # build refuses to run anywhere else ("PyObjC requires macOS to build") -- so
@@ -56,7 +67,7 @@ fi
 
 status=0
 for svc in "${SERVICES[@]}"; do
-  dir="open-security-${svc}"
+  dir="$(lock_dir "$svc")"
   [ -f "${dir}/requirements.in" ] || { echo "skip ${svc}: no requirements.in"; continue; }
 
   if [ "$CHECK_ONLY" = true ]; then

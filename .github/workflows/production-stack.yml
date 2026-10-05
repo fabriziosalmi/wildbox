@@ -67,8 +67,10 @@ jobs:
       - name: Install test dependencies
         timeout-minutes: 5
         run: |
-          # pyyaml: scripts/check_monitoring_config.py reads the rule file.
-          pip install --quiet pytest pytest-asyncio requests httpx python-dotenv psycopg2-binary pyyaml
+          # pytest, requests, httpx, python-dotenv, psycopg2-binary and
+          # pyyaml (scripts/check_monitoring_config.py reads the rule file),
+          # at the versions of the CI tools lock, hash-checked (#726).
+          pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
 
       - name: Generate secrets
         # Same as integration-tests.yml: generated the way a fresh install

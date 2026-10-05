@@ -168,7 +168,9 @@ jobs:
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
           fi
-          pip install flake8 mypy
+          # On top of the service's lock; versions as in
+          # tests/ci-tools/requirements.in (scripts/check_workflow_pins.py).
+          pip install flake8==7.4.1 mypy==2.4.0
 
       - name: Run mypy
         # mypy and pylint were installed in all seven matrix legs and never

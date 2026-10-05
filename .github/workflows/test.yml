@@ -68,7 +68,11 @@ jobs:
           # image, so a module the lock does not provide for fails here too.
           pip install ../open-security-shared || true
           pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio
+          # On top of the service's lock, so not the CI tools lock, which
+          # would move packages the service pins. The versions are those of
+          # tests/ci-tools/requirements.in; scripts/check_workflow_pins.py
+          # fails when they differ (#726).
+          pip install pytest==9.1.1 pytest-cov==7.1.0 pytest-asyncio==1.4.0
       
       - name: Run unit tests
         run: |
@@ -120,12 +124,14 @@ jobs:
       - name: Install
         timeout-minutes: 5
         run: |
+          # The test runner, httpx, pyyaml (tests/scripts reads the workflows)
+          # and packaging (check_shared_dependencies compares pins and
+          # floors), hash-checked from the CI tools lock; they were installed
+          # with no version (#726).
+          pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
           # The extras of the modules tests/shared imports: the package
           # itself requires nothing (#722).
           pip install "./open-security-shared[fastapi,auth,metrics]"
-          # pyyaml: tests/scripts reads the workflows (check_test_collection).
-          # packaging: check_shared_dependencies compares pins and floors.
-          pip install pytest pytest-asyncio httpx pyyaml packaging
 
       - name: Run shared package tests
         # open_security_shared holds gateway_auth and tenancy -- the trust and
@@ -340,8 +346,10 @@ jobs:
           python-version: '3.11'
 
       - name: Install linting tools
-        run: |
-          pip install black flake8 isort pyyaml
+        # black, flake8, isort and pyyaml at the versions of the CI tools
+        # lock, hash-checked. Unpinned, a new release of black or flake8
+        # changed what this job accepts with no change in the tree (#726).
+        run: pip install --quiet --require-hashes -r tests/ci-tools/requirements.txt
 
       # A test file that no workflow collects never runs: it cannot catch a
       # regression and drifts from the code unnoticed. tests/test_basic.py in
@@ -409,6 +417,16 @@ jobs:
       # download that is piped to a shell or that nothing verifies.
       - name: Compose files and Dockerfiles pin and verify what they run
         run: python3 scripts/check_container_hygiene.py
+
+      # test.yml and pr-validation.yml installed pytest, black, flake8,
+      # isort and mypy with no version, documentation-quality.yml its four
+      # npm tools likewise, and secret-scan.yml ran a downloaded binary
+      # nothing verified (#726). This reads every workflow and refuses a
+      # pip or global npm install that names no exact version, a download
+      # piped to a shell or unverified, and an action that is not pinned
+      # to a version tag or a commit.
+      - name: Workflows pin the tools and actions they run
+        run: python3 scripts/check_workflow_pins.py
 
       # Tier 1 -- real defects, whole tree, always blocking.
       - name: Flake8 (correctness, whole tree)

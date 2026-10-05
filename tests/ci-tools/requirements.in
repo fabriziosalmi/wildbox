@@ -1,0 +1,40 @@
+# Tools the CI workflows install on a clean interpreter: the test runner and
+# the HTTP and database clients of the integration suites, and the linters of
+# the Code Quality job.
+#
+# The workflows installed these with `pip install pytest black flake8 ...`,
+# with no version: each run took whatever PyPI served that day, so a release
+# of black or flake8 could turn main red with no change in the repository,
+# and nothing verified the artefacts that ran with the job's token (#726).
+#
+# requirements.txt next to this file is the hash-pinned lock, compiled by
+# scripts/compile_requirements.sh (lock name `ci-tools`) and kept current by
+# the Dependency Integrity job. Jobs that start from a clean interpreter
+# install the lock with --require-hashes. Two jobs install a tool on top of a
+# service's own lock (Unit Tests, Python Code Quality) and cannot: this lock
+# would move packages the service lock pins. They name the tool with the
+# version this file gives it, and scripts/check_workflow_pins.py fails when
+# the two differ.
+#
+# To move a tool: change the version here, run
+# `./scripts/compile_requirements.sh ci-tools`, and change the same version in
+# the workflows the checker names.
+
+# Test runner
+pytest==9.1.1
+pytest-asyncio==1.4.0
+pytest-cov==7.1.0
+
+# Clients the integration and script suites use
+httpx==0.28.1
+requests==2.34.2
+python-dotenv==1.2.4
+psycopg2-binary==2.9.13
+pyyaml==6.0.3
+packaging==26.3
+
+# Linters (Code Quality in test.yml, Python Code Quality in pr-validation.yml)
+black==26.10.0
+flake8==7.4.1
+isort==9.0.2
+mypy==2.4.0
