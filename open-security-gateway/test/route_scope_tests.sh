@@ -78,8 +78,9 @@ requires() {
     else
         fail "$method $path with $scope: HTTP $STATUS, upstream '$(field .method) $(field .path)', expected '$method $upstream' — $(head -c 200 "$WORK/body")"
     fi
-    # Every location of the production configuration forwards what the
-    # gateway decided on, so the service can check the scope again (#637).
+    # Every location of the production configuration that authenticates
+    # proxies to a Wildbox service and forwards what the gateway decided on,
+    # so the service can check the scope again (#637).
     if [ "$(field '.headers["x-wildbox-auth-type"]')" = api_key ] \
             && [ "$(field '.headers["x-wildbox-scopes"]')" = "$scope" ]; then
         pass "$method $path tells the service the key holds $scope"
@@ -133,11 +134,6 @@ pin '^~ /api/v1/tasks/'         /api/v1/tasks/1f0c4ea6      /api/tasks/1f0c4ea6 
 pin '= /api/v1/agents/stats'    /api/v1/agents/stats        /stats                   tools:read tools:execute tools:execute
 pin '~ ^/api/v1/agents/(.*)$'   /api/v1/agents/             /v1/                     tools:read tools:execute tools:execute
 pin '~ ^/api/v1/agents/(.*)$'   /api/v1/agents/analyze      /v1/analyze              tools:read tools:execute tools:execute
-# Automations (n8n): administrative whatever the method, and whatever the
-# path after the prefix looks like.
-pin '/api/v1/automations/'      /api/v1/automations/        /                        tools:admin tools:admin tools:admin
-pin '/api/v1/automations/'      /api/v1/automations/rest/workflows /rest/workflows   tools:admin tools:admin tools:admin
-pin '/api/v1/automations/'      /api/v1/automations/api/v1/tools/whois /api/v1/tools/whois tools:admin tools:admin tools:admin
 # Guardian: deleting needs its own scope.
 pin '/api/v1/guardian/'         /api/v1/guardian/           /api/v1/                 data:read data:write data:delete
 pin '/api/v1/guardian/'         /api/v1/guardian/assets/7/  /api/v1/assets/7/        data:read data:write data:delete
@@ -215,19 +211,6 @@ else
     fail "a read key cannot POST to the tools collection: HTTP $STATUS — $(head -c 200 "$WORK/body")"
 fi
 
-# --- Automations: the scope of the route, not of the rewritten path ---------
-echo "== Automations =="
-for scopes in read write tools:read tools:execute data:write; do
-    for method in GET POST; do
-        call "$method" /api/v1/automations/rest/workflows "$scopes"
-        if [ "$STATUS" = 403 ] && [ "$(field .required_scope)" = tools:admin ]; then
-            pass "a $scopes key cannot $method an automation"
-        else
-            fail "a $scopes key cannot $method an automation: HTTP $STATUS — $(head -c 200 "$WORK/body")"
-        fi
-    done
-done
-
 # --- Paths that reach no service --------------------------------------------
 echo "== Around the locations =="
 
@@ -245,11 +228,29 @@ not_served() {
 
 # A prefix location without its trailing slash: nginx redirects to the
 # slash, and the redirected request is authenticated like any other.
-for service in data cspm responder guardian automations identity; do
+for service in data cspm responder guardian identity; do
     not_served GET "/api/v1/$service" 301
 done
 # No location at all.
 not_served GET /api/v1/agents 404
+# n8n is not routed to (#714): its prefix is a path like any other unknown
+# one, whatever follows it and whatever the key holds
+# (upstream_header_tests.sh asks with every kind of credential).
+not_served GET /api/v1/automations 404
+not_served GET /api/v1/automations/ 404
+not_served GET /api/v1/automations/rest/workflows 404
+not_served POST /api/v1/automations/rest/owner/setup 404
+not_served POST /api/v1/automations/webhook/incident 404
+not_served GET /api/v1/automations/x.js 404
+not_served GET /api/v1/automations/api/v1/tools/whois 404
+for scopes in "" tools:admin admin; do
+    call GET /api/v1/automations/rest/workflows "$scopes"
+    if [ "$STATUS" = 404 ] && [ "$(field .error)" = endpoint_not_found ]; then
+        pass "GET /api/v1/automations/rest/workflows with ${scopes:-no scope}: 404, not a refusal that names a scope"
+    else
+        fail "GET /api/v1/automations/rest/workflows with ${scopes:-no scope}: HTTP $STATUS — $(head -c 200 "$WORK/body")"
+    fi
+done
 not_served GET /api/v1/toolsmith 404
 not_served POST /api/v1/sensor/events 404
 not_served GET /api/tools/whois 404
@@ -257,8 +258,7 @@ not_served GET /api/tools/whois 404
 # Asset-like names under /api/ stay with their route: the static-asset
 # location, which authenticates nobody, used to take them.
 for path in /api/v1/tools/x.js /api/v1/data/report.png /api/v1/guardian/x.css \
-        /api/v1/cspm/x.svg /api/v1/responder/x.ico /api/v1/automations/x.js \
-        /api/v1/agents/x.woff2; do
+        /api/v1/cspm/x.svg /api/v1/responder/x.ico /api/v1/agents/x.woff2; do
     STATUS=$(curl -sk --path-as-is -o "$WORK/body" -w "%{http_code}" "$GATEWAY_PROD_URL$path")
     BODY=$(cat "$WORK/body")
     if [ "$STATUS" = 401 ] && [ "$(field .error)" = authentication_required ]; then
