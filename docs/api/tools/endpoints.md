@@ -514,7 +514,7 @@ this service reads the counts on every scrape:
 
 | Metric | Type | What it is |
 | --- | --- | --- |
-| `wildbox_tool_async_executions_total{tool, outcome}` | counter | Tasks by tool and final outcome, one count per task |
+| `wildbox_tool_async_executions_total{tool, outcome}` | counter | Tasks by tool and outcome, one count per task, made when the task ends |
 | `wildbox_tool_async_queue_length` | gauge | Tasks in the queue that no worker has taken |
 | `wildbox_tool_async_tasks_consumed_total` | counter | Times a worker took a task off the queue: every start (a retried task starts again) and every task it dropped because it was canceled while it waited |
 | `wildbox_tool_async_metrics_up` | gauge | 1 when the three above could be read from Redis; 0, and no value for them, when not |

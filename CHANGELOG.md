@@ -756,9 +756,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started (input that does not validate, a refused target, an unknown
   tool) is counted as `refused`, not `failed`, as the synchronous path
   answers those with a 4xx before a run exists; an unknown tool name is
-  the label `unknown`. Tests start the service's Celery app as a prefork
-  worker against a Redis server, with a child replaced after every task,
-  and end tasks in each way, a kill at the hard time limit included.
+  the label `unknown`. Tests start the service's Celery app as a worker
+  with a pool of child processes against a Redis server, with a child
+  replaced after every task, and end tasks in each way, a kill at the
+  hard time limit included.
   `scripts/check_monitoring_config.py` now also refuses `tools-worker`
   as a scrape target, a rule on a tools metric while the tools API is
   not scraped, and an alert without a unit test in which it stays
