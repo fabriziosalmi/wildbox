@@ -248,6 +248,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **guardian no longer stores the credentials of scanners and external
+  systems, which it kept in plain text and never used** (#728). A
+  scanner's `api_key` and `password` (the help text of the second said
+  "Encrypted"; the serializer said "In a real implementation, encrypt"),
+  an external system's `auth_config`, a webhook endpoint's
+  `secret_token` and a notification channel's `config` were stored as
+  the API was sent them. Whoever could read guardian's database, a dump
+  or a backup read every team's scanner keys, bearer tokens, basic-auth
+  passwords and Slack webhook URLs. Nobody else could: the API never
+  returned the five fields, and no code read them, since guardian
+  connects to no scanner, contacts no external system, receives no
+  webhook and delivers nothing through a channel (the actions that
+  claimed to were removed in #644). They are removed, not encrypted: a
+  key that three containers must have at start, and that every backup
+  then depends on, would protect values nothing can use. Migrations
+  blank the values and then drop the columns, in that order because
+  PostgreSQL's `DROP COLUMN` leaves a column's bytes in each row until
+  the row is next written, and log how many rows held a secret, never a
+  value. The code that first connects to a scanner brings its credential
+  back encrypted with a key the database does not hold, as cspm does;
+  a unit test fails for a model field or a served serializer field named
+  like a secret until it says how it is protected. Unit tests send each
+  secret through every write route and read every table afterwards, and
+  run the migrations forwards and backwards on rows that hold secrets;
+  on PostgreSQL 15 the heap files of the four tables held the secrets
+  after a drop alone and none after the migrations as written.
+  Twenty-two mutations of the fix each fail a test.
 
 ### Removed
 
@@ -341,6 +368,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   other checks called the tools service and Redis without credentials
   and reported the refusals as problems. `make health` is the health
   check (#656).
+- **guardian: the `api_key` and `password` fields of a scanner, the
+  `auth_config` field of an external system, the `secret_token` field of
+  a webhook endpoint and the `config` field of a notification channel**
+  (#728), with `Scanner.get_connection_info` and
+  `ExternalSystem.get_auth_headers`, which nothing called. The fields
+  were write-only, so no response changes. A `POST`, `PUT` or `PATCH`
+  that sends a value in one of them answers `400` on that field, with
+  the reason, instead of `201` or `200` for a secret guardian would
+  discard; an empty value (`""`, `null`, `{}`, `[]`) is ignored.
 
 ### Fixed
 
@@ -361,6 +397,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reads `error.message` before `detail`, so neither changes; a client
   that read `detail` from an identity 404, 500 or 503 must read
   `error.message`.
+- **Every Python image holds what the shared package requires of it**
+  (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
+  PyJWT and prometheus-client as dependencies of the whole package, and
+  every image installed it with `pip install --no-deps` under a comment
+  saying the service's lock provided them. `pip check` failed in seven
+  images of eight: agents, responder and tools had neither passlib nor
+  PyJWT, guardian had those missing and no FastAPI, cspm no passlib, data
+  no PyJWT, the sensor none of the five, and cspm, data and guardian ran
+  prometheus-client 0.19.0 where the package asked for 0.20 or later.
+  Nothing failed because no module that needed a missing package was
+  imported there, which nothing checked. The package now has no
+  dependency of its own and one extra per group of modules (`fastapi`,
+  `auth`, `metrics`, `events`, `tracing`), each listing what those modules
+  import. A Dockerfile installs it with the extras of the modules its
+  service imports, without `--no-deps` and still with `--no-index`, so pip
+  resolves their requirements against what the hash-checked lock
+  installed and the build fails when the lock lacks one or pins it below
+  the declared floor; `pip check` then fails the build for any other
+  unmet requirement. The six FastAPI services install `fastapi` and
+  `metrics`; guardian (Django) and the sensor (aiohttp) import no module
+  that needs an extra and install none. `pip check` is clean in the eight
+  images and in the tools development image.
+- **The message a service logs when tracing is not initialized says
+  why** (#722). It advised
+  `pip install 'open-security-shared[observability]'`, an extra (the
+  OpenTelemetry API and SDK) that did not make the tracing module
+  importable. It now logs the import error. The extra is renamed
+  `tracing` and lists every distribution the module imports; the module
+  still cannot be imported with a current OpenTelemetry SDK, because it
+  uses the Jaeger Thrift exporter, last released as 1.21.0, and no image
+  installs the extra.
 - **tools registers one `GET /health` handler instead of two.** The
   second, with `uptime_seconds` and `tools_loaded`, never ran: the first
   one registered answers. The response does not change (#646).
@@ -526,6 +593,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Guardian were checked: the gateway sends the header, and identity's
   membership notice goes to a route Guardian exempts from the redirect;
   a unit test keeps both true.
+- **guardian's e-mail notifications have an address to go to** (#705).
+  guardian mirrors identity's users by id, with no address, so the SLA
+  and assignment e-mails addressed to the assignee reached nobody;
+  compliance notifications named no recipient at all; and Compose passed
+  guardian no mail setting, so Django's console backend printed each
+  message, a team's asset names and findings with it, to the worker's
+  log while guardian recorded it as sent. Every e-mail about a team's
+  data now goes through one function, which decides who is told: the
+  addresses the team typed into the alert rule or report schedule
+  concerned; the vulnerability's assignee; otherwise the team's owners
+  and admins. guardian keeps no address. Its worker asks identity when it
+  is about to send, so an address that changed, a role that was taken
+  away, a deactivated account or a member who left is not written to;
+  a copy kept from a header on the member's last request would have been
+  as old as that request. A notification is sent when the mail server
+  accepted it, and otherwise recorded as not sent with the reason: no
+  mail server configured, nobody to tell, identity not reachable, the
+  server refusing. Links open a page the dashboard has, or are left out:
+  the vulnerability e-mails linked `/vulnerabilities/<id>/`, which it
+  does not serve, and the report e-mail named a path no client of the
+  gateway can call. A compliance e-mail is written from the row it is
+  about, not from what its caller passed. Tests run every notification
+  for two teams and check that each reaches its own team's people only
+  and names nothing of the other; 137 mutations of the change each fail
+  a test.
 - **The agents service's `result_url` is a path a client can follow**
   (#716). `POST /api/v1/agents/analyze` and the task read answered
   `"result_url": "/v1/analyze/{task_id}"`, the service's own path, which
@@ -557,6 +649,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gone; the target is in the user turn, where it always was.
 
 ### Changed
+
+- **cspm, data and guardian run prometheus-client 0.26.0** (#722), the
+  version the other services already locked, up from 0.19.0. The six
+  services that call `install_observability` name
+  `prometheus-client>=0.20,<1.0.0` in their own `requirements.in`, the
+  floor of the shared package's `metrics` extra; responder and tools had
+  it only because dramatiq and flower require it. Nothing else moved in
+  the locks.
+- **`open-security-shared` extras** (#722). `observability` is now
+  `tracing`. `events` requires `sqlalchemy[asyncio]`, which its modules
+  import, and no longer httpx, which none of them imports.
 
 - **`make health` only reads.** On every run it created the `data`
   database if it was missing and restarted the gateway if its log had
@@ -688,6 +791,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   databases, and it left its archives in `/tmp`. It now restores into
   `<db>_restore_drill`, compares every table with the source, and removes
   its archives (#681).
+- **guardian sends e-mail by SMTP or not at all, and checks its mail
+  settings when it starts** (#705). `EMAIL_BACKEND` is no longer read.
+  Without `EMAIL_HOST` there is no mail server and every notification is
+  recorded as not sent; with one, `DEFAULT_FROM_EMAIL` is required, and
+  a port, a TLS choice or a login that cannot work stops guardian at
+  start-up. `GUARDIAN_BASE_URL` is the address users open the dashboard
+  at, scheme and host only; anything else stops guardian, and unset, the
+  e-mails carry no link.
+- **A guardian notification without a recipient of its own goes to its
+  team's owners and admins** (#705): compliance notifications, an alert
+  rule or a report schedule that names no recipients, and an SLA
+  violation whose vulnerability has no assignee who can be told. The
+  owners and admins are told once of such a violation; an assignee is
+  still reminded once a day. An SLA entry in a vulnerability's history
+  now reads `sent`, `sent to the team's owners and admins (no assignee
+  to e-mail)` or `not sent (<reason>)`, and an assignment notification
+  adds an entry of its own.
 
 ### Added
 
@@ -715,9 +835,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   do so, which is a request, not a control. Any value but the two names
   stops the service at start. Neither tool worked before this release,
   so the default takes nothing away from an existing deployment.
+- **identity tells guardian's worker who may be e-mailed about a team**
+  (#705). `POST /internal/team-contacts` answers the active members of
+  one team that the caller selects, by user id or by role, with their
+  address and role; there is no way to list a whole team, and the
+  gateway does not proxy the route. The caller presents
+  `GUARDIAN_CONTACTS_SECRET`, a secret of its own: guardian's worker
+  reaches outside the stack and holds no `GATEWAY_INTERNAL_SECRET`, and
+  identity does not start when the two have the same value.
+  `make generate-secrets` writes one; without it the route answers 503
+  and guardian e-mails only the addresses typed into a rule or a
+  schedule. Compose passes guardian's worker its mail server as
+  `GUARDIAN_EMAIL_HOST`, `GUARDIAN_EMAIL_PORT`, `GUARDIAN_EMAIL_USE_TLS`,
+  `GUARDIAN_EMAIL_USE_SSL`, `GUARDIAN_EMAIL_HOST_USER`,
+  `GUARDIAN_EMAIL_HOST_PASSWORD` and `GUARDIAN_DEFAULT_FROM_EMAIL`.
+- **A guardian alert notification says why it was not delivered**
+  (#705). `GET .../alerts/{id}/notifications/` gains `failure_reason`,
+  empty when `delivered` is true, and `recipients` lists who the
+  notification was addressed to, the team's owners and admins included.
 
 ### CI
 
+- **An image whose environment does not satisfy the shared package does
+  not build, and Dependency Integrity says so first** (#722). The
+  offline install of the shared package with extras and the `pip check`
+  that follows run in every image build, so Docker Build Validation
+  fails on a lock that lacks a requirement or pins it too low. The
+  sensor's image, which no workflow built, joins that matrix.
+  `scripts/check_shared_dependencies.py`, a new step of Dependency
+  Integrity, reads the tree without building: it fails when a Dockerfile
+  installs the package with other extras than the modules its service
+  imports need, with `--no-deps` or without `pip check`, when a lock does
+  not pin a requirement of those extras at a version the package
+  accepts, and when a shared module imports something its extras do not
+  require.
 - **Code Quality checks every Dockerfile** (#657).
   `scripts/check_container_hygiene.py` also reads every tracked
   Dockerfile and fails on a `pip install` that is neither

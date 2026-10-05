@@ -283,6 +283,7 @@ gateway does not confirm, nothing changes and the answer is 503.
 | GET | `/health` | Health check |
 | GET | `/` | Service information |
 | POST | `/internal/authorize` | Token and API-key validation for the gateway; requires `X-Gateway-Secret` and is not routed by the gateway |
+| POST | `/internal/team-contacts` | For guardian's worker: the address and role of the active members of one team, selected by `user_ids` or by `roles`. Requires `X-Guardian-Contacts-Secret` (`GUARDIAN_CONTACTS_SECRET`, not the gateway's secret) and is not routed by the gateway |
 
 `/internal/authorize` is the only identity route that accepts
 `X-Gateway-Secret`. The gateway calls it on its own behalf, with the secret

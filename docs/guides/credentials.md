@@ -26,6 +26,7 @@ the main ones are:
 | `POSTGRES_PASSWORD` | PostgreSQL superuser password |
 | `REDIS_PASSWORD` | Redis password |
 | `GUARDIAN_SECRET_KEY`, `CSPM_SECRET_KEY`, `DATA_SECRET_KEY` | Per-service secret keys |
+| `GUARDIAN_CONTACTS_SECRET` | Authenticates guardian's worker to the identity service, to learn who may be e-mailed about a team. Optional, and never the value of `GATEWAY_INTERNAL_SECRET` |
 | `CSPM_CREDENTIAL_KEY` | Encrypts cloud credentials stored by CSPM (cloud security posture management) |
 | `SENSOR_API_KEY` | Authenticates the sensor's local API |
 | `FLOWER_PASSWORD` | Celery Flower for the tools workers |

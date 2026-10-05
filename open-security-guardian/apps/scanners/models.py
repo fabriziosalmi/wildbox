@@ -32,7 +32,25 @@ class ScannerStatus(models.TextChoices):
 
 
 class Scanner(models.Model):
-    """Scanner configuration and management"""
+    """The record of an external scanner: where it is, not how to log in.
+
+    guardian holds no credential for a scanner (#728). ``api_key`` and
+    ``password`` were columns here, stored as the caller sent them although
+    the help text of one said "Encrypted", and nothing read them: guardian
+    has no code that connects to a scanner (apps/scanners/views.py), the
+    API never returned them, and ``get_connection_info``, the one method
+    that did, had no caller. A secret kept for nobody is only something to
+    steal from the database or from a backup, so the columns were dropped
+    (migration 0003) and the API refuses the two fields instead of taking a
+    credential it would discard.
+
+    Whatever first connects to a scanner brings the credential back, and
+    must not bring it back as plain text: encrypt it with a key the
+    database does not hold, as cspm does for cloud credentials
+    (open-security-cspm/app/credential_crypto.py), and keep it write-only.
+    tests/unit/test_no_stored_credentials.py fails for a model field named
+    like a secret until it is listed there with how it is protected.
+    """
     TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team_id = team_id_field()
@@ -44,9 +62,7 @@ class Scanner(models.Model):
     
     # Connection Details
     base_url = models.URLField(validators=[URLValidator()])
-    api_key = models.CharField(max_length=500, blank=True, help_text="API key or token")
     username = models.CharField(max_length=100, blank=True)
-    password = models.CharField(max_length=100, blank=True, help_text="Encrypted password")
     
     # Configuration
     verify_ssl = models.BooleanField(default=True)
@@ -95,17 +111,6 @@ class Scanner(models.Model):
         
         threshold = timezone.now() - timezone.timedelta(seconds=self.health_check_interval * 2)
         return self.last_health_check > threshold and self.status == ScannerStatus.ACTIVE
-
-    def get_connection_info(self):
-        """Get connection information for API calls"""
-        return {
-            'base_url': self.base_url,
-            'api_key': self.api_key,
-            'username': self.username,
-            'password': self.password,  # In real implementation, this should be decrypted
-            'verify_ssl': self.verify_ssl,
-            'timeout': self.timeout_seconds
-        }
 
 
 class ScanProfile(models.Model):

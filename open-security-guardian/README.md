@@ -143,6 +143,15 @@ writes.
   rows they created, the exceptions they approved, the notes they wrote.
   The SLA and assignment e-mails go to an assignee only while they are a
   member of the vulnerability's team.
+- **E-mail goes to the team's own people, at the address identity gives.**
+  guardian keeps no e-mail address: it mirrors identity's users by id. When
+  it is about to send, its worker asks identity (`POST
+  /internal/team-contacts`, on the internal network, with a secret of its
+  own, `GUARDIAN_CONTACTS_SECRET`) for the assignee's address or for the
+  team's owners and admins, so a changed address, a lost role, a
+  deactivated account or a removed member is not written to. A copy of the
+  address kept from the member's last request was considered and not kept:
+  it would have been as old as that request.
 - **Shared reference data.** Compliance frameworks, their controls and
   vulnerability templates without a team are shared: every team reads them
   and builds on them (an assessment of a shared framework is the team's
@@ -152,7 +161,9 @@ writes.
   for its team, an alert rule measures its team's data and notifies its
   own recipients, a scheduled report holds its template's team's data and
   is written under `MEDIA_ROOT/reports/<team id>/`. No notification has a
-  platform-wide recipient: one without recipients of its own is not sent
+  platform-wide recipient: one without recipients of its own goes to the
+  owners and admins of its team, and one nobody can be told of is recorded
+  as not sent, with the reason
   (see the [deployment guide](../docs/guides/deployment.md#notification-recipients)).
   `GET /api/v1/tasks/<task_id>/` answers for the tasks your team dispatched
   and 404 for any other.
@@ -258,6 +269,13 @@ a notification, and others) were removed in #644 and answer 404; the
 with what to use instead, and [apps/README.md](apps/README.md) says how the
 tests keep a new one out.
 
+Guardian stores no credential of a scanner or an external system. The
+fields that took one (`api_key` and `password` on a scanner, `auth_config`
+on an external system, `secret_token` on a webhook endpoint, `config` on a
+notification channel) kept it as plain text for code that does not exist,
+and were removed in #728 with the values they held; a request that sends
+one answers 400 on that field.
+
 The OpenAPI schema and UIs (`/api/schema/`, `/docs/`, `/redoc/`) exist only
 when `DEBUG` is true, and only on the service port, not through the gateway.
 
@@ -308,8 +326,16 @@ Settings are in `guardian/settings.py`. The root compose file passes:
 - `DEBUG` (default `false`), `LOG_LEVEL`, `ALLOWED_HOSTS`.
 - `GUARDIAN_RATE_LIMIT_USER`, on `guardian` only: see
   [Rate limit](#rate-limit).
-- On `guardian-worker`: `GUARDIAN_BASE_URL` (prefix of links in e-mails) and
-  `GUARDIAN_ALERT_RENOTIFY_INTERVAL`.
+- On `guardian-worker`: `GUARDIAN_ALERT_RENOTIFY_INTERVAL`, and what it
+  needs to send e-mail (see [E-mail](../docs/guides/deployment.md#e-mail)):
+  `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_USE_SSL`,
+  `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` from the
+  `GUARDIAN_EMAIL_*` and `GUARDIAN_DEFAULT_FROM_EMAIL` variables of `.env`,
+  `GUARDIAN_CONTACTS_SECRET`, `GUARDIAN_TEAM_CONTACTS_URL` and
+  `GUARDIAN_BASE_URL` (the address users open the dashboard at, for the
+  links in e-mails). Without `EMAIL_HOST` no e-mail is sent, and each
+  notification is recorded as not sent; `EMAIL_BACKEND` is not read. The
+  worker is not given `GATEWAY_INTERNAL_SECRET`.
 
 `PROMETHEUS_ENABLED` (default `true`) controls `/metrics/`.
 

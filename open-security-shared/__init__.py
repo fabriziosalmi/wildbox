@@ -8,10 +8,12 @@ Provides common functionality across all Wildbox microservices:
 - Database utilities
 
 Every name below is resolved lazily (PEP 562). Importing this package must not
-drag in the dependencies of submodules the caller never touches: services
-install it with ``pip install --no-deps`` -- deliberately, so the shared package
-cannot silently change a service's dependency tree -- and each service pins only
-what it actually uses.
+drag in the dependencies of submodules the caller never touches: the package
+has no dependency of its own, each group of modules has an extra
+(``pyproject.toml``), and a service installs the package with the extras of the
+modules it imports -- offline (``pip install --no-index``), so the shared
+package cannot change a service's dependency tree, only fail the image build
+when the service's own lock does not provide what those extras require.
 
 Eager imports here broke that. ``from .auth_utils import ...`` at module level
 meant that merely importing ``open_security_shared.errors`` also imported
@@ -21,8 +23,7 @@ install. ``import app.main`` then died with ModuleNotFoundError: No module named
 
 With lazy resolution, ``from open_security_shared import install_error_handlers``
 imports only ``errors``; a service that wants ``verify_password`` gets
-``auth_utils`` and is expected to pin its JWT library itself (PyJWT since
-auth_utils moved off python-jose).
+``auth_utils``, installs the ``auth`` extra and locks PyJWT and passlib itself.
 """
 
 from typing import TYPE_CHECKING
