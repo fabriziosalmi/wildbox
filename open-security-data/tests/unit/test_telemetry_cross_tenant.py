@@ -73,6 +73,8 @@ def _clear_overrides():
 def client(db, team_id):
     user = GatewayUser(user_id=uuid.uuid4(), team_id=team_id, role="member")
     main.app.dependency_overrides[main.get_current_user] = lambda: user
+    # The ingest route has a dependency of its own, with its scope (#637).
+    main.app.dependency_overrides[main.get_ingest_user] = lambda: user
     main.app.dependency_overrides[main.get_db] = lambda: db
     return TestClient(main.app)
 

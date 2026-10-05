@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **API-key scopes reach the services, and data, guardian and tools
+  check them again** (#637). The gateway enforced an API key's scopes
+  and forwarded the user, the team and the role alone, so no service
+  could tell a sensor's `data:ingest` key from its owner's session: the
+  gateway's scope map was the only check, and a mistake in it had
+  nothing behind it. The gateway now forwards what it decided on,
+  `X-Wildbox-Auth-Type` (`session` or `api_key`) and, for an API key,
+  `X-Wildbox-Scopes` (the scopes, space-separated; `*` for a key that
+  is not limited). It sets both itself, removes a client's own, and
+  forwards neither on a location that does not authenticate. A session
+  has no scopes: it is told apart by its auth type and the missing
+  header. `open_security_shared.scopes` reads the headers and holds the
+  gateway's hierarchy, and `gateway_auth.require_scope` is the
+  dependency a route uses. The data service requires `data:ingest` on
+  its ingest route and `read` or `write` on every other route, so a
+  sensor's key does nothing else there; guardian requires `data:read`,
+  `data:write` or `data:delete` by method, in its middleware, and gives
+  views the credential as `request.auth`; tools requires
+  `tools:execute` to run a tool or cancel a task. They fail closed: a
+  malformed header is a 400, and a request that carries the gateway's
+  secret without an auth type is refused wherever a scope is required.
+  The agents service and the responder, which call other services for a
+  user, state `service`. What a correctly scoped key can do is
+  unchanged: the gateway's Lua and the services' Python are tested
+  against one table of 200 pairs (`test/scope_vectors.txt`). The
+  gateway's check stands alone for reading tools and tasks and for the
+  agents, responder and CSPM services.
+
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as

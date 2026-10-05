@@ -100,7 +100,7 @@ def api(task_ownership, backend):
     app = FastAPI()
     app.include_router(async_router.router)
     client = TestClient(app)
-    client.caller = GatewayUser(user_id=ALICE, team_id=TEAM, role="member")
+    client.caller = GatewayUser(user_id=ALICE, team_id=TEAM, role="member", auth_type="session")
     app.dependency_overrides[verify_api_key] = lambda: client.caller
     return client
 
@@ -108,7 +108,7 @@ def api(task_ownership, backend):
 def as_user(api, user_id, team_id=TEAM, role="member"):
     from open_security_shared.gateway_auth import GatewayUser
 
-    api.caller = GatewayUser(user_id=user_id, team_id=team_id, role=role)
+    api.caller = GatewayUser(user_id=user_id, team_id=team_id, role=role, auth_type="session")
 
 
 def submit(api, tool=TOOL):

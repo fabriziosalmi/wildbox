@@ -64,7 +64,10 @@ An API key (`POST /api/v1/identity/api-keys`, or
 `POST /indicators/lookup`; the gateway answers 403 `insufficient_scope`
 otherwise. `POST /ingest` needs `data:ingest`, `data:write` or `write`; a
 key with `data:ingest` alone can call that route and nothing else, which is
-the key a sensor is given. A JWT is not limited by scopes. The
+the key a sensor is given. A JWT is not limited by scopes. The service
+checks the same scopes again on what the gateway forwards about the key, so
+a request the gateway should not have let through answers 403 with
+`INSUFFICIENT_SCOPE` in the error's `details`. The
 [Authentication and sessions guide](../../guides/authentication.md) covers
 both credentials.
 

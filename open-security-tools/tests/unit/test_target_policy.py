@@ -993,7 +993,7 @@ def client(monkeypatch, port_scanner_stub):
     application = FastAPI()
     application.include_router(router_module.router)
     application.dependency_overrides[verify_api_key] = lambda: GatewayUser(
-        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member"
+        user_id=str(uuid.uuid4()), team_id=str(uuid.uuid4()), role="member", auth_type="session"
     )
     yield TestClient(application), path
     router_module.router.routes[:] = routes
