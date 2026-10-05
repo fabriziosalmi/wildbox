@@ -1127,6 +1127,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what happens above it. `log_forwarder` reports how many bytes of each
   file are waiting to be read (`behind`), and `data_forwarder.pacing`
   the budget and whether the sender is waiting.
+- **An osquery query no longer stops the sensor while it runs** (#745).
+  Each query was a `subprocess.run` in the event loop: for as long as
+  `osqueryi` took, up to 30 seconds, no batch was sent, no log was read
+  and the local API did not answer, a dozen times in every collection
+  cycle. `osqueryi` is now a child process the loop waits for, one at a
+  time, killed after 30 seconds or 16 MiB of output (what it printed was
+  read whole into memory, and what it said on its standard error was
+  logged whole; the log now has the last 2 KiB). `_validate_query`,
+  which held the second blocking call, was called by nothing and is
+  removed.
 
 ### Changed
 

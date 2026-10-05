@@ -889,12 +889,18 @@ those routes answer `503`; with a wrong key, `403`.
 | `PUT` | `/api/v1/config` | Not implemented; returns `501` |
 | `POST` | `/api/v1/config/reload` | Not implemented; returns `501` |
 | `POST` | `/api/v1/config/validate` | Validate the loaded configuration |
-| `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}` |
+| `POST` | `/api/v1/query` | Run an osquery query, body `{"query": "..."}`; see below |
 | `GET` | `/api/v1/queries` | Names of the loaded query packs and the query count |
 | `GET` | `/api/v1/components` | Status of each component |
 | `GET` | `/api/v1/stats` | The sensor's counters; see [Statistics](#statistics) |
 | `GET` | `/api/v1/dashboard/metrics` | A summary of this endpoint, from the same counters |
 | `POST` | `/api/v1/test-connection` | POST an empty test batch to `data_lake.endpoint` |
+
+An osquery query, from this route or from the sensor's own packs, is one
+`osqueryi` child process the sensor waits for without stopping anything
+else. Queries run one at a time. One may take 30 seconds and print 16 MiB:
+past either it is killed, the sensor logs which, and the query yields no
+rows.
 
 ```bash
 curl -H "X-API-Key: $SENSOR_API_KEY" http://127.0.0.1:8004/api/v1/status

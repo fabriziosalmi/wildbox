@@ -24,6 +24,20 @@ from sensor.utils.platform import is_windows, is_linux, is_macos
 
 logger = logging.getLogger(__name__)
 
+# One osqueryi query: seconds it may take, and bytes it may print. Past
+# either it is killed and yields nothing.
+QUERY_TIMEOUT = 30
+MAX_QUERY_OUTPUT = 16 * 1024 * 1024
+# Bytes of what osqueryi says on its standard error kept for the log.
+QUERY_STDERR_KEPT = 2048
+# Seconds a killed osqueryi is given to end and close its output.
+KILL_WAIT = 10
+
+
+class _TooMuchOutput(Exception):
+    """A query printed more than MAX_QUERY_OUTPUT."""
+
+
 class OsqueryManager:
     """Manages osquery daemon and query execution"""
     
@@ -32,6 +46,9 @@ class OsqueryManager:
         self.event_queue = event_queue
         self.process = None
         self.running = False
+        # One osqueryi at a time: the collection cycle and the local API's
+        # /api/v1/query do not start them side by side.
+        self._query_lock = asyncio.Lock()
         
         # Query packs based on enabled collection types
         self.query_packs = self._build_query_packs()
@@ -322,42 +339,139 @@ class OsqueryManager:
                 await asyncio.sleep(30)
     
     async def execute_query(self, query: str) -> List[Dict[str, Any]]:
-        """Execute a single osquery query"""
+        """Execute a single osquery query.
+
+        osqueryi runs as a child process the event loop waits for without
+        blocking (#745): it used to be a subprocess.run of up to 30 seconds
+        in the loop, during which no batch was sent, no log was read and the
+        local API did not answer. The query is bounded in time and in what
+        it may print.
+        """
         if not self.process or self.process.poll() is not None:
             raise RuntimeError("osquery daemon is not running")
-        
+
+        async with self._query_lock:
+            return await self._run_osqueryi(query)
+
+    async def _run_osqueryi(self, query: str) -> List[Dict[str, Any]]:
+        """One osqueryi: its rows, or none when it fails, takes too long or
+        prints too much."""
+        # One argument: the query never passes through a shell.
+        cmd = ['osqueryi', '--json', query]
+        if is_windows():
+            cmd[0] = 'osqueryi.exe'
+
         try:
-            # Use osqueryi for one-off queries
-            cmd = ['osqueryi', '--json', query]
-            if is_windows():
-                cmd[0] = 'osqueryi.exe'
-            
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=30
+            child = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
-            
-            if result.returncode != 0:
-                logger.error(f"osquery query failed: {result.stderr}")
-                return []
-            
-            # Parse JSON results
-            try:
-                results = json.loads(result.stdout)
-                return results if isinstance(results, list) else []
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse osquery results: {e}")
-                return []
-        
-        except subprocess.TimeoutExpired:
-            logger.error("osquery query timed out")
-            return []
-        except Exception as e:
+        except OSError as e:
             logger.error(f"Error executing osquery: {e}")
             return []
-    
+
+        try:
+            output, said = await asyncio.wait_for(
+                self._read_bounded(child), timeout=QUERY_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.error("osquery query timed out")
+            return []
+        except _TooMuchOutput:
+            logger.error(
+                "osquery query printed more than %d bytes: it is stopped and "
+                "its result is not used",
+                MAX_QUERY_OUTPUT,
+            )
+            return []
+        finally:
+            await self._end(child)
+
+        if child.returncode != 0:
+            logger.error(f"osquery query failed: {said}")
+            return []
+
+        # Parse JSON results
+        try:
+            results = json.loads(output)
+            return results if isinstance(results, list) else []
+        except (ValueError, RecursionError) as e:
+            logger.error(f"Failed to parse osquery results: {e}")
+            return []
+
+    @staticmethod
+    async def _end(child):
+        """Whatever happened, the child does not outlive the query."""
+        if child.returncode is None:
+            try:
+                child.kill()
+            except (OSError, ProcessLookupError):
+                pass
+
+        async def emptied(stream):
+            while await stream.read(64 * 1024):
+                pass
+
+        # Its pipes are read to their end while it is waited for: asyncio
+        # does not report the exit of a child whose output is still unread.
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    emptied(child.stdout), emptied(child.stderr), child.wait()
+                ),
+                timeout=KILL_WAIT,
+            )
+        except asyncio.TimeoutError:
+            # A process it started still holds its output open: the pipes
+            # are closed on this side, so that nothing of the query is left.
+            logger.error(
+                "osqueryi (pid %s) was killed and its output did not end "
+                "within %s seconds: it is closed",
+                child.pid,
+                KILL_WAIT,
+            )
+            transport = getattr(child, "_transport", None)
+            if transport is not None:
+                transport.close()
+
+    @staticmethod
+    async def _read_bounded(child):
+        """What the child prints, and the end of what it says on its
+        standard error; _TooMuchOutput past the bound."""
+
+        async def printed() -> bytes:
+            chunks, size = [], 0
+            while True:
+                chunk = await child.stdout.read(64 * 1024)
+                if not chunk:
+                    return b"".join(chunks)
+                size += len(chunk)
+                if size > MAX_QUERY_OUTPUT:
+                    raise _TooMuchOutput()
+                chunks.append(chunk)
+
+        async def said() -> str:
+            kept = b""
+            while True:
+                chunk = await child.stderr.read(4096)
+                if not chunk:
+                    return " ".join(kept.decode("utf-8", "replace").split())
+                kept = (kept + chunk)[-QUERY_STDERR_KEPT:]
+
+        readers = [asyncio.ensure_future(printed()), asyncio.ensure_future(said())]
+        try:
+            output, errors = await asyncio.gather(*readers)
+            await child.wait()
+            return output, errors
+        finally:
+            # Neither reader is left on a pipe when the other one gave up:
+            # _end reads them to their end, and a stream has one reader.
+            for reader in readers:
+                reader.cancel()
+            await asyncio.gather(*readers, return_exceptions=True)
+
     def get_status(self) -> Dict[str, Any]:
         """Get osquery manager status"""
         return {
@@ -415,42 +529,3 @@ class OsqueryManager:
                 LIMIT 50
             '''
     
-    def _validate_query(self, query: str) -> bool:
-        """Validate if a query can be executed by checking table availability"""
-        try:
-            # Extract table names from the query
-            import re
-            # Simple regex to find table names after FROM/JOIN
-            table_pattern = r'(?:FROM|JOIN)\s+(`?(\w+)`?)'
-            found_tables = re.findall(table_pattern, query, re.IGNORECASE)
-            
-            # Get a list of all valid osquery tables
-            valid_tables_query = "SELECT name FROM osquery_tables;"
-            result = subprocess.run(
-                ['osqueryi', '--json', valid_tables_query],
-                capture_output=True,
-                text=True,
-                timeout=5
-            )
-            
-            if result.returncode != 0:
-                logger.error(f"Failed to get osquery_tables: {result.stderr}")
-                return False
-            
-            try:
-                osquery_tables = json.loads(result.stdout)
-                valid_table_names = {table['name'] for table in osquery_tables}
-            except json.JSONDecodeError:
-                logger.error("Failed to parse osquery_tables results.")
-                return False
-
-            # Check if all tables in the query are valid
-            for _, table_name in found_tables:
-                if table_name not in valid_table_names:
-                    logger.warning(f"Table '{table_name}' not available or invalid.")
-                    return False
-                    
-            return True
-        except Exception as e:
-            logger.debug(f"Query validation failed: {e}")
-            return False
