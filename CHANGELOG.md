@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **An error detail that is a dict or a list reaches the client as JSON,
+  not as a Python dict string** (#655). The shared error handler built
+  `error.message` with `str()` unless the dict had a `reason`, so the
+  refusals of the gateway authentication dependency read
+  `"{'error': 'Gateway authentication required', 'message': ..., 'code':
+  'GATEWAY_AUTH_REQUIRED'}"` in tools, data, agents and responder.
+  `error.message` is now the dict's `reason`, else its `message`, else
+  its `error`, else the status phrase, and the dict is under
+  `error.details`, so the code is at `error.details.code`. A list detail
+  goes to `error.details` too. `error.message` is never empty.
+
 ## [0.11.2] - 2026-10-05
 
 Two fixes found by running the upgrade from 0.10.0 to 0.11.1 end to end on

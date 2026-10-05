@@ -11,6 +11,40 @@ This is the shape the tools service already used; it is the only one of the four
 that previously existed which carries ``request_id``, the field an operator needs
 to correlate a user-visible failure with a log line.
 
+The fields:
+
+``code``
+    The HTTP status, as an integer.
+``message``
+    Always a non-empty string a person can read. Never the ``str()`` of a dict
+    or a list.
+``type``
+    ``HTTPException``, ``ValidationError`` or ``InternalServerError``.
+``request_id``
+    The correlation id of the request.
+``details``
+    Present only when the error carries structured data, and then that data as
+    JSON: the list of field errors of a validation error, or the ``detail`` an
+    endpoint raised when it is a dict or a list.
+
+What ``HTTPException(detail=...)`` becomes:
+
+- a string: ``message`` is the string, and there is no ``details``;
+- a dict: ``message`` is its ``reason``, else its ``message``, else its
+  ``error`` (the first of the three that is a non-empty string), else the
+  status phrase; ``details`` is the dict;
+- a list, a tuple or a set: ``message`` is the status phrase and ``details``
+  is the list of its items;
+- an Enum member: its value, by these same rules;
+- an empty string: ``message`` is the status phrase;
+- anything else (a number, for instance): ``message`` is its ``str()``.
+
+The status phrase is the standard one for the status ("Forbidden" for 403). A
+machine-readable code that an endpoint puts in its dict, as the gateway
+authentication dependency does (``{"error": ..., "message": ..., "code":
+"GATEWAY_AUTH_REQUIRED"}``), is therefore at ``error.details.code``;
+``error.code`` is always the HTTP status.
+
 Install it once per service::
 
     from open_security_shared.errors import install_error_handlers
@@ -23,11 +57,14 @@ the unhandled-exception catch-all, so no route can answer with a different shape
 
 from __future__ import annotations
 
+import json
 import logging
 from enum import Enum
-from typing import Any, Dict, Optional
+from http import HTTPStatus
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -89,6 +126,61 @@ def error_response(
     )
 
 
+# The keys of a dict detail that hold its explanation, in order of preference.
+# fastapi-users answers {"code": ..., "reason": ...}; the gateway
+# authentication dependency {"error": <title>, "message": <explanation>,
+# "code": ...}.
+_MESSAGE_KEYS = ("reason", "message", "error")
+
+
+def _status_phrase(status_code: int) -> str:
+    """The standard phrase for a status: what Starlette uses for no detail."""
+    try:
+        return HTTPStatus(status_code).phrase
+    except ValueError:
+        return "Request failed"
+
+
+def _as_json(value: Any) -> Optional[Any]:
+    """`value` as data a JSON response can carry, or None if it cannot be.
+
+    A handler that raised here would turn the endpoint's own status into a 500,
+    so a detail that cannot be encoded loses its details, not its status.
+    """
+    try:
+        encoded = jsonable_encoder(value)
+        json.dumps(encoded, allow_nan=False)
+    except (TypeError, ValueError, RecursionError):
+        logger.warning("Error detail is not JSON-serializable; details omitted")
+        return None
+    return encoded
+
+
+def message_and_details(detail: Any, status_code: int) -> Tuple[str, Optional[Any]]:
+    """What an HTTPException's `detail` becomes in the canonical body.
+
+    Returns `(message, details)`. See the module docstring for the rules. The
+    message used to be `str(detail)` except for a dict with a `reason`, so any
+    other dict reached the client as a Python dict literal, and its fields,
+    the machine-readable code among them, could not be read (#655).
+    """
+    # fastapi-users raises its codes as a str Enum (ErrorCode), whose str()
+    # is the member name, "ErrorCode.REGISTER_USER_ALREADY_EXISTS", not the
+    # code (#589).
+    if isinstance(detail, Enum):
+        detail = detail.value
+    if isinstance(detail, Mapping):
+        for key in _MESSAGE_KEYS:
+            candidate = detail.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate, _as_json(detail)
+        return _status_phrase(status_code), _as_json(detail)
+    if isinstance(detail, (list, tuple, set, frozenset)):
+        return _status_phrase(status_code), _as_json(list(detail))
+    message = "" if detail is None else str(detail)
+    return (message if message.strip() else _status_phrase(status_code)), None
+
+
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     request_id = get_request_id(request)
     logger.warning(
@@ -101,19 +193,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
             "path": str(request.url.path),
         },
     )
-    detail = exc.detail
-    # fastapi-users raises its codes as a str Enum (ErrorCode), whose str()
-    # is the member name, "ErrorCode.REGISTER_USER_ALREADY_EXISTS", not the
-    # code (#589).
-    message = str(detail.value) if isinstance(detail, Enum) else str(detail)
-    details = None
-    # fastapi-users answers {"code": "REGISTER_INVALID_PASSWORD", "reason":
-    # "..."}; str() of it reached the client as a Python dict literal. The
-    # reason is the explanation meant for a person, the code stays readable
-    # in details.
-    if isinstance(exc.detail, dict) and isinstance(exc.detail.get("reason"), str):
-        message = exc.detail["reason"]
-        details = exc.detail
+    message, details = message_and_details(exc.detail, exc.status_code)
     return error_response(
         code=exc.status_code,
         message=message,
