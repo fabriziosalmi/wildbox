@@ -203,7 +203,6 @@ def main():
         "GATEWAY_INTERNAL_SECRET": generate_hex(32),
         "API_KEY": generate_api_key("prod"),
         "INITIAL_ADMIN_PASSWORD": generate_password(24),
-        "N8N_BASIC_AUTH_PASSWORD": generate_password(16),
         "N8N_ENCRYPTION_KEY": generate_hex(32),
         "NEXTAUTH_SECRET": generate_base64(32),
         # Encrypts cloud credentials before CSPM writes them to Redis
@@ -298,7 +297,6 @@ def main():
     print("   • GATEWAY_INTERNAL_SECRET")
     print("   • API_KEY")
     print("   • INITIAL_ADMIN_PASSWORD")
-    print("   • N8N_BASIC_AUTH_PASSWORD")
     print("   • N8N_ENCRYPTION_KEY")
     print("   • NEXTAUTH_SECRET")
     print("   • CSPM_CREDENTIAL_KEY")

@@ -33,7 +33,6 @@ gateway (OpenResty): TLS, JWT / API-key validation via identity, per-team rate l
    +-- /api/v1/responder/...  --> responder  /v1/...
    +-- /api/v1/agents/...     --> agents     /v1/...  (/api/v1/agents/stats --> /stats)
    +-- /api/v1/cspm/...       --> cspm       /api/v1/...
-   +-- /api/v1/automations/...--> automations (n8n, optional profile)
    +-- /                      --> dashboard (Next.js)
 
 identity, data and guardian keep their data in PostgreSQL 15; queues,

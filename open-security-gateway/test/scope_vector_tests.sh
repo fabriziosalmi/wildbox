@@ -16,6 +16,14 @@
 # it sends a request that requires the scope, with a key the mock mints
 # holding exactly the granted ones (wsk_scoped~<id>~<scopes>), and expects
 # 200 for "allow" and 403 insufficient_scope for "deny".
+#
+# A line can be checked that way only if some route requires its scope. No
+# route requires tools:admin since the automations route was removed (#714):
+# a key may hold it, and the lines where it is the granted scope are checked
+# like the others, but the lines where it is the required one have no
+# request to send. They are counted, not passed: NO_ROUTE below names the
+# scopes that is true of, a scope missing from both lists fails, and so
+# does a count that is not the table's.
 
 set -u
 
@@ -42,7 +50,6 @@ request_requiring() {
         data:ingest)   METHOD=POST;   ROUTE=/api/v1/data/ingest ;;
         tools:read)    METHOD=GET;    ROUTE=/api/v1/tools/echo ;;
         tools:execute) METHOD=POST;   ROUTE=/api/v1/tools/echo ;;
-        tools:admin)   METHOD=GET;    ROUTE=/api/v1/automations/rest/workflows ;;
         data:read)     METHOD=GET;    ROUTE=/api/v1/guardian/assets/ ;;
         data:write)    METHOD=POST;   ROUTE=/api/v1/guardian/assets/ ;;
         data:delete)   METHOD=DELETE; ROUTE=/api/v1/guardian/assets/7/ ;;
@@ -51,6 +58,11 @@ request_requiring() {
         *) return 1 ;;
     esac
 }
+
+# The scopes of the table that no route requires. The shared package's tests
+# cover those lines (tests/shared/test_scopes.py); the gateway is never
+# asked the question.
+NO_ROUTE=" tools:admin "
 
 LINE=0
 ROWS=0
@@ -63,11 +75,15 @@ while read -r granted required verdict extra; do
         continue
     fi
     if ! request_requiring "$required"; then
-        # No route requires it. The shared package's tests cover the row;
-        # the count below fails if a row of the table goes unchecked here.
-        SKIPPED=$((SKIPPED + 1))
+        case "$NO_ROUTE" in
+            *" $required "*) SKIPPED=$((SKIPPED + 1)) ;;
+            *) fail "line $LINE requires $required, which has neither a request above nor a place in NO_ROUTE" ;;
+        esac
         continue
     fi
+    case "$NO_ROUTE" in
+        *" $required "*) fail "line $LINE: $required is in NO_ROUTE but $METHOD $ROUTE requires it" ;;
+    esac
     scopes="$granted"
     [ "$granted" = "-" ] && scopes=""
     # One key, and one team, for each line: no rate limit, no shared cache.
@@ -92,11 +108,15 @@ done < "$VECTORS"
 if [ "$ROWS" -lt 200 ]; then
     fail "only $ROWS rows read from $VECTORS: the table has 200"
 fi
-if [ "$PASS" -lt 200 ]; then
-    fail "only $PASS rows were checked on the wire: every row of the table has a route"
+# One line for each granted set requires tools:admin: 20 of the 200.
+if [ "$SKIPPED" -ne 20 ]; then
+    fail "$SKIPPED rows have no route to be checked on: 20 require tools:admin, and nothing else may go unchecked"
+fi
+if [ "$PASS" -lt 180 ]; then
+    fail "only $PASS rows were checked on the wire: 180 of the table's rows have a route"
 fi
 
-echo "✅ $PASS rows agree with the gateway ($SKIPPED without a route here)"
+echo "✅ $PASS rows agree with the gateway ($SKIPPED require a scope no route does)"
 echo
 echo "== Results: $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]

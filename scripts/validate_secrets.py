@@ -31,7 +31,6 @@ REQUIRED_SECRETS = [
     "API_KEY",
     "INITIAL_ADMIN_PASSWORD",
     "NEXTAUTH_SECRET",
-    "N8N_BASIC_AUTH_PASSWORD",
     # Required since the audit remediation: without it CSPM refuses to run a
     # scan rather than writing cloud credentials to Redis in plaintext.
     "CSPM_CREDENTIAL_KEY",

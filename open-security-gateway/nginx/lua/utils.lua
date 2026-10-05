@@ -263,11 +263,43 @@ function _M.set_debug_headers(auth_data)
     end
 end
 
+-- The cookie the dashboard keeps the session JWT in (auth-provider.tsx).
+local SESSION_COOKIE = "auth_token"
+
+-- Remove one cookie from the request's Cookie header, keeping the others.
+--
+-- A browser sends the dashboard's cookies with every request to this
+-- origin, API calls included, so the session JWT reached every upstream in
+-- the Cookie header even though Authorization is withheld from them: the
+-- same replayable credential by another door (#711). No service reads it
+-- there; the dashboard, whose locations do not come through here, keeps it.
+local function remove_cookie(name)
+    local cookies = ngx.var.http_cookie
+    if not cookies or cookies == "" then
+        return
+    end
+    local kept = {}
+    for pair in cookies:gmatch("[^;]+") do
+        local trimmed = pair:match("^%s*(.-)%s*$")
+        local cookie_name = trimmed:match("^([^=%s]*)")
+        if trimmed ~= "" and cookie_name ~= name then
+            kept[#kept + 1] = trimmed
+        end
+    end
+    if #kept == 0 then
+        ngx.req.clear_header("Cookie")
+    else
+        ngx.req.set_header("Cookie", table.concat(kept, "; "))
+    end
+end
+
 -- Clean sensitive headers before forwarding to backend
 function _M.clean_request_headers()
     -- Remove original authorization header
     ngx.req.clear_header("Authorization")
     ngx.req.clear_header("X-API-Key")
+    -- And the session token where a browser also carries it.
+    remove_cookie(SESSION_COOKIE)
 
     -- Remove any existing Wildbox headers (prevent spoofing)
     ngx.req.clear_header("X-Wildbox-User-ID")

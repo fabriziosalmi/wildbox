@@ -124,8 +124,10 @@ How login, tokens and logout work is described in
   use `https://`.
 - **404 under `/api/`**: the path is not one the gateway routes; see the
   [gateway routes](https://www.wildbox.io/docs.html#gateway-routes).
-- **502 on `/api/v1/automations/`**: the n8n service runs only with
-  `docker compose --profile automations up -d`.
+- **404 on `/api/v1/automations/`**: expected. The gateway does not route
+  to n8n; its editor is on `http://127.0.0.1:5678` of the host, with the
+  `automations` profile started. See
+  [the automations README](open-security-automations/README.md).
 - **502 elsewhere**: the backend behind the route is down; check it with
   `docker compose ps` and its log.
 

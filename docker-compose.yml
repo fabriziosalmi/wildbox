@@ -395,10 +395,12 @@ services:
       # and the setting had no effect wherever it was written.
       - RATE_LIMIT_PER_HOUR=${RATE_LIMIT_PER_HOUR:-10000}
       - GATEWAY_DEBUG=${GATEWAY_DEBUG:-false}
-      # Used to inject n8n's HTTP basic-auth on proxied /api/v1/automations/ requests
-      # (only relevant when the optional "automations" profile is enabled).
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-}
+      # The origins whose pages may call the API from a browser (#712). The
+      # gateway answers their preflights and names them in its responses;
+      # it reads the same setting the services do. The default is the
+      # dashboard's development server. An entry that is not an origin
+      # (scheme, host, optional port) stops the gateway at startup.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000}
     networks:
       - wildbox
     # Every service whose hostname appears in an `upstream` block of
@@ -1186,8 +1188,10 @@ services:
 
   # Automations Service (n8n workflow automation) — OPTIONAL.
   # Off by default; enable with `docker compose --profile automations up -d`.
-  # Nothing else hard-depends on it; the gateway resolves it dynamically and the
-  # /api/v1/automations/ route simply 502s until this profile is started.
+  # Nothing depends on it and the gateway does not route to it (#714): its
+  # workflows call the API outbound, through the gateway, and its editor is
+  # reached on the loopback port below. Create n8n's owner account right
+  # after the first start; see open-security-automations/README.md.
   automations:
     image: n8nio/n8n:1.74.0
     container_name: open-security-automations
@@ -1196,18 +1200,21 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      # Bind to localhost only. N8N_BASIC_AUTH protects the editor/REST API but
-      # NOT webhook endpoints (/webhook/*), which are unauthenticated by design —
-      # exposing 0.0.0.0:5678 would let anyone on the network trigger workflows.
-      # 127.0.0.1 keeps it reachable for local admin (e.g. via an SSH tunnel)
-      # without exposing it to the network; containers still reach it over the
-      # docker network by service name. Matches tools-flower (also 127.0.0.1).
+      # Bind to localhost only: this port is the only way to n8n's editor.
+      # n8n's own accounts protect the editor and the REST API, but not the
+      # webhook endpoints (/webhook/*), which are unauthenticated by design,
+      # and not the owner setup of an instance that has no owner yet --
+      # exposing 0.0.0.0:5678 would let anyone on the network trigger
+      # workflows, or claim a new instance. 127.0.0.1 keeps it reachable for
+      # local admin (e.g. via an SSH tunnel) without exposing it to the
+      # network; containers still reach it over the docker network by service
+      # name. Matches tools-flower (also 127.0.0.1).
       - "127.0.0.1:5678:5678"
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
-      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      # No N8N_BASIC_AUTH_*: n8n 1.x has no basic auth and ignores them
+      # (#714). The editor is protected by the owner account created on
+      # first start.
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http

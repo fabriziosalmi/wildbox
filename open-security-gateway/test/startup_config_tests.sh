@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Gateway start-up configuration tests (#627) -- run against the Dockerfile.test
-# image (see .github/workflows/gateway-tests.yml).
+# Gateway start-up configuration tests (#627, #712) -- run against the
+# Dockerfile.test image (see .github/workflows/gateway-tests.yml).
 #
 # RATE_LIMIT_PER_HOUR used to go through `tonumber(...) or 10000`, so a value
 # that was not a number became the default without a word. The gateway now
@@ -85,6 +85,57 @@ for value in "120" "UNSET"; do
         pass "RATE_LIMIT_PER_HOUR=$value: the gateway starts"
     else
         fail "RATE_LIMIT_PER_HOUR=$value: the gateway did not start ($s): $(docker logs "$name" 2>&1 | tail -3)"
+    fi
+    docker rm -f "$name" >/dev/null 2>&1
+done
+
+# --- CORS_ORIGINS (#712) ------------------------------------------------------
+# The gateway's CORS allowlist. An entry that is not an origin -- a wildcard,
+# a path, a bare host name -- is refused with the configuration, like a bad
+# rate limit, rather than dropped and found out when a browser is refused,
+# or read as more than was meant.
+
+# start_cors <name> <value>: a gateway with CORS_ORIGINS=<value>.
+start_cors() {
+    docker run -d --name "$1" --network "$NETWORK" \
+        -e GATEWAY_INTERNAL_SECRET="$SECRET" \
+        -e IDENTITY_SERVICE_URL=http://identity-test:8001 \
+        -e CORS_ORIGINS="$2" \
+        "$IMAGE" >/dev/null
+}
+
+i=0
+for value in "*" "https://*.example.com" "dashboard.example.com" "https://dashboard.example.com/" \
+        "https://dashboard.example.com/app" "https://a.example.com https://b.example.com" \
+        "null" "ftp://dashboard.example.com" '["https://a.example.com", 5]' '{"origin": "https://a.example.com"}' \
+        "https://a.example.com,*"; do
+    i=$((i + 1))
+    name="$PREFIX-cors-bad-$i"
+    start_cors "$name" "$value"
+    s=$(settle "$name")
+    logs=$(docker logs "$name" 2>&1)
+    if [ "$s" != running ] && [ "$s" != "exited 0" ] \
+            && printf '%s' "$logs" | grep -q "CORS_ORIGINS"; then
+        pass "CORS_ORIGINS='$value' refused at start-up ($s)"
+    else
+        fail "CORS_ORIGINS='$value': state '$s', log: $(printf '%s' "$logs" | tail -3)"
+    fi
+    docker rm -f "$name" >/dev/null 2>&1
+done
+
+# The control: the forms the documentation gives start and stay up.
+i=0
+for value in "" "https://dashboard.example.com" "https://a.example.com, http://localhost:3000," \
+        '["https://a.example.com", "http://localhost:3000"]' "http://[::1]:3000" "HTTPS://Dashboard.Example.com:8443"; do
+    i=$((i + 1))
+    name="$PREFIX-cors-good-$i"
+    start_cors "$name" "$value"
+    sleep 5
+    s=$(state "$name")
+    if [ "$s" = running ]; then
+        pass "CORS_ORIGINS='$value': the gateway starts"
+    else
+        fail "CORS_ORIGINS='$value': the gateway did not start ($s): $(docker logs "$name" 2>&1 | tail -3)"
     fi
     docker rm -f "$name" >/dev/null 2>&1
 done

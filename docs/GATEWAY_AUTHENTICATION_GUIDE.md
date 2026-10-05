@@ -36,7 +36,9 @@ shared handler (`authenticate()` in
    60-second windows of one sixtieth of that figure (166 with the default).
    The gateway validates `RATE_LIMIT_PER_HOUR` at startup and does not start
    when it is not a whole number from 1 to 1,000,000,000.
-4. It removes `Authorization`, `X-API-Key` and any client-supplied
+4. It removes `Authorization`, `X-API-Key`, the `auth_token` cookie (the
+   session JWT as the dashboard stores it; other cookies are kept) and any
+   client-supplied
    `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`, `X-Wildbox-Role`,
    `X-Wildbox-Auth-Type` and `X-Wildbox-Scopes`
    (`utils.clean_request_headers()`), then stores the validated identity in
@@ -72,6 +74,16 @@ configuration that calls `authenticate()` without declaring the variables.
 
 ### Routes that differ
 
+- **Automations**: not routed. `/api/v1/automations/` used to proxy to n8n,
+  which is not a Wildbox service: it was sent `X-Gateway-Secret` and the
+  caller's identity (#711), and every registered session of every team
+  reached its editor, its REST API and, on an instance with no owner yet,
+  its owner setup (#714). The path now answers 404 like any unknown one.
+  `authenticate()` is only for a location whose upstream is a Wildbox
+  service: the secret must never leave the set of services that validate
+  it, because whoever holds it can state any user, team and role to all of
+  them. `tests/scripts/test_gateway_authenticated_locations.py` fails for a
+  location that proxies anywhere else.
 - **Identity** (`/api/v1/identity/`, `/auth/`): identity is the
   authentication authority and validates the bearer token itself, so these
   routes do not run the shared handler and pass `Authorization` through.

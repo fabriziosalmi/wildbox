@@ -60,11 +60,16 @@ than secrets:
 - `CORS_ORIGINS`: the other HTTPS origins whose pages may call the API from
   a browser, comma-separated, for example `https://wildbox.example.com`
   (here and below, replace `wildbox.example.com`, a name reserved for
-  documentation, with your host name). The production overlay passes it to
-  identity, tools, guardian, responder and agents, and `docker-compose.yml`
-  to data; identity also accepts a JSON list. It can be left empty when the dashboard and the API share the
-  gateway's origin, as they do in this stack: an empty value allows no
-  cross-origin requests, and same-origin requests need none
+  documentation, with your host name). The gateway answers a preflight
+  from these origins and names them in its responses, and only them; the
+  production overlay passes the setting to the gateway and to identity,
+  tools, guardian, responder and agents, and `docker-compose.yml` to data.
+  Each entry is an origin: a scheme, a host and an optional port, with no
+  path and no wildcard. The gateway does not start with an entry that is
+  not one. A JSON list is accepted too. It can be left empty when the
+  dashboard and the API share the gateway's origin, as they do in this
+  stack: an empty value allows no cross-origin requests, and same-origin
+  requests need none
 - `ENVIRONMENT=production` (the template default)
 - `NEXT_PUBLIC_GATEWAY_URL`: leave it empty. The gateway serves the
   dashboard, and an empty value makes the dashboard call the API on the
@@ -150,7 +155,7 @@ make start-prod
 
 | Variable | Default | Set it when |
 |----------|---------|-------------|
-| `NEXT_PUBLIC_GATEWAY_URL` | empty: the API is called on the dashboard's own origin | the dashboard is served from a different origin than the gateway. Use the gateway's public HTTPS origin, for example `https://api.wildbox.example.com`; it is also added to the dashboard's Content-Security-Policy `connect-src` |
+| `NEXT_PUBLIC_GATEWAY_URL` | empty: the API is called on the dashboard's own origin | the dashboard is served from a different origin than the gateway. Use the gateway's public HTTPS origin, for example `https://api.wildbox.example.com`; it is also added to the dashboard's Content-Security-Policy `connect-src`. List the dashboard's own origin in `CORS_ORIGINS`, or the gateway refuses its browser's calls |
 | `NEXT_PUBLIC_USE_GATEWAY` | `true` | never in production; `false` is for development against a bare service |
 | `NEXT_PUBLIC_APP_URL` | empty (`http://localhost:3000` in page metadata) | you want absolute links in the page metadata to name your host, for example `https://wildbox.example.com` |
 
