@@ -675,6 +675,18 @@ with `SKIP_REDIS=true`, and the output says so. Files are written with mode
 stored credential. Archives older than `BACKUP_RETENTION` days (30 by
 default) are removed after a successful run.
 
+The guardian archive holds no credential of a scanner or an external system,
+because guardian stores none
+([#728](https://github.com/fabriziosalmi/wildbox/issues/728)). An archive
+written by 0.11.2 or earlier can hold them in plain text, if a team had sent
+any: a scanner's API key or password, an external system's `auth_config`, a
+webhook endpoint's `secret_token`, a notification channel's `config`.
+Upgrading removes them from the database, not from the archives already
+written, and restoring one of those archives into the current version removes
+them from the restored database only. Delete those archives as soon as you
+can do without them, and if one may have been read, change the secrets it
+holds where they were issued.
+
 | Variable | Default | Meaning |
 | :--- | :--- | :--- |
 | `BACKUP_DIR` | `./backups` (`/backups/postgres` in host mode) | Where the files go. |
