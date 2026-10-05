@@ -13,19 +13,24 @@ name: Docker Build Validation
 # floor the shared package declares, does not build.
 #
 # Path-filtered so it doesn't run on docs-only PRs.
+#
+# The filter is the whole directory of every service and of the shared
+# package, less documentation and tests. It used to list what a FastAPI
+# service is built from (app/, the lock, the Dockerfile, pyproject.toml,
+# manage.py), so a change to guardian's code (apps/, guardian/), to the
+# dashboard's (src/, package-lock.json), to the gateway's nginx
+# configuration or to an entrypoint script (identity's scripts/init.sh)
+# changed an image and built none (#736).
+# tests/scripts/test_workflow_path_filters.py fails when a tracked file of a
+# service in the matrix below would not start this workflow.
 
 on:
   pull_request:
     paths:
-      - 'open-security-*/Dockerfile'
-      - 'open-security-*/Dockerfile.*'
-      - 'open-security-*/requirements.txt'
-      - 'open-security-*/app/**'
-      - 'open-security-*/sensor/**'
-      - 'open-security-*/setup.py'
-      - 'open-security-*/pyproject.toml'
-      - 'open-security-*/manage.py'
-      - 'open-security-shared/**'
+      - 'open-security-*/**'
+      - '!open-security-*/**/*.md'
+      - '!open-security-*/**/tests/**'
+      - '!open-security-*/**/test/**'
       - 'docker-compose*.yml'
       - '.github/workflows/docker-build-validation.yml'
 

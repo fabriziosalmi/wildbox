@@ -7,15 +7,24 @@ on:
       - 'docs/**'
       - '.cspell.json'
       - '.markdownlint.json'
+      - '.markdown-link-check.json'
       - '.proselintrc.json'
       - 'scripts/check_prose.py'
       - '.github/workflows/documentation-quality.yml'
   push:
     branches:
       - main
+    # The same list as above: the checks read their configuration on main
+    # as they do on a pull request (tests/scripts/test_workflow_path_filters.py).
     paths:
       - '**.md'
       - 'docs/**'
+      - '.cspell.json'
+      - '.markdownlint.json'
+      - '.markdown-link-check.json'
+      - '.proselintrc.json'
+      - 'scripts/check_prose.py'
+      - '.github/workflows/documentation-quality.yml'
 
 # Least privilege: the token can read the repository and nothing else,
 # unless a job below asks for more.

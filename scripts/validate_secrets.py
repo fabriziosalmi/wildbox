@@ -208,6 +208,34 @@ def check_contacts_secret(env_vars) -> list:
     return problems
 
 
+# The environments the services know. tools refuses to start on any other
+# value; the others treat an unknown one as "not development".
+ENVIRONMENTS = ("production", "staging", "development")
+
+
+def check_environment(env_vars) -> list:
+    """ENVIRONMENT must be set, to a name the services know (#736).
+
+    docker-compose.yml used to pass ${ENVIRONMENT:-development}: a .env
+    without the line started the whole stack as a development one, with the
+    API schemas published and none of the start-up checks for secrets, and
+    nothing said so. Compose now refuses to start without the variable; this
+    says the same, and what to write, before the stack is started.
+    """
+    value = env_vars.get("ENVIRONMENT", "")
+    if not value.strip():
+        return [
+            "ENVIRONMENT is not set; add ENVIRONMENT=production to .env "
+            "(development only for a development stack)"
+        ]
+    if value not in ENVIRONMENTS:
+        return [
+            f"ENVIRONMENT is {value!r}; it must be one of "
+            f"{', '.join(ENVIRONMENTS)}, in lower case"
+        ]
+    return []
+
+
 def check_env_permissions(env_path) -> list:
     """The .env file must not be readable by other local users (WILDBO-SEC-03)."""
     problems = []
@@ -266,6 +294,8 @@ def main():
     for problem in dsn_problems:
         all_errors.append(problem)
     for problem in check_contacts_secret(env_vars):
+        all_errors.append(problem)
+    for problem in check_environment(env_vars):
         all_errors.append(problem)
 
     # Validate required secrets
