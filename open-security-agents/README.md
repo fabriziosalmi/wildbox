@@ -111,11 +111,22 @@ curl -s --cacert open-security-gateway/ssl/wildbox.crt \
 ### Read the result
 
 While the task runs, `GET` returns its status (`pending`, `running`,
-`failed`). A failed task has no report: `error` says why (no model key,
-the model unreachable or refusing, a timeout, a report the model did not
-produce), in the words of `app/failures.py`, and the task counts in
-`failed_today`. Nothing but the model's structured report produces a
-verdict. Once the task completed, `GET` returns the result:
+`failed`, or `revoked` once canceled). A failed task has no report:
+`error` says why (no model key, the model unreachable or refusing, a
+timeout, an interruption, a report the model did not produce), in the
+words of `app/failures.py`, and the task counts in `failed_today`.
+Nothing but the model's structured report produces a verdict.
+
+A task has two time limits (`app/worker.py`). At the soft one, 30 seconds
+before `TASK_TIMEOUT` (600 seconds), Celery interrupts the task, which
+records the timeout itself. At `TASK_TIMEOUT` Celery kills the process
+the task runs in, and the worker's main process records the timeout; it
+also records a task whose process died under it (`interrupted`). A task
+still `running` a minute past the hard limit has lost its whole worker
+and reads `failed`, `interrupted`. Whoever sees a failure first records
+it, and it is counted once (#727).
+
+Once the task completed, `GET` returns the result:
 
 | Field | Content |
 | --- | --- |

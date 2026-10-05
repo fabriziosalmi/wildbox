@@ -10,12 +10,24 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
 from celery import Celery
-from celery.exceptions import SoftTimeLimitExceeded
+from celery.exceptions import (
+    SoftTimeLimitExceeded,
+    TimeLimitExceeded,
+    WorkerLostError,
+)
+from celery.signals import task_failure
 import redis
 
-from .config import settings
+from .config import SOFT_LIMIT_MARGIN_SECONDS, settings
 from .agents.threat_enrichment_agent import get_threat_enrichment_agent
-from .failures import INTERNAL, NO_CALLER, NOT_CONFIGURED, TIMED_OUT, AnalysisFailed
+from .failures import (
+    INTERNAL,
+    INTERRUPTED,
+    NO_CALLER,
+    NOT_CONFIGURED,
+    TIMED_OUT,
+    AnalysisFailed,
+)
 from .stats import COMPLETED, FAILED, count_today
 from .tools.wildbox_client import CallerIdentityUnavailable, caller_identity
 
@@ -39,8 +51,13 @@ celery_app.conf.update(
     timezone="UTC",
     enable_utc=True,
     task_track_started=True,
+    # Two limits. At the soft one Celery raises SoftTimeLimitExceeded in the
+    # task, which records why it failed and ends; the margin is the time it
+    # has to do that. At the hard one Celery kills the process the task runs
+    # in, so nothing in the task can record anything: that failure is
+    # recorded by the worker's main process (_record_unrecorded_failure).
     task_time_limit=settings.task_timeout,
-    task_soft_time_limit=settings.task_timeout - 30,
+    task_soft_time_limit=settings.task_timeout - SOFT_LIMIT_MARGIN_SECONDS,
     worker_prefetch_multiplier=1,
     worker_max_tasks_per_child=100,
     result_expires=settings.task_result_expires,
@@ -116,21 +133,83 @@ def run_threat_enrichment_task(
         raise
 
 
-def _record_failure(task_id: str, code: str) -> None:
-    """Mark a task failed in Redis, with why, without masking the failure.
+def record_failure(client, task_id: str, code: str) -> bool:
+    """Record why a task failed and count it in ``failed_today``, once.
+
+    A failure can be seen in three places: by the task itself, by the
+    worker's main process when the task's process was killed, and by the API
+    when it reads a task Celery reports as failed. Each of them calls this,
+    and only the first call records anything: the task's ``error`` key is
+    written if it does not exist yet (SET NX), and the one caller that wrote
+    it counts the failure. However many see it, a task is counted once.
 
     ``code`` is one of app/failures.py's: the API shows its reason to the
-    task's owner. Recording must not replace the exception that brought the
-    task here, so a Redis error is logged and the caller raises its own.
+    task's owner. Returns whether this call was the one that recorded it.
+    """
+    ttl = settings.task_result_expires
+    if not client.set(f"task:{task_id}:error", code, nx=True, ex=ttl):
+        return False
+    client.setex(f"task:{task_id}:status", ttl, "failed")
+    count_today(client, FAILED)
+    return True
+
+
+def _record_failure(task_id: str, code: str) -> None:
+    """Record a task's failure without masking it.
+
+    Recording must not replace the exception that brought the task here, so
+    a Redis error is logged and the caller raises its own.
     """
     try:
-        redis_client.setex(
-            f"task:{task_id}:status", settings.task_result_expires, "failed"
-        )
-        redis_client.setex(
-            f"task:{task_id}:error", settings.task_result_expires, code
-        )
-        count_today(redis_client, FAILED)
+        record_failure(redis_client, task_id, code)
+    except Exception:
+        logger.error(f"Could not record the failure of task {task_id}", exc_info=True)
+
+
+def failure_code(error: object) -> str:
+    """The code for the exception a task ended with, as Celery holds it.
+
+    For the failures the task could not record itself: Celery stores
+    TimeLimitExceeded for a task it killed at the hard time limit and
+    WorkerLostError for one whose process died under it.
+    """
+    if isinstance(error, AnalysisFailed):
+        return error.code
+    if isinstance(error, CallerIdentityUnavailable):
+        return NO_CALLER
+    if isinstance(error, (SoftTimeLimitExceeded, TimeLimitExceeded)):
+        return TIMED_OUT
+    if isinstance(error, WorkerLostError):
+        return INTERRUPTED
+    return INTERNAL
+
+
+@task_failure.connect
+def _record_unrecorded_failure(
+    sender=None, exception=None, args=None, kwargs=None, **_
+) -> None:
+    """Record the failure of an analysis that could not record its own.
+
+    Celery sends task_failure wherever it marks a task failed. For an
+    exception the task raised, that is the task's process, and the task has
+    recorded it already: record_failure then changes nothing. For a task
+    killed at the hard time limit, or whose process died (out of memory,
+    SIGKILL), it is the worker's main process, the only one left to see it.
+    Neither used to be recorded: the task read as failed with the generic
+    reason, and ``failed_today`` did not count it (#727).
+    """
+    if getattr(sender, "name", None) != run_threat_enrichment_task.name:
+        return
+    task_id = (kwargs or {}).get("task_id") or (args[0] if args else None)
+    if not isinstance(task_id, str):
+        return
+    code = failure_code(exception)
+    try:
+        if record_failure(redis_client, task_id, code):
+            logger.error(
+                f"Threat enrichment task {task_id} ended without recording "
+                f"why ({type(exception).__name__}); recorded as {code}"
+            )
     except Exception:
         logger.error(f"Could not record the failure of task {task_id}", exc_info=True)
 
@@ -142,10 +221,15 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
     """
     logger.info(f"Starting threat enrichment task {task_id} for IOC type: {ioc['type']}")
 
+    # When the task started, kept in what Celery stores for it while it
+    # runs: the API reports it, and from it tells a task whose worker is
+    # gone from one that is still running (app/main.py).
+    started_at = datetime.now(timezone.utc).isoformat()
+
     # Update task status to running
     task.update_state(
         state="STARTED",
-        meta={"progress": "Initializing AI agent..."}
+        meta={"progress": "Initializing AI agent...", "started_at": started_at}
     )
 
     # Update Redis with task status
@@ -168,7 +252,7 @@ def _run_threat_enrichment(task, task_id: str, ioc: Dict[str, Any]) -> Dict[str,
         # Update progress
         task.update_state(
             state="STARTED",
-            meta={"progress": "Running AI analysis..."}
+            meta={"progress": "Running AI analysis...", "started_at": started_at}
         )
 
         # Execute the analysis

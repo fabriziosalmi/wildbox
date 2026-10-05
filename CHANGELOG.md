@@ -505,6 +505,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `CURRENT INVESTIGATION TARGET: {input}` and was passed as a message,
   not a template, so the placeholder was never filled. The line is
   gone; the target is in the user turn, where it always was.
+- **An AI analysis killed at its time limit, or with its process, is
+  recorded and counted** (#727). At the hard time limit Celery kills the
+  process a task runs in, and a process can die under a task (out of
+  memory), so nothing in the task could record either: the task read
+  `failed` with `Analysis failed. Please retry or contact support.`, no
+  cause was recorded and `failed_today` did not count it. The worker's
+  main process now records both, on Celery's `task_failure` signal:
+  `The analysis did not finish within its time limit.` for the hard
+  limit, and a new reason, `The analysis was interrupted before it
+  finished. No verdict was produced.`, for a lost process. A failed task
+  nobody recorded is recorded by `GET /api/v1/agents/analyze/{task_id}`
+  from the exception Celery holds for it. The record is written once
+  (`SET NX`), and whoever writes it counts the task, so the task, the
+  worker and the API together count a failure once. A task still
+  `running` more than a minute past the hard limit has lost its whole
+  worker and reads `failed`, interrupted; it read `running` until it
+  expired. The soft limit, 30 seconds before `TASK_TIMEOUT`, stays the
+  task's chance to record its own timeout: reached while the report is
+  generated, it is no longer recorded as a report that could not be
+  generated, and the service refuses to start with a `TASK_TIMEOUT`
+  under 60 seconds, which left no time to run. A unit test starts a real
+  Celery worker and a Redis container and hits both limits.
+- **A canceled AI analysis reads `revoked`, and a task's times are its
+  own** (#727). `GET /api/v1/agents/analyze/{task_id}` answered
+  `pending` forever for a task canceled with `DELETE`, and `started_at`
+  and `completed_at` were the time of the request. `started_at` is now
+  when the worker started the task, and `completed_at` when Celery
+  recorded its end.
 
 ### Changed
 

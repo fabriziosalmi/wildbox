@@ -51,6 +51,13 @@ class FakeRedis:
         self.store[key] = value
         self.ttl[key] = ttl
 
+    def set(self, key, value, nx=False, ex=None):
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        self.ttl[key] = ex
+        return True
+
     def incr(self, key):
         self.store[key] = int(self.store.get(key, 0)) + 1
 

@@ -9,7 +9,7 @@ import json
 import os
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status, Header, Depends, Path
@@ -33,9 +33,14 @@ from .schemas import (
     HealthResponse, StatsResponse, TaskStatus
 )
 from .config import settings
-from .worker import celery_app, run_threat_enrichment_task
+from .worker import (
+    celery_app,
+    failure_code,
+    record_failure,
+    run_threat_enrichment_task,
+)
 from .auth import get_current_user, GatewayUser
-from .failures import reason_for
+from .failures import INTERRUPTED, reason_for
 from .rate_limit import limit_analysis, limiter, rate_limited_caller
 from .stats import COMPLETED, FAILED, LEGACY_KEYS, read_today
 from .tools.langchain_tools import enabled_tools
@@ -465,6 +470,24 @@ def owner_record_ttl() -> int:
     return settings.task_result_expires + OWNER_RECORD_GRACE_SECONDS
 
 
+# How long past the hard time limit a task may still read as running before
+# it is taken for lost: room for the worker to kill it and record that, and
+# for the clocks of the worker and the API to differ.
+LOST_WORKER_GRACE_SECONDS = 60
+
+
+def _when(value: object) -> Optional[datetime]:
+    """A time Celery or the task stored, as an aware datetime, or None."""
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 def _task_not_found() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -527,38 +550,73 @@ async def get_analysis_result(
         else:
             task_metadata = {"created_at": datetime.now(timezone.utc).isoformat()}
         
+        # What Celery holds for the task, read once: its state, and with it
+        # the exception it failed with, or what the task wrote about itself
+        # while running.
+        state = celery_task.state
+        info = celery_task.info
+        running = info if state == "STARTED" and isinstance(info, dict) else {}
+        started_at = _when(running.get("started_at"))
+
         # Determine current status
-        if celery_task.state == "PENDING":
-            status_value = TaskStatus.PENDING
-        elif celery_task.state == "STARTED":
+        if state == "STARTED":
             status_value = TaskStatus.RUNNING
-        elif celery_task.state == "SUCCESS":
+        elif state == "SUCCESS":
             status_value = TaskStatus.COMPLETED
-        elif celery_task.state == "FAILURE":
+        elif state == "FAILURE":
             status_value = TaskStatus.FAILED
+        elif state == "REVOKED":
+            # Cancelled with DELETE. It read as pending, for ever.
+            status_value = TaskStatus.REVOKED
         else:
             status_value = TaskStatus.PENDING
-        
+
         # If task is completed successfully, return full result
-        if celery_task.state == "SUCCESS" and celery_task.result:
+        if state == "SUCCESS" and celery_task.result:
             return AnalysisResult(**celery_task.result)
-        
+
+        # A task still "running" after the hard time limit is not running:
+        # a worker kills a task at that limit and records it, so the worker
+        # that had this one is gone (the container was stopped or restarted
+        # under it) and nothing will ever report it. It read as running
+        # until its record expired (#727).
+        lost = (
+            status_value == TaskStatus.RUNNING
+            and started_at is not None
+            and (datetime.now(timezone.utc) - started_at).total_seconds()
+            > settings.task_timeout + LOST_WORKER_GRACE_SECONDS
+        )
+        if lost:
+            status_value = TaskStatus.FAILED
+
         # A failed task says why, in the words app/failures.py has for the
-        # cause the worker recorded; the details are in the server logs. It
+        # cause that was recorded; the details are in the server logs. It
         # was one sentence for every failure, and most failures never got
         # here: they were answered above, as reports (#717).
+        #
+        # The cause is recorded by the task, or by the worker when it kills
+        # the task or loses its process. When neither did, it is recorded
+        # here, from the exception Celery holds for the task, and counted in
+        # failed_today: record_failure does both once, whoever calls it
+        # first, so reading a task again counts nothing (#727).
         error_message = None
-        if celery_task.state == "FAILURE":
-            error_message = reason_for(redis_client.get(f"task:{task_id}:error"))
-        
+        if status_value == TaskStatus.FAILED:
+            code = redis_client.get(f"task:{task_id}:error")
+            if code is None:
+                code = INTERRUPTED if lost else failure_code(info)
+                record_failure(redis_client, task_id, code)
+            error_message = reason_for(code)
+
         # Return status information
         return AnalysisTaskStatus(
             task_id=task_id,
             status=status_value,
             created_at=datetime.fromisoformat(task_metadata["created_at"]),
-            started_at=datetime.now(timezone.utc) if status_value == TaskStatus.RUNNING else None,
-            completed_at=datetime.now(timezone.utc) if status_value in [TaskStatus.COMPLETED, TaskStatus.FAILED] else None,
-            progress=celery_task.info.get("progress") if isinstance(celery_task.info, dict) else None,
+            # When the task says it started, and when Celery recorded its
+            # end. Both were the time of the request, whenever it was made.
+            started_at=started_at,
+            completed_at=None if lost else _when(celery_task.date_done),
+            progress=None if lost else running.get("progress"),
             error=error_message,
             result_url=RESULT_PATH.format(task_id=task_id)
         )

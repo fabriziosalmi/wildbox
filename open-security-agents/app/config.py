@@ -20,6 +20,15 @@ from pydantic_settings import BaseSettings
 # the settings are validated before anything else is imported.
 TEAM_DATA_TOOLS = ("threat_intel_query_tool", "vulnerability_search_tool")
 
+# How long before TASK_TIMEOUT, the hard limit at which Celery kills the
+# process an analysis runs in, the analysis is told to stop (Celery's soft
+# time limit). It is the time a task has to record why it failed, which a
+# killed one cannot do (app/worker.py).
+SOFT_LIMIT_MARGIN_SECONDS = 30
+# The shortest TASK_TIMEOUT accepted: one that leaves an analysis as long to
+# run as it then has to stop.
+MIN_TASK_TIMEOUT_SECONDS = 2 * SOFT_LIMIT_MARGIN_SECONDS
+
 
 class Settings(BaseSettings):
     """Application settings"""
@@ -135,7 +144,22 @@ class Settings(BaseSettings):
     
     # Task Settings
     task_result_expires: int = 3600  # 1 hour
+    # The hard time limit of an analysis, in seconds. The analysis is told
+    # to stop SOFT_LIMIT_MARGIN_SECONDS before it.
     task_timeout: int = 600  # 10 minutes
+
+    @field_validator("task_timeout")
+    @classmethod
+    def _task_timeout_leaves_a_margin(cls, value: int) -> int:
+        # The soft limit is this minus the margin. A value at or under the
+        # margin made it zero or negative: no analysis could have run.
+        if value < MIN_TASK_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"TASK_TIMEOUT must be at least {MIN_TASK_TIMEOUT_SECONDS} seconds: "
+                f"an analysis is told to stop {SOFT_LIMIT_MARGIN_SECONDS} seconds "
+                "before it"
+            )
+        return value
 
     # Rate limits on POST /v1/analyze (#651), in the `limits` notation
     # ("5/minute", "5/minute;50/day"). ANALYZE_RATE_LIMIT applies to each
