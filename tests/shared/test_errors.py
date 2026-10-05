@@ -21,7 +21,7 @@ from open_security_shared.gateway_auth import (
     get_user_from_gateway_headers,
     require_role,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class Body(BaseModel):
@@ -412,3 +412,70 @@ def test_the_gateway_dependency_still_lets_a_valid_call_through(gateway_client):
     assert response.status_code == 200
     assert response.json() == {"team": TEAM_ID}
 
+
+# --- validation details that are not JSON as they stand -----------------------
+#
+# When a validator raises ValueError, pydantic keeps the exception object in
+# the error's ctx. The handlers passed exc.errors() to the response as it was,
+# the response could not be rendered, and input a validator refused answered
+# 500 instead of 422: an IOC value of the wrong format sent to the agents
+# service, for one.
+
+
+class Checked(BaseModel):
+    value: int
+
+    @field_validator("value")
+    @classmethod
+    def not_negative(cls, value):
+        if value < 0:
+            raise ValueError("must not be negative")
+        return value
+
+
+@pytest.fixture
+def checking_client():
+    app = FastAPI()
+    install_error_handlers(app)
+
+    @app.post("/checked")
+    def checked(body: Checked):
+        return {"value": body.value}
+
+    @app.get("/built")
+    def built():
+        # A model the endpoint builds itself: pydantic's own ValidationError.
+        return {"value": Checked(value=-1).value}
+
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def test_input_a_validator_refuses_answers_422(checking_client):
+    response = checking_client.post("/checked", json={"value": -1})
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["type"] == "ValidationError"
+    assert error["message"] == "Request validation failed"
+    [item] = error["details"]
+    assert item["loc"] == ["body", "value"]
+    assert "must not be negative" in item["msg"]
+
+
+def test_a_model_an_endpoint_fails_to_build_answers_422(checking_client):
+    response = checking_client.get("/built")
+
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["type"] == "ValidationError"
+    assert error["message"] == "Data validation failed"
+    [item] = error["details"]
+    assert item["loc"] == ["value"]
+    assert "must not be negative" in item["msg"]
+
+
+def test_valid_input_still_passes_the_validator(checking_client):
+    response = checking_client.post("/checked", json={"value": 3})
+
+    assert response.status_code == 200
+    assert response.json() == {"value": 3}

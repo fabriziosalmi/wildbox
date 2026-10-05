@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "request_id"}}`, as cspm's 422 and its 404 for an unknown path already
   were, and as every other service answers. A client that read the
   top-level `message` of a cspm error must read `error.message`.
+- **Input that a validator refuses answers 422, not 500.** When a model's
+  validator raised `ValueError`, the field errors could not be rendered
+  as JSON and the request ended in an internal error: an IOC value of
+  the wrong format sent to `POST /api/v1/agents/analyze`, for one.
 
 ## [0.11.2] - 2026-10-05
 

@@ -212,12 +212,15 @@ async def validation_exception_handler(
         "Validation error",
         extra={"request_id": request_id, "path": str(request.url.path)},
     )
+    # exc.errors() is not JSON as it stands: when a validator raises
+    # ValueError, pydantic keeps the exception object under ctx.error, and
+    # the response could not be rendered, so invalid input answered 500.
     return error_response(
         code=422,
         message="Request validation failed",
         error_type="ValidationError",
         request_id=request_id,
-        details=exc.errors(),
+        details=_as_json(exc.errors()),
     )
 
 
@@ -230,7 +233,7 @@ async def pydantic_validation_exception_handler(
         message="Data validation failed",
         error_type="ValidationError",
         request_id=request_id,
-        details=exc.errors(),
+        details=_as_json(exc.errors()),
     )
 
 
