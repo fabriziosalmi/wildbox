@@ -269,9 +269,13 @@ nobody may run the scanner**. That is the default in `docker-compose.yml`:
 
 See `config/*.json.example`. To grant access, mount the files into both the
 `api` and `tools-worker` containers of the root `docker-compose.yml`.
-Destructive tests are limited to one per caller per hour; the counter is kept
-in each process's memory, so the API process and the Celery worker count
-separately and a restart resets them.
+Destructive tests are limited to one per caller in any hour. The count is
+kept in the service's Redis (`REDIS_URL`), one key per caller and operation
+(`wildbox:tools:operation-limit:<user>:<operation>`), so the API process and
+every worker process share it and a restart does not reset it. When Redis
+cannot be reached the tool is not run: the API answers 503
+(`Rate limiting temporarily unavailable`) and an asynchronous task fails
+after its retries. A deployment without `REDIS_URL` cannot run these tools.
 
 ### Network targets
 

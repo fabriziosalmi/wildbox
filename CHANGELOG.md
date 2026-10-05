@@ -187,6 +187,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no use for them, and they describe how the deployment is laid out.
   The listing is now each connector's `name` and `actions`; the
   `config` field is gone.
+- **tools: the hourly limit of the tools that act for a caller is one
+  count per caller** (#721). "One destructive test per caller per hour"
+  was counted in the memory of the process that checked: the API process
+  and each of the worker's four child processes allowed one, and a
+  restart forgot them all. The count is now in the service's Redis, a
+  sorted set per caller and operation
+  (`wildbox:tools:operation-limit:<user>:<operation>`) that one Lua
+  script checks and records in a single step, so two requests for the
+  last allowance cannot both take it. The rule is unchanged: at most the
+  limit in any hour. When Redis cannot be reached the tool is not run:
+  the API answers 503 `Rate limiting temporarily unavailable`, as the
+  agents service does for its analysis limit, and an asynchronous task
+  fails after its retries. The standalone
+  `open-security-tools/docker-compose.yml` now runs its Redis with
+  `noeviction`, so a full instance cannot delete a count. Tests run
+  against a Redis server: a second interpreter is refused what the first
+  one used, and six processes asking at once for the same callers are
+  granted exactly the limit.
 
 ### Removed
 

@@ -66,7 +66,32 @@ jobs:
           pip install ../open-security-shared || true
           pip install -r requirements.txt
           pip install pytest pytest-cov pytest-asyncio
-      
+
+      # The tools service keeps in Redis what its processes must share: each
+      # caller's hourly operation count and the outcomes of asynchronous runs
+      # (#721). Those tests ask from several processes, and kill a task at
+      # its time limit in a real prefork worker, so they need a server, the
+      # version docker-compose.yml runs. With TOOLS_TEST_REDIS_URL set, a
+      # server that does not answer fails the tests instead of skipping them
+      # (open-security-tools/tests/unit/conftest.py).
+      - name: Start Redis for the tools tests
+        if: matrix.service == 'tools'
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          image="$(awk '/^  wildbox-redis:/{found=1} found && $1 == "image:"{print $2; exit}' docker-compose.yml)"
+          test -n "$image"
+          docker run -d --name tools-unit-redis -p 127.0.0.1:6379:6379 "$image"
+          for _ in $(seq 1 30); do
+            if docker exec tools-unit-redis redis-cli ping | grep -q PONG; then
+              echo "TOOLS_TEST_REDIS_URL=redis://127.0.0.1:6379/15" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs tools-unit-redis
+          exit 1
+
       - name: Run unit tests
         run: |
           cd open-security-${{ matrix.service }}

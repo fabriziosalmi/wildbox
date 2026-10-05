@@ -271,6 +271,7 @@ The service refuses a run with these statuses:
 | 422 | The body is not a JSON object | `Request validation failed` |
 | 422 | The body does not match the input schema | `Input validation failed`; `error.details.errors` lists `loc`, `msg` and `type` for each field. Submitted values are not echoed back |
 | 500 | The tool failed | `Tool execution failed` |
+| 503 | The tool acts on behalf of the caller and the caller's hourly allowance cannot be counted, because Redis does not answer (see [Rate Limits](#rate-limits)). The tool was not run | `Rate limiting temporarily unavailable` |
 
 The time limit is the input's `timeout` field when the tool's schema has
 one (the shared input schema defaults it to 30 seconds, 300 at most),
@@ -540,8 +541,13 @@ never enforced, no longer exist
 in `.env` has no effect. What the service does limit is the cost of a call:
 `MAX_CONCURRENT_TOOLS` synchronous runs at a time (10), `TOOL_TIMEOUT`
 seconds per run (300), and, for the tools that act for a caller, a number
-of runs per caller per hour (one for a destructive test), counted in each
-process's memory.
+of runs per caller in any hour (one for a destructive test). That count is
+kept in the service's Redis, shared by the API and the workers and kept
+across restarts; past it the run is refused with 403
+(`Rate limit exceeded for destructive_test operations`), and when Redis
+cannot be reached the run is refused with 503
+(`Rate limiting temporarily unavailable`) instead of being let through
+uncounted.
 
 ## Errors
 
@@ -589,7 +595,7 @@ the request in the logs.
 | 408 | Synchronous run timed out |
 | 422 | Request body missing, not an object, or not matching the input schema |
 | 500 | Tool failed |
-| 503 | Asynchronous execution unavailable (Redis, the result backend or the task queue down) |
+| 503 | Asynchronous execution unavailable (Redis, the result backend or the task queue down). Run: the caller's hourly allowance cannot be counted |
 
 ## Examples
 
