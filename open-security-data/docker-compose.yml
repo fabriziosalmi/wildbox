@@ -117,7 +117,7 @@ services:
 
   # Nginx Reverse Proxy
   nginx:
-    image: nginx:alpine
+    image: nginx:1.30-alpine
     container_name: securitydata-nginx
     ports:
       - "80:80"
@@ -136,7 +136,7 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
@@ -148,7 +148,7 @@ services:
     image: prom/prometheus:v2.55.1
     container_name: securitydata-prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
