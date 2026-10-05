@@ -16,6 +16,9 @@ services:
       - PYTHONPATH=/app
       - FLASK_ENV=development
       - DEVELOPMENT=true
+      # The route list at / and /docs is served in development only, and
+      # an environment that is not declared is not development (#722).
+      - ENVIRONMENT=development
     
     # Development volumes (code mounting for hot reload)
     volumes:

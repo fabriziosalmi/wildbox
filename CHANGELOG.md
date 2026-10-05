@@ -37,6 +37,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gateway's check stands alone for reading tools and tasks and for the
   agents, responder and CSPM services.
 
+- **A validation error no longer returns what was sent** (#722). The
+  field errors of a 422 carried FastAPI's `input`, the value that was
+  refused, and for a missing field that is the whole object the field is
+  missing from: a JSON body posted without its email came back with the
+  password in it, and a new password shorter than 12 characters came
+  back as it was typed, to be kept by whatever logs the errors a client
+  receives. tools already left it out for tool input; the handler every
+  FastAPI service shares did not. Each item of `error.details` is now
+  `{"type", "loc", "msg"}` and nothing else, in identity, tools, data,
+  responder, agents and cspm: no `input`, no `ctx`, no `url`. The same
+  holds for a model an endpoint builds from its own data, whose `input`
+  was the server's. `msg` is the validator's sentence, unchanged, except
+  pydantic's message for an unknown tag of a discriminated union, which
+  quoted the tag and now names only the accepted ones. The dashboard
+  reads `loc` and `msg` and is unaffected; a client that read `input` or
+  `ctx` from a 422 no longer finds them.
+- **A service started without `ENVIRONMENT` no longer takes itself for
+  a development one** (#722). identity, tools, data, responder, agents
+  and cspm read a missing `ENVIRONMENT` as `development`, so a bare
+  `docker run` of an image, or any deployment that left the variable
+  out, served `/openapi.json`, `/docs` and `/redoc`: the route map of
+  the service, admin and internal routes included. The default is now
+  empty, which is neither `development` nor `production`; the three
+  paths answer 404 unless `ENVIRONMENT` says `development`. tools still
+  refuses to start on a value that is set and is not `development`,
+  `staging` or `production`. The sensor's local API served its HTML
+  route list at `/` and `/docs`, without authentication, unless
+  `ENVIRONMENT` was `production`, and its Compose files set none; it now
+  follows the same rule. The root Compose file passes
+  `ENVIRONMENT=${ENVIRONMENT:-development}` and is unchanged, as are the
+  start-up checks that apply to `production` only. The development
+  Compose files of tools and the sensor now set
+  `ENVIRONMENT=development` themselves.
 - **guardian: pagination links no longer name the internal host, and a
   client can follow them** (#643). A list of more than one page answered
   `next` and `previous` links such as
@@ -356,6 +389,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **identity answers 404, 500 and 503 in the body every service
+  answers** (#722). It installed the shared error handlers and then
+  registered two of its own by status code, which run first. Every 404
+  answered `{"detail": "Endpoint not found"}`, the ones a route raised
+  with its own message included: asking about a user, a team or an API
+  key that does not exist said the endpoint did not exist. Every 500
+  answered `{"detail": "Internal server error"}`, without the request id
+  that ties a reported failure to the log. The database middleware
+  answered `{"detail": "Database temporarily unavailable"}` for a lost
+  connection. All three now have the canonical body:
+  `error.message` is the route's own message (`User not found`), `Not
+  Found` for a path that does not exist, `An internal error occurred`
+  for an unhandled error, and `error.request_id` is always there. The
+  gateway reads only the status of identity's answers, and the dashboard
+  reads `error.message` before `detail`, so neither changes; a client
+  that read `detail` from an identity 404, 500 or 503 must read
+  `error.message`.
 - **Every Python image holds what the shared package requires of it**
   (#722). `open-security-shared` declared FastAPI, Pydantic, passlib,
   PyJWT and prometheus-client as dependencies of the whole package, and

@@ -239,7 +239,7 @@ service `degraded`: login keeps working, but revocation and lockout stop
 working until it is back.
 
 `/docs`, `/redoc` and `/openapi.json` are served only when `ENVIRONMENT` is
-`development`.
+`development`. A service started without the variable does not serve them.
 
 ## Security details
 
@@ -276,7 +276,7 @@ case-insensitive), plus a few variables read directly.
 | `GUARDIAN_CONTACTS_SECRET` | unset | What guardian's worker presents to `/internal/team-contacts`. At least 32 characters, and not the value of `GATEWAY_INTERNAL_SECRET`, `JWT_SECRET_KEY` or `API_KEY_HASH_SECRET`: identity does not start otherwise. Unset, the route answers `503` |
 | `CORS_ORIGINS` | `http://localhost:3000`, `https://wildbox.local`, `https://dashboard.wildbox.local` | Comma-separated or JSON list |
 | `CORS_ALLOW_CREDENTIALS`, `CORS_ALLOW_METHODS`, `CORS_ALLOW_HEADERS` | see `app/config.py` | |
-| `ENVIRONMENT` | `development` | `production` disables the API docs |
+| `ENVIRONMENT` | none | `development` serves the API docs; `production` makes `API_KEY_HASH_SECRET` mandatory. Unset or empty is neither |
 | `DEBUG` | `false` | Used only by `python -m app.main` |
 | `CREATE_INITIAL_ADMIN` | `false` in `init.sh`, `true` in the root Compose file | Create the initial admin at startup |
 | `INITIAL_ADMIN_EMAIL` | `admin@wildbox.security` in `init.sh` | Initial admin account |

@@ -528,7 +528,7 @@ The data service answers in the shape every Wildbox service uses:
 | --- | --- |
 | 400 | Batch larger than `MAX_BATCH_SIZE` |
 | 404 | Indicator, IP address, domain, hash or sensor not found (or not visible to the caller) |
-| 422 | Invalid parameter or body; `details` lists the errors |
+| 422 | Invalid parameter or body; `details` lists the errors as `{"type", "loc", "msg"}`, without the value that was refused |
 | 500 | Server error |
 | 503 | Telemetry batch not stored; send it again |
 
