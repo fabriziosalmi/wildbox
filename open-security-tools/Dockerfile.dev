@@ -44,12 +44,18 @@ RUN pip install --no-cache-dir --require-hashes --no-build-isolation -r requirem
 
 # Install the shared package, provided via the `shared` additional build
 # context (see docker-compose.dev.yml). app/main.py imports it; without it the
-# container exited at start with ModuleNotFoundError. --no-deps: its deps
-# already come from this service's requirements.txt. --no-index
-# --no-build-isolation: build it with the setuptools already in the image
-# instead of one downloaded from PyPI, unhashed, at every build (#657).
+# container exited at start with ModuleNotFoundError. Installed as in the
+# production Dockerfile: with the extras of the modules the service imports
+# and no --no-deps, so pip resolves what they require against what the
+# hash-checked install above provided (--no-index leaves it nothing else) and
+# the build fails when requirements.txt lacks one; `pip check` covers the
+# rest (#722). --no-index --no-build-isolation: build it with the setuptools
+# already in the image instead of one downloaded from PyPI, unhashed, at
+# every build (#657).
 COPY --from=shared . /tmp/open-security-shared
-RUN pip install --no-cache-dir --no-index --no-deps --no-build-isolation /tmp/open-security-shared
+RUN pip install --no-cache-dir --no-index --no-build-isolation \
+        "/tmp/open-security-shared[fastapi,metrics]" \
+    && pip check
 
 # Create app directory
 RUN mkdir -p /app/logs
