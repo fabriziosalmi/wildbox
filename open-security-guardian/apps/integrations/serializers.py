@@ -13,7 +13,11 @@ the same credentials (authorization headers, OAuth token responses).
 
 from rest_framework import serializers
 
-from apps.core.tenancy import TeamScopedModelSerializer
+from apps.core.tenancy import (
+    TeamScopedModelSerializer,
+    context_team_id,
+    scope_to_team,
+)
 
 from .models import (
     ExternalSystem,
@@ -156,6 +160,28 @@ class WebhookEndpointSerializer(TeamScopedModelSerializer):
             "updated_at",
         )
         extra_kwargs = {"secret_token": {"write_only": True}}
+
+    def validate_endpoint_url(self, value):
+        """A path is taken if a webhook of the caller's own team uses it (#677).
+
+        Only the caller's team's rows are looked at, across all of its
+        external systems, so the answer says nothing about any other team:
+        a path another team uses is free here, as one nobody uses is.
+        """
+        team_id = context_team_id(self.context)
+        if team_id is None:
+            # Never decide whether a path is free without knowing whose it is.
+            raise serializers.ValidationError("No team to check this path for.")
+        taken = scope_to_team(WebhookEndpoint.objects.all(), team_id).filter(
+            endpoint_url=value
+        )
+        if self.instance is not None:
+            taken = taken.exclude(pk=self.instance.pk)
+        if taken.exists():
+            raise serializers.ValidationError(
+                "A webhook endpoint of your team already uses this path."
+            )
+        return value
 
 
 class IntegrationLogSerializer(TeamScopedModelSerializer):

@@ -12,15 +12,25 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
+from apps.core.internal_views import RevokeTeamMembershipsView
 from apps.core.views import HealthCheckView, MetricsView, TaskStatusView
 
 urlpatterns = [
     # Admin interface
     path('admin/', admin.site.urls),
-    
+
     # Health check endpoint
     path('health/', HealthCheckView.as_view(), name='health'),
-    
+
+    # Called by identity on the internal network when a member leaves a team
+    # (#676). Outside /api/: not reachable through the gateway, and it
+    # authenticates the caller itself (apps/core/internal_views.py).
+    path(
+        'internal/team-memberships/revoke/',
+        RevokeTeamMembershipsView.as_view(),
+        name='revoke-team-memberships',
+    ),
+
     # Metrics endpoint (Prometheus)
     path('metrics/', MetricsView.as_view(), name='metrics'),
     

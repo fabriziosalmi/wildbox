@@ -305,7 +305,8 @@ def ticket(team_id):
         title=_tag(team_id),
         description="d",
         system="jira",
-        external_ticket_id="SEC-1",
+        # Unique per (team, system, id): a test may need two tickets in a team.
+        external_ticket_id=f"SEC-{uuid.uuid4().hex[:8]}",
         priority="high",
     )
 
