@@ -67,7 +67,7 @@ def api(task_ownership, results, revoked):
 
     app = FastAPI()
     app.include_router(async_router.router)
-    caller = GatewayUser(user_id=ALICE, team_id=TEAM, role="member")
+    caller = GatewayUser(user_id=ALICE, team_id=TEAM, role="member", auth_type="session")
     app.dependency_overrides[verify_api_key] = lambda: caller
     # raise_server_exceptions=False: a 500 is an answer to assert on, not an
     # exception that ends the test before it can say which state caused it.

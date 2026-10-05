@@ -22,6 +22,13 @@ markers, the must-change-password refusal, the rate limit and the retry of
 a closed connection; the agents route had its own copy that carried none of
 them (#630).
 
+And it fails when a configuration file authenticates without declaring the
+nginx variables ``authenticate()`` assigns. Assigning an undeclared variable
+from Lua is an error at request time, a 500 for every authenticated request,
+and ``$wildbox_auth_type`` and ``$wildbox_scopes`` are what
+``proxy_params.conf`` sends the services as the credential's type and scopes
+(#637).
+
 Usage:
   scripts/check_gateway_config.py [--gateway-dir DIR]
 """
@@ -37,6 +44,17 @@ DEFAULT_GATEWAY_DIR = ROOT / "open-security-gateway" / "nginx"
 _ENV_DIRECTIVE = re.compile(r"^\s*env\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?:=[^;]*)?;")
 _GETENV = re.compile(r"os\.getenv\s*\(\s*(?:([\"'])([^\"']*)\1\s*\))?")
 _AUTHORIZE = "/internal/authorize"
+_AUTHENTICATE = re.compile(r"\bauthenticate\s*\(")
+# The variables auth_handler.set_auth_headers() assigns.
+ASSIGNED_VARIABLES = (
+    "wildbox_user_id",
+    "wildbox_team_id",
+    "wildbox_role",
+    "wildbox_gateway_secret",
+    "wildbox_auth_type",
+    "wildbox_scopes",
+)
+_SET_EMPTY = re.compile(r'^\s*set\s+\$([a-z_]+)\s+""\s*;')
 
 
 def strip_comment(line: str, suffix: str) -> str:
@@ -95,7 +113,31 @@ def check(gateway_dir: Path) -> list:
                 )
         if path.suffix == ".conf":
             failures.extend(inline_authorizations(path, gateway_dir))
+            failures.extend(undeclared_assigned_variables(path, gateway_dir))
     return failures
+
+
+def undeclared_assigned_variables(path: Path, gateway_dir: Path) -> list:
+    """A configuration that authenticates without a variable authenticate() assigns.
+
+    Each must be declared empty (``set $name "";``): empty is what a location
+    that authenticates nobody forwards, which is nothing.
+    """
+    lines = [
+        strip_comment(line, path.suffix)
+        for line in path.read_text(encoding="utf-8").splitlines()
+    ]
+    if not any(_AUTHENTICATE.search(line) for line in lines):
+        return []
+    declared = {
+        match.group(1) for match in (_SET_EMPTY.match(line) for line in lines) if match
+    }
+    return [
+        f"{path.relative_to(gateway_dir.parent)}: calls authenticate() but does not "
+        f'declare `set ${name} "";` in its server block; authenticate() assigns it'
+        for name in ASSIGNED_VARIABLES
+        if name not in declared
+    ]
 
 
 def inline_authorizations(path: Path, gateway_dir: Path) -> list:
@@ -121,8 +163,9 @@ def main(argv=None) -> int:
             print(f"  - {failure}")
         return 1
     print(
-        "Every variable the gateway reads is declared in nginx.conf, and every "
-        "authorization goes through auth_handler."
+        "Every variable the gateway reads is declared in nginx.conf, every "
+        "authorization goes through auth_handler, and every configuration that "
+        "authenticates declares the variables it assigns."
     )
     return 0
 

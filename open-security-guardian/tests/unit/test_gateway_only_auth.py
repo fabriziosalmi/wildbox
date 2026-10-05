@@ -70,6 +70,7 @@ def _gateway_headers(role="admin"):
         "HTTP_X_WILDBOX_TEAM_ID": str(uuid.uuid4()),
         "HTTP_X_WILDBOX_ROLE": role,
         "HTTP_X_GATEWAY_SECRET": _GW_SECRET,
+        "HTTP_X_WILDBOX_AUTH_TYPE": "session",
     }
 
 

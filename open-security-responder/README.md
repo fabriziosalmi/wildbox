@@ -161,7 +161,11 @@ user the gateway authenticated (user, team and role), the run is owned by
 that user's team, and every request a connector makes for the run carries
 that user's gateway identity (`X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
 `X-Wildbox-Role`) and `X-Gateway-Secret`, the headers the gateway itself
-puts on a request it forwards for that user.
+puts on a request it forwards for that user. It also states
+`X-Wildbox-Auth-Type: service`: tools, data and guardian check API-key
+scopes themselves and refuse a request that does not say what its
+credential is. The scopes of the key that started the run do not travel
+with it; the gateway checked `write` when the run was started (#637).
 
 - **The services authorize each call for that user.** The tools a run
   starts, the AI analysis tasks it queues and the vulnerabilities it

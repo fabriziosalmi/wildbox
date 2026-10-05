@@ -141,7 +141,9 @@ it as `X-API-Key: <key>`. The
 both credentials.
 
 A JWT is not limited by scopes. An API key with scopes needs the following
-ones, which the gateway checks before the request reaches the service:
+ones, which the gateway checks before the request reaches the service. The
+service checks `tools:execute` again, on the scopes the gateway forwards,
+on the routes that run a tool or cancel a task:
 
 | Request | Required scope |
 | --- | --- |

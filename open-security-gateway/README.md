@@ -96,7 +96,9 @@ then:
 5. Applies the per-team rate limit.
 6. Strips `Authorization`, `X-API-Key` and any client-supplied `X-Wildbox-*`
    headers, then forwards `X-Wildbox-User-ID`, `X-Wildbox-Team-ID`,
-   `X-Wildbox-Role`, `X-Gateway-Secret` and `X-Request-ID` to the service.
+   `X-Wildbox-Role`, `X-Gateway-Secret` and `X-Request-ID` to the service,
+   with what the credential is: `X-Wildbox-Auth-Type` and, for an API key,
+   `X-Wildbox-Scopes` (see [What the service is told](#what-the-service-is-told)).
 
 If identity cannot be reached, the gateway answers `503` with a JSON body and
 `Retry-After`. After 10 failed calls a circuit breaker stops calling identity
@@ -116,6 +118,31 @@ needs (`required_scope_for_request` in `auth_handler.lua`):
 | Any other authenticated path | `read` | `write` |
 
 `admin` and `*` satisfy every scope. Session tokens are not scope-limited.
+
+### What the service is told
+
+The gateway forwards the credential it decided on, so that a service can
+check a scope itself (`credential_headers` in `auth_handler.lua`):
+
+| Credential | `X-Wildbox-Auth-Type` | `X-Wildbox-Scopes` |
+| --- | --- | --- |
+| Session (JWT) | `session` | not sent |
+| API key with scopes | `api_key` | the scopes, separated by single spaces, in identity's order |
+| API key that is not limited | `api_key` | `*` |
+
+Both are set by `authenticate()` and sent by `proxy_params.conf` from
+`$wildbox_auth_type` and `$wildbox_scopes`; a client's own are removed, and
+a location that does not authenticate forwards neither. The auth type
+follows identity's answer: a decision that names an API key is `api_key`.
+A value that is not a scope name is not forwarded.
+
+The data service, guardian and the tools routes that run a tool require the
+scope again on these headers, and refuse a request that carries the
+gateway's secret without `X-Wildbox-Auth-Type`. The
+[Gateway authentication guide](../docs/GATEWAY_AUTHENTICATION_GUIDE.md#credential-headers)
+describes how a service reads them. `test/scope_vectors.txt` is the scope
+hierarchy written out; `test/scope_vector_tests.sh` checks `scopes_satisfy`
+against it and the shared package's tests check the services' copy.
 
 ## Routing
 
@@ -300,7 +327,8 @@ CI runs two checks on this directory:
 
 - `.github/workflows/gateway-lint.yml` runs `luacheck` over `nginx/lua`.
 - `.github/workflows/gateway-tests.yml` builds `Dockerfile.test` and runs
-  `test/ci_auth_tests.sh` and `test/revocation_tests.sh` against a mock
+  `test/ci_auth_tests.sh`, `test/scope_forwarding_tests.sh`,
+  `test/scope_vector_tests.sh` and `test/revocation_tests.sh` against a mock
   identity (`test/mock_identity.py`).
 
 The `docker-compose.yml`, `docker-compose.dev.yml` and `Makefile` in this
