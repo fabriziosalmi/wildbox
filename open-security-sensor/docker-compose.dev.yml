@@ -76,7 +76,7 @@ services:
       - redis_dev_data:/data
     
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     
     networks:
       - sensor-dev-network
@@ -98,7 +98,7 @@ services:
       - postgres_test_data:/var/lib/postgresql/data
     
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     
     networks:
       - sensor-dev-network

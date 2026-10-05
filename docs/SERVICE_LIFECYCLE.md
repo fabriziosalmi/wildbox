@@ -41,7 +41,7 @@ These start only when their Compose profile is named, for example
 | Compose service | Profile | Role | Host port |
 | --- | --- | --- | --- |
 | `automations` | `automations` | n8n workflow automation (`n8nio/n8n:1.74.0`) | 127.0.0.1:5678 |
-| `backup` | `backup` | Periodic PostgreSQL backup with `scripts/backup_postgres.sh` | none |
+| `backup` | `backup` | Periodic PostgreSQL and Redis backup with `scripts/backup_postgres.sh` | none |
 | `prometheus` | `monitoring` | Prometheus with `monitoring/prometheus.yml` (`prom/prometheus:v2.55.1`) | 127.0.0.1:9090 |
 | `alertmanager` | `monitoring` | Alertmanager with `monitoring/alertmanager.yml`, which notifies nobody until a receiver is configured (`prom/alertmanager:v0.34.1`) | 127.0.0.1:9093 |
 

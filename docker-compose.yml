@@ -1216,6 +1216,10 @@ services:
     profiles: ["backup"]
     restart: unless-stopped
     environment:
+      # This container is on the Compose network and has the client tools,
+      # so the script connects directly. `make backup` on the host uses the
+      # script's compose mode instead (#681).
+      - BACKUP_MODE=host
       - POSTGRES_HOST=wildbox-postgres
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}

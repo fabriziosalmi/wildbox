@@ -42,7 +42,7 @@ if this page and that file disagree, the file is right and this page is a bug.
 | `wildbox-redis` | `wildbox-redis` | none | Redis 7 | `redis-cli ping` inside the container |
 | `tools-worker`, `guardian-worker`, `cspm-worker` | (Compose default) | none | Celery workers for tools, guardian and cspm | `celery ... inspect ping` inside the container |
 | `data-scheduler` | `open-security-data-scheduler` | none | Collects the threat intelligence feeds on a schedule | scheduler process running |
-| `backup` | (Compose default) | none | Scheduled PostgreSQL backups; only with `--profile backup` | - |
+| `backup` | (Compose default) | none | Scheduled PostgreSQL and Redis backups; only with `--profile backup` | - |
 | `guardian-beat` | `open-security-guardian-beat` | none | Sends guardian's periodic tasks; exactly one instance | heartbeat file updated within 60 s |
 
 `docker compose` commands take the **service name** from the first column
