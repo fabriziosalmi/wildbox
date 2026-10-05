@@ -388,7 +388,18 @@ class IntegrationLog(models.Model):
 
 
 class NotificationChannel(models.Model):
-    """Notification channels for alerts and updates"""
+    """Notification channels for alerts and updates
+
+    A record of where a team wants to be told, and nothing more: guardian
+    delivers nothing through a channel. The notifications it does send (alert
+    rules, SLA violations, compliance reminders) are e-mails to the
+    recipients of the rule, vulnerability or assessment concerned, and none
+    reads this table. ``send_notification`` used to be defined here: it
+    sent nothing, counted the call in ``total_notifications`` and returned
+    True, and nothing called it. It was removed with the API actions of the
+    same name (#644), so ``total_notifications`` and ``last_notification``
+    stay at their defaults.
+    """
     TEAM_LOOKUP = 'team_id'
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     team_id = team_id_field()
@@ -428,28 +439,6 @@ class NotificationChannel(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.get_channel_type_display()})"
-
-    def send_notification(self, event_type, message, severity='info', metadata=None):
-        """Send notification through this channel"""
-        # This would contain the actual notification sending logic
-        # Implementation would depend on the channel type
-        
-        if not self.is_active:
-            return False
-        
-        if event_type not in self.event_types:
-            return False
-        
-        if self.severity_filter and severity not in self.severity_filter:
-            return False
-        
-        # Channel-specific sending logic would go here
-        # For now, just update counters
-        self.total_notifications += 1
-        self.last_notification = timezone.now()
-        self.save(update_fields=['total_notifications', 'last_notification'])
-        
-        return True
 
 
 class ApiUsageMetrics(models.Model):

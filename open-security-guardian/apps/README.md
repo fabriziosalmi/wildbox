@@ -21,18 +21,50 @@ authenticated caller.
 `scanners` and `integrations` store configuration; they do not run scanners
 or talk to external systems:
 
-- `scanners`: `test_connection` and `import_results` return a success message
-  without doing anything, and `start`, `stop`, `pause` and `resume` only change
-  the scan's `status` field. No code starts a scan on Nessus, Qualys, OpenVAS
-  or any other scanner. Creating, changing, triggering or enabling a scan
-  schedule answers 400 (`ScanScheduleViewSet`).
-- `integrations`: the test, sync, retry, webhook trigger, notification and log
-  cleanup actions return a success message without doing anything.
-- `remediation`: `assign`, `sync_external`, and the template `clone` and
-  `apply` actions are placeholders in the same way.
+- `scanners`: no code contacts Nessus, Qualys, OpenVAS or any other scanner.
+  A scan's `status` is a field of the record, set with `PATCH`. Creating,
+  changing, triggering or enabling a scan schedule answers 400
+  (`ScanScheduleViewSet`).
+- `integrations`: no code contacts an external system, synchronizes
+  anything, receives or sends a webhook, delivers through a notification
+  channel, or writes an integration log. The one action is `cleanup_logs`,
+  which deletes the team's logs older than a number of days.
+- `remediation`: tickets mirror tickets of an external system that Guardian
+  does not talk to; workflows and steps are worked by people
+  (`automation_script` on a step is text, nothing runs it).
 
 The only scanning Guardian performs is the asset port scan and discovery in
-`apps/assets/tasks.py`.
+`apps/assets/tasks.py`. Of the discovery rule types, only `network_scan` is
+implemented (`IMPLEMENTED_DISCOVERY_TYPES`).
+
+### An action does what its answer says
+
+These apps used to serve twenty actions that answered
+`{"status": "success", ...}`, or fixed figures, without doing anything
+(`test_connection`, `health_check`, `sync_now`, `send_notification`,
+`import_results`, a scan's `start`, a ticket's `sync_external` and the rest).
+They were removed in #644, and the ones that could be done in Guardian's own
+database were implemented (a ticket's `assign`, a template's `clone` and
+`apply`, `cleanup_logs`, the bulk `reopen` and `untag`).
+
+`tests/unit/test_action_contracts.py` lists every custom action from the
+URLconf and fails for one that is not classified there. To add an action, add
+its contract:
+
+- `Effect`: the request succeeds and changes something. The test compares
+  every row Guardian stores, the Celery tasks dispatched and the e-mails
+  sent, before and after; a `2xx` answer with nothing changed fails.
+- `Evaluates`: a request other than a `GET` that computes an answer and
+  stores nothing; the answer must change when the data does.
+- `Refuses`: the action always answers an error and changes nothing. Use it
+  for what Guardian cannot do, with a `detail` and a stable `code`; prefer
+  not adding the route at all.
+- `Reads`: a `GET`. It must store nothing, and its answer must change when
+  the data does, so fixed figures fail.
+
+An action that cannot do what it says is not given a route. One that cannot
+run for a particular record answers an error with a `code` (for example `501
+DISCOVERY_TYPE_NOT_IMPLEMENTED`), never `200` or `202`.
 
 ## Layout
 

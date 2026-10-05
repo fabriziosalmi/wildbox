@@ -98,21 +98,21 @@ def execute_discovery_rule(self, rule_id):
         # Update last_run timestamp
         rule.last_run = timezone.now()
         rule.save(update_fields=['last_run'])
-        
-        discovered_count = 0
-        
-        if rule.discovery_type == 'network_scan':
-            discovered_count = _execute_network_scan(rule)
-        elif rule.discovery_type == 'cloud_api':
-            discovered_count = _execute_cloud_discovery(rule)
-        elif rule.discovery_type == 'cmdb_import':
-            discovered_count = _execute_cmdb_import(rule)
-        
-        logger.info(f"Discovery rule {rule.name} completed. Discovered {discovered_count} assets.")
+
+        # network_scan is the one implemented type (the guard above). It
+        # queues one discover_assets task per network and does not wait for
+        # them, so what this task knows is how many scans it queued, not how
+        # many assets they will find: it used to report the first as the
+        # second ("Discovered N assets", 'discovered_count') (#644).
+        networks_queued = _execute_network_scan(rule)
+
+        logger.info(
+            f"Discovery rule {rule.name} completed. Queued {networks_queued} network scans."
+        )
         return {
             'status': 'completed',
             'rule_name': rule.name,
-            'discovered_count': discovered_count
+            'networks_queued': networks_queued,
         }
         
     except AssetDiscoveryRule.DoesNotExist:
@@ -364,67 +364,28 @@ def _detect_service(ip_address, port):
 
 
 def _execute_network_scan(rule):
-    """Execute network scan discovery rule"""
+    """Queue a network scan per network of the rule; how many were queued."""
     networks = rule.target_specification.get('networks', [])
     scan_type = rule.target_specification.get('scan_type', 'basic')
-    
-    discovered_count = 0
-    
+
+    queued = 0
+
     for network_range in networks:
         try:
-            result = discover_assets.delay(
+            discover_assets.delay(
                 network_range,
                 scan_type,
                 team_id=str(rule.team_id) if rule.team_id else None,
             )
-            # In a real implementation, you might wait for the result or track it
-            discovered_count += 1  # Placeholder
+            queued += 1
         except Exception as e:
             logger.error(f"Failed to scan network {network_range}: {str(e)}")
-    
-    return discovered_count
+
+    return queued
 
 
-def _execute_cloud_discovery(rule):
-    """Execute cloud API discovery rule"""
-    provider = rule.target_specification.get('provider')
-    
-    if provider == 'aws':
-        return _discover_aws_assets(rule)
-    elif provider == 'azure':
-        return _discover_azure_assets(rule)
-    elif provider == 'gcp':
-        return _discover_gcp_assets(rule)
-    
-    return 0
-
-
-def _execute_cmdb_import(rule):
-    """Execute CMDB import discovery rule"""
-    cmdb_url = rule.target_specification.get('url')
-    cmdb_query = rule.target_specification.get('query')
-    
-    # Implementation would depend on specific CMDB system
-    logger.info(f"CMDB import from {cmdb_url} not yet implemented")
-    return 0
-
-
-def _discover_aws_assets(rule):
-    """Discover AWS assets using boto3"""
-    # Placeholder for AWS discovery implementation
-    logger.info("AWS asset discovery not yet implemented")
-    return 0
-
-
-def _discover_azure_assets(rule):
-    """Discover Azure assets using Azure SDK"""
-    # Placeholder for Azure discovery implementation
-    logger.info("Azure asset discovery not yet implemented")
-    return 0
-
-
-def _discover_gcp_assets(rule):
-    """Discover GCP assets using Google Cloud SDK"""
-    # Placeholder for GCP discovery implementation
-    logger.info("GCP asset discovery not yet implemented")
-    return 0
+# Cloud API (AWS, Azure, GCP) and CMDB discovery are not implemented. The
+# functions that stood here for them logged "not yet implemented" and
+# returned 0 discovered assets; execute_discovery_rule cannot reach a type
+# outside IMPLEMENTED_DISCOVERY_TYPES (#548), so they were dead code and
+# were removed (#644).

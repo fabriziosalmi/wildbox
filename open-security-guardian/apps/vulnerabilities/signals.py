@@ -11,9 +11,8 @@ from django.utils import timezone
 
 from .models import Vulnerability, VulnerabilityHistory, VulnerabilityStatus
 from .tasks import (
-    notify_vulnerability_assignment, 
+    notify_vulnerability_assignment,
     enrich_vulnerability_with_threat_intel,
-    scan_vulnerability_remediation
 )
 
 

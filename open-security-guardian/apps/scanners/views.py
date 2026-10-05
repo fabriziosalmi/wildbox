@@ -2,9 +2,19 @@
 Scanner Management Views
 
 Django REST Framework views for scanner management.
+
+These viewsets keep records of external scanners (Nessus, Qualys, OpenVAS,
+Rapid7, custom) and of their runs. guardian has no code that talks to one:
+``scanners/{id}/test_connection``, ``scans/{id}/start``, ``stop``, ``pause``
+and ``resume`` and ``scans/import_results`` answered "success" having
+contacted nothing and imported nothing (the first asked the caller for a
+``success`` flag and answered "Connection test passed" whatever it was), and
+were removed (#644). A scan's ``status``
+is a field of the record, set with PUT or PATCH like the others. The scan
+guardian itself performs is the asset port scan (apps.assets).
 """
 
-from rest_framework import viewsets, status, permissions
+from rest_framework import viewsets, status
 from apps.core.permissions import IsGatewayAdminOrReadOnly
 from apps.core.tenancy import TeamScopedViewSetMixin
 from rest_framework.decorators import action
@@ -21,10 +31,10 @@ from .models import (
     Scan, ScanProfile, ScanResult, ScanSchedule, ScanStatus, Scanner, ScannerStatus,
 )
 from .serializers import (
-    ScannerListSerializer, ScannerDetailSerializer, ScannerConnectionTestSerializer,
+    ScannerListSerializer, ScannerDetailSerializer,
     ScanProfileSerializer, ScanListSerializer, ScanDetailSerializer,
     ScanCreateSerializer, ScanResultSerializer, ScanScheduleSerializer,
-    ScanControlSerializer, ScanImportSerializer, ScannerStatsSerializer
+    ScannerStatsSerializer
 )
 
 
@@ -44,16 +54,6 @@ class ScannerViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         elif self.action in ['retrieve']:
             return ScannerDetailSerializer
         return ScannerDetailSerializer
-
-    @action(detail=True, methods=['post'])
-    def test_connection(self, request, pk=None):
-        """Test connection to scanner"""
-        scanner = self.get_object()
-        serializer = ScannerConnectionTestSerializer(data=request.data)
-        if serializer.is_valid():
-            # TODO: Implement actual connection test logic
-            return Response({'status': 'success', 'message': 'Connection test passed'})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
     def stats(self, request):
@@ -130,45 +130,6 @@ class ScanViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
             return ScanDetailSerializer
         return ScanDetailSerializer
 
-    @action(detail=True, methods=['post'])
-    def start(self, request, pk=None):
-        """Start a scan"""
-        scan = self.get_object()
-        serializer = ScanControlSerializer(data=request.data)
-        if serializer.is_valid():
-            # TODO: Implement actual scan start logic
-            scan.status = 'running'
-            scan.save()
-            return Response({'status': 'success', 'message': 'Scan started'})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    @action(detail=True, methods=['post'])
-    def stop(self, request, pk=None):
-        """Stop a scan"""
-        scan = self.get_object()
-        # TODO: Implement actual scan stop logic
-        scan.status = 'stopped'
-        scan.save()
-        return Response({'status': 'success', 'message': 'Scan stopped'})
-
-    @action(detail=True, methods=['post'])
-    def pause(self, request, pk=None):
-        """Pause a scan"""
-        scan = self.get_object()
-        # TODO: Implement actual scan pause logic
-        scan.status = 'paused'
-        scan.save()
-        return Response({'status': 'success', 'message': 'Scan paused'})
-
-    @action(detail=True, methods=['post'])
-    def resume(self, request, pk=None):
-        """Resume a scan"""
-        scan = self.get_object()
-        # TODO: Implement actual scan resume logic
-        scan.status = 'running'
-        scan.save()
-        return Response({'status': 'success', 'message': 'Scan resumed'})
-
     @action(detail=True, methods=['get'])
     def results(self, request, pk=None):
         """Get scan results"""
@@ -176,17 +137,6 @@ class ScanViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
         results = ScanResult.objects.filter(scan=scan)
         serializer = ScanResultSerializer(results, many=True)
         return Response(serializer.data)
-
-    @action(detail=False, methods=['post'])
-    def import_results(self, request):
-        """Import scan results from external source"""
-        serializer = ScanImportSerializer(
-            data=request.data, context=self.get_serializer_context()
-        )
-        if serializer.is_valid():
-            # TODO: Implement actual import logic
-            return Response({'status': 'success', 'message': 'Results imported'})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ScanResultViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
@@ -214,8 +164,8 @@ class ScanScheduleViewSet(TeamScopedViewSetMixin, viewsets.ModelViewSet):
 
     A scan schedule names an external scanner (Nessus, Qualys, OpenVAS,
     Rapid7 or a custom one) and a scan profile, and guardian has no code
-    that starts a scan on any of them: the start, stop, pause, resume and
-    import actions above are placeholders. The asset port scan
+    that starts a scan on any of them (the start, stop, pause, resume and
+    import actions that pretended to were removed, #644). The asset port scan
     (apps.assets.tasks.scan_asset_ports) is guardian's own TCP connect scan
     of one asset; it uses neither the scanner nor the profile and produces
     no Scan or ScanResult, so running it for a scan schedule would report

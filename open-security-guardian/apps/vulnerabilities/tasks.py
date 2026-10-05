@@ -142,59 +142,11 @@ def notify_vulnerability_assignment(self, vulnerability_id, assigned_by_user_id)
         raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
 
 
-@shared_task(bind=True, max_retries=3)
-def scan_vulnerability_remediation(self, vulnerability_id):
-    """
-    Check if vulnerability has been remediated by re-scanning
-    
-    Args:
-        vulnerability_id: ID of vulnerability to check
-    """
-    try:
-        vulnerability = Vulnerability.objects.get(id=vulnerability_id)
-        
-        # This would integrate with scanner APIs to verify remediation
-        # Implementation depends on specific scanner being used
-        
-        # Example for generic HTTP-based scanner
-        scanner_config = getattr(settings, 'SCANNER_CONFIG', {})
-        if not scanner_config:
-            logger.warning("No scanner configuration found")
-            return {'error': 'No scanner configured'}
-        
-        # Placeholder for actual scanner integration
-        remediation_verified = False  # Would be result of actual scan
-        
-        if remediation_verified:
-            vulnerability.status = VulnerabilityStatus.RESOLVED
-            vulnerability.resolved_at = timezone.now()
-            vulnerability.metadata['remediation_verification'] = {
-                'verified_at': timezone.now().isoformat(),
-                'method': 'automated_scan'
-            }
-            vulnerability.save()
-            
-            # Create history entry
-            VulnerabilityHistory.objects.create(
-                vulnerability=vulnerability,
-                field_name='status',
-                old_value='open',
-                new_value='resolved',
-                change_reason='Automated remediation verification',
-            )
-            
-            logger.info(f"Vulnerability {vulnerability_id} automatically closed - remediation verified")
-            return {'verification_result': 'remediated'}
-        else:
-            logger.info(f"Vulnerability {vulnerability_id} still present after remediation check")
-            return {'verification_result': 'still_present'}
-            
-    except Vulnerability.DoesNotExist:
-        logger.error(f"Vulnerability {vulnerability_id} not found")
-        return {'error': 'Vulnerability not found'}
-    except Exception as exc:
-        logger.error(f"Error checking vulnerability remediation: {exc}")
-        raise self.retry(exc=exc, countdown=60 * (self.request.retries + 1))
+# There is no task that verifies a remediation by scanning again:
+# ``scan_vulnerability_remediation`` contacted no scanner, set
+# ``remediation_verified = False`` and answered "still_present" for every
+# vulnerability, and nothing dispatched it. It was removed (#644). guardian
+# cannot start a scan on an external scanner (apps/scanners/views.py).
 
 
 #: What every history entry of the SLA check starts with; the check finds its

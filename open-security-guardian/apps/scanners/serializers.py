@@ -59,15 +59,6 @@ class ScannerDetailSerializer(TeamScopedModelSerializer):
         return super().update(instance, validated_data)
 
 
-class ScannerConnectionTestSerializer(serializers.Serializer):
-    """Serializer for testing scanner connections"""
-    success = serializers.BooleanField()
-    message = serializers.CharField()
-    response_time_ms = serializers.IntegerField(required=False)
-    scanner_version = serializers.CharField(required=False)
-    error_details = serializers.CharField(required=False)
-
-
 class ScanProfileSerializer(TeamScopedModelSerializer):
     """Serializer for scan profiles"""
     scanner_name = serializers.CharField(source='scanner.name', read_only=True)
@@ -206,32 +197,6 @@ class ScanScheduleSerializer(TeamScopedModelSerializer):
                 "Cron expression must have 5 parts: minute hour day month weekday"
             )
         return value
-
-
-class ScanControlSerializer(serializers.Serializer):
-    """Serializer for scan control actions"""
-    action = serializers.ChoiceField(choices=[
-        ('start', 'Start'),
-        ('pause', 'Pause'),
-        ('resume', 'Resume'),
-        ('cancel', 'Cancel'),
-        ('retry', 'Retry')
-    ])
-    reason = serializers.CharField(max_length=500, required=False)
-
-
-class ScanImportSerializer(serializers.Serializer):
-    """Serializer for importing scan results"""
-    file_format = serializers.ChoiceField(choices=[
-        ('nessus', 'Nessus (.nessus)'),
-        ('qualys', 'Qualys XML'),
-        ('openvas', 'OpenVAS XML'),
-        ('csv', 'CSV'),
-        ('json', 'JSON')
-    ])
-    file_content = serializers.CharField(help_text="Base64 encoded file content")
-    create_vulnerabilities = serializers.BooleanField(default=True)
-    assign_to_assets = serializers.BooleanField(default=True)
 
 
 class ScannerStatsSerializer(serializers.Serializer):
