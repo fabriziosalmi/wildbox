@@ -172,6 +172,19 @@ figure (at least one request a minute), and reports it on every response in
 `RATE_LIMIT_PER_HOUR must be a whole number ...` and does not start. Restart
 the gateway after changing it (`docker compose up -d gateway`).
 
+### Guardian's per-user rate limit
+
+Under the gateway's limit, guardian allows each user
+`GUARDIAN_RATE_LIMIT_USER` requests to its own API: `1000/hour` unless `.env`
+sets it. The value is `<count>/<period>` with a period of `second`, `minute`,
+`hour` or `day` (for example `20/minute`), or `off` to rely on the gateway's
+limit alone. The count is kept per user, as the gateway identifies the user,
+so one member of a team cannot use up guardian for the others. With any other
+value guardian logs `GUARDIAN_RATE_LIMIT_USER=...: expected <count>/<period>
+...` and does not start. Restart guardian after changing it
+(`docker compose up -d guardian`). Guardian's health check is not rate
+limited.
+
 ### Redis memory
 
 Redis is not a cache here. It holds the token blacklist, failed-login lockout

@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **guardian: pagination links no longer name the internal host, and a
+  client can follow them** (#643). A list of more than one page answered
+  `next` and `previous` links such as
+  `https://open-security-guardian/api/v1/assets/assets/?page=2`: the Host
+  the gateway presents guardian, without the gateway's `/guardian`
+  segment. No client could follow them, and they disclosed an internal
+  container name, the leak the gateway already rewrote out of `Location`
+  headers. The links are now relative references under the gateway's
+  path, `/api/v1/guardian/assets/assets/?page=2`, with no scheme and no
+  host, to be resolved against the requested URL like a redirect. They
+  are not absolute on purpose: the only host guardian could write is
+  `X-Forwarded-Host`, which is the `Host` the client sent a gateway that
+  answers for any name, and `USE_X_FORWARDED_HOST` would tie
+  `ALLOWED_HOSTS` back to every public name. The gateway states its path
+  in `X-Forwarded-Prefix`, a literal in the guardian location that
+  replaces a client's own; guardian reads it only on a request the
+  gateway authenticated and only as a plain path. The dashboard pages by
+  number and is unaffected. An integration test stores 51 assets and
+  walks the list through the gateway with `next` and `previous`, with and
+  without forged `X-Forwarded-*`, `Forwarded`, `SCRIPT_NAME` and `Host`
+  headers; a unit test fails when the header, the location and guardian's
+  API root stop agreeing. Reverting to the stock paginator, or dropping
+  the header from the gateway, fails both.
 - **tools no longer serves `/api/system/info`,
   `/api/system/operational-metrics` and `/api/system/health-aggregate`,
   which answered without authentication.** Anyone who could reach the
@@ -136,6 +159,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name them. The SLA check no longer records a notification as sent when
   its delivery failed. Unit tests define both settings and check that
   nothing reaches them; eleven mutations of the fix each fail a test.
+- **The responder's connector listing no longer prints internal service
+  addresses** (#654). `GET /api/v1/responder/connectors`, which any
+  member of any team can call, answered each connector's `config`: the
+  `WILDBOX_*_URL` addresses of the tools, data, guardian and agents
+  services on the internal network. A caller cannot reach them and has
+  no use for them, and they describe how the deployment is laid out.
+  The listing is now each connector's `name` and `actions`; the
+  `config` field is gone.
 
 ### Removed
 
@@ -161,6 +192,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no series, and the expression is empty rather than zero. It also read
   a counter of synchronous runs only. Nothing replaces it: no metric
   says that the stack has stopped doing work it should be doing.
+- **`RESPONDER_DATABASE_URL`, and the responder's `DATABASE_URL`**
+  (#654). `docker-compose.yml` passed the responder
+  `DATABASE_URL=${RESPONDER_DATABASE_URL:-${DATABASE_URL}}`: a
+  `responder` database that `scripts/init-databases.sql` never creates
+  or, when that variable was unset, identity's own connection string.
+  The responder has no SQL state (its runs and its worker queue are in
+  Redis) and read neither, so the only effect was a PostgreSQL password
+  in a container with no use for it. The variable is removed from
+  `docker-compose.yml`, `.env.example` and the secret-rotation guide,
+  and the responder no longer waits for PostgreSQL to start.
 - **The API-doc generators and the two pages they left behind.**
   `scripts/generate-api-docs.py`, `generate-api-docs.sh` and
   `generate-api-docs-redoc.sh` could not produce current documentation:
@@ -226,6 +267,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   validator raised `ValueError`, the field errors could not be rendered
   as JSON and the request ended in an internal error: an IOC value of
   the wrong format sent to `POST /api/v1/agents/analyze`, for one.
+- **guardian: the rate limit is configurable, checked at start and counted
+  per user; the health check is no longer throttled** (#645).
+  `API_RATE_LIMIT` was documented as guardian's rate limit, but
+  `docker-compose.yml` never passed it to the container, and the one
+  value would have replaced two different defaults, for anonymous callers
+  and for users. The setting is now `GUARDIAN_RATE_LIMIT_USER`
+  (`1000/hour` unless set; `<count>/<period>`, or `off`), passed by
+  compose in development and production. Guardian refuses to start on a
+  malformed value, naming the variable; it used to start and answer 500
+  to every request. Requests are counted per user, on the user id the
+  gateway forwards, not per address. The throttle for anonymous callers
+  is removed: guardian refuses every request under `/api/` that did not
+  come through the gateway, so the only route it reached was `/health/`,
+  where it refused the container's own probe (120 an hour against a limit
+  of 100) for the last ten minutes of every hour, and the container
+  reported unhealthy. A guardian run outside compose still reads
+  `API_RATE_LIMIT` when the new variable is unset.
+- **The responder's `status_url` is a path a client can follow** (#654).
+  `POST /api/v1/responder/playbooks/{id}/execute` answered
+  `"status_url": "/v1/runs/{run_id}"`, the service's own path, which on
+  the gateway is the dashboard, never the run. It is now the run's path
+  on the gateway, `/api/v1/responder/runs/{run_id}`: a constant without
+  scheme or host, as the tools service's `status_url` is, so no `Host`
+  or `X-Forwarded-*` header a client sends can change it. A unit test
+  follows it through the rewrite in the gateway's configuration, so the
+  two cannot drift apart. The endpoint's OpenAPI entry now documents
+  the 202 answer and its fields; it declared a 200 with no schema.
 - **`make health` fails when the stack is unhealthy.** It probed each
   service with `curl -s`, which exits 0 on any HTTP status, and always
   exited 0 itself. It asked guardian for `/health`, which answers a 301
