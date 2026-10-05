@@ -16,6 +16,17 @@ global:
 rule_files:
   - /etc/prometheus/alert_rules.yml
 
+# Where a firing alert goes. This block did not exist: the rules were
+# evaluated and nothing was ever sent, so an alert was visible on this
+# server's /alerts page and nowhere else (#658). `alertmanager` is the
+# Compose service of the same profile; what it does with an alert is decided
+# by its own configuration (monitoring/alertmanager.yml, which notifies
+# nobody until a receiver is configured).
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
 scrape_configs:
   - job_name: wildbox-services
     metrics_path: /metrics
@@ -33,3 +44,9 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  # Alertmanager's own metrics: whether it is up and whether its
+  # notifications are being delivered (the wildbox-alerting rules).
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]

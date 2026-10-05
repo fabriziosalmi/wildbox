@@ -174,7 +174,7 @@ Optional services stay down until you ask for them:
 
 ```bash
 docker compose --profile automations up -d   # n8n workflows
-docker compose --profile monitoring up -d    # Prometheus
+docker compose --profile monitoring up -d    # Prometheus and Alertmanager
 ```
 
 ---

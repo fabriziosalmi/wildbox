@@ -1,0 +1,47 @@
+# Alertmanager: notify a generic webhook.
+#
+# Alertmanager sends an HTTP POST with a JSON body (`version` "4", `status`
+# "firing" or "resolved", and the `alerts` with their labels and annotations)
+# to the URL below; the format is documented at
+# https://prometheus.io/docs/alerting/latest/configuration/#webhook_config
+#
+# Copy this file outside the tracked tree and set ALERTMANAGER_CONFIG_FILE to
+# the copy in .env:
+#
+#   mkdir -p monitoring/local
+#   cp monitoring/examples/alertmanager-webhook.yml monitoring/local/alertmanager.yml
+#   # .env: ALERTMANAGER_CONFIG_FILE=./monitoring/local/alertmanager.yml
+#
+# The URL is not written here: a webhook URL usually carries a token, in its
+# path or its query string, and is a secret. Alertmanager reads it, at every
+# notification, from a file in ALERTMANAGER_SECRETS_DIR (./monitoring/secrets
+# unless you set it), which the container mounts read-only at
+# /etc/alertmanager/secrets and runs as UID 65534 to read:
+#
+#   touch monitoring/secrets/webhook_url
+#   chmod 600 monitoring/secrets/webhook_url
+#   $EDITOR monitoring/secrets/webhook_url     # the URL, one line
+#   sudo chown 65534 monitoring/secrets/webhook_url   # Linux hosts
+#
+# Then validate and restart (docs/guides/deployment.md, section 7).
+
+route:
+  receiver: webhook
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: webhook
+    webhook_configs:
+      - url_file: /etc/alertmanager/secrets/webhook_url
+        # Also say when the alert stops firing.
+        send_resolved: true
+        # If the receiver expects a bearer token instead of (or as well as) a
+        # secret URL, put the token in monitoring/secrets/webhook_token and
+        # uncomment:
+        # http_config:
+        #   authorization:
+        #     type: Bearer
+        #     credentials_file: /etc/alertmanager/secrets/webhook_token
