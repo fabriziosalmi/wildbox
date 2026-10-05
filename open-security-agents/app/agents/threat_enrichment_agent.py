@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Literal
 
 from anthropic import AnthropicError
+from celery.exceptions import SoftTimeLimitExceeded
 from langchain_anthropic import ChatAnthropic
 from langchain_classic.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -342,6 +343,11 @@ Begin your investigation by thinking through your approach, then systematically 
                 "tools_used": tools_used,
             }
 
+        except SoftTimeLimitExceeded:
+            # The task's time limit, which Celery raises wherever the task
+            # happens to be: the analysis timed out, it is not a report that
+            # could not be generated. The worker records it as such.
+            raise
         except Exception as e:
             # No report without the model's own (#717). The fallback here
             # took the verdict from the first of the four verdict words in

@@ -73,6 +73,7 @@ class PendingResult:
         self.state = "PENDING"
         self.info = None
         self.result = None
+        self.date_done = None
 
 
 @pytest.fixture

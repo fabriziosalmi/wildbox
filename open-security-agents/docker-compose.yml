@@ -48,7 +48,6 @@ services:
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
       - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_RESPONDER_URL=http://localhost:8018
       # Claude (Anthropic). Optional: without a key the service starts and
       # analysis tasks fail until one is set.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -85,7 +84,6 @@ services:
       - WILDBOX_API_URL=http://localhost:8000
       - WILDBOX_DATA_URL=http://localhost:8002
       - WILDBOX_GUARDIAN_URL=http://localhost:8013
-      - WILDBOX_RESPONDER_URL=http://localhost:8018
       # The worker runs the analysis: it calls Claude and the tools.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - ANTHROPIC_MODEL=${ANTHROPIC_MODEL:-claude-opus-4-8}

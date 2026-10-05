@@ -8,8 +8,6 @@ runner's Docker.
 """
 
 import importlib.util
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -258,21 +256,8 @@ def test_required_variables_are_found_in_both_spellings():
 # --- The repository, with Docker ---------------------------------------------
 
 
-def docker_available() -> bool:
-    if shutil.which("docker") is None:
-        return False
-    result = subprocess.run(
-        ["docker", "compose", "version"], capture_output=True, check=False
-    )
-    return result.returncode == 0
-
-
-@pytest.fixture(scope="module")
-def docker():
-    if not docker_available():
-        if os.environ.get("WILDBOX_REQUIRE_DOCKER_TESTS") == "1":
-            pytest.fail("docker is required for these tests and is not available")
-        pytest.skip("docker is not available")
+# The `docker` fixture is the one of conftest.py: it skips where Docker is
+# missing, and CI turns that skip into a failure (#723).
 
 
 def run(root: Path) -> subprocess.CompletedProcess:

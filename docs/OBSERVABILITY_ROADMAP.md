@@ -30,9 +30,11 @@
 **Missing:**
 
 - **Guardian and gateway scraping** (not in `monitoring/prometheus.yml`)
-- **Worker metrics**: the Celery workers (`tools-worker`, `guardian-worker`,
-  `cspm-worker`) and the data scheduler export nothing, so asynchronous tool
-  runs, scans and feed collection have no alert
+- **Worker metrics**: `guardian-worker`, `cspm-worker` and the data
+  scheduler export nothing, so scans and feed collection have no alert.
+  `tools-worker` exports nothing either, but counts its asynchronous runs in
+  Redis, and the tools API exports the counts
+  (`open-security-tools/app/async_metrics.py`)
 - **Grafana dashboards**
 - **Distributed tracing**: `open-security-shared/tracing.py` initializes
   OpenTelemetry only when its dependencies are installed, and no Compose file
@@ -217,8 +219,10 @@ services:
 Done. The `monitoring` profile runs `prom/alertmanager:v0.34.1`,
 `monitoring/prometheus.yml` has an `alerting` section that names it, and
 `monitoring/alert_rules.yml` holds `WildboxServiceDown`,
-`WildboxHighErrorRate`, `WildboxSyncToolFailureRate`, `WildboxAlertmanagerDown`
-and `WildboxAlertNotificationsFailing`, with unit tests in
+`WildboxHighErrorRate`, `WildboxSyncToolFailureRate`,
+`WildboxAsyncToolFailureRate`, `WildboxAsyncToolTasksNotConsumed`,
+`WildboxAsyncToolMetricsUnreadable`, `WildboxAlertmanagerDown` and
+`WildboxAlertNotificationsFailing`, with unit tests in
 `monitoring/alert_rules.test.yml`. What each alert measures, and how to
 configure a receiver, is in the
 [deployment guide](https://www.wildbox.io/guides/deployment/#7-monitoring).

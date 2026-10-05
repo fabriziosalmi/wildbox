@@ -152,10 +152,10 @@ tests:
                 Over the last fifteen minutes 50% of the synchronous tool runs
                 (POST /api/v1/tools/<tool>) raised an error the tool does not
                 handle, and the share has stayed above 25% for fifteen minutes.
-                Asynchronous runs (the tools-worker) are not measured: this
-                alert neither fires for them nor clears because of them.
-                Timeouts, refused runs and failures a tool reports in its
-                result count as runs, not as failures.
+                Asynchronous runs (the tools-worker) are measured by
+                WildboxAsyncToolFailureRate: this alert neither fires for them
+                nor clears because of them. Timeouts, refused runs and failures
+                a tool reports in its result count as runs, not as failures.
 
   - name: timeouts and refusals are runs, not failures
     interval: 30s
@@ -174,6 +174,212 @@ tests:
         alertname: WildboxSyncToolFailureRate
         exp_alerts: []
 
+  # --------------------------------------------------------------------------
+  # WildboxAsyncToolFailureRate
+  # --------------------------------------------------------------------------
+  - name: half of the asynchronous tool runs failing fires after fifteen minutes
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '0+1x80'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: WildboxAsyncToolFailureRate
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: WildboxAsyncToolFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Over a quarter of asynchronous tool runs are failing"
+              description: >-
+                Over the last fifteen minutes 50% of the asynchronous tool
+                runs (POST /api/v1/tools/<tool>/async, executed by
+                tools-worker) failed: the tool raised an error it does not
+                handle, or the task failed in the worker after its retries.
+                The share has stayed above 25% for fifteen minutes. Timeouts,
+                canceled and refused tasks and failures a tool reports in its
+                result count as runs, not as failures. Synchronous runs are
+                measured by WildboxSyncToolFailureRate.
+      # The synchronous alert reads another counter.
+      - eval_time: 20m
+        alertname: WildboxSyncToolFailureRate
+        exp_alerts: []
+
+  - name: asynchronous timeouts, cancellations and refusals are runs, not failures
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="timeout"}'
+        values: '0+2x80'
+      - series: 'wildbox_tool_async_executions_total{tool="sql_injection_scanner", outcome="refused"}'
+        values: '0+2x80'
+      - series: 'wildbox_tool_async_executions_total{tool="unknown", outcome="refused"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="cancelled"}'
+        values: '0+1x80'
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '0+1x80'
+    alert_rule_test:
+      # 1 failed in 8 runs: 12.5%.
+      - eval_time: 30m
+        alertname: WildboxAsyncToolFailureRate
+        exp_alerts: []
+
+  # One ratio over both counters would be 1 in 11 here, and silent.
+  - name: a worker that fails every task is not hidden by synchronous runs that succeed
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="completed"}'
+        values: '0+10x80'
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '0+1x80'
+    alert_rule_test:
+      - eval_time: 31m
+        alertname: WildboxAsyncToolFailureRate
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Over a quarter of asynchronous tool runs are failing"
+              description: >-
+                Over the last fifteen minutes 100% of the asynchronous tool
+                runs (POST /api/v1/tools/<tool>/async, executed by
+                tools-worker) failed: the tool raised an error it does not
+                handle, or the task failed in the worker after its retries.
+                The share has stayed above 25% for fifteen minutes. Timeouts,
+                canceled and refused tasks and failures a tool reports in its
+                result count as runs, not as failures. Synchronous runs are
+                measured by WildboxSyncToolFailureRate.
+      - eval_time: 31m
+        alertname: WildboxSyncToolFailureRate
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------
+  # WildboxAsyncToolTasksNotConsumed
+  # --------------------------------------------------------------------------
+  # A stack on which no asynchronous task ever ran: the consumed counter is
+  # exported as 0, not absent, so the first tasks nobody takes are seen.
+  - name: tasks that wait fifteen minutes while no worker takes any fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_queue_length{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '0 0 3x40'
+      - series: 'wildbox_tool_async_tasks_consumed_total{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '0x42'
+    alert_rule_test:
+      # Queued since 1m; 14m30s later it is still pending.
+      - eval_time: 15m30s
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              job: wildbox-services
+              instance: open-security-tools:8000
+            exp_annotations:
+              summary: "Asynchronous tool tasks are queued and no worker is taking them"
+              description: >-
+                3 asynchronous tool task(s) are waiting in the queue, the
+                queue has not been empty for fifteen minutes and no worker has
+                taken a task in that time. Callers of
+                POST /api/v1/tools/<tool>/async get a task that stays pending.
+                Check `docker compose ps tools-worker` and its logs: the
+                worker is stopped, restarting, or cannot reach Redis.
+
+  # Five tasks always waiting, and the worker starts one every five minutes:
+  # a queue, not a worker that stopped.
+  - name: a backlog that a busy worker is working through does not fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_queue_length{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '5x80'
+      - series: 'wildbox_tool_async_tasks_consumed_total{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '10x9 11x9 12x9 13x9 14x9 15x9 16x9 17x9'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+      - eval_time: 38m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+
+  - name: a worker that restarts and takes the queue within fifteen minutes does not fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_queue_length{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '0 0 2x24 0x40'
+      - series: 'wildbox_tool_async_tasks_consumed_total{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '7x26 9x40'
+    alert_rule_test:
+      - eval_time: 13m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+      - eval_time: 30m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+
+  # --------------------------------------------------------------------------
+  # WildboxAsyncToolMetricsUnreadable
+  # --------------------------------------------------------------------------
+  # The api exports no count while it cannot read them: the queue alert has
+  # nothing to compare and stays silent, and this alert says why.
+  - name: counters the api cannot read fire, while the queue alert cannot
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_metrics_up{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '1 1 0x40'
+      - series: 'wildbox_tool_async_queue_length{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '4 4 _x40'
+      - series: 'wildbox_tool_async_tasks_consumed_total{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '7 7 _x40'
+    alert_rule_test:
+      - eval_time: 10m30s
+        alertname: WildboxAsyncToolMetricsUnreadable
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: WildboxAsyncToolMetricsUnreadable
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              job: wildbox-services
+              instance: open-security-tools:8000
+            exp_annotations:
+              summary: "The tools service cannot read the asynchronous run counters"
+              description: >-
+                For ten minutes the tools api on open-security-tools:8000 has
+                not been able to read the counters of asynchronous runs from
+                Redis. While this lasts WildboxAsyncToolFailureRate and
+                WildboxAsyncToolTasksNotConsumed cannot fire. Asynchronous
+                execution itself needs the same Redis: check `wildbox-redis`
+                and the api's logs.
+      - eval_time: 20m
+        alertname: WildboxAsyncToolTasksNotConsumed
+        exp_alerts: []
+
+  - name: a Redis that is back within ten minutes does not fire
+    interval: 30s
+    input_series:
+      - series: 'wildbox_tool_async_metrics_up{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '1 1 0x12 1x40'
+    alert_rule_test:
+      # Unreadable since 1m, and still unreadable.
+      - eval_time: 6m
+        alertname: WildboxAsyncToolMetricsUnreadable
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: WildboxAsyncToolMetricsUnreadable
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: WildboxAsyncToolMetricsUnreadable
+        exp_alerts: []
+
   # The rule this file replaced, WildboxNoToolExecutions, fired here: a
   # healthy stack on which nobody ran a tool for twelve hours. Nothing in the
   # rule file may.
@@ -188,6 +394,16 @@ tests:
         values: '12x2880'
       - series: 'wildbox_tool_executions_total{tool="dns_lookup", outcome="failed"}'
         values: '5x2880'
+      # Asynchronous runs from the day before, all of them failed; an empty
+      # queue; the last task taken hours ago.
+      - series: 'wildbox_tool_async_executions_total{tool="port_scanner", outcome="failed"}'
+        values: '9x2880'
+      - series: 'wildbox_tool_async_queue_length{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '0x2880'
+      - series: 'wildbox_tool_async_tasks_consumed_total{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '9x2880'
+      - series: 'wildbox_tool_async_metrics_up{job="wildbox-services", instance="open-security-tools:8000"}'
+        values: '1x2880'
       - series: 'wildbox_http_requests_total{service="tools", method="GET", path="/health", status="200"}'
         values: '0+1x2880'
       - series: 'alertmanager_notifications_failed_total{integration="email", reason="other"}'
@@ -211,6 +427,15 @@ tests:
       - eval_time: 13h
         exp_alerts: []
         alertname: WildboxNoToolExecutions
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxAsyncToolFailureRate
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxAsyncToolTasksNotConsumed
+      - eval_time: 13h
+        exp_alerts: []
+        alertname: WildboxAsyncToolMetricsUnreadable
 
   # --------------------------------------------------------------------------
   # WildboxAlertmanagerDown

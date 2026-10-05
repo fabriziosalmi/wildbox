@@ -70,15 +70,17 @@ def http(monkeypatch):
 
 
 @pytest.fixture
-def policy(monkeypatch):
+def policy(monkeypatch, operation_limiter):
     """An empty authorization policy on the global manager, restored afterwards.
 
     Empty is what a deployment without USER_PERMISSIONS_FILE and
     AUTHORIZED_TARGETS_FILE has: nobody may run a destructive test anywhere.
+    Nobody has used an hourly allowance either: the limit is counted in
+    Redis (test_operation_rate_limit.py), and here by an in-process stand-in
+    that starts empty.
     """
     monkeypatch.setattr(authorization_manager, "user_permissions", {})
     monkeypatch.setattr(authorization_manager, "authorized_targets", set())
-    monkeypatch.setattr(authorization_manager, "rate_limits", {})
     return authorization_manager
 
 

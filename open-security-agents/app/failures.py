@@ -12,6 +12,11 @@ Now a failure raises AnalysisFailed, the worker records its code with the
 task and lets Celery record FAILURE, and the API answers ``status: failed``
 with the code's reason. The reason says which stage failed and nothing about
 the server's internals; the exception that caused it goes to the log.
+
+A task can also end where its own code cannot record anything: killed at the
+hard time limit, or with the process that ran it (#727). Those are recorded
+by whoever sees them, the worker's main process or the API reading the task
+(app/worker.py, record_failure), each once.
 """
 
 from typing import Optional
@@ -21,6 +26,7 @@ MODEL_UNAVAILABLE = "model_unavailable"
 TIMED_OUT = "timed_out"
 REPORT_FAILED = "report_failed"
 NO_CALLER = "no_caller"
+INTERRUPTED = "interrupted"
 INTERNAL = "internal"
 
 REASONS = {
@@ -37,12 +43,15 @@ REASONS = {
         "No verdict was produced."
     ),
     NO_CALLER: "The analysis had no user identity to act for and was not run.",
+    INTERRUPTED: (
+        "The analysis was interrupted before it finished. No verdict was produced."
+    ),
     INTERNAL: "The analysis failed because of an internal error.",
 }
 
-# What the API answered for every failure before the cause was recorded, and
-# still answers for a task that failed without one (a worker killed at its
-# hard time limit, a record that has expired).
+# What the API answered for every failure before the cause was recorded. It
+# still answers it for a recorded code it does not know, which a newer
+# worker may have written: never the raw value.
 GENERIC_REASON = "Analysis failed. Please retry or contact support."
 
 

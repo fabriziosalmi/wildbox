@@ -159,6 +159,35 @@ def test_no_rule_files_fails(prometheus, compose):
     one_problem(cmc.check_prometheus_config(prometheus, compose), "no rule_files")
 
 
+@pytest.mark.parametrize(
+    "target", ["open-security-tools-worker:8000", "tools-worker:9808"]
+)
+def test_the_worker_is_not_a_scrape_target(prometheus, compose, target):
+    # It runs the asynchronous tasks and serves no HTTP; on the production
+    # networks Prometheus could not reach it if it did (#721).
+    prometheus["scrape_configs"][0]["static_configs"][0]["targets"].append(target)
+
+    one_problem(
+        cmc.check_prometheus_config(prometheus, compose),
+        repr(target),
+        "serves no HTTP",
+        "open-security-tools:8000",
+    )
+
+
+def test_the_scrape_targets_are_read_from_every_job(prometheus):
+    assert cmc.scrape_targets(prometheus) == {
+        "open-security-identity:8001",
+        "open-security-tools:8000",
+        "open-security-data:8002",
+        "open-security-responder:8018",
+        "open-security-cspm:8019",
+        "open-security-agents:8006",
+        "localhost:9090",
+        "alertmanager:9093",
+    }
+
+
 # --- docker-compose.yml ------------------------------------------------------
 
 
@@ -381,6 +410,80 @@ def test_a_test_that_only_expects_silence_is_not_a_firing_test(
     )
 
 
+def test_an_alert_no_unit_test_keeps_silent_fails(rules, prometheus, rule_tests):
+    # `expr: vector(1)` fires in every firing test. Each alert also has a case
+    # in which it must not.
+    for test in rule_tests["tests"]:
+        test["alert_rule_test"] = [
+            case
+            for case in test["alert_rule_test"]
+            if case["alertname"] != "WildboxAsyncToolTasksNotConsumed"
+            or case["exp_alerts"]
+        ]
+
+    one_problem(
+        cmc.check_rules(rules, prometheus, rule_tests),
+        "WildboxAsyncToolTasksNotConsumed",
+        "must stay silent",
+    )
+
+
+def test_every_shipped_alert_has_a_firing_and_a_silent_case(rules, rule_tests):
+    fires, silent = set(), set()
+    for test in rule_tests["tests"]:
+        for case in test["alert_rule_test"]:
+            (fires if case["exp_alerts"] else silent).add(case["alertname"])
+    alerts = {rule["alert"] for rule in cmc.alert_rules(rules)}
+
+    assert alerts <= fires
+    assert alerts <= silent
+
+
+TOOLS_ALERTS = {
+    "WildboxSyncToolFailureRate": "wildbox_tool_executions_total",
+    "WildboxAsyncToolFailureRate": "wildbox_tool_async_executions_total",
+    "WildboxAsyncToolMetricsUnreadable": "wildbox_tool_async_metrics_up",
+}
+
+
+def test_the_tools_metrics_need_the_tools_api_scraped(rules, prometheus, rule_tests):
+    # tools-worker runs the asynchronous tasks, but the api exports their
+    # counters, and its own. Without that target every rule on them is a rule
+    # on nothing (#721).
+    targets = prometheus["scrape_configs"][0]["static_configs"][0]["targets"]
+    targets.remove("open-security-tools:8000")
+
+    problems = cmc.check_rules(rules, prometheus, rule_tests)
+
+    assert len(problems) == 5, problems
+    for alert, metric in TOOLS_ALERTS.items():
+        assert any(
+            f"{alert} reads {metric}, which only open-security-tools:8000 exports" in p
+            and "can never fire" in p
+            for p in problems
+        ), (alert, problems)
+    not_consumed = [p for p in problems if "WildboxAsyncToolTasksNotConsumed" in p]
+    assert len(not_consumed) == 2
+    assert any("wildbox_tool_async_queue_length" in p for p in not_consumed)
+    assert any("wildbox_tool_async_tasks_consumed_total" in p for p in not_consumed)
+
+
+@pytest.mark.parametrize(
+    "metric, exporter",
+    [
+        ("wildbox_tool_executions_total", "open-security-tools:8000"),
+        ("wildbox_tool_async_executions_total", "open-security-tools:8000"),
+        ("wildbox_tool_async_queue_length", "open-security-tools:8000"),
+        # Every service exports the HTTP counters.
+        ("wildbox_http_requests_total", None),
+        ("up", None),
+        ("alertmanager_notifications_failed_total", None),
+    ],
+)
+def test_which_metrics_one_target_alone_exports(metric, exporter):
+    assert cmc.sole_exporter(metric) == exporter
+
+
 def test_the_alert_that_fired_on_an_idle_stack_is_gone(rules):
     # WildboxNoToolExecutions fired on a healthy stack nobody had used for
     # twelve hours, and could not fire after a restart with no run.
@@ -585,6 +688,10 @@ def test_rule_selectors_reads_metrics_labels_and_operators():
         ("histogram_quantile(0.9, sum by (le) (rate(h_bucket[5m])))", {"h_bucket"}),
         ("job:requests:rate5m > 10", {"job:requests:rate5m"}),
         ("absent(up) or vector(0)", {"up"}),
+        (
+            "queue_length > 0\nand on ()\nincrease(consumed_total[15m]) == 0",
+            {"queue_length", "consumed_total"},
+        ),
     ],
 )
 def test_rule_metric_names_reads_every_metric_and_nothing_else(expr, metrics):
@@ -602,9 +709,38 @@ def test_the_shipped_rules_read_these_metrics(rules):
         "WildboxServiceDown": {"up"},
         "WildboxHighErrorRate": {"wildbox_http_requests_total"},
         "WildboxSyncToolFailureRate": {"wildbox_tool_executions_total"},
+        "WildboxAsyncToolFailureRate": {"wildbox_tool_async_executions_total"},
+        "WildboxAsyncToolTasksNotConsumed": {
+            "wildbox_tool_async_queue_length",
+            "wildbox_tool_async_tasks_consumed_total",
+        },
+        "WildboxAsyncToolMetricsUnreadable": {"wildbox_tool_async_metrics_up"},
         "WildboxAlertmanagerDown": {"up"},
         "WildboxAlertNotificationsFailing": {"alertmanager_notifications_failed_total"},
     }
+
+
+def test_the_asynchronous_failure_rule_selects_the_failed_outcome(rules):
+    (rule,) = [
+        rule
+        for rule in cmc.alert_rules(rules)
+        if rule["alert"] == "WildboxAsyncToolFailureRate"
+    ]
+
+    assert cmc.rule_selectors(rule["expr"]) == {
+        "wildbox_tool_async_executions_total": {"outcome": [("=", "failed")]}
+    }
+
+
+def test_an_empty_on_clause_joins_on_no_label(rules):
+    (rule,) = [
+        rule
+        for rule in cmc.alert_rules(rules)
+        if rule["alert"] == "WildboxAsyncToolTasksNotConsumed"
+    ]
+
+    # The queue length and the consumed counter are compared as two numbers.
+    assert cmc.grouping_labels(rule["expr"]) == set()
 
 
 def test_rule_selectors_reads_several_matchers():
@@ -660,6 +796,10 @@ def runtime_state(rules):
     metadata = {
         "wildbox_http_requests_total": [{"type": "counter"}],
         "wildbox_tool_executions_total": [{"type": "counter"}],
+        "wildbox_tool_async_executions_total": [{"type": "counter"}],
+        "wildbox_tool_async_tasks_consumed_total": [{"type": "counter"}],
+        "wildbox_tool_async_queue_length": [{"type": "gauge"}],
+        "wildbox_tool_async_metrics_up": [{"type": "gauge"}],
         "alertmanager_notifications_failed_total": [{"type": "counter"}],
     }
     return alertmanagers, groups, targets, metadata
@@ -694,6 +834,13 @@ def test_a_target_that_is_down_fails(rules):
     "metric, alert",
     [
         ("wildbox_tool_executions_total", "WildboxSyncToolFailureRate"),
+        ("wildbox_tool_async_executions_total", "WildboxAsyncToolFailureRate"),
+        ("wildbox_tool_async_queue_length", "WildboxAsyncToolTasksNotConsumed"),
+        (
+            "wildbox_tool_async_tasks_consumed_total",
+            "WildboxAsyncToolTasksNotConsumed",
+        ),
+        ("wildbox_tool_async_metrics_up", "WildboxAsyncToolMetricsUnreadable"),
         ("wildbox_http_requests_total", "WildboxHighErrorRate"),
         ("alertmanager_notifications_failed_total", "WildboxAlertNotificationsFailing"),
     ],

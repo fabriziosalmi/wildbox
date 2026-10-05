@@ -6,9 +6,10 @@ import time
 import importlib.util
 from pathlib import Path
 from typing import Dict, Any, Optional
-from celery import Task
-from celery.exceptions import SoftTimeLimitExceeded
+from celery import Task, signals
+from celery.exceptions import SoftTimeLimitExceeded, TimeLimitExceeded
 
+from app import async_metrics
 from app.celery_app import celery_app
 from app.execution_manager import ExecutionStatus, ToolAuthorizationError, authorize_tool_call
 from app.tool_loader import find_schema_classes
@@ -17,10 +18,20 @@ from app.logging_config import get_logger
 
 logger = get_logger(__name__)
 
+TASK_NAME = 'app.tasks.execute_tool_async'
+
+# Where the task body leaves the outcome of a run it ends by returning, for
+# _count_returned_task below. The result a client reads says "failed" for a
+# task that never started its tool (no such tool, input that does not
+# validate, a refused target); the counter says "refused" for those, as it
+# does for a caller who may not run the tool, so that "failed" means in both
+# counters what the alert on it says: the tool ran and raised.
+_OUTCOME_ATTRIBUTE = 'wildbox_outcome'
+
 
 class ToolExecutionTask(Task):
     """Base task class with retry logic and error handling."""
-    
+
     autoretry_for = (Exception,)
     retry_kwargs = {'max_retries': 2, 'countdown': 5}
     retry_backoff = True
@@ -28,10 +39,90 @@ class ToolExecutionTask(Task):
     retry_jitter = True
 
 
+# --- counting the asynchronous runs (#721) ----------------------------------
+#
+# One count per task, added when Celery settles the task's state and by the
+# process that settles it, which is not always the one that ran it:
+#
+#   returned (completed, a soft time limit, a refusal)   task_success, child
+#   raised, retries exhausted                            task_failure, child
+#   killed at the hard time limit                        task_failure, MAIN
+#   cancelled, waiting or running                        task_revoked, MAIN
+#
+# A counter in the task body would miss the last two: the child is killed, or
+# never ran. A retry is not an end and is not counted; a task whose child
+# died and that Celery put back on the queue (task_reject_on_worker_lost) is
+# counted when it does end. The counts are in Redis (app/async_metrics.py)
+# because the processes above share nothing else, and the API exports them.
+#
+# task_prerun counts every start, so that the API can also export whether
+# the worker is taking tasks off the queue at all.
+#
+# The handlers are connected without a sender and compare the task's name:
+# the object this module binds to execute_tool_async is a proxy, not the
+# task instance Celery sends as the sender.
+
+
+def _is_tool_task(sender) -> bool:
+    return getattr(sender, 'name', None) == TASK_NAME
+
+
+def _tool_name(kwargs) -> Optional[str]:
+    return kwargs.get('tool_name') if isinstance(kwargs, dict) else None
+
+
+@signals.task_prerun.connect
+def _count_taken_task(sender=None, task_id=None, **_):
+    if _is_tool_task(sender):
+        async_metrics.record_taken(task_id)
+
+
+@signals.task_success.connect
+def _count_returned_task(sender=None, result=None, **_):
+    if not _is_tool_task(sender):
+        return
+    request = sender.request
+    outcome = getattr(request, _OUTCOME_ATTRIBUTE, None)
+    if outcome is None:
+        # The body always sets it; a result without one is counted for what
+        # it says rather than not at all.
+        status = result.get('status') if isinstance(result, dict) else None
+        outcome = status if status in async_metrics.OUTCOMES else async_metrics.COMPLETED
+    async_metrics.record_outcome(request.id, _tool_name(request.kwargs), outcome)
+
+
+@signals.task_failure.connect
+def _count_failed_task(sender=None, task_id=None, exception=None, kwargs=None, **_):
+    if not _is_tool_task(sender):
+        return
+    # TimeLimitExceeded is the hard limit: the worker's main process killed
+    # the child and reports here. The soft limit is caught in the task body.
+    outcome = (
+        async_metrics.TIMEOUT
+        if isinstance(exception, TimeLimitExceeded)
+        else async_metrics.FAILED
+    )
+    async_metrics.record_outcome(task_id, _tool_name(kwargs), outcome)
+
+
+@signals.task_revoked.connect
+def _count_cancelled_task(sender=None, request=None, terminated=None, **_):
+    if not _is_tool_task(sender):
+        return
+    async_metrics.record_outcome(
+        getattr(request, 'id', None),
+        _tool_name(getattr(request, 'kwargs', None)),
+        async_metrics.CANCELLED,
+        # Cancelled while it waited: the worker took it off the queue only to
+        # drop it, and no start has counted it as consumed.
+        taken_now=not terminated,
+    )
+
+
 @celery_app.task(
     bind=True,
     base=ToolExecutionTask,
-    name='app.tasks.execute_tool_async',
+    name=TASK_NAME,
     track_started=True
 )
 def execute_tool_async(
@@ -56,6 +147,12 @@ def execute_tool_async(
     """
     start_time = time.time()
     task_id = self.request.id
+    # Whether the tool itself was called: what ends before that is counted
+    # as refused, what raises after it as failed (see _OUTCOME_ATTRIBUTE).
+    tool_started = False
+
+    def settled(outcome: str) -> None:
+        setattr(self.request, _OUTCOME_ATTRIBUTE, outcome)
     
     logger.info(
         f"Starting async tool execution: {tool_name}",
@@ -119,6 +216,7 @@ def execute_tool_async(
                 f"Async tool execution refused: {tool_name}",
                 extra={"tool_name": tool_name, "task_id": task_id, "reason": str(e)}
             )
+            settled(async_metrics.REFUSED)
             return {
                 'status': ExecutionStatus.REFUSED.value,
                 'error': str(e),
@@ -129,6 +227,7 @@ def execute_tool_async(
 
         # Execute the tool (handle both sync and async)
         import inspect
+        tool_started = True
         if inspect.iscoroutinefunction(execute_func):
             # Async function - need to run in event loop
             import asyncio
@@ -163,6 +262,7 @@ def execute_tool_async(
             }
         )
         
+        settled(async_metrics.COMPLETED)
         return {
             'status': 'completed',
             'result': result_dict,
@@ -185,6 +285,7 @@ def execute_tool_async(
             }
         )
         
+        settled(async_metrics.TIMEOUT)
         return {
             'status': 'timeout',
             'error': error_msg,
@@ -208,6 +309,7 @@ def execute_tool_async(
             }
         )
         
+        settled(async_metrics.FAILED if tool_started else async_metrics.REFUSED)
         return {
             'status': 'failed',
             'error': error_msg,

@@ -239,6 +239,142 @@ def fake_redis():
     return FakeRedis()
 
 
+# --- a real Redis ------------------------------------------------------------
+#
+# What the service keeps in Redis to share it between processes (the hourly
+# operation limit, the asynchronous run counters) is tested against a Redis
+# server, from more than one connection and more than one process: a stand-in
+# written in Python would only show that the stand-in agrees with itself.
+#
+# TOOLS_TEST_REDIS_URL names the server to use; CI starts one for this suite
+# (.github/workflows/test.yml), and a server that is named but does not answer
+# fails the tests instead of skipping them. Without the variable a
+# ``redis-server`` found on PATH is started on a free port for the session.
+# With neither, these tests are skipped and say why.
+
+REDIS_URL_VARIABLE = "TOOLS_TEST_REDIS_URL"
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as sock:
+        sock.bind((HOST, 0))
+        return sock.getsockname()[1]
+
+
+def _wait_for_redis(url: str, seconds: float) -> bool:
+    import time
+
+    import redis
+
+    client = redis.Redis.from_url(url, socket_connect_timeout=1, socket_timeout=1)
+    deadline = time.monotonic() + seconds
+    try:
+        while time.monotonic() < deadline:
+            try:
+                if client.ping():
+                    return True
+            except (redis.RedisError, OSError):
+                time.sleep(0.1)
+        return False
+    finally:
+        client.close()
+
+
+@pytest.fixture(scope="session")
+def redis_url(tmp_path_factory):
+    """The URL of a Redis server the tests may write to.
+
+    The tests name every key after a random caller or a random prefix and
+    delete what they wrote; nothing is flushed.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    configured = os.environ.get(REDIS_URL_VARIABLE)
+    if configured:
+        if not _wait_for_redis(configured, 10):
+            pytest.fail(f"{REDIS_URL_VARIABLE} is set and no Redis answers there")
+        yield configured
+        return
+
+    binary = shutil.which("redis-server")
+    if binary is None:
+        pytest.skip(
+            f"needs a Redis server: set {REDIS_URL_VARIABLE} or install redis-server"
+        )
+    port = _free_port()
+    process = subprocess.Popen(
+        [
+            binary,
+            "--port",
+            str(port),
+            "--bind",
+            HOST,
+            "--save",
+            "",
+            "--appendonly",
+            "no",
+            "--dir",
+            str(tmp_path_factory.mktemp("redis")),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    url = f"redis://{HOST}:{port}/0"
+    try:
+        if not _wait_for_redis(url, 10):
+            pytest.fail("the redis-server started for the tests does not answer")
+        yield url
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+
+
+@pytest.fixture
+def redis_client(redis_url):
+    """A connection of its own to the test Redis, closed after the test."""
+    import redis
+
+    client = redis.Redis.from_url(redis_url, decode_responses=True)
+    yield client
+    client.close()
+
+
+class InMemoryOperationLimiter:
+    """The operation limiter's interface, for tests that are not about it.
+
+    Enforces the limit, in this process only. The limiter the service uses
+    (app.security.rate_limit) is tested against a Redis server in
+    test_operation_rate_limit.py.
+    """
+
+    def __init__(self):
+        self.runs = {}
+
+    def allow(self, user_id, operation, limit):
+        taken = self.runs.get((user_id, operation), 0)
+        if taken >= limit:
+            return False
+        self.runs[(user_id, operation)] = taken + 1
+        return True
+
+
+@pytest.fixture
+def operation_limiter(monkeypatch):
+    """Replace the service's operation limiter with an in-process one."""
+    from app.security import rate_limit
+
+    limiter = InMemoryOperationLimiter()
+    monkeypatch.setattr(rate_limit, "_limiter", limiter)
+    return limiter
+
+
 @pytest.fixture
 def task_ownership(fake_redis, monkeypatch):
     """The service's owner records, backed by a FakeRedis, for one test."""
