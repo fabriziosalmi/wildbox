@@ -11,6 +11,7 @@ from .config import settings
 from .database import get_db
 from .api_v1.endpoints import users, api_keys, analytics, user_api_keys
 from .internal import router as internal_router
+from .team_contacts import router as team_contacts_router
 from . import logout
 
 # Import fastapi-users components
@@ -177,6 +178,14 @@ app.include_router(
     internal_router,
     prefix=settings.internal_api_prefix,
     tags=["internal"]
+)
+
+# Who guardian may e-mail about a team (#705): for guardian's worker, with
+# a secret of its own. See app/team_contacts.py.
+app.include_router(
+    team_contacts_router,
+    prefix=settings.internal_api_prefix,
+    tags=["internal"],
 )
 
 
